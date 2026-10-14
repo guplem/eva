@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "eva",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
       "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@stryker-mutator/core": "^10.0.0",

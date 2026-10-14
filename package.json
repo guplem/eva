@@ -37,6 +37,7 @@
     "test:coverage": "bun test --coverage",
     "mutation": "stryker run",
     "test:e2e": "playwright test",
+    "smoke:live": "bun run scripts/smoke-live.ts",
     "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"
   },
   "type": "module",

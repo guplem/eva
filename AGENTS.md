@@ -123,7 +123,7 @@ What to test, and how (`adr/0009-layered-testing-strategy.md` has the why; `docs
 - **Engine adapters (`src/engines/`)**: parser tests on output captured from a neutral demo vault, and contract tests on the exact argument list or SDK options (lessons 101, 102).
 - **Front ends**: the CLI and the API against a fake engine; Telegram against a fake Bot API server (P4); the web UI with Playwright (P5).
 - **End-to-end**: the core with local bare git remotes and a fake engine.
-- **Exempt**: `src/main.ts`, because it only wires the layers. Keep it free of decisions. A real login run (`smoke:live`, planned for P3) covers the real engine, and lands in `docs/owner-todo.md` when no login exists.
+- **Exempt**: `src/main.ts`, because it only wires the layers. Keep it free of decisions. A real login run (`bun run smoke:live`, with `CLAUDE_CODE_OAUTH_TOKEN` set) covers the real engine. Without a token it skips, and `docs/owner-todo.md` keeps the run on the list.
 
 The gate: CI runs `bun run check` on every PR, on Ubuntu and on Windows. No ruleset blocks a merge, so you hold the gate yourself (see Git Workflow).
 

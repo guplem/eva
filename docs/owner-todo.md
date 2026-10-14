@@ -17,6 +17,13 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 - [ ] **Claude login on this PC:** the standalone `claude` is not logged in (the desktop app uses its own login). Run `claude` once and log in, or run `claude setup-token` and give the token to Eva in `eva setup`.
 
+## Engine checks with a real login (phase P3)
+
+- [ ] **`bun run smoke:live`:** with `CLAUDE_CODE_OAUTH_TOKEN` set from `claude setup-token`, it runs two real turns through Eva's Claude Code adapter in a demo vault and checks the turn ends, the continue and the prompt cache.
+- [ ] **Real fixtures:** run `EVA_LIVE=1 bun run scripts/capture-claude-fixtures.ts` with the same token, and replace the hand-built SDK messages in `test/unit/engines/claude-code/` with the captures.
+- [ ] **Spike S4:** compare append and replace for the Assistant prompt on 10 real requests (plan §5.2). Append stays the default until then.
+- [ ] **Spike S5:** check what the SDK sends on a subscription token: the identity line and the limits (lesson 110).
+
 ## Features (phase P6)
 
 - [ ] **Google:** in Google Cloud, create an OAuth client of type "Desktop app" with the Calendar, Drive, People and Tasks APIs on, and set the consent screen to "In production". Add the client id and secret to Eva's `secrets.json` (`googleOauthClientId`, `googleOauthClientSecret`) and the account to `config.json` (`google.email`). Then ask Eva about the calendar once, and open the login link. A live run of a calendar write with a guest checks the approval button.

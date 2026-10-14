@@ -18,6 +18,7 @@ const preparer: TurnPreparer = {
     Promise.resolve({
       startFolder: session.startFolder,
       appendSystemPrompt: session.mode === "assistant" ? "You are Eva." : null,
+      messagePrefix: null,
       pluginFolders: [],
       trusted: true,
       environment: { PATH: "/bin" },

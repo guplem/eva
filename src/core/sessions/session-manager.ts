@@ -20,6 +20,8 @@ import type { SessionRecord, SessionStore } from "./session-store.ts";
 export interface PreparedTurn {
   readonly startFolder: string;
   readonly appendSystemPrompt: string | null;
+  /** Put before the person's message, such as the local time (lesson 40). */
+  readonly messagePrefix: string | null;
   readonly pluginFolders: readonly string[];
   readonly trusted: boolean;
   readonly environment: Readonly<Record<string, string>>;
@@ -258,7 +260,12 @@ export class SessionManager {
         mode: session.mode,
         history: this.historyOf(session),
         startFolder: prepared.startFolder,
-        prompt,
+        prompt:
+          prepared.messagePrefix === null
+            ? prompt
+            : `${prepared.messagePrefix}
+
+${prompt}`,
         model: session.modelAlias,
         appendSystemPrompt: prepared.appendSystemPrompt,
         pluginFolders: prepared.pluginFolders,

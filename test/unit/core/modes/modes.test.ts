@@ -8,7 +8,7 @@ import type { SessionRecord } from "../../../../src/core/sessions/session-store.
 import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessResult, ProcessRunner, ProcessRunOptions } from "../../../../src/shared/process-runner.ts";
-import { createGitSandbox, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -85,10 +85,10 @@ beforeEach(() => {
   vault = sandbox.clone("vault");
   mkdirSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
   writeFileSync(join(vault, ".eva", "assistant.md"), "# You are Eva\n");
-});
+}, gitHookTimeoutMs);
 afterEach(() => {
   sandbox.dispose();
-});
+}, gitHookTimeoutMs);
 
 describe("Assistant mode", () => {
   test("pulls the vault, then joins the base prompt and the person's rules", async () => {
@@ -174,7 +174,7 @@ describe("Project mode", () => {
   beforeEach(() => {
     clone = sandbox.clone("clone");
     sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/owner/example-app.git");
-  });
+  }, gitHookTimeoutMs);
 
   function project(trustedOwners: string[], store = new TrustStore(join(sandbox.root, "trust.json"))): ProjectPreparer {
     return new ProjectPreparer({

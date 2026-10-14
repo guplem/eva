@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -26,10 +26,10 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   vault = sandbox.clone("vault");
   other = sandbox.clone("other");
-});
+}, gitHookTimeoutMs);
 afterEach(() => {
   sandbox.dispose();
-});
+}, gitHookTimeoutMs);
 
 describe("VaultSync.save", () => {
   test("commits every change and pushes it", async () => {

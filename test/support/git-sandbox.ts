@@ -70,3 +70,6 @@ export function createGitSandbox(): GitSandbox {
 }
 
 export { gitEnvironment };
+
+/** Bun gives a hook 5 seconds, apart from the test timeout; git on a Windows CI runner needs more. */
+export const gitHookTimeoutMs = 30_000;

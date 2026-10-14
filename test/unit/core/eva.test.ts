@@ -7,7 +7,7 @@ import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/inst
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -52,13 +52,13 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "eva-home-"));
   eva = null;
   clock = new Date("2026-10-14T10:30:00Z");
-});
+}, gitHookTimeoutMs);
 afterEach(async () => {
   await eva?.idle();
   eva?.stop();
   sandbox.dispose();
   rmSync(home, { recursive: true, force: true });
-});
+}, gitHookTimeoutMs);
 
 describe("Eva", () => {
   test("a schedule fires in a fresh Assistant chat named after it, and starts with the background work", async () => {

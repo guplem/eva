@@ -9,7 +9,7 @@ import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const owner = 4242;
 let sandbox: GitSandbox;
@@ -72,14 +72,14 @@ beforeEach(() => {
   fatal = [];
   clock = new Date("2026-10-14T10:30:00Z");
   createEva();
-});
+}, gitHookTimeoutMs);
 afterEach(async () => {
   await eva.idle();
   eva.stop();
   telegram.stop();
   sandbox.dispose();
   rmSync(home, { recursive: true, force: true });
-});
+}, gitHookTimeoutMs);
 
 describe("access (lessons 63, 127)", () => {
   test("a stranger's chat gets only its chat id, and starts nothing", async () => {

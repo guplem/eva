@@ -11,7 +11,7 @@ import {
 } from "../../../../src/core/projects/clones.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let project: string;
@@ -20,10 +20,10 @@ beforeEach(() => {
   sandbox = createGitSandbox();
   project = join(sandbox.root, "vault", "Projects", "2025-03-02-1015-example-app");
   mkdirSync(project, { recursive: true });
-});
+}, gitHookTimeoutMs);
 afterEach(() => {
   sandbox.dispose();
-});
+}, gitHookTimeoutMs);
 
 describe("repositoryName", () => {
   test("takes the last path part of a URL, without .git", () => {

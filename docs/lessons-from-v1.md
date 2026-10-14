@@ -43,7 +43,7 @@ The plan (`plan.md`) must respect every `[keep]` and `[adapt]` item. A reviewer 
 25. `[keep]` **Rebase with `--autostash`.** Source: `adr/0002`.
 26. `[adapt]` **v1 `sync-pull.sh` always exited 0 and reported failure only in a JSON line.** → The service reports sync state in the UI and in `/status`. Source: `server/AGENTS.md`.
 27. `[keep]` **A pre-commit hook must never block an autosave commit.** Source: `.githooks/pre-commit`, `4ef7d76`.
-28. `[keep]` **A repository that autosaves to `main` cannot have a required-check ruleset.** The engine repository can, and must. Source: `adr/0002`.
+28. `[adapt]` **A repository that autosaves to `main` cannot have a required-check ruleset.** Source: `adr/0002`. → The engine repository could have one, but the owner chose none for now (2026-10-14). CI runs on every pull request, and an agent never merges on red CI.
 29. `[keep]` **Gitignore anything secret, per-machine, or a cache.** Autosave pushes it within seconds otherwise. Source: `.gitignore`.
 30. `[keep]` **The lock orders git operations, not agents.** Two conversations can edit one note, and one edit can be lost. Accepted. Source: `ARCHITECTURE.md` section 7.
 

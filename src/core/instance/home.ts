@@ -101,7 +101,6 @@ const configSchema = z.object({
 });
 
 export type EvaConfig = z.infer<typeof configSchema>;
-export type ModelAlias = z.infer<typeof modelAliasSchema>;
 
 export const defaultConfig: EvaConfig = configSchema.parse({});
 

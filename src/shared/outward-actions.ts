@@ -1,0 +1,39 @@
+/**
+ * Which tool calls reach other people (docs/plan.md §5.5). Assistant mode asks the person
+ * before these and runs every other call at once. Each engine adapter uses this one rule, so
+ * Claude Code and pi ask for the same actions. Tool names differ in case between the two
+ * engines (`Bash` and `bash`), so the shell tool is matched without case.
+ */
+
+/** Shell commands that publish, push or send. */
+const outwardCommandPattern =
+  /\b(git\s+push|gh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)|gh\s+api\b.*-X\s*(POST|PATCH|PUT|DELETE)|curl\b.*-X\s*(POST|PUT|PATCH|DELETE))/i;
+const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permission|access|comment|reaction)/i;
+/** A calendar event reaches other people only when it has guests or sends updates. */
+const calendarEventToolPattern = /^mcp__.*manage_event$/;
+
+export function reachesOtherPeople(toolName: string, input: Readonly<Record<string, unknown>>): boolean {
+  const command = typeof input["command"] === "string" ? input["command"] : "";
+  return (
+    (toolName.toLowerCase() === "bash" && outwardCommandPattern.test(command)) ||
+    outwardMcpPattern.test(toolName) ||
+    (calendarEventToolPattern.test(toolName) && eventReachesOthers(input))
+  );
+}
+
+/** One line that says what a tool call does, for an approval button or an activity chip. */
+export function summarizeToolCall(name: string, input: unknown): string {
+  const fields = (input ?? {}) as Record<string, unknown>;
+  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
+    const value = fields[key];
+    if (typeof value === "string") return name.toLowerCase() === "bash" ? value : `${name} ${value}`;
+  }
+  return JSON.stringify(input);
+}
+
+function eventReachesOthers(input: Readonly<Record<string, unknown>>): boolean {
+  const attendees = input["attendees"];
+  const hasGuests = Array.isArray(attendees) ? attendees.length > 0 : typeof attendees === "string" && attendees !== "";
+  const sendsUpdates = input["send_updates"] === "all" || input["send_updates"] === "externalOnly";
+  return hasGuests || sendsUpdates || input["action"] === "rsvp";
+}

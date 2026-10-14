@@ -35,6 +35,13 @@ const tools: readonly ToolCheck[] = [
     install: "https://code.claude.com",
   },
   {
+    program: "pi",
+    versionArguments: ["--version"],
+    feature: "the pi engine (ChatGPT, Copilot, API keys)",
+    required: false,
+    install: "https://pi.dev",
+  },
+  {
     program: "gh",
     versionArguments: ["--version"],
     feature: "pull request numbers",

@@ -10,12 +10,10 @@ Source: plan §1 (D9), §4.5, §4.6, §7; spike S2; review R4, R18, R24; lessons
 
 - **One engine port** in `src/shared/`. Each adapter under `src/engines/` implements it and emits the event union of plan §4.6.
 - **Claude Code through the Claude Agent SDK,** with the person's installed `claude` (config `engines.claudeCode.executable`, default `claude` on `PATH`). Eva sets `sessionId` before the first turn (lesson 44) and uses `resume`, `resumeSessionAt`, and `forkSession` for forks and retries. Spike S2 confirmed all four, with the cache kept. Eva always passes the `claude_code` system prompt preset (lesson 113).
-- **pi as a child process,** `pi --mode rpc`, with tree sessions and fork through RPC (phase P7). Eva raises the stream line limit for it (lesson 52).
+- **pi as a child process,** `pi --mode rpc`, one process per turn (`src/engines/pi/`). Eva names the session file before the first turn and writes a fork's branch file herself, because RPC cannot cut at an answer. A small pi extension turns each tool call into an approval question. The stream reader has no line limit (lesson 52). `docs/spikes.md` records the protocol facts.
 - **Every engine process gets an explicit allowlist of environment variables** (lesson 96). Eva's own secrets never reach an agent through the environment.
 - **Each person uses their own login.** Eva never offers a claude.ai login, and never embeds `claude`.
 - **More engines come later,** in this order: an engine-neutral background task system, ACP engines (OpenCode, Codex), a custom harness (plan §7.3).
-
-Parts that have no code yet are planned for phase P3 (Claude Code adapter) and P7 (pi adapter).
 
 **Rejected alternatives:**
 

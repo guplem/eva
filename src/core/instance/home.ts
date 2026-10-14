@@ -81,10 +81,19 @@ const configSchema = z.object({
           ownConfigFolder: z.boolean().default(false),
         })
         .default({ executable: null, defaultModel: "default", ownConfigFolder: false }),
+      pi: z
+        .object({
+          /** The program that starts pi. Null: `pi` found on PATH. */
+          executable: z.string().min(1).nullable().default(null),
+          /** A pi model such as `openai/gpt-5`. Null: pi's own default. */
+          model: z.string().min(1).nullable().default(null),
+        })
+        .default({ executable: null, model: null }),
     })
     .default({
       default: "claude-code",
       claudeCode: { executable: null, defaultModel: "default", ownConfigFolder: false },
+      pi: { executable: null, model: null },
     }),
   telegram: z
     .object({

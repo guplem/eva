@@ -4,7 +4,7 @@
  * decision worth a test; every piece it joins has its own tests.
  */
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -14,6 +14,7 @@ import {
   loadConfig,
   loadSecrets,
   resolveHomeFolder,
+  saveConfig,
   saveSecrets,
   type HomePaths,
 } from "./core/instance/home.ts";
@@ -27,10 +28,13 @@ import { describeProjects, describeStatus } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { runSetup } from "./frontends/cli/setup.ts";
+import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
+import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
 import type { EnginePort } from "./shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/environment.ts";
 import { isEvaError } from "./shared/errors.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
+import { writeFileAtomic } from "./shared/files.ts";
 import { FileLogger } from "./shared/logger.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
@@ -101,8 +105,12 @@ async function runClientCommand(
   }
   const baseUrl = `http://127.0.0.1:${String(config.port)}`;
   try {
-    if (command.command === "status") writeLine(await describeStatus({ baseUrl, token }));
-    else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
+    if (command.command === "status") {
+      const codePath = pairingCodePath(paths);
+      writeLine(
+        await describeStatus({ baseUrl, token }, existsSync(codePath) ? readFileSync(codePath, "utf-8").trim() : null),
+      );
+    } else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
     else {
       await withPrompt(async (ask) => {
         await runChat({
@@ -179,16 +187,66 @@ async function serve(paths: HomePaths): Promise<number> {
   writeLine(`Eva ${version} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);
 
   return new Promise<number>((resolve) => {
-    const stop = (): void => {
-      api.stop();
-      eva.stop();
-      lock.release();
-      logger.log("info", "Eva stopped.");
-      resolve(exitCodes.clean);
+    let bot: TelegramBot | null = null;
+    const stop = (exitCode: number): void => {
+      void (async () => {
+        await bot?.stop();
+        api.stop();
+        eva.stop();
+        lock.release();
+        logger.log("info", "Eva stopped.", { exitCode });
+        resolve(exitCode);
+      })();
     };
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
+    bot = startTelegram(paths, eva, logger, (exitCode) => {
+      stop(exitCode);
+    });
+    process.once("SIGINT", () => {
+      stop(exitCodes.clean);
+    });
+    process.once("SIGTERM", () => {
+      stop(exitCodes.clean);
+    });
   });
+}
+
+/** Telegram runs on the hub instance only (plan §4.4, lesson 56). */
+function startTelegram(
+  paths: HomePaths,
+  eva: Eva,
+  logger: FileLogger,
+  onFatal: (exitCode: number) => void,
+): TelegramBot | null {
+  const config = loadConfig(paths);
+  const token = loadSecrets(paths).telegramBotToken;
+  if (config.role !== "hub" || !config.telegram.enabled || token === undefined) return null;
+  let pairingCode = "";
+  if (config.telegram.allowedChatId === null) {
+    pairingCode = `EVA-${randomBytes(4).toString("hex").toUpperCase()}`;
+    writeFileAtomic(pairingCodePath(paths), pairingCode);
+    writeLine(`Telegram is not paired yet. Send ${pairingCode} to your bot.`);
+  }
+  const bot = new TelegramBot({
+    api: new HttpTelegramApi({ token }),
+    eva,
+    statePath: paths.telegramState,
+    allowedChatId: config.telegram.allowedChatId,
+    pairingCode,
+    onPaired: (chatId) => {
+      const current = loadConfig(paths);
+      saveConfig(paths, { ...current, telegram: { ...current.telegram, allowedChatId: chatId } });
+      rmSync(pairingCodePath(paths), { force: true });
+      logger.log("info", "Telegram paired.");
+    },
+    onFatal,
+    logger,
+  });
+  void bot.run();
+  return bot;
+}
+
+function pairingCodePath(paths: HomePaths): string {
+  return join(paths.stateFolder, "telegram-pairing-code.txt");
 }
 
 async function installService(paths: HomePaths): Promise<number> {

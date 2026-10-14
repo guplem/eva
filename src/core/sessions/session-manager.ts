@@ -124,6 +124,17 @@ export class SessionManager {
     return this.options.store.list();
   }
 
+  /** Chooses the model of a chat before its first turn. A model belongs to a conversation (lesson 41). */
+  setModel(sessionId: string, model: ModelAlias): SessionRecord {
+    const session = this.get(sessionId);
+    if (session.turns.length > 0) {
+      throw new EvaError("session_busy", "The model of a chat is chosen before its first message.");
+    }
+    const updated = { ...session, modelAlias: model };
+    this.options.store.save(updated);
+    return updated;
+  }
+
   subscribe(listener: EventListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

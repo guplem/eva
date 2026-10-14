@@ -23,7 +23,7 @@ interface ProjectBody {
   readonly frontMatter: { readonly status: string | null };
 }
 
-export async function describeStatus(options: ClientOptions): Promise<string> {
+export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<StatusBody>(options, "/api/status");
   return [
     `Role: ${status.role}`,
@@ -31,6 +31,7 @@ export async function describeStatus(options: ClientOptions): Promise<string> {
     `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
     `Last push: ${status.vaultSync.lastPushAt ?? "none since start"}`,
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
+    ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
 

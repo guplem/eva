@@ -410,7 +410,7 @@ The engine is built mostly by AI agents. The repository keeps the code consisten
 - **Lint and format:** ESLint with `typescript-eslint` `strictTypeChecked` (it catches floating promises, lesson 50), and Prettier.
 - **Architecture:** `dependency-cruiser` enforces §4.2.
 - **Dead code:** `knip`.
-- **Coverage:** `bun test --coverage`, with 90% lines and functions as the floor for each layer (lesson 103). Bun reports no branch coverage.
+- **Coverage:** `bun test --coverage`, with 90% lines and 80% functions as the floor for each file (lesson 103). Bun reports no branch coverage, and it counts inner arrow functions unevenly, so the function floor is lower.
 - **Useful tests:** Stryker mutation testing (command runner with `bun test`, incremental) on `src/core` and `src/engines`, break threshold 60, run on demand and nightly.
 - **Engine adapters:** fixtures captured from a neutral demo vault, and argument contract tests (lesson 101). Fakes only at the named seams (lesson 102).
 - **Web UI:** Playwright tests.

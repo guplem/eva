@@ -1,5 +1,254 @@
 #!/usr/bin/env bun
-/** Eva's entry point. It only wires the layers together (docs/plan.md §4.2). */
+/**
+ * Eva's entry point. It only wires the layers together (docs/plan.md §4.2), so it holds no
+ * decision worth a test; every piece it joins has its own tests.
+ */
+import { randomBytes } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { Eva } from "./core/eva.ts";
+import {
+  homePaths,
+  loadConfig,
+  loadSecrets,
+  resolveHomeFolder,
+  saveSecrets,
+  type HomePaths,
+} from "./core/instance/home.ts";
+import { acquireInstanceLock, isProcessAlive } from "./core/instance/instance-lock.ts";
+import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
+import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
+import { startLocalApi } from "./frontends/api/local-api.ts";
+import { parseArguments, usageText, type CliCommand } from "./frontends/cli/arguments.ts";
+import { runChat } from "./frontends/cli/chat.ts";
+import { describeProjects, describeStatus } from "./frontends/cli/client.ts";
+import { runDoctor } from "./frontends/cli/doctor.ts";
+import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import { runSetup } from "./frontends/cli/setup.ts";
+import type { EnginePort } from "./shared/engine-port.ts";
+import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/environment.ts";
+import { isEvaError } from "./shared/errors.ts";
+import { exitCodes } from "./shared/exit-codes.ts";
+import { FileLogger } from "./shared/logger.ts";
+import { systemProcessRunner } from "./shared/process-runner.ts";
+import { Redactor } from "./shared/redaction.ts";
+
 const version = "0.1.0";
 
-process.stdout.write(`Eva ${version}: the core is under construction (docs/plan.md, phase P3).\n`);
+function write(text: string): void {
+  process.stdout.write(text);
+}
+
+function writeLine(text: string): void {
+  process.stdout.write(`${text}\n`);
+}
+
+async function main(argv: readonly string[]): Promise<number> {
+  const command = parseArguments(argv);
+  if (command.command === "usage-error") {
+    process.stderr.write(`${command.message}\n\n${usageText}`);
+    return exitCodes.badConfig;
+  }
+  if (command.command === "help") {
+    write(usageText);
+    return exitCodes.clean;
+  }
+  const paths = homePaths(
+    resolveHomeFolder({
+      flag: command.home,
+      environment: process.env,
+      platform: process.platform,
+      userHome: homedir(),
+    }),
+  );
+
+  switch (command.command) {
+    case "doctor": {
+      const healthy = await runDoctor({
+        runner: systemProcessRunner,
+        environment: childEnvironment(),
+        write: writeLine,
+      });
+      return healthy ? exitCodes.clean : exitCodes.crash;
+    }
+    case "setup":
+      await withPrompt(async (ask) => {
+        await runSetup({ paths, ask, write: writeLine, newToken: () => randomBytes(24).toString("base64url") });
+      });
+      return exitCodes.clean;
+    case "service-install":
+      return installService(paths);
+    case "status":
+    case "projects":
+    case "chat":
+      return runClientCommand(command, paths);
+    case "run":
+      return serve(paths);
+  }
+}
+
+async function runClientCommand(
+  command: Extract<CliCommand, { command: "status" | "projects" | "chat" }>,
+  paths: HomePaths,
+): Promise<number> {
+  const config = loadConfig(paths);
+  const token = loadSecrets(paths).localApiToken;
+  if (token === undefined) {
+    process.stderr.write("No local token yet. Run `eva setup` first.\n");
+    return exitCodes.badConfig;
+  }
+  const baseUrl = `http://127.0.0.1:${String(config.port)}`;
+  try {
+    if (command.command === "status") writeLine(await describeStatus({ baseUrl, token }));
+    else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
+    else {
+      await withPrompt(async (ask) => {
+        await runChat({
+          baseUrl,
+          token,
+          mode: command.projectId === undefined ? "assistant" : "project",
+          model: command.model ?? config.engines.claudeCode.defaultModel,
+          ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
+          ...(command.clone === undefined ? {} : { clone: command.clone }),
+          readLine: async () => {
+            try {
+              return await ask("");
+            } catch {
+              return null;
+            }
+          },
+          write,
+        });
+      });
+    }
+    return exitCodes.clean;
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\nIs Eva running? Start her with \`eva\`.\n`,
+    );
+    return exitCodes.crash;
+  }
+}
+
+async function serve(paths: HomePaths): Promise<number> {
+  mkdirSync(paths.root, { recursive: true });
+  const config = loadConfig(paths);
+  const secrets = { ...loadSecrets(paths) };
+  if (secrets.localApiToken === undefined) {
+    secrets.localApiToken = randomBytes(24).toString("base64url");
+    saveSecrets(paths, secrets);
+  }
+  const lock = acquireInstanceLock(paths.lock, { pid: process.pid, isProcessAlive });
+
+  const redactor = new Redactor();
+  for (const secret of Object.values(secrets)) redactor.addSecret(secret);
+  const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
+  logger.removeOldFiles();
+
+  const engines: EnginePort[] = [];
+  const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
+  if (claudeExecutable === null)
+    logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
+  else engines.push(new ClaudeCodeEngine({ executable: claudeExecutable }));
+
+  const eva = new Eva({
+    paths,
+    config,
+    secrets,
+    engines,
+    runner: systemProcessRunner,
+    processEnvironment: process.env,
+    now: () => new Date(),
+    basePrompt: assistantBasePrompt,
+  });
+  eva.sessions.subscribe((event) => {
+    if (event.kind === "turn_failed")
+      logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+  });
+  eva.startBackgroundWork();
+  const api = startLocalApi({
+    eva,
+    port: config.port,
+    token: secrets.localApiToken,
+    extraHosts: config.remoteAccess.hostNames,
+    allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
+  });
+  logger.log("info", "Eva started.", { version, url: api.url });
+  writeLine(`Eva ${version} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);
+
+  return new Promise<number>((resolve) => {
+    const stop = (): void => {
+      api.stop();
+      eva.stop();
+      lock.release();
+      logger.log("info", "Eva stopped.");
+      resolve(exitCodes.clean);
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  });
+}
+
+async function installService(paths: HomePaths): Promise<number> {
+  const executable = [process.execPath, join(import.meta.dir, "main.ts")];
+  if (process.platform === "win32") {
+    const result = await systemProcessRunner.run(windowsTaskCommand({ executable, home: paths.root }), {
+      cwd: paths.root,
+      environment: childEnvironment(),
+      timeoutMs: 30_000,
+    });
+    writeLine(result.exitCode === 0 ? "Eva now starts when you log in." : `schtasks failed: ${result.stderr.trim()}`);
+    return result.exitCode === 0 ? exitCodes.clean : exitCodes.crash;
+  }
+  const unitPath = join(homedir(), ".config", "systemd", "user", "eva.service");
+  mkdirSync(dirname(unitPath), { recursive: true });
+  writeFileSync(unitPath, systemdUnit({ executable, home: paths.root, path: process.env["PATH"] ?? "/usr/bin:/bin" }));
+  for (const step of [
+    ["systemctl", "--user", "daemon-reload"],
+    ["systemctl", "--user", "enable", "--now", "eva.service"],
+  ]) {
+    const result = await systemProcessRunner.run(step, {
+      cwd: paths.root,
+      environment: childEnvironment(),
+      timeoutMs: 30_000,
+    });
+    if (result.exitCode !== 0) {
+      writeLine(`${step.join(" ")} failed: ${result.stderr.trim()}`);
+      return exitCodes.crash;
+    }
+  }
+  writeLine(`Installed ${unitPath}. Run \`loginctl enable-linger\` once so Eva runs while you are logged out.`);
+  return exitCodes.clean;
+}
+
+async function withPrompt(work: (ask: (question: string) => Promise<string>) => Promise<void>): Promise<void> {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    await work((question) => prompt.question(question));
+  } finally {
+    prompt.close();
+  }
+}
+
+function childEnvironment(): Record<string, string> {
+  return buildChildEnvironment(process.env, baseEnvironmentAllowlist);
+}
+
+main(process.argv.slice(2))
+  .then((code) => process.exit(code))
+  .catch((error: unknown) => {
+    if (isEvaError(error, "config_invalid")) {
+      process.stderr.write(`${error.message}\n`);
+      process.exit(exitCodes.badConfig);
+    }
+    if (isEvaError(error, "instance_locked")) {
+      process.stderr.write(`${error.message}\n`);
+      process.exit(exitCodes.secondInstance);
+    }
+    process.stderr.write(
+      `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
+    process.exit(exitCodes.crash);
+  });

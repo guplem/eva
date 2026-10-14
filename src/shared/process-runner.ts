@@ -67,25 +67,41 @@ export const systemProcessRunner: ProcessRunner = {
   },
 };
 
+export type StopStep =
+  | { readonly kind: "command"; readonly command: readonly string[] }
+  | { readonly kind: "signal-group"; readonly signal: NodeJS.Signals; readonly afterMs: number };
+
 /**
- * Stops a process and its children: gently first, then hard (lesson 81). git leaves
- * `index.lock` behind after a hard stop, so the gentle stop comes first.
+ * How to stop a process and its children: gently first, then hard (lesson 81). git leaves
+ * `index.lock` behind after a hard stop, so the gentle stop comes first. Windows has no
+ * process groups, so `taskkill /T` stops the tree there.
  */
-function stopProcessTree(pid: number): void {
-  if (process.platform === "win32") {
-    Bun.spawn(["taskkill", "/T", "/F", "/PID", String(pid)], { stdout: "ignore", stderr: "ignore" });
-    return;
-  }
-  signalGroup(pid, "SIGTERM");
-  setTimeout(() => {
-    signalGroup(pid, "SIGKILL");
-  }, gracePeriodMs).unref();
+export function stopSteps(platform: NodeJS.Platform, pid: number): StopStep[] {
+  if (platform === "win32") return [{ kind: "command", command: ["taskkill", "/T", "/F", "/PID", String(pid)] }];
+  return [
+    { kind: "signal-group", signal: "SIGTERM", afterMs: 0 },
+    { kind: "signal-group", signal: "SIGKILL", afterMs: gracePeriodMs },
+  ];
 }
 
-function signalGroup(pid: number, signal: NodeJS.Signals): void {
+function stopProcessTree(pid: number): void {
+  for (const step of stopSteps(process.platform, pid)) {
+    if (step.kind === "command") {
+      Bun.spawn([...step.command], { stdout: "ignore", stderr: "ignore" });
+    } else {
+      setTimeout(() => {
+        signalGroup(pid, step.signal);
+      }, step.afterMs).unref();
+    }
+  }
+}
+
+/** Sends a signal to a process group. Returns false when the group already ended. */
+export function signalGroup(pid: number, signal: NodeJS.Signals): boolean {
   try {
     process.kill(-pid, signal);
+    return true;
   } catch {
-    // The group already ended.
+    return false;
   }
 }

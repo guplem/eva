@@ -16,7 +16,11 @@ const secretPatterns: readonly RegExp[] = [
 ];
 
 export class Redactor {
-  private readonly knownSecrets: string[] = [];
+  private readonly knownSecrets: string[];
+
+  constructor() {
+    this.knownSecrets = [];
+  }
 
   /** Adds a value to replace wherever it appears. Short values are ignored, to avoid hiding normal words. */
   addSecret(value: string | undefined): void {

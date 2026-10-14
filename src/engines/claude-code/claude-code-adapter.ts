@@ -231,7 +231,7 @@ function summarizeTool(name: string, input: unknown): string {
   return JSON.stringify(input);
 }
 
-function abortControllerFor(signal: AbortSignal): AbortController {
+export function abortControllerFor(signal: AbortSignal): AbortController {
   const controller = new AbortController();
   if (signal.aborted) controller.abort();
   else

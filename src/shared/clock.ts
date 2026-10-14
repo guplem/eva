@@ -9,7 +9,11 @@ export const systemClock: Clock = {
 
 /** A counter that only grows, for ordering events (lesson 83: a timestamp alone can tie). */
 export class SequenceCounter {
-  private last = 0;
+  private last: number;
+
+  constructor() {
+    this.last = 0;
+  }
 
   next(): number {
     this.last += 1;

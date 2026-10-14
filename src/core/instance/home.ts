@@ -8,7 +8,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 
 export interface HomeFolderInputs {
-  readonly flag?: string;
+  readonly flag?: string | undefined;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly platform: NodeJS.Platform;
   readonly userHome: string;
@@ -96,8 +96,12 @@ const configSchema = z.object({
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),
   remoteAccess: z
-    .object({ allowedTailscaleIdentities: z.array(z.string().min(1)).default([]) })
-    .default({ allowedTailscaleIdentities: [] }),
+    .object({
+      /** Host names that reach this instance through `tailscale serve`, such as eva.example-tailnet.ts.net. */
+      hostNames: z.array(z.string().min(1)).default([]),
+      allowedTailscaleIdentities: z.array(z.string().min(1)).default([]),
+    })
+    .default({ hostNames: [], allowedTailscaleIdentities: [] }),
 });
 
 export type EvaConfig = z.infer<typeof configSchema>;

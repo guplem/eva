@@ -18,7 +18,8 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
     `Eva ${status.version}, role: ${status.role}`,
     `Vault: ${status.vaultPath ?? "not configured"}`,
     `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
-    `Last push: ${status.vaultSync.lastPushAt ?? "none since start"}`,
+    // Over JSON the date arrives as text; new Date reads both forms.
+    `Last push: ${status.vaultSync.lastPushAt === null ? "none since start" : new Date(status.vaultSync.lastPushAt).toISOString()}`,
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),

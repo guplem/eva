@@ -151,6 +151,18 @@ describe("a conversation", () => {
   });
 });
 
+describe("models (lesson 41)", () => {
+  test("a chat's model is chosen before its first message, and fixed after it", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(manager.setModel(sessionId, "haiku").modelAlias).toBe("haiku");
+    await manager.send(sessionId, "hi");
+    expect(engine.requests[0]?.model).toBe("haiku");
+    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+  });
+});
+
 describe("exactly one end event (lesson 47)", () => {
   test("a stream that stops without an end gets one turn_failed", async () => {
     const manager = createManager(new FakeEngine(() => [{ kind: "text", text: "half", messageId: "m1" }]));

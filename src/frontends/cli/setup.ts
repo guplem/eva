@@ -66,7 +66,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const telegramToken = await options.ask(
     `Telegram bot token from BotFather (Enter to skip${secrets.telegramBotToken === undefined ? "" : ", one is saved"}): `,
   );
-  if (telegramToken.trim() !== "") secrets.telegramBotToken = telegramToken.trim();
+  if (telegramToken.trim() !== "") {
+    secrets.telegramBotToken = telegramToken.trim();
+    config = { ...config, telegram: { ...config.telegram, enabled: true } };
+  }
 
   secrets.localApiToken ??= options.newToken();
   saveConfig(paths, config);

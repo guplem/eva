@@ -126,6 +126,18 @@ describe("runSetup", () => {
     expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
   });
 
+  test("a Telegram token turns Telegram on", async () => {
+    const answers = ["", "", "", "", "", "123456:telegram-token-value"];
+    await runSetup({
+      paths: homePaths(home),
+      ask: () => Promise.resolve(answers.shift() ?? ""),
+      write: () => undefined,
+      newToken: () => "t",
+    });
+    expect(loadConfig(homePaths(home)).telegram.enabled).toBe(true);
+    expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");
+  });
+
   test("a bad port is asked again", async () => {
     const answers = ["", "", "high", "7500", "", "", ""];
     const lines: string[] = [];

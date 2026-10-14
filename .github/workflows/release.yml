@@ -1,0 +1,81 @@
+name: Release
+
+# A tag such as v0.2.0 builds, tests, signs and publishes the executables (plan §10, P8;
+# §12: releases come only from CI on tags, and self-update checks the signature).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Check that the tag matches package.json
+        run: test "v$(bun -e 'console.log(require("./package.json").version)')" = "$GITHUB_REF_NAME"
+      - name: Build the executables
+        run: |
+          mkdir -p dist
+          bun build --compile --minify --target=bun-linux-x64 src/main.ts --outfile dist/eva-linux-x64
+          bun build --compile --minify --target=bun-linux-arm64 src/main.ts --outfile dist/eva-linux-arm64
+          bun build --compile --minify --target=bun-windows-x64 src/main.ts --outfile dist/eva-windows-x64.exe
+          cd dist && sha256sum eva-* > SHA256SUMS
+      - name: Sign the checksums
+        env:
+          EVA_RELEASE_SIGNING_KEY: ${{ secrets.EVA_RELEASE_SIGNING_KEY }}
+        run: bun run scripts/sign-release.ts dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/
+
+  install-test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: eva-linux-x64
+          - os: windows-latest
+            asset: eva-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist
+      - name: Install the release and start it
+        shell: bash
+        run: |
+          cd dist && grep " ${{ matrix.asset }}$" SHA256SUMS | sha256sum -c - && cd ..
+          chmod +x "dist/${{ matrix.asset }}"
+          bash scripts/smoke-executable.sh "dist/${{ matrix.asset }}"
+
+  publish:
+    needs: install-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/eva-*
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes

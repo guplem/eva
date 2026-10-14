@@ -1,0 +1,90 @@
+/**
+ * A new vault from Eva's template (docs/plan.md §11): the files in `templates/vault/`, which
+ * Bun embeds at build time, so the single executable carries them. The template holds nothing
+ * personal; `eva setup` fills in the person's name, language and time zone.
+ */
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { writeFileAtomic } from "../../shared/files.ts";
+import { EvaError } from "../../shared/errors.ts";
+import type { ProcessRunner } from "../../shared/process-runner.ts";
+import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
+import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
+import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
+import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
+import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
+
+export interface VaultTemplateAnswers {
+  readonly name: string;
+  readonly language: string;
+  readonly timeZone: string;
+}
+
+export interface NewVaultInputs {
+  readonly folder: string;
+  readonly answers: VaultTemplateAnswers;
+  readonly runner: ProcessRunner;
+  readonly environment: Readonly<Record<string, string>>;
+}
+
+const gitTimeoutMs = 20_000;
+
+/** The template's files, by path from the vault root, with the answers filled in. */
+export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string, string> {
+  const fill = (text: string): string =>
+    text
+      .replaceAll("{{name}}", answers.name)
+      .replaceAll("{{language}}", answers.language)
+      .replaceAll("{{timeZone}}", answers.timeZone);
+  return {
+    "AGENTS.md": agentsFile,
+    "README.md": readmeFile,
+    ".gitignore": gitignoreFile,
+    ".eva/assistant.md": fill(assistantFile),
+    ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
+    ".eva/.claude-plugin/plugin.json":
+      JSON.stringify(
+        {
+          name: "eva",
+          description: "Eva's assistant skills for this vault. Eva loads this plugin in Assistant mode only.",
+          version: "1.0.0",
+        },
+        null,
+        2,
+      ) + "\n",
+    ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
+    "Notes/.gitkeep": "",
+    "Projects/.gitkeep": "",
+  };
+}
+
+/** Writes the template into an empty or missing folder and makes its first commit. */
+export async function createVaultFromTemplate(inputs: NewVaultInputs): Promise<void> {
+  if (existsSync(inputs.folder) && readdirSync(inputs.folder).length > 0) {
+    throw new EvaError("vault_not_found", `${inputs.folder} is not empty, so Eva does not put a new vault there.`);
+  }
+  for (const [path, content] of Object.entries(vaultTemplateFiles(inputs.answers))) {
+    const target = join(inputs.folder, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileAtomic(target, content);
+  }
+  await git(inputs, ["init", "-q", "-b", "main"]);
+  await git(inputs, ["add", "-A"]);
+  // A machine with no git identity yet still gets its first commit.
+  const identity = await inputs.runner.run(["git", "config", "user.email"], {
+    cwd: inputs.folder,
+    environment: inputs.environment,
+    timeoutMs: gitTimeoutMs,
+  });
+  const fallback = identity.stdout.trim() === "" ? ["-c", "user.name=Eva", "-c", "user.email=eva@localhost"] : [];
+  await git(inputs, [...fallback, "commit", "-q", "-m", "Start the vault from Eva's template"]);
+}
+
+async function git(inputs: NewVaultInputs, args: readonly string[]): Promise<void> {
+  const result = await inputs.runner.run(["git", ...args], {
+    cwd: inputs.folder,
+    environment: inputs.environment,
+    timeoutMs: gitTimeoutMs,
+  });
+  if (result.exitCode !== 0) throw new EvaError("git_failed", `git ${args.join(" ")} failed: ${result.stderr.trim()}`);
+}

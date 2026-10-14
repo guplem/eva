@@ -27,7 +27,7 @@ import { runChat } from "./frontends/cli/chat.ts";
 import { describeProjects, describeStatus } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
-import { runSetup } from "./frontends/cli/setup.ts";
+import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
 import type { EnginePort } from "./shared/engine-port.ts";
@@ -38,8 +38,8 @@ import { writeFileAtomic } from "./shared/files.ts";
 import { FileLogger } from "./shared/logger.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
-
-const version = "0.1.0";
+import { evaVersion } from "./shared/version.ts";
+import { updateExecutable } from "./core/updates/self-update.ts";
 
 function write(text: string): void {
   process.stdout.write(text);
@@ -59,6 +59,11 @@ async function main(argv: readonly string[]): Promise<number> {
     write(usageText);
     return exitCodes.clean;
   }
+  if (command.command === "version") {
+    writeLine(evaVersion);
+    return exitCodes.clean;
+  }
+  if (command.command === "update") return update();
   const paths = homePaths(
     resolveHomeFolder({
       flag: command.home,
@@ -74,14 +79,31 @@ async function main(argv: readonly string[]): Promise<number> {
         runner: systemProcessRunner,
         environment: childEnvironment(),
         write: writeLine,
+        standalone: isStandalone(),
       });
       return healthy ? exitCodes.clean : exitCodes.crash;
     }
-    case "setup":
-      await withPrompt(async (ask) => {
-        await runSetup({ paths, ask, write: writeLine, newToken: () => randomBytes(24).toString("base64url") });
-      });
+    case "setup": {
+      const setupOptions = {
+        paths,
+        write: writeLine,
+        newToken: () => randomBytes(24).toString("base64url"),
+        runner: systemProcessRunner,
+        environment: childEnvironment(),
+      };
+      if (command.nonInteractive) {
+        await runSetup({
+          ...setupOptions,
+          interactive: false,
+          ask: (key) => Promise.resolve(process.env[setupEnvironmentNames[key]] ?? ""),
+        });
+      } else {
+        await withPrompt(async (ask) => {
+          await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
+        });
+      }
       return exitCodes.clean;
+    }
     case "service-install":
       return installService(paths);
     case "status":
@@ -183,8 +205,8 @@ async function serve(paths: HomePaths): Promise<number> {
     extraHosts: config.remoteAccess.hostNames,
     allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
   });
-  logger.log("info", "Eva started.", { version, url: api.url });
-  writeLine(`Eva ${version} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);
+  logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
+  writeLine(`Eva ${evaVersion} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);
 
   return new Promise<number>((resolve) => {
     let bot: TelegramBot | null = null;
@@ -291,6 +313,31 @@ async function withPrompt(work: (ask: (question: string) => Promise<string>) => 
   }
 }
 
+/** `eva update`: only the single executable updates itself; a source checkout uses git. */
+async function update(): Promise<number> {
+  if (!isStandalone()) {
+    writeLine("Eva runs from source here. Update it with `git pull` and `bun install`.");
+    return exitCodes.clean;
+  }
+  const result = await updateExecutable({
+    currentVersion: evaVersion,
+    executablePath: process.execPath,
+    platform: process.platform,
+    arch: process.arch,
+  });
+  writeLine(
+    result.status === "up_to_date"
+      ? `Eva ${result.version} is the latest version.`
+      : `Updated Eva from ${result.from} to ${result.to}. Restart Eva to use it.`,
+  );
+  return exitCodes.clean;
+}
+
+/** A `bun build --compile` executable runs its code from Bun's embedded file system. */
+function isStandalone(): boolean {
+  return Bun.main.includes("$bunfs") || Bun.main.includes("~BUN");
+}
+
 function childEnvironment(): Record<string, string> {
   return buildChildEnvironment(process.env, baseEnvironmentAllowlist);
 }
@@ -305,6 +352,11 @@ main(process.argv.slice(2))
     if (isEvaError(error, "instance_locked")) {
       process.stderr.write(`${error.message}\n`);
       process.exit(exitCodes.secondInstance);
+    }
+    if (isEvaError(error)) {
+      // An expected failure, such as a refused update: its message says what to do, no stack needed.
+      process.stderr.write(`${error.message}\n`);
+      process.exit(exitCodes.crash);
     }
     process.stderr.write(
       `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,

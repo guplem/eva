@@ -28,6 +28,7 @@ export class ProjectPreparer implements TurnPreparer {
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
+      mcpServers: {},
       trusted: this.isTrusted(session.startFolder),
       environment: this.options.environment,
     });

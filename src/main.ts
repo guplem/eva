@@ -240,6 +240,7 @@ function startTelegram(
     },
     onFatal,
     logger,
+    ...(eva.transcribe === null ? {} : { transcribe: eva.transcribe }),
   });
   void bot.run();
   return bot;

@@ -85,3 +85,21 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
+
+test("Settings: add a schedule, see its next run, and remove it (plan §9)", async ({ page }, testInfo) => {
+  const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByLabel(/^Id/).fill(id);
+  await page.getByLabel("Name").fill(`Walk ${id}`);
+  await page.getByLabel("Time (HH:MM)").fill("7:30");
+  await page.getByLabel("Fixed text").fill("Go for a walk.");
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  await expect(page.getByRole("status").last()).toContainText("no valid time");
+  await page.getByLabel("Time (HH:MM)").fill("07:30");
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const row = page.locator(".check-row", { hasText: `Walk ${id}` });
+  await expect(row).toContainText("next:");
+  await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await expect(row).toHaveCount(0);
+});

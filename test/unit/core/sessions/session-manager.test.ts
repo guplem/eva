@@ -20,6 +20,7 @@ const preparer: TurnPreparer = {
       appendSystemPrompt: session.mode === "assistant" ? "You are Eva." : null,
       messagePrefix: null,
       pluginFolders: [],
+      mcpServers: {},
       trusted: true,
       environment: { PATH: "/bin" },
     }),
@@ -87,6 +88,20 @@ describe("a conversation", () => {
         at: "2026-10-14T12:00:00.000Z",
       },
     ]);
+  });
+
+  test("a fixed title, such as a schedule's name, stays after the first turn", async () => {
+    const manager = createManager(new FakeEngine());
+    const { id } = manager.createSession({
+      mode: "assistant",
+      engine: "claude-code",
+      model: "default",
+      startFolder: "/vault",
+      source: "schedule",
+      title: "Morning",
+    });
+    await manager.send(id, "Plan my day.");
+    expect(manager.get(id).title).toBe("Morning");
   });
 
   test("the next turn continues the same engine session", async () => {

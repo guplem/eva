@@ -24,6 +24,7 @@ export class FakeTelegram {
   private nextMessageId = 100;
   private nextTopicId = 500;
   private readonly server: Server<undefined>;
+  private readonly files = new Map<string, Uint8Array<ArrayBuffer>>();
 
   constructor() {
     this.server = Bun.serve({
@@ -31,8 +32,12 @@ export class FakeTelegram {
       port: 0,
       fetch: async (request) => {
         const url = new URL(request.url);
+        if (url.pathname.startsWith("/file/")) {
+          const bytes = this.files.get(url.pathname.split("/").slice(3).join("/"));
+          return bytes === undefined ? new Response("missing", { status: 404 }) : new Response(bytes);
+        }
         const method = url.pathname.split("/").pop() ?? "";
-        const params = request.method === "POST" ? ((await request.json()) as Record<string, unknown>) : {};
+        const params = await readParams(request);
         this.calls.push({ method, params });
         const error = this.errors.get(method);
         if (error !== undefined && error.remaining > 0) {
@@ -80,6 +85,31 @@ export class FakeTelegram {
     });
   }
 
+  /** A file message from a chat: a document or a voice note, with bytes that getFile serves. */
+  sendFile(
+    chatId: number,
+    kind: "document" | "voice",
+    bytes: Uint8Array<ArrayBuffer>,
+    options: { fileName?: string; topicId?: number; reportedSize?: number } = {},
+  ): void {
+    const { fileName, topicId } = options;
+    const fileId = `file-${String(this.nextUpdateId)}`;
+    this.files.set(`${fileId}.bin`, bytes);
+    this.updates.push({
+      update_id: this.nextUpdateId++,
+      message: {
+        message_id: this.nextMessageId++,
+        chat: { id: chatId, type: "private" },
+        [kind]: {
+          file_id: fileId,
+          file_size: options.reportedSize ?? bytes.length,
+          ...(fileName === undefined ? {} : { file_name: fileName }),
+        },
+        ...(topicId === undefined ? {} : { message_thread_id: topicId, is_topic_message: true }),
+      },
+    });
+  }
+
   failNext(method: string, code: number, description: string, times = 1): void {
     this.errors.set(method, { code, description, remaining: times });
   }
@@ -107,10 +137,28 @@ export class FakeTelegram {
         return { message_thread_id: this.nextTopicId++, name: params["name"] };
       case "sendMessage":
         return { message_id: this.nextMessageId++ };
+      case "getFile":
+        return { file_id: params["file_id"], file_path: `${String(params["file_id"])}.bin` };
+      case "sendDocument":
+        return { message_id: this.nextMessageId++ };
       case "getMe":
         return { id: 1, is_bot: true, username: "eva_test_bot" };
       default:
         return true;
     }
   }
+}
+
+/** JSON for a call; a multipart form for an upload, with the file recorded as its name and size. */
+async function readParams(request: Request): Promise<Record<string, unknown>> {
+  if (request.method !== "POST") return {};
+  if (!(request.headers.get("content-type") ?? "").startsWith("multipart/")) {
+    return (await request.json()) as Record<string, unknown>;
+  }
+  const params: Record<string, unknown> = {};
+  for (const [key, value] of (await request.formData()).entries()) {
+    const entry: unknown = value;
+    params[key] = entry instanceof File ? { name: entry.name, size: entry.size } : entry;
+  }
+  return params;
 }

@@ -3,7 +3,7 @@
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
 import { join } from "node:path";
-import type { EnginePort, ModelAlias } from "../shared/engine-port.ts";
+import type { EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
@@ -20,6 +20,10 @@ import {
   type Clone,
   type CloneDetails,
 } from "./projects/clones.ts";
+import { Scheduler } from "./schedules/scheduler.ts";
+import { cleanScratch } from "./files/vault-files.ts";
+import { googleMcpServer } from "./google/google-mcp.ts";
+import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
@@ -60,6 +64,7 @@ export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
   readonly telegramTopicId?: number;
+  readonly title?: string;
 }
 
 export interface NewProjectChatInput extends NewChatInput {
@@ -69,6 +74,7 @@ export interface NewProjectChatInput extends NewChatInput {
 
 const approvalTimeoutMs = 10 * 60_000;
 const gitStatusTimeoutMs = 20_000;
+const scheduleTickMs = 30_000;
 const noVaultState: VaultSyncState = {
   status: "skipped",
   lastCommitAt: null,
@@ -79,10 +85,15 @@ const noVaultState: VaultSyncState = {
 
 export class Eva {
   readonly sessions: SessionManager;
+  /** Null when no vault is configured. */
+  readonly schedules: Scheduler | null;
+  /** Null until a whisper model is configured. */
+  readonly transcribe: Transcribe | null;
   private readonly options: EvaOptions;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private scheduleTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -113,6 +124,7 @@ export class Eva {
           environment: engineEnvironment,
           now: options.now,
           timeZone: options.config.timeZone ?? "UTC",
+          mcpServers: this.assistantMcpServers(),
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
@@ -127,14 +139,47 @@ export class Eva {
       gatherMs: options.gatherMs ?? 1_000,
       approvalTimeoutMs,
     });
+
+    const voice = options.config.voice;
+    this.transcribe =
+      voice.modelPath === null
+        ? null
+        : createTranscriber({
+            tools: { ...voice, modelPath: voice.modelPath },
+            runner: options.runner,
+            environment: this.gitEnvironment,
+            temporaryRoot: options.paths.stateFolder,
+          });
+
+    this.schedules =
+      vaultPath === null
+        ? null
+        : new Scheduler({
+            vaultPath,
+            statePath: options.paths.schedulesState,
+            timeZone: options.config.timeZone ?? "UTC",
+            isHub: options.config.role === "hub",
+            now: options.now,
+            chats: {
+              createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
+              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
+            },
+          });
   }
 
-  /** Starts the idle sweep (plan §6). */
+  /** Starts the idle sweep (plan §6) and the schedule checks (plan §9). */
   startBackgroundWork(): void {
-    if (this.sweepTimer !== null || !this.options.config.sync.enabled) return;
-    this.sweepTimer = setInterval(() => {
-      void this.sweep();
-    }, this.options.config.sync.sweepSeconds * 1_000);
+    if (this.sweepTimer === null && this.options.config.sync.enabled) {
+      this.sweepTimer = setInterval(() => {
+        void this.sweep();
+      }, this.options.config.sync.sweepSeconds * 1_000);
+    }
+    const schedules = this.schedules;
+    if (this.scheduleTimer === null && schedules !== null) {
+      this.scheduleTimer = setInterval(() => {
+        void schedules.tick();
+      }, scheduleTickMs);
+    }
   }
 
   /** Resolves when no chat runs a turn, including its save after the turn. */
@@ -148,12 +193,15 @@ export class Eva {
 
   stop(): void {
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
+    if (this.scheduleTimer !== null) clearInterval(this.scheduleTimer);
     this.sweepTimer = null;
+    this.scheduleTimer = null;
   }
 
-  /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
+  /** Saves changes made outside a turn, and empties old Scratch files. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
     if (this.vaultSync === null) return "skipped";
+    cleanScratch(this.options.config.vaultPath ?? "", this.options.now());
     const assistantBusy = this.sessions
       .list()
       .some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
@@ -187,6 +235,7 @@ export class Eva {
       startFolder: vaultPath,
       source: input.source,
       ...(input.telegramTopicId === undefined ? {} : { telegramTopicId: input.telegramTopicId }),
+      ...(input.title === undefined ? {} : { title: input.title }),
     });
   }
 
@@ -299,6 +348,16 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) throw new EvaError("vault_not_found", "No vault is configured. Run `eva setup`.");
     return vaultPath;
+  }
+
+  private assistantMcpServers(): Record<string, McpServerSpec> {
+    const google = googleMcpServer({
+      config: this.options.config.google,
+      secrets: this.options.secrets,
+      credentialsFolder: join(this.options.paths.enginesFolder, "google"),
+      environment: this.gitEnvironment,
+    });
+    return google === null ? {} : { google };
   }
 
   /** The engine's environment: the allowlist, the Claude token, and an own config folder when asked (plan §4.4). */

@@ -7,6 +7,7 @@ import type {
   ApprovalAnswer,
   EngineName,
   EnginePort,
+  McpServerSpec,
   ModelAlias,
   SessionMode,
   TurnHistory,
@@ -23,6 +24,7 @@ export interface PreparedTurn {
   /** Put before the person's message, such as the local time (lesson 40). */
   readonly messagePrefix: string | null;
   readonly pluginFolders: readonly string[];
+  readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   readonly trusted: boolean;
   readonly environment: Readonly<Record<string, string>>;
 }
@@ -47,6 +49,8 @@ export interface NewSessionInput {
   readonly projectId?: string;
   readonly clone?: string;
   readonly telegramTopicId?: number;
+  /** A fixed title, such as a schedule's name. Without one, the first message names the chat. */
+  readonly title?: string;
 }
 
 export interface SessionManagerOptions {
@@ -77,6 +81,7 @@ interface SessionRuntime {
 }
 
 const titleLength = 60;
+const defaultTitle = "New chat";
 const maxFollowUps = 20;
 
 export class SessionManager {
@@ -103,7 +108,7 @@ export class SessionManager {
       parentId: null,
       forkAtMessageId: null,
       forkFromEngineSessionId: null,
-      title: "New chat",
+      title: input.title ?? defaultTitle,
       createdAt: this.options.now().toISOString(),
       lastTurnAt: null,
       source: input.source,
@@ -282,6 +287,7 @@ ${prompt}`,
         model: session.modelAlias,
         appendSystemPrompt: prepared.appendSystemPrompt,
         pluginFolders: prepared.pluginFolders,
+        mcpServers: prepared.mcpServers,
         trusted: prepared.trusted,
         environment: prepared.environment,
         requestApproval: (request) => this.requestApproval(sessionId, request.toolName, request.summary),
@@ -339,7 +345,10 @@ ${prompt}`,
       engineSessionId: finished.engineSessionId,
       forkFromEngineSessionId: null,
       lastTurnAt: at,
-      title: current.turns.length === 0 && current.parentId === null ? titleOf(turn.userText) : current.title,
+      title:
+        current.turns.length === 0 && current.parentId === null && current.title === defaultTitle
+          ? titleOf(turn.userText)
+          : current.title,
       turns: [...current.turns, { ...turn, lastMessageId: finished.lastMessageId ?? lastText, at }],
     });
   }
@@ -389,7 +398,7 @@ function createBatch(): PendingBatch {
 
 function titleOf(prompt: string): string {
   const firstLine = prompt.split("\n")[0]?.trim() ?? "";
-  return firstLine.length > titleLength ? `${firstLine.slice(0, titleLength - 1)}…` : firstLine || "New chat";
+  return firstLine.length > titleLength ? `${firstLine.slice(0, titleLength - 1)}…` : firstLine || defaultTitle;
 }
 
 function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload {

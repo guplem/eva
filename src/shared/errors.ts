@@ -9,7 +9,8 @@ export type EvaErrorCode =
   | "project_not_found"
   | "engine_failed"
   | "session_busy"
-  | "session_not_found";
+  | "session_not_found"
+  | "schedule_invalid";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

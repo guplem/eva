@@ -3,11 +3,17 @@ import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type { CheckResult, CloneDetails, EvaStatus, Project, PublicSettings, SessionEvent, SessionRecord };
+
+export interface ScheduleList {
+  readonly schedules: readonly ScheduleView[];
+  readonly problems: readonly string[];
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -69,6 +75,10 @@ export const api = {
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
+  schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
+  saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
+  removeSchedule: (scheduleId: string): Promise<void> =>
+    request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
 };
 
 /** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */

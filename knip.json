@@ -4,8 +4,8 @@
     "scripts/*.ts",
     "test/**/*.test.ts",
     "test/e2e/**/*.ts",
-    "src/frontends/web/client/main.tsx",
-    "playwright.config.ts"
+    "test/support/fake-google-mcp.ts",
+    "src/frontends/web/client/main.tsx"
   ],
   "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.ts"],
   "ignoreDependencies": ["@stryker-mutator/command-runner"],

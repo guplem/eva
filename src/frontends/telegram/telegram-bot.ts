@@ -3,7 +3,11 @@
  * and 123 to 127. Each topic is one chat of the instance's single conversation list (D13);
  * a message outside every topic belongs to the main chat.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Eva } from "../../core/eva.ts";
+import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
@@ -25,6 +29,8 @@ export interface TelegramBotOptions {
   readonly logger?: Logger;
   readonly pollTimeoutSeconds?: number;
   readonly typingIntervalMs?: number;
+  /** Turns a voice note into text (plan §9). Without it, a voice note gets a sentence that says so. */
+  readonly transcribe?: (audio: Uint8Array) => Promise<string>;
 }
 
 interface TopicEntry {
@@ -37,15 +43,26 @@ interface BotState {
   offset: number;
   /** Key: `<chatId>:<topicId>` or `<chatId>:main`. */
   topics: Record<string, TopicEntry>;
+  /** The topic of each schedule, by schedule id. */
+  scheduleTopics: Record<string, number>;
 }
 
 interface TelegramChat {
   readonly id: number;
 }
 
+interface TelegramFile {
+  readonly file_id: string;
+  readonly file_size?: number;
+  readonly file_name?: string;
+}
+
 interface TelegramMessage {
   readonly chat: TelegramChat;
   readonly text?: string;
+  readonly caption?: string;
+  readonly document?: TelegramFile;
+  readonly voice?: TelegramFile;
   readonly message_thread_id?: number;
   readonly is_topic_message?: boolean;
 }
@@ -62,12 +79,17 @@ const messageLimit = 3_500;
 const conflictLimit = 3;
 const confirmAttempts = 3;
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+/** Telegram lets a bot download at most 20 MB. */
+const maxDownloadBytes = 20 * 1024 * 1024;
+/** Telegram refuses a keyboard of more than 100 buttons. */
+const buttonsPerMessage = 50;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this topic and forget its chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects" },
+  { command: "schedules", description: "List the schedules" },
   { command: "help", description: "Show the commands" },
 ];
 
@@ -79,15 +101,20 @@ export class TelegramBot {
   private readonly pendingText = new Map<string, string[]>();
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeSchedules: () => void;
+  private readonly offers: OfferStore;
   private running = false;
 
   constructor(options: TelegramBotOptions) {
     this.options = options;
     this.allowedChatId = options.allowedChatId;
     this.state = loadState(options.statePath);
+    this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
       void this.onEvent(event);
     });
+    this.unsubscribeSchedules =
+      options.eva.schedules?.subscribe((event) => this.onScheduleEvent(event)) ?? ((): void => undefined);
   }
 
   async registerCommands(): Promise<void> {
@@ -142,6 +169,7 @@ export class TelegramBot {
   async stop(): Promise<void> {
     this.running = false;
     this.unsubscribe();
+    this.unsubscribeSchedules();
     for (const timer of this.typingTimers.values()) clearInterval(timer);
     this.typingTimers.clear();
     for (let attempt = 0; attempt < confirmAttempts; attempt += 1) {
@@ -160,10 +188,11 @@ export class TelegramBot {
       return;
     }
     const message = update.message;
-    if (message?.text === undefined) return;
+    if (message === undefined) return;
     const chatId = message.chat.id;
     const topicId = message.is_topic_message === true ? (message.message_thread_id ?? null) : null;
-    const text = message.text.trim();
+    const text = (message.text ?? message.caption ?? "").trim();
+    if (text.length === 0 && message.document === undefined && message.voice === undefined) return;
 
     if (this.allowedChatId === null) {
       if (text === this.options.pairingCode) {
@@ -183,11 +212,77 @@ export class TelegramBot {
       await this.send(chatId, null, `This bot is private. Your chat id is ${String(chatId)}.`);
       return;
     }
+    if (message.voice !== undefined) {
+      await this.forwardVoice(chatId, topicId, message.voice);
+      return;
+    }
+    if (message.document !== undefined) {
+      await this.forwardFile(chatId, topicId, message.document, text);
+      return;
+    }
     if (text.startsWith("/")) {
       await this.handleCommand(chatId, topicId, text);
       return;
     }
     await this.forward(chatId, topicId, text);
+  }
+
+  /** Saves a received file in Scratch/, so the agent can read it, and tells the chat where it is. */
+  private async forwardFile(
+    chatId: number,
+    topicId: number | null,
+    file: TelegramFile,
+    caption: string,
+  ): Promise<void> {
+    const vaultPath = this.options.eva.status().vaultPath;
+    if (vaultPath === null) {
+      await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
+      return;
+    }
+    const bytes = await this.download(chatId, topicId, file);
+    if (bytes === null) return;
+    const saved = saveReceivedFile(vaultPath, file.file_name ?? "file", bytes);
+    await this.forward(chatId, topicId, `${caption}\n\n[The person sent a file, saved as ${saved}]`.trim());
+  }
+
+  /** Transcribes a voice note on this machine, echoes it, then sends it as the message (lesson 123). */
+  private async forwardVoice(chatId: number, topicId: number | null, voice: TelegramFile): Promise<void> {
+    const transcribe = this.options.transcribe;
+    if (transcribe === undefined) {
+      await this.send(chatId, topicId, "Voice notes are not set up on this machine. Run `eva doctor` to see why.");
+      return;
+    }
+    const audio = await this.download(chatId, topicId, voice);
+    if (audio === null) return;
+    let heard: string;
+    try {
+      heard = (await transcribe(audio)).trim();
+    } catch (error) {
+      await this.send(chatId, topicId, `The voice note could not be transcribed: ${errorText(error)}`);
+      return;
+    }
+    if (heard.length === 0) {
+      await this.send(chatId, topicId, "The voice note holds no speech.");
+      return;
+    }
+    await this.send(chatId, topicId, `Heard: ${heard}`);
+    await this.forward(chatId, topicId, heard);
+  }
+
+  /** Downloads a file that a message holds. Returns null, after a sentence in the chat, when it fails. */
+  private async download(chatId: number, topicId: number | null, file: TelegramFile): Promise<Uint8Array | null> {
+    if ((file.file_size ?? 0) > maxDownloadBytes) {
+      await this.send(chatId, topicId, "Telegram lets Eva download files up to 20 MB only.");
+      return null;
+    }
+    try {
+      const described = await this.options.api.call<{ file_path?: string }>("getFile", { file_id: file.file_id });
+      if (described.file_path === undefined) throw new Error("Telegram gave no file path");
+      return await this.options.api.download(described.file_path);
+    } catch (error) {
+      await this.send(chatId, topicId, `The file could not be downloaded: ${errorText(error)}`);
+      return null;
+    }
   }
 
   private async handleCommand(chatId: number, topicId: number | null, text: string): Promise<void> {
@@ -208,6 +303,9 @@ export class TelegramBot {
         return;
       case "status":
         await this.send(chatId, topicId, this.statusText());
+        return;
+      case "schedules":
+        await this.listSchedules(chatId, topicId);
         return;
       case "projects": {
         const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
@@ -296,6 +394,133 @@ export class TelegramBot {
       }
     } else if (kind === "d" && first !== undefined) {
       await this.deleteTopic(chatId, Number(first));
+    } else if (kind === "f" && first !== undefined) {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      const path = this.offers.pathFor(first);
+      if (path === null) await this.send(chatId, topicId, "That file is no longer available.");
+      else await this.sendVaultFile(chatId, topicId, path);
+    } else if (kind === "s" && first !== undefined) {
+      const removed = this.options.eva.schedules?.remove(first) ?? false;
+      await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    }
+  }
+
+  /** /schedules: every schedule with its next run, a remove button each, and the file's problems. */
+  private async listSchedules(chatId: number, topicId: number | null): Promise<void> {
+    const scheduler = this.options.eva.schedules;
+    if (scheduler === null) {
+      await this.send(chatId, topicId, "No vault is configured, so there are no schedules.");
+      return;
+    }
+    const { schedules, problems } = scheduler.list();
+    const lines = schedules.map(
+      ({ schedule, nextRun }) => `• ${schedule.name} (${schedule.id}), next: ${nextRun?.replace("T", " ") ?? "never"}`,
+    );
+    if (problems.length > 0) lines.push("", "Schedules file problems:", ...problems.map((problem) => `• ${problem}`));
+    await this.send(
+      chatId,
+      topicId,
+      lines.length === 0 ? "No schedules. Ask Eva to create one." : lines.join("\n"),
+      schedules.length === 0
+        ? undefined
+        : {
+            inline_keyboard: schedules.map(({ schedule }) => [
+              { text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` },
+            ]),
+          },
+    );
+  }
+
+  /** Setup cards, firings and file problems of the schedules (plan §9, lessons 66, 70, 126). */
+  private async onScheduleEvent(event: ScheduleEvent): Promise<void> {
+    const chatId = this.allowedChatId;
+    if (chatId === null) return;
+    if (event.kind === "schedule_problems") {
+      await this.send(
+        chatId,
+        null,
+        ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n"),
+      );
+      return;
+    }
+    const topicId = await this.scheduleTopic(chatId, event.scheduleId, event.name);
+    if (event.kind === "schedule_card") {
+      await this.send(chatId, topicId, cardText(event));
+      return;
+    }
+    if (event.sessionId !== null) {
+      // Each firing is a fresh chat in the schedule's topic (lesson 126).
+      this.state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
+      this.saveState();
+      this.startTyping(chatId, topicId, event.sessionId);
+    }
+    if (event.text !== null) await this.send(chatId, topicId, event.text);
+    if (event.file !== null) await this.sendVaultFile(chatId, topicId, event.file);
+  }
+
+  /** The schedule's topic. A topic deleted in the app answers a typing action with 400, so a new one opens (lesson 70). */
+  private async scheduleTopic(chatId: number, scheduleId: string, name: string): Promise<number | null> {
+    const existing = this.state.scheduleTopics[scheduleId];
+    if (existing !== undefined) {
+      try {
+        await this.options.api.call("sendChatAction", {
+          chat_id: chatId,
+          action: "typing",
+          message_thread_id: existing,
+        });
+        return existing;
+      } catch (error) {
+        if (!(error instanceof TelegramError && error.code === 400)) return existing;
+      }
+    }
+    try {
+      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
+        chat_id: chatId,
+        name,
+      });
+      this.state.scheduleTopics[scheduleId] = topic.message_thread_id;
+      this.saveState();
+      return topic.message_thread_id;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Uploads a vault file, after the path check; a refused or failed file gets a sentence (lesson 72). */
+  private async sendVaultFile(chatId: number, topicId: number | null, requested: string): Promise<void> {
+    const vaultPath = this.options.eva.status().vaultPath;
+    const file = vaultPath === null ? null : resolveSendableFile(vaultPath, requested);
+    if (file?.ok !== true) {
+      await this.send(chatId, topicId, file?.reason ?? "No vault is configured.");
+      return;
+    }
+    try {
+      await this.options.api.upload(
+        "sendDocument",
+        { chat_id: chatId, ...threadOf(topicId) },
+        { field: "document", name: file.name, bytes: new Uint8Array(readFileSync(file.path)) },
+      );
+    } catch (error) {
+      await this.send(chatId, topicId, `Telegram did not take ${file.relativePath}: ${errorText(error)}`);
+    }
+  }
+
+  /** Offered files become buttons; nothing uploads until a press (lesson 124). */
+  private async offerFiles(chatId: number, topicId: number | null, paths: readonly string[]): Promise<void> {
+    const vaultPath = this.options.eva.status().vaultPath;
+    const buttons: { text: string; callback_data: string }[] = [];
+    for (const requested of paths) {
+      const file = vaultPath === null ? null : resolveSendableFile(vaultPath, requested);
+      if (file?.ok !== true) {
+        await this.send(chatId, topicId, file?.reason ?? "No vault is configured.");
+        continue;
+      }
+      buttons.push({ text: file.name, callback_data: `f:${this.offers.idFor(file.relativePath)}` });
+    }
+    for (let start = 0; start < buttons.length; start += buttonsPerMessage) {
+      await this.send(chatId, topicId, "Files you can open:", {
+        inline_keyboard: buttons.slice(start, start + buttonsPerMessage).map((button) => [button]),
+      });
     }
   }
 
@@ -345,7 +570,11 @@ export class TelegramBot {
         this.stopTyping(event.sessionId);
         const answer = (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
         this.pendingText.delete(event.sessionId);
-        if (answer.trim().length > 0) await this.sendAnswer(target.chatId, target.topicId, answer);
+        // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).
+        const markers = extractFileMarkers(answer);
+        if (markers.text.length > 0) await this.sendAnswer(target.chatId, target.topicId, markers.text);
+        for (const path of markers.attach) await this.sendVaultFile(target.chatId, target.topicId, path);
+        if (markers.offer.length > 0) await this.offerFiles(target.chatId, target.topicId, markers.offer);
         if (event.kind === "turn_failed")
           await this.send(target.chatId, target.topicId, `The turn failed: ${event.reason}`);
         return;
@@ -437,9 +666,9 @@ function loadState(path: string): BotState {
   if (read.ok && typeof read.value === "object" && read.value !== null) {
     const value = read.value as Partial<BotState>;
     if (typeof value.offset === "number" && typeof value.topics === "object")
-      return { offset: value.offset, topics: value.topics };
+      return { offset: value.offset, topics: value.topics, scheduleTopics: value.scheduleTopics ?? {} };
   }
-  return { offset: 0, topics: {} };
+  return { offset: 0, topics: {}, scheduleTopics: {} };
 }
 
 function keyOf(chatId: number, topicId: number | null): string {
@@ -453,4 +682,19 @@ function threadOf(topicId: number | null): Record<string, number> {
 function titleOf(text: string): string {
   const line = text.split("\n")[0]?.trim() ?? "Chat";
   return line.length > 60 ? `${line.slice(0, 59)}…` : line || "Chat";
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function cardText(event: Extract<ScheduleEvent, { kind: "schedule_card" }>): string {
+  const heading =
+    event.changed.length === 0
+      ? `New schedule: ${event.name}`
+      : `Schedule changed (${event.changed.join(", ")}): ${event.name}`;
+  const fields = Object.entries(event.fields).map(([name, value]) => `${name}: ${value}`);
+  const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
+  // The card is the check against a schedule that someone else pushed to the vault (lesson 67).
+  return [heading, "", ...fields, "", next].join("\n");
 }

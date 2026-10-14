@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../src/core/eva.ts";
@@ -13,6 +13,7 @@ let sandbox: GitSandbox;
 let vault: string;
 let home: string;
 let eva: Eva | null;
+let clock: Date;
 
 function config(overrides: Partial<EvaConfig> = {}): EvaConfig {
   return { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid", ...overrides };
@@ -26,7 +27,7 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}): Eva {
     engines: [engine],
     runner: systemProcessRunner,
     processEnvironment: gitEnvironment,
-    now: () => new Date("2026-10-14T10:30:00Z"),
+    now: () => clock,
     basePrompt: "Base.",
     gatherMs: 5,
   });
@@ -50,6 +51,7 @@ beforeEach(() => {
   sandbox.git(vault, "push", "-q", "origin", "main");
   home = mkdtempSync(join(tmpdir(), "eva-home-"));
   eva = null;
+  clock = new Date("2026-10-14T10:30:00Z");
 });
 afterEach(async () => {
   await eva?.idle();
@@ -59,6 +61,30 @@ afterEach(async () => {
 });
 
 describe("Eva", () => {
+  test("a schedule fires in a fresh Assistant chat named after it, and starts with the background work", async () => {
+    const engine = new FakeEngine();
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(engine);
+    instance.startBackgroundWork();
+    instance.startBackgroundWork();
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => engine.requests.length === 1);
+    await instance.idle();
+    const [session] = instance.sessions.list();
+    expect(session).toMatchObject({ title: "Lunch", source: "schedule", mode: "assistant" });
+    expect(engine.requests[0]?.prompt).toEndWith("Lunch ideas?");
+  });
+
+  test("with no vault there is no scheduler", () => {
+    expect(start(new FakeEngine(), { vaultPath: null }).schedules).toBeNull();
+  });
+
   test("an Assistant chat runs at the vault root and saves what the turn wrote", async () => {
     const engine = new FakeEngine((request) => {
       writeFileSync(join(request.startFolder, "Methods", "New.md"), "A new note.\n");
@@ -177,6 +203,20 @@ describe("Eva", () => {
     sandbox.write(vault, "Life/Diary/2026-10-14.md", "Written by hand.\n");
     await instance.sweep();
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Diary/2026-10-14.md");
+  });
+
+  test("the idle sweep removes Scratch files older than a week (plan §9)", async () => {
+    sandbox.write(vault, "Scratch/old.pdf", "old");
+    const instance = start(new FakeEngine());
+    clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
+    await instance.sweep();
+    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
+  });
+
+  test("voice notes stay off until a whisper model is configured", () => {
+    expect(start(new FakeEngine()).transcribe).toBeNull();
+    const voice = { ...defaultConfig.voice, modelPath: "/models/ggml-base.bin" };
+    expect(start(new FakeEngine(), { voice }).transcribe).toBeInstanceOf(Function);
   });
 
   test("the idle sweep waits while an Assistant turn runs (lessons 22, 30)", async () => {

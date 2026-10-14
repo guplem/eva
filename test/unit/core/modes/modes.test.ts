@@ -70,6 +70,7 @@ function assistant(runner: ProcessRunner, sync = new FakeSync()): AssistantPrepa
     vaultPath: vault,
     vaultSync: sync,
     basePrompt: "Base rules.",
+    mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
     runner,
     environment: { PATH: "/bin" },
     now: () => new Date("2026-10-14T10:30:00Z"),
@@ -98,6 +99,7 @@ describe("Assistant mode", () => {
       startFolder: vault,
       appendSystemPrompt: "Base rules.\n\n# You are Eva\n",
       pluginFolders: [join(vault, ".eva")],
+      mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: {} } },
       trusted: true,
       environment: { PATH: "/bin" },
     });
@@ -190,6 +192,7 @@ describe("Project mode", () => {
       appendSystemPrompt: null,
       messagePrefix: null,
       pluginFolders: [],
+      mcpServers: {},
       trusted: true,
       environment: { PATH: "/bin" },
     });

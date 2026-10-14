@@ -47,6 +47,8 @@ const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
+/** The schedule rules live in the core; the API only needs an object. */
+const scheduleEntrySchema = z.record(z.string(), z.unknown());
 const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
 /** The login cookie lives a year; the person logs out to end it. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
@@ -211,10 +213,32 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (name === undefined) return json({ error: "No such check." }, 404);
     return json(await eva.runCheck(name));
   }
+  if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
     return new Response(null, { status: 204 });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The schedules of `.eva/schedules.json`: list, add or replace, remove (plan §9). */
+async function schedulesRoute(
+  request: Request,
+  method: string,
+  scheduleId: string | undefined,
+  eva: Eva,
+): Promise<Response> {
+  const schedules = eva.schedules;
+  if (schedules === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET" && scheduleId === undefined) return json(schedules.list());
+  if (method === "POST" && scheduleId === undefined) {
+    return json(schedules.save(scheduleEntrySchema.parse(await request.json())), 201);
+  }
+  if (method === "DELETE" && scheduleId !== undefined) {
+    return schedules.remove(decodeURIComponent(scheduleId))
+      ? new Response(null, { status: 204 })
+      : json({ error: "No such schedule." }, 404);
   }
   return json({ error: "Not found." }, 404);
 }
@@ -224,7 +248,8 @@ function errorResponse(error: unknown): Response {
     return json({ error: "The request body is invalid." }, 400);
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found"))
     return json({ error: error.message }, 404);
-  if (isEvaError(error, "config_invalid")) return json({ error: error.message }, 400);
+  if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid"))
+    return json({ error: error.message }, 400);
   if (isEvaError(error)) return json({ error: error.message }, 409);
   return json({ error: "Eva failed to handle the request." }, 500);
 }

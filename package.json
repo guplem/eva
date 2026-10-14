@@ -1,0 +1,37 @@
+{
+  "name": "eva",
+  "version": "0.1.0",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@types/bun": "^1.4.3",
+    "dependency-cruiser": "^18.6.0",
+    "eslint": "^10.12.0",
+    "knip": "^6.41.0",
+    "lefthook": "^2.2.2",
+    "prettier": "^3.9.10",
+    "typescript": "^6",
+    "typescript-eslint": "^8.71.2"
+  },
+  "bin": {
+    "eva": "src/main.ts"
+  },
+  "description": "A personal super harness: one service that runs AI coding agents over your vault and your projects.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "eva": "bun run src/main.ts",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "arch": "depcruise src --config .dependency-cruiser.cjs",
+    "deadcode": "knip",
+    "public-content": "bun run scripts/check-public-content.ts",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "mutation": "stryker run"
+  },
+  "type": "module"
+}

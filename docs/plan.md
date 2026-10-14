@@ -10,21 +10,21 @@ This plan says what Eva does and why. `intent.md` records what the owner wants. 
 
 ## 1. Decisions
 
-| # | Decision | Why |
-|---|---|---|
-| D1 | Two repositories: the public engine `guplem/eva`, and one private vault for each person (`guplem/vault`) | The vault autosaves to `main`. The engine needs pull requests and CI. Sharing needs an engine with no personal data. |
-| D2 | The engine is developed as a public project from the first commit, and becomes public when CI with the leak checks is green (§13) | Anybody can read it. No personal data, ever. |
-| D3 | Knowledge folders sit at the vault root | The vault holds only knowledge now. |
-| D4 | A project is a folder `Projects/YYYY-MM-DD-HHmm-name/` with YAML front matter in its `AGENTS.md` | Ids never collide and show the order. One file serves people, machines and agents. |
-| D5 | Cloned repositories live in `Projects/<project>/repos/<repo>-<n>/`, ignored by the vault's git | Each clone is one parallel workspace. |
-| D6 | Eva is one core process per instance. The CLI, Telegram and the web UI are its front ends | Easy to run, lives on a Linux server, reachable from any device. One process owns the vault (lesson 20). |
-| D7 | Eva owns vault sync inside her own code. Eva has no agent hooks, and the vault has no agent hooks | Each harness has its own hook system. Behaviour that Eva needs belongs to Eva. |
-| D8 | Two modes. **Assistant mode** is Eva's own behaviour. **Project mode** is a transparent wrapper: it behaves exactly as opening the clone in the selected harness | The owner wants project work to be identical to opening the folder in Claude Code. |
-| D9 | Claude Code is the main engine, connected directly through the Claude Agent SDK. pi is supported, connected directly. More engines come later | Claude Code is what the owner pays for, and a direct link keeps forks (spike S2). pi is the fallback if the Claude subscription ends. |
-| D10 | Remote access through Tailscale only | The web UI gives full shell access to the machine. |
-| D11 | Any number of instances can run, under one OS user or several | Each instance has its own home folder, port and vault. Isolation between instances is the user's responsibility. |
-| D12 | TypeScript, run with Bun | One language for core and UI. The Agent SDK, pi and ACP ship TypeScript libraries. |
-| D13 | One conversation list for each instance, shown by every front end | A chat started in Telegram continues in the web app, and back. |
+| #   | Decision                                                                                                                                                         | Why                                                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Two repositories: the public engine `guplem/eva`, and one private vault for each person (`guplem/vault`)                                                         | The vault autosaves to `main`. The engine needs pull requests and CI. Sharing needs an engine with no personal data.                  |
+| D2  | The engine is developed as a public project from the first commit, and becomes public when CI with the leak checks is green (§13)                                | Anybody can read it. No personal data, ever.                                                                                          |
+| D3  | Knowledge folders sit at the vault root                                                                                                                          | The vault holds only knowledge now.                                                                                                   |
+| D4  | A project is a folder `Projects/YYYY-MM-DD-HHmm-name/` with YAML front matter in its `AGENTS.md`                                                                 | Ids never collide and show the order. One file serves people, machines and agents.                                                    |
+| D5  | Cloned repositories live in `Projects/<project>/repos/<repo>-<n>/`, ignored by the vault's git                                                                   | Each clone is one parallel workspace.                                                                                                 |
+| D6  | Eva is one core process per instance. The CLI, Telegram and the web UI are its front ends                                                                        | Easy to run, lives on a Linux server, reachable from any device. One process owns the vault (lesson 20).                              |
+| D7  | Eva owns vault sync inside her own code. Eva has no agent hooks, and the vault has no agent hooks                                                                | Each harness has its own hook system. Behaviour that Eva needs belongs to Eva.                                                        |
+| D8  | Two modes. **Assistant mode** is Eva's own behaviour. **Project mode** is a transparent wrapper: it behaves exactly as opening the clone in the selected harness | The owner wants project work to be identical to opening the folder in Claude Code.                                                    |
+| D9  | Claude Code is the main engine, connected directly through the Claude Agent SDK. pi is supported, connected directly. More engines come later                    | Claude Code is what the owner pays for, and a direct link keeps forks (spike S2). pi is the fallback if the Claude subscription ends. |
+| D10 | Remote access through Tailscale only                                                                                                                             | The web UI gives full shell access to the machine.                                                                                    |
+| D11 | Any number of instances can run, under one OS user or several                                                                                                    | Each instance has its own home folder, port and vault. Isolation between instances is the user's responsibility.                      |
+| D12 | TypeScript, run with Bun                                                                                                                                         | One language for core and UI. The Agent SDK, pi and ACP ship TypeScript libraries.                                                    |
+| D13 | One conversation list for each instance, shown by every front end                                                                                                | A chat started in Telegram continues in the web app, and back.                                                                        |
 
 ## 2. Repositories
 
@@ -78,17 +78,17 @@ vault/
 
 ```yaml
 ---
-created: 2025-03-02T10:15     # required; matches the folder id
-created_precision: minute     # minute | day | month | year
-status: active                # required: idea | active | paused | closed
+created: 2025-03-02T10:15 # required; matches the folder id
+created_precision: minute # minute | day | month | year
+status: active # required: idea | active | paused | closed
 started: 2025-03-03
 closed:
 objective: One sentence that says when the project is done.
 deadline:
 repos:
   - https://github.com/owner/example-app
-drive:                        # created only when files must be shared
-legacy_id: P93                # matches the Drive folder "P## - Name"
+drive: # created only when files must be shared
+legacy_id: P93 # matches the Drive folder "P## - Name"
 tags: [work]
 ---
 ```
@@ -118,16 +118,16 @@ The inventory is done: 155 projects, confirmed by the owner on 2026-10-14 (rules
 
 ### 4.1 Responsibilities
 
-| Area | What Eva does |
-|---|---|
-| **Vault sync** | Commit, push and pull the vault (§6) |
-| **Projects** | Find, search and filter projects; create clones; show the branch and pull request of each clone |
-| **Sessions** | Start, resume, fork, retry and stop engine sessions; keep the index (§4.5) |
-| **Skill runs** | Keep pskill runs going without hooks (§5.4) |
-| **Approvals** | Relay permission requests to a front end (§5.5) |
-| **Schedules** | Fire scheduled messages, on the hub instance only (§9) |
-| **Front ends** | Local API, CLI, Telegram, web UI |
-| **Settings** | Config and secrets in the instance home, with a test for each one |
+| Area           | What Eva does                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| **Vault sync** | Commit, push and pull the vault (§6)                                                            |
+| **Projects**   | Find, search and filter projects; create clones; show the branch and pull request of each clone |
+| **Sessions**   | Start, resume, fork, retry and stop engine sessions; keep the index (§4.5)                      |
+| **Skill runs** | Keep pskill runs going without hooks (§5.4)                                                     |
+| **Approvals**  | Relay permission requests to a front end (§5.5)                                                 |
+| **Schedules**  | Fire scheduled messages, on the hub instance only (§9)                                          |
+| **Front ends** | Local API, CLI, Telegram, web UI                                                                |
+| **Settings**   | Config and secrets in the instance home, with a test for each one                               |
 
 ### 4.2 Layers
 
@@ -180,17 +180,17 @@ src/
 
 One TypeScript union crosses the engine port. Every event has `kind`, `sessionId`, `seq` (an increasing counter, lesson 83) and `at`.
 
-| kind | Payload |
-|---|---|
-| `text` | `text` |
-| `tool_started` | `toolUseId`, `name`, `summary` |
-| `tool_finished` | `toolUseId`, `isError` |
-| `task_changed` | `taskId`, `description`, `state` (`running` / `done` / `failed`) |
-| `approval_needed` | `requestId`, `toolName`, `summary` |
-| `history_lost` | none |
-| `notice` | `text` |
-| `turn_finished` | `engineSessionId`, `lastMessageId`, `usage` (`inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, lesson 120), `costUsd?` |
-| `turn_failed` | `reason` |
+| kind              | Payload                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `text`            | `text`                                                                                                                                     |
+| `tool_started`    | `toolUseId`, `name`, `summary`                                                                                                             |
+| `tool_finished`   | `toolUseId`, `isError`                                                                                                                     |
+| `task_changed`    | `taskId`, `description`, `state` (`running` / `done` / `failed`)                                                                           |
+| `approval_needed` | `requestId`, `toolName`, `summary`                                                                                                         |
+| `history_lost`    | none                                                                                                                                       |
+| `notice`          | `text`                                                                                                                                     |
+| `turn_finished`   | `engineSessionId`, `lastMessageId`, `usage` (`inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, lesson 120), `costUsd?` |
+| `turn_failed`     | `reason`                                                                                                                                   |
 
 Every turn stream ends with exactly one `turn_finished` or `turn_failed` (lesson 47).
 
@@ -210,17 +210,17 @@ flowchart TD
     pm -. "branches, pull requests,<br/>the repo's own hooks" .-> repo[("Project repository")]
 ```
 
-| | Assistant mode | Project mode |
-|---|---|---|
-| **What it is** | Eva's own behaviour | The harness, exactly as if opened on the clone |
-| **Start folder** | Vault root | `Projects/<project>/repos/<repo>-<n>/` |
-| **System prompt** | `claude_code` preset + `append` (Eva's base prompt + `.eva/assistant.md`), `excludeDynamicSections: true` | `claude_code` preset, unchanged |
-| **Setting sources** | `user`, `project` | `user`, `project`, `local` |
-| **Instructions** | Vault `AGENTS.md` and deeper ones | What the harness loads by itself (spike S3) |
-| **Skills** | User skills, vault skills, and the `.eva/` plugin | What the harness finds by itself |
-| **Hooks** | None: `disableAllHooks: true` | The clone's own, after the trust step (§12) |
-| **Permissions** | `bypassPermissions`, with deny rules and the approval gate (§5.5) | The clone's own `defaultMode`; asks go to a front end (§5.5) |
-| **Commits** | Eva, automatically | The agent, on branches, with pull requests |
+|                     | Assistant mode                                                                                            | Project mode                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **What it is**      | Eva's own behaviour                                                                                       | The harness, exactly as if opened on the clone               |
+| **Start folder**    | Vault root                                                                                                | `Projects/<project>/repos/<repo>-<n>/`                       |
+| **System prompt**   | `claude_code` preset + `append` (Eva's base prompt + `.eva/assistant.md`), `excludeDynamicSections: true` | `claude_code` preset, unchanged                              |
+| **Setting sources** | `user`, `project`                                                                                         | `user`, `project`, `local`                                   |
+| **Instructions**    | Vault `AGENTS.md` and deeper ones                                                                         | What the harness loads by itself (spike S3)                  |
+| **Skills**          | User skills, vault skills, and the `.eva/` plugin                                                         | What the harness finds by itself                             |
+| **Hooks**           | None: `disableAllHooks: true`                                                                             | The clone's own, after the trust step (§12)                  |
+| **Permissions**     | `bypassPermissions`, with deny rules and the approval gate (§5.5)                                         | The clone's own `defaultMode`; asks go to a front end (§5.5) |
+| **Commits**         | Eva, automatically                                                                                        | The agent, on branches, with pull requests                   |
 
 ### 5.2 Assistant prompt
 
@@ -274,10 +274,10 @@ pskill keeps a run going with a Stop hook. Eva has no hooks (D7), so Eva calls t
 
 ### 7.1 Support (facts as of 2026-10-14)
 
-| Engine | Connection | Subscriptions | Forks |
-|---|---|---|---|
-| **Claude Code** | Claude Agent SDK, with the person's installed `claude` (config `engines.claudeCode.executable`, default: `claude` found on `PATH`) | Claude Pro/Max for personal use, from the person's own login | Yes (spike S2) |
-| **pi** | Child process, `pi --mode rpc` | ChatGPT Plus/Pro (official), GitHub Copilot; API keys for OpenRouter, OpenAI, Gemini and others | Yes |
+| Engine          | Connection                                                                                                                         | Subscriptions                                                                                   | Forks          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------- |
+| **Claude Code** | Claude Agent SDK, with the person's installed `claude` (config `engines.claudeCode.executable`, default: `claude` found on `PATH`) | Claude Pro/Max for personal use, from the person's own login                                    | Yes (spike S2) |
+| **pi**          | Child process, `pi --mode rpc`                                                                                                     | ChatGPT Plus/Pro (official), GitHub Copilot; API keys for OpenRouter, OpenAI, Gemini and others | Yes            |
 
 - **Personal use of a Claude subscription through the Agent SDK draws from the plan's limits.** Eva never offers a claude.ai login to anybody. Each person logs in to their own `claude`, or gives Eva a token from `claude setup-token` (lesson 97). Spike S2 ran on such a token.
 - **A Claude login inside pi bills as extra usage.** Do not use it.
@@ -299,15 +299,15 @@ In this order, after P8: the engine-neutral background task system for more engi
 
 ### 8.1 CLI
 
-| Command | What it does |
-|---|---|
-| `eva` | Run the core in the foreground |
-| `eva setup` | Ask for each setting and write the config |
-| `eva doctor` | Check prerequisites, grouped by feature (§11) |
-| `eva status` | Engines, vault sync, sessions, versions |
-| `eva chat [--project <id> [--clone <n>]] [--engine <name>] [--model <alias>]` | A conversation in the terminal, in either mode |
-| `eva projects [query]` | Search projects |
-| `eva service install` | systemd user service on Linux (lesson 85), logon task on Windows |
+| Command                                                                       | What it does                                                     |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `eva`                                                                         | Run the core in the foreground                                   |
+| `eva setup`                                                                   | Ask for each setting and write the config                        |
+| `eva doctor`                                                                  | Check prerequisites, grouped by feature (§11)                    |
+| `eva status`                                                                  | Engines, vault sync, sessions, versions                          |
+| `eva chat [--project <id> [--clone <n>]] [--engine <name>] [--model <alias>]` | A conversation in the terminal, in either mode                   |
+| `eva projects [query]`                                                        | Search projects                                                  |
+| `eva service install`                                                         | systemd user service on Linux (lesson 85), logon task on Windows |
 
 ### 8.2 Telegram
 
@@ -344,17 +344,17 @@ Built from the mockups in `mockups/`:
 
 The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that run.
 
-| Phase | Content | Done when (checkable by the agent) |
-|---|---|---|
-| **P0** | Plan, intent, lessons, reviews | Approved 2026-10-14 |
-| **P1** | Vault restructure (§10.1) and project folders (§3.5) | The vault has the new layout, every project folder has valid front matter, and a check script reports no broken path reference |
-| **P2** | Spikes S2, S3, S5 | Done for S2 and S3 (`spikes.md`). S5 runs in P3 |
+| Phase  | Content                                                                                                                                                                                      | Done when (checkable by the agent)                                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0** | Plan, intent, lessons, reviews                                                                                                                                                               | Approved 2026-10-14                                                                                                                                      |
+| **P1** | Vault restructure (§10.1) and project folders (§3.5)                                                                                                                                         | The vault has the new layout, every project folder has valid front matter, and a check script reports no broken path reference                           |
+| **P2** | Spikes S2, S3, S5                                                                                                                                                                            | Done for S2 and S3 (`spikes.md`). S5 runs in P3                                                                                                          |
 | **P3** | Repository standard and CI (§13). Core: instance, config, vault sync, projects and clones, sessions, Claude Code adapter in both modes, skill runs, approvals, local API, CLI. Spikes S4, S5 | CI green on Ubuntu and Windows. End-to-end tests with a fake engine pass. `bun run smoke:live` with a real login passes, or is listed in `owner-todo.md` |
-| **P4** | Telegram | A fake Bot API suite covers every command, pairing, 409 handling and message splitting |
-| **P5** | Web UI | Playwright tests for the three mockup screens at desktop and 375 px width pass; `Host`, `Origin` and identity rejection tests pass |
-| **P6** | Schedules, Google, voice (S6), files, PDFs | A calendar write passes the approval gate against a fake MCP server; a recorded voice note transcribes in CI |
-| **P7** | pi adapter | Contract tests with captured pi RPC output pass; a live run is listed in `owner-todo.md` |
-| **P8** | Partner and packaging: vault template repository, guided setup, single executable (S1), signed releases, self-update | A clean Windows and Linux CI job installs the release, runs `eva doctor` and `eva setup --non-interactive` |
+| **P4** | Telegram                                                                                                                                                                                     | A fake Bot API suite covers every command, pairing, 409 handling and message splitting                                                                   |
+| **P5** | Web UI                                                                                                                                                                                       | Playwright tests for the three mockup screens at desktop and 375 px width pass; `Host`, `Origin` and identity rejection tests pass                       |
+| **P6** | Schedules, Google, voice (S6), files, PDFs                                                                                                                                                   | A calendar write passes the approval gate against a fake MCP server; a recorded voice note transcribes in CI                                             |
+| **P7** | pi adapter                                                                                                                                                                                   | Contract tests with captured pi RPC output pass; a live run is listed in `owner-todo.md`                                                                 |
+| **P8** | Partner and packaging: vault template repository, guided setup, single executable (S1), signed releases, self-update                                                                         | A clean Windows and Linux CI job installs the release, runs `eva doctor` and `eva setup --non-interactive`                                               |
 
 **Every phase also needs:** each `[keep]` or `[adapt]` lesson that the phase touches has a test, or a written reason in the code why no test is possible.
 
@@ -363,25 +363,15 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 ### 10.1 P1 checklist
 
 **Stage 0: before any change** (done on this PC on 2026-10-14, except step 1)
+
 1. When the server laptop is on: stop and disable the v1 service, point its clone at `guplem/vault`, push any notes it holds. (Owner to-do.)
 2. Commit and push the open note on this PC.
 3. Tag `main` as `server-final` and push the tag.
 4. Run the v1 uninstaller while `walli/` still exists.
 
-**Stage 1: restructure on a branch**
-5. Work on a branch with a conventional prefix, which the v1 sync hooks ignore.
-6. `git mv` the knowledge from `walli/Knowledge/` to the root, `_to sort/` included.
-7. Rewrite every path reference: `Knowledge/`, `Scratch/`, `ASSISTANT.md`, `schedules.json`, the typst command, and project ids (lesson 13). Wiki-links need nothing.
-8. Move `walli/ASSISTANT.md` to `.eva/assistant.md` and `walli/schedules.json` to `.eva/schedules.json`. Port the assistant skills (`update-walli`, `schedule`, `open-issue`) to `.eva/skills/` with new names; `open-issue` targets `guplem/vault`, never `guplem/eva`.
-9. Write the new small root `AGENTS.md` from `walli/AGENTS.md`.
-10. Delete the v1 code and machinery: `server/`, `adr/`, `.claude/agents/`, the server workflow, the launchers and installers, every `CLAUDE.md`, `.githooks/`.
-11. Keep the v1 sync hooks, adapted to the root layout, as **temporary** files. Eva removes them in P3, when her own sync runs.
-12. Update `.gitignore`: `Scratch/`, `Projects/*/repos/`, `.env`, `*.pem`, `*.key`, `settings.local.json`.
-13. Create the project folders from the inventory (§3.5).
-14. Run the path check, merge to `main`, and push once.
+**Stage 1: restructure on a branch** 5. Work on a branch with a conventional prefix, which the v1 sync hooks ignore. 6. `git mv` the knowledge from `walli/Knowledge/` to the root, `_to sort/` included. 7. Rewrite every path reference: `Knowledge/`, `Scratch/`, `ASSISTANT.md`, `schedules.json`, the typst command, and project ids (lesson 13). Wiki-links need nothing. 8. Move `walli/ASSISTANT.md` to `.eva/assistant.md` and `walli/schedules.json` to `.eva/schedules.json`. Port the assistant skills (`update-walli`, `schedule`, `open-issue`) to `.eva/skills/` with new names; `open-issue` targets `guplem/vault`, never `guplem/eva`. 9. Write the new small root `AGENTS.md` from `walli/AGENTS.md`. 10. Delete the v1 code and machinery: `server/`, `adr/`, `.claude/agents/`, the server workflow, the launchers and installers, every `CLAUDE.md`, `.githooks/`. 11. Keep the v1 sync hooks, adapted to the root layout, as **temporary** files. Eva removes them in P3, when her own sync runs. 12. Update `.gitignore`: `Scratch/`, `Projects/*/repos/`, `.env`, `*.pem`, `*.key`, `settings.local.json`. 13. Create the project folders from the inventory (§3.5). 14. Run the path check, merge to `main`, and push once.
 
-**Stage 2: GitHub**
-15. Delete old branches. Move issues #10 and #59 to `guplem/eva` without personal content, or close them.
+**Stage 2: GitHub** 15. Delete old branches. Move issues #10 and #59 to `guplem/eva` without personal content, or close them.
 
 **Rollback:** a forward commit that restores `server-final`, never a force-push.
 
@@ -432,31 +422,31 @@ The engine is built mostly by AI agents. The repository keeps the code consisten
 
 ## 14. Spikes
 
-| Spike | Question | Status |
-|---|---|---|
-| **S1** | Single executable with `bun build --compile` on Windows and Linux, the SDK pointing at an external `claude` | Before P8 |
-| **S2** | `sessionId`, `resume`, `resumeSessionAt` and `forkSession`; prompt cache | **Done 2026-10-14: all confirmed** |
-| **S3** | What a Claude Code session started in a clone loads; `.eva/skills/` isolation | **Done 2026-10-14** (see `spikes.md`) |
-| **S4** | Append or replace the Assistant prompt, on 10 real requests | P3 |
-| **S5** | What the SDK sends on a subscription token (identity line, limits) | P3 |
-| **S6** | `whisper.cpp` with a real Telegram voice note | P6 |
+| Spike  | Question                                                                                                    | Status                                |
+| ------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **S1** | Single executable with `bun build --compile` on Windows and Linux, the SDK pointing at an external `claude` | Before P8                             |
+| **S2** | `sessionId`, `resume`, `resumeSessionAt` and `forkSession`; prompt cache                                    | **Done 2026-10-14: all confirmed**    |
+| **S3** | What a Claude Code session started in a clone loads; `.eva/skills/` isolation                               | **Done 2026-10-14** (see `spikes.md`) |
+| **S4** | Append or replace the Assistant prompt, on 10 real requests                                                 | P3                                    |
+| **S5** | What the SDK sends on a subscription token (identity line, limits)                                          | P3                                    |
+| **S6** | `whisper.cpp` with a real Telegram voice note                                                               | P6                                    |
 
 ## 15. Wall-I v1 features
 
-| v1 feature | In Eva | Reason |
-|---|---|---|
-| Telegram topics, model picker, `/new`, `/delete` | Port (P4) | Core of daily use |
-| `/status` with versions, cache numbers, sync state | Port (P4) | Lessons 94, 120 |
-| `/update`, `/update engine` | Replace: self-update with signature (P8), engine update in settings | Single executable |
-| `/schedules`, setup cards | Port (P6) | Lessons 64 to 70 |
-| Voice transcription | Port with `whisper.cpp` (P6) | Lesson 71 |
-| File markers, offer buttons, received files in Scratch, weekly cleanup | Port (P6) | Lessons 72 to 74, 124 |
-| PDF making | Port with a typst binary (P6) | Lesson 75 |
-| `update-walli`, `schedule`, `open-issue` skills | Port to `.eva/skills/` in P1 | Lessons 17, 128 |
-| `be-walli` launchers, installers, shortcuts, Terminal profile | Replace with `eva chat` and `eva service install` | One program |
-| `bootstrap.sh`, `update.sh`, machine guides | Replace with `eva setup` and `eva doctor`; machine guides stay in the vault | No personal data in the engine |
-| Sync hooks | Replace with Eva's own sync (§6) | D7 |
-| Development skills for the server code | Replace with the repository standard (§13) | New code base |
+| v1 feature                                                             | In Eva                                                                      | Reason                         |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------ |
+| Telegram topics, model picker, `/new`, `/delete`                       | Port (P4)                                                                   | Core of daily use              |
+| `/status` with versions, cache numbers, sync state                     | Port (P4)                                                                   | Lessons 94, 120                |
+| `/update`, `/update engine`                                            | Replace: self-update with signature (P8), engine update in settings         | Single executable              |
+| `/schedules`, setup cards                                              | Port (P6)                                                                   | Lessons 64 to 70               |
+| Voice transcription                                                    | Port with `whisper.cpp` (P6)                                                | Lesson 71                      |
+| File markers, offer buttons, received files in Scratch, weekly cleanup | Port (P6)                                                                   | Lessons 72 to 74, 124          |
+| PDF making                                                             | Port with a typst binary (P6)                                               | Lesson 75                      |
+| `update-walli`, `schedule`, `open-issue` skills                        | Port to `.eva/skills/` in P1                                                | Lessons 17, 128                |
+| `be-walli` launchers, installers, shortcuts, Terminal profile          | Replace with `eva chat` and `eva service install`                           | One program                    |
+| `bootstrap.sh`, `update.sh`, machine guides                            | Replace with `eva setup` and `eva doctor`; machine guides stay in the vault | No personal data in the engine |
+| Sync hooks                                                             | Replace with Eva's own sync (§6)                                            | D7                             |
+| Development skills for the server code                                 | Replace with the repository standard (§13)                                  | New code base                  |
 
 ## 16. Open questions
 

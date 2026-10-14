@@ -5,6 +5,7 @@ Wall-I v1 was a Python Telegram server plus a vault, in one repository. It ran f
 **Source.** Each source is a path or a commit in the `guplem/vault` repository, at the git tag `server-final`. Read one with `git -C <vault> show server-final:<path>`. The tag is created in phase P1, stage 0.
 
 **Status tags.**
+
 - `[keep]`: the lesson applies to the new design as it is.
 - `[adapt]`: the lesson applies, but the new design changes how. The arrow (→) says how.
 - `[obsolete]`: the new design removes the cause.
@@ -142,7 +143,7 @@ The plan (`plan.md`) must respect every `[keep]` and `[adapt]` item. A reviewer 
 97. `[keep]` **An unattended machine needs `claude setup-token`.** A desktop login's token expires. Source: `server/AGENTS.md`.
 98. `[keep]` **A deploy key for each machine and repository never expires.** Tick "Allow write access". Check push access with a dry run to a branch that does not exist. Source: `bootstrap.sh`.
 99. `[keep]` **A fine-grained token that acts as the owner means the owner cannot approve that token's pull requests.** Source: `server/adr/0012`.
-100. `[keep]` **Set `GIT_TERMINAL_PROMPT=0`, with no stdin, on every git step.** Source: `server/walli_server/git_code_updater.py`.
+100.  `[keep]` **Set `GIT_TERMINAL_PROMPT=0`, with no stdin, on every git step.** Source: `server/walli_server/git_code_updater.py`.
 
 ## 12. Testing
 

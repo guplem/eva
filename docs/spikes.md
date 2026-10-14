@@ -16,13 +16,13 @@ A spike is a small real test of a claim the plan depends on. Each entry records 
 
 **Result.** Confirmed.
 
-| Turn | Answer | Cache read tokens |
-|---|---|---|
-| 1 | OK | 0 |
-| 2 | OK | 25,326 |
-| 3 | ALPHA, BETA | 25,444 |
-| 4 (fork) | ALPHA | 25,326 |
-| 5 (original) | ALPHA, BETA | 25,537 |
+| Turn         | Answer      | Cache read tokens |
+| ------------ | ----------- | ----------------- |
+| 1            | OK          | 0                 |
+| 2            | OK          | 25,326            |
+| 3            | ALPHA, BETA | 25,444            |
+| 4 (fork)     | ALPHA       | 25,326            |
+| 5 (original) | ALPHA, BETA | 25,537            |
 
 - The SDK used the session id that Eva chose.
 - The fork got a new session id, saw only the history up to the fork point, and still read the cache.
@@ -38,10 +38,10 @@ A spike is a small real test of a claim the plan depends on. Each entry records 
 
 **Result.**
 
-| Clone has `CLAUDE.md` | Marker words loaded |
-|---|---|
-| No | vault, project, repository (`AGENTS.md` at every level) |
-| Yes | only the clone's `CLAUDE.md` |
+| Clone has `CLAUDE.md` | Marker words loaded                                     |
+| --------------------- | ------------------------------------------------------- |
+| No                    | vault, project, repository (`AGENTS.md` at every level) |
+| Yes                   | only the clone's `CLAUDE.md`                            |
 
 - **Without a `CLAUDE.md`,** Claude Code walks up past the clone's own git root and loads every `AGENTS.md`. The project front matter reaches the session with no extra work.
 - **With a `CLAUDE.md` anywhere in the chain,** no `AGENTS.md` loads. This matches opening the folder by hand, so Project mode (a transparent wrapper) keeps it. The vault must never hold a `CLAUDE.md`.

@@ -13,6 +13,11 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 - [ ] **Claude login on this PC:** the standalone `claude` is not logged in (the desktop app uses its own login). Run `claude` once and log in, or run `claude setup-token` and give the token to Eva in `eva setup`.
 
+## Features (phase P6)
+
+- [ ] **Google:** in Google Cloud, create an OAuth client of type "Desktop app" with the Calendar, Drive, People and Tasks APIs on, and set the consent screen to "In production". Add the client id and secret to Eva's `secrets.json` (`googleOauthClientId`, `googleOauthClientSecret`) and the account to `config.json` (`google.email`). Then ask Eva about the calendar once, and open the login link. A live run of a calendar write with a guest checks the approval button.
+- [ ] **Voice (spike S6):** on the hub, install ffmpeg and whisper.cpp, download `ggml-base.bin` (it reads Spanish and English), and set `voice.modelPath`. Then send Eva a real voice note in Telegram and check the "Heard:" line.
+
 ## Decisions with a default
 
 - [ ] **`online-sync`:** its own project, or part of Ghana Ludo (default)?

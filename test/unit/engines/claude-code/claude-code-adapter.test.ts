@@ -4,6 +4,9 @@
  * a capture from scripts/capture-claude-fixtures.ts (docs/owner-todo.md).
  */
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildQueryOptions,
@@ -22,6 +25,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     model: "default",
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
+    mcpServers: {},
     trusted: true,
     environment: { PATH: "/bin" },
     requestApproval: () => Promise.resolve<ApprovalAnswer>("allow"),
@@ -133,6 +137,17 @@ describe("buildQueryOptions", () => {
     );
     expect(fork).toMatchObject({ resume: "s1", resumeSessionAt: "m3", forkSession: true });
     expect(fork.sessionId).toBeUndefined();
+  });
+
+  test("Eva's MCP servers become stdio servers with their own environment", () => {
+    const options = buildQueryOptions(
+      request({ mcpServers: { google: { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: { A: "1" } } } }),
+      "/bin/claude",
+    );
+    expect(options.mcpServers).toEqual({
+      google: { type: "stdio", command: "uvx", args: ["workspace-mcp==2.1.0"], env: { A: "1" } },
+    });
+    expect(buildQueryOptions(request(), "/bin/claude")).not.toHaveProperty("mcpServers");
   });
 
   test("a model alias other than default is passed through", () => {
@@ -335,3 +350,106 @@ describe("ClaudeCodeEngine", () => {
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
   });
 });
+
+type CanUseTool = (name: string, input: Record<string, unknown>) => Promise<{ behavior: string }>;
+
+describe("the approval gate for Google writes (plan §5.5, §9)", () => {
+  async function decisions(inputs: Record<string, unknown>[]): Promise<string[]> {
+    let canUseTool: CanUseTool | undefined;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as unknown as { canUseTool: CanUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield success;
+        })();
+      },
+    });
+    await drain(engine.runTurn(request({ requestApproval: () => Promise.resolve("deny") })));
+    const results: string[] = [];
+    for (const input of inputs) results.push((await canUseTool?.("mcp__google__manage_event", input))?.behavior ?? "");
+    return results;
+  }
+
+  test("an event in the person's own calendar needs no approval; guests, updates and RSVPs do", async () => {
+    expect(
+      await decisions([
+        { action: "create", summary: "Dentist" },
+        { action: "create", summary: "Lunch", attendees: ["friend@example.com"] },
+        { action: "update", event_id: "1", attendees: "friend@example.com" },
+        { action: "delete", event_id: "1", send_updates: "all" },
+        { action: "rsvp", event_id: "1", response: "accepted" },
+        { action: "update", event_id: "1", attendees: [] },
+      ]),
+    ).toEqual(["allow", "deny", "deny", "deny", "deny", "allow"]);
+  });
+
+  test("a calendar write with guests reaches the MCP server only after the person allows it", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "eva-mcp-"));
+    const log = join(folder, "calls.jsonl");
+    const google = {
+      command: process.execPath,
+      args: [join(import.meta.dir, "..", "..", "..", "support", "fake-google-mcp.ts")],
+      environment: { FAKE_MCP_LOG: log },
+    };
+    const invite = { action: "create", summary: "Lunch", attendees: ["friend@example.com"] };
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      // A scripted model: it asks to write the event, then calls the server only when allowed.
+      query: ({ options }) =>
+        (async function* () {
+          const canUseTool = (options as unknown as { canUseTool: CanUseTool }).canUseTool;
+          const decision = await canUseTool("mcp__google__manage_event", invite);
+          const server = options.mcpServers?.["google"] as {
+            command: string;
+            args: string[];
+            env: Record<string, string>;
+          };
+          if (decision.behavior === "allow") await callTool(server, "manage_event", invite);
+          yield success;
+        })(),
+    });
+    try {
+      await drain(engine.runTurn(request({ mcpServers: { google }, requestApproval: () => Promise.resolve("deny") })));
+      expect(existsSync(log)).toBe(false);
+      await drain(engine.runTurn(request({ mcpServers: { google }, requestApproval: () => Promise.resolve("allow") })));
+      expect(
+        readFileSync(log, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as unknown),
+      ).toEqual([{ name: "manage_event", arguments: invite }]);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Starts a stdio MCP server, initializes it, calls one tool, and waits for the answer. */
+async function callTool(
+  server: { command: string; args: string[]; env: Record<string, string> },
+  name: string,
+  input: Record<string, unknown>,
+): Promise<void> {
+  const child = Bun.spawn([server.command, ...server.args], {
+    env: { ...process.env, ...server.env },
+    stdin: "pipe",
+    stdout: "pipe",
+  });
+  const messages = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {} } },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: input } },
+  ];
+  await child.stdin.write(messages.map((message) => JSON.stringify(message)).join("\n") + "\n");
+  await child.stdin.flush();
+  const reader = child.stdout.getReader();
+  let output = "";
+  while (!output.includes('"id":2')) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    output += new TextDecoder().decode(chunk.value);
+  }
+  child.kill();
+  await child.exited;
+}

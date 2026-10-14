@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts";
 import { HttpTelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
-import { TelegramBot } from "../../../../src/frontends/telegram/telegram-bot.ts";
+import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
@@ -19,6 +19,7 @@ let engine: FakeEngine;
 let eva: Eva;
 let paired: number[];
 let fatal: number[];
+let clock: Date;
 
 function createEva(script?: FakeTurnScript): void {
   engine = new FakeEngine(script);
@@ -29,13 +30,13 @@ function createEva(script?: FakeTurnScript): void {
     engines: [engine],
     runner: systemProcessRunner,
     processEnvironment: gitEnvironment,
-    now: () => new Date("2026-10-14T10:30:00Z"),
+    now: () => clock,
     basePrompt: "Base.",
     gatherMs: 5,
   });
 }
 
-function createBot(allowedChatId: number | null = owner): TelegramBot {
+function createBot(allowedChatId: number | null = owner, extra: Partial<TelegramBotOptions> = {}): TelegramBot {
   return new TelegramBot({
     api: new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl }),
     eva,
@@ -46,6 +47,7 @@ function createBot(allowedChatId: number | null = owner): TelegramBot {
     onFatal: (code) => fatal.push(code),
     pollTimeoutSeconds: 0,
     typingIntervalMs: 20,
+    ...extra,
   });
 }
 
@@ -68,6 +70,7 @@ beforeEach(() => {
   telegram = new FakeTelegram();
   paired = [];
   fatal = [];
+  clock = new Date("2026-10-14T10:30:00Z");
   createEva();
 });
 afterEach(async () => {
@@ -279,5 +282,215 @@ describe("one poller per bot (lessons 56, 57)", () => {
     const last = telegram.callsTo("getUpdates").at(-1);
     expect(last?.params).toMatchObject({ timeout: 0 });
     expect(Number(last?.params["offset"])).toBeGreaterThan(1);
+  });
+});
+
+describe("files (lessons 72, 74, 124)", () => {
+  const vault = (): string => join(sandbox.root, "vault");
+
+  function uploads(): string[] {
+    return telegram.callsTo("sendDocument").map((call) => (call.params["document"] as { name: string }).name);
+  }
+
+  test("an attach marker sends the file after the text, and the marker line never shows", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    createEva((request) => FakeEngine.answer(request, "Here it is.\n[[attach: Methods/Plan.md]]"));
+    const bot = createBot();
+    telegram.sendText(owner, "send the plan");
+    await settle(bot, () => uploads().length === 1);
+    expect(uploads()).toEqual(["Plan.md"]);
+    expect(telegram.sentTexts().join("\n")).not.toContain("[[attach");
+  });
+
+  test("an offer marker shows a button, and the press sends the file", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    createEva((request) => FakeEngine.answer(request, "Want it?\n[[offer: Methods/Plan.md]]"));
+    const bot = createBot();
+    telegram.sendText(owner, "the plan");
+    await settle(bot, () => telegram.sentTexts().includes("Files you can open:"));
+    expect(uploads()).toEqual([]);
+    const markup = JSON.stringify(telegram.callsTo("sendMessage").at(-1)?.params["reply_markup"]);
+    const id = /"f:([0-9a-f]+)"/.exec(markup)?.[1] ?? "";
+    telegram.pressButton(owner, `f:${id}`);
+    telegram.pressButton(owner, "f:unknown");
+    await settle(
+      bot,
+      () => uploads().length === 1 && telegram.sentTexts().includes("That file is no longer available."),
+    );
+  });
+
+  test("a file outside the vault gets a sentence instead of an upload", async () => {
+    createEva((request) => FakeEngine.answer(request, "[[attach: ../secrets.txt]]\n[[offer: Missing.md]]"));
+    const bot = createBot();
+    telegram.sendText(owner, "send it");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Missing.md does not exist")));
+    expect(telegram.sentTexts().some((text) => text.includes("secrets.txt does not exist"))).toBe(true);
+    expect(uploads()).toEqual([]);
+  });
+
+  test("a failed upload gets a sentence", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    createEva((request) => FakeEngine.answer(request, "[[attach: Methods/Plan.md]]"));
+    const bot = createBot();
+    telegram.failNext("sendDocument", 413, "Request Entity Too Large");
+    telegram.sendText(owner, "send it");
+    await settle(bot, () =>
+      telegram.sentTexts().some((text) => text.includes("Telegram did not take Methods/Plan.md")),
+    );
+  });
+
+  test("a received file is saved in Scratch and named in the message to Eva", async () => {
+    const bot = createBot();
+    telegram.sendFile(owner, "document", new Uint8Array([1, 2, 3]), { fileName: "receipt.pdf" });
+    await settle(bot, () => engine.requests.length === 1);
+    const prompt = engine.requests[0]?.prompt ?? "";
+    const saved = /saved as (Scratch\/received\/receipt-[0-9a-f]{12}\.pdf)/.exec(prompt)?.[1] ?? "";
+    expect(existsSync(join(vault(), saved))).toBe(true);
+  });
+
+  test("a file over Telegram's download limit is refused with a sentence", async () => {
+    const bot = createBot();
+    telegram.sendFile(owner, "document", new Uint8Array([1]), { fileName: "huge.zip", reportedSize: 21 * 1024 * 1024 });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("up to 20 MB")));
+    expect(engine.requests).toEqual([]);
+  });
+
+  test("a failed download gets a sentence", async () => {
+    const bot = createBot();
+    telegram.failNext("getFile", 400, "Bad Request: file is too big");
+    telegram.sendFile(owner, "document", new Uint8Array([1]), { fileName: "a.txt" });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("could not be downloaded")));
+  });
+});
+
+describe("voice notes (lesson 123)", () => {
+  test("a voice note is echoed as Heard, then sent as the message", async () => {
+    const heard: number[] = [];
+    const bot = createBot(owner, {
+      transcribe: (audio) => {
+        heard.push(audio.length);
+        return Promise.resolve(" Buy milk ");
+      },
+    });
+    telegram.sendFile(owner, "voice", new Uint8Array([9, 9]));
+    await settle(bot, () => engine.requests.length === 1);
+    expect(heard).toEqual([2]);
+    expect(telegram.sentTexts()).toContain("Heard: Buy milk");
+    expect(engine.requests[0]?.prompt).toEndWith("Buy milk");
+  });
+
+  test("silence and a failed transcription each get a sentence", async () => {
+    const results = [
+      (): Promise<string> => Promise.resolve(""),
+      (): Promise<string> => Promise.reject(new Error("whisper crashed")),
+    ];
+    const bot = createBot(owner, { transcribe: () => (results.shift() ?? (() => Promise.resolve("")))() });
+    telegram.sendFile(owner, "voice", new Uint8Array([1]));
+    telegram.sendFile(owner, "voice", new Uint8Array([2]));
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()).toEqual([
+      "The voice note holds no speech.",
+      "The voice note could not be transcribed: whisper crashed",
+    ]);
+    expect(engine.requests).toEqual([]);
+  });
+
+  test("a machine without a transcriber says so", async () => {
+    const bot = createBot();
+    telegram.sendFile(owner, "voice", new Uint8Array([3]));
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toContain("not set up");
+  });
+});
+
+describe("schedules (plan §9, lessons 66, 70, 126)", () => {
+  const vault = (): string => join(sandbox.root, "vault");
+  const morning = { id: "morning", name: "Morning", at: "10:45", text: "Drink water.", prompt: "Plan my day." };
+
+  function writeSchedules(schedules: unknown[]): void {
+    sandbox.write(vault(), ".eva/schedules.json", JSON.stringify({ version: 1, schedules }));
+  }
+
+  test("a new schedule opens its topic with a setup card, then fires there in a fresh chat", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest."));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    expect(telegram.callsTo("createForumTopic")[0]?.params).toMatchObject({ name: "Morning" });
+    const card = telegram.callsTo("sendMessage").at(-1)?.params;
+    expect(card).toMatchObject({ message_thread_id: 500 });
+    expect(String(card?.["text"])).toContain("New schedule: Morning");
+    expect(String(card?.["text"])).toContain("Next run: 2026-10-14 10:45 (UTC)");
+
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    const answer = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Your day"));
+    expect(answer?.params["message_thread_id"]).toBe(500);
+    expect(telegram.sentTexts()).toContain("Drink water.");
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
+    expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
+  });
+
+  test("a schedule file sends its file; a changed schedule names the change", async () => {
+    sandbox.write(vault(), "Methods/List.md", "- milk\n");
+    writeSchedules([{ id: "list", name: "List", at: "10:45", file: "Methods/List.md" }]);
+    createBot();
+    await eva.schedules?.tick();
+    writeSchedules([{ id: "list", name: "List", at: "10:50", file: "Methods/List.md" }]);
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toContain("Schedule changed (at): List");
+    clock = new Date("2026-10-14T10:50:00Z");
+    await eva.schedules?.tick();
+    expect(telegram.callsTo("sendDocument")).toHaveLength(1);
+  });
+
+  test("a topic deleted in the app is opened again (lesson 70)", async () => {
+    writeSchedules([morning]);
+    createBot();
+    await eva.schedules?.tick();
+    writeSchedules([{ ...morning, at: "11:00" }]);
+    telegram.failNext("sendChatAction", 400, "Bad Request: message thread not found");
+    await eva.schedules?.tick();
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(2);
+  });
+
+  test("when Telegram refuses a topic, the card goes to the main chat", async () => {
+    writeSchedules([morning]);
+    createBot();
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    await eva.schedules?.tick();
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBeUndefined();
+  });
+
+  test("file problems go to the main chat; nothing goes out before pairing", async () => {
+    writeSchedules([{ id: "Bad" }]);
+    createBot(null);
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts()).toEqual([]);
+    createEva();
+    writeSchedules([{ id: "Bad" }]);
+    createBot();
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toStartWith("Schedules file problems:");
+  });
+
+  test("/schedules lists them with a remove button, and the button removes one", async () => {
+    writeSchedules([morning, { id: "Bad" }]);
+    const bot = createBot();
+    telegram.sendText(owner, "/schedules");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    const listing = telegram.callsTo("sendMessage").at(-1)?.params;
+    expect(String(listing?.["text"])).toContain("• Morning (morning), next: 2026-10-14 10:45");
+    expect(String(listing?.["text"])).toContain("Schedules file problems:");
+    expect(JSON.stringify(listing?.["reply_markup"])).toContain("s:morning");
+    telegram.pressButton(owner, "s:morning");
+    telegram.pressButton(owner, "s:morning");
+    await settle(bot, () => telegram.sentTexts().length >= 3);
+    expect(telegram.sentTexts().slice(1)).toEqual(["Removed the schedule morning.", "No schedule morning exists."]);
+    writeSchedules([]);
+    telegram.sendText(owner, "/schedules");
+    await settle(bot, () => telegram.sentTexts().length >= 4);
+    expect(telegram.sentTexts().at(-1)).toBe("No schedules. Ask Eva to create one.");
   });
 });

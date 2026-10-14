@@ -56,6 +56,13 @@ const tools: readonly ToolCheck[] = [
     install: "https://ffmpeg.org/download.html",
   },
   {
+    program: "whisper-cli",
+    versionArguments: ["--help"],
+    feature: "voice notes",
+    required: false,
+    install: "https://github.com/ggml-org/whisper.cpp",
+  },
+  {
     program: "typst",
     versionArguments: ["--version"],
     feature: "PDFs",

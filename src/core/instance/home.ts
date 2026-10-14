@@ -95,6 +95,33 @@ const configSchema = z.object({
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),
+  google: z
+    .object({
+      /** The Google account that the Google tools act for. Google stays off until it is set (plan §9). */
+      email: z.string().min(1).nullable().default(null),
+      services: z
+        .array(z.enum(["calendar", "drive", "contacts", "tasks", "gmail"]))
+        .default(["calendar", "drive", "contacts", "tasks"]),
+      /** Start with read-only scopes (plan §9). */
+      readOnly: z.boolean().default(true),
+    })
+    .default({ email: null, services: ["calendar", "drive", "contacts", "tasks"], readOnly: true }),
+  voice: z
+    .object({
+      /** A whisper.cpp model file. Voice notes stay off until it is set (plan §9). */
+      modelPath: z.string().min(1).nullable().default(null),
+      vadModelPath: z.string().min(1).nullable().default(null),
+      whisperExecutable: z.string().min(1).default("whisper-cli"),
+      ffmpegExecutable: z.string().min(1).default("ffmpeg"),
+      language: z.string().min(1).nullable().default(null),
+    })
+    .default({
+      modelPath: null,
+      vadModelPath: null,
+      whisperExecutable: "whisper-cli",
+      ffmpegExecutable: "ffmpeg",
+      language: null,
+    }),
   remoteAccess: z
     .object({
       /** Host names that reach this instance through `tailscale serve`, such as eva.example-tailnet.ts.net. */
@@ -135,6 +162,8 @@ const secretsSchema = z
     claudeOauthToken: z.string().min(1),
     githubToken: z.string().min(1),
     localApiToken: z.string().min(1),
+    googleOauthClientId: z.string().min(1),
+    googleOauthClientSecret: z.string().min(1),
   })
   .partial();
 

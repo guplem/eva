@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import type { McpServerSpec } from "../../shared/engine-port.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -26,6 +27,8 @@ export interface AssistantPreparerOptions {
   readonly now: () => Date;
   /** An IANA time zone, such as Europe/Madrid. A server clock is often UTC (lesson 68). */
   readonly timeZone: string;
+  /** The MCP servers of every Assistant turn, such as the Google tools. */
+  readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
 }
 
 const pskillTimeoutMs = 30_000;
@@ -51,6 +54,7 @@ export class AssistantPreparer implements TurnPreparer {
       appendSystemPrompt: `${this.options.basePrompt}\n\n${readFileSync(personalRulesPath, "utf-8")}`,
       messagePrefix: `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone)}, ${this.options.timeZone}]`,
       pluginFolders: existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [],
+      mcpServers: this.options.mcpServers,
       trusted: true,
       environment: this.options.environment,
     };

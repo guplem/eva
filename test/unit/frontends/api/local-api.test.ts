@@ -237,4 +237,40 @@ describe("web routes (plan §8.3)", () => {
     expect(result.ok).toBe(true);
     expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
   });
+
+  test("schedules: add, list, refuse an invalid one, and remove (plan §9)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
+    expect((await call("/api/schedules", { method: "POST", body: entry })).status).toBe(201);
+    const listed = await json<{ schedules: { schedule: { id: string }; nextRun: string }[] }>(
+      await call("/api/schedules"),
+    );
+    expect(listed.schedules.map((view) => [view.schedule.id, view.nextRun])).toEqual([["morning", "2026-10-15T07:30"]]);
+    const invalid = await call("/api/schedules", { method: "POST", body: { id: "x" } });
+    expect(invalid.status).toBe(400);
+    expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(204);
+    expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(404);
+    expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
+  });
+});
+
+describe("without a vault", () => {
+  test("the schedules answer that no vault is configured", async () => {
+    const bare = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const bareApi = startLocalApi({ eva: bare, port: 0, token, extraHosts: [], allowedTailscaleIdentities: [] });
+    try {
+      const response = await fetch(`${bareApi.url}/api/schedules`, { headers: headers() });
+      expect(response.status).toBe(409);
+    } finally {
+      bareApi.stop();
+    }
+  });
 });

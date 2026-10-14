@@ -1,6 +1,7 @@
-/** Settings (mockups/settings.png): Setup, Appearance and Projects, with a Test button for each part. */
+/** Settings (mockups/settings.png): Setup, Projects, Schedules and Appearance, with a Test button for each part. */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CheckResult, type PublicSettings } from "./api.ts";
+import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
   { name: "vault", label: "Vault repository" },
@@ -100,6 +101,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
           </label>
         </fieldset>
+        <SchedulesPanel />
         <fieldset>
           <legend>Appearance</legend>
           <div className="chip">Eva follows your system's light or dark theme.</div>

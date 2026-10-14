@@ -84,6 +84,15 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     abortController: abortControllerFor(request.signal),
     plugins: request.pluginFolders.map((path) => ({ type: "local" as const, path })),
   };
+  const servers = Object.entries(request.mcpServers);
+  if (servers.length > 0) {
+    options.mcpServers = Object.fromEntries(
+      servers.map(([name, server]) => [
+        name,
+        { type: "stdio" as const, command: server.command, args: [...server.args], env: { ...server.environment } },
+      ]),
+    );
+  }
   if (request.model !== "default") options.model = request.model;
 
   switch (request.history.kind) {
@@ -205,7 +214,9 @@ function usageOf(usage: {
 /** Commands and tools that reach other people. Assistant mode asks before them (plan §5.5). */
 const outwardCommandPattern =
   /\b(git\s+push|gh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)|gh\s+api\b.*-X\s*(POST|PATCH|PUT|DELETE)|curl\b.*-X\s*(POST|PUT|PATCH|DELETE))/i;
-const outwardMcpPattern = /^mcp__.*(send|share|invite|create_event|update_event|delete|post|reply|forward)/i;
+const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permission|access|comment|reaction)/i;
+/** A calendar event reaches other people only when it has guests or sends updates (plan §5.5). */
+const calendarEventToolPattern = /^mcp__.*manage_event$/;
 
 async function decidePermission(
   request: TurnRequest,
@@ -217,9 +228,19 @@ async function decidePermission(
     return request.requestApproval({ requestId: "", toolName, summary });
   }
   const command = typeof input["command"] === "string" ? input["command"] : "";
-  const outward = (toolName === "Bash" && outwardCommandPattern.test(command)) || outwardMcpPattern.test(toolName);
+  const outward =
+    (toolName === "Bash" && outwardCommandPattern.test(command)) ||
+    outwardMcpPattern.test(toolName) ||
+    (calendarEventToolPattern.test(toolName) && eventReachesOthers(input));
   if (!outward) return "allow";
   return request.requestApproval({ requestId: "", toolName, summary });
+}
+
+function eventReachesOthers(input: Record<string, unknown>): boolean {
+  const attendees = input["attendees"];
+  const hasGuests = Array.isArray(attendees) ? attendees.length > 0 : typeof attendees === "string" && attendees !== "";
+  const sendsUpdates = input["send_updates"] === "all" || input["send_updates"] === "externalOnly";
+  return hasGuests || sendsUpdates || input["action"] === "rsvp";
 }
 
 function summarizeTool(name: string, input: unknown): string {

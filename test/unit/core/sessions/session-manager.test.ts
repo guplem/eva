@@ -127,7 +127,7 @@ describe("a conversation", () => {
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
     const firstTurn = manager.send(sessionId, "first");
-    await Bun.sleep(30);
+    while (engine.requests.length === 0) await Bun.sleep(5);
     expect(manager.isBusy(sessionId)).toBe(true);
     const secondTurn = manager.send(sessionId, "second");
     const thirdTurn = manager.send(sessionId, "third");

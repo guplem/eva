@@ -70,7 +70,8 @@ beforeEach(() => {
   fatal = [];
   createEva();
 });
-afterEach(() => {
+afterEach(async () => {
+  await eva.idle();
   eva.stop();
   telegram.stop();
   sandbox.dispose();

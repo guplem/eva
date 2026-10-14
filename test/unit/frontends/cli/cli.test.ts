@@ -144,10 +144,10 @@ describe("service", () => {
   test("the systemd unit restarts on a crash, never on bad settings or a second instance (lesson 89)", () => {
     const unit = systemdUnit({
       executable: ["/usr/bin/bun", "/opt/eva/src/main.ts"],
-      home: "/home/demo/.config/eva",
+      home: "/srv/eva-home",
       path: "/usr/bin:/bin",
     });
-    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --home /home/demo/.config/eva");
+    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --home /srv/eva-home");
     expect(unit).toContain("Restart=on-failure");
     expect(unit).toContain("RestartPreventExitStatus=2 3");
     expect(unit).toContain("Environment=PATH=/usr/bin:/bin");

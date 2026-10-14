@@ -20,6 +20,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "prepare": "lefthook install",
     "eva": "bun run src/main.ts",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
     "format": "prettier --write .",

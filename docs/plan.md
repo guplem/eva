@@ -182,7 +182,7 @@ One TypeScript union crosses the engine port. Every event has `kind`, `sessionId
 
 | kind              | Payload                                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `text`            | `text`                                                                                                                                     |
+| `text`            | `text`, `messageId` (the engine's id of the answer message: the fork and retry point)                                                      |
 | `tool_started`    | `toolUseId`, `name`, `summary`                                                                                                             |
 | `tool_finished`   | `toolUseId`, `isError`                                                                                                                     |
 | `task_changed`    | `taskId`, `description`, `state` (`running` / `done` / `failed`)                                                                           |

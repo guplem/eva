@@ -322,7 +322,16 @@ describe("runChat", () => {
   });
 
   test("status and projects print short text", async () => {
-    expect(await describeStatus({ baseUrl: api.url, token: "chat-token" })).toContain("Vault sync: ok");
+    const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
+    expect(before).toContain("Vault sync: ok");
+    expect(before).toMatch(/^Eva \d+\.\d+\.\d+, role: hub/);
+    expect(before).toContain("Last turn: none since start");
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    // The cache counts show in every status, so a broken prompt cache is visible (lesson 120).
+    expect(await describeStatus({ baseUrl: api.url, token: "chat-token" })).toContain(
+      "Last turn: 10 in, 5 out, cache 0 read, 0 written",
+    );
     expect(await describeProjects({ baseUrl: api.url, token: "chat-token" }, "nothing")).toBe("No project matches.");
     expect(await describeProjects({ baseUrl: api.url, token: "chat-token" }, "")).toBe("No project matches.");
     const error: unknown = await describeStatus({ baseUrl: api.url, token: "wrong" }).catch(

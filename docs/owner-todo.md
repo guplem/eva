@@ -7,6 +7,10 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 - [ ] **Server laptop:** turn it on, then stop and disable the v1 service (`systemctl --user disable --now walli-server`), point its clone at the vault (`git -C ~/Wall-I remote set-url origin git@github.com:guplem/vault.git`), and push any notes it holds.
 - [ ] **Other machines with a vault clone:** list them, and point each one at `guplem/vault`.
 
+## Vault (the agent may not push to it after phase P1)
+
+- [ ] **Switch the vault to Eva's own sync:** once Eva runs on the hub, delete the temporary v1 sync hooks (`.claude/hooks/` and the hook entries in `.claude/settings.json`) from the vault, and commit. Until then both save the vault, which is harmless but double.
+
 ## Logins and tokens
 
 - [ ] **The v1 `.env` on this PC is gone.** The agent deleted `notes/server/` in the vault restructure (2026-10-14), and its untracked `.env` with it. It held the Telegram bot token, the allowed chat id, a `claude setup-token` token and an Anthropic API key. Nothing was revoked, so every value still works. Copy them from the server laptop (`~/Wall-I/server/.env`), or create them again: BotFather `/token`, `claude setup-token`, the Anthropic console. Then give them to Eva with `bun run eva setup`.

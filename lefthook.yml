@@ -1,0 +1,16 @@
+# Git hooks. Install them once with `bunx lefthook install`.
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{ts,js,cjs,json,md,yml,yaml}"
+      run: bunx prettier --check {staged_files}
+    lint:
+      glob: "*.{ts,js}"
+      run: bunx eslint --no-warn-ignored {staged_files}
+
+# The full check, the same one CI runs, plus the private denylist that only exists locally.
+pre-push:
+  commands:
+    check:
+      run: bun run check

@@ -14,7 +14,7 @@ import { runSetup, setupEnvironmentNames, type SetupQuestion } from "../../../..
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 describe("parseArguments", () => {
   test("no command runs the core", () => {
@@ -120,10 +120,10 @@ describe("runSetup", () => {
     existingVault = join(home, "existing-vault");
     mkdirSync(existingVault);
     writeFileSync(join(existingVault, "AGENTS.md"), "# Vault\n");
-  });
+  }, gitHookTimeoutMs);
   afterEach(() => {
     rmSync(home, { recursive: true, force: true });
-  });
+  }, gitHookTimeoutMs);
 
   const okRunner: ProcessRunner = { run: () => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }) };
 
@@ -312,14 +312,14 @@ describe("runChat", () => {
       gatherMs: 5,
     });
     api = startLocalApi({ eva, port: 0, token: "chat-token", extraHosts: [], allowedTailscaleIdentities: [] });
-  });
+  }, gitHookTimeoutMs);
   afterEach(async () => {
     await eva.idle();
     api.stop();
     eva.stop();
     sandbox.dispose();
     rmSync(home, { recursive: true, force: true });
-  });
+  }, gitHookTimeoutMs);
 
   test("status and projects print short text", async () => {
     const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });

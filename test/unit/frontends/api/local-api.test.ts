@@ -8,7 +8,7 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const token = "local-api-token-for-tests";
 let sandbox: GitSandbox;
@@ -68,14 +68,14 @@ beforeEach(() => {
     extraHosts: ["eva.example-tailnet.ts.net"],
     allowedTailscaleIdentities: ["owner@example.com"],
   });
-});
+}, gitHookTimeoutMs);
 afterEach(async () => {
   await eva.idle();
   api.stop();
   eva.stop();
   sandbox.dispose();
   rmSync(home, { recursive: true, force: true });
-});
+}, gitHookTimeoutMs);
 
 describe("guards (plan §12)", () => {
   test("listens on the loopback address only", () => {

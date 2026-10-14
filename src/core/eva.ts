@@ -8,10 +8,18 @@ import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } 
 import { EvaError } from "../shared/errors.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { Redactor } from "../shared/redaction.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
+import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
+import { parseConfig, saveConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./instance/home.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
-import { createClone, listClones, TrustStore, type Clone } from "./projects/clones.ts";
+import {
+  createClone,
+  describeClone,
+  listClones,
+  TrustStore,
+  type Clone,
+  type CloneDetails,
+} from "./projects/clones.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
@@ -28,6 +36,8 @@ export interface EvaOptions {
   readonly now: () => Date;
   readonly basePrompt: string;
   readonly gatherMs?: number;
+  /** The claude program, for the engine check. */
+  readonly claudeExecutable?: string | null;
 }
 
 export interface EvaStatus {
@@ -36,6 +46,14 @@ export interface EvaStatus {
   readonly vaultSync: VaultSyncState;
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
+}
+
+export interface PublicSettings {
+  readonly config: EvaConfig;
+  /** Whether each secret is set. The values never leave the core. */
+  readonly secretsSet: Readonly<
+    Record<"telegramBotToken" | "claudeOauthToken" | "githubToken" | "localApiToken", boolean>
+  >;
 }
 
 export interface NewChatInput {
@@ -190,6 +208,56 @@ export class Eva {
       source: input.source,
       projectId: project.id,
       clone: clone.name,
+    });
+  }
+
+  /** The clones of a project, with their branch and pull request. */
+  async clones(projectId: string): Promise<CloneDetails[]> {
+    const project = this.projects().find((candidate) => candidate.id === projectId);
+    if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    return Promise.all(
+      listClones(project.path).map((clone) => describeClone(clone, this.options.runner, this.gitEnvironment)),
+    );
+  }
+
+  publicSettings(): PublicSettings {
+    const secrets = this.options.secrets;
+    return {
+      config: this.options.config,
+      secretsSet: {
+        telegramBotToken: secrets.telegramBotToken !== undefined,
+        claudeOauthToken: secrets.claudeOauthToken !== undefined,
+        githubToken: secrets.githubToken !== undefined,
+        localApiToken: secrets.localApiToken !== undefined,
+      },
+    };
+  }
+
+  /** Checks and saves a settings change. The running instance keeps its settings until a restart. */
+  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: true } {
+    const merged: Record<string, unknown> = { ...this.options.config };
+    for (const [key, value] of Object.entries(patch)) {
+      const current = merged[key];
+      merged[key] =
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        current !== null &&
+        typeof current === "object"
+          ? { ...current, ...value }
+          : value;
+    }
+    saveConfig(this.options.paths, parseConfig(merged, "The settings change"));
+    return { saved: true, restartNeeded: true };
+  }
+
+  runCheck(name: CheckName): Promise<CheckResult> {
+    return runCheck(name, {
+      vaultPath: this.options.config.vaultPath,
+      runner: this.options.runner,
+      environment: this.gitEnvironment,
+      claudeExecutable: this.options.claudeExecutable ?? null,
+      telegramToken: this.options.secrets.telegramBotToken ?? null,
     });
   }
 

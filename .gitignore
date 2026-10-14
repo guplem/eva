@@ -6,3 +6,5 @@ reports/
 .env.local
 .DS_Store
 .reviews/
+test-results/
+playwright-report/

@@ -102,6 +102,7 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 
 - **Keep `typescript` on 6.x.** `typescript-eslint` 8.x supports TypeScript `<6.1.0` only, so TypeScript 7 breaks the lint.
 - **Bun reports no branch coverage, and counts every inner arrow function as a function, per file.** The floor in `bunfig.toml` is 90% lines and 80% functions, for each file: a file whose code is all tested can still show under 90% functions. A class field initializer (`private count = 0;`) counts as a function that no test calls: set fields in the constructor instead.
+- **Bun reports 0% lines for a whole file when an `AbortSignal.timeout(...)` call in it never runs in a test.** Expose a base-URL seam and call the real `fetch` against a local fake server (as `src/core/checks.ts` does); never inject a default `fetch` that the tests skip.
 - **Bun counts coverage only for files that a test imports.** A file with no test is invisible, not 0%. `src/main.ts` stays out this way; keep it wiring only.
 - **`bun test` finds tests only under `test/`** (`root` in `bunfig.toml`). A test file in `src/` never runs.
 - **The public-content check reads only tracked files** (`git ls-files`). A new file is checked only after `git add`.

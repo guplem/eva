@@ -1,5 +1,5 @@
 [test]
-root = "test"
+root = "test/unit"
 # git on a Windows CI runner is slow: one sync test can take 15 seconds.
 timeout = 30000
 coverageThreshold = { lines = 0.9, functions = 0.8 }

@@ -108,6 +108,13 @@ export type EvaConfig = z.infer<typeof configSchema>;
 
 export const defaultConfig: EvaConfig = configSchema.parse({});
 
+/** Checks a whole config. Throws an EvaError that names each bad field. */
+export function parseConfig(value: unknown, source: string): EvaConfig {
+  const parsed = configSchema.safeParse(value);
+  if (!parsed.success) throw new EvaError("config_invalid", describeIssues(source, parsed.error));
+  return parsed.data;
+}
+
 /** Loads `config.json`. A missing file means the defaults; an invalid file is an EvaError. */
 export function loadConfig(paths: HomePaths): EvaConfig {
   const read = readJsonTolerant(paths.config);

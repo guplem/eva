@@ -185,3 +185,56 @@ describe("routes", () => {
     expect(response.status).toBe(204);
   });
 });
+
+describe("web routes (plan §8.3)", () => {
+  test("the page itself loads with no token, so the person can log in", async () => {
+    const response = await fetch(`${api.url}/`, { headers: { host: new URL(api.url).host } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("<title>Eva</title>");
+  });
+
+  test("login sets a strict, HTTP-only cookie for a valid token, and logout clears it", async () => {
+    const refused = await call("/api/login", {
+      method: "POST",
+      body: { token: "wrong" },
+      headers: { "content-type": "application/json" },
+    });
+    expect(refused.status).toBe(401);
+    const accepted = await call("/api/login", {
+      method: "POST",
+      body: { token },
+      headers: { "content-type": "application/json" },
+    });
+    expect(accepted.status).toBe(204);
+    const cookie = accepted.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain(`eva_token=${token}`);
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
+    const logout = await call("/api/logout", { method: "POST" });
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  test("a project's clones, and a new clone", async () => {
+    expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
+    const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
+    expect(missing.status).toBe(404);
+  });
+
+  test("settings: read without secret values, write with a restart notice", async () => {
+    const settings = await json<{ config: { timeZone: string }; secretsSet: Record<string, boolean> }>(
+      await call("/api/settings"),
+    );
+    expect(settings.config.timeZone).toBe("UTC");
+    expect(JSON.stringify(settings)).not.toContain(token);
+    const saved = await call("/api/settings", { method: "PUT", body: { timeZone: "Europe/Madrid" } });
+    expect(await json<{ saved: boolean; restartNeeded: boolean }>(saved)).toEqual({ saved: true, restartNeeded: true });
+    expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
+  });
+
+  test("a check runs by name, and an unknown check is a 404", async () => {
+    const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
+    expect(result.ok).toBe(true);
+    expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
+  });
+});

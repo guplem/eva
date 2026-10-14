@@ -8,6 +8,10 @@ import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 
 const turnSchema = z.object({
   userText: z.string(),
+  /** The answer's text, for the history views of the front ends. */
+  answerText: z.string().default(""),
+  /** How many tools the turn used, for the activity chips. */
+  toolCount: z.number().int().min(0).default(0),
   lastMessageId: z.string().nullable(),
   at: z.string(),
 });

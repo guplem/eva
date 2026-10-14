@@ -81,6 +81,8 @@ describe("a conversation", () => {
     expect(record.turns).toEqual([
       {
         userText: "Hello there, Eva",
+        answerText: "answer 1",
+        toolCount: 0,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
       },
@@ -160,6 +162,19 @@ describe("models (lesson 41)", () => {
     await manager.send(sessionId, "hi");
     expect(engine.requests[0]?.model).toBe("haiku");
     expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+  });
+});
+
+describe("event order", () => {
+  test("a turn is in the session list before its turn_finished event goes out", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const turnsSeen: number[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "turn_finished") turnsSeen.push(manager.get(sessionId).turns.length);
+    });
+    await manager.send(sessionId, "hi");
+    expect(turnsSeen).toEqual([1]);
   });
 });
 

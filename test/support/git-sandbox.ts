@@ -64,7 +64,7 @@ export function createGitSandbox(): GitSandbox {
     },
     dispose() {
       // On Windows a git process can still hold a file for a moment after a test ends.
-      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      rmSync(root, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
     },
   };
 }

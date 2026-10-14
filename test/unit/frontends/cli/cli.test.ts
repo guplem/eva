@@ -195,7 +195,8 @@ describe("runChat", () => {
     });
     api = startLocalApi({ eva, port: 0, token: "chat-token", extraHosts: [], allowedTailscaleIdentities: [] });
   });
-  afterEach(() => {
+  afterEach(async () => {
+    await eva.idle();
     api.stop();
     eva.stop();
     sandbox.dispose();

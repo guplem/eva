@@ -51,7 +51,8 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "eva-home-"));
   eva = null;
 });
-afterEach(() => {
+afterEach(async () => {
+  await eva?.idle();
   eva?.stop();
   sandbox.dispose();
   rmSync(home, { recursive: true, force: true });

@@ -69,7 +69,8 @@ beforeEach(() => {
     allowedTailscaleIdentities: ["owner@example.com"],
   });
 });
-afterEach(() => {
+afterEach(async () => {
+  await eva.idle();
   api.stop();
   eva.stop();
   sandbox.dispose();

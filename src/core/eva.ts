@@ -119,6 +119,15 @@ export class Eva {
     }, this.options.config.sync.sweepSeconds * 1_000);
   }
 
+  /** Resolves when no chat runs a turn, including its save after the turn. */
+  async idle(timeoutMs = 60_000): Promise<void> {
+    const started = Date.now();
+    while (this.sessions.list().some((session) => this.sessions.isBusy(session.id))) {
+      if (Date.now() - started > timeoutMs) return;
+      await Bun.sleep(20);
+    }
+  }
+
   stop(): void {
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
     this.sweepTimer = null;

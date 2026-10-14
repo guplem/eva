@@ -256,6 +256,8 @@ export class SessionManager {
     const turn = { ended: false };
     let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
     let lastText: string | null = null;
+    const answerParts: string[] = [];
+    let toolCount = 0;
 
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
@@ -287,8 +289,21 @@ ${prompt}`,
       });
       for await (const payload of stream) {
         if (turn.ended) continue;
-        if (payload.kind === "text") lastText = payload.messageId;
-        if (payload.kind === "turn_finished") finished = payload;
+        if (payload.kind === "text") {
+          lastText = payload.messageId;
+          answerParts.push(payload.text);
+        }
+        if (payload.kind === "tool_started") toolCount += 1;
+        if (payload.kind === "turn_finished") {
+          finished = payload;
+          // Record first: a front end that reloads the list on this event must find the turn in it.
+          this.recordTurn(
+            session,
+            { userText: prompt, answerText: answerParts.join("\n\n"), toolCount },
+            payload,
+            lastText,
+          );
+        }
         emit(payload);
       }
       if (!turn.ended) emit({ kind: "turn_failed", reason: "The engine stopped without ending the turn." });
@@ -296,7 +311,6 @@ ${prompt}`,
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     }
 
-    if (finished !== null) this.recordTurn(session, prompt, finished, lastText);
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
 
@@ -314,7 +328,7 @@ ${prompt}`,
 
   private recordTurn(
     session: SessionRecord,
-    prompt: string,
+    turn: { userText: string; answerText: string; toolCount: number },
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
   ): void {
@@ -325,8 +339,8 @@ ${prompt}`,
       engineSessionId: finished.engineSessionId,
       forkFromEngineSessionId: null,
       lastTurnAt: at,
-      title: current.turns.length === 0 && current.parentId === null ? titleOf(prompt) : current.title,
-      turns: [...current.turns, { userText: prompt, lastMessageId: finished.lastMessageId ?? lastText, at }],
+      title: current.turns.length === 0 && current.parentId === null ? titleOf(turn.userText) : current.title,
+      turns: [...current.turns, { ...turn, lastMessageId: finished.lastMessageId ?? lastText, at }],
     });
   }
 

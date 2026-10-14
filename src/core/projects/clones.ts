@@ -75,6 +75,33 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   return { name, path, repository, index: Number(name.slice(repository.length + 1)) };
 }
 
+export interface CloneDetails extends Clone {
+  readonly branch: string | null;
+  /** The number of the open pull request of the branch, when `gh` finds one. */
+  readonly pullRequest: number | null;
+}
+
+/** A clone with its current branch and pull request, for the project view (plan §8.3). */
+export async function describeClone(
+  clone: Clone,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<CloneDetails> {
+  const options = { cwd: clone.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
+  let branch: string | null = null;
+  let pullRequest: number | null = null;
+  try {
+    const head = await runner.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], options);
+    if (head.exitCode === 0) branch = head.stdout.trim();
+    const view = await runner.run(["gh", "pr", "view", "--json", "number", "--jq", ".number"], options);
+    const number = Number.parseInt(view.stdout.trim(), 10);
+    if (view.exitCode === 0 && Number.isSafeInteger(number)) pullRequest = number;
+  } catch {
+    // No git or no gh: the clone still shows, without the missing detail.
+  }
+  return { ...clone, branch, pullRequest };
+}
+
 /** True when the repository's owner is on the allowlist (default trust, §12). GitHub only. */
 export function isTrustedByDefault(repositoryUrl: string, trustedOwners: readonly string[]): boolean {
   const match = /github\.com[/:]([^/]+)\//i.exec(repositoryUrl);

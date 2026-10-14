@@ -29,6 +29,18 @@ jobs:
       # format, lint, types, architecture, dead code, public content, tests with coverage.
       - run: bun run check
 
+  web-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      # Browser tests of the three mockup screens, at desktop size and at 375 px (plan §10, P5).
+      - run: bun run test:e2e
+
   secrets:
     runs-on: ubuntu-latest
     permissions:

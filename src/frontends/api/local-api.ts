@@ -6,7 +6,9 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+import type { CheckName } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
+import webPage from "../web/index.html";
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
 
@@ -42,6 +44,12 @@ const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
+const loginSchema = z.object({ token: z.string().min(1) });
+const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
+const settingsPatchSchema = z.record(z.string(), z.unknown());
+const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
+/** The login cookie lives a year; the person logs out to end it. */
+const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
 
 export function startLocalApi(options: LocalApiOptions): LocalApi {
   const allowedHostNames = new Set(["127.0.0.1", "localhost", ...options.extraHosts.map((host) => host.toLowerCase())]);
@@ -49,10 +57,15 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
+    // The page and its bundled scripts hold no data, so they load before the login.
+    routes: { "/": webPage },
+    development: false,
     fetch: async (request, bunServer) => {
-      const refusal = guard(request, options, allowedHostNames);
-      if (refusal !== null) return refusal;
+      const siteRefusal = guardSite(request, options, allowedHostNames);
+      if (siteRefusal !== null) return siteRefusal;
       const url = new URL(request.url);
+      if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options.token);
+      if (!hasValidToken(request, options.token)) return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
         return bunServer.upgrade(request, { data: { unsubscribe: null } })
           ? undefined
@@ -87,8 +100,8 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
   };
 }
 
-/** Host, Origin, token and Tailscale identity checks. Returns a refusal, or null to go on. */
-function guard(request: Request, options: LocalApiOptions, allowedHostNames: ReadonlySet<string>): Response | null {
+/** Host, Origin and Tailscale identity checks. Returns a refusal, or null to go on. */
+function guardSite(request: Request, options: LocalApiOptions, allowedHostNames: ReadonlySet<string>): Response | null {
   const host = hostNameOf(request.headers.get("host"));
   if (host === null || !allowedHostNames.has(host)) return json({ error: "Unknown host." }, 403);
 
@@ -105,9 +118,32 @@ function guard(request: Request, options: LocalApiOptions, allowedHostNames: Rea
   ) {
     return json({ error: "This Tailscale identity is not allowed." }, 403);
   }
-
-  if (!hasValidToken(request, options.token)) return json({ error: "A valid token is required." }, 401);
   return null;
+}
+
+/** Login and logout for the web UI: a strict, HTTP-only cookie, never a token in a URL (plan §12). */
+async function session(request: Request, url: URL, token: string): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "Not found." }, 404);
+  const secure = request.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "";
+  if (url.pathname === "/api/logout") {
+    return new Response(null, {
+      status: 204,
+      headers: { "set-cookie": `eva_token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}` },
+    });
+  }
+  let candidate: string;
+  try {
+    candidate = loginSchema.parse(await request.json()).token;
+  } catch {
+    return json({ error: "The request body is invalid." }, 400);
+  }
+  if (!sameText(candidate, token)) return json({ error: "This token is not valid." }, 401);
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "set-cookie": `eva_token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${String(cookieMaxAgeSeconds)}${secure}`,
+    },
+  });
 }
 
 async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
@@ -158,6 +194,23 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json(await eva.sessions.retry(sessionId, turnIndex));
     }
   }
+  if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
+    const projectId = decodeURIComponent(parts[2]);
+    if (method === "GET") return json(await eva.clones(projectId));
+    if (method === "POST") {
+      const { repositoryUrl } = newCloneSchema.parse(await request.json());
+      return json(await eva.newClone(projectId, repositoryUrl), 201);
+    }
+  }
+  if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
+  if (method === "PUT" && url.pathname === "/api/settings") {
+    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
+  }
+  if (method === "POST" && parts[0] === "api" && parts[1] === "checks" && parts[2] !== undefined) {
+    const name = checkNames.find((candidate) => candidate === parts[2]);
+    if (name === undefined) return json({ error: "No such check." }, 404);
+    return json(await eva.runCheck(name));
+  }
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
@@ -171,6 +224,7 @@ function errorResponse(error: unknown): Response {
     return json({ error: "The request body is invalid." }, 400);
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found"))
     return json({ error: error.message }, 404);
+  if (isEvaError(error, "config_invalid")) return json({ error: error.message }, 400);
   if (isEvaError(error)) return json({ error: error.message }, 409);
   return json({ error: "Eva failed to handle the request." }, 500);
 }

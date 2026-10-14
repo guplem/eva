@@ -1,0 +1,93 @@
+/** The web UI's client of the local API. The login cookie carries the token (plan §12). */
+import type { CheckResult } from "../../../core/checks.ts";
+import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
+import type { CloneDetails } from "../../../core/projects/clones.ts";
+import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { ModelAlias } from "../../../shared/engine-port.ts";
+import type { SessionEvent } from "../../../shared/events.ts";
+
+export type { CheckResult, CloneDetails, EvaStatus, Project, PublicSettings, SessionEvent, SessionRecord };
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request<Body>(method: string, path: string, body?: unknown): Promise<Body> {
+  const response = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? {} : { "content-type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text;
+    try {
+      message = (JSON.parse(text) as { error?: string }).error ?? text;
+    } catch {
+      // Not JSON: keep the text.
+    }
+    throw new ApiError(response.status, message);
+  }
+  return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
+}
+
+export const api = {
+  login: (token: string): Promise<void> => request("POST", "/api/login", { token }),
+  logout: (): Promise<void> => request("POST", "/api/logout"),
+  status: (): Promise<EvaStatus> => request("GET", "/api/status"),
+  sessions: (): Promise<SessionRecord[]> => request("GET", "/api/sessions"),
+  newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", { mode: "assistant", model }),
+  newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
+  send: (sessionId: string, text: string): Promise<void> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
+  fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId }),
+  retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
+  answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
+    request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
+  projects: (text: string, status: string): Promise<Project[]> => {
+    const query = new URLSearchParams();
+    if (text.trim() !== "") query.set("text", text.trim());
+    if (status !== "") query.set("status", status);
+    return request("GET", `/api/projects?${query.toString()}`);
+  },
+  clones: (projectId: string): Promise<CloneDetails[]> =>
+    request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
+  newClone: (projectId: string): Promise<CloneDetails> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
+  saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
+    request("PUT", "/api/settings", patch),
+  check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
+};
+
+/** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
+export function subscribeToEvents(onEvent: (event: SessionEvent) => void): () => void {
+  let socket: WebSocket | null = null;
+  let closed = false;
+  const connect = (): void => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(`${protocol}//${window.location.host}/api/events`);
+    socket.addEventListener("message", (message) => {
+      onEvent(JSON.parse(String(message.data)) as SessionEvent);
+    });
+    socket.addEventListener("close", () => {
+      if (!closed) setTimeout(connect, 2_000);
+    });
+  };
+  connect();
+  return () => {
+    closed = true;
+    socket?.close();
+  };
+}

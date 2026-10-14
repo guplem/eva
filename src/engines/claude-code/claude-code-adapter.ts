@@ -1,0 +1,246 @@
+/**
+ * The Claude Code engine, through the Claude Agent SDK and the person's own installed
+ * `claude` (docs/plan.md §7.1). Two pure parts carry the logic so tests can pin them:
+ * the SDK options for each mode (§5.1), and the map from SDK messages to Eva's events (§4.6).
+ */
+import { query as sdkQuery, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
+
+type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+
+export interface ClaudeCodeEngineOptions {
+  /** Absolute path of the person's `claude` program. Eva never embeds one (plan §7.1). */
+  readonly executable: string;
+  readonly query?: QueryFunction;
+  readonly newSessionId?: () => string;
+}
+
+/**
+ * The engine's message when a resumed session no longer exists. The SDK gives no structured
+ * field for this case, so the text is the only signal (lessons 36, 46).
+ */
+const lostHistoryMarker = "No conversation found with session ID";
+
+const lostHistoryPreamble =
+  "(The earlier part of this conversation is lost, because the engine no longer has it. Say so if the message refers to it.)\n\n";
+
+export class ClaudeCodeEngine implements EnginePort {
+  readonly name = "claude-code" as const;
+  private readonly options: ClaudeCodeEngineOptions;
+
+  constructor(options: ClaudeCodeEngineOptions) {
+    this.options = options;
+  }
+
+  async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
+    const first = await this.runOnce(request);
+    if (!first.historyLost) {
+      yield* first.events;
+      return;
+    }
+    // Lesson 46: retry once, in a fresh session, and tell the model the history is gone.
+    yield { kind: "history_lost" };
+    const engineSessionId = (this.options.newSessionId ?? (() => crypto.randomUUID()))();
+    const retry = await this.runOnce({
+      ...request,
+      history: { kind: "new", engineSessionId },
+      prompt: lostHistoryPreamble + request.prompt,
+    });
+    yield* retry.events;
+  }
+
+  /** Runs the SDK once and buffers its events, so a lost history can still be retried before anything is shown. */
+  private async runOnce(request: TurnRequest): Promise<{ events: EngineEventPayload[]; historyLost: boolean }> {
+    const options: Options = {
+      ...buildQueryOptions(request, this.options.executable),
+      canUseTool: async (toolName, input) => {
+        const decision = await decidePermission(request, toolName, input);
+        return decision === "allow"
+          ? { behavior: "allow", updatedInput: input }
+          : { behavior: "deny", message: "The person did not allow this action." };
+      },
+    };
+    const events: EngineEventPayload[] = [];
+    try {
+      const messages = (this.options.query ?? sdkQuery)({ prompt: request.prompt, options });
+      for await (const event of mapSdkMessages(messages)) events.push(event);
+    } catch (error) {
+      events.push({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
+    }
+    const last = events[events.length - 1];
+    const historyLost =
+      request.history.kind !== "new" && last?.kind === "turn_failed" && last.reason.includes(lostHistoryMarker);
+    return { events, historyLost };
+  }
+}
+
+/** The SDK options for one turn (plan §5.1). `canUseTool` is added by the engine. */
+export function buildQueryOptions(request: TurnRequest, executable: string): Options {
+  const options: Options = {
+    cwd: request.startFolder,
+    pathToClaudeCodeExecutable: executable,
+    env: { ...request.environment },
+    abortController: abortControllerFor(request.signal),
+    plugins: request.pluginFolders.map((path) => ({ type: "local" as const, path })),
+  };
+  if (request.model !== "default") options.model = request.model;
+
+  switch (request.history.kind) {
+    case "new":
+      options.sessionId = request.history.engineSessionId;
+      break;
+    case "continue":
+      options.resume = request.history.engineSessionId;
+      break;
+    case "fork":
+      options.resume = request.history.fromEngineSessionId;
+      options.resumeSessionAt = request.history.atMessageId;
+      options.forkSession = true;
+      break;
+  }
+
+  if (request.mode === "assistant") {
+    options.systemPrompt = {
+      type: "preset",
+      preset: "claude_code",
+      ...(request.appendSystemPrompt === null ? {} : { append: request.appendSystemPrompt }),
+      excludeDynamicSections: true,
+    };
+    options.settingSources = ["user", "project"];
+    options.settings = { disableAllHooks: true };
+  } else {
+    // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session (D8).
+    options.systemPrompt = { type: "preset", preset: "claude_code" };
+    options.settingSources = ["user", "project", "local"];
+    if (!request.trusted) {
+      options.settings = { disableAllHooks: true };
+      options.strictMcpConfig = true;
+    }
+  }
+  return options;
+}
+
+/** Maps SDK messages to Eva's events. The stream ends with one turn end when the SDK sends a result. */
+export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
+  let lastMessageId: string | null = null;
+  for await (const message of messages) {
+    switch (message.type) {
+      case "assistant": {
+        if (message.parent_tool_use_id !== null) break;
+        for (const block of message.message.content) {
+          if (block.type === "text" && block.text.length > 0) {
+            lastMessageId = message.uuid;
+            yield { kind: "text", text: block.text, messageId: message.uuid };
+          } else if (block.type === "tool_use") {
+            yield {
+              kind: "tool_started",
+              toolUseId: block.id,
+              name: block.name,
+              summary: summarizeTool(block.name, block.input),
+            };
+          }
+        }
+        break;
+      }
+      case "user": {
+        if (message.parent_tool_use_id !== null || typeof message.message.content === "string") break;
+        for (const block of message.message.content) {
+          if (block.type === "tool_result") {
+            yield { kind: "tool_finished", toolUseId: block.tool_use_id, isError: block.is_error === true };
+          }
+        }
+        break;
+      }
+      case "system": {
+        const task = taskEvent(message);
+        if (task !== null) yield task;
+        break;
+      }
+      case "result": {
+        if (message.subtype === "success") {
+          yield {
+            kind: "turn_finished",
+            engineSessionId: message.session_id,
+            lastMessageId,
+            usage: usageOf(message.usage),
+            costUsd: message.total_cost_usd,
+          };
+        } else {
+          yield { kind: "turn_failed", reason: message.errors.join("; ") || message.subtype };
+        }
+        return;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEventPayload | null {
+  if (message.subtype === "task_started") {
+    return { kind: "task_changed", taskId: message.task_id, description: message.description, state: "running" };
+  }
+  if (message.subtype === "task_notification") {
+    const state: TaskState = message.status === "completed" ? "done" : "failed";
+    return { kind: "task_changed", taskId: message.task_id, description: message.summary, state };
+  }
+  return null;
+}
+
+function usageOf(usage: {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+}): TurnUsage {
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens,
+    cacheWriteTokens: usage.cache_creation_input_tokens,
+  };
+}
+
+/** Commands and tools that reach other people. Assistant mode asks before them (plan §5.5). */
+const outwardCommandPattern =
+  /\b(git\s+push|gh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)|gh\s+api\b.*-X\s*(POST|PATCH|PUT|DELETE)|curl\b.*-X\s*(POST|PUT|PATCH|DELETE))/i;
+const outwardMcpPattern = /^mcp__.*(send|share|invite|create_event|update_event|delete|post|reply|forward)/i;
+
+async function decidePermission(
+  request: TurnRequest,
+  toolName: string,
+  input: Record<string, unknown>,
+): Promise<ApprovalAnswer> {
+  const summary = summarizeTool(toolName, input);
+  if (request.mode === "project") {
+    return request.requestApproval({ requestId: "", toolName, summary });
+  }
+  const command = typeof input["command"] === "string" ? input["command"] : "";
+  const outward = (toolName === "Bash" && outwardCommandPattern.test(command)) || outwardMcpPattern.test(toolName);
+  if (!outward) return "allow";
+  return request.requestApproval({ requestId: "", toolName, summary });
+}
+
+function summarizeTool(name: string, input: unknown): string {
+  const fields = (input ?? {}) as Record<string, unknown>;
+  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
+    const value = fields[key];
+    if (typeof value === "string") return name === "Bash" ? value : `${name} ${value}`;
+  }
+  return JSON.stringify(input);
+}
+
+function abortControllerFor(signal: AbortSignal): AbortController {
+  const controller = new AbortController();
+  if (signal.aborted) controller.abort();
+  else
+    signal.addEventListener(
+      "abort",
+      () => {
+        controller.abort();
+      },
+      { once: true },
+    );
+  return controller;
+}

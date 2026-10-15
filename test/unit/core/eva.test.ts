@@ -31,7 +31,12 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}): Eva {
     basePrompt: "Base.",
     gatherMs: 5,
   });
-  return eva;
+  // A clone of a local test remote is unknown to the trust store: answer its trust question with no.
+  const instance = eva;
+  instance.sessions.subscribe((event) => {
+    if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
+  });
+  return instance;
 }
 
 async function waitFor(condition: () => boolean, timeoutMs = 4_000): Promise<void> {
@@ -203,6 +208,28 @@ describe("Eva", () => {
     sandbox.write(vault, "Life/Diary/2026-10-14.md", "Written by hand.\n");
     await instance.sweep();
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Diary/2026-10-14.md");
+  });
+
+  test("a sync failure and a held-back secret file go to the log (lessons 16, 26)", async () => {
+    const lines: string[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      logger: { log: (level, message, details) => lines.push(`${level} ${message} ${JSON.stringify(details)}`) },
+    });
+    sandbox.write(vault, "Notes/keys.md", "token ghp_" + "a".repeat(36) + "\n");
+    await eva.sweep();
+    expect(lines.join("\n")).toContain("held back files");
+    sandbox.git(vault, "remote", "set-url", "origin", join(home, "missing.git"));
+    sandbox.write(vault, "Notes/other.md", "more\n");
+    await eva.sweep();
+    expect(lines.join("\n")).toContain('warn Vault sync failed. {"status":"offline"');
   });
 
   test("the idle sweep removes Scratch files older than a week (plan §9)", async () => {

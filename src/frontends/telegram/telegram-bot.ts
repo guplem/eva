@@ -22,9 +22,14 @@ export interface TelegramBotOptions {
   readonly eva: Eva;
   readonly statePath: string;
   readonly allowedChatId: number | null;
+  /**
+   * The person who paired the chat. In a group (topics need one), only this person may act.
+   * Null for a chat paired before Eva kept it: then the chat id alone decides.
+   */
+  readonly allowedUserId: number | null;
   /** With no chat allowed yet, the chat that sends this code becomes the allowed one. */
   readonly pairingCode: string;
-  readonly onPaired: (chatId: number) => void;
+  readonly onPaired: (chatId: number, userId: number | null) => void;
   /** Called when Eva must stop, with the exit code (lesson 89). */
   readonly onFatal: (exitCode: number) => void;
   readonly logger?: Logger;
@@ -60,6 +65,7 @@ interface TelegramFile {
 
 interface TelegramMessage {
   readonly chat: TelegramChat;
+  readonly from?: { readonly id: number };
   readonly text?: string;
   readonly caption?: string;
   readonly document?: TelegramFile;
@@ -71,7 +77,12 @@ interface TelegramMessage {
 interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: TelegramMessage;
-  readonly callback_query?: { readonly id: string; readonly data?: string; readonly message?: TelegramMessage };
+  readonly callback_query?: {
+    readonly id: string;
+    readonly from?: { readonly id: number };
+    readonly data?: string;
+    readonly message?: TelegramMessage;
+  };
 }
 
 /** Telegram refuses a message past 4096 characters; the split leaves room for the HTML tags. */
@@ -98,6 +109,7 @@ export class TelegramBot {
   private readonly options: TelegramBotOptions;
   private readonly state: BotState;
   private allowedChatId: number | null;
+  private allowedUserId: number | null;
   private conflicts = 0;
   private readonly pendingText = new Map<string, string[]>();
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -109,6 +121,7 @@ export class TelegramBot {
   constructor(options: TelegramBotOptions) {
     this.options = options;
     this.allowedChatId = options.allowedChatId;
+    this.allowedUserId = options.allowedUserId;
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -198,7 +211,8 @@ export class TelegramBot {
     if (this.allowedChatId === null) {
       if (text === this.options.pairingCode) {
         this.allowedChatId = chatId;
-        this.options.onPaired(chatId);
+        this.allowedUserId = message.from?.id ?? null;
+        this.options.onPaired(chatId, this.allowedUserId);
         await this.send(chatId, null, "Paired. This chat now talks to Eva.");
       } else {
         await this.send(
@@ -209,7 +223,7 @@ export class TelegramBot {
       }
       return;
     }
-    if (chatId !== this.allowedChatId) {
+    if (chatId !== this.allowedChatId || !this.isAllowedSender(message.from?.id)) {
       await this.send(chatId, null, `This bot is private. Your chat id is ${String(chatId)}.`);
       return;
     }
@@ -380,10 +394,10 @@ export class TelegramBot {
     void this.options.eva.sessions.send(entry.sessionId, text);
   }
 
-  private async handleButton(query: { id: string; data?: string; message?: TelegramMessage }): Promise<void> {
+  private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
     const chatId = query.message?.chat.id;
     await this.quietCall("answerCallbackQuery", { callback_query_id: query.id });
-    if (chatId === undefined || chatId !== this.allowedChatId) return;
+    if (chatId === undefined || chatId !== this.allowedChatId || !this.isAllowedSender(query.from?.id)) return;
     const [kind, first, second] = (query.data ?? "").split(":");
     if (kind === "a" && first !== undefined && (second === "allow" || second === "deny")) {
       this.options.eva.sessions.answerApproval(first, second);
@@ -645,6 +659,10 @@ export class TelegramBot {
       `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
       describeLastTurn(status.lastTurn),
     ].join("\n");
+  }
+
+  private isAllowedSender(userId: number | undefined): boolean {
+    return this.allowedUserId === null || userId === this.allowedUserId;
   }
 
   private sessionExists(sessionId: string): boolean {

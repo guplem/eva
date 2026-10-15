@@ -99,8 +99,10 @@ const configSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       allowedChatId: z.number().int().nullable().default(null),
+      /** The person who paired the chat; in a group, only this person may act. */
+      allowedUserId: z.number().int().nullable().default(null),
     })
-    .default({ enabled: false, allowedChatId: null }),
+    .default({ enabled: false, allowedChatId: null, allowedUserId: null }),
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),

@@ -77,6 +77,17 @@ describe("containsSecretPattern", () => {
     expect(containsSecretPattern("-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----")).toBe(true);
     expect(containsSecretPattern("key sk-ant-" + "x".repeat(20))).toBe(true);
     expect(containsSecretPattern("A note about keys and tokens.")).toBe(false);
+    // Built from parts, so the secret scanner of this repository finds no real-looking token.
+    for (const token of [
+      "GOCSPX-" + "a".repeat(28),
+      "sk-proj-" + "b".repeat(40),
+      "xoxb-" + "1".repeat(12),
+      "npm_" + "c".repeat(36),
+      "-----BEGIN PRIVATE KEY-----\nMIIE cut short",
+    ]) {
+      expect(containsSecretPattern(`text ${token} more`)).toBe(true);
+    }
+    expect(new Redactor().redact("key: -----BEGIN PRIVATE KEY-----\nMIIE")).toBe("key: [redacted]");
   });
 
   test("gives the same answer when asked twice", () => {

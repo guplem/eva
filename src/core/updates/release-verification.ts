@@ -26,6 +26,15 @@ export function verifyChecksumsSignature(
   }
 }
 
+/**
+ * The version that the signed checksums name, in a `# version 0.2.0` line. The release tag
+ * comes from unsigned GitHub data, so only this line proves which version a file is: without
+ * it, an old signed build could come back under a new tag.
+ */
+export function signedVersion(checksumsText: string): string | null {
+  return /^# version (\S+)$/m.exec(checksumsText)?.[1] ?? null;
+}
+
 /** Reads `sha256sum` output: `<hash>  <file name>` on each line. */
 export function parseChecksums(text: string): Map<string, string> {
   const checksums = new Map<string, string>();

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
@@ -60,6 +61,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     lastTurnAt: null,
     source: "cli",
     telegramTopicId: null,
+    historyLost: false,
     turns: [],
     ...overrides,
   };
@@ -176,17 +178,20 @@ describe("Project mode", () => {
     sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/owner/example-app.git");
   }, gitHookTimeoutMs);
 
+  const deny = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("deny") };
+  const allow = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("allow") };
+
   function project(trustedOwners: string[], store = new TrustStore(join(sandbox.root, "trust.json"))): ProjectPreparer {
     return new ProjectPreparer({
       trustStore: store,
       trustedOwners,
       environment: { PATH: "/bin" },
-      readRemote: (folder) => sandbox.git(folder, "remote", "get-url", "origin"),
+      readRemote: (folder) => Promise.resolve(sandbox.git(folder, "remote", "get-url", "origin")),
     });
   }
 
   test("no Eva prompt, no plugins, the clone as start folder", async () => {
-    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: clone }));
+    const prepared = await project(["owner"]).prepare(session({ mode: "project", startFolder: clone }), deny);
     expect(prepared).toEqual({
       startFolder: clone,
       appendSystemPrompt: null,
@@ -198,29 +203,50 @@ describe("Project mode", () => {
     });
   });
 
-  test("a clone of a stranger's repository is untrusted until the person says otherwise", async () => {
+  test("the first clone of a stranger's repository asks the person, and the answer is kept (§12)", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    expect((await project([], store).prepare(session({ mode: "project", startFolder: clone }))).trusted).toBe(false);
+    const questions: string[] = [];
+    const recording = {
+      ask: (question: string, detail: string): Promise<ApprovalAnswer> => {
+        questions.push(`${question}: ${detail}`);
+        return Promise.resolve("deny");
+      },
+    };
+    const cloneSession = session({ mode: "project", startFolder: clone });
+    expect((await project([], store).prepare(cloneSession, recording)).trusted).toBe(false);
+    expect((await project([], store).prepare(cloneSession, recording)).trusted).toBe(false);
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toContain("https://github.com/owner/example-app.git");
     store.remember("https://github.com/owner/example-app.git", "trusted");
-    expect((await project([], store).prepare(session({ mode: "project", startFolder: clone }))).trusted).toBe(true);
+    expect((await project([], store).prepare(cloneSession, deny)).trusted).toBe(true);
+  });
+
+  test("an allowed repository is trusted from then on", async () => {
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    expect((await project([], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted).toBe(
+      true,
+    );
+    expect(store.decision("https://github.com/owner/example-app.git")).toBe("trusted");
   });
 
   test("a person's untrusted answer wins over the owner allowlist", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     store.remember("https://github.com/owner/example-app.git", "untrusted");
-    expect((await project(["owner"], store).prepare(session({ mode: "project", startFolder: clone }))).trusted).toBe(
-      false,
-    );
+    expect(
+      (await project(["owner"], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted,
+    ).toBe(false);
   });
 
-  test("a folder with no remote is untrusted", async () => {
-    const preparer = new ProjectPreparer({
-      trustStore: new TrustStore(join(sandbox.root, "t.json")),
-      trustedOwners: ["owner"],
-      environment: {},
-      readRemote: () => null,
-    });
-    expect((await preparer.prepare(session({ mode: "project", startFolder: clone }))).trusted).toBe(false);
+  test("a folder with no remote, or a remote that cannot be read, is untrusted", async () => {
+    for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
+      const preparer = new ProjectPreparer({
+        trustStore: new TrustStore(join(sandbox.root, "t.json")),
+        trustedOwners: ["owner"],
+        environment: {},
+        readRemote,
+      });
+      expect((await preparer.prepare(session({ mode: "project", startFolder: clone }), allow)).trusted).toBe(false);
+    }
   });
 
   test("after a turn nothing happens", async () => {

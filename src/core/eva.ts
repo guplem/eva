@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
+import type { Logger } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
@@ -44,6 +45,8 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine check. */
   readonly claudeExecutable?: string | null;
+  /** Where background failures and sync problems go (lessons 16, 50). */
+  readonly logger?: Logger;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -83,6 +86,8 @@ export interface NewProjectChatInput extends NewChatInput {
 }
 
 const approvalTimeoutMs = 10 * 60_000;
+/** A turn may run long (a big refactor), but never for ever. */
+const turnTimeoutMs = 2 * 60 * 60_000;
 const gitStatusTimeoutMs = 20_000;
 const scheduleTickMs = 30_000;
 const noVaultState: VaultSyncState = {
@@ -126,10 +131,13 @@ export class Eva {
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
-          vaultSync: vaultSync ?? {
-            pull: () => Promise.resolve(noVaultState),
-            save: () => Promise.resolve(noVaultState),
-          },
+          vaultSync:
+            vaultSync === null
+              ? { pull: () => Promise.resolve(noVaultState), save: () => Promise.resolve(noVaultState) }
+              : {
+                  pull: async () => this.logSyncState(await vaultSync.pull()),
+                  save: async () => this.logSyncState(await vaultSync.save()),
+                },
           basePrompt: options.basePrompt,
           runner: options.runner,
           environment: engineEnvironment,
@@ -141,7 +149,7 @@ export class Eva {
           trustStore: new TrustStore(options.paths.trust),
           trustedOwners: options.config.trust.trustedRepositoryOwners,
           environment: engineEnvironment,
-          readRemote: (folder) => readOriginUrl(folder, this.gitEnvironment),
+          readRemote: (folder) => readOriginUrl(folder, options.runner, this.gitEnvironment),
         }),
       },
       now: options.now,
@@ -149,6 +157,7 @@ export class Eva {
       redactor,
       gatherMs: options.gatherMs ?? 1_000,
       approvalTimeoutMs,
+      turnTimeoutMs,
     });
 
     const voice = options.config.voice;
@@ -186,13 +195,13 @@ export class Eva {
   startBackgroundWork(): void {
     if (this.sweepTimer === null && this.options.config.sync.enabled) {
       this.sweepTimer = setInterval(() => {
-        void this.sweep();
+        this.inBackground("The idle sweep", () => this.sweep());
       }, this.options.config.sync.sweepSeconds * 1_000);
     }
     const schedules = this.schedules;
     if (this.scheduleTimer === null && schedules !== null) {
       this.scheduleTimer = setInterval(() => {
-        void schedules.tick();
+        this.inBackground("The schedule check", () => schedules.tick());
       }, scheduleTickMs);
     }
   }
@@ -221,7 +230,7 @@ export class Eva {
       .list()
       .some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
     if (assistantBusy) return "skipped";
-    return (await this.vaultSync.save()).status;
+    return this.logSyncState(await this.vaultSync.save()).status;
   }
 
   status(): EvaStatus {
@@ -367,6 +376,31 @@ export class Eva {
     return vaultPath;
   }
 
+  /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */
+  private inBackground(what: string, task: () => Promise<unknown>): void {
+    task().catch((error: unknown) => {
+      this.options.logger?.log("error", `${what} failed.`, {
+        reason: error instanceof Error ? (error.stack ?? error.message) : String(error),
+      });
+    });
+  }
+
+  /** Logs a sync problem and the files that the secret scan held back (lessons 16, 26). */
+  private logSyncState(state: VaultSyncState): VaultSyncState {
+    if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
+      this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
+        status: state.status,
+        reason: state.lastError,
+      });
+    }
+    if (state.withheldFiles.length > 0) {
+      this.options.logger?.log("warn", "Vault sync held back files that look like secrets.", {
+        files: state.withheldFiles,
+      });
+    }
+    return state;
+  }
+
   private assistantMcpServers(): Record<string, McpServerSpec> {
     const google = googleMcpServer({
       config: this.options.config.google,
@@ -389,13 +423,17 @@ export class Eva {
   }
 }
 
-function readOriginUrl(folder: string, environment: Record<string, string>): string | null {
-  const result = Bun.spawnSync(["git", "remote", "get-url", "origin"], {
+/** Through the process seam, so it has a timeout and tests can fake it (lessons 81, 102). */
+async function readOriginUrl(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Record<string, string>,
+): Promise<string | null> {
+  const result = await runner.run(["git", "remote", "get-url", "origin"], {
     cwd: folder,
-    env: environment,
-    stdout: "pipe",
-    stderr: "pipe",
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: gitStatusTimeoutMs,
   });
-  const url = result.stdout.toString().trim();
+  const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
 }

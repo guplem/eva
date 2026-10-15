@@ -42,6 +42,7 @@ function createBot(allowedChatId: number | null = owner, extra: Partial<Telegram
     eva,
     statePath: join(home, "state", "telegram.json"),
     allowedChatId,
+    allowedUserId: null,
     pairingCode: "PAIR-1234",
     onPaired: (chatId) => paired.push(chatId),
     onFatal: (code) => fatal.push(code),
@@ -99,6 +100,21 @@ describe("access (lessons 63, 127)", () => {
     expect(telegram.sentTexts().at(-1)).toContain("Paired");
     telegram.sendText(owner, "now I am in");
     await settle(bot, () => engine.requests.length > 0);
+  });
+});
+
+describe("a group chat (security review)", () => {
+  test("pairing keeps the person who paired, and only that person may act or press a button", async () => {
+    const group = -1001;
+    const bot = createBot(null);
+    telegram.sendText(group, "PAIR-1234", undefined, owner);
+    await settle(bot, () => paired.length > 0);
+    telegram.sendText(group, "do something", undefined, 777);
+    telegram.pressButton(group, "s:morning", undefined, 777);
+    telegram.sendText(group, "/status", undefined, owner);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Vault sync")));
+    expect(engine.requests).toEqual([]);
+    expect(telegram.sentTexts().filter((text) => text.includes("No schedule"))).toEqual([]);
   });
 });
 

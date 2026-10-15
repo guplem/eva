@@ -70,6 +70,7 @@ describe("updateExecutable", () => {
   let files: Record<string, Uint8Array<ArrayBuffer> | string>;
   let latestStatus: number;
   let brokenDownloads: boolean;
+  let probeAnswer: string;
   let executable: string;
 
   beforeEach(() => {
@@ -78,8 +79,9 @@ describe("updateExecutable", () => {
     writeFileSync(executable, "old build");
     latestStatus = 200;
     brokenDownloads = false;
+    probeAnswer = "0.2.0";
     const fresh = new TextEncoder().encode("new build");
-    const sums = `${sha256Hex(fresh)}  eva-linux-x64\n`;
+    const sums = `${sha256Hex(fresh)}  eva-linux-x64\n# version 0.2.0\n`;
     files = { "eva-linux-x64": fresh, SHA256SUMS: sums, "SHA256SUMS.sig": signText(sums) };
     server = Bun.serve({
       hostname: "127.0.0.1",
@@ -117,6 +119,8 @@ describe("updateExecutable", () => {
       arch: "x64",
       apiBaseUrl: `http://127.0.0.1:${String(server.port)}`,
       publicKey,
+      runner: { run: () => Promise.resolve({ exitCode: 0, stdout: `${probeAnswer}\n`, stderr: "" }) },
+      environment: {},
     };
   }
 
@@ -142,9 +146,28 @@ describe("updateExecutable", () => {
   test("a wrong signature or a changed download changes nothing", async () => {
     files["SHA256SUMS.sig"] = signText("something else");
     expect(String(await failure(updateExecutable(inputs())))).toContain("signature");
-    const sums = `${"0".repeat(64)}  eva-linux-x64\n`;
+    const sums = `${"0".repeat(64)}  eva-linux-x64\n# version 0.2.0\n`;
     files = { ...files, SHA256SUMS: sums, "SHA256SUMS.sig": signText(sums) };
     expect(String(await failure(updateExecutable(inputs())))).toContain("does not match its signed checksum");
+    expect(readFileSync(executable, "utf8")).toBe("old build");
+  });
+
+  test("a new executable that does not start, or names another version, changes nothing (lesson 91)", async () => {
+    probeAnswer = "0.1.9";
+    expect(String(await failure(updateExecutable(inputs())))).toContain("did not start and say 0.2.0");
+    expect(readFileSync(executable, "utf8")).toBe("old build");
+    expect(existsSync(`${executable}.new`)).toBe(false);
+    const crashing = { ...inputs(), runner: { run: () => Promise.reject(new Error("bad format")) } };
+    expect(String(await failure(updateExecutable(crashing)))).toContain("did not start");
+  });
+
+  test("an old signed build under a new tag is refused (no rollback)", async () => {
+    const fresh = new TextEncoder().encode("new build");
+    for (const versionLine of ["# version 0.1.0\n", ""]) {
+      const sums = `${sha256Hex(fresh)}  eva-linux-x64\n${versionLine}`;
+      files = { ...files, SHA256SUMS: sums, "SHA256SUMS.sig": signText(sums) };
+      expect(String(await failure(updateExecutable(inputs())))).toContain("not a newer version");
+    }
     expect(readFileSync(executable, "utf8")).toBe("old build");
   });
 

@@ -107,17 +107,18 @@ function guardSite(request: Request, options: LocalApiOptions, allowedHostNames:
   const host = hostNameOf(request.headers.get("host"));
   if (host === null || !allowedHostNames.has(host)) return json({ error: "Unknown host." }, 403);
 
+  // The whole origin must match, port included: a page on another local port shares the
+  // host name and the SameSite cookie, but it is another site.
   const origin = request.headers.get("origin");
-  if (origin !== null && !allowedHostNames.has(hostNameOf(safeHost(origin)) ?? "")) {
+  if (origin !== null && safeHost(origin)?.toLowerCase() !== request.headers.get("host")?.toLowerCase()) {
     return json({ error: "Requests from other sites are refused." }, 403);
   }
 
   const identity = request.headers.get("tailscale-user-login");
-  if (
-    identity !== null &&
-    options.allowedTailscaleIdentities.length > 0 &&
-    !options.allowedTailscaleIdentities.includes(identity)
-  ) {
+  const allowed = options.allowedTailscaleIdentities;
+  // `tailscale serve` adds the identity header. A remote host without one is a tagged device or no Tailscale at all.
+  const remote = host !== "127.0.0.1" && host !== "localhost";
+  if (allowed.length > 0 && (identity === null ? remote : !allowed.includes(identity))) {
     return json({ error: "This Tailscale identity is not allowed." }, 403);
   }
   return null;

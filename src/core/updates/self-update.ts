@@ -4,7 +4,9 @@
  * be overwritten on Windows, but it can be renamed, so the old file moves aside first.
  */
 import { chmodSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import type { ProcessRunner } from "../../shared/process-runner.ts";
 import {
   assetNameFor,
   checksumsFileName,
@@ -13,6 +15,7 @@ import {
   releasePublicKey,
   sha256Hex,
   signatureFileName,
+  signedVersion,
   verifyChecksumsSignature,
 } from "./release-verification.ts";
 
@@ -26,6 +29,9 @@ export interface UpdateInputs {
   readonly apiBaseUrl?: string;
   readonly repository?: string;
   readonly publicKey?: string;
+  /** Runs the new executable once before the swap (lesson 91). */
+  readonly runner: ProcessRunner;
+  readonly environment: Readonly<Record<string, string>>;
 }
 
 export type UpdateResult =
@@ -43,6 +49,7 @@ interface Release {
 }
 
 const requestTimeoutMs = 30_000;
+const probeTimeoutMs = 30_000;
 /** A 100 MB download on a slow line. */
 const downloadTimeoutMs = 10 * 60_000;
 
@@ -61,13 +68,19 @@ export async function updateExecutable(inputs: UpdateInputs): Promise<UpdateResu
       "update_failed",
       `The signature of release ${release.tag_name} does not match. Nothing changed.`,
     );
+  const version = signedVersion(checksums);
+  if (version !== release.tag_name.replace(/^v/, "") || !isNewerVersion(version, inputs.currentVersion))
+    throw new EvaError(
+      "update_failed",
+      `Release ${release.tag_name} signs version ${version ?? "none"}, which is not a newer version. Nothing changed.`,
+    );
   const expected = parseChecksums(checksums).get(assetName);
   const executable = await download(release, assetName);
   if (expected === undefined || sha256Hex(executable) !== expected)
     throw new EvaError("update_failed", `${assetName} does not match its signed checksum. Nothing changed.`);
 
-  replaceExecutable(inputs.executablePath, executable);
-  return { status: "updated", from: inputs.currentVersion, to: release.tag_name.replace(/^v/, "") };
+  await replaceExecutable(inputs, executable, version);
+  return { status: "updated", from: inputs.currentVersion, to: version };
 }
 
 async function latestRelease(inputs: UpdateInputs): Promise<Release> {
@@ -100,11 +113,24 @@ async function download(release: Release, name: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-function replaceExecutable(executablePath: string, bytes: Uint8Array): void {
+async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, version: string): Promise<void> {
+  const executablePath = inputs.executablePath;
   const fresh = `${executablePath}.new`;
   const old = `${executablePath}.old`;
   writeFileSync(fresh, bytes);
   chmodSync(fresh, 0o755);
+  // A file that does not start on this machine must never take the old one's place (lesson 91).
+  const probe = await inputs.runner
+    .run([fresh, "version"], {
+      cwd: dirname(executablePath),
+      environment: inputs.environment,
+      timeoutMs: probeTimeoutMs,
+    })
+    .catch(() => null);
+  if (probe?.exitCode !== 0 || probe.stdout.trim() !== version) {
+    rmSync(fresh, { force: true });
+    throw new EvaError("update_failed", `The new executable did not start and say ${version}. Nothing changed.`);
+  }
   rmSync(old, { force: true });
   renameSync(executablePath, old);
   try {

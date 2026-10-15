@@ -203,10 +203,20 @@ async function serve(paths: HomePaths): Promise<number> {
     processEnvironment: process.env,
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
+    logger,
   });
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
       logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+    // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
+    if (event.kind === "turn_finished")
+      logger.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
+  });
+  // A promise that nobody awaits must never end Eva silently (lesson 50).
+  process.on("unhandledRejection", (reason: unknown) => {
+    logger.log("error", "A background task failed.", {
+      reason: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+    });
   });
   eva.startBackgroundWork();
   const api = startLocalApi({
@@ -264,10 +274,14 @@ function startTelegram(
     eva,
     statePath: paths.telegramState,
     allowedChatId: config.telegram.allowedChatId,
+    allowedUserId: config.telegram.allowedUserId,
     pairingCode,
-    onPaired: (chatId) => {
+    onPaired: (chatId, userId) => {
       const current = loadConfig(paths);
-      saveConfig(paths, { ...current, telegram: { ...current.telegram, allowedChatId: chatId } });
+      saveConfig(paths, {
+        ...current,
+        telegram: { ...current.telegram, allowedChatId: chatId, allowedUserId: userId },
+      });
       rmSync(pairingCodePath(paths), { force: true });
       logger.log("info", "Telegram paired.");
     },
@@ -335,6 +349,8 @@ async function update(): Promise<number> {
     executablePath: process.execPath,
     platform: process.platform,
     arch: process.arch,
+    runner: systemProcessRunner,
+    environment: childEnvironment(),
   });
   writeLine(
     result.status === "up_to_date"

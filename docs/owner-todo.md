@@ -32,7 +32,7 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 ## pi (phase P7)
 
-- [ ] **A live pi turn:** install pi (`npm install -g @mariozechner/pi-coding-agent`), log in to a provider with `pi` (for example ChatGPT), set `engines.pi.model` if you want one, and set `engines.default` to `pi` for a test. Then check one Assistant turn, one tool approval and one fork. The adapter is tested only on captured output so far.
+- [ ] **A live pi turn:** install pi (`npm install -g @mariozechner/pi-coding-agent`), log in to a provider with `pi` (for example ChatGPT), map Eva's model names to pi models in `engines.pi.models` if you want, and set `engines.default` to `pi` for a test. Then check one Assistant turn, one tool approval and one fork. The adapter is tested only on captured output so far.
 - [ ] **pskill with pi:** pskill needs a `pi` harness entry before skill runs continue on their own with pi (plan §5.4). Eva still calls pskill with `--harness claude-code`.
 - [ ] **Google tools with pi:** pi has no MCP support, so the Google tools work only with Claude Code for now.
 

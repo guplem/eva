@@ -88,7 +88,7 @@ describe("runCheck", () => {
     run: () => Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" }),
   };
 
-  test("the vault check reaches the remote", async () => {
+  test("the vault check proves push access, and pushes nothing (lesson 98)", async () => {
     expect(
       await runCheck("vault", {
         vaultPath: vault,
@@ -97,7 +97,8 @@ describe("runCheck", () => {
         claudeExecutable: null,
         telegramToken: null,
       }),
-    ).toMatchObject({ ok: true });
+    ).toEqual({ ok: true, detail: "Eva can push to the vault's remote." });
+    expect(sandbox.git(sandbox.remote, "branch", "--list", "eva-access-check")).toBe("");
     expect(
       await runCheck("vault", {
         vaultPath: null,

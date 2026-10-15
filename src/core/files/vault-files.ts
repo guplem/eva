@@ -5,7 +5,16 @@
  * neither `..` nor a symbolic link can point out (lesson 72).
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  type Dirent,
+} from "node:fs";
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
@@ -30,7 +39,8 @@ const markerPattern = /^\s*\[\[\s*(attach|offer)\s*:\s*(.+?)\s*\]\]\s*$/i;
 const fencePattern = /^\s*(```|~~~)/;
 /** File names that hold secrets by convention; the vault's .gitignore names the same ones. */
 const secretScanBytes = 2 * 1024 * 1024;
-const secretNamePattern = /^\.env(\..*)?$|\.(pem|key)$/i;
+const secretNamePattern =
+  /^\.env(\..*)?$|\.(pem|key|p12|pfx)$|^(\.npmrc|\.pypirc|\.netrc|secrets?\.json|credentials\.json|client_secret.*\.json)$/i;
 
 /** Reads the marker lines of a whole answer. A marker inside a code fence stays text. */
 export function extractFileMarkers(answer: string): FileMarkers {
@@ -133,20 +143,32 @@ export function saveReceivedFile(vaultPath: string, originalName: string, bytes:
 
 /** Removes every Scratch file older than a week. Returns how many it removed. */
 export function cleanScratch(vaultPath: string, now: Date): number {
-  const folder = join(vaultPath, scratchFolderName);
-  let removed = 0;
-  let entries: string[];
+  return cleanFolder(join(vaultPath, scratchFolderName), now);
+}
+
+/**
+ * Walks the folder without following a symbolic link: a link in Scratch, from a vault push
+ * or an agent, must never lead the cleanup to delete files elsewhere.
+ */
+function cleanFolder(folder: string, now: Date): number {
+  let entries: Dirent[];
   try {
-    entries = readdirSync(folder, { recursive: true, encoding: "utf8" });
+    entries = readdirSync(folder, { withFileTypes: true });
   } catch {
     return 0;
   }
+  let removed = 0;
   for (const entry of entries) {
-    const path = join(folder, entry);
-    const stats = statSync(path, { throwIfNoEntry: false });
-    if (stats?.isFile() === true && now.getTime() - stats.mtimeMs > scratchMaxAgeMs) {
-      rmSync(path, { force: true });
-      removed += 1;
+    const path = join(folder, entry.name);
+    if (entry.isDirectory()) {
+      removed += cleanFolder(path, now);
+    } else if (entry.isFile() && now.getTime() - statSync(path).mtimeMs > scratchMaxAgeMs) {
+      try {
+        rmSync(path, { force: true });
+        removed += 1;
+      } catch {
+        // A file that another program holds open goes at the next sweep.
+      }
     }
   }
   return removed;

@@ -1,5 +1,5 @@
 /** `eva chat`: a conversation in the terminal, as a client of the local API (docs/plan.md §8.1). */
-import type { ModelAlias } from "../../shared/engine-port.ts";
+import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 
 export interface ChatOptions {
@@ -7,6 +7,7 @@ export interface ChatOptions {
   readonly token: string;
   readonly mode: "assistant" | "project";
   readonly model: ModelAlias;
+  readonly engine?: EngineName;
   readonly projectId?: string;
   readonly clone?: string;
   /** The next line the person typed, or null at the end of input. */
@@ -22,6 +23,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
     body: JSON.stringify({
       mode: options.mode,
       model: options.model,
+      ...(options.engine === undefined ? {} : { engine: options.engine }),
       ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
       ...(options.clone === undefined ? {} : { clone: options.clone }),
     }),
@@ -50,14 +52,23 @@ export async function runChat(options: ChatOptions): Promise<void> {
     );
   });
 
-  let turnEnded: (() => void) | null = null;
+  let wake: (() => void) | null = null;
+  const turn = { over: false };
+  // A function, so TypeScript reads the flag that the socket listener sets, not the value it last saw here.
+  const turnIsOver = (): boolean => turn.over;
+  const questions: string[] = [];
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
     if (event.sessionId !== session.id) return;
     const text = describeEvent(event);
     if (text !== null) options.write(text);
-    if (event.kind === "turn_finished" || event.kind === "turn_failed") turnEnded?.();
+    if (event.kind === "approval_needed") questions.push(event.requestId);
+    const answered = event.kind === "approval_resolved" ? questions.indexOf(event.requestId) : -1;
+    if (answered !== -1) questions.splice(answered, 1);
+    if (event.kind === "turn_finished" || event.kind === "turn_failed") turn.over = true;
+    wake?.();
   });
+  const nextChange = (): Promise<void> => new Promise<void>((resolve) => (wake = resolve));
 
   try {
     for (;;) {
@@ -65,7 +76,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
       const line = await options.readLine();
       if (line === null || line.trim() === "/exit") break;
       if (line.trim() === "") continue;
-      const ended = new Promise<void>((resolve) => (turnEnded = resolve));
+      turn.over = false;
       const sent = await fetch(`${options.baseUrl}/api/sessions/${session.id}/messages`, {
         method: "POST",
         headers,
@@ -75,7 +86,21 @@ export async function runChat(options: ChatOptions): Promise<void> {
         options.write(`Eva refused the message: ${await sent.text()}\n`);
         continue;
       }
-      await ended;
+      // Wait for the turn end; answer each approval here, with y or n (plan §5.5).
+      while (!turnIsOver()) {
+        const requestId = questions.shift();
+        if (requestId === undefined) {
+          await nextChange();
+          continue;
+        }
+        options.write("  Allow it? [y/N] ");
+        const answer = (await options.readLine())?.trim().toLowerCase().startsWith("y") === true ? "allow" : "deny";
+        await fetch(`${options.baseUrl}/api/approvals/${encodeURIComponent(requestId)}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ answer }),
+        });
+      }
     }
   } finally {
     socket.close();
@@ -91,7 +116,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "task_changed":
       return `  · task ${event.state}: ${event.description}\n`;
     case "approval_needed":
-      return `  ! approval needed for ${event.toolName}: ${event.summary} (answer it in the web UI or Telegram)\n`;
+      return `  ! Eva wants to run ${event.toolName}: ${event.summary}\n`;
     case "notice":
       return `  (${event.text})\n`;
     case "history_lost":
@@ -100,6 +125,7 @@ export function describeEvent(event: SessionEvent): string | null {
       return `  The turn failed: ${event.reason}\n`;
     case "turn_finished":
     case "tool_finished":
+    case "approval_resolved":
       return null;
   }
 }

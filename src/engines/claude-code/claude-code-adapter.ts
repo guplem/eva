@@ -124,6 +124,8 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     options.systemPrompt = { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project", "local"];
     if (!request.trusted) {
+      // An untrusted clone's own settings could allow every tool and skip the person's approval (§12).
+      options.settingSources = ["user"];
       options.settings = { disableAllHooks: true };
       options.strictMcpConfig = true;
     }

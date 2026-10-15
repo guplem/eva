@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { McpServerSpec } from "../../shared/engine-port.ts";
+import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -29,15 +30,20 @@ export interface AssistantPreparerOptions {
   readonly timeZone: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
+  /** Where pskill's error output goes (plan §5.4). */
+  readonly logger?: Logger;
 }
 
 const pskillTimeoutMs = 30_000;
 
 export class AssistantPreparer implements TurnPreparer {
   private readonly options: AssistantPreparerOptions;
+  /** The appended prompt of each session, read at its first turn. */
+  private readonly promptBySession: Map<string, string>;
 
   constructor(options: AssistantPreparerOptions) {
     this.options = options;
+    this.promptBySession = new Map();
   }
 
   async prepare(session: SessionRecord): Promise<PreparedTurn> {
@@ -48,15 +54,22 @@ export class AssistantPreparer implements TurnPreparer {
       throw new EvaError("vault_not_found", `${personalRulesPath} is missing, so Eva has no assistant rules.`);
     }
     const pluginFolder = join(this.options.vaultPath, ".eva");
+    // Fixed for the session, even when the agent edits .eva/assistant.md in it (lesson 115), so the
+    // appended text stays byte-identical and the prompt cache holds (lesson 40). A restart reads it again.
+    const appendSystemPrompt =
+      this.promptBySession.get(session.id) ??
+      `${this.options.basePrompt}\n\n${readFileSync(personalRulesPath, "utf-8")}`;
+    this.promptBySession.set(session.id, appendSystemPrompt);
     return {
       startFolder: session.startFolder,
-      // Byte-identical every turn, so the prompt cache holds (lesson 40). The time goes in the message.
-      appendSystemPrompt: `${this.options.basePrompt}\n\n${readFileSync(personalRulesPath, "utf-8")}`,
+      // The time goes in the message, never in the prompt (lesson 40).
+      appendSystemPrompt,
       messagePrefix: `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone)}, ${this.options.timeZone}]`,
       pluginFolders: existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [],
       mcpServers: this.options.mcpServers,
       trusted: true,
-      environment: this.options.environment,
+      // `eva work` reads it, so a project's result comes back to this chat (plan §5.3).
+      environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };
   }
 
@@ -79,8 +92,12 @@ export class AssistantPreparer implements TurnPreparer {
           stdin: JSON.stringify({ session_id: session.engineSessionId, cwd: this.options.vaultPath }),
         },
       );
+      if (result.stderr.trim() !== "") {
+        this.options.logger?.log("warn", "pskill wrote to stderr.", { stderr: result.stderr.trim() });
+      }
       return readContinueMessage(result.stdout);
-    } catch {
+    } catch (error) {
+      this.options.logger?.log("warn", "pskill could not run.", { reason: String(error) });
       return null;
     }
   }

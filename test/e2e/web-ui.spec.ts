@@ -24,8 +24,11 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await openList(page);
+  await page.getByLabel("Model for a new chat").selectOption("haiku");
   await page.getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  // The model comes first, and the chat keeps it (lesson 41).
+  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
@@ -64,7 +67,16 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
-  await expect(page.locator(".message.answer").first()).toContainText("Fix the bug");
+  // The first chat in a clone of an unknown repository asks for trust (plan §12). Both screen
+  // sizes share one demo server, so only the first of them sees the question.
+  const answer = page.locator(".message.answer").first();
+  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
+  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  if (await trustQuestion.isVisible()) {
+    await expect(trustQuestion).toContainText("Trust this repository");
+    await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  }
+  await expect(answer).toContainText("Fix the bug");
 });
 
 test("the status filter hides a closed project until Any status", async ({ page }) => {

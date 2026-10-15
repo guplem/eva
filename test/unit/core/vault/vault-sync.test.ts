@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -39,6 +39,14 @@ describe("VaultSync.save", () => {
     expect(state.status).toBe("ok");
     expect(remoteFiles()).toContain("Life/Diary/2026-10-14.md");
     expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (2 files)");
+  });
+
+  test("a failing pre-commit hook in the vault never blocks an autosave (lesson 27)", async () => {
+    sandbox.write(vault, ".git/hooks/pre-commit", "#!/bin/sh\nexit 1\n");
+    chmodSync(join(vault, ".git", "hooks", "pre-commit"), 0o755);
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    expect(remoteFiles()).toContain("Methods/New.md");
   });
 
   test("does nothing and stays quiet when nothing changed", async () => {

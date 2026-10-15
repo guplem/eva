@@ -2,10 +2,13 @@
  * One Eva instance: the core that every front end talks to (docs/plan.md §4). It joins the
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
-import { join } from "node:path";
-import type { EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
+import { chmodSync } from "node:fs";
+import { delimiter, join } from "node:path";
+import { writeFileAtomic } from "../shared/files.ts";
+import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
+import type { Logger } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
@@ -44,6 +47,20 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine check. */
   readonly claudeExecutable?: string | null;
+  /** Where background failures and sync problems go (lessons 16, 50). */
+  readonly logger?: Logger;
+  /**
+   * The command that starts this Eva, such as `[bun, main.ts]` or `[eva.exe]`. Eva writes it as an
+   * `eva` script that an agent can run, for `eva work` (plan §5.3). Null: no script.
+   */
+  readonly evaCommand?: readonly string[] | null;
+}
+
+export interface ProjectWorkInput {
+  readonly projectId: string;
+  readonly request: string;
+  /** The Assistant chat that receives the result, or null. */
+  readonly reportToSessionId: string | null;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -73,6 +90,8 @@ export interface PublicSettings {
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
+  /** The engine of this chat; without one, the configured default (plan §7.2). */
+  readonly engine?: EngineName;
   readonly telegramTopicId?: number;
   readonly title?: string;
 }
@@ -83,6 +102,8 @@ export interface NewProjectChatInput extends NewChatInput {
 }
 
 const approvalTimeoutMs = 10 * 60_000;
+/** A turn may run long (a big refactor), but never for ever. */
+const turnTimeoutMs = 2 * 60 * 60_000;
 const gitStatusTimeoutMs = 20_000;
 const scheduleTickMs = 30_000;
 const noVaultState: VaultSyncState = {
@@ -105,6 +126,8 @@ export class Eva {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private lastTurn: LastTurnStatus | null = null;
+  /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
+  private readonly reservedClones = new Set<string>();
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -126,22 +149,26 @@ export class Eva {
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
-          vaultSync: vaultSync ?? {
-            pull: () => Promise.resolve(noVaultState),
-            save: () => Promise.resolve(noVaultState),
-          },
+          vaultSync:
+            vaultSync === null
+              ? { pull: () => Promise.resolve(noVaultState), save: () => Promise.resolve(noVaultState) }
+              : {
+                  pull: async () => this.logSyncState(await vaultSync.pull()),
+                  save: async () => this.logSyncState(await vaultSync.save()),
+                },
           basePrompt: options.basePrompt,
           runner: options.runner,
           environment: engineEnvironment,
           now: options.now,
           timeZone: options.config.timeZone ?? "UTC",
           mcpServers: this.assistantMcpServers(),
+          ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
           trustedOwners: options.config.trust.trustedRepositoryOwners,
           environment: engineEnvironment,
-          readRemote: (folder) => readOriginUrl(folder, this.gitEnvironment),
+          readRemote: (folder) => readOriginUrl(folder, options.runner, this.gitEnvironment),
         }),
       },
       now: options.now,
@@ -149,6 +176,7 @@ export class Eva {
       redactor,
       gatherMs: options.gatherMs ?? 1_000,
       approvalTimeoutMs,
+      turnTimeoutMs,
     });
 
     const voice = options.config.voice;
@@ -186,13 +214,13 @@ export class Eva {
   startBackgroundWork(): void {
     if (this.sweepTimer === null && this.options.config.sync.enabled) {
       this.sweepTimer = setInterval(() => {
-        void this.sweep();
+        this.inBackground("The idle sweep", () => this.sweep());
       }, this.options.config.sync.sweepSeconds * 1_000);
     }
     const schedules = this.schedules;
     if (this.scheduleTimer === null && schedules !== null) {
       this.scheduleTimer = setInterval(() => {
-        void schedules.tick();
+        this.inBackground("The schedule check", () => schedules.tick());
       }, scheduleTickMs);
     }
   }
@@ -221,7 +249,7 @@ export class Eva {
       .list()
       .some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
     if (assistantBusy) return "skipped";
-    return (await this.vaultSync.save()).status;
+    return this.logSyncState(await this.vaultSync.save()).status;
   }
 
   status(): EvaStatus {
@@ -247,7 +275,7 @@ export class Eva {
     const vaultPath = this.requireVault();
     return this.sessions.createSession({
       mode: "assistant",
-      engine: this.options.config.engines.default,
+      engine: input.engine ?? this.options.config.engines.default,
       model: input.model,
       startFolder: vaultPath,
       source: input.source,
@@ -268,13 +296,49 @@ export class Eva {
       throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
     return this.sessions.createSession({
       mode: "project",
-      engine: this.options.config.engines.default,
+      engine: input.engine ?? this.options.config.engines.default,
       model: input.model,
       startFolder: clone.path,
       source: input.source,
       projectId: project.id,
       clone: clone.name,
     });
+  }
+
+  /**
+   * Gives work to a project (plan §5.3): a Project chat in a free clone runs the request, and its
+   * result goes back to the Assistant chat that asked, as a new message.
+   */
+  async startProjectWork(input: ProjectWorkInput): Promise<SessionRecord> {
+    const project = this.projects().find((candidate) => candidate.id === input.projectId);
+    if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
+    const clone = await this.freeOrNewClone(project);
+    this.reservedClones.add(clone.path);
+    const session = this.sessions.createSession({
+      mode: "project",
+      engine: this.options.config.engines.default,
+      model: "default",
+      startFolder: clone.path,
+      source: "cli",
+      projectId: project.id,
+      clone: clone.name,
+    });
+    this.inBackground("Project work", async () => {
+      try {
+        await this.sessions.send(session.id, input.request);
+      } finally {
+        this.reservedClones.delete(clone.path);
+      }
+      const last = this.sessions.get(session.id).turns.at(-1);
+      const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
+      if (input.reportToSessionId !== null) {
+        await this.sessions.send(
+          input.reportToSessionId,
+          `[Project work finished: ${project.id}, clone ${clone.name}, chat ${session.id}]\n\n${result}`,
+        );
+      }
+    });
+    return session;
   }
 
   /** The clones of a project, with their branch and pull request. */
@@ -344,9 +408,9 @@ export class Eva {
 
   private async freeOrNewClone(project: Project): Promise<Clone> {
     for (const clone of listClones(project.path)) {
-      const busy = this.sessions
-        .list()
-        .some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));
+      const busy =
+        this.reservedClones.has(clone.path) ||
+        this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));
       if (!busy && (await this.isClean(clone.path))) return clone;
     }
     return this.newClone(project.id);
@@ -355,7 +419,7 @@ export class Eva {
   private async isClean(folder: string): Promise<boolean> {
     const result = await this.options.runner.run(["git", "status", "--porcelain"], {
       cwd: folder,
-      environment: this.gitEnvironment,
+      environment: { ...this.gitEnvironment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: gitStatusTimeoutMs,
     });
     return result.exitCode === 0 && result.stdout.trim().length === 0;
@@ -365,6 +429,31 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) throw new EvaError("vault_not_found", "No vault is configured. Run `eva setup`.");
     return vaultPath;
+  }
+
+  /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */
+  private inBackground(what: string, task: () => Promise<unknown>): void {
+    task().catch((error: unknown) => {
+      this.options.logger?.log("error", `${what} failed.`, {
+        reason: error instanceof Error ? (error.stack ?? error.message) : String(error),
+      });
+    });
+  }
+
+  /** Logs a sync problem and the files that the secret scan held back (lessons 16, 26). */
+  private logSyncState(state: VaultSyncState): VaultSyncState {
+    if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
+      this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
+        status: state.status,
+        reason: state.lastError,
+      });
+    }
+    if (state.withheldFiles.length > 0) {
+      this.options.logger?.log("warn", "Vault sync held back files that look like secrets.", {
+        files: state.withheldFiles,
+      });
+    }
+    return state;
   }
 
   private assistantMcpServers(): Record<string, McpServerSpec> {
@@ -377,9 +466,24 @@ export class Eva {
     return google === null ? {} : { google };
   }
 
+  /** The folder of the `eva` scripts for agents, or null when Eva does not know her own command. */
+  private writeEvaScripts(): string | null {
+    const command = this.options.evaCommand ?? null;
+    if (command === null || command.length === 0) return null;
+    const folder = join(this.options.paths.root, "bin");
+    writeEvaScriptFiles(folder, command);
+    return folder;
+  }
+
   /** The engine's environment: the allowlist, the Claude token, and an own config folder when asked (plan §4.4). */
   private engineEnvironment(): Record<string, string> {
-    const extra: Record<string, string> = {};
+    const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
+    const scripts = this.writeEvaScripts();
+    if (scripts !== null) {
+      // The agent finds `eva` first, so `eva work` reaches this instance.
+      const path = this.options.processEnvironment["PATH"] ?? this.options.processEnvironment["Path"] ?? "";
+      extra["PATH"] = `${scripts}${delimiter}${path}`;
+    }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
     if (this.options.config.engines.claudeCode.ownConfigFolder) {
@@ -389,13 +493,25 @@ export class Eva {
   }
 }
 
-function readOriginUrl(folder: string, environment: Record<string, string>): string | null {
-  const result = Bun.spawnSync(["git", "remote", "get-url", "origin"], {
+/** Writes `eva` (for a POSIX shell and Git Bash) and `eva.cmd` into `<home>/bin`. */
+function writeEvaScriptFiles(folder: string, command: readonly string[]): void {
+  const shellQuote = (part: string): string => `'${part.replaceAll("'", "'\\''")}'`;
+  writeFileAtomic(join(folder, "eva"), `#!/bin/sh\nexec ${command.map(shellQuote).join(" ")} "$@"\n`);
+  chmodSync(join(folder, "eva"), 0o755);
+  writeFileAtomic(join(folder, "eva.cmd"), `@${command.map((part) => `"${part}"`).join(" ")} %*\r\n`);
+}
+
+/** Through the process seam, so it has a timeout and tests can fake it (lessons 81, 102). */
+async function readOriginUrl(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Record<string, string>,
+): Promise<string | null> {
+  const result = await runner.run(["git", "remote", "get-url", "origin"], {
     cwd: folder,
-    env: environment,
-    stdout: "pipe",
-    stderr: "pipe",
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: gitStatusTimeoutMs,
   });
-  const url = result.stdout.toString().trim();
+  const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
 }

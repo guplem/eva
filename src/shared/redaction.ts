@@ -12,7 +12,12 @@ const secretPatterns: readonly RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, // GitHub classic token
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, // GitHub fine-grained token
   /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key id
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  /\bGOCSPX-[A-Za-z0-9_-]{20,}/g, // Google OAuth client secret
+  /\bsk-(proj-)?[A-Za-z0-9_-]{32,}\b/g, // OpenAI key
+  /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, // Slack token
+  /\bnpm_[A-Za-z0-9]{30,}\b/g, // npm token
+  // A private key, or a header alone when the key is cut short: up to the END line, or to the end of the text.
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*$)/g,
 ];
 
 export class Redactor {

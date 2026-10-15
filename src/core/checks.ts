@@ -31,11 +31,13 @@ export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<Ch
     return runProgram([inputs.claudeExecutable, "--version"], process.cwd(), inputs, null);
   }
   if (inputs.vaultPath === null) return { ok: false, detail: "No vault is configured." };
+  // A dry-run push to a branch that does not exist checks write access: a read-only key passes
+  // ls-remote, then every autosave fails (lesson 98). Nothing is sent.
   return runProgram(
-    ["git", "ls-remote", "--heads", "origin"],
+    ["git", "push", "--dry-run", "origin", "HEAD:refs/heads/eva-access-check"],
     inputs.vaultPath,
     inputs,
-    "The vault's remote answered.",
+    "Eva can push to the vault's remote.",
   );
 }
 

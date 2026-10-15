@@ -112,7 +112,8 @@ export class VaultSync {
     }
     const plural = kept.length === 1 ? "file" : "files";
     const commit = await this.git(
-      ["commit", "-q", "-m", `eva: autosave (${String(kept.length)} ${plural})`],
+      // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
+      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(kept.length)} ${plural})`],
       localTimeoutMs,
     );
     if (commit.exitCode !== 0) {

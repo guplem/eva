@@ -20,16 +20,42 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
     `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
     // Over JSON the date arrives as text; new Date reads both forms.
     `Last push: ${status.vaultSync.lastPushAt === null ? "none since start" : new Date(status.vaultSync.lastPushAt).toISOString()}`,
+    ...heldBackLines(status.vaultSync.withheldFiles),
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
 
+/** The files that the secret scan keeps out of the vault's commits (lesson 26), or nothing. */
+export function heldBackLines(files: readonly string[]): string[] {
+  return files.length === 0 ? [] : [`Held back from the vault, as they look like secrets: ${files.join(", ")}`];
+}
+
 /** One line with the last turn's tokens, so a broken prompt cache shows (lesson 120). */
 export function describeLastTurn(lastTurn: EvaStatus["lastTurn"]): string {
   if (lastTurn === null) return "Last turn: none since start";
   return `Last turn: ${String(lastTurn.inputTokens)} in, ${String(lastTurn.outputTokens)} out, cache ${String(lastTurn.cacheReadTokens)} read, ${String(lastTurn.cacheWriteTokens)} written`;
+}
+
+/** `eva work`: starts project work, and names the chat that reports the result (plan §5.3). */
+export async function startProjectWork(
+  options: ClientOptions,
+  input: { projectId: string; request: string; reportToSessionId: string | null },
+): Promise<string> {
+  const response = await fetch(`${options.baseUrl}/api/projects/${encodeURIComponent(input.projectId)}/work`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      request: input.request,
+      ...(input.reportToSessionId === null ? {} : { reportToSessionId: input.reportToSessionId }),
+    }),
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  const started = (await response.json()) as { sessionId: string; clone: string };
+  return input.reportToSessionId === null
+    ? `Started the work in clone ${started.clone}, chat ${started.sessionId}.`
+    : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
 }
 
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {

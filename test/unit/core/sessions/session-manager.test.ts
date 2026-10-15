@@ -29,7 +29,7 @@ const preparer: TurnPreparer = {
 
 function createManager(
   engine: FakeEngine,
-  overrides: { approvalTimeoutMs?: number; redactor?: Redactor } = {},
+  overrides: { approvalTimeoutMs?: number; redactor?: Redactor; turnTimeoutMs?: number } = {},
 ): SessionManager {
   let nextId = 0;
   const manager = new SessionManager({
@@ -44,6 +44,7 @@ function createManager(
     redactor: overrides.redactor ?? new Redactor(),
     gatherMs: 5,
     approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
+    turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
   });
   manager.subscribe((event) => events.push(event));
   return manager;
@@ -84,6 +85,7 @@ describe("a conversation", () => {
         userText: "Hello there, Eva",
         answerText: "answer 1",
         toolCount: 0,
+        failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
       },
@@ -353,5 +355,103 @@ describe("persistence and redaction", () => {
     );
     await manager.send(newAssistantSession(manager), "show it");
     expect(events[0]).toMatchObject({ kind: "text", text: "token: [redacted]" });
+  });
+});
+
+describe("stops, failures and lost histories (security and lesson review)", () => {
+  function waitForAbort(request: { signal: AbortSignal }): Promise<void> {
+    return new Promise((resolve) => {
+      request.signal.addEventListener("abort", () => {
+        resolve();
+      });
+    });
+  }
+
+  test("stop aborts the running turn, and the failure stays in the history with its reason", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await waitForAbort(request);
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(manager.stop(sessionId)).toBe(false);
+    const turn = manager.send(sessionId, "long work");
+    for (let attempt = 0; attempt < 200 && !manager.stop(sessionId); attempt += 1) await Bun.sleep(5);
+    await turn;
+    expect(manager.get(sessionId).turns).toMatchObject([
+      { userText: "long work", failure: "The turn was stopped.", lastMessageId: null },
+    ]);
+  });
+
+  test("a turn that runs past the timeout is stopped", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await waitForAbort(request);
+      yield { kind: "turn_failed", reason: "aborted" };
+    });
+    const manager = createManager(engine, { turnTimeoutMs: 20 });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "hang");
+    expect(manager.isBusy(sessionId)).toBe(false);
+  });
+
+  test("a failed first turn does not make the next one continue a session that never existed", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    expect(engine.requests[1]?.history.kind).toBe("new");
+  });
+
+  test("a lost history that the retry could not replace starts a new engine session next time (lesson 46)", async () => {
+    const engine = new FakeEngine((request, turnNumber) => {
+      if (turnNumber === 2) return [{ kind: "history_lost" }, { kind: "turn_failed", reason: "still failing" }];
+      return FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    const firstEngineId = manager.get(sessionId).engineSessionId;
+    await manager.send(sessionId, "two");
+    expect(manager.get(sessionId)).toMatchObject({ historyLost: true });
+    await manager.send(sessionId, "three");
+    const third = engine.requests[2]?.history;
+    expect(third?.kind).toBe("new");
+    expect(third).not.toEqual({ kind: "new", engineSessionId: firstEngineId });
+    expect(manager.get(sessionId).historyLost).toBe(false);
+  });
+
+  test("the model cannot change while the first turn runs (lesson 41)", async () => {
+    let release = (): void => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "hi");
+    for (let attempt = 0; attempt < 200 && engine.requests.length === 0; attempt += 1) await Bun.sleep(5);
+    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+    release();
+    await turn;
+  });
+
+  test("a secret in a message or an answer is redacted in the saved history too (lesson 95)", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const manager = createManager(
+      new FakeEngine((request) => FakeEngine.answer(request, "it is the-secret-value-123")),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "remember the-secret-value-123");
+    expect(manager.get(sessionId).turns[0]).toMatchObject({
+      userText: "remember [redacted]",
+      answerText: "it is [redacted]",
+    });
   });
 });

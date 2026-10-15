@@ -180,3 +180,29 @@ describe("received files and the scratch cleanup", () => {
     expect(cleanScratch(join(folder, "nowhere"), new Date())).toBe(0);
   });
 });
+
+describe("security review", () => {
+  test("the Scratch cleanup never follows a link out of Scratch", () => {
+    const outside = join(folder, "outside");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "keep.txt"), "mine");
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60_000);
+    utimesSync(join(outside, "keep.txt"), old, old);
+    mkdirSync(join(vault, "Scratch"), { recursive: true });
+    try {
+      symlinkSync(outside, join(vault, "Scratch", "link"), "junction");
+    } catch {
+      return; // A system that cannot make the link cannot follow one either.
+    }
+    cleanScratch(vault, new Date());
+    expect(existsSync(join(outside, "keep.txt"))).toBe(true);
+  });
+
+  test.each([".npmrc", "secrets.json", "credentials.json", "client_secret_123.json", "cert.p12"])(
+    "%s is refused as a secrets file",
+    (name) => {
+      write(`Notes/${name}`, "x");
+      expect(resolveSendableFile(vault, `Notes/${name}`)).toMatchObject({ ok: false });
+    },
+  );
+});

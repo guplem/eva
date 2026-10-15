@@ -118,13 +118,15 @@ describe("buildQueryOptions", () => {
     expect(options.permissionMode).toBeUndefined();
   });
 
-  test("Project mode on an untrusted clone turns off its hooks and its project MCP servers", () => {
+  test("Project mode on an untrusted clone turns off its hooks, its settings and its project MCP servers", () => {
     const options = buildQueryOptions(
       request({ mode: "project", appendSystemPrompt: null, trusted: false }),
       "/bin/claude",
     );
     expect(options.settings).toEqual({ disableAllHooks: true });
     expect(options.strictMcpConfig).toBe(true);
+    // The clone's own settings could allow every tool and skip the approval.
+    expect(options.settingSources).toEqual(["user"]);
   });
 
   test("continue resumes the session; fork resumes at a message into a new session", () => {

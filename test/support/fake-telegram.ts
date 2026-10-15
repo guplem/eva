@@ -57,12 +57,13 @@ export class FakeTelegram {
   }
 
   /** A text message from a chat, optionally inside a topic. */
-  sendText(chatId: number, text: string, topicId?: number): void {
+  sendText(chatId: number, text: string, topicId?: number, fromId: number = chatId): void {
     this.updates.push({
       update_id: this.nextUpdateId++,
       message: {
         message_id: this.nextMessageId++,
         chat: { id: chatId, type: "private" },
+        from: { id: fromId },
         text,
         ...(topicId === undefined ? {} : { message_thread_id: topicId, is_topic_message: true }),
       },
@@ -70,11 +71,12 @@ export class FakeTelegram {
   }
 
   /** A button press on a message. */
-  pressButton(chatId: number, data: string, topicId?: number): void {
+  pressButton(chatId: number, data: string, topicId?: number, fromId: number = chatId): void {
     this.updates.push({
       update_id: this.nextUpdateId++,
       callback_query: {
         id: `callback-${String(this.nextUpdateId)}`,
+        from: { id: fromId },
         data,
         message: {
           message_id: 1,

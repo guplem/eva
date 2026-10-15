@@ -25,7 +25,7 @@ import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { parseArguments, usageText, type CliCommand } from "./frontends/cli/arguments.ts";
 import { runChat } from "./frontends/cli/chat.ts";
-import { describeProjects, describeStatus } from "./frontends/cli/client.ts";
+import { describeProjects, describeStatus, startProjectWork } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
@@ -85,6 +85,13 @@ async function main(argv: readonly string[]): Promise<number> {
       return healthy ? exitCodes.clean : exitCodes.crash;
     }
     case "setup": {
+      // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
+      await runDoctor({
+        runner: systemProcessRunner,
+        environment: childEnvironment(),
+        write: writeLine,
+        standalone: isStandalone(),
+      });
       const setupOptions = {
         paths,
         write: writeLine,
@@ -110,6 +117,7 @@ async function main(argv: readonly string[]): Promise<number> {
     case "status":
     case "projects":
     case "chat":
+    case "work":
       return runClientCommand(command, paths);
     case "run":
       return serve(paths);
@@ -117,7 +125,7 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 async function runClientCommand(
-  command: Extract<CliCommand, { command: "status" | "projects" | "chat" }>,
+  command: Extract<CliCommand, { command: "status" | "projects" | "chat" | "work" }>,
   paths: HomePaths,
 ): Promise<number> {
   const config = loadConfig(paths);
@@ -134,7 +142,18 @@ async function runClientCommand(
         await describeStatus({ baseUrl, token }, existsSync(codePath) ? readFileSync(codePath, "utf-8").trim() : null),
       );
     } else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
-    else {
+    else if (command.command === "work") {
+      writeLine(
+        await startProjectWork(
+          { baseUrl, token },
+          {
+            projectId: command.projectId,
+            request: command.request,
+            reportToSessionId: process.env["EVA_SESSION_ID"] ?? null,
+          },
+        ),
+      );
+    } else {
       await withPrompt(async (ask) => {
         await runChat({
           baseUrl,
@@ -143,6 +162,7 @@ async function runClientCommand(
           model: command.model ?? config.engines.claudeCode.defaultModel,
           ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
           ...(command.clone === undefined ? {} : { clone: command.clone }),
+          ...(command.engine === undefined ? {} : { engine: command.engine }),
           readLine: async () => {
             try {
               return await ask("");
@@ -189,7 +209,7 @@ async function serve(paths: HomePaths): Promise<number> {
       new PiEngine({
         command: [piExecutable],
         workFolder: join(paths.enginesFolder, "pi"),
-        model: config.engines.pi.model,
+        models: config.engines.pi.models,
       }),
     );
   }
@@ -203,10 +223,21 @@ async function serve(paths: HomePaths): Promise<number> {
     processEnvironment: process.env,
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
+    logger,
+    evaCommand: isStandalone() ? [process.execPath] : [process.execPath, Bun.main],
   });
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
       logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+    // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
+    if (event.kind === "turn_finished")
+      logger.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
+  });
+  // A promise that nobody awaits must never end Eva silently (lesson 50).
+  process.on("unhandledRejection", (reason: unknown) => {
+    logger.log("error", "A background task failed.", {
+      reason: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+    });
   });
   eva.startBackgroundWork();
   const api = startLocalApi({
@@ -264,10 +295,14 @@ function startTelegram(
     eva,
     statePath: paths.telegramState,
     allowedChatId: config.telegram.allowedChatId,
+    allowedUserId: config.telegram.allowedUserId,
     pairingCode,
-    onPaired: (chatId) => {
+    onPaired: (chatId, userId) => {
       const current = loadConfig(paths);
-      saveConfig(paths, { ...current, telegram: { ...current.telegram, allowedChatId: chatId } });
+      saveConfig(paths, {
+        ...current,
+        telegram: { ...current.telegram, allowedChatId: chatId, allowedUserId: userId },
+      });
       rmSync(pairingCodePath(paths), { force: true });
       logger.log("info", "Telegram paired.");
     },
@@ -335,6 +370,8 @@ async function update(): Promise<number> {
     executablePath: process.execPath,
     platform: process.platform,
     arch: process.arch,
+    runner: systemProcessRunner,
+    environment: childEnvironment(),
   });
   writeLine(
     result.status === "up_to_date"
@@ -369,8 +406,11 @@ main(process.argv.slice(2))
       process.stderr.write(`${error.message}\n`);
       process.exit(exitCodes.crash);
     }
+    // The service log keeps stderr, so a crash report is redacted too (lesson 95).
     process.stderr.write(
-      `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      new Redactor().redact(
+        `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      ),
     );
     process.exit(exitCodes.crash);
   });

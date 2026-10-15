@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Eva } from "../../core/eva.ts";
-import { describeLastTurn } from "../cli/client.ts";
+import { describeLastTurn, heldBackLines } from "../cli/client.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -22,9 +22,14 @@ export interface TelegramBotOptions {
   readonly eva: Eva;
   readonly statePath: string;
   readonly allowedChatId: number | null;
+  /**
+   * The person who paired the chat. In a group (topics need one), only this person may act.
+   * Null for a chat paired before Eva kept it: then the chat id alone decides.
+   */
+  readonly allowedUserId: number | null;
   /** With no chat allowed yet, the chat that sends this code becomes the allowed one. */
   readonly pairingCode: string;
-  readonly onPaired: (chatId: number) => void;
+  readonly onPaired: (chatId: number, userId: number | null) => void;
   /** Called when Eva must stop, with the exit code (lesson 89). */
   readonly onFatal: (exitCode: number) => void;
   readonly logger?: Logger;
@@ -60,6 +65,7 @@ interface TelegramFile {
 
 interface TelegramMessage {
   readonly chat: TelegramChat;
+  readonly from?: { readonly id: number };
   readonly text?: string;
   readonly caption?: string;
   readonly document?: TelegramFile;
@@ -71,7 +77,12 @@ interface TelegramMessage {
 interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: TelegramMessage;
-  readonly callback_query?: { readonly id: string; readonly data?: string; readonly message?: TelegramMessage };
+  readonly callback_query?: {
+    readonly id: string;
+    readonly from?: { readonly id: number };
+    readonly data?: string;
+    readonly message?: TelegramMessage;
+  };
 }
 
 /** Telegram refuses a message past 4096 characters; the split leaves room for the HTML tags. */
@@ -88,6 +99,7 @@ const buttonsPerMessage = 50;
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this topic and forget its chat" },
+  { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects" },
   { command: "schedules", description: "List the schedules" },
@@ -98,6 +110,7 @@ export class TelegramBot {
   private readonly options: TelegramBotOptions;
   private readonly state: BotState;
   private allowedChatId: number | null;
+  private allowedUserId: number | null;
   private conflicts = 0;
   private readonly pendingText = new Map<string, string[]>();
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -109,6 +122,7 @@ export class TelegramBot {
   constructor(options: TelegramBotOptions) {
     this.options = options;
     this.allowedChatId = options.allowedChatId;
+    this.allowedUserId = options.allowedUserId;
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -198,7 +212,8 @@ export class TelegramBot {
     if (this.allowedChatId === null) {
       if (text === this.options.pairingCode) {
         this.allowedChatId = chatId;
-        this.options.onPaired(chatId);
+        this.allowedUserId = message.from?.id ?? null;
+        this.options.onPaired(chatId, this.allowedUserId);
         await this.send(chatId, null, "Paired. This chat now talks to Eva.");
       } else {
         await this.send(
@@ -209,7 +224,7 @@ export class TelegramBot {
       }
       return;
     }
-    if (chatId !== this.allowedChatId) {
+    if (chatId !== this.allowedChatId || !this.isAllowedSender(message.from?.id)) {
       await this.send(chatId, null, `This bot is private. Your chat id is ${String(chatId)}.`);
       return;
     }
@@ -298,10 +313,21 @@ export class TelegramBot {
           await this.send(chatId, null, "/delete works only inside a topic.");
           return;
         }
-        await this.send(chatId, topicId, "Delete this topic and every message in it?", {
-          inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
-        });
+        await this.send(
+          chatId,
+          topicId,
+          "Delete this topic and every message in it? The engine keeps its own transcript of the chat.",
+          {
+            inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
+          },
+        );
         return;
+      case "stop": {
+        const entry = this.state.topics[keyOf(chatId, topicId)];
+        const stopped = entry !== undefined && this.options.eva.sessions.stop(entry.sessionId);
+        await this.send(chatId, topicId, stopped ? "Stopping." : "Eva is not working in this chat.");
+        return;
+      }
       case "status":
         await this.send(chatId, topicId, this.statusText());
         return;
@@ -342,6 +368,12 @@ export class TelegramBot {
         "Topics are not available in this chat, so the new chat continues here. The earlier history of this chat is set aside.",
       );
     }
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    if (topicId === null && current !== undefined && this.options.eva.sessions.isBusy(current.sessionId)) {
+      // Never reset a chat while its turn runs (lesson 49).
+      await this.send(chatId, null, "Eva is still working in this chat. Send /new again when she finishes.");
+      return;
+    }
     const session = this.options.eva.createAssistantSession({
       source: "telegram",
       model: "default",
@@ -380,10 +412,10 @@ export class TelegramBot {
     void this.options.eva.sessions.send(entry.sessionId, text);
   }
 
-  private async handleButton(query: { id: string; data?: string; message?: TelegramMessage }): Promise<void> {
+  private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
     const chatId = query.message?.chat.id;
     await this.quietCall("answerCallbackQuery", { callback_query_id: query.id });
-    if (chatId === undefined || chatId !== this.allowedChatId) return;
+    if (chatId === undefined || chatId !== this.allowedChatId || !this.isAllowedSender(query.from?.id)) return;
     const [kind, first, second] = (query.data ?? "").split(":");
     if (kind === "a" && first !== undefined && (second === "allow" || second === "deny")) {
       this.options.eva.sessions.answerApproval(first, second);
@@ -425,9 +457,9 @@ export class TelegramBot {
       schedules.length === 0
         ? undefined
         : {
-            inline_keyboard: schedules.map(({ schedule }) => [
-              { text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` },
-            ]),
+            inline_keyboard: schedules
+              .slice(0, buttonsPerMessage)
+              .map(({ schedule }) => [{ text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` }]),
           },
     );
   }
@@ -449,7 +481,10 @@ export class TelegramBot {
       await this.send(chatId, topicId, cardText(event));
       return;
     }
-    if (event.sessionId !== null) {
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
+    // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
+    if (event.sessionId !== null && !busy) {
       // Each firing is a fresh chat in the schedule's topic (lesson 126).
       this.state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
       this.saveState();
@@ -548,20 +583,20 @@ export class TelegramBot {
 
   private async onEvent(event: SessionEvent): Promise<void> {
     const target = this.targetOf(event.sessionId);
-    if (target === null) return;
+    if (target === null) {
+      // Every attached front end shows an approval (plan §5.5), also for a chat that lives elsewhere.
+      if (event.kind === "approval_needed" && this.allowedChatId !== null) {
+        const title = this.options.eva.sessions.list().find((session) => session.id === event.sessionId)?.title;
+        await this.sendApproval(this.allowedChatId, null, event, title ?? "another chat");
+      }
+      return;
+    }
     switch (event.kind) {
       case "text":
         this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
         return;
       case "approval_needed":
-        await this.send(target.chatId, target.topicId, `Eva wants to run ${event.toolName}: ${event.summary}`, {
-          inline_keyboard: [
-            [
-              { text: "Allow", callback_data: `a:${event.requestId}:allow` },
-              { text: "Deny", callback_data: `a:${event.requestId}:deny` },
-            ],
-          ],
-        });
+        await this.sendApproval(target.chatId, target.topicId, event, null);
         return;
       case "history_lost":
         await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
@@ -583,6 +618,23 @@ export class TelegramBot {
       default:
         return;
     }
+  }
+
+  private async sendApproval(
+    chatId: number,
+    topicId: number | null,
+    event: Extract<SessionEvent, { kind: "approval_needed" }>,
+    chatTitle: string | null,
+  ): Promise<void> {
+    const where = chatTitle === null ? "" : ` (in “${chatTitle}”)`;
+    await this.send(chatId, topicId, `Eva wants to run ${event.toolName}${where}: ${event.summary}`, {
+      inline_keyboard: [
+        [
+          { text: "Allow", callback_data: `a:${event.requestId}:allow` },
+          { text: "Deny", callback_data: `a:${event.requestId}:deny` },
+        ],
+      ],
+    });
   }
 
   /** Sends Markdown as Telegram HTML, split under the limit; a refused part goes again as plain text (lesson 58). */
@@ -642,9 +694,14 @@ export class TelegramBot {
       `Eva ${status.version}`,
       `Vault: ${status.vaultPath ?? "not configured"}`,
       `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
+      ...heldBackLines(status.vaultSync.withheldFiles),
       `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
       describeLastTurn(status.lastTurn),
     ].join("\n");
+  }
+
+  private isAllowedSender(userId: number | undefined): boolean {
+    return this.allowedUserId === null || userId === this.allowedUserId;
   }
 
   private sessionExists(sessionId: string): boolean {

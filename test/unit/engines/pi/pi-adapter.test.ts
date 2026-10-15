@@ -63,7 +63,7 @@ function engine(fake: FakePi, overrides: Partial<ConstructorParameters<typeof Pi
   return new PiEngine({
     command: ["pi"],
     workFolder: join(folder, "pi"),
-    model: null,
+    models: { default: null, opus: null, sonnet: null, haiku: null },
     start: fake.start,
     newSessionId: () => "fork-1",
     now: () => new Date("2026-10-15T08:00:00Z"),
@@ -159,6 +159,17 @@ describe("PiEngine", () => {
     expect(run.environment).toEqual({ PATH: "/bin" });
   });
 
+  test("the chat's model name picks the pi model, with the default entry as fallback (lesson 41)", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
+    const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null, haiku: null };
+    await drain(engine(fake, { models }).runTurn(request({ model: "opus" })));
+    await drain(engine(fake, { models }).runTurn(request({ model: "sonnet" })));
+    expect(fake.runs.map((run) => run.command[run.command.indexOf("--model") + 1])).toEqual([
+      "openai/gpt-5",
+      "openai/gpt-5-mini",
+    ]);
+  });
+
   test("Eva writes her extension and the turn's prompt file, and keeps them when nothing changed", async () => {
     const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
     await drain(engine(fake).runTurn(request()));
@@ -196,7 +207,7 @@ describe("PiEngine", () => {
     expect(outward.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
-  test("Project mode asks the person for every tool call", async () => {
+  test("Project mode runs pi's tools without a question, as pi itself does (D8)", async () => {
     const asked: string[] = [];
     const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
     await drain(
@@ -206,12 +217,12 @@ describe("PiEngine", () => {
           appendSystemPrompt: null,
           requestApproval: (approval) => {
             asked.push(approval.summary);
-            return Promise.resolve("allow");
+            return Promise.resolve("deny");
           },
         }),
       ),
     );
-    expect(asked).toHaveLength(1);
+    expect(asked).toEqual([]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
   });
 
@@ -226,24 +237,13 @@ describe("PiEngine", () => {
     expect(answers).toEqual([{ type: "extension_ui_response", id: expect.any(String) as string, cancelled: true }]);
   });
 
-  test("a broken approval message still asks, as an unknown tool", async () => {
+  test("a broken approval message is read as an unknown local tool", async () => {
     const records = loadPiFixture("approval-allowed").map((record) =>
       record["type"] === "extension_ui_request" ? { ...record, message: "not json" } : record,
     );
-    const asked: string[] = [];
     const fake = new FakePi([{ records }]);
-    await drain(
-      engine(fake).runTurn(
-        request({
-          mode: "project",
-          requestApproval: (approval) => {
-            asked.push(approval.toolName);
-            return Promise.resolve("allow");
-          },
-        }),
-      ),
-    );
-    expect(asked).toEqual(["unknown"]);
+    await drain(engine(fake).runTurn(request()));
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
   });
 
   test("a retried 500 that fails again ends the turn once, with pi's error (lesson 47)", async () => {
@@ -286,7 +286,7 @@ describe("PiEngine", () => {
     const missing = new PiEngine({
       command: ["pi"],
       workFolder: join(folder, "pi"),
-      model: null,
+      models: { default: null, opus: null, sonnet: null, haiku: null },
       start: () => {
         throw new Error("pi is not installed");
       },

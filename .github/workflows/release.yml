@@ -26,7 +26,8 @@ jobs:
           bun build --compile --minify --target=bun-linux-x64 src/main.ts --outfile dist/eva-linux-x64
           bun build --compile --minify --target=bun-linux-arm64 src/main.ts --outfile dist/eva-linux-arm64
           bun build --compile --minify --target=bun-windows-x64 src/main.ts --outfile dist/eva-windows-x64.exe
-          cd dist && sha256sum eva-* > SHA256SUMS
+          # The signed file names its version, so an old build cannot come back under a new tag.
+          cd dist && { sha256sum eva-*; echo "# version ${GITHUB_REF_NAME#v}"; } > SHA256SUMS
       - name: Sign the checksums
         env:
           EVA_RELEASE_SIGNING_KEY: ${{ secrets.EVA_RELEASE_SIGNING_KEY }}

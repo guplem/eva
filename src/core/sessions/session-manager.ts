@@ -33,9 +33,14 @@ export interface TurnOutcome {
   readonly finished: boolean;
 }
 
+/** What a preparer may do during its step: ask the person, as a tool approval does. */
+export interface PrepareContext {
+  readonly ask: (question: string, detail: string) => Promise<ApprovalAnswer>;
+}
+
 /** What each mode does around a turn (Assistant: pull, prompt, save, skill runs; Project: trust). */
 export interface TurnPreparer {
-  prepare(session: SessionRecord): Promise<PreparedTurn>;
+  prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn>;
   /** Returns a message to send to the same session as its next turn, or null. */
   afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null>;
 }
@@ -64,6 +69,8 @@ export interface SessionManagerOptions {
   readonly gatherMs: number;
   /** An approval nobody answers is denied after this time (plan §5.5). */
   readonly approvalTimeoutMs: number;
+  /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good (plan §6). */
+  readonly turnTimeoutMs: number;
 }
 
 type EventListener = (event: SessionEvent) => void;
@@ -76,6 +83,8 @@ interface PendingBatch {
 
 interface SessionRuntime {
   busy: boolean;
+  /** Stops the running turn; null when no turn runs. */
+  controller: AbortController | null;
   timer: ReturnType<typeof setTimeout> | null;
   pending: PendingBatch | null;
 }
@@ -88,8 +97,10 @@ export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
-  private readonly approvals = new Map<string, (answer: ApprovalAnswer) => void>();
+  private readonly approvals = new Map<string, { sessionId: string; resolve: (answer: ApprovalAnswer) => void }>();
   private readonly sequence = new SequenceCounter();
+  /** The last failure reason of each session, for the history. */
+  private readonly lastFailure = new Map<string, string>();
 
   constructor(options: SessionManagerOptions) {
     this.options = options;
@@ -113,6 +124,7 @@ export class SessionManager {
       lastTurnAt: null,
       source: input.source,
       telegramTopicId: input.telegramTopicId ?? null,
+      historyLost: false,
       turns: [],
     };
     this.options.store.save(record);
@@ -132,7 +144,7 @@ export class SessionManager {
   /** Chooses the model of a chat before its first turn. A model belongs to a conversation (lesson 41). */
   setModel(sessionId: string, model: ModelAlias): SessionRecord {
     const session = this.get(sessionId);
-    if (session.turns.length > 0) {
+    if (session.turns.length > 0 || this.isBusy(sessionId)) {
       throw new EvaError("session_busy", "The model of a chat is chosen before its first message.");
     }
     const updated = { ...session, modelAlias: model };
@@ -147,6 +159,14 @@ export class SessionManager {
 
   isBusy(sessionId: string): boolean {
     return this.runtimes.get(sessionId)?.busy ?? false;
+  }
+
+  /** Stops the running turn of a chat (plan §4.1). False when no turn runs. */
+  stop(sessionId: string): boolean {
+    const controller = this.runtimes.get(sessionId)?.controller ?? null;
+    if (controller === null) return false;
+    controller.abort();
+    return true;
   }
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
@@ -203,10 +223,11 @@ export class SessionManager {
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
-    const resolve = this.approvals.get(requestId);
-    if (resolve === undefined) return;
+    const pending = this.approvals.get(requestId);
+    if (pending === undefined) return;
     this.approvals.delete(requestId);
-    resolve(answer);
+    pending.resolve(answer);
+    this.emit(pending.sessionId, { kind: "approval_resolved", requestId, answer });
   }
 
   private retryFromStart(session: SessionRecord): SessionRecord {
@@ -270,10 +291,18 @@ export class SessionManager {
       this.emit(sessionId, payload);
     };
 
+    const runtime = this.runtimeOf(sessionId);
+    const controller = new AbortController();
+    runtime.controller = controller;
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, this.options.turnTimeoutMs);
+    let historyLost = false;
     try {
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
-      const prepared = await preparer.prepare(session);
-      const controller = new AbortController();
+      const prepared = await preparer.prepare(session, {
+        ask: (question, detail) => this.requestApproval(sessionId, question, detail),
+      });
       const stream = engine.runTurn({
         mode: session.mode,
         history: this.historyOf(session),
@@ -293,8 +322,11 @@ ${prompt}`,
         requestApproval: (request) => this.requestApproval(sessionId, request.toolName, request.summary),
         signal: controller.signal,
       });
-      for await (const payload of stream) {
+      for await (const raw of stream) {
         if (turn.ended) continue;
+        // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
+        const payload = redactPayload(raw, this.options.redactor);
+        if (payload.kind === "history_lost") historyLost = true;
         if (payload.kind === "text") {
           lastText = payload.messageId;
           answerParts.push(payload.text);
@@ -305,7 +337,7 @@ ${prompt}`,
           // Record first: a front end that reloads the list on this event must find the turn in it.
           this.recordTurn(
             session,
-            { userText: prompt, answerText: answerParts.join("\n\n"), toolCount },
+            { userText: this.options.redactor.redact(prompt), answerText: answerParts.join("\n\n"), toolCount },
             payload,
             lastText,
           );
@@ -315,13 +347,20 @@ ${prompt}`,
       if (!turn.ended) emit({ kind: "turn_failed", reason: "The engine stopped without ending the turn." });
     } catch (error) {
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
+    } finally {
+      clearTimeout(timeout);
+      runtime.controller = null;
     }
+    if (finished === null) this.recordFailure(session.id, prompt, answerParts, toolCount, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
 
   private historyOf(session: SessionRecord): TurnHistory {
-    if (session.turns.length > 0) return { kind: "continue", engineSessionId: session.engineSessionId };
+    if (session.historyLost) return { kind: "new", engineSessionId: session.engineSessionId };
+    if (session.turns.some((turn) => turn.failure === null)) {
+      return { kind: "continue", engineSessionId: session.engineSessionId };
+    }
     if (session.forkFromEngineSessionId !== null && session.forkAtMessageId !== null) {
       return {
         kind: "fork",
@@ -344,12 +383,45 @@ ${prompt}`,
       ...current,
       engineSessionId: finished.engineSessionId,
       forkFromEngineSessionId: null,
+      historyLost: false,
       lastTurnAt: at,
       title:
         current.turns.length === 0 && current.parentId === null && current.title === defaultTitle
           ? titleOf(turn.userText)
           : current.title,
-      turns: [...current.turns, { ...turn, lastMessageId: finished.lastMessageId ?? lastText, at }],
+      turns: [...current.turns, { ...turn, failure: null, lastMessageId: finished.lastMessageId ?? lastText, at }],
+    });
+  }
+
+  /** Keeps a failed turn, with its reason, so the person sees it after a reload. */
+  private recordFailure(
+    sessionId: string,
+    prompt: string,
+    answerParts: readonly string[],
+    toolCount: number,
+    historyLost: boolean,
+  ): void {
+    const current = this.options.store.get(sessionId);
+    if (current === undefined) return;
+    const last = this.lastFailure.get(sessionId) ?? "The turn failed.";
+    const at = this.options.now().toISOString();
+    this.options.store.save({
+      ...current,
+      // A lost history that the retry could not replace: start a new engine session next time,
+      // instead of finding it lost again on every message (lesson 46).
+      ...(historyLost ? { historyLost: true, engineSessionId: this.options.newId() } : {}),
+      lastTurnAt: at,
+      turns: [
+        ...current.turns,
+        {
+          userText: this.options.redactor.redact(prompt),
+          answerText: answerParts.join("\n\n"),
+          toolCount,
+          failure: last,
+          lastMessageId: null,
+          at,
+        },
+      ],
     });
   }
 
@@ -359,9 +431,12 @@ ${prompt}`,
       const timer = setTimeout(() => {
         this.answerApproval(requestId, "deny");
       }, this.options.approvalTimeoutMs);
-      this.approvals.set(requestId, (answer) => {
-        clearTimeout(timer);
-        resolve(answer);
+      this.approvals.set(requestId, {
+        sessionId,
+        resolve: (answer) => {
+          clearTimeout(timer);
+          resolve(answer);
+        },
       });
       this.emit(sessionId, { kind: "approval_needed", requestId, toolName, summary });
     });
@@ -369,6 +444,7 @@ ${prompt}`,
 
   private emit(sessionId: string, payload: EngineEventPayload): void {
     const event = redactPayload(payload, this.options.redactor);
+    if (event.kind === "turn_failed") this.lastFailure.set(sessionId, event.reason);
     const stamped: SessionEvent = {
       ...event,
       sessionId,
@@ -381,7 +457,7 @@ ${prompt}`,
   private runtimeOf(sessionId: string): SessionRuntime {
     let runtime = this.runtimes.get(sessionId);
     if (runtime === undefined) {
-      runtime = { busy: false, timer: null, pending: null };
+      runtime = { busy: false, controller: null, timer: null, pending: null };
       this.runtimes.set(sessionId, runtime);
     }
     return runtime;
@@ -416,6 +492,7 @@ function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineE
       return { ...payload, description: redactor.redact(payload.description) };
     case "tool_finished":
     case "history_lost":
+    case "approval_resolved":
     case "turn_finished":
       return payload;
   }

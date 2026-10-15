@@ -232,4 +232,17 @@ describe("Scheduler", () => {
     await scheduler.tick();
     expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(2);
   });
+
+  test("a changed schedule that is already due shows its card and does not fire then (lessons 66, 67)", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T04:00:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:00:00Z"); // 07:00 in Madrid
+    writeSchedules([{ ...morning, at: "06:59", prompt: "Something someone pushed." }]);
+    await scheduler.tick();
+    await scheduler.tick();
+    expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
+    expect(chats).toEqual([]);
+  });
 });

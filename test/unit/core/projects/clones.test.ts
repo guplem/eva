@@ -79,6 +79,10 @@ describe("trust", () => {
     expect(isTrustedByDefault("git@github.com:Owner/app.git", ["owner"])).toBe(true);
     expect(isTrustedByDefault("https://github.com/stranger/app", ["owner"])).toBe(false);
     expect(isTrustedByDefault("https://gitlab.com/owner/app", ["owner"])).toBe(false);
+    // Only a URL whose host is github.com counts (security review).
+    expect(isTrustedByDefault("https://evil.example/github.com/owner/app.git", ["owner"])).toBe(false);
+    expect(isTrustedByDefault("https://token@github.com/owner/app.git", ["owner"])).toBe(true);
+    expect(isTrustedByDefault("ssh://git@github.com/owner/app.git", ["owner"])).toBe(true);
   });
 
   test("the store remembers an answer by repository URL", () => {

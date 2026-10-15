@@ -104,7 +104,10 @@ export async function describeClone(
 
 /** True when the repository's owner is on the allowlist (default trust, §12). GitHub only. */
 export function isTrustedByDefault(repositoryUrl: string, trustedOwners: readonly string[]): boolean {
-  const match = /github\.com[/:]([^/]+)\//i.exec(repositoryUrl);
+  // Anchored at the start: `https://evil.example/github.com/<owner>/` must not count as GitHub.
+  const match = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\//i.exec(
+    repositoryUrl,
+  );
   const owner = match?.[1]?.toLowerCase();
   return owner !== undefined && trustedOwners.some((trusted) => trusted.toLowerCase() === owner);
 }

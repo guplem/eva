@@ -55,6 +55,16 @@ export function App(): ReactElement {
             [event.taskId]: { description: event.description, state: event.state, sessionId: event.sessionId },
           },
         }));
+      } else if (event.kind === "approval_resolved") {
+        setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
+      } else if (event.kind === "history_lost") {
+        setLive((state) => ({
+          ...state,
+          streaming: {
+            ...state.streaming,
+            [event.sessionId]: `${state.streaming[event.sessionId] ?? ""}*The earlier history of this chat is lost.*\n\n`,
+          },
+        }));
       } else if (event.kind === "approval_needed") {
         setApprovals((current) => [
           ...current,

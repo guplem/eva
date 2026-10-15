@@ -12,6 +12,8 @@ const turnSchema = z.object({
   answerText: z.string().default(""),
   /** How many tools the turn used, for the activity chips. */
   toolCount: z.number().int().min(0).default(0),
+  /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
+  failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),
   at: z.string(),
 });
@@ -34,6 +36,8 @@ const sessionSchema = z.object({
   lastTurnAt: z.string().nullable(),
   source: z.enum(["cli", "telegram", "web", "schedule"]),
   telegramTopicId: z.number().int().nullable(),
+  /** True after the engine lost the history: the next turn starts a new engine session (lesson 46). */
+  historyLost: z.boolean().default(false),
   turns: z.array(turnSchema),
 });
 

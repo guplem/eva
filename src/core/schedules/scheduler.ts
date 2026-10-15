@@ -132,6 +132,7 @@ export class Scheduler {
     for (const schedule of definitions.schedules) {
       const state = this.state.see(schedule.id, now);
       const fields = announcedFields(schedule);
+      const slot = dueSlot(schedule, state, now);
       if (state.announced === null || changedFields(state.announced, fields).length > 0) {
         await this.emit({
           kind: "schedule_card",
@@ -142,9 +143,11 @@ export class Scheduler {
           nextRun: nextSlot(schedule, now),
           timeZone: this.options.timeZone,
         });
-        this.state.update(schedule.id, { announced: fields });
+        // The card is the check against a schedule that someone pushed (lessons 66, 67): a slot
+        // that is already due is skipped, so the person sees the card before anything runs.
+        this.state.update(schedule.id, { announced: fields, ...(slot === null ? {} : { lastFired: slot }) });
+        continue;
       }
-      const slot = dueSlot(schedule, state, now);
       if (slot === null) continue;
       this.state.update(schedule.id, { lastFired: slot });
       await this.fire(schedule);

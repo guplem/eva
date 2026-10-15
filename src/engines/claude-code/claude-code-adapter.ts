@@ -5,6 +5,7 @@
  */
 import { query as sdkQuery, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import { reachesOtherPeople, summarizeToolCall } from "../../shared/outward-actions.ts";
 import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
 
 type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
@@ -146,7 +147,7 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
               kind: "tool_started",
               toolUseId: block.id,
               name: block.name,
-              summary: summarizeTool(block.name, block.input),
+              summary: summarizeToolCall(block.name, block.input),
             };
           }
         }
@@ -211,45 +212,16 @@ function usageOf(usage: {
   };
 }
 
-/** Commands and tools that reach other people. Assistant mode asks before them (plan §5.5). */
-const outwardCommandPattern =
-  /\b(git\s+push|gh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)|gh\s+api\b.*-X\s*(POST|PATCH|PUT|DELETE)|curl\b.*-X\s*(POST|PUT|PATCH|DELETE))/i;
-const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permission|access|comment|reaction)/i;
-/** A calendar event reaches other people only when it has guests or sends updates (plan §5.5). */
-const calendarEventToolPattern = /^mcp__.*manage_event$/;
-
 async function decidePermission(
   request: TurnRequest,
   toolName: string,
   input: Record<string, unknown>,
 ): Promise<ApprovalAnswer> {
-  const summary = summarizeTool(toolName, input);
-  if (request.mode === "project") {
+  const summary = summarizeToolCall(toolName, input);
+  if (request.mode === "project" || reachesOtherPeople(toolName, input)) {
     return request.requestApproval({ requestId: "", toolName, summary });
   }
-  const command = typeof input["command"] === "string" ? input["command"] : "";
-  const outward =
-    (toolName === "Bash" && outwardCommandPattern.test(command)) ||
-    outwardMcpPattern.test(toolName) ||
-    (calendarEventToolPattern.test(toolName) && eventReachesOthers(input));
-  if (!outward) return "allow";
-  return request.requestApproval({ requestId: "", toolName, summary });
-}
-
-function eventReachesOthers(input: Record<string, unknown>): boolean {
-  const attendees = input["attendees"];
-  const hasGuests = Array.isArray(attendees) ? attendees.length > 0 : typeof attendees === "string" && attendees !== "";
-  const sendsUpdates = input["send_updates"] === "all" || input["send_updates"] === "externalOnly";
-  return hasGuests || sendsUpdates || input["action"] === "rsvp";
-}
-
-function summarizeTool(name: string, input: unknown): string {
-  const fields = (input ?? {}) as Record<string, unknown>;
-  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
-    const value = fields[key];
-    if (typeof value === "string") return name === "Bash" ? value : `${name} ${value}`;
-  }
-  return JSON.stringify(input);
+  return "allow";
 }
 
 export function abortControllerFor(signal: AbortSignal): AbortController {

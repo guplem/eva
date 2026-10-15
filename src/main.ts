@@ -21,6 +21,7 @@ import {
 import { acquireInstanceLock, isProcessAlive } from "./core/instance/instance-lock.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
+import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { parseArguments, usageText, type CliCommand } from "./frontends/cli/arguments.ts";
 import { runChat } from "./frontends/cli/chat.ts";
@@ -182,6 +183,16 @@ async function serve(paths: HomePaths): Promise<number> {
   if (claudeExecutable === null)
     logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
   else engines.push(new ClaudeCodeEngine({ executable: claudeExecutable }));
+  const piExecutable = config.engines.pi.executable ?? Bun.which("pi");
+  if (piExecutable !== null) {
+    engines.push(
+      new PiEngine({
+        command: [piExecutable],
+        workFolder: join(paths.enginesFolder, "pi"),
+        model: config.engines.pi.model,
+      }),
+    );
+  }
 
   const eva = new Eva({
     paths,

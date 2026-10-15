@@ -17,10 +17,23 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 - [ ] **Claude login on this PC:** the standalone `claude` is not logged in (the desktop app uses its own login). Run `claude` once and log in, or run `claude setup-token` and give the token to Eva in `eva setup`.
 
+## Engine checks with a real login (phase P3)
+
+- [ ] **`bun run smoke:live`:** with `CLAUDE_CODE_OAUTH_TOKEN` set from `claude setup-token`, it runs two real turns through Eva's Claude Code adapter in a demo vault and checks the turn ends, the continue and the prompt cache.
+- [ ] **Real fixtures:** run `EVA_LIVE=1 bun run scripts/capture-claude-fixtures.ts` with the same token, and replace the hand-built SDK messages in `test/unit/engines/claude-code/` with the captures.
+- [ ] **Spike S4:** compare append and replace for the Assistant prompt on 10 real requests (plan §5.2). Append stays the default until then.
+- [ ] **Spike S5:** check what the SDK sends on a subscription token: the identity line and the limits (lesson 110).
+
 ## Features (phase P6)
 
 - [ ] **Google:** in Google Cloud, create an OAuth client of type "Desktop app" with the Calendar, Drive, People and Tasks APIs on, and set the consent screen to "In production". Add the client id and secret to Eva's `secrets.json` (`googleOauthClientId`, `googleOauthClientSecret`) and the account to `config.json` (`google.email`). Then ask Eva about the calendar once, and open the login link. A live run of a calendar write with a guest checks the approval button.
 - [ ] **Voice (spike S6):** on the hub, install ffmpeg and whisper.cpp, download `ggml-base.bin` (it reads Spanish and English), and set `voice.modelPath`. Then send Eva a real voice note in Telegram and check the "Heard:" line.
+
+## pi (phase P7)
+
+- [ ] **A live pi turn:** install pi (`npm install -g @mariozechner/pi-coding-agent`), log in to a provider with `pi` (for example ChatGPT), set `engines.pi.model` if you want one, and set `engines.default` to `pi` for a test. Then check one Assistant turn, one tool approval and one fork. The adapter is tested only on captured output so far.
+- [ ] **pskill with pi:** pskill needs a `pi` harness entry before skill runs continue on their own with pi (plan §5.4). Eva still calls pskill with `--harness claude-code`.
+- [ ] **Google tools with pi:** pi has no MCP support, so the Google tools work only with Claude Code for now.
 
 ## Releases (phase P8)
 

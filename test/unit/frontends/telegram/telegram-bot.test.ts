@@ -278,6 +278,45 @@ describe("approvals and commands", () => {
   });
 });
 
+describe("stop and approvals from elsewhere (plan §4.1, §5.5)", () => {
+  test("/stop stops the running turn of this chat, and says when nothing runs", async () => {
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/stop");
+    await settle(bot, () => telegram.sentTexts().includes("Eva is not working in this chat."));
+    telegram.sendText(owner, "work for a long time");
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.sendText(owner, "/stop");
+    await settle(bot, () =>
+      telegram.sentTexts().some((text) => text.includes("The turn failed: The turn was stopped.")),
+    );
+    expect(telegram.sentTexts()).toContain("Stopping.");
+  });
+
+  test("an approval from a web chat reaches the main chat, named after its chat", async () => {
+    createEva(async function* (request) {
+      const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, answer);
+    });
+    const bot = createBot();
+    const webChat = eva.createAssistantSession({ source: "web", model: "default", title: "Release notes" });
+    void eva.sessions.send(webChat.id, "push");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("(in “Release notes”)")));
+    const markup = JSON.stringify(telegram.callsTo("sendMessage").at(-1)?.params["reply_markup"]);
+    const requestId = /"a:([^:"]+):allow"/.exec(markup)?.[1] ?? "";
+    telegram.pressButton(owner, `a:${requestId}:allow`);
+    await settle(bot, () => eva.sessions.get(webChat.id).turns.length === 1);
+    expect(eva.sessions.get(webChat.id).turns[0]?.answerText).toBe("allow");
+  });
+});
+
 describe("one poller per bot (lessons 56, 57)", () => {
   test("three conflicts stop Eva with exit code 3, even with a success between them", async () => {
     const bot = createBot();

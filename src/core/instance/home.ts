@@ -85,15 +85,25 @@ const configSchema = z.object({
         .object({
           /** The program that starts pi. Null: `pi` found on PATH. */
           executable: z.string().min(1).nullable().default(null),
-          /** A pi model such as `openai/gpt-5`. Null: pi's own default. */
-          model: z.string().min(1).nullable().default(null),
+          /**
+           * The pi model for each of Eva's model names, such as `openai/gpt-5` for `opus`. A chat
+           * keeps its model name (lesson 121); null: the `default` entry, then pi's own default.
+           */
+          models: z
+            .object({
+              default: z.string().min(1).nullable().default(null),
+              opus: z.string().min(1).nullable().default(null),
+              sonnet: z.string().min(1).nullable().default(null),
+              haiku: z.string().min(1).nullable().default(null),
+            })
+            .default({ default: null, opus: null, sonnet: null, haiku: null }),
         })
-        .default({ executable: null, model: null }),
+        .default({ executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } }),
     })
     .default({
       default: "claude-code",
       claudeCode: { executable: null, defaultModel: "default", ownConfigFolder: false },
-      pi: { executable: null, model: null },
+      pi: { executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } },
     }),
   telegram: z
     .object({

@@ -7,7 +7,7 @@ import { defaultConfig, homePaths, loadConfig, loadSecrets } from "../../../../s
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
-import { describeProjects, describeStatus } from "../../../../src/frontends/cli/client.ts";
+import { describeProjects, describeStatus, startProjectWork } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
 import { runSetup, setupEnvironmentNames, type SetupQuestion } from "../../../../src/frontends/cli/setup.ts";
@@ -53,6 +53,15 @@ describe("parseArguments", () => {
       nonInteractive: true,
     });
     expect(parseArguments(["doctor"])).toEqual({ command: "doctor", home: undefined });
+    expect(parseArguments(["work", "2025-03-02-1015-example-app", "fix", "the", "bug"])).toEqual({
+      command: "work",
+      home: undefined,
+      projectId: "2025-03-02-1015-example-app",
+      request: "fix the bug",
+    });
+    expect(parseArguments(["work", "only-a-project"])).toMatchObject({ command: "usage-error" });
+    expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", home: undefined, engine: "pi" });
+    expect(parseArguments(["chat", "--engine", "codex"])).toMatchObject({ command: "usage-error" });
   });
 
   test("an unknown command or a bad option is a usage error", () => {
@@ -291,10 +300,11 @@ describe("runChat", () => {
   let home: string;
   let eva: Eva;
   let api: LocalApi;
+  let vault: string;
 
   beforeEach(() => {
     sandbox = createGitSandbox();
-    const vault = sandbox.clone("vault");
+    vault = sandbox.clone("vault");
     sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
     sandbox.git(vault, "add", "-A");
     sandbox.git(vault, "commit", "-q", "-m", "eva");
@@ -304,7 +314,16 @@ describe("runChat", () => {
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: {},
-      engines: [new FakeEngine((request) => FakeEngine.answer(request, "Hi! I am Eva."))],
+      engines: [
+        new FakeEngine(async function* (request) {
+          if (!request.prompt.endsWith("push it")) {
+            yield* FakeEngine.answer(request, "Hi! I am Eva.");
+            return;
+          }
+          const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });
+          yield* FakeEngine.answer(request, `The push was ${answer === "allow" ? "allowed" : "denied"}.`);
+        }),
+      ],
       runner: { run: () => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }) },
       processEnvironment: gitEnvironment,
       now: () => new Date(),
@@ -320,6 +339,32 @@ describe("runChat", () => {
     sandbox.dispose();
     rmSync(home, { recursive: true, force: true });
   }, gitHookTimeoutMs);
+
+  test("eva work names the chat that reports back, or says what failed", async () => {
+    const options = { baseUrl: api.url, token: "chat-token" };
+    const failure: unknown = await startProjectWork(options, {
+      projectId: "missing",
+      request: "x",
+      reportToSessionId: "s1",
+    }).catch((caught: unknown) => caught);
+    expect(String(failure)).toContain("404");
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---
+created: 2025-03-02T10:15
+repos:
+  - ${sandbox.remote}
+---
+`,
+    );
+    const started = await startProjectWork(options, {
+      projectId: "2025-03-02-1015-example-app",
+      request: "fix the bug",
+      reportToSessionId: null,
+    });
+    expect(started).toMatch(/^Started the work in clone remote-0, chat \S+\.$/);
+  });
 
   test("status and projects print short text", async () => {
     const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
@@ -352,5 +397,22 @@ describe("runChat", () => {
       write: (text) => output.push(text),
     });
     expect(output.join("")).toContain("Hi! I am Eva.");
+  });
+
+  test("an approval is asked in the terminal, with y or n (plan §5.5)", async () => {
+    const lines = ["push it", "y", "push it", "no", "/exit"];
+    const output: string[] = [];
+    await runChat({
+      baseUrl: api.url,
+      token: "chat-token",
+      mode: "assistant",
+      model: "default",
+      readLine: () => Promise.resolve(lines.shift() ?? null),
+      write: (text) => output.push(text),
+    });
+    const text = output.join("");
+    expect(text).toContain("Eva wants to run Bash: git push");
+    expect(text).toContain("The push was allowed.");
+    expect(text).toContain("The push was denied.");
   });
 });

@@ -78,10 +78,11 @@ function Branch({
           <div className="message answer">
             {/* toTelegramHtml escapes all text and adds only its own tags, so the HTML is safe. */}
             <div dangerouslySetInnerHTML={{ __html: toTelegramHtml(turn.answerText) }} />
+            {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
               {turn.toolCount > 0 && <span className="chip">{turn.toolCount} tools</span>}
               <button onClick={() => void api.retry(session.id, index).then(onChanged)}>Retry</button>
-              {turn.lastMessageId !== null && (
+              {turn.lastMessageId !== null && turn.failure === null && (
                 <button onClick={() => void api.fork(session.id, turn.lastMessageId ?? "").then(onChanged)}>
                   Fork
                 </button>
@@ -109,6 +110,9 @@ function Branch({
             }
           }}
         />
+        {(streaming !== undefined || pending !== null) && (
+          <button onClick={() => void api.stop(session.id)}>Stop</button>
+        )}
         <button className="primary" disabled={busy || text.trim() === ""} onClick={() => void send()}>
           Send
         </button>

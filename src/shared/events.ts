@@ -24,6 +24,8 @@ export type EngineEventPayload =
       readonly toolName: string;
       readonly summary: string;
     }
+  /** The first answer to an approval won; every other front end closes its question (plan §5.5). */
+  | { readonly kind: "approval_resolved"; readonly requestId: string; readonly answer: "allow" | "deny" }
   | { readonly kind: "history_lost" }
   | { readonly kind: "notice"; readonly text: string }
   | {

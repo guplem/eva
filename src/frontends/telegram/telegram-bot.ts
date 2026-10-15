@@ -99,6 +99,7 @@ const buttonsPerMessage = 50;
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this topic and forget its chat" },
+  { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects" },
   { command: "schedules", description: "List the schedules" },
@@ -312,10 +313,21 @@ export class TelegramBot {
           await this.send(chatId, null, "/delete works only inside a topic.");
           return;
         }
-        await this.send(chatId, topicId, "Delete this topic and every message in it?", {
-          inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
-        });
+        await this.send(
+          chatId,
+          topicId,
+          "Delete this topic and every message in it? The engine keeps its own transcript of the chat.",
+          {
+            inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
+          },
+        );
         return;
+      case "stop": {
+        const entry = this.state.topics[keyOf(chatId, topicId)];
+        const stopped = entry !== undefined && this.options.eva.sessions.stop(entry.sessionId);
+        await this.send(chatId, topicId, stopped ? "Stopping." : "Eva is not working in this chat.");
+        return;
+      }
       case "status":
         await this.send(chatId, topicId, this.statusText());
         return;
@@ -355,6 +367,12 @@ export class TelegramBot {
         null,
         "Topics are not available in this chat, so the new chat continues here. The earlier history of this chat is set aside.",
       );
+    }
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    if (topicId === null && current !== undefined && this.options.eva.sessions.isBusy(current.sessionId)) {
+      // Never reset a chat while its turn runs (lesson 49).
+      await this.send(chatId, null, "Eva is still working in this chat. Send /new again when she finishes.");
+      return;
     }
     const session = this.options.eva.createAssistantSession({
       source: "telegram",
@@ -439,9 +457,9 @@ export class TelegramBot {
       schedules.length === 0
         ? undefined
         : {
-            inline_keyboard: schedules.map(({ schedule }) => [
-              { text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` },
-            ]),
+            inline_keyboard: schedules
+              .slice(0, buttonsPerMessage)
+              .map(({ schedule }) => [{ text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` }]),
           },
     );
   }
@@ -463,7 +481,10 @@ export class TelegramBot {
       await this.send(chatId, topicId, cardText(event));
       return;
     }
-    if (event.sessionId !== null) {
+    const current = this.state.topics[keyOf(chatId, topicId)];
+    const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
+    // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
+    if (event.sessionId !== null && !busy) {
       // Each firing is a fresh chat in the schedule's topic (lesson 126).
       this.state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
       this.saveState();
@@ -562,20 +583,20 @@ export class TelegramBot {
 
   private async onEvent(event: SessionEvent): Promise<void> {
     const target = this.targetOf(event.sessionId);
-    if (target === null) return;
+    if (target === null) {
+      // Every attached front end shows an approval (plan §5.5), also for a chat that lives elsewhere.
+      if (event.kind === "approval_needed" && this.allowedChatId !== null) {
+        const title = this.options.eva.sessions.list().find((session) => session.id === event.sessionId)?.title;
+        await this.sendApproval(this.allowedChatId, null, event, title ?? "another chat");
+      }
+      return;
+    }
     switch (event.kind) {
       case "text":
         this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
         return;
       case "approval_needed":
-        await this.send(target.chatId, target.topicId, `Eva wants to run ${event.toolName}: ${event.summary}`, {
-          inline_keyboard: [
-            [
-              { text: "Allow", callback_data: `a:${event.requestId}:allow` },
-              { text: "Deny", callback_data: `a:${event.requestId}:deny` },
-            ],
-          ],
-        });
+        await this.sendApproval(target.chatId, target.topicId, event, null);
         return;
       case "history_lost":
         await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
@@ -597,6 +618,23 @@ export class TelegramBot {
       default:
         return;
     }
+  }
+
+  private async sendApproval(
+    chatId: number,
+    topicId: number | null,
+    event: Extract<SessionEvent, { kind: "approval_needed" }>,
+    chatTitle: string | null,
+  ): Promise<void> {
+    const where = chatTitle === null ? "" : ` (in “${chatTitle}”)`;
+    await this.send(chatId, topicId, `Eva wants to run ${event.toolName}${where}: ${event.summary}`, {
+      inline_keyboard: [
+        [
+          { text: "Allow", callback_data: `a:${event.requestId}:allow` },
+          { text: "Deny", callback_data: `a:${event.requestId}:deny` },
+        ],
+      ],
+    });
   }
 
   /** Sends Markdown as Telegram HTML, split under the limit; a refused part goes again as plain text (lesson 58). */

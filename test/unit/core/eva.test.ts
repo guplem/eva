@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../src/core/eva.ts";
@@ -146,6 +146,84 @@ describe("Eva", () => {
       appendSystemPrompt: null,
       trusted: false,
     });
+  });
+
+  test("the assistant gives work to a project, and the result comes back to its chat (plan §5.3)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "project" ? "Fixed the login bug." : "Noted."),
+    );
+    const instance = start(engine);
+    const assistantChat = instance.createAssistantSession({ source: "telegram", model: "default" });
+    const work = await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix the login bug.",
+      reportToSessionId: assistantChat.id,
+    });
+    expect(work).toMatchObject({ mode: "project", clone: "remote-0" });
+    await waitFor(() => instance.sessions.get(assistantChat.id).turns.length === 1, 20_000);
+    await instance.idle();
+    expect(engine.requests.map((request) => request.mode)).toEqual(["project", "assistant"]);
+    expect(engine.requests[1]?.prompt).toContain(`[Project work finished: 2025-03-02-1015-example-app, clone remote-0`);
+    expect(engine.requests[1]?.prompt).toContain("Fixed the login bug.");
+    const missing = await instance
+      .startProjectWork({ projectId: "missing", request: "x", reportToSessionId: null })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(String(missing)).toContain("No project missing");
+  });
+
+  test("a failed project turn is reported as a failure", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const engine = new FakeEngine((request) =>
+      request.mode === "project" ? [{ kind: "turn_failed", reason: "no login" }] : FakeEngine.answer(request, "ok"),
+    );
+    const instance = start(engine);
+    const assistantChat = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix it.",
+      reportToSessionId: assistantChat.id,
+    });
+    await waitFor(() => engine.requests.length === 2, 20_000);
+    await instance.idle();
+    expect(engine.requests[1]?.prompt).toContain("It failed: no login");
+  });
+
+  test("an agent finds an `eva` command for this instance, and the chat id of its turn", async () => {
+    const engine = new FakeEngine();
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: { ...gitEnvironment, PATH: "/usr/bin" },
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+      evaCommand: ["/opt/bun", "/opt/eva/src/main.ts"],
+    });
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    const environment = engine.requests[0]?.environment ?? {};
+    expect(environment["EVA_HOME"]).toBe(home);
+    expect(environment["EVA_SESSION_ID"]).toBe(session.id);
+    expect(environment["PATH"]?.startsWith(join(home, "bin"))).toBe(true);
+    expect(readFileSync(join(home, "bin", "eva"), "utf8")).toBe(
+      "#!/bin/sh\nexec '/opt/bun' '/opt/eva/src/main.ts' \"$@\"\n",
+    );
+    expect(readFileSync(join(home, "bin", "eva.cmd"), "utf8")).toBe('@"/opt/bun" "/opt/eva/src/main.ts" %*\r\n');
   });
 
   test("a Project chat reuses a free clone, and skips a clone where a session runs", async () => {

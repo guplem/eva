@@ -36,6 +36,7 @@ const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("defa
 const newSessionSchema = z.object({
   mode: z.enum(["assistant", "project"]),
   model: modelSchema,
+  engine: z.enum(["claude-code", "pi"]).optional(),
   projectId: z.string().min(1).optional(),
   clone: z.string().min(1).optional(),
 });
@@ -46,6 +47,7 @@ const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
+const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
@@ -169,12 +171,16 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "POST" && url.pathname === "/api/sessions") {
     const input = newSessionSchema.parse(await request.json());
-    if (input.mode === "assistant") return json(eva.createAssistantSession({ source: "web", model: input.model }), 201);
+    const engine = input.engine === undefined ? {} : { engine: input.engine };
+    if (input.mode === "assistant") {
+      return json(eva.createAssistantSession({ source: "web", model: input.model, ...engine }), 201);
+    }
     if (input.projectId === undefined) return json({ error: "A Project chat needs a projectId." }, 400);
     const session = await eva.createProjectSession({
       projectId: input.projectId,
       source: "web",
       model: input.model,
+      ...engine,
       ...(input.clone === undefined ? {} : { cloneName: input.clone }),
     });
     return json(session, 201);
@@ -192,10 +198,29 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       const { atMessageId } = forkSchema.parse(await request.json());
       return json(eva.sessions.fork(sessionId, atMessageId), 201);
     }
+    if (action === "stop") {
+      eva.sessions.get(sessionId);
+      return json({ stopped: eva.sessions.stop(sessionId) });
+    }
     if (action === "retry") {
       const { turnIndex } = retrySchema.parse(await request.json());
       return json(await eva.sessions.retry(sessionId, turnIndex));
     }
+  }
+  if (
+    method === "POST" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "work"
+  ) {
+    const { request: work, reportToSessionId } = projectWorkSchema.parse(await request.json());
+    const session = await eva.startProjectWork({
+      projectId: decodeURIComponent(parts[2]),
+      request: work,
+      reportToSessionId: reportToSessionId ?? null,
+    });
+    return json({ sessionId: session.id, clone: session.clone }, 202);
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);

@@ -16,7 +16,7 @@
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { reachesOtherPeople, summarizeToolCall } from "../../shared/outward-actions.ts";
@@ -29,8 +29,8 @@ export interface PiEngineOptions {
   readonly command: readonly string[];
   /** Eva's own pi folder in the instance home: session files, prompts and the extension. */
   readonly workFolder: string;
-  /** A pi model such as `openai/gpt-5`, or null for pi's own default. */
-  readonly model: string | null;
+  /** The pi model for each of Eva's model names; null for pi's own default. */
+  readonly models: Readonly<Record<ModelAlias, string | null>>;
   readonly start?: PiProcessStarter;
   readonly newSessionId?: () => string;
   readonly now?: () => Date;
@@ -100,7 +100,7 @@ export class PiEngine implements EnginePort {
       sessionsFolder,
       extensionFile,
       promptFile,
-      model: this.options.model,
+      model: this.options.models[request.model] ?? this.options.models.default,
     });
     let pi: PiProcess;
     try {

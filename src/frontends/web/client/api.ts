@@ -57,6 +57,8 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId }),
+  stop: (sessionId: string): Promise<{ stopped: boolean }> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
   retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>

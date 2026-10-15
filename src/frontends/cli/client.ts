@@ -32,6 +32,26 @@ export function describeLastTurn(lastTurn: EvaStatus["lastTurn"]): string {
   return `Last turn: ${String(lastTurn.inputTokens)} in, ${String(lastTurn.outputTokens)} out, cache ${String(lastTurn.cacheReadTokens)} read, ${String(lastTurn.cacheWriteTokens)} written`;
 }
 
+/** `eva work`: starts project work, and names the chat that reports the result (plan §5.3). */
+export async function startProjectWork(
+  options: ClientOptions,
+  input: { projectId: string; request: string; reportToSessionId: string | null },
+): Promise<string> {
+  const response = await fetch(`${options.baseUrl}/api/projects/${encodeURIComponent(input.projectId)}/work`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      request: input.request,
+      ...(input.reportToSessionId === null ? {} : { reportToSessionId: input.reportToSessionId }),
+    }),
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  const started = (await response.json()) as { sessionId: string; clone: string };
+  return input.reportToSessionId === null
+    ? `Started the work in clone ${started.clone}, chat ${started.sessionId}.`
+    : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
+}
+
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);

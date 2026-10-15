@@ -97,7 +97,7 @@ export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
-  private readonly approvals = new Map<string, (answer: ApprovalAnswer) => void>();
+  private readonly approvals = new Map<string, { sessionId: string; resolve: (answer: ApprovalAnswer) => void }>();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
@@ -223,10 +223,11 @@ export class SessionManager {
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
-    const resolve = this.approvals.get(requestId);
-    if (resolve === undefined) return;
+    const pending = this.approvals.get(requestId);
+    if (pending === undefined) return;
     this.approvals.delete(requestId);
-    resolve(answer);
+    pending.resolve(answer);
+    this.emit(pending.sessionId, { kind: "approval_resolved", requestId, answer });
   }
 
   private retryFromStart(session: SessionRecord): SessionRecord {
@@ -430,9 +431,12 @@ ${prompt}`,
       const timer = setTimeout(() => {
         this.answerApproval(requestId, "deny");
       }, this.options.approvalTimeoutMs);
-      this.approvals.set(requestId, (answer) => {
-        clearTimeout(timer);
-        resolve(answer);
+      this.approvals.set(requestId, {
+        sessionId,
+        resolve: (answer) => {
+          clearTimeout(timer);
+          resolve(answer);
+        },
       });
       this.emit(sessionId, { kind: "approval_needed", requestId, toolName, summary });
     });
@@ -488,6 +492,7 @@ function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineE
       return { ...payload, description: redactor.redact(payload.description) };
     case "tool_finished":
     case "history_lost":
+    case "approval_resolved":
     case "turn_finished":
       return payload;
   }

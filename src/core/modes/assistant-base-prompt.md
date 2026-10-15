@@ -36,6 +36,8 @@ Each project is a folder in `Projects/`, named `YYYY-MM-DD-HHmm-name` after its 
 
 Never edit a project's code from here. Code work happens in a Project mode session in one of the project's clones (`Projects/<id>/repos/<repo>-<n>/`), where the project's own rules and tools apply.
 
+To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the Project session knows nothing of this conversation. The command starts the work in a free clone and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
+
 ## Sending files
 
 In a chat that supports it, such as Telegram, you can send a file with your answer. Write a marker on a line of its own, with the file's path from the vault root:

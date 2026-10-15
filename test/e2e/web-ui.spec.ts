@@ -64,7 +64,16 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
-  await expect(page.locator(".message.answer").first()).toContainText("Fix the bug");
+  // The first chat in a clone of an unknown repository asks for trust (plan §12). Both screen
+  // sizes share one demo server, so only the first of them sees the question.
+  const answer = page.locator(".message.answer").first();
+  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
+  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  if (await trustQuestion.isVisible()) {
+    await expect(trustQuestion).toContainText("Trust this repository");
+    await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  }
+  await expect(answer).toContainText("Fix the bug");
 });
 
 test("the status filter hides a closed project until Any status", async ({ page }) => {

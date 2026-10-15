@@ -63,7 +63,7 @@ function engine(fake: FakePi, overrides: Partial<ConstructorParameters<typeof Pi
   return new PiEngine({
     command: ["pi"],
     workFolder: join(folder, "pi"),
-    model: null,
+    models: { default: null, opus: null, sonnet: null, haiku: null },
     start: fake.start,
     newSessionId: () => "fork-1",
     now: () => new Date("2026-10-15T08:00:00Z"),
@@ -157,6 +157,17 @@ describe("PiEngine", () => {
     expect(run.command[0]).toBe("pi");
     expect(run.cwd).toBe("/demo-vault");
     expect(run.environment).toEqual({ PATH: "/bin" });
+  });
+
+  test("the chat's model name picks the pi model, with the default entry as fallback (lesson 41)", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
+    const models = { default: "openai/gpt-5-mini", opus: "openai/gpt-5", sonnet: null, haiku: null };
+    await drain(engine(fake, { models }).runTurn(request({ model: "opus" })));
+    await drain(engine(fake, { models }).runTurn(request({ model: "sonnet" })));
+    expect(fake.runs.map((run) => run.command[run.command.indexOf("--model") + 1])).toEqual([
+      "openai/gpt-5",
+      "openai/gpt-5-mini",
+    ]);
   });
 
   test("Eva writes her extension and the turn's prompt file, and keeps them when nothing changed", async () => {
@@ -286,7 +297,7 @@ describe("PiEngine", () => {
     const missing = new PiEngine({
       command: ["pi"],
       workFolder: join(folder, "pi"),
-      model: null,
+      models: { default: null, opus: null, sonnet: null, haiku: null },
       start: () => {
         throw new Error("pi is not installed");
       },

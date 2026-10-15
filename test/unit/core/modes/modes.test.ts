@@ -93,6 +93,14 @@ afterEach(() => {
 }, gitHookTimeoutMs);
 
 describe("Assistant mode", () => {
+  test("the prompt stays fixed for a session, even when the rules change during it (lesson 115)", async () => {
+    const preparer = assistant(silentRunner);
+    const first = await preparer.prepare(session());
+    writeFileSync(join(vault, ".eva", "assistant.md"), "# Changed rules\n");
+    expect((await preparer.prepare(session())).appendSystemPrompt).toBe(first.appendSystemPrompt);
+    expect((await preparer.prepare(session({ id: "s2" }))).appendSystemPrompt).toContain("Changed rules");
+  });
+
   test("pulls the vault, then joins the base prompt and the person's rules", async () => {
     const sync = new FakeSync();
     const prepared = await assistant(silentRunner, sync).prepare(session());

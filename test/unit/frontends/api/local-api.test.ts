@@ -232,6 +232,21 @@ describe("web routes (plan §8.3)", () => {
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
+  test("a new chat can name its engine (plan §7.2)", async () => {
+    const created = await json<{ engine: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant", engine: "pi" } }),
+    );
+    expect(created.engine).toBe("pi");
+    expect((await call("/api/sessions", { method: "POST", body: { mode: "assistant", engine: "x" } })).status).toBe(
+      400,
+    );
+  });
+
+  test("project work: an unknown project is a 404, and a bad body a 400", async () => {
+    expect((await call("/api/projects/missing/work", { method: "POST", body: { request: "x" } })).status).toBe(404);
+    expect((await call("/api/projects/missing/work", { method: "POST", body: {} })).status).toBe(400);
+  });
+
   test("a project's clones, and a new clone", async () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });

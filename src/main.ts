@@ -25,7 +25,7 @@ import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { parseArguments, usageText, type CliCommand } from "./frontends/cli/arguments.ts";
 import { runChat } from "./frontends/cli/chat.ts";
-import { describeProjects, describeStatus } from "./frontends/cli/client.ts";
+import { describeProjects, describeStatus, startProjectWork } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
@@ -110,6 +110,7 @@ async function main(argv: readonly string[]): Promise<number> {
     case "status":
     case "projects":
     case "chat":
+    case "work":
       return runClientCommand(command, paths);
     case "run":
       return serve(paths);
@@ -117,7 +118,7 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 async function runClientCommand(
-  command: Extract<CliCommand, { command: "status" | "projects" | "chat" }>,
+  command: Extract<CliCommand, { command: "status" | "projects" | "chat" | "work" }>,
   paths: HomePaths,
 ): Promise<number> {
   const config = loadConfig(paths);
@@ -134,7 +135,18 @@ async function runClientCommand(
         await describeStatus({ baseUrl, token }, existsSync(codePath) ? readFileSync(codePath, "utf-8").trim() : null),
       );
     } else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
-    else {
+    else if (command.command === "work") {
+      writeLine(
+        await startProjectWork(
+          { baseUrl, token },
+          {
+            projectId: command.projectId,
+            request: command.request,
+            reportToSessionId: process.env["EVA_SESSION_ID"] ?? null,
+          },
+        ),
+      );
+    } else {
       await withPrompt(async (ask) => {
         await runChat({
           baseUrl,
@@ -143,6 +155,7 @@ async function runClientCommand(
           model: command.model ?? config.engines.claudeCode.defaultModel,
           ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
           ...(command.clone === undefined ? {} : { clone: command.clone }),
+          ...(command.engine === undefined ? {} : { engine: command.engine }),
           readLine: async () => {
             try {
               return await ask("");
@@ -189,7 +202,7 @@ async function serve(paths: HomePaths): Promise<number> {
       new PiEngine({
         command: [piExecutable],
         workFolder: join(paths.enginesFolder, "pi"),
-        model: config.engines.pi.model,
+        models: config.engines.pi.models,
       }),
     );
   }
@@ -204,6 +217,7 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
     logger,
+    evaCommand: isStandalone() ? [process.execPath] : [process.execPath, Bun.main],
   });
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")

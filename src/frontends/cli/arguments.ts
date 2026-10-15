@@ -1,5 +1,5 @@
 /** Reads the `eva` command line (docs/plan.md §8.1). */
-import type { ModelAlias } from "../../shared/engine-port.ts";
+import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 
 export type CliCommand =
   | { readonly command: "run"; readonly home: string | undefined }
@@ -12,11 +12,18 @@ export type CliCommand =
   | { readonly command: "service-install"; readonly home: string | undefined }
   | { readonly command: "projects"; readonly home: string | undefined; readonly query: string }
   | {
+      readonly command: "work";
+      readonly home: string | undefined;
+      readonly projectId: string;
+      readonly request: string;
+    }
+  | {
       readonly command: "chat";
       readonly home: string | undefined;
       readonly projectId?: string;
       readonly clone?: string;
       readonly model?: ModelAlias;
+      readonly engine?: EngineName;
     }
   | { readonly command: "usage-error"; readonly message: string };
 
@@ -31,7 +38,9 @@ Commands:
   chat              Talk to Eva in this terminal
       --project <id> [--clone <name>]   a Project chat instead of an Assistant chat
       --model <default|opus|sonnet|haiku>
+      --engine <claude-code|pi>
   projects [words]  Search the projects
+  work <project> <request>  Give work to a project: a Project chat in a free clone runs it
   service install   Start Eva by itself (systemd on Linux, a logon task on Windows)
   update            Replace this executable with the latest signed release
   version           Show Eva's version
@@ -39,6 +48,7 @@ Commands:
 `;
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+const engines: readonly EngineName[] = ["claude-code", "pi"];
 /** Options that take no value. */
 const switches: readonly string[] = ["--non-interactive"];
 
@@ -75,11 +85,19 @@ export function parseArguments(argv: readonly string[]): CliCommand {
       return { command: name, home };
     case "projects":
       return { command: "projects", home, query: rest.join(" ") };
+    case "work": {
+      const [projectId, ...request] = rest;
+      if (projectId === undefined || request.length === 0) return usageError("Use: eva work <project> <request>");
+      return { command: "work", home, projectId, request: request.join(" ") };
+    }
     case "service":
       return rest[0] === "install" ? { command: "service-install", home } : usageError("Use: eva service install");
     case "chat": {
       const model = options.get("model");
       if (model !== undefined && !models.includes(model as ModelAlias)) return usageError(`Unknown model ${model}.`);
+      const engine = options.get("engine");
+      if (engine !== undefined && !engines.includes(engine as EngineName))
+        return usageError(`Unknown engine ${engine}.`);
       const projectId = options.get("project");
       const clone = options.get("clone");
       return {
@@ -88,6 +106,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
         ...(projectId === undefined ? {} : { projectId }),
         ...(clone === undefined ? {} : { clone }),
         ...(model === undefined ? {} : { model: model as ModelAlias }),
+        ...(engine === undefined ? {} : { engine: engine as EngineName }),
       };
     }
     default:

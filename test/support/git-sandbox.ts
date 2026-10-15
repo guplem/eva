@@ -63,8 +63,13 @@ export function createGitSandbox(): GitSandbox {
       writeFileSync(path, content);
     },
     dispose() {
-      // On Windows a git process can still hold a file for a moment after a test ends.
-      rmSync(root, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
+      // On Windows a git or gh child process can still hold the folder after a test ends.
+      // A temporary folder left behind is harmless, so a failed cleanup never fails a test.
+      try {
+        rmSync(root, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
+      } catch {
+        // The operating system empties its temporary folder later.
+      }
     },
   };
 }

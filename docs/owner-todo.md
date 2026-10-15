@@ -22,6 +22,7 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 - [ ] **`bun run smoke:live`:** with `CLAUDE_CODE_OAUTH_TOKEN` set from `claude setup-token`, it runs two real turns through Eva's Claude Code adapter in a demo vault and checks the turn ends, the continue and the prompt cache.
 - [ ] **Real fixtures:** run `EVA_LIVE=1 bun run scripts/capture-claude-fixtures.ts` with the same token, and replace the hand-built SDK messages in `test/unit/engines/claude-code/` with the captures.
 - [ ] **Spike S4:** compare append and replace for the Assistant prompt on 10 real requests (plan §5.2). Append stays the default until then.
+- [ ] **The approval gate and your own allow rules:** Claude Code asks Eva (`canUseTool`) only for a tool that it would ask about. A rule in your user settings that already allows a tool, such as `Bash(git push:*)`, would skip Eva's question. With a real login, add such a rule, ask Eva to push from the vault, and check that she still asks. If she does not, plan §5.5 needs a hook-free way to gate it.
 - [ ] **Spike S5:** check what the SDK sends on a subscription token: the identity line and the limits (lesson 110).
 
 ## Features (phase P6)

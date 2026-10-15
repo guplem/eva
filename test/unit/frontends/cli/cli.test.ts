@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -10,10 +10,11 @@ import { runChat } from "../../../../src/frontends/cli/chat.ts";
 import { describeProjects, describeStatus } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
-import { runSetup } from "../../../../src/frontends/cli/setup.ts";
-import type { ProcessResult, ProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { runSetup, setupEnvironmentNames, type SetupQuestion } from "../../../../src/frontends/cli/setup.ts";
+import { isEvaError } from "../../../../src/shared/errors.ts";
+import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 describe("parseArguments", () => {
   test("no command runs the core", () => {
@@ -45,7 +46,12 @@ describe("parseArguments", () => {
       query: "photo booth",
     });
     expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
-    expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined });
+    expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
+    expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
+      command: "setup",
+      home: "/h",
+      nonInteractive: true,
+    });
     expect(parseArguments(["doctor"])).toEqual({ command: "doctor", home: undefined });
   });
 
@@ -75,7 +81,12 @@ describe("runDoctor", () => {
       },
     };
     const lines: string[] = [];
-    const healthy = await runDoctor({ runner, environment: { PATH: "/bin" }, write: (line) => lines.push(line) });
+    const healthy = await runDoctor({
+      runner,
+      environment: { PATH: "/bin" },
+      write: (line) => lines.push(line),
+      standalone: false,
+    });
     expect(healthy).toBe(true);
     expect(lines.join("\n")).toContain("ok      git: git version 2.50.0");
     expect(lines.join("\n")).toContain("missing gh");
@@ -84,71 +95,166 @@ describe("runDoctor", () => {
 
   test("a missing required tool fails the check", async () => {
     const runner: ProcessRunner = { run: () => Promise.reject(new Error("not found")) };
-    expect(await runDoctor({ runner, environment: {}, write: () => undefined })).toBe(false);
+    expect(await runDoctor({ runner, environment: {}, write: () => undefined, standalone: false })).toBe(false);
+  });
+
+  test("the single executable carries its own Bun, so bun is not checked", async () => {
+    const asked: string[] = [];
+    const runner: ProcessRunner = {
+      run: (command) => {
+        asked.push(command[0] ?? "");
+        return Promise.resolve({ exitCode: 0, stdout: "v1\n", stderr: "" });
+      },
+    };
+    expect(await runDoctor({ runner, environment: {}, write: () => undefined, standalone: true })).toBe(true);
+    expect(asked).not.toContain("bun");
+    expect(asked).toContain("git");
   });
 });
 
 describe("runSetup", () => {
   let home: string;
+  let existingVault: string;
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "eva-setup-"));
-  });
+    existingVault = join(home, "existing-vault");
+    mkdirSync(existingVault);
+    writeFileSync(join(existingVault, "AGENTS.md"), "# Vault\n");
+  }, gitHookTimeoutMs);
   afterEach(() => {
     rmSync(home, { recursive: true, force: true });
-  });
+  }, gitHookTimeoutMs);
 
-  test("writes the answers to the config and the secrets, and creates the local API token", async () => {
-    const answers = ["/vault", "Europe/Madrid", "7421", "owner", "", ""];
+  const okRunner: ProcessRunner = { run: () => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }) };
+
+  async function setup(
+    answers: Partial<Record<SetupQuestion, string | string[]>>,
+    extra: { interactive?: boolean; runner?: ProcessRunner; lines?: string[] } = {},
+  ): Promise<void> {
+    const queues = Object.fromEntries(
+      Object.entries(answers).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]),
+    ) as Partial<Record<SetupQuestion, string[]>>;
     await runSetup({
       paths: homePaths(home),
-      ask: () => Promise.resolve(answers.shift() ?? ""),
-      write: () => undefined,
+      ask: (key) => Promise.resolve(queues[key]?.shift() ?? ""),
+      write: (line) => extra.lines?.push(line),
       newToken: () => "generated-token",
+      interactive: extra.interactive ?? true,
+      runner: extra.runner ?? okRunner,
+      environment: gitEnvironment,
     });
+  }
+
+  test("writes the answers to the config and the secrets, and creates the local API token", async () => {
+    await setup({ vault: existingVault, timeZone: "Europe/Madrid", port: "7421", trustedOwners: "owner, other" });
     expect(loadConfig(homePaths(home))).toMatchObject({
-      vaultPath: "/vault",
+      vaultPath: existingVault,
       timeZone: "Europe/Madrid",
       port: 7421,
-      trust: { trustedRepositoryOwners: ["owner"] },
+      trust: { trustedRepositoryOwners: ["owner", "other"] },
     });
     expect(loadSecrets(homePaths(home))).toEqual({ localApiToken: "generated-token" });
   });
 
   test("an empty answer keeps the current value, and a Claude token is stored as a secret", async () => {
-    const answers = ["", "", "", "", "a-claude-setup-token-value", ""];
-    await runSetup({
-      paths: homePaths(home),
-      ask: () => Promise.resolve(answers.shift() ?? ""),
-      write: () => undefined,
-      newToken: () => "t",
-    });
+    await setup({ claudeToken: "a-claude-setup-token-value" });
     expect(loadConfig(homePaths(home)).port).toBe(defaultConfig.port);
     expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
   });
 
   test("a Telegram token turns Telegram on", async () => {
-    const answers = ["", "", "", "", "", "123456:telegram-token-value"];
-    await runSetup({
-      paths: homePaths(home),
-      ask: () => Promise.resolve(answers.shift() ?? ""),
-      write: () => undefined,
-      newToken: () => "t",
-    });
+    await setup({ telegramToken: "123456:telegram-token-value" });
     expect(loadConfig(homePaths(home)).telegram.enabled).toBe(true);
     expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");
   });
 
-  test("a bad port is asked again", async () => {
-    const answers = ["", "", "high", "7500", "", "", ""];
-    const lines: string[] = [];
-    await runSetup({
-      paths: homePaths(home),
-      ask: () => Promise.resolve(answers.shift() ?? ""),
-      write: (line) => lines.push(line),
-      newToken: () => "t",
+  test("Google and voice answers reach the config and the secrets", async () => {
+    await setup({
+      googleEmail: "person@example.com",
+      googleClientId: "client-id",
+      googleClientSecret: "client-secret",
+      voiceModel: "/models/ggml-base.bin",
     });
+    const config = loadConfig(homePaths(home));
+    expect(config.google.email).toBe("person@example.com");
+    expect(config.voice.modelPath).toBe("/models/ggml-base.bin");
+    expect(loadSecrets(homePaths(home))).toMatchObject({
+      googleOauthClientId: "client-id",
+      googleOauthClientSecret: "client-secret",
+    });
+  });
+
+  test("without a Google account, the OAuth client is not asked", async () => {
+    await setup({ googleClientId: "client-id" });
+    expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
+  });
+
+  test("a bad port is asked again", async () => {
+    const lines: string[] = [];
+    await setup({ port: ["high", "7500"] }, { lines });
     expect(loadConfig(homePaths(home)).port).toBe(7500);
     expect(lines.join("\n")).toContain("1024 to 65535");
+  });
+
+  test("without a person to ask, a bad port stops setup", async () => {
+    let caught: unknown;
+    try {
+      await setup({ port: "high" }, { interactive: false });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "config_invalid")).toBe(true);
+  });
+
+  test("an empty vault folder can become a new vault from the template, with a private GitHub repository", async () => {
+    const commands: string[][] = [];
+    const recordingRunner: ProcessRunner = {
+      run: (command, options) => {
+        commands.push([...command]);
+        return systemProcessRunner.run(command[0] === "gh" ? ["git", "--version"] : command, options);
+      },
+    };
+    const lines: string[] = [];
+    const newVault = join(home, "new-vault");
+    await setup(
+      { vault: newVault, createVault: "yes", name: "Alex", githubRepository: "my-vault" },
+      { runner: recordingRunner, lines },
+    );
+    expect(readFileSync(join(newVault, ".eva", "assistant.md"), "utf8")).toContain("Alex");
+    expect(commands.find((command) => command[0] === "gh")).toEqual([
+      "gh",
+      "repo",
+      "create",
+      "my-vault",
+      "--private",
+      "--source",
+      newVault,
+      "--remote",
+      "origin",
+      "--push",
+    ]);
+    expect(lines.join("\n")).toContain("Created the private repository my-vault");
+  });
+
+  test("a refused new vault leaves the folder empty, and a failed gh call says what to do", async () => {
+    const emptyFolder = join(home, "empty");
+    await setup({ vault: emptyFolder, createVault: "no" });
+    expect(existsSync(join(emptyFolder, "AGENTS.md"))).toBe(false);
+    const ghFails: ProcessRunner = {
+      run: (command, options) =>
+        command[0] === "gh"
+          ? Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" })
+          : systemProcessRunner.run(command, options),
+    };
+    const lines: string[] = [];
+    await setup({ vault: emptyFolder, createVault: "y", githubRepository: "my-vault" }, { runner: ghFails, lines });
+    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in");
+  });
+
+  test("each question has its own environment variable for --non-interactive", () => {
+    const names = Object.values(setupEnvironmentNames);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.every((name) => name.startsWith("EVA_"))).toBe(true);
   });
 });
 
@@ -206,17 +312,26 @@ describe("runChat", () => {
       gatherMs: 5,
     });
     api = startLocalApi({ eva, port: 0, token: "chat-token", extraHosts: [], allowedTailscaleIdentities: [] });
-  });
+  }, gitHookTimeoutMs);
   afterEach(async () => {
     await eva.idle();
     api.stop();
     eva.stop();
     sandbox.dispose();
     rmSync(home, { recursive: true, force: true });
-  });
+  }, gitHookTimeoutMs);
 
   test("status and projects print short text", async () => {
-    expect(await describeStatus({ baseUrl: api.url, token: "chat-token" })).toContain("Vault sync: ok");
+    const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
+    expect(before).toContain("Vault sync: ok");
+    expect(before).toMatch(/^Eva \d+\.\d+\.\d+, role: hub/);
+    expect(before).toContain("Last turn: none since start");
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    // The cache counts show in every status, so a broken prompt cache is visible (lesson 120).
+    expect(await describeStatus({ baseUrl: api.url, token: "chat-token" })).toContain(
+      "Last turn: 10 in, 5 out, cache 0 read, 0 written",
+    );
     expect(await describeProjects({ baseUrl: api.url, token: "chat-token" }, "nothing")).toBe("No project matches.");
     expect(await describeProjects({ baseUrl: api.url, token: "chat-token" }, "")).toBe("No project matches.");
     const error: unknown = await describeStatus({ baseUrl: api.url, token: "wrong" }).catch(

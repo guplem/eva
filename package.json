@@ -36,7 +36,8 @@
     "test": "bun test",
     "test:coverage": "bun test --coverage",
     "mutation": "stryker run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"
   },
   "type": "module",
   "dependencies": {

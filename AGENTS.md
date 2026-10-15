@@ -62,7 +62,8 @@ Run every command from the repository root.
 | Run the tests                       | `bun test`                 | Add a path or `-t <name>` to run fewer.                                                                       |
 | Run the tests with coverage         | `bun run test:coverage`    | Fails under 90% lines or functions.                                                                           |
 | Run mutation testing                | `bun run mutation`         | Stryker on `src/core` and `src/engines`. Slow: CI runs it nightly. Breaks under 60.                           |
-| Run Eva from source                 | `bun run eva [subcommand]` | Before phase P8 this is the only way to run Eva.                                                              |
+| Run Eva from source                 | `bun run eva [subcommand]` |                                                                                                               |
+| Build the single executable         | `bun run build:executable` | Writes `dist/eva`. `bash scripts/smoke-executable.sh dist/eva` starts it the way a new person does.           |
 
 Whenever you need to confirm the code still passes, delegate to the **validate** agent (it runs `bun run check` the way CI does).
 
@@ -109,6 +110,8 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 - **The private denylist lives outside the repository**, at `EVA_PRIVATE_DENYLIST` or `~/.config/eva-dev/denylist.txt`. CI has no denylist, so only the local pre-push run checks it. Never copy a denylist entry into anything you write.
 - **Never put content in a `CLAUDE.md`.** Each one is a one-line `@AGENTS.md` shim. Write the content in the `AGENTS.md` next to it.
 - **CI runs on Windows too.** Read lessons 76 to 83 before you write code that spawns a process, builds a path, or orders events by time.
+- **The release key has two halves that must match.** The private key is the `EVA_RELEASE_SIGNING_KEY` repository secret; the public key is `releasePublicKey` in `src/core/updates/release-verification.ts`. Change both together, or every `eva update` refuses the release. A `v*` tag runs `.github/workflows/release.yml`; the tag must equal the `package.json` version.
+- **Bun gives each `beforeEach` and `afterEach` hook 5 seconds, apart from the test timeout.** A hook that runs git passes `gitHookTimeoutMs` from `test/support/git-sandbox.ts`, or it times out on a Windows CI runner.
 - **Git tests must clear the `GIT_*` variables** that a git hook exports, or they write the real index (lesson 104).
 
 ## Test-Driven Development (mandatory)

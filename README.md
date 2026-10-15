@@ -6,9 +6,19 @@ Eva keeps your notes in a private git repository (the vault) and saves them for 
 
 **Status:** under construction. The core, the terminal chat, Telegram, the web page, schedules, files and voice notes work with test doubles. No release exists yet.
 
+## Install
+
+Download the executable for your machine from [GitHub Releases](https://github.com/guplem/eva/releases): `eva-windows-x64.exe`, `eva-linux-x64` or `eva-linux-arm64`. You also need [git](https://git-scm.com/). Then run:
+
+```bash
+eva setup
+```
+
+`eva setup` asks for each setting. Give it an empty folder as the vault, and it creates a new vault there from Eva's template, with a private GitHub repository when you name one. `eva update` replaces the executable with the latest release, after a check of its signature.
+
 ## Run from source
 
-Eva runs from source until the first release. You need [git](https://git-scm.com/) and [Bun](https://bun.sh/) 1.4 or newer.
+You need [git](https://git-scm.com/) and [Bun](https://bun.sh/) 1.4 or newer.
 
 ```bash
 git clone https://github.com/guplem/eva.git
@@ -17,13 +27,14 @@ bun install
 bun run eva
 ```
 
-| Command                       | What it does                                                             |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| `bun run eva setup`           | Asks for each setting (vault folder, tokens) and writes the config.      |
-| `bun run eva doctor`          | Checks the tools that each feature needs, and says how to install each.  |
-| `bun run eva`                 | Runs Eva in the foreground: the local web page, Telegram, and schedules. |
-| `bun run eva chat`            | Talks to a running Eva in this terminal.                                 |
-| `bun run eva service install` | Starts Eva by itself when you log in.                                    |
+| Command                               | What it does                                                                                                   |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bun run eva setup`                   | Asks for each setting (vault folder, tokens) and writes the config.                                            |
+| `bun run eva doctor`                  | Checks the tools that each feature needs, and says how to install each.                                        |
+| `bun run eva`                         | Runs Eva in the foreground: the local web page, Telegram, and schedules.                                       |
+| `bun run eva chat`                    | Talks to a running Eva in this terminal.                                                                       |
+| `bun run eva service install`         | Starts Eva by itself when you log in.                                                                          |
+| `bun run eva setup --non-interactive` | Reads each answer from an `EVA_*` variable instead, for scripts. `src/frontends/cli/setup.ts` lists the names. |
 
 Eva keeps her settings in her home folder: `~/.config/eva` on Linux, `%APPDATA%\eva` on Windows. `config.json` holds the settings and `secrets.json` the tokens.
 

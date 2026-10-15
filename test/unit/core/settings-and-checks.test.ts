@@ -9,7 +9,7 @@ import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
-import { createGitSandbox, gitEnvironment, type GitSandbox } from "../../support/git-sandbox.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
@@ -36,12 +36,12 @@ beforeEach(() => {
     basePrompt: "Base.",
     gatherMs: 5,
   });
-});
+}, gitHookTimeoutMs);
 afterEach(() => {
   eva.stop();
   sandbox.dispose();
   rmSync(home, { recursive: true, force: true });
-});
+}, gitHookTimeoutMs);
 
 describe("clones of a project", () => {
   test("each clone shows its branch, and no pull request when gh finds none", async () => {

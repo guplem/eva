@@ -7,7 +7,9 @@ import type { EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-por
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
+import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
+import { evaVersion } from "../shared/version.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { parseConfig, saveConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./instance/home.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -44,12 +46,20 @@ export interface EvaOptions {
   readonly claudeExecutable?: string | null;
 }
 
+/** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
+export interface LastTurnStatus extends TurnUsage {
+  readonly at: string;
+  readonly costUsd: number | null;
+}
+
 export interface EvaStatus {
+  readonly version: string;
   readonly vaultPath: string | null;
   readonly role: EvaConfig["role"];
   readonly vaultSync: VaultSyncState;
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
+  readonly lastTurn: LastTurnStatus | null;
 }
 
 export interface PublicSettings {
@@ -94,6 +104,7 @@ export class Eva {
   private readonly gitEnvironment: Record<string, string>;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
+  private lastTurn: LastTurnStatus | null = null;
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -150,6 +161,10 @@ export class Eva {
             environment: this.gitEnvironment,
             temporaryRoot: options.paths.stateFolder,
           });
+
+    this.sessions.subscribe((event) => {
+      if (event.kind === "turn_finished") this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
+    });
 
     this.schedules =
       vaultPath === null
@@ -212,11 +227,13 @@ export class Eva {
   status(): EvaStatus {
     const sessions = this.sessions.list();
     return {
+      version: evaVersion,
       vaultPath: this.options.config.vaultPath,
       role: this.options.config.role,
       vaultSync: this.vaultSync?.currentState ?? noVaultState,
       sessionCount: sessions.length,
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
+      lastTurn: this.lastTurn,
     };
   }
 

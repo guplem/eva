@@ -41,6 +41,24 @@ jobs:
       # Browser tests of the three mockup screens, at desktop size and at 375 px (plan §10, P5).
       - run: bun run test:e2e
 
+  # The single executable, started the way a new person starts it (plan §10, P8).
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:executable
+      - name: Smoke test the executable
+        shell: bash
+        run: bash scripts/smoke-executable.sh "dist/eva${{ runner.os == 'Windows' && '.exe' || '' }}"
+
   voice:
     runs-on: ubuntu-latest
     env:

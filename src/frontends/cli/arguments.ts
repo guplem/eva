@@ -3,10 +3,12 @@ import type { ModelAlias } from "../../shared/engine-port.ts";
 
 export type CliCommand =
   | { readonly command: "run"; readonly home: string | undefined }
-  | { readonly command: "setup"; readonly home: string | undefined }
+  | { readonly command: "setup"; readonly home: string | undefined; readonly nonInteractive: boolean }
   | { readonly command: "doctor"; readonly home: string | undefined }
   | { readonly command: "status"; readonly home: string | undefined }
   | { readonly command: "help"; readonly home: string | undefined }
+  | { readonly command: "version"; readonly home: string | undefined }
+  | { readonly command: "update"; readonly home: string | undefined }
   | { readonly command: "service-install"; readonly home: string | undefined }
   | { readonly command: "projects"; readonly home: string | undefined; readonly query: string }
   | {
@@ -23,6 +25,7 @@ export const usageText = `Usage: eva [--home <folder>] [command]
 Commands:
   (none)            Run Eva in the foreground
   setup             Ask for each setting and write the config
+      --non-interactive                  read the answers from EVA_* variables instead
   doctor            Check the tools that Eva uses
   status            Show the engines, the vault sync and the sessions
   chat              Talk to Eva in this terminal
@@ -30,17 +33,24 @@ Commands:
       --model <default|opus|sonnet|haiku>
   projects [words]  Search the projects
   service install   Start Eva by itself (systemd on Linux, a logon task on Windows)
+  update            Replace this executable with the latest signed release
+  version           Show Eva's version
   help              Show this text
 `;
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+/** Options that take no value. */
+const switches: readonly string[] = ["--non-interactive"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];
   const options = new Map<string, string>();
+  const switchesSeen = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const word = argv[index] ?? "";
-    if (word.startsWith("--")) {
+    if (switches.includes(word)) {
+      switchesSeen.add(word);
+    } else if (word.startsWith("--")) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) return usageError(`${word} needs a value.`);
       options.set(word.slice(2), value);
@@ -56,9 +66,12 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case undefined:
       return { command: "run", home };
     case "setup":
+      return { command: "setup", home, nonInteractive: switchesSeen.has("--non-interactive") };
     case "doctor":
     case "status":
     case "help":
+    case "version":
+    case "update":
       return { command: name, home };
     case "projects":
       return { command: "projects", home, query: rest.join(" ") };

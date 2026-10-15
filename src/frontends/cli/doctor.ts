@@ -75,6 +75,8 @@ export interface DoctorOptions {
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
   readonly write: (line: string) => void;
+  /** True when Eva runs as one executable, which carries its own Bun (plan §11). */
+  readonly standalone: boolean;
 }
 
 /** Prints one line per tool. Returns false when a required tool is missing. */
@@ -82,7 +84,8 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
   let healthy = true;
   for (const group of [true, false]) {
     options.write(group ? "Required:" : "Optional:");
-    for (const tool of tools.filter((candidate) => candidate.required === group)) {
+    const needed = tools.filter((tool) => !(options.standalone && tool.program === "bun"));
+    for (const tool of needed.filter((candidate) => candidate.required === group)) {
       const version = await versionOf(tool, options);
       if (version === null) {
         if (tool.required) healthy = false;

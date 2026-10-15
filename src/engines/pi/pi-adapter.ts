@@ -265,7 +265,8 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
 }
 
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
-  if (request.mode === "assistant" && !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
+  // Project mode is pi exactly as the person runs it, and pi itself asks nothing (D8).
+  if (request.mode === "project" || !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });
 }
 

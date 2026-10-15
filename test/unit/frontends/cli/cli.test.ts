@@ -7,10 +7,20 @@ import { defaultConfig, homePaths, loadConfig, loadSecrets } from "../../../../s
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
-import { describeProjects, describeStatus, startProjectWork } from "../../../../src/frontends/cli/client.ts";
+import {
+  describeProjects,
+  describeStatus,
+  heldBackLines,
+  startProjectWork,
+} from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
 import { systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
-import { runSetup, setupEnvironmentNames, type SetupQuestion } from "../../../../src/frontends/cli/setup.ts";
+import {
+  firstFreePort,
+  runSetup,
+  setupEnvironmentNames,
+  type SetupQuestion,
+} from "../../../../src/frontends/cli/setup.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
@@ -100,6 +110,8 @@ describe("runDoctor", () => {
     expect(lines.join("\n")).toContain("ok      git: git version 2.50.0");
     expect(lines.join("\n")).toContain("missing gh");
     expect(lines.join("\n")).toContain("Optional:");
+    // Each tool shows how to update it (lesson 94).
+    expect(lines.join("\n")).toContain("ok      claude: 2.1.286 (Claude Code) (update: claude update)");
   });
 
   test("a missing required tool fails the check", async () => {
@@ -196,6 +208,33 @@ describe("runSetup", () => {
   test("without a Google account, the OAuth client is not asked", async () => {
     await setup({ googleClientId: "client-id" });
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
+  });
+
+  test("the default engine can change; a wrong one is refused", async () => {
+    await setup({ engine: "pi" });
+    expect(loadConfig(homePaths(home)).engines.default).toBe("pi");
+    const lines: string[] = [];
+    await setup({ engine: "codex" }, { lines });
+    expect(loadConfig(homePaths(home)).engines.default).toBe("pi");
+    expect(lines.join("\n")).toContain("must be claude-code or pi");
+    let caught: unknown;
+    try {
+      await setup({ engine: "codex" }, { interactive: false });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "config_invalid")).toBe(true);
+  });
+
+  test("a port that another program uses is not suggested (plan §4.4)", async () => {
+    const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    try {
+      const port = taken.port ?? 0;
+      expect(await firstFreePort(port)).toBeGreaterThan(port);
+      expect(await firstFreePort(port + 1)).toBeGreaterThan(port);
+    } finally {
+      await taken.stop(true);
+    }
   });
 
   test("a bad port is asked again", async () => {
@@ -414,5 +453,14 @@ repos:
     expect(text).toContain("Eva wants to run Bash: git push");
     expect(text).toContain("The push was allowed.");
     expect(text).toContain("The push was denied.");
+  });
+});
+
+describe("heldBackLines (lesson 26)", () => {
+  test("names the files that the secret scan keeps out, and says nothing when there are none", () => {
+    expect(heldBackLines([])).toEqual([]);
+    expect(heldBackLines(["Notes/keys.md", ".env"])).toEqual([
+      "Held back from the vault, as they look like secrets: Notes/keys.md, .env",
+    ]);
   });
 });

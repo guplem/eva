@@ -207,7 +207,7 @@ describe("PiEngine", () => {
     expect(outward.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
-  test("Project mode asks the person for every tool call", async () => {
+  test("Project mode runs pi's tools without a question, as pi itself does (D8)", async () => {
     const asked: string[] = [];
     const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
     await drain(
@@ -217,12 +217,12 @@ describe("PiEngine", () => {
           appendSystemPrompt: null,
           requestApproval: (approval) => {
             asked.push(approval.summary);
-            return Promise.resolve("allow");
+            return Promise.resolve("deny");
           },
         }),
       ),
     );
-    expect(asked).toHaveLength(1);
+    expect(asked).toEqual([]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
   });
 
@@ -237,24 +237,13 @@ describe("PiEngine", () => {
     expect(answers).toEqual([{ type: "extension_ui_response", id: expect.any(String) as string, cancelled: true }]);
   });
 
-  test("a broken approval message still asks, as an unknown tool", async () => {
+  test("a broken approval message is read as an unknown local tool", async () => {
     const records = loadPiFixture("approval-allowed").map((record) =>
       record["type"] === "extension_ui_request" ? { ...record, message: "not json" } : record,
     );
-    const asked: string[] = [];
     const fake = new FakePi([{ records }]);
-    await drain(
-      engine(fake).runTurn(
-        request({
-          mode: "project",
-          requestApproval: (approval) => {
-            asked.push(approval.toolName);
-            return Promise.resolve("allow");
-          },
-        }),
-      ),
-    );
-    expect(asked).toEqual(["unknown"]);
+    await drain(engine(fake).runTurn(request()));
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
   });
 
   test("a retried 500 that fails again ends the turn once, with pi's error (lesson 47)", async () => {

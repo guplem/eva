@@ -2,6 +2,7 @@
  * The pi child process seam: `pi --mode rpc` speaks JSON records, one per line, on stdin and
  * stdout. Tests replace the starter with a fake that replays captured records.
  */
+import { stopProcessTree } from "../../shared/process-runner.ts";
 
 export interface PiProcess {
   send(record: Readonly<Record<string, unknown>>): void;
@@ -30,6 +31,8 @@ export const systemPiProcessStarter: PiProcessStarter = (command, options) => {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    // Its own process group, so a stop reaches pi's shell and git children too (lesson 81).
+    detached: process.platform !== "win32",
   });
   let stderr = "";
   void (async () => {
@@ -46,7 +49,7 @@ export const systemPiProcessStarter: PiProcessStarter = (command, options) => {
     close: async (timeoutMs) => {
       await child.stdin.end();
       const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);
-      if (!exited) child.kill();
+      if (!exited) stopProcessTree(child.pid);
     },
     stderrTail: () => stderr,
   };

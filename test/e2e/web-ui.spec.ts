@@ -24,8 +24,11 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await openList(page);
+  await page.getByLabel("Model for a new chat").selectOption("haiku");
   await page.getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  // The model comes first, and the chat keeps it (lesson 41).
+  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");

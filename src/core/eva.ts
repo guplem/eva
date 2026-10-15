@@ -162,6 +162,7 @@ export class Eva {
           now: options.now,
           timeZone: options.config.timeZone ?? "UTC",
           mcpServers: this.assistantMcpServers(),
+          ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
@@ -418,7 +419,7 @@ export class Eva {
   private async isClean(folder: string): Promise<boolean> {
     const result = await this.options.runner.run(["git", "status", "--porcelain"], {
       cwd: folder,
-      environment: this.gitEnvironment,
+      environment: { ...this.gitEnvironment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: gitStatusTimeoutMs,
     });
     return result.exitCode === 0 && result.stdout.trim().length === 0;

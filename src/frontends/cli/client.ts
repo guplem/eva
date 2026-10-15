@@ -20,10 +20,16 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
     `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
     // Over JSON the date arrives as text; new Date reads both forms.
     `Last push: ${status.vaultSync.lastPushAt === null ? "none since start" : new Date(status.vaultSync.lastPushAt).toISOString()}`,
+    ...heldBackLines(status.vaultSync.withheldFiles),
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
+}
+
+/** The files that the secret scan keeps out of the vault's commits (lesson 26), or nothing. */
+export function heldBackLines(files: readonly string[]): string[] {
+  return files.length === 0 ? [] : [`Held back from the vault, as they look like secrets: ${files.join(", ")}`];
 }
 
 /** One line with the last turn's tokens, so a broken prompt cache shows (lesson 120). */

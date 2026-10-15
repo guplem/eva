@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { McpServerSpec } from "../../shared/engine-port.ts";
+import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
@@ -29,6 +30,8 @@ export interface AssistantPreparerOptions {
   readonly timeZone: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
+  /** Where pskill's error output goes (plan §5.4). */
+  readonly logger?: Logger;
 }
 
 const pskillTimeoutMs = 30_000;
@@ -89,8 +92,12 @@ export class AssistantPreparer implements TurnPreparer {
           stdin: JSON.stringify({ session_id: session.engineSessionId, cwd: this.options.vaultPath }),
         },
       );
+      if (result.stderr.trim() !== "") {
+        this.options.logger?.log("warn", "pskill wrote to stderr.", { stderr: result.stderr.trim() });
+      }
       return readContinueMessage(result.stdout);
-    } catch {
+    } catch (error) {
+      this.options.logger?.log("warn", "pskill could not run.", { reason: String(error) });
       return null;
     }
   }

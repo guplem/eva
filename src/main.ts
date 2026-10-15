@@ -85,6 +85,13 @@ async function main(argv: readonly string[]): Promise<number> {
       return healthy ? exitCodes.clean : exitCodes.crash;
     }
     case "setup": {
+      // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
+      await runDoctor({
+        runner: systemProcessRunner,
+        environment: childEnvironment(),
+        write: writeLine,
+        standalone: isStandalone(),
+      });
       const setupOptions = {
         paths,
         write: writeLine,
@@ -399,8 +406,11 @@ main(process.argv.slice(2))
       process.stderr.write(`${error.message}\n`);
       process.exit(exitCodes.crash);
     }
+    // The service log keeps stderr, so a crash report is redacted too (lesson 95).
     process.stderr.write(
-      `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      new Redactor().redact(
+        `Eva stopped on an error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      ),
     );
     process.exit(exitCodes.crash);
   });

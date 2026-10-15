@@ -10,6 +10,8 @@ interface ToolCheck {
   readonly feature: string;
   readonly required: boolean;
   readonly install: string;
+  /** How to update the tool (lesson 94). */
+  readonly update: string;
 }
 
 const tools: readonly ToolCheck[] = [
@@ -19,6 +21,7 @@ const tools: readonly ToolCheck[] = [
     feature: "the vault and clones",
     required: true,
     install: "https://git-scm.com/downloads",
+    update: "with the installer or package manager that installed git",
   },
   {
     program: "bun",
@@ -26,6 +29,7 @@ const tools: readonly ToolCheck[] = [
     feature: "Eva herself",
     required: true,
     install: "https://bun.sh",
+    update: "bun upgrade",
   },
   {
     program: "claude",
@@ -33,6 +37,7 @@ const tools: readonly ToolCheck[] = [
     feature: "the Claude Code engine",
     required: false,
     install: "https://code.claude.com",
+    update: "claude update",
   },
   {
     program: "pi",
@@ -40,6 +45,7 @@ const tools: readonly ToolCheck[] = [
     feature: "the pi engine (ChatGPT, Copilot, API keys)",
     required: false,
     install: "https://pi.dev",
+    update: "npm install -g @mariozechner/pi-coding-agent@latest",
   },
   {
     program: "gh",
@@ -47,6 +53,7 @@ const tools: readonly ToolCheck[] = [
     feature: "pull request numbers",
     required: false,
     install: "https://cli.github.com",
+    update: "with the installer or package manager that installed gh",
   },
   {
     program: "uv",
@@ -54,6 +61,7 @@ const tools: readonly ToolCheck[] = [
     feature: "pskill and the Google tools",
     required: false,
     install: "https://docs.astral.sh/uv/",
+    update: "uv self update",
   },
   {
     program: "ffmpeg",
@@ -61,6 +69,7 @@ const tools: readonly ToolCheck[] = [
     feature: "voice notes",
     required: false,
     install: "https://ffmpeg.org/download.html",
+    update: "with the installer or package manager that installed ffmpeg",
   },
   {
     program: "whisper-cli",
@@ -68,6 +77,7 @@ const tools: readonly ToolCheck[] = [
     feature: "voice notes",
     required: false,
     install: "https://github.com/ggml-org/whisper.cpp",
+    update: "download a newer release, or build it again",
   },
   {
     program: "typst",
@@ -75,6 +85,7 @@ const tools: readonly ToolCheck[] = [
     feature: "PDFs",
     required: false,
     install: "https://github.com/typst/typst/releases",
+    update: "typst update",
   },
 ];
 
@@ -98,7 +109,7 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
         if (tool.required) healthy = false;
         options.write(`  missing ${tool.program} (for ${tool.feature}): install it from ${tool.install}`);
       } else {
-        options.write(`  ok      ${tool.program}: ${version}`);
+        options.write(`  ok      ${tool.program}: ${version} (update: ${tool.update})`);
       }
     }
   }

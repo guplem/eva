@@ -67,8 +67,9 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
-function assistant(runner: ProcessRunner, sync = new FakeSync()): AssistantPreparer {
+function assistant(runner: ProcessRunner, sync = new FakeSync(), logged: string[] = []): AssistantPreparer {
   return new AssistantPreparer({
+    logger: { log: (_level, message, details) => logged.push(`${message} ${JSON.stringify(details)}`) },
     vaultPath: vault,
     vaultSync: sync,
     basePrompt: "Base rules.",
@@ -168,7 +169,16 @@ describe("Assistant mode", () => {
     sandbox.write(vault, ".pskill/pskill.py", "# runner\n");
     expect(await assistant(silentRunner).afterTurn(session(), { finished: true })).toBeNull();
     const broken = new FakeRunner(() => ({ exitCode: 0, stdout: "not json", stderr: "oops" }));
-    expect(await assistant(broken).afterTurn(session(), { finished: true })).toBeNull();
+    const logged: string[] = [];
+    expect(await assistant(broken, new FakeSync(), logged).afterTurn(session(), { finished: true })).toBeNull();
+    // Any stderr is logged (plan §5.4), and a pskill that cannot start too.
+    expect(logged).toEqual(['pskill wrote to stderr. {"stderr":"oops"}']);
+    const missing = new FakeRunner(() => {
+      throw new Error("uv is not installed");
+    });
+    const failures: string[] = [];
+    expect(await assistant(missing, new FakeSync(), failures).afterTurn(session(), { finished: true })).toBeNull();
+    expect(failures[0]).toContain("pskill could not run");
   });
 
   test("a vault with no pskill runs no check", async () => {

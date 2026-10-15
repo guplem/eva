@@ -84,7 +84,8 @@ export function stopSteps(platform: NodeJS.Platform, pid: number): StopStep[] {
   ];
 }
 
-function stopProcessTree(pid: number): void {
+/** Stops a process and its children: a gentle stop, then a hard one (lesson 81). */
+export function stopProcessTree(pid: number): void {
   for (const step of stopSteps(process.platform, pid)) {
     if (step.kind === "command") {
       Bun.spawn([...step.command], { stdout: "ignore", stderr: "ignore" });

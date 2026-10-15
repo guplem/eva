@@ -25,6 +25,7 @@ export type SetupQuestion =
   | "name"
   | "language"
   | "githubRepository"
+  | "engine"
   | "port"
   | "trustedOwners"
   | "claudeToken"
@@ -42,6 +43,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   name: "EVA_PERSON_NAME",
   language: "EVA_LANGUAGE",
   githubRepository: "EVA_GITHUB_REPOSITORY",
+  engine: "EVA_ENGINE",
   port: "EVA_PORT",
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",
@@ -82,7 +84,16 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     await offerNewVault(options, config.vaultPath, config.timeZone ?? "UTC", ask);
   }
 
-  config = { ...config, port: await askPort(options, ask, config.port) };
+  const engine = await ask("engine", `Default engine, claude-code or pi [${config.engines.default}]: `);
+  if (engine === "claude-code" || engine === "pi")
+    config = { ...config, engines: { ...config.engines, default: engine } };
+  else if (engine !== "") {
+    const problem = "The engine must be claude-code or pi.";
+    if (!options.interactive) throw new EvaError("config_invalid", problem);
+    options.write(`${problem} The engine stays ${config.engines.default}.`);
+  }
+
+  config = { ...config, port: await askPort(options, ask, await firstFreePort(config.port)) };
 
   const owners = await ask(
     "trustedOwners",
@@ -154,7 +165,7 @@ async function offerNewVault(
   if (repository === "") return;
   const result = await options.runner.run(
     ["gh", "repo", "create", repository, "--private", "--source", folder, "--remote", "origin", "--push"],
-    { cwd: folder, environment: options.environment, timeoutMs: ghTimeoutMs },
+    { cwd: folder, environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: ghTimeoutMs },
   );
   options.write(
     result.exitCode === 0
@@ -176,6 +187,27 @@ async function askPort(
     const problem = "The port must be a whole number from 1024 to 65535.";
     if (!options.interactive) throw new EvaError("config_invalid", problem);
     options.write(problem);
+  }
+}
+
+/**
+ * The first port from `start` up that nothing listens on, so a second instance on one machine
+ * gets its own port (plan §4.4). The running instance's own port counts as taken too.
+ */
+export async function firstFreePort(start: number): Promise<number> {
+  for (let port = start; port < Math.min(start + 50, 65_536); port += 1) {
+    if (await isPortFree(port)) return port;
+  }
+  return start;
+}
+
+async function isPortFree(port: number): Promise<boolean> {
+  try {
+    const probe = Bun.serve({ hostname: "127.0.0.1", port, fetch: () => new Response() });
+    await probe.stop(true);
+    return true;
+  } catch {
+    return false;
   }
 }
 

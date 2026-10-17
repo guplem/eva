@@ -4,6 +4,7 @@ import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
 import { Conversation, rootChats } from "./Conversation.tsx";
+import { useShowError } from "./error-toast.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -28,12 +29,17 @@ export function AssistantView({
   const [model, setModel] = useState<ModelAlias>("default");
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const tasks = Object.entries(live.tasks);
+  const showError = useShowError();
 
   const newChat = async (): Promise<void> => {
-    const chat = await api.newAssistantChat(model);
-    await onChanged();
-    setSelectedId(chat.id);
-    onNavigate();
+    try {
+      const chat = await api.newAssistantChat(model);
+      await onChanged();
+      setSelectedId(chat.id);
+      onNavigate();
+    } catch (caught) {
+      showError(caught);
+    }
   };
 
   return (
@@ -73,6 +79,7 @@ export function AssistantView({
           </button>
         ))}
       </nav>
+      {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
         {selected === undefined ? (
           <div className="empty">No chats yet. Start one with “New chat”.</div>

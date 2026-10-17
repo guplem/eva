@@ -9,3 +9,14 @@ declare module "*.gitignore" {
   const text: string;
   export default text;
 }
+
+/** An icon of the web UI, imported `with { type: "file" }`: Bun gives its path, also inside the executable. */
+declare module "*.png" {
+  const path: string;
+  export default path;
+}
+
+declare module "*.svg" {
+  const path: string;
+  export default path;
+}

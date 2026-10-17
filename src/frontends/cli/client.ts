@@ -1,5 +1,6 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
+import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
 import type { LogEntry } from "../../shared/logger.ts";
@@ -127,6 +128,18 @@ export function describeUpdate(update: UpdateStatus): string {
   return update.available
     ? `Updates: ${update.latest ?? "?"} is available (this is ${update.current}); ${automatic}`
     : `Updates: ${update.current} is the latest; ${automatic}`;
+}
+
+/** One line about the engine update of the settings page. */
+export function describeEngineUpdate(update: EngineUpdateStatus): string {
+  if (update.phase === "waiting_for_idle") return "Claude Code: the update starts when the running chats end";
+  if (update.phase === "updating") return "Claude Code: updating…";
+  const last = update.last;
+  if (last === null) return "Claude Code: no update has run yet";
+  if (last.outcome === "failed")
+    return `Claude Code: the update failed: ${last.detail ?? "unknown reason"}. Update it with the tool that installed it.`;
+  if (last.outcome === "up_to_date") return `Claude Code: ${last.after ?? "?"} is the latest`;
+  return `Claude Code: updated from ${last.before ?? "?"} to ${last.after ?? "?"}; the next turn uses it`;
 }
 
 /** One line about the vault sync. */

@@ -7,6 +7,7 @@ import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
@@ -16,6 +17,7 @@ export type {
   CheckResult,
   CloneDetails,
   DeviceLoginRequest,
+  EngineUpdateStatus,
   EvaStatus,
   PendingApproval,
   Project,
@@ -100,6 +102,8 @@ export const api = {
     request("PUT", "/api/settings", patch),
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
+  updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),

@@ -3,8 +3,15 @@
  * button for each part. The two dropdowns save at once; Eva uses them without a restart.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import { describeSync, describeUpdate } from "../../cli/client.ts";
-import { api, type CheckResult, type EvaStatus, type PublicSettings, type UpdateStatus } from "./api.ts";
+import { describeEngineUpdate, describeSync, describeUpdate } from "../../cli/client.ts";
+import {
+  api,
+  type CheckResult,
+  type EngineUpdateStatus,
+  type EvaStatus,
+  type PublicSettings,
+  type UpdateStatus,
+} from "./api.ts";
 import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
@@ -31,6 +38,8 @@ const updateChoices: readonly { value: PublicSettings["config"]["updates"]["freq
 
 const restartPollMs = 3_000;
 const restartPollLimit = 60;
+/** The engine update can wait for a long turn, then download for minutes. */
+const engineUpdatePollLimit = 200;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
@@ -41,6 +50,8 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [notice, setNotice] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null>(null);
+  const [engineUpdateNote, setEngineUpdateNote] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
@@ -48,6 +59,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   useEffect(() => {
     void api.status().then(setStatus);
     void api.updateStatus().then(setUpdate);
+    void api.engineUpdateStatus().then(setEngineUpdate);
     void api.settings().then((loaded) => {
       setSettings(loaded);
       setTimeZone(loaded.config.timeZone ?? "");
@@ -92,6 +104,22 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       }
     } catch (error) {
       setUpdateNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** Starts `claude update`, then asks for its status until it ends. */
+  const updateEngine = async (): Promise<void> => {
+    setEngineUpdateNote(null);
+    try {
+      let status = await api.updateEngine();
+      setEngineUpdate(status);
+      for (let attempt = 0; attempt < engineUpdatePollLimit && status.phase !== "idle"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, restartPollMs));
+        status = (await api.engineUpdateStatus()) ?? status;
+        setEngineUpdate(status);
+      }
+    } catch (error) {
+      setEngineUpdateNote(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -276,6 +304,15 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             </button>
           </div>
           {updateNote !== null && <div role="status">{updateNote}</div>}
+          <div className="check-row">
+            <span style={{ flex: 1 }} role="status">
+              {engineUpdate === null ? "No claude program was found." : describeEngineUpdate(engineUpdate)}
+            </span>
+            <button disabled={engineUpdate?.phase !== "idle"} onClick={() => void updateEngine()}>
+              Update Claude Code
+            </button>
+          </div>
+          {engineUpdateNote !== null && <div role="status">{engineUpdateNote}</div>}
           <div className="check-row">
             <span style={{ flex: 1 }}>Restart Eva, for example after a settings change.</span>
             <button onClick={() => void restartNow()}>Restart Eva</button>

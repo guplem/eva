@@ -311,6 +311,29 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
+test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
+  const posts: string[] = [];
+  let finished = false;
+  await page.route("**/api/update/engine", async (route) => {
+    if (route.request().method() === "POST") {
+      posts.push("POST");
+      await route.fulfill({ json: { phase: "updating", last: null } });
+      return;
+    }
+    const last = { outcome: "updated", before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: finished ? { phase: "idle", last } : { phase: "idle", last: null } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Claude Code: no update has run yet")).toBeVisible();
+  finished = true;
+  await page.getByRole("button", { name: "Update Claude Code" }).click();
+  await expect(page.getByText("Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it")).toBeVisible({
+    timeout: 10_000,
+  });
+  expect(posts).toEqual(["POST"]);
+});
+
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
   await openList(page);

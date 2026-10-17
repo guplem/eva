@@ -317,6 +317,7 @@ In this order, after P8: the engine-neutral background task system for more engi
 | `eva update [--check]`                                                        | Install the latest version and restart; `--check` only looks     |
 | `eva sync`                                                                    | Sync the vault now                                               |
 | `eva hub`                                                                     | Make this machine the hub                                        |
+| `eva link`                                                                    | The address that opens Eva on any device, and the local one      |
 | `eva settings [get <key> \| set <key> <value>]`                               | Show or change a setting; works while Eva runs or not            |
 
 ### 8.2 Telegram
@@ -324,7 +325,7 @@ In this order, after P8: the engine-neutral background task system for more engi
 Assistant mode front end, ported from v1 with lessons 56 to 63 and 123 to 127:
 
 - Topics as conversations, with the model picker first in a new topic. A topic is a chat in the web UI too.
-- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/sync`, `/update`, `/help`.
+- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/link`, `/sync`, `/update`, `/help`.
 - Voice notes transcribed on the machine. Files sent from allowed folders, with offer buttons.
 - One allowed chat id, set by a pairing code that the person sends to the bot.
 - A request for project work opens a Project session and posts a link to it.
@@ -394,7 +395,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its config; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
 - **Vault creation:** a GitHub login by device flow, then a private vault created from the template repository.
 - **Google:** she logs in with the owner's OAuth client.
-- **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`.
+- **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`, then the network: Tailscale sign-in and HTTPS, each with a link and a wait, ending with the address that opens Eva on every device. The Assistant answers "what is your address?" with `eva link`.
 - **Nothing personal is hardcoded in the engine.**
 - **Updates (D15):** `updates.frequency` (`off`, `hourly`, `daily` by default, `weekly`). Eva checks at that pace, and installs only when no chat runs a turn; then she exits with code 4. systemd starts her again; elsewhere she starts a new copy of herself first, which waits for the old one to exit. A single executable takes the latest signed release (§12). A source checkout fast-forwards to its remote default branch and runs `bun install` when `package.json` or `bun.lock` changed; it refuses on local changes, own commits, or another branch, and goes back to the old commit when the install fails. Eva's GitHub token reaches a private engine repository.
 

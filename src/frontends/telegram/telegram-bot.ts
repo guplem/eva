@@ -14,6 +14,7 @@ import {
   describeUpdate,
   heldBackLines,
 } from "../cli/client.ts";
+import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -110,6 +111,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects" },
   { command: "schedules", description: "List the schedules" },
+  { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
   { command: "update", description: "Install the latest version of Eva" },
   { command: "help", description: "Show the commands" },
@@ -345,6 +347,9 @@ export class TelegramBot {
         return;
       case "sync":
         await this.send(chatId, topicId, describeSync(await this.options.eva.syncVault()));
+        return;
+      case "link":
+        await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
       case "update": {
         const update = await this.options.eva.updateNow();

@@ -74,6 +74,11 @@ export function describeRemoteAccess(remote: EvaStatus["remoteAccess"]): string[
   return [remote.url === null ? `Phone access: ${remote.problem ?? "not available"}` : `Phone access: ${remote.url}`];
 }
 
+/** The running Eva's status. */
+export function requestStatus(options: ClientOptions): Promise<EvaStatus> {
+  return getJson<EvaStatus>(options, "/api/status");
+}
+
 /** `eva hub` while Eva runs. */
 export async function requestHub(options: ClientOptions): Promise<string> {
   const status = await postJson<EvaStatus>(options, "/api/hub", {});

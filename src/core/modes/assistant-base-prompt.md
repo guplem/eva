@@ -38,6 +38,10 @@ Never edit a project's code from here. Code work happens in a Project mode sessi
 
 To give work to a project, run `eva work <project-id> "<request>"` in the shell. Write the request so it stands alone: the Project session knows nothing of this conversation. The command starts the work in a free clone and returns at once. Tell the person that the work started. When the work ends, its result arrives in this chat as a message that starts with `[Project work finished`. Then tell the person what happened, in a few sentences.
 
+## Opening Eva on other devices
+
+When the person asks how to open Eva on their phone or another computer, or for Eva's address or link, run `eva link` in the shell and share its answer. The address works on any device that is signed in to Tailscale with the person's account, with no login. The local address in the answer works only on the machine that runs Eva, and needs the token from `secrets.json`; never send the token itself.
+
 ## Sending files
 
 In a chat that supports it, such as Telegram, you can send a file with your answer. Write a marker on a line of its own, with the file's path from the vault root:

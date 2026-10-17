@@ -16,6 +16,7 @@ import {
   describeSync,
   describeUpdate,
   requestHub,
+  requestStatus,
   requestSettingsChange,
   requestSync,
   requestUpdate,
@@ -92,6 +93,7 @@ describe("parseArguments", () => {
     expect(parseArguments(["update", "--check"])).toEqual({ command: "update", home: undefined, checkOnly: true });
     expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
     expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
+    expect(parseArguments(["link"])).toEqual({ command: "link", home: undefined });
     expect(parseArguments(["settings"])).toEqual({ command: "settings", home: undefined, action: "list" });
     expect(parseArguments(["settings", "get", "updates.frequency"])).toEqual({
       command: "settings",
@@ -522,6 +524,7 @@ repos:
     expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
     expect(await requestSync(options)).toStartWith("Vault sync: ");
     expect(await requestHub(options)).toContain("is now the hub.");
+    expect((await requestStatus(options)).localUrl).toStartWith("http://127.0.0.1:");
     expect(await requestSettingsChange(options, { updates: { frequency: "weekly" } })).toBe(false);
     expect(await requestSettingsChange(options, { timeZone: "Europe/Madrid" })).toBe(true);
     expect(String(await requestSettingsChange(options, { port: 5 }).catch((caught: unknown) => caught))).toContain(

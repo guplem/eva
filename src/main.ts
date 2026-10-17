@@ -44,6 +44,7 @@ import {
   describeStatus,
   describeSync,
   requestHub,
+  requestStatus,
   requestSettingsChange,
   requestSync,
   requestUpdate,
@@ -55,6 +56,7 @@ import { restartMethod, serviceName, servicePath, systemdUnit, windowsTaskComman
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
 import { publishWithTailscale, readTailscale } from "./core/instance/machine-defaults.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
+import { describeAccess, runNetworkSetup } from "./frontends/cli/network-setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
 import type { EnginePort } from "./shared/engine-port.ts";
@@ -123,15 +125,29 @@ async function main(argv: readonly string[]): Promise<number> {
         runner: systemProcessRunner,
         environment: childEnvironment(),
       };
+      const networkOptions = {
+        runner: systemProcessRunner,
+        environment: childEnvironment(),
+        write: writeLine,
+        sleep: (ms: number) => Bun.sleep(ms),
+      };
       if (command.nonInteractive) {
         await runSetup({
           ...setupOptions,
           interactive: false,
           ask: (key) => Promise.resolve(process.env[setupEnvironmentNames[key]] ?? ""),
         });
+        await runNetworkSetup({
+          ...networkOptions,
+          interactive: false,
+          ask: () => Promise.resolve(""),
+          port: loadSettings(paths).config.port,
+        });
       } else {
         await withPrompt(async (ask) => {
           await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
+          // The last step: the address that opens Eva on every other device (plan §11).
+          await runNetworkSetup({ ...networkOptions, interactive: true, ask, port: loadSettings(paths).config.port });
         });
       }
       return exitCodes.clean;
@@ -144,6 +160,8 @@ async function main(argv: readonly string[]): Promise<number> {
       return sync(paths);
     case "hub":
       return hub(paths);
+    case "link":
+      return link(paths);
     case "settings":
       return settings(paths, command);
     case "status":
@@ -495,6 +513,17 @@ async function sync(paths: HomePaths): Promise<number> {
   const state = await vaultSync.save();
   writeLine(describeSync(state));
   return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
+}
+
+/** `eva link`: the address that opens Eva on the phone and other computers. */
+async function link(paths: HomePaths): Promise<number> {
+  const client = runningClient(paths);
+  if (client === null) {
+    writeLine("Eva is not running, so she publishes no address. Start her with `eva`, or run `eva setup`.");
+    return exitCodes.crash;
+  }
+  writeLine(describeAccess(await requestStatus(client)).join("\n"));
+  return exitCodes.clean;
 }
 
 /** `eva hub`: makes this machine the hub; the old hub stops at its next vault fetch. */

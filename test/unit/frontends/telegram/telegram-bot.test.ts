@@ -277,9 +277,12 @@ describe("approvals and commands", () => {
     await settle(bot, () => telegram.sentTexts().length >= 1);
     telegram.sendText(owner, "/update");
     await settle(bot, () => telegram.sentTexts().length >= 2);
+    telegram.sendText(owner, "/link");
+    await settle(bot, () => telegram.sentTexts().length >= 3);
     const texts = telegram.sentTexts().join("\n");
     expect(texts).toContain("Vault sync:");
     expect(texts).toContain("This Eva cannot update herself.");
+    expect(texts).toContain("On this machine only (advanced): http://127.0.0.1:");
     expect(engine.requests).toEqual([]);
   });
 

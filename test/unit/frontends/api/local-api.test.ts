@@ -494,6 +494,8 @@ describe("web routes", () => {
     const saved = await call("/api/settings", { method: "PUT", body: { timeZone: "Europe/Madrid" } });
     expect(await json<{ saved: boolean; restartNeeded: boolean }>(saved)).toEqual({ saved: true, restartNeeded: true });
     expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
+    const setup = await json<{ engines: string[]; telegram: { paired: boolean } }>(await call("/api/settings/setup"));
+    expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
   });
 
   test("secrets: write-only, only the three that the page may change", async () => {

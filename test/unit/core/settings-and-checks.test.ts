@@ -99,6 +99,19 @@ describe("settings", () => {
     expect(() => eva.saveSecret("githubToken", "   ")).toThrow("empty");
   });
 
+  test("the setup state names the vault's remote, the Telegram pairing and the engines found", async () => {
+    expect(await eva.setupState()).toEqual({
+      vaultRemote: sandbox.remote,
+      telegram: { paired: false, pairingCode: null },
+      engines: ["claude-code"],
+    });
+    mkdirSync(homePaths(home).stateFolder, { recursive: true });
+    writeFileSync(homePaths(home).telegramPairingCode, "EVA-1234ABCD\n");
+    expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: "EVA-1234ABCD" });
+    sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
+    expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
+  });
+
   test("an invalid update is refused and nothing is saved", () => {
     expect(() => eva.updateSettings({ port: 5 })).toThrow("port");
   });

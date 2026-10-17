@@ -284,6 +284,7 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     }
   }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
+  if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json()), { pageOnly: !tokenLogin }));
   }

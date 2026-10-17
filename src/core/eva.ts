@@ -5,7 +5,7 @@
 import { chmodSync } from "node:fs";
 import { hostname } from "node:os";
 import { delimiter, join, resolve } from "node:path";
-import { writeFileAtomic } from "../shared/files.ts";
+import { readTextTolerant, writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -19,7 +19,7 @@ import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProb
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import { loadSecrets, saveSecrets, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
-import { applySettingsChange, isPageSettingKey, saveSettings } from "./settings/settings.ts";
+import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -120,6 +120,15 @@ export interface PublicSettings {
 /** The secrets that the settings page may save. The local token and the Google keys stay with `eva setup`. */
 export const pageSecretNames = ["githubToken", "telegramBotToken", "claudeOauthToken"] as const;
 export type PageSecretName = (typeof pageSecretNames)[number];
+
+/** What the Setup section shows beside the settings. */
+export interface SetupState {
+  /** The vault's `origin`, without any credentials in it. */
+  readonly vaultRemote: string | null;
+  readonly telegram: { readonly paired: boolean; readonly pairingCode: string | null };
+  /** The engines whose program Eva found at start. */
+  readonly engines: readonly EngineName[];
+}
 
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
@@ -633,6 +642,24 @@ export class Eva {
       (key) => !liveSettingKeys.some((live) => key === live || key.startsWith(`${live}.`)),
     );
     return { saved: true, restartNeeded };
+  }
+
+  async setupState(): Promise<SetupState> {
+    const vaultPath = this.options.config.vaultPath;
+    const remote = vaultPath === null ? null : await readOriginUrl(vaultPath, this.options.runner, this.gitEnvironment);
+    // The bot saves a new pairing to config.json while Eva runs, so the file knows better than memory.
+    let pairedChat = this.settings.telegram.allowedChatId;
+    try {
+      pairedChat = loadSettings(this.options.paths).config.telegram.allowedChatId;
+    } catch {
+      // A bad config.json stops the next start, which says why; the page keeps the known value.
+    }
+    const code = readTextTolerant(this.options.paths.telegramPairingCode)?.trim() ?? "";
+    return {
+      vaultRemote: remote === null ? null : this.redactor.redact(remote.replace(/\/\/[^/@]*@/, "//")),
+      telegram: { paired: pairedChat !== null, pairingCode: pairedChat === null && code !== "" ? code : null },
+      engines: this.options.engines.map((engine) => engine.name),
+    };
   }
 
   /**

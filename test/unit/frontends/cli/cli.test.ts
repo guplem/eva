@@ -604,6 +604,8 @@ describe("service", () => {
     expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
     expect(script).toContain("-AllowStartIfOnBatteries");
     expect(script).toContain("-DontStopIfGoingOnBatteries");
+    // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
+    expect(script).toContain("-ErrorAction Stop");
     expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 

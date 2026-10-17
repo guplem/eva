@@ -96,8 +96,9 @@ export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[
 }
 
 /**
- * Lifts the limits that `schtasks /Create` sets on each task: Windows stops a task after three
+ * Lifts the limits that `schtasks /Create` sets on each task. Windows stops a task after three
  * days, and when a laptop switches to its battery. Either stop would end the supervisor.
+ * The new settings replace all of the task's settings: the other defaults suit Eva too.
  */
 export function windowsTaskSettingsCommand(name = "eva"): string[] {
   const settings =
@@ -108,7 +109,7 @@ export function windowsTaskSettingsCommand(name = "eva"): string[] {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    `Set-ScheduledTask -TaskName '${windowsTaskName(name)}' -Settings (${settings}) | Out-Null`,
+    `Set-ScheduledTask -TaskName '${windowsTaskName(name)}' -Settings (${settings}) -ErrorAction Stop | Out-Null`,
   ];
 }
 

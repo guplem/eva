@@ -487,6 +487,7 @@ async function installService(paths: HomePaths): Promise<number> {
     // A running Eva keeps the lock, so the new task's Eva would only exit 3.
     if (runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) !== null) {
       writeLine("Eva now starts when you log in. She already runs, so the new task takes over at your next logon.");
+      writeLine(`To switch now, stop her, then run: ${windowsRunTaskCommand(name).join(" ")}`);
       return exitCodes.clean;
     }
     const started = await runStep(windowsRunTaskCommand(name));

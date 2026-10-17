@@ -6,8 +6,8 @@ ADR 0009 records the testing strategy and why. This file holds the rules for eac
 
 - **Write the failing test first** (red), run it, and see it fail for the right reason. Then write the smallest code that makes it pass (green). Then clean up.
 - **A bug fix starts with a test that reproduces the bug.**
-- **A commit that changes `src/` with no test change states the reason in its message** (plan §13).
-- **Each `[keep]` or `[adapt]` lesson in `docs/lessons-from-v1.md` that your change touches gets a test,** or a comment in the code that says why no test is possible (plan §10). Name the lesson number in the test name or a comment.
+- **A commit that changes `src/` with no test change states the reason in its message.**
+- **Each `[keep]` or `[adapt]` lesson in `docs/lessons-from-v1.md` that your change touches gets a test,** or a comment in the code that says why no test is possible. Name the lesson number in the test name or a comment.
 
 ## Seams and fakes
 
@@ -19,8 +19,8 @@ ADR 0009 records the testing strategy and why. This file holds the rules for eac
   | Process runner   | `systemProcessRunner` (`src/shared/process-runner.ts`) | A fake `ProcessRunner` that records the command and returns a set result |
   | Git              | The real `git` on a real remote                        | Local bare remotes (`createGitSandbox`, `test/support/git-sandbox.ts`)   |
   | Engine           | An adapter in `src/engines/`                           | A fake engine behind the engine port                                     |
-  | Telegram Bot API | `api.telegram.org`                                     | A fake Bot API server (P4)                                               |
-  | MCP              | A pinned MCP server                                    | A fake MCP server (P6)                                                   |
+  | Telegram Bot API | `api.telegram.org`                                     | A fake Bot API server                                                    |
+  | MCP              | A pinned MCP server                                    | A fake MCP server                                                        |
 
 - **Never mock an internal module.** Everything between two seams runs for real.
 - **Pass the seam in.** Core code receives the seam as an argument or an option, so a test can pass the fake. Core code never calls `new Date()`, `Bun.spawn`, or `fetch` directly.
@@ -37,7 +37,7 @@ ADR 0009 records the testing strategy and why. This file holds the rules for eac
 - **Never touch the real home folder, vault, or config.** Create a temporary folder (`mkdtempSync(join(tmpdir(), "eva-..."))`) and remove it after the test.
 - **Clear every `GIT_*` variable before a test runs git** (lesson 104). `createGitSandbox` does this; reuse it.
 - **Set `GIT_TERMINAL_PROMPT=0`** for every git step in a test (lesson 100).
-- **Use no network, no real login, and no real engine** in `bun test`. The live run is `bun run smoke:live` (planned, P3).
+- **Use no network, no real login, and no real engine** in `bun test`. The live run is `bun run smoke:live`.
 - **Write no absolute home path in a test or fixture.** The public-content check fails on one. Build paths from `tmpdir()` or use neutral paths.
 - **Make every test pass on Windows and Linux.** Build paths with `node:path`, and compare paths after you normalize them.
 

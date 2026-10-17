@@ -2,9 +2,9 @@
 
 ## Context
 
-AI agents write most of the engine (plan §13), and an agent takes the shortest import path unless a check stops it. Eva must support more engines later (intent goal 6), so the core and the front ends must not depend on one engine. v1 had the same rule: a front end never names an engine (v1 ADR `0003`).
+AI agents write most of the engine, and an agent takes the shortest import path unless a check stops it. Eva must support more engines later, so the core and the front ends must not depend on one engine. v1 had the same rule: a front end never names an engine (v1 ADR `0003`).
 
-Source: plan §4.2, §13; `.dependency-cruiser.cjs`.
+Source: `.dependency-cruiser.cjs`.
 
 ## Decision
 
@@ -20,7 +20,7 @@ Source: plan §4.2, §13; `.dependency-cruiser.cjs`.
 
 `bun run arch` runs dependency-cruiser with `.dependency-cruiser.cjs`, inside `bun run check` and CI. Its rules: `shared-imports-nothing-of-ours`, `core-imports-only-shared`, `engines-import-only-shared`, `engines-stay-apart`, `frontends-never-import-engines`, `only-main-wires`, and `no-circular`.
 
-The engine port and the event union (plan §4.6) live in `src/shared/`, so the core and each adapter depend on the same contract and never on each other.
+The engine port and the event union (`src/shared/events.ts`) live in `src/shared/`, so the core and each adapter depend on the same contract and never on each other.
 
 **Rejected alternative:** a review rule with no check. An agent reads the rule once and forgets it; a failing CI check stops the PR every time.
 

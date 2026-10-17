@@ -105,7 +105,7 @@ An ADR records one architecturally significant decision. Enforce these rules whe
 - **Update in place; do not supersede.** When a pattern changes, edit its ADR so it describes the current design. Rely on git for history.
 - **No rotting references.** Avoid line numbers (they rot fastest) and short-lived symbol names. Pin to the most stable identifier you can: a class or a concept, not a coordinate.
 - **Numbering: sequential, never renumbered.** Find the highest existing ADR number and add 1. Gaps left by removed ADRs are fine.
-- **The source of truth is the code for facts, and `docs/plan.md` for decisions.** Never write an ADR claim without checking it against the actual source. Cite the plan section that approved the decision, and mark a part with no code yet as "(planned, phase Pn)".
+- **The source of truth is the code for facts.** Never write an ADR claim without checking it against the code. An ADR must not contradict the "What must not change" section of `AGENTS.md`; a change to that section needs the owner. Mark a part with no code yet as "(planned, issue #N)".
 - **Do not over-document.** If the decision is obvious from reading the code, it does not need an ADR.
 
 A new ADR that breaks the length or one-decision rule should be split before merge, not after.

@@ -4,7 +4,7 @@
 
 v1 synced the vault with agent hooks and git hooks. A broken hook failed in silence (lessons 16, 31). A hook resolved the repository from the current folder, so inside a clone it pushed the project's `main` (lesson 19). The locks raced, and Windows had no `flock` (lessons 20, 21). Each harness also has its own hook system, so a hook-based design must be rebuilt for every engine.
 
-Source: plan §1 (D7), §5.4, §6; owner answer 4 (`docs/review-2026-10-14.md`); lessons 16 to 27, 100.
+Source: owner decision of 2026-10-14; lessons 16 to 27, 100.
 
 ## Decision
 
@@ -16,14 +16,14 @@ Source: plan §1 (D7), §5.4, §6; owner answer 4 (`docs/review-2026-10-14.md`);
 - **Eva aborts a rebase that a crash left open,** because only she rebases the vault. She refuses when a tracked file has an edit, because the abort would lose it (lesson 22).
 - **A secret scan runs before each commit.** A matching file outside `Projects/*/` stays out of the commit; the scan never blocks the whole commit (lesson 27). A file over 50 MB stays out everywhere, so GitHub's 100 MB limit never blocks every push.
 - **No agent hooks.** Eva sets `disableAllHooks: true` in Assistant mode, and the vault's pskill config writes no hooks (`hook_files: []`).
-- **Programmatic skill runs continue without a Stop hook.** After each Assistant turn, Eva runs the pskill stop logic herself, for the session that just ended (plan §5.4).
+- **Programmatic skill runs continue without a Stop hook.** After each Assistant turn, Eva runs the pskill stop logic herself, for the session that just ended.
 
-Sync is planned for phase P3. Until then, the temporary v1 sync hooks stay in the vault, and Eva removes them on a machine as soon as she syncs there.
+The vault still holds temporary v1 sync hooks; `docs/owner-todo.md` lists their removal.
 
 **Rejected alternatives:**
 
 - **v1's agent and git hooks.** They fail in silence, act on the wrong repository, and race (lessons 16, 19, 20).
-- **A file watcher that commits after a quiet period.** A commit can land in the middle of a turn, and a watcher over many clones is costly on Windows (review R7).
+- **A file watcher that commits after a quiet period.** A commit can land in the middle of a turn, and a watcher over many clones is costly on Windows.
 
 ## Consequences
 

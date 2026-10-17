@@ -16,7 +16,7 @@ Your report must be specific enough that the caller can follow the convention wi
 
 1. **Understand the query.** Decide what is being asked: a new-feature pattern, a convention question, or a structural question.
 2. **Find the relevant files.** Use `ls` and glob patterns to locate the right directories. Do not assume a path exists; verify it.
-3. **Search broadly.** Use several strategies together (glob for file structure, grep for code patterns, read for full context). Find several real examples; prefer recent and complete ones. `AGENTS.md`, `docs/standards/*.md`, and the matching section of `docs/plan.md` record the intended patterns; then check whether the code actually confirms them.
+3. **Search broadly.** Use several strategies together (glob for file structure, grep for code patterns, read for full context). Find several real examples; prefer recent and complete ones. `AGENTS.md`, `docs/standards/*.md`, and the ADRs in `adr/` record the intended patterns; then check whether the code actually confirms them.
 4. **Extract the convention.** Find what is the same across the examples and what varies. The same parts are the convention; the varying parts are the customization points.
 5. **Report** using the format below. Include only the sections that add value for this query.
 
@@ -29,7 +29,7 @@ Adapt your analysis to the query. Common dimensions in this codebase:
 - **Errors**: expected failures throw `EvaError` with an `EvaErrorCode` (`src/shared/errors.ts`); callers branch with `isEvaError`. See `docs/standards/error-handling.md`.
 - **State files and config**: `writeFileAtomic` and `readJsonTolerant` (`src/shared/files.ts`); schemas and defaults for the config and secrets in `src/core/instance/home.ts`.
 - **Child processes**: `buildChildEnvironment` with an explicit allowlist (`src/shared/environment.ts`), a timeout on every run, and `Redactor` (`src/shared/redaction.ts`) before any log or event.
-- **Events**: the event union of plan §4.6, rules in `docs/standards/events.md`.
+- **Events**: the event union in `src/shared/events.ts`, rules in `docs/standards/events.md`.
 - **Naming**: kebab-case files, PascalCase types, camelCase functions and constants, snake_case string literals for codes and event kinds (`docs/standards/naming.md`).
 - **Tests**: `test/unit/<layer>/<same path as src>/<module>.test.ts`, `describe` per exported function, `test` names in plain words; shared helpers and fakes in `test/support/` (for example `createGitSandbox` in `test/support/git-sandbox.ts`). See `docs/standards/tests.md`.
 

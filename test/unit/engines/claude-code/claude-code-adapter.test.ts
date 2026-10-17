@@ -1,7 +1,7 @@
 /**
- * The SDK messages below are built from the Claude Agent SDK 0.3.300 types, not captured
- * from a real run: no login was available when this adapter was written. Replace them with
- * a capture from scripts/capture-claude-fixtures.ts (issue #54).
+ * Contract tests for the Claude Code adapter on SDK messages captured from Claude Agent SDK
+ * 0.3.300 and claude 2.1.286 against the demo vault (test/fixtures/claude-code/, made by
+ * scripts/capture-claude-fixtures.ts).
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -34,44 +34,40 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
   };
 }
 
-const usage = { input_tokens: 12, output_tokens: 7, cache_read_input_tokens: 25_000, cache_creation_input_tokens: 300 };
+/** The error that the SDK threw after the captured messages, as the capture script records it. */
+interface CapturedThrow {
+  readonly type: "eva_capture_error";
+  readonly message: string;
+}
+type CapturedLine = SDKMessage | CapturedThrow;
 
-const assistantWithTool = {
-  type: "assistant",
-  uuid: "msg-1",
-  session_id: "session-1",
-  parent_tool_use_id: null,
-  message: {
-    content: [
-      { type: "text", text: "Let me read it." },
-      { type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "/demo-vault/Methods/Morning Routine.md" } },
-    ],
-  },
-} as unknown as SDKMessage;
-const toolResult = {
-  type: "user",
-  parent_tool_use_id: null,
-  message: {
-    role: "user",
-    content: [{ type: "tool_result", tool_use_id: "tool-1", content: "1. Drink water.", is_error: false }],
-  },
-} as unknown as SDKMessage;
-const assistantAnswer = {
-  type: "assistant",
-  uuid: "msg-2",
-  session_id: "session-1",
-  parent_tool_use_id: null,
-  message: { content: [{ type: "text", text: "Drink water." }] },
-} as unknown as SDKMessage;
-const success = {
-  type: "result",
-  subtype: "success",
-  is_error: false,
-  session_id: "session-1",
-  usage,
-  total_cost_usd: 0.05,
-  result: "Drink water.",
-} as unknown as SDKMessage;
+function loadCapture(name: string): CapturedLine[] {
+  return readFileSync(join(import.meta.dir, "..", "..", "..", "fixtures", "claude-code", `${name}.jsonl`), "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as CapturedLine);
+}
+
+function isMessage(line: CapturedLine): line is SDKMessage {
+  return line.type !== "eva_capture_error";
+}
+
+function resultOf(name: string): SDKMessage {
+  const result = loadCapture(name)
+    .filter(isMessage)
+    .find((message) => message.type === "result");
+  if (result === undefined) throw new Error(`The capture ${name} has no result.`);
+  return result;
+}
+
+/** Plays captured lines back as the SDK sends them: each message in order, then the captured throw. */
+async function* replay(lines: readonly CapturedLine[]): AsyncIterable<SDKMessage> {
+  await Promise.resolve();
+  for (const line of lines) {
+    if (!isMessage(line)) throw new Error(line.message);
+    yield line;
+  }
+}
 
 async function drain(events: AsyncIterable<EngineEventPayload>): Promise<EngineEventPayload[]> {
   const all: EngineEventPayload[] = [];
@@ -79,14 +75,8 @@ async function drain(events: AsyncIterable<EngineEventPayload>): Promise<EngineE
   return all;
 }
 
-async function collect(messages: SDKMessage[]): Promise<EngineEventPayload[]> {
-  async function* source(): AsyncIterable<SDKMessage> {
-    await Promise.resolve();
-    yield* messages;
-  }
-  const events: EngineEventPayload[] = [];
-  for await (const event of mapSdkMessages(source())) events.push(event);
-  return events;
+function collect(lines: readonly CapturedLine[]): Promise<EngineEventPayload[]> {
+  return drain(mapSdkMessages(replay(lines)));
 }
 
 describe("buildQueryOptions", () => {
@@ -175,83 +165,93 @@ describe("buildQueryOptions", () => {
 });
 
 describe("mapSdkMessages", () => {
-  test("a turn with a tool becomes text, tool and finish events", async () => {
-    const events = await collect([assistantWithTool, toolResult, assistantAnswer, success]);
-    expect(events).toEqual([
-      { kind: "text", text: "Let me read it.", messageId: "msg-1" },
+  test("a turn with a tool becomes tool, text and finish events", async () => {
+    // The engine sends each content block, thinking included, as its own assistant message.
+    expect(await collect(loadCapture("new-turn-with-tool"))).toEqual([
       {
         kind: "tool_started",
-        toolUseId: "tool-1",
+        toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83",
         name: "Read",
-        summary: "Read /demo-vault/Methods/Morning Routine.md",
+        summary: "Read /demo-vault\\Methods\\Morning Routine.md",
       },
-      { kind: "tool_finished", toolUseId: "tool-1", isError: false },
-      { kind: "text", text: "Drink water.", messageId: "msg-2" },
+      { kind: "tool_finished", toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83", isError: false },
+      { kind: "text", text: "The first step is: **Drink water.**", messageId: "9b600d45-5cf5-4963-b739-36803a54eb85" },
       {
         kind: "turn_finished",
-        engineSessionId: "session-1",
-        lastMessageId: "msg-2",
-        usage: { inputTokens: 12, outputTokens: 7, cacheReadTokens: 25_000, cacheWriteTokens: 300 },
-        costUsd: 0.05,
+        engineSessionId: "23f67f49-0cd8-446e-bb55-73d761e7c1a3",
+        lastMessageId: "9b600d45-5cf5-4963-b739-36803a54eb85",
+        usage: { inputTokens: 18, outputTokens: 267, cacheReadTokens: 46_966, cacheWriteTokens: 3453 },
+        costUsd: 0.013937600000000001,
       },
     ]);
   });
 
-  test("an error result becomes turn_failed with the engine's own errors", async () => {
-    const failure = {
-      type: "result",
-      subtype: "error_during_execution",
-      is_error: true,
-      session_id: "s",
-      usage,
-      total_cost_usd: 0,
-      errors: ["Tool crashed"],
-    } as unknown as SDKMessage;
-    expect(await collect([failure])).toEqual([{ kind: "turn_failed", reason: "Tool crashed" }]);
+  test("an error result becomes one turn_failed with the engine's own errors", async () => {
+    // The SDK throws after this result. The map stops at the result, so the throw adds no second turn end.
+    expect(await collect(loadCapture("missing-session"))).toEqual([
+      { kind: "turn_failed", reason: "No conversation found with session ID: 71ddf508-567d-4246-a030-be41cfcdb43e" },
+    ]);
   });
 
-  test("a subagent's work becomes task events", async () => {
-    const started = {
-      type: "system",
-      subtype: "task_started",
-      task_id: "t1",
-      description: "Search the notes",
-    } as unknown as SDKMessage;
-    const ended = {
-      type: "system",
-      subtype: "task_notification",
-      task_id: "t1",
-      status: "completed",
-      summary: "done",
-      output_file: "x",
-    } as unknown as SDKMessage;
-    const failed = {
-      type: "system",
-      subtype: "task_notification",
-      task_id: "t2",
-      status: "failed",
-      summary: "broke",
-      output_file: "x",
-    } as unknown as SDKMessage;
-    const events = await collect([started, ended, failed, success]);
-    expect(events.slice(0, 3)).toEqual([
-      { kind: "task_changed", taskId: "t1", description: "Search the notes", state: "running" },
-      { kind: "task_changed", taskId: "t1", description: "done", state: "done" },
-      { kind: "task_changed", taskId: "t2", description: "broke", state: "failed" },
+  test("a subagent's work becomes task events, and its inner messages stay out of the conversation", async () => {
+    const agentToolUseId = "toolu_01BECqHSvNztXpQRA8tYD8gk";
+    const events = await collect(loadCapture("subagent-task"));
+    expect(events.slice(0, -1)).toEqual([
+      { kind: "tool_started", toolUseId: agentToolUseId, name: "Agent", summary: "Agent Read file and report title" },
+      {
+        kind: "task_changed",
+        taskId: "af535f9743f2b5266",
+        description: "Read file and report title",
+        state: "running",
+      },
+      {
+        kind: "task_changed",
+        taskId: "af535f9743f2b5266",
+        description:
+          "The title of the document is **Morning Routine**. It appears as the main heading (H1) at the top of the file.",
+        state: "done",
+      },
+      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false },
+      {
+        kind: "text",
+        text: "The title of the document is **Morning Routine**.",
+        messageId: "23da7ae4-ae23-4ee9-83a9-1eecd4823018",
+      },
     ]);
-    expect(events[3]?.kind).toBe("turn_finished");
+    expect(events.at(-1)).toMatchObject({
+      kind: "turn_finished",
+      engineSessionId: "2077aab6-56f1-451d-91b6-ad749aed93ec",
+    });
+  });
+
+  test("a subagent that does not complete becomes a failed task", async () => {
+    // The capture has no failed subagent: this is its captured notification with another status.
+    const notification = loadCapture("subagent-task").find(
+      (line) => line.type === "system" && "subtype" in line && line.subtype === "task_notification",
+    );
+    const failed = { ...(notification as object), status: "failed" } as unknown as SDKMessage;
+    const events = await collect([failed, resultOf("subagent-task")]);
+    expect(events.map((event) => event.kind)).toEqual(["task_changed", "turn_finished"]);
+    expect(events[0]).toMatchObject({ taskId: "af535f9743f2b5266", state: "failed" });
   });
 
   test("text from inside a subagent stays out of the conversation", async () => {
-    const inner = { ...(assistantAnswer as object), parent_tool_use_id: "tool-9" } as unknown as SDKMessage;
-    const events = await collect([inner, success]);
+    // The foreground capture has no inner text: this is the captured answer moved inside the subagent.
+    const answer = loadCapture("subagent-task")
+      .filter(isMessage)
+      .findLast((message) => message.type === "assistant");
+    const inner = { ...(answer as object), parent_tool_use_id: "toolu_01BECqHSvNztXpQRA8tYD8gk" } as SDKMessage;
+    const events = await collect([inner, resultOf("subagent-task")]);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ kind: "turn_finished", lastMessageId: null });
   });
 
-  test("other message kinds are ignored", async () => {
-    const init = { type: "system", subtype: "init", cwd: "/demo-vault" } as unknown as SDKMessage;
-    expect(await collect([init, success])).toHaveLength(1);
+  test("init, rate limit and thinking messages are ignored", async () => {
+    const other = loadCapture("new-turn-with-tool").filter(
+      (line) => line.type === "system" || line.type === "rate_limit_event",
+    );
+    expect(other.map((line) => line.type)).toContain("rate_limit_event");
+    expect(await collect([...other, resultOf("new-turn-with-tool")])).toHaveLength(1);
   });
 });
 
@@ -262,11 +262,7 @@ describe("ClaudeCodeEngine", () => {
       executable: "/bin/claude",
       query: ({ prompt, options }) => {
         seen.push({ prompt, options });
-        return (async function* () {
-          await Promise.resolve();
-          yield assistantAnswer;
-          yield success;
-        })();
+        return replay(loadCapture("resumed-turn"));
       },
     });
     const events: EngineEventPayload[] = [];
@@ -296,32 +292,19 @@ describe("ClaudeCodeEngine", () => {
       newSessionId: () => "session-2",
       query: ({ options }) => {
         calls.push(options);
-        if (calls.length === 1) {
-          const lost = {
-            type: "result",
-            subtype: "error_during_execution",
-            is_error: true,
-            session_id: "s",
-            usage,
-            total_cost_usd: 0,
-            errors: ["No conversation found with session ID: s1"],
-          } as unknown as SDKMessage;
-          return (async function* () {
-            await Promise.resolve();
-            yield lost;
-          })();
-        }
-        return (async function* () {
-          await Promise.resolve();
-          yield { ...(assistantAnswer as object), session_id: "session-2" } as unknown as SDKMessage;
-          yield { ...(success as object), session_id: "session-2" } as unknown as SDKMessage;
-        })();
+        return replay(loadCapture(calls.length === 1 ? "missing-session" : "new-turn-with-tool"));
       },
     });
     const events: EngineEventPayload[] = [];
     for await (const event of engine.runTurn(request({ history: { kind: "continue", engineSessionId: "s1" } })))
       events.push(event);
-    expect(events.map((event) => event.kind)).toEqual(["history_lost", "text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual([
+      "history_lost",
+      "tool_started",
+      "tool_finished",
+      "text",
+      "turn_finished",
+    ]);
     expect(calls[1]).toMatchObject({ sessionId: "session-2" });
     expect(calls[1]).not.toHaveProperty("resume");
   });
@@ -335,7 +318,7 @@ describe("ClaudeCodeEngine", () => {
         canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
         return (async function* () {
           await Promise.resolve();
-          yield success;
+          yield resultOf("resumed-turn");
         })();
       },
     });
@@ -361,7 +344,7 @@ describe("ClaudeCodeEngine", () => {
         canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
         return (async function* () {
           await Promise.resolve();
-          yield success;
+          yield resultOf("resumed-turn");
         })();
       },
     });
@@ -381,7 +364,7 @@ describe("the approval gate for Google writes", () => {
         canUseTool = (options as unknown as { canUseTool: CanUseTool }).canUseTool;
         return (async function* () {
           await Promise.resolve();
-          yield success;
+          yield resultOf("resumed-turn");
         })();
       },
     });
@@ -426,7 +409,7 @@ describe("the approval gate for Google writes", () => {
             env: Record<string, string>;
           };
           if (decision.behavior === "allow") await callTool(server, "manage_event", invite);
-          yield success;
+          yield resultOf("resumed-turn");
         })(),
     });
     try {

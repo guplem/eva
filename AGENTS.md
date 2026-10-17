@@ -1,5 +1,7 @@
 # Eva
 
+> This file is for AI coding agents and developers who change Eva's code. To install or use Eva, read [README.md](README.md).
+
 Eva is a personal "super harness": one service that runs AI coding agents (Claude Code, pi) over a person's knowledge vault and projects. A terminal, Telegram, and a web app are her front ends. This repository is the public engine; each person's vault is a separate private repository. Written in TypeScript and run with Bun.
 
 `docs/plan.md` is the design source of truth, approved by the owner on 2026-10-14. Read the plan section for the area that you change before you write code. A change to an approved decision (plan §1) needs the owner: add it to `docs/owner-todo.md` and continue with the current decision. Human setup: `README.md`.

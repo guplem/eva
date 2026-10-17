@@ -2,7 +2,7 @@
  * Captures real Claude Agent SDK output as test fixtures (lesson 101). It runs only with
  * EVA_LIVE=1 and a subscription token in CLAUDE_CODE_OAUTH_TOKEN, against a neutral demo
  * vault and an isolated Claude config folder, so no personal skill, path or setting is
- * recorded. Every absolute path and session id in the output is replaced.
+ * recorded. Every absolute path in the output is replaced.
  *
  *   EVA_LIVE=1 CLAUDE_CODE_OAUTH_TOKEN=... bun run scripts/capture-claude-fixtures.ts
  */
@@ -80,6 +80,12 @@ const captures: Capture[] = [
   },
   { name: "resumed-turn", prompt: "And the second step?", options: { ...common, resume: sessionId } },
   { name: "missing-session", prompt: "Hello.", options: { ...common, resume: crypto.randomUUID() } },
+  {
+    name: "subagent-task",
+    prompt:
+      "Start one subagent with the Agent tool, in the foreground, not in the background. It reads Methods/Morning Routine.md and reports the title.",
+    options: { ...common, sessionId: crypto.randomUUID() },
+  },
 ];
 
 const replacements: [string, string][] = [];
@@ -108,6 +114,8 @@ for (const capture of captures) {
     [demoVault, "/demo-vault"],
     [workRoot.replaceAll("\\", "\\\\"), "/capture"],
     [workRoot, "/capture"],
+    // Claude names its project folders after the path, with each other character as "-".
+    [workRoot.replace(/[^a-zA-Z0-9]/g, "-"), "-capture"],
     [token, "[token]"],
   );
   const home = process.env["USERPROFILE"] ?? process.env["HOME"];

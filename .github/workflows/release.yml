@@ -1,7 +1,7 @@
 name: Release
 
-# A tag such as v0.2.0 builds, tests, signs and publishes the executables (plan §10, P8;
-# §12: releases come only from CI on tags, and self-update checks the signature).
+# A tag such as v0.2.0 builds, tests, signs and publishes the executables. Releases come
+# only from CI on tags, and self-update checks the signature.
 on:
   push:
     tags: ["v*"]

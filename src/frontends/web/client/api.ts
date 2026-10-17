@@ -1,4 +1,4 @@
-/** The web UI's client of the local API. The login cookie carries the token or a device token (plan §12). */
+/** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/instance/device-logins.ts";

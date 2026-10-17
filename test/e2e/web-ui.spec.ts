@@ -67,7 +67,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
-  // The first chat in a clone of an unknown repository asks for trust (plan §12). Both screen
+  // The first chat in a clone of an unknown repository asks for trust. Both screen
   // sizes share one demo server, so only the first of them sees the question.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("dialog", { name: "Approval" });
@@ -98,14 +98,14 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
-test("Settings: Log out every device ends this login too (plan §12)", async ({ page }) => {
+test("Settings: Log out every device ends this login too", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Log out every device" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
-test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens (plan §12)", async ({
+test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
   page,
   context,
   baseURL,
@@ -156,7 +156,7 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
 });
 
-test("Settings: add a schedule, see its next run, and remove it (plan §9)", async ({ page }, testInfo) => {
+test("Settings: add a schedule, see its next run, and remove it", async ({ page }, testInfo) => {
   const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

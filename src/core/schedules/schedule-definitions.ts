@@ -1,6 +1,6 @@
 /**
- * The schedules a person wants, in `.eva/schedules.json` in the vault (docs/plan.md §9,
- * lesson 64). A person and the agent both edit this file, so a read never throws: a bad
+ * The schedules a person wants, in `.eva/schedules.json` in the vault
+ * (lesson 64). A person and the agent both edit this file, so a read never throws: a bad
  * entry is skipped with a sentence that says why, and the other entries still run (lesson 69).
  */
 import { readFileSync } from "node:fs";

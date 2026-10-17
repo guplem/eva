@@ -1,7 +1,7 @@
 /**
- * The local API of one Eva instance: HTTP for commands, a WebSocket for events
- * (docs/plan.md §4.3). It listens on the loopback address only; remote access goes through
- * `tailscale serve`. Every request passes the guards of §12 first.
+ * The local API of one Eva instance: HTTP for commands, a WebSocket for events (ADR 0004).
+ * It listens on the loopback address only; remote access goes through
+ * `tailscale serve`. Every request passes the guards below first.
  */
 import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import { isEvaError } from "../../shared/errors.ts";
 
 export interface LocalApiOptions {
   readonly eva: Eva;
-  /** 0 picks a free port; the default instance uses 7420 (plan §4.4). */
+  /** 0 picks a free port; the default instance uses 7420. */
   readonly port: number;
   readonly token: string;
   /** Host names other than the loopback ones, such as the instance's Tailscale name. */
@@ -148,7 +148,7 @@ function guardSite(request: Request, options: LocalApiOptions, allowedHostNames:
   return null;
 }
 
-/** Login and logout for the web UI: a strict, HTTP-only cookie, never a token in a URL (plan §12). */
+/** Login and logout for the web UI: a strict, HTTP-only cookie, never a token in a URL. */
 async function session(request: Request, url: URL, options: LocalApiOptions): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Not found." }, 404);
   if (url.pathname === "/api/logout") {
@@ -173,7 +173,7 @@ async function session(request: Request, url: URL, options: LocalApiOptions): Pr
 }
 
 /**
- * Device login (plan §12): a browser that comes through an allowed Tailscale account asks, the
+ * Device login: a browser that comes through an allowed Tailscale account asks, the
  * owner allows it in Telegram, and the page polls until it gets the device cookie. Only such a
  * browser may ask, and only for itself: a request of another account looks expired.
  */
@@ -321,7 +321,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   return json({ error: "Not found." }, 404);
 }
 
-/** The schedules of `.eva/schedules.json`: list, add or replace, remove (plan §9). */
+/** The schedules of `.eva/schedules.json`: list, add or replace, remove. */
 async function schedulesRoute(
   request: Request,
   method: string,
@@ -357,7 +357,7 @@ function errorResponse(error: unknown, eva: Eva): Response {
 /**
  * The Tailscale account that `tailscale serve` names for a request to a remote host name, when
  * the allowlist holds it, or null. It decides only who may ask for a device login: a local program
- * can forge the header, so it never authenticates a request alone (plan §12).
+ * can forge the header, so it never authenticates a request alone.
  */
 function allowedTailscaleAccount(request: Request, options: LocalApiOptions): string | null {
   const host = hostNameOf(request.headers.get("host"));

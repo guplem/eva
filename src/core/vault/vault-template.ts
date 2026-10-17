@@ -1,5 +1,5 @@
 /**
- * A new vault from Eva's template (docs/plan.md §11): the files in `templates/vault/`, which
+ * A new vault from Eva's template: the files in `templates/vault/`, which
  * Bun embeds at build time, so the single executable carries them. The template holds nothing
  * personal; `eva setup` fills in the person's name, language and time zone.
  */

@@ -4,7 +4,7 @@
 
 Eva is a personal "super harness": one service that runs AI coding agents (Claude Code, pi) over a person's knowledge vault and projects. A terminal, Telegram, and a web app are her front ends. This repository is the public engine; each person's vault is a separate private repository. Written in TypeScript and run with Bun.
 
-`docs/plan.md` is the design source of truth, approved by the owner on 2026-10-14. Read the plan section for the area that you change before you write code. A change to an approved decision (plan §1) needs the owner: add it to `docs/owner-todo.md` and continue with the current decision. Human setup: `README.md`.
+The code is the source of truth for facts. The decisions live in "What must not change" below and in the ADRs (`adr/`). Human setup: `README.md`.
 
 Run these skills (`.agents/skills/<name>/SKILL.md`) at the right moment. When your tool can run a separate agent (a subagent), hand each one to a subagent, so the files it reads stay out of your own context.
 
@@ -18,6 +18,25 @@ Run these skills (`.agents/skills/<name>/SKILL.md`) at the right moment. When yo
 - **check-docs**: after a change that could affect documented content. Checks every documentation location (code comments, `README.md`, `AGENTS.md`, ADRs, `docs/`) against the code and fixes drift.
 - **run-checks**: just before you create a PR or push. Runs `bun run check` the way CI does and reports pass or fail.
 - **check-adrs** (maintain mode): after you introduce a new architectural pattern or change one an ADR records. Creates or updates the ADR.
+
+## What must not change
+
+These goals and decisions hold for all work on Eva. A change to one of them needs the owner: add it to `docs/owner-todo.md`, and continue with the current decision.
+
+- **A personal, open-source project.** Keep Eva easy to understand and fast to change. Anyone can fork it and work on it with any coding tool, so rules live only in `AGENTS.md` and `.agents/skills/` (ADR 0001).
+- **The engine repository is public: no personal data, ever.** Each person's knowledge lives in their own private vault (ADR 0002). "Rules" below lists what counts as personal data.
+- **Eva works from a phone.** The owner uses her mainly through Telegram and the web page, over Tailscale. Every problem must reach the phone (an alert, `/status`). A fix that needs a terminal on the server is a gap to close.
+- **Plug and play.** Keep the settings and the setup questions as few as possible. Each machine setting has a default that Eva finds on the machine.
+- **Each setting has a fixed home.** The person's settings live in the vault. The settings of one machine, and every security setting, stay on that machine. Secrets never go in the vault or in this repository (ADR 0010).
+- **Project mode is a transparent wrapper.** A Project session in a clone (a clone of Eva included) behaves exactly as when the person opens the clone in the harness by hand. Eva adds no prompt and no skills there: the project's own `AGENTS.md`, `CLAUDE.md` and skills load by themselves. Assistant mode is Eva's own behaviour: her prompt and the vault's `.eva/` skills (ADR 0007).
+- **Eva runs existing harnesses** (Claude Code, pi) and depends on no single AI vendor (ADR 0006).
+- **Each person uses their own engine login.** Eva never shares one login between people (ADR 0006).
+- **Remote access only through Tailscale.** Never a public tunnel (ADR 0004).
+- **One core process per instance, and any number of instances.** Every front end of an instance shows the same conversation list (ADR 0004).
+- **Eva owns vault sync in her own code.** Eva and the vault have no agent hooks (ADR 0008).
+- **The vault layout is a contract with existing vaults.** A project is a folder `Projects/YYYY-MM-DD-HHmm-name/` with front matter in its `AGENTS.md`; its clones live in `repos/<repo>-<n>/`.
+- **Windows and Linux.** Both are first-class: CI runs every check on both.
+- **Merge only when CI is green on Ubuntu and Windows, and the branch has the latest `main`** (see "Git Workflow").
 
 ## Writing style
 
@@ -69,7 +88,7 @@ Whenever you need to confirm the code still passes, run the **run-checks** skill
 
 ## Architecture
 
-The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any import that breaks them.
+Four source layers (ADR 0005). `bun run arch` (dependency-cruiser) fails on any import that breaks them.
 
 | Layer            | Holds                                                                           | May import                                |
 | ---------------- | ------------------------------------------------------------------------------- | ----------------------------------------- |
@@ -89,15 +108,15 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 
 ## Rules
 
-- **Never write personal data into any file, commit, issue, or PR.** This repository is public (plan §2.1): no vault content, no names of private people, no employer names, no machine addresses, no tokens, no absolute home paths. Use the neutral demo vault and `example-app` style names in tests and docs.
+- **Never write personal data into any file, commit, issue, or PR.** This repository is public (ADR 0002): no vault content, no names of private people, no employer names, no machine addresses, no tokens, no absolute home paths. Use the neutral demo vault and `example-app` style names in tests and docs.
 - **Fake only at the named seams** (clock, process runner, git, engine, Telegram Bot API, MCP). Never mock an internal module. Details: `docs/standards/tests.md`.
-- **Each `[keep]` or `[adapt]` lesson in `docs/lessons-from-v1.md` that your change touches needs a test**, or a comment in the code that says why no test is possible (plan §10).
+- **Each `[keep]` or `[adapt]` lesson in `docs/lessons-from-v1.md` that your change touches needs a test**, or a comment in the code that says why no test is possible.
 - **Never detect engine output by its English wording** when a structured field exists (lesson 36).
 - **Give every child process an explicit environment allowlist** (lesson 96). Use `buildChildEnvironment` in `src/shared/environment.ts`; never pass `process.env` through.
 - **Redact before you log or emit.** Every log record and every event goes through the `Redactor` in `src/shared/redaction.ts` (lesson 95).
 - **Write state files atomically, and never crash on a bad file** (lesson 54). Use `writeFileAtomic` and `readJsonTolerant` in `src/shared/files.ts`.
-- **Bound every wait and every child process with a timeout** (plan §6, lesson 81).
-- **A step that needs the owner** (a login, a token, BotFather, Tailscale, Google Cloud, a real machine) goes into `docs/owner-todo.md` as one line. Then continue with fakes (plan §10).
+- **Bound every wait and every child process with a timeout** (lesson 81).
+- **A step that needs the owner** (a login, a token, BotFather, Tailscale, Google Cloud, a real machine) goes into `docs/owner-todo.md` as one line. Then continue with fakes.
 
 ## Gotchas
 
@@ -119,13 +138,13 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 
 ## Test-Driven Development (mandatory)
 
-Develop new behavior **test-first, red-green**: write a failing test that pins the behavior you want (**red**), make it pass with the smallest change (**green**), then clean up with the test as your safety net. A bug fix starts with a test that reproduces the bug. A commit that changes `src/` with no test change states the reason in its message (plan §13).
+Develop new behavior **test-first, red-green**: write a failing test that pins the behavior you want (**red**), make it pass with the smallest change (**green**), then clean up with the test as your safety net. A bug fix starts with a test that reproduces the bug. A commit that changes `src/` with no test change states the reason in its message.
 
 What to test, and how (`adr/0009-layered-testing-strategy.md` has the why; `docs/standards/tests.md` has the rules):
 
 - **Core logic (`src/core/`, `src/shared/`)**: unit tests under `test/unit/<layer>/`, with fakes at the named seams only.
 - **Engine adapters (`src/engines/`)**: parser tests on output captured from a neutral demo vault, and contract tests on the exact argument list or SDK options (lessons 101, 102).
-- **Front ends**: the CLI and the API against a fake engine; Telegram against a fake Bot API server (P4); the web UI with Playwright (P5).
+- **Front ends**: the CLI and the API against a fake engine; Telegram against a fake Bot API server; the web UI with Playwright (`bun run test:e2e`).
 - **End-to-end**: the core with local bare git remotes and a fake engine.
 - **Exempt**: `src/main.ts`, because it only wires the layers. Keep it free of decisions. A real login run (`bun run smoke:live`, with `CLAUDE_CODE_OAUTH_TOKEN` set) covers the real engine. Without a token it skips, and `docs/owner-todo.md` keeps the run on the list.
 
@@ -138,7 +157,7 @@ The gate: CI runs `bun run check` on every PR, on Ubuntu and on Windows. No rule
 - CI (`.github/workflows/pull-request-checks.yml`) runs the `checks` job on `ubuntu-latest` and `windows-latest`, and the `secrets` job (gitleaks), on every PR and on `main`. Lefthook runs the format check and lint before each commit, and `bun run check` before each push.
 - **No merge ruleset protects `main`** (owner decision, 2026-10-14). An agent may merge its own PR only when every check is green on both Ubuntu and Windows. **Never merge on red, pending, or missing checks.**
 - **Merge a PR only when its branch contains the latest `main`.** Two PRs that are each green can break `main` together (2026-10-17: a changed function signature in one, a new caller in the other). Merge `main` into the branch, wait for green, then merge with `gh pr merge --match-head-commit`.
-- **Never push to a person's vault** outside phase P1.
+- **Never push to a person's vault.**
 
 ### Parallel work
 
@@ -162,14 +181,16 @@ The owner must always understand what an agent does, and why. So every instructi
 
 Each kind of knowledge has one home. Write a change in the home that matches it; never duplicate the same content across homes. What decides the home is **when the file loads** and **how deep it goes**, not its subject.
 
-| Home                             | Loaded                           | Holds                                                                                                                                                                                                   |
-| -------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENTS.md`                      | Every session                    | The map: architecture facts, conventions, gotchas, and the ADR index. Points to the homes below; does not repeat their depth. (`CLAUDE.md` is a one-line `@AGENTS.md` shim.)                            |
-| `docs/standards/*.md`            | On demand, when you write code   | One code pattern per file, as rules a reviewer can check.                                                                                                                                               |
-| `docs/plan.md`                   | On demand, per area              | The approved design: what Eva does and why. The other `docs/` files feed it: `intent.md`, `lessons-from-v1.md`, `review-2026-10-14.md`, `spikes.md`. `owner-todo.md` lists steps only the owner can do. |
-| `.agents/skills/<name>/SKILL.md` | On demand, when the task matches | One procedure: how to do X. `.claude/skills/` is a generated copy (see "Agent files").                                                                                                                  |
-| `adr/NNNN-*.md`                  | On demand, via check-adrs        | One architectural decision and its why.                                                                                                                                                                 |
-| `README.md`                      | Read by humans                   | What the project is, setup, run, test.                                                                                                                                                                  |
+| Home                             | Loaded                           | Holds                                                                                                                                                                        |
+| -------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENTS.md`                      | Every session                    | The map: architecture facts, conventions, gotchas, and the ADR index. Points to the homes below; does not repeat their depth. (`CLAUDE.md` is a one-line `@AGENTS.md` shim.) |
+| `docs/standards/*.md`            | On demand, when you write code   | One code pattern per file, as rules a reviewer can check.                                                                                                                    |
+| `.agents/skills/<name>/SKILL.md` | On demand, when the task matches | One procedure: how to do X. `.claude/skills/` is a generated copy (see "Agent files").                                                                                       |
+| `adr/NNNN-*.md`                  | On demand, via check-adrs        | One architectural decision and its why.                                                                                                                                      |
+| `docs/lessons-from-v1.md`        | On demand, by lesson number      | What Wall-I v1, the previous system, learned. Code comments cite "lesson N".                                                                                                 |
+| `docs/owner-todo.md`             | On demand                        | Steps that only the owner can do.                                                                                                                                            |
+| GitHub issues                    | On demand                        | Work that the code does not do yet.                                                                                                                                          |
+| `README.md`, `docs/guide/`       | Read by humans                   | What the project is, setup, use, and the reference of commands and settings.                                                                                                 |
 
 **All of these files are living: keep them true.** When you learn something that helps future agents, update the right file in the same session. When a file holds wrong or outdated information, fix it or remove it. This covers code comments too. After implementation, the **check-docs** skill catches drift you missed.
 
@@ -178,7 +199,8 @@ Each kind of knowledge has one home. Write a change in the home that matches it;
 - ADRs are agent-only: never reference or list them in a `README.md`.
 - Number ADRs in sequence (`NNNN-kebab-title.md`) and never renumber an existing file. Index each one as a one-line row in the ADR table below, never a summary.
 - Do not duplicate content between `README.md` and `AGENTS.md`; reference it instead.
-- An ADR records a decision from `docs/plan.md` and its why. When the plan and an ADR disagree, the plan wins: fix the ADR.
+- The code wins for facts. When a document states a fact that the code contradicts, fix the document.
+- Decisions live only in "What must not change" and in the ADRs. Never add another document that holds decisions, such as a design plan.
 - `CLAUDE.md` is a one-line `@AGENTS.md` shim; edit `AGENTS.md` instead.
 
 ### Agent files
@@ -236,7 +258,7 @@ Whenever you create a GitHub issue, use the `create-issue` skill. Whenever you i
 
 - **Match existing patterns.** Before writing code, find similar implementations and follow their style, structure, and conventions (the **scout-patterns** skill does this).
 - **Explicit type annotations** are mandatory for all parameters, return types, and non-trivial variables. No `any`. ESLint enforces explicit return types.
-- **Comment the _why_, never the _what_.** A comment must carry what the code cannot: a non-obvious constraint, an intentional divergence, a trap a future reader would reintroduce. Cite the plan section or the lesson number when one applies. Do not document self-explanatory names or signatures, and match the comment density of the surrounding file.
+- **Comment the _why_, never the _what_.** A comment must carry what the code cannot: a non-obvious constraint, an intentional divergence, a trap a future reader would reintroduce. Cite the lesson number or the ADR when one applies. Do not document self-explanatory names or signatures, and match the comment density of the surrounding file.
 
 ## Refactoring safety
 

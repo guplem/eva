@@ -1,5 +1,5 @@
 /**
- * One Eva instance: the core that every front end talks to (docs/plan.md §4). It joins the
+ * One Eva instance: the core that every front end talks to. It joins the
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
 import { chmodSync } from "node:fs";
@@ -62,10 +62,10 @@ export interface EvaOptions {
   readonly removeOldLogs?: () => void;
   /**
    * The command that starts this Eva, such as `[bun, main.ts]` or `[eva.exe]`. Eva writes it as an
-   * `eva` script that an agent can run, for `eva work` (plan §5.3). Null: no script.
+   * `eva` script that an agent can run, for `eva work`. Null: no script.
    */
   readonly evaCommand?: readonly string[] | null;
-  /** Where Eva's own updates come from. Null: no updates (plan §10). */
+  /** Where Eva's own updates come from. Null: no updates. */
   readonly updateChannel?: UpdateChannel | null;
   /** Stops Eva so that she starts again: after an update, and for a restart on request. */
   readonly restartForUpdate?: () => void;
@@ -73,7 +73,7 @@ export interface EvaOptions {
   readonly remoteAccess?: () => RemoteAccess | null;
   /**
    * The platform's default home folder. An instance with another home is an extra instance on
-   * the same OS user, so its engines get their own config folders (plan §4.4, lesson 111).
+   * the same OS user, so its engines get their own config folders (lesson 111).
    */
   readonly defaultHome?: string;
 }
@@ -122,7 +122,7 @@ export interface PublicSettings {
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
-  /** The engine of this chat; without one, the configured default (plan §7.2). */
+  /** The engine of this chat; without one, the configured default. */
   readonly engine?: EngineName;
   readonly telegramTopicId?: number;
   readonly title?: string;
@@ -161,7 +161,7 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** Null until a whisper model is configured. */
   readonly transcribe: Transcribe | null;
-  /** The web UI's device logins, which the Telegram bot confirms (plan §12). */
+  /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
@@ -323,7 +323,7 @@ export class Eva {
           });
   }
 
-  /** Starts the idle sweep (plan §6) and the schedule checks (plan §9). */
+  /** Starts the idle sweep and the schedule checks. */
   startBackgroundWork(): void {
     if (this.sweepTimer === null && this.options.config.sync.enabled) {
       this.sweepTimer = setInterval(() => {
@@ -359,7 +359,7 @@ export class Eva {
     }
   }
 
-  /** "hub" when this machine runs Telegram and the schedules (plan §4.4). */
+  /** "hub" when this machine runs Telegram and the schedules. */
   role(): MachineRole {
     return machineRole(this.options.config.vaultPath, this.machine, this.lastRole);
   }
@@ -523,7 +523,7 @@ export class Eva {
     });
   }
 
-  /** A Project chat in the named clone, or in a free clone, or in a new clone (plan §3.4). */
+  /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   async createProjectSession(input: NewProjectChatInput): Promise<SessionRecord> {
     const project = this.projects().find((candidate) => candidate.id === input.projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
@@ -545,7 +545,7 @@ export class Eva {
   }
 
   /**
-   * Gives work to a project (plan §5.3): a Project chat in a free clone runs the request, and its
+   * Gives work to a project: a Project chat in a free clone runs the request, and its
    * result goes back to the Assistant chat that asked, as a new message.
    */
   async startProjectWork(input: ProjectWorkInput): Promise<SessionRecord> {
@@ -707,7 +707,7 @@ export class Eva {
   }
 
   /**
-   * Removes old logs and Scratch files once a day (plan §9), with or without vault sync. It waits
+   * Removes old logs and Scratch files once a day, with or without vault sync. It waits
    * for the end of an Assistant turn, so a file never goes away under a running agent (lessons 22, 30).
    */
   private cleanUpIfDue(): void {
@@ -794,7 +794,7 @@ export class Eva {
     return folder;
   }
 
-  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance (plan §4.4). */
+  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
     const defaultHome = this.options.defaultHome;
     const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);

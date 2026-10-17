@@ -1,5 +1,5 @@
 /**
- * The Google tools of Assistant mode (docs/plan.md §9): the `workspace-mcp` server for
+ * The Google tools of Assistant mode: the `workspace-mcp` server for
  * Calendar, Drive, Contacts and Tasks, run with `uvx` and pinned to an exact version
  * (lesson 117). Google stays off until the person sets an account and an OAuth client.
  */

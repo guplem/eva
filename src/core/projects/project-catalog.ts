@@ -1,5 +1,5 @@
 /**
- * Finds the projects of a vault and reads their front matter (docs/plan.md §3.2, §3.3).
+ * Finds the projects of a vault and reads their front matter.
  * A broken field is a warning on the project, never an exception (lesson 54).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

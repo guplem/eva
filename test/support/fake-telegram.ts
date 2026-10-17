@@ -1,5 +1,5 @@
 /**
- * A fake Telegram Bot API server for tests (docs/plan.md §10, P4). It records every call,
+ * A fake Telegram Bot API server for tests. It records every call,
  * serves the updates a test queues, and can answer a method with an error.
  */
 import type { Server } from "bun";

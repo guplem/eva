@@ -1,7 +1,7 @@
 /**
- * Clones live in `Projects/<project>/repos/<repo>-<n>/` (docs/plan.md §3.4). Each one is
+ * Clones live in `Projects/<project>/repos/<repo>-<n>/`. Each one is
  * a parallel workspace. Trust decides whether a clone's own hooks and MCP servers may
- * run (§12).
+ * run.
  */
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -86,7 +86,7 @@ export interface CloneDetails extends Clone {
   readonly pullRequest: number | null;
 }
 
-/** A clone with its current branch and pull request, for the project view (plan §8.3). */
+/** A clone with its current branch and pull request, for the project view. */
 export async function describeClone(
   clone: Clone,
   runner: ProcessRunner,
@@ -107,7 +107,7 @@ export async function describeClone(
   return { ...clone, branch, pullRequest };
 }
 
-/** True when the repository's owner is on the allowlist (default trust, §12). GitHub only. */
+/** True when the repository's owner is on the allowlist (default trust). GitHub only. */
 export function isTrustedByDefault(repositoryUrl: string, trustedOwners: readonly string[]): boolean {
   // Anchored at the start: `https://evil.example/github.com/<owner>/` must not count as GitHub.
   const match = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\//i.exec(

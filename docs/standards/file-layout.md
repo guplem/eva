@@ -2,7 +2,7 @@
 
 ## Source layers
 
-`src/` follows the layers of plan §4.2. `bun run arch` (dependency-cruiser, `.dependency-cruiser.cjs`) fails on an import that breaks them. ADR 0005 records why.
+`src/` follows four layers. `bun run arch` (dependency-cruiser, `.dependency-cruiser.cjs`) fails on an import that breaks them. ADR 0005 records why.
 
 ```
 src/
@@ -25,7 +25,7 @@ src/
 
 - **A seam** (an interface to the outside world: clock, process runner, git, logger) and its `system*` production value go in `src/shared/`.
 - **A type or a contract that two layers share** (the event union, the engine port, error codes) goes in `src/shared/`.
-- **A decision** goes in `src/core/<area>/`. The areas that exist are `instance/`, `projects/`, and `vault/`. Name a new area after its row in plan §4.1, in kebab-case (for example `sessions/`).
+- **A decision** goes in `src/core/<area>/`. Use an existing area (such as `instance/`, `sessions/`, or `vault/`) when one fits. Name a new area after what it does, in kebab-case.
 - **Engine-specific code** goes in `src/engines/<engine>/`, and nowhere else.
 - **A front end** goes in `src/frontends/<front-end>/`. It never names an engine.
 - **Wiring** (create the production seams, pass them into the core, start the front ends) goes in `src/main.ts` only. Keep decisions out of it: it has no unit test.
@@ -45,9 +45,8 @@ src/
 ```
 test/
   unit/<layer>/<same path as in src>/<module>.test.ts
-  contract/<engine>/<module>.test.ts       (planned, P3: adapter argument and parser contracts)
-  e2e/<flow>.test.ts                       (planned, P3: the core with fakes)
-  fixtures/<engine>/<case>.*               (planned, P3: output captured from the neutral demo vault)
+  e2e/<flow>.spec.ts                       Playwright tests of the web UI
+  fixtures/<engine>/<case>.*               output captured from the neutral demo vault
   support/<helper>.ts                      shared fakes and sandboxes
 ```
 

@@ -83,7 +83,7 @@ afterEach(async () => {
   rmSync(home, { recursive: true, force: true });
 }, gitHookTimeoutMs);
 
-describe("guards (plan §12)", () => {
+describe("guards", () => {
   test("listens on the loopback address only", () => {
     expect(api.url).toStartWith("http://127.0.0.1:");
   });
@@ -152,7 +152,7 @@ describe("guards (plan §12)", () => {
   });
 });
 
-describe("device login (plan §12)", () => {
+describe("device login", () => {
   const tailnet = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" };
   let asked: DeviceLoginRequest[];
 
@@ -391,7 +391,7 @@ describe("routes", () => {
   });
 });
 
-describe("web routes (plan §8.3)", () => {
+describe("web routes", () => {
   test("the page itself loads with no token, so the person can log in", async () => {
     const response = await fetch(`${api.url}/`, { headers: { host: new URL(api.url).host } });
     expect(response.status).toBe(200);
@@ -436,7 +436,7 @@ describe("web routes (plan §8.3)", () => {
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
-  test("a new chat can name its engine (plan §7.2)", async () => {
+  test("a new chat can name its engine", async () => {
     const created = await json<{ engine: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant", engine: "pi" } }),
     );
@@ -474,7 +474,7 @@ describe("web routes (plan §8.3)", () => {
     expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
   });
 
-  test("schedules: add, list, refuse an invalid one, and remove (plan §9)", async () => {
+  test("schedules: add, list, refuse an invalid one, and remove", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     expect((await call("/api/schedules", { method: "POST", body: entry })).status).toBe(201);
     const listed = await json<{ schedules: { schedule: { id: string }; nextRun: string }[] }>(

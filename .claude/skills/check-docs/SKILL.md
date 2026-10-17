@@ -1,18 +1,19 @@
 ---
 name: check-docs
-description: "Documentation drift detector, run AFTER implementation. It checks every place documentation lives - code comments, README.md, AGENTS.md, ADRs, docs/standards/, and the design docs in docs/ - against the code, and fixes what is now stale. Use after a change that could affect documented content (features, commands, structure, patterns, counts). The source of truth is always the code."
+description: "Documentation drift detector, run AFTER implementation. It checks every place documentation lives - code comments, README.md, AGENTS.md, ADRs, docs/standards/, and the guides in docs/ - against the code, and fixes what is now stale. Use after a change that could affect documented content (features, commands, structure, patterns, counts). The source of truth is always the code."
 ---
 
 You are the documentation consistency checker for Eva. You run after code changes. You verify that every place documentation lives still tells the truth, and you fix what does not. You are the drift check across the whole documentation surface, so nothing that describes the code silently falls out of date.
 
 ## Where documentation lives (check all of these)
 
-- **Code comments** in the changed files and the files they touch: a comment that describes behavior the change altered is now wrong. Comments often cite a plan section or a lesson number; check that the citation still fits.
+- **Code comments** in the changed files and the files they touch: a comment that describes behavior the change altered is now wrong. Comments often cite a lesson number or an ADR; check that the citation still fits.
 - **`README.md`** at the root (human-facing: what Eva is, status, how to run from source).
 - **`AGENTS.md`** at the root (its content loads through the one-line `CLAUDE.md` shim), and `adr/AGENTS.md`.
 - **ADRs** in `adr/`, and the ADR index table in the root `AGENTS.md`.
 - **`docs/standards/`**: one file per code pattern, plus its index `docs/standards/README.md`.
-- **`docs/plan.md`** and its companions (`intent.md`, `lessons-from-v1.md`, `spikes.md`, `review-2026-10-14.md`, `owner-todo.md`). The plan is the approved design: never change a decision in it. Fix only a fact that the code proves wrong (a file name, a command), and report any real conflict between the code and a plan decision to the caller instead of editing.
+- **The rest of `docs/`:** `guide/` (human-facing setup and reference), `lessons-from-v1.md`, and `owner-todo.md`.
+- **The "What must not change" section of `AGENTS.md`** holds the owner's decisions: never change one. Report any real conflict between the code and one of them to the caller instead of editing.
 - **Skills** in `.agents/skills/`, when a command, path, or check sequence they name changed. Edit only `.agents/skills/`, then run `bun run agents:sync`: `.claude/skills/` is a generated copy.
 
 You verify and fix drift. You do not author new ADRs or decide new decisions: that is the **check-adrs** skill in maintain mode. If a change introduced a new pattern that has no ADR, note it for the check-adrs skill rather than writing the ADR yourself.
@@ -41,7 +42,7 @@ You verify and fix drift. You do not author new ADRs or decide new decisions: th
 | `bunfig.toml`, `stryker.config.json`                                       | `AGENTS.md` Gotchas and TDD section, `adr/0009-layered-testing-strategy.md`, `docs/standards/tests.md`         |
 | `.dependency-cruiser.cjs`, a new layer folder                              | `AGENTS.md` Architecture, `adr/0005-layers-enforced-by-dependency-cruiser.md`, `docs/standards/file-layout.md` |
 | `src/shared/errors.ts`                                                     | `docs/standards/error-handling.md`                                                                             |
-| The event union in `src/shared/`                                           | `docs/standards/events.md`, plan §4.6 (report a conflict; do not edit the plan's decision)                     |
+| The event union in `src/shared/`                                           | `docs/standards/events.md`                                                                                     |
 | `src/shared/` seams (clock, process runner, files, environment, redaction) | `AGENTS.md` Rules, `docs/standards/tests.md`, `.agents/skills/scout-patterns/SKILL.md`                         |
 | `src/engines/`                                                             | `adr/0006-engines-connected-directly.md`, `adr/0007-assistant-and-project-modes.md`                            |
 | `src/core/vault/`                                                          | `adr/0008-eva-owns-vault-sync.md`                                                                              |
@@ -68,9 +69,9 @@ You verify and fix drift. You do not author new ADRs or decide new decisions: th
 - **What was stale:** <the specific mismatch>
 - **Fix applied:** <what changed>
 
-## Plan conflicts (report only)
+## Decision conflicts (report only)
 
-- <code fact> contradicts <plan section>: <one sentence>
+- <code fact> contradicts <"What must not change" line>: <one sentence>
 
 ## No issues found
 
@@ -79,7 +80,7 @@ Documentation is up to date for the checked scope.
 
 ## Rules
 
-- **The source of truth is always the code, never the docs.** The one exception: a decision in `docs/plan.md` is not yours to change.
+- **The source of truth is always the code, never the docs.** The one exception: a decision in the "What must not change" section of `AGENTS.md` is not yours to change.
 - **Be precise:** exact file paths and symbol names.
 - **Only fix what is actually wrong.** Do not add new documentation sections; do not author ADRs.
 - **Match the style of the text around each fix.**

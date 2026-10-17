@@ -1,4 +1,4 @@
-/** The exit codes are a contract with the supervisor (lesson 89, docs/plan.md §4.3). */
+/** The exit codes are a contract with the supervisor (lesson 89). */
 export const exitCodes = {
   clean: 0,
   crash: 1,

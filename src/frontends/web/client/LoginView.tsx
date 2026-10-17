@@ -11,8 +11,8 @@ type DeviceStep =
   | { readonly kind: "token"; readonly reason: string | null; readonly canAskAgain: boolean };
 
 /**
- * A browser that comes through Tailscale asks the owner in Telegram, so a phone needs no typing
- * (plan §12). Any other browser types the token: in a form, never in a URL. The server answers
+ * A browser that comes through Tailscale asks the owner in Telegram, so a phone needs no typing.
+ * Any other browser types the token: in a form, never in a URL. The server answers
  * each login with a cookie.
  */
 export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElement {

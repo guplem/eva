@@ -42,7 +42,7 @@ function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
 }
 
-describe("where each setting lives (plan §4.4)", () => {
+describe("where each setting lives", () => {
   test("without a vault, every setting stays in config.json", () => {
     saveSettings(paths, { ...defaultConfig, timeZone: "Europe/Madrid" });
     expect(loadConfig(paths).timeZone).toBe("Europe/Madrid");
@@ -145,7 +145,7 @@ describe("moveSettingsToVault", () => {
   });
 });
 
-describe("security settings stay on the machine (plan §12)", () => {
+describe("security settings stay on the machine", () => {
   const vaultSecurity = {
     remoteAccess: { allowedTailscaleIdentities: ["intruder@example.com"] },
     trust: { trustedRepositoryOwners: ["intruder"] },

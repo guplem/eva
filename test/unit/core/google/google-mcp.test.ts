@@ -10,7 +10,7 @@ const inputs = {
   environment: { PATH: "/bin" },
 };
 
-describe("googleMcpServer (plan §9)", () => {
+describe("googleMcpServer", () => {
   test("runs the pinned workspace-mcp read-only, for the configured account (lesson 117)", () => {
     expect(googleMcpServer(inputs)).toEqual({
       command: "uvx",

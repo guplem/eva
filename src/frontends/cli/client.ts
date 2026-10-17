@@ -71,7 +71,7 @@ export function describeLastTurn(lastTurn: EvaStatus["lastTurn"]): string {
   return `Last turn: ${String(lastTurn.inputTokens)} in, ${String(lastTurn.outputTokens)} out, cache ${String(lastTurn.cacheReadTokens)} read, ${String(lastTurn.cacheWriteTokens)} written`;
 }
 
-/** `eva work`: starts project work, and names the chat that reports the result (plan §5.3). */
+/** `eva work`: starts project work, and names the chat that reports the result. */
 export async function startProjectWork(
   options: ClientOptions,
   input: { projectId: string; request: string; reportToSessionId: string | null },
@@ -91,7 +91,7 @@ export async function startProjectWork(
     : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
 }
 
-/** Which machine is the hub (plan §4.4), from this machine's view. */
+/** Which machine is the hub, from this machine's view. */
 export function describeRole(status: Pick<EvaStatus, "role" | "machine" | "hub">): string {
   if (status.role === "hub") return `hub: this machine (${status.machine})`;
   return `satellite: the hub is ${status.hub ?? "unknown"}; this machine is ${status.machine}`;

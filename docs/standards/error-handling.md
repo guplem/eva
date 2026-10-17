@@ -14,7 +14,7 @@ Eva runs unattended on a server. A failure must be visible, must carry a code th
 
 - **Never detect a failure by its English wording** when a structured field exists (lesson 36). Read the exit code, the event field, or the HTTP status.
 - **Decide a child process result from its exit code**, never from its text (lesson 93). The `ProcessRunner` seam (`src/shared/process-runner.ts`) throws `process_timeout` or `process_failed`.
-- **Bound every wait with a timeout** (plan §6, lessons 24, 81). A child process gets a gentle stop, then a hard stop.
+- **Bound every wait with a timeout** (lessons 24, 81). A child process gets a gentle stop, then a hard stop.
 
 ## Files
 
@@ -33,7 +33,7 @@ Eva runs unattended on a server. A failure must be visible, must carry a code th
 
 - **A failed turn ends with a `turn_failed` event**, never with silence (lesson 47, `docs/standards/events.md`).
 - **Fail the turn when `.eva/assistant.md` is missing** (lesson 11). An answer from an agent with no identity is worse than an error.
-- **Exit with the code of the contract** (plan §4.3): `0` clean stop, `1` crash, `2` bad config, `3` second instance, `4` restart for an update.
+- **Exit with the code of the contract**: `0` clean stop, `1` crash, `2` bad config, `3` second instance, `4` restart for an update.
 
 ## Secrets in errors
 

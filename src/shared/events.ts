@@ -1,5 +1,5 @@
 /**
- * The one vocabulary that crosses the engine port (docs/plan.md §4.6). An engine adapter
+ * The one vocabulary that crosses the engine port. An engine adapter
  * emits payloads; the core stamps each one with its session, a sequence number and a
  * time, and sends it to every front end.
  */
@@ -24,7 +24,7 @@ export type EngineEventPayload =
       readonly toolName: string;
       readonly summary: string;
     }
-  /** The first answer to an approval won; every other front end closes its question (plan §5.5). */
+  /** The first answer to an approval won; every other front end closes its question. */
   | {
       readonly kind: "approval_resolved";
       readonly requestId: string;

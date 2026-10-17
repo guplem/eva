@@ -60,7 +60,7 @@ function harness(
   };
 }
 
-describe("the network step of eva setup (plan §11)", () => {
+describe("the network step of eva setup", () => {
   test("a ready tailnet ends with the address, how other devices use it, and the advanced local address", async () => {
     const run = harness({ statuses: [loggedIn(true)] });
     expect(await run.run()).toBe("https://server.example-tailnet.ts.net");

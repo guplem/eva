@@ -1,6 +1,6 @@
 /**
  * `eva doctor`: checks each tool that Eva uses, grouped by feature, so a missing optional
- * tool never blocks the core (docs/plan.md §11, lesson 94).
+ * tool never blocks the core (lesson 94).
  */
 import type { EngineName } from "../../shared/engine-port.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -108,7 +108,7 @@ export interface DoctorOptions {
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
   readonly write: (line: string) => void;
-  /** True when Eva runs as one executable, which carries its own Bun (plan §11). */
+  /** True when Eva runs as one executable, which carries its own Bun. */
   readonly standalone: boolean;
   readonly platform: NodeJS.Platform;
   /** The OS user, for the Linux check that the user's services run while the user is logged out. */

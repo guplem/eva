@@ -1,5 +1,5 @@
 /**
- * Which tool calls reach other people (docs/plan.md §5.5). Assistant mode asks the person
+ * Which tool calls reach other people. Assistant mode asks the person
  * before these and runs every other call at once. Each engine adapter uses this one rule, so
  * Claude Code and pi ask for the same actions. Tool names differ in case between the two
  * engines (`Bash` and `bash`), so the shell tool is matched without case.

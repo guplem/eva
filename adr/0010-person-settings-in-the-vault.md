@@ -4,13 +4,13 @@
 
 A person runs Eva on more than one machine: a hub server and a PC with a clone of the same vault. When every setting lived in each home's `config.json`, a change such as the time zone or the update frequency had to be made on each machine, and the copies drifted. The vault already syncs between those machines, and it already holds Eva's other files for the person (`.eva/assistant.md`, `.eva/schedules.json`).
 
-Source: plan §1 (D14), §4.4; owner request of 2026-10-17; lesson 54.
+Source: owner request of 2026-10-17; lesson 54.
 
 ## Decision
 
 - **Two files.** The person's settings live in the vault, in `.eva/settings.json`. The machine's settings stay in `<home>/config.json`. One schema covers both; `sharedSettingKeys` in `src/core/instance/settings.ts` lists the vault's keys.
-- **The vault's keys:** the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, the Google account (`google.email`), the voice language. **The machine's keys:** the vault folder, the machine name, the port, the project roots, program paths, the Telegram chat, remote host names. Each has a default that Eva finds on the machine (plan §4.4, "Plug and play").
-- **Security settings stay on the machine** (plan §12): the allowed Tailscale identities, trust, `google.readOnly`, `google.services`. The Assistant agent edits the vault as normal work, and the vault syncs from other machines, so a vault value could widen access. Eva ignores these keys in the vault file.
+- **The vault's keys:** the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, the Google account (`google.email`), the voice language. **The machine's keys:** the vault folder, the machine name, the port, the project roots, program paths, the Telegram chat, remote host names. Each has a default that Eva finds on the machine (`AGENTS.md`, "What must not change": plug and play).
+- **Security settings stay on the machine:** the allowed Tailscale identities, trust, `google.readOnly`, `google.services`. The Assistant agent edits the vault as normal work, and the vault syncs from other machines, so a vault value could widen access. Eva ignores these keys in the vault file.
 - **Secrets never go in the vault.** They stay in `secrets.json`.
 - **The vault wins.** Eva reads `config.json`, then puts the vault file on top. A machine key in the vault file is ignored.
 - **A broken vault file never stops Eva** (lesson 54). It can arrive from another machine, so Eva logs the problem and keeps `config.json`.

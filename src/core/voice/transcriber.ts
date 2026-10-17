@@ -1,6 +1,6 @@
 /**
- * Voice notes become text on this machine, so audio never leaves it (docs/plan.md §9,
- * lessons 71, 123). ffmpeg decodes Telegram's Opus audio to 16 kHz WAV, and a whisper.cpp
+ * Voice notes become text on this machine, so audio never leaves it
+ * (lessons 71, 123). ffmpeg decodes Telegram's Opus audio to 16 kHz WAV, and a whisper.cpp
  * binary transcribes it. One note runs at a time.
  *
  * Lesson 123 keeps audio in memory only. whisper.cpp reads a file, so the audio lives in a

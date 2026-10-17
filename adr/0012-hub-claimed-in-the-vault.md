@@ -4,7 +4,7 @@
 
 Only one machine may run the Telegram bot and the schedules for a vault. Two bots on one token fight (lesson 56), and two schedulers fire each schedule twice. The role used to be a setting in each machine's `config.json`, with `hub` as the default, so a second machine became a second hub unless the person knew to change it. The owner wants each machine to work with no settings (plug and play), and the hub to be easy to move.
 
-Source: plan §4.4; owner requests of 2026-10-17; lesson 56.
+Source: owner requests of 2026-10-17; lesson 56.
 
 ## Decision
 

@@ -1,7 +1,7 @@
 /**
  * The Claude Code engine, through the Claude Agent SDK and the person's own installed
- * `claude` (docs/plan.md §7.1). Two pure parts carry the logic so tests can pin them:
- * the SDK options for each mode (§5.1), and the map from SDK messages to Eva's events (§4.6).
+ * `claude`. Two pure parts carry the logic so tests can pin them:
+ * the SDK options for each mode, and the map from SDK messages to Eva's events.
  */
 import { query as sdkQuery, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
@@ -11,7 +11,7 @@ import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/even
 type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
 
 export interface ClaudeCodeEngineOptions {
-  /** Absolute path of the person's `claude` program. Eva never embeds one (plan §7.1). */
+  /** Absolute path of the person's `claude` program. Eva never embeds one. */
   readonly executable: string;
   readonly query?: QueryFunction;
   readonly newSessionId?: () => string;
@@ -76,7 +76,7 @@ export class ClaudeCodeEngine implements EnginePort {
   }
 }
 
-/** The SDK options for one turn (plan §5.1). `canUseTool` is added by the engine. */
+/** The SDK options for one turn. `canUseTool` is added by the engine. */
 export function buildQueryOptions(request: TurnRequest, executable: string): Options {
   const options: Options = {
     cwd: request.startFolder,
@@ -120,11 +120,11 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     options.settingSources = ["user", "project"];
     options.settings = { disableAllHooks: true };
   } else {
-    // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session (D8).
+    // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session.
     options.systemPrompt = { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project", "local"];
     if (!request.trusted) {
-      // An untrusted clone's own settings could allow every tool and skip the person's approval (§12).
+      // An untrusted clone's own settings could allow every tool and skip the person's approval.
       options.settingSources = ["user"];
       options.settings = { disableAllHooks: true };
       options.strictMcpConfig = true;

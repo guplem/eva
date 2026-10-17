@@ -6,11 +6,11 @@ This directory holds the Architecture Decision Records for Eva.
 
 An ADR records one architectural decision or cross-cutting standard, with its context, the decision, and its consequences. It answers "how do we always do X here": the layer rules, how Eva connects to an engine, or what Project mode passes to the engine.
 
-An ADR is **not** a feature explanation and not a setup guide. How the project works and how to run it belongs in `README.md`. The full design belongs in `docs/plan.md`. See the "Documentation Organization" section of the root `AGENTS.md` for the full map of what goes where.
+An ADR is **not** a feature explanation and not a setup guide. How the project works and how to run it belongs in `README.md`. How a part works belongs in the code. See the "Documentation Organization" section of the root `AGENTS.md` for the full map of what goes where.
 
-## ADRs record plan decisions
+## ADRs and the code
 
-`docs/plan.md` is the design source of truth. An ADR distills one approved plan decision: what was chosen, which alternatives lost, and why. Cite the plan section and the lesson numbers that it rests on. When the plan and an ADR disagree, the plan wins: fix the ADR. Mark a part of a decision that has no code yet as "(planned, phase Pn)".
+An ADR records one decision: what was chosen, which alternatives lost, and why. Cite the lesson numbers that it rests on. The code wins for facts: when an ADR states a fact that the code contradicts, fix the ADR. A goal in the root `AGENTS.md` "What must not change" section needs the owner to change. Mark a part of a decision that has no code yet as "(planned, issue #N)".
 
 ## ADRs are living: update, do not supersede
 

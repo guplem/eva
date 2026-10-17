@@ -125,7 +125,7 @@ describe("access (lessons 63, 127)", () => {
   });
 });
 
-describe("device login (plan §12)", () => {
+describe("device login", () => {
   function deviceQuestion(): { text: string; buttons: string } | undefined {
     const call = telegram.callsTo("sendMessage").find((sent) => String(sent.params["text"]).startsWith("A browser"));
     return call === undefined
@@ -385,7 +385,7 @@ describe("topics", () => {
 });
 
 describe("approvals and commands", () => {
-  test("an approval becomes buttons, and the press answers the turn (plan §5.5)", async () => {
+  test("an approval becomes buttons, and the press answers the turn", async () => {
     const answers: string[] = [];
     createEva(async function* (request) {
       answers.push(await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "gh issue create" }));
@@ -487,7 +487,7 @@ describe("approvals and commands", () => {
   });
 });
 
-describe("stop and approvals from elsewhere (plan §4.1, §5.5)", () => {
+describe("stop and approvals from elsewhere", () => {
   test("/stop stops the running turn of this chat, and says when nothing runs", async () => {
     createEva(async function* (request) {
       await new Promise<void>((resolve) => {
@@ -918,7 +918,7 @@ describe("voice notes (lesson 123)", () => {
   });
 });
 
-describe("schedules (plan §9, lessons 66, 70, 126)", () => {
+describe("schedules (lessons 66, 70, 126)", () => {
   const vault = (): string => join(sandbox.root, "vault");
   const morning = { id: "morning", name: "Morning", at: "10:45", text: "Drink water.", prompt: "Plan my day." };
 

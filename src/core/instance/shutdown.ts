@@ -1,5 +1,5 @@
 /**
- * A stop that always ends (docs/plan.md §6, lesson 81). Eva runs for weeks as a service: a
+ * A stop that always ends (lesson 81). Eva runs for weeks as a service: a
  * front end that never answers must not keep the process, and so the lock, alive.
  */
 

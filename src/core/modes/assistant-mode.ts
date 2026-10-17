@@ -1,7 +1,7 @@
 /**
- * Assistant mode: Eva's own behaviour at the vault root (docs/plan.md §5.1, §5.2, §5.4).
+ * Assistant mode: Eva's own behaviour at the vault root.
  * Before a turn: pull the vault, build the prompt. After a turn: save the vault, and keep
- * an open pskill run of this session going, since the vault has no hooks (D7).
+ * an open pskill run of this session going, since the vault has no hooks.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ export interface AssistantPreparerOptions {
   readonly timeZone: string;
   /** The MCP servers of every Assistant turn, such as the Google tools. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
-  /** Where pskill's error output goes (plan §5.4). */
+  /** Where pskill's error output goes. */
   readonly logger?: Logger;
 }
 
@@ -68,7 +68,7 @@ export class AssistantPreparer implements TurnPreparer {
       pluginFolders: existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [],
       mcpServers: this.options.mcpServers,
       trusted: true,
-      // `eva work` reads it, so a project's result comes back to this chat (plan §5.3).
+      // `eva work` reads it, so a project's result comes back to this chat.
       environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };
   }
@@ -88,7 +88,7 @@ export class AssistantPreparer implements TurnPreparer {
           cwd: this.options.vaultPath,
           environment: this.options.environment,
           timeoutMs: pskillTimeoutMs,
-          // Always the session id: without one, pskill checks the runs of every session (plan §5.4).
+          // Always the session id: without one, pskill checks the runs of every session.
           stdin: JSON.stringify({ session_id: session.engineSessionId, cwd: this.options.vaultPath }),
         },
       );

@@ -1,6 +1,6 @@
 /**
  * A conversation as a tree (mockups/project-mode.png): the chat and each of its forks in a
- * column of its own, each with its own input, and retry and fork on every answer (plan §4.5).
+ * column of its own, each with its own input, and retry and fork on every answer.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { toTelegramHtml } from "../../telegram/telegram-format.ts";

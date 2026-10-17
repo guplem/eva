@@ -144,7 +144,7 @@ describe("Assistant mode", () => {
     expect(sync.calls).toEqual(["save"]);
   });
 
-  test("an open pskill run of this session continues with pskill's own message (plan §5.4)", async () => {
+  test("an open pskill run of this session continues with pskill's own message", async () => {
     sandbox.write(vault, ".pskill/pskill.py", "# runner\n");
     const runner = new FakeRunner(() => ({
       exitCode: 0,
@@ -172,7 +172,7 @@ describe("Assistant mode", () => {
     const broken = new FakeRunner(() => ({ exitCode: 0, stdout: "not json", stderr: "oops" }));
     const logged: string[] = [];
     expect(await assistant(broken, new FakeSync(), logged).afterTurn(session(), { finished: true })).toBeNull();
-    // Any stderr is logged (plan §5.4), and a pskill that cannot start too.
+    // Any stderr is logged, and a pskill that cannot start too.
     expect(logged).toEqual(['pskill wrote to stderr. {"stderr":"oops"}']);
     const missing = new FakeRunner(() => {
       throw new Error("uv is not installed");
@@ -222,7 +222,7 @@ describe("Project mode", () => {
     });
   });
 
-  test("the first clone of a stranger's repository asks the person, and the answer is kept (§12)", async () => {
+  test("the first clone of a stranger's repository asks the person, and the answer is kept", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
     const questions: string[] = [];
     const recording = {

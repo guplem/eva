@@ -2,7 +2,7 @@
 
 ## Context
 
-AI agents build most of the engine (plan §13), so the repository must carry its own rules. Eva is a public, personal project: anyone may fork it and work on it with the coding tool that they already use, such as Codex, Cursor, GitHub Copilot or Claude Code. Each tool has its own files, but two open formats are read by most of them: `AGENTS.md` for instructions, and Agent Skills (`SKILL.md`) for procedures. Claude Code reads neither at its default paths: it needs `CLAUDE.md` and `.claude/skills/`.
+AI agents build most of the engine, so the repository must carry its own rules. Eva is a public, personal project: anyone may fork it and work on it with the coding tool that they already use, such as Codex, Cursor, GitHub Copilot or Claude Code. Each tool has its own files, but two open formats are read by most of them: `AGENTS.md` for instructions, and Agent Skills (`SKILL.md`) for procedures. Claude Code reads neither at its default paths: it needs `CLAUDE.md` and `.claude/skills/`.
 
 ## Decision
 
@@ -30,5 +30,5 @@ AI agents build most of the engine (plan §13), so the repository must carry its
 **Trade-offs and follow-up:**
 
 - A skill edit needs `bun run agents:sync`; `bun run check` and the pre-push hook catch a forgotten one.
-- A clone of this repository inside a vault (`Projects/<project>/repos/eva-<n>/`) has a `CLAUDE.md`, so a Claude Code session in it loads only this repository's docs, not the vault and project `AGENTS.md` files above it (spike S3). This matches opening the clone by hand, which is what Project mode wants.
+- A clone of this repository inside a vault (`Projects/<project>/repos/eva-<n>/`) has a `CLAUDE.md`, so a Claude Code session in it loads only this repository's docs, not the vault and project `AGENTS.md` files above it (spike S3, ADR 0007). This matches opening the clone by hand, which is what Project mode wants.
 - If the number of skills grows enough that their descriptions bloat startup context, mark the human-invoked ones as not model-invocable.

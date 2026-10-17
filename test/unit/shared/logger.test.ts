@@ -53,7 +53,7 @@ describe("FileLogger", () => {
     expect(() => logger.log("info", "hello")).not.toThrow();
   });
 
-  test("creates the log folder and files for the OS user only (plan §12)", () => {
+  test("creates the log folder and files for the OS user only", () => {
     const logs = join(folder, "logs");
     const logger = new FileLogger({
       folder: logs,

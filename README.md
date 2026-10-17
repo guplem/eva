@@ -140,7 +140,7 @@ Run `bun run eva doctor` on Eva's computer. It lists the tools that are missing,
 
 ## For developers
 
-Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes the architecture and the rules of the code; it is written for AI coding agents and for developers. The design is in [docs/plan.md](docs/plan.md).
+Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes the architecture and the rules of the code; it is written for AI coding agents and for developers. Its section "What must not change" lists the goals that guide every change.
 
 | Task                       | Command                 |
 | -------------------------- | ----------------------- |
@@ -151,15 +151,12 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 
 `bun run check` runs the same checks as the continuous integration (CI) on every pull request: format, lint, types, architecture rules, dead code, a personal-data check, and the tests with coverage.
 
-| Document                                               | What it holds                                   |
-| ------------------------------------------------------ | ----------------------------------------------- |
-| [docs/intent.md](docs/intent.md)                       | What Eva must achieve, and why                  |
-| [docs/plan.md](docs/plan.md)                           | The design and the phases                       |
-| [docs/standards/](docs/standards/README.md)            | How the code is written                         |
-| [docs/lessons-from-v1.md](docs/lessons-from-v1.md)     | What the previous version, Wall-I v1, learned   |
-| [docs/review-2026-10-14.md](docs/review-2026-10-14.md) | The review of the plan, and the owner's answers |
-| [docs/spikes.md](docs/spikes.md)                       | Small real tests of claims the plan relies on   |
-| [docs/mockups/](docs/mockups/)                         | Sketches of the app                             |
+| Document                                           | What it holds                                 |
+| -------------------------------------------------- | --------------------------------------------- |
+| [docs/standards/](docs/standards/README.md)        | How the code is written                       |
+| [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
+| [docs/owner-todo.md](docs/owner-todo.md)           | Steps that only the owner can do              |
+| [docs/mockups/](docs/mockups/)                     | Sketches of the app                           |
 
 ## License
 

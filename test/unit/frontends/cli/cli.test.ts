@@ -335,7 +335,7 @@ describe("runSetup", () => {
     expect(isEvaError(caught, "config_invalid")).toBe(true);
   });
 
-  test("a port that another program uses is not suggested (plan §4.4)", async () => {
+  test("a port that another program uses is not suggested", async () => {
     const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     try {
       const port = taken.port ?? 0;
@@ -346,7 +346,7 @@ describe("runSetup", () => {
     }
   });
 
-  test("Eva clones the vault from its repository into her home, with the GitHub token (plan §11)", async () => {
+  test("Eva clones the vault from its repository into her home, with the GitHub token", async () => {
     const remote = createGitSandbox();
     try {
       const commands: { command: string[]; token: string | undefined }[] = [];
@@ -441,7 +441,7 @@ describe("runSetup", () => {
     expect(loadSettings(homePaths(home)).config.timeZone).toBe(detected);
   });
 
-  test("a rerun while this home's Eva runs keeps her port (plan §4.4)", async () => {
+  test("a rerun while this home's Eva runs keeps her port", async () => {
     const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     try {
       const port = taken.port ?? 0;
@@ -557,12 +557,12 @@ describe("service", () => {
     ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
-  test("after an update, systemd restarts Eva; anywhere else she starts a new copy (plan §4.3)", () => {
+  test("after an update, systemd restarts Eva; anywhere else she starts a new copy", () => {
     expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
     expect(restartMethod({})).toBe("new-copy");
   });
 
-  test("a second instance on the same machine gets its own service name (plan D11)", () => {
+  test("a second instance on the same machine gets its own service name", () => {
     expect(serviceName("/u/.config/eva", "/u/.config/eva")).toBe("eva");
     expect(serviceName("/u/.config/eva-partner", "/u/.config/eva")).toBe("eva-eva-partner");
     expect(serviceName("/srv/Partner Home", "/u/.config/eva")).toBe("eva-partner-home");
@@ -589,7 +589,7 @@ describe("service", () => {
     expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
   });
 
-  test("the single executable runs itself; a source checkout runs bun with main.ts (plan §11)", () => {
+  test("the single executable runs itself; a source checkout runs bun with main.ts", () => {
     expect(
       serviceCommand({ standalone: true, execPath: "C:/eva/eva.exe", mainScript: "B:/~BUN/root/eva.exe" }),
     ).toEqual(["C:/eva/eva.exe"]);
@@ -716,7 +716,7 @@ repos:
     expect(output.join("")).toContain("Hi! I am Eva.");
   });
 
-  test("an approval is asked in the terminal, with y or n (plan §5.5)", async () => {
+  test("an approval is asked in the terminal, with y or n", async () => {
     const lines = ["push it", "y", "push it", "no", "/exit"];
     const output: string[] = [];
     await runChat({

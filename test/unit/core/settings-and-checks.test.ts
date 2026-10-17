@@ -239,7 +239,7 @@ describe("live settings, the vault fetch and updates", () => {
   });
 });
 
-describe("the hub (plan §4.4)", () => {
+describe("the hub", () => {
   test("this machine is the hub until another machine claims it, and takes it back with becomeHub", async () => {
     const changes: string[] = [];
     eva.onRoleChange((role) => changes.push(role));

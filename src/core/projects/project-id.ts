@@ -1,6 +1,6 @@
 /**
  * A project id is the name of its folder: the creation time and a slug,
- * `YYYY-MM-DD-HHmm-name` (docs/plan.md §3.1). An old project known only to the day,
+ * `YYYY-MM-DD-HHmm-name`. An old project known only to the day,
  * month or year has a shorter time part.
  */
 

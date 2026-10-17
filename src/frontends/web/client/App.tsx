@@ -1,4 +1,4 @@
-/** The web UI (docs/plan.md §8.3): a mode switch, the two views, settings, and approvals. */
+/** The web UI: a mode switch, the two views, settings, and approvals. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import {
   api,

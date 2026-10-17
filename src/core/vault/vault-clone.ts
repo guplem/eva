@@ -1,5 +1,5 @@
 /**
- * Eva clones the person's vault herself (plan §11): setup needs only the repository and, for
+ * Eva clones the person's vault herself: setup needs only the repository and, for
  * an HTTPS address, a GitHub token. The token never goes into a URL or a git config file: a
  * credential helper reads it from `EVA_GITHUB_TOKEN`, which Eva puts only in the environment
  * of her own git commands, never in an agent's (lesson 96).

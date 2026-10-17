@@ -4,7 +4,7 @@ A name says what the thing is or does, so a reader understands it without the co
 
 ## Product name
 
-- **Write `Eva` in prose and `eva` in identifiers** (plan, header). Examples: `EvaError`, `eva.lock`, `EVA_HOME`, `eva-test@example.invalid`.
+- **Write `Eva` in prose and `eva` in identifiers.** Eva takes the pronoun "she". Examples: `EvaError`, `eva.lock`, `EVA_HOME`, `eva-test@example.invalid`.
 
 ## Code
 
@@ -22,7 +22,7 @@ A name says what the thing is or does, so a reader understands it without the co
 - **Name a boolean as a question:** `isError`, `isProcessAlive`, `hasCommits`.
 - **Name a function with a verb:** `parseProjectId`, `formatProjectId`, `acquireInstanceLock`. A function that can return nothing says so in its type (`ParsedProjectId | null`), not in its name.
 - **A name that would clash with a reserved word gets a trailing underscore:** `arguments_`.
-- **Use the plan's words for the plan's concepts:** instance, home folder, vault, project, clone, session, fork, retry, turn, engine, front end, Assistant mode, Project mode. Never swap in a synonym (for example "workspace" for clone).
+- **Use the same word for each concept:** instance, home folder, vault, project, clone, session, fork, retry, turn, engine, front end, Assistant mode, Project mode. Never swap in a synonym (for example "workspace" for clone).
 
 ## Types
 

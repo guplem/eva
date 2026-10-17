@@ -1,5 +1,5 @@
 /**
- * Eva's base assistant prompt, shipped with the engine (docs/plan.md §5.2). The text lives
+ * Eva's base assistant prompt, shipped with the engine. The text lives
  * in a Markdown file so a person can read and edit it; Bun embeds it at build time.
  */
 import basePrompt from "./assistant-base-prompt.md" with { type: "text" };

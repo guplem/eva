@@ -46,4 +46,29 @@ Questions: how to normalize the clone path, and what happens when a person delet
 
 ## Decisions
 
-To be filled after the gap research.
+Three agents researched each gap. They agreed on each point below.
+
+### Gap 1: a state file in Eva's home
+
+- Keep the record in `state/clone-origins.json`, next to `state/trust.json`.
+- The clone's `.git/config` holds the live `origin`, so code in the clone can edit it. The vault is open to the agent too (`src/core/settings/AGENTS.md`).
+- A `CloneOriginStore` class in `src/core/projects/clones.ts` mirrors `TrustStore`.
+- Keep it apart from `trust.json`: that file holds answers by URL, this one holds facts by clone.
+- `createClone` takes the store and records the URL after a clone succeeds.
+
+### Gap 2: ask once, then pin the folder
+
+- A clone with no record gets the question. The stored URL answers and the owner allowlist do not apply, because its live URL is only a claim.
+- The question names the clone and says that Eva did not clone it.
+- An answer pins the folder: the store keeps the URL shown and the answer. Later turns use that answer and never read `origin` again.
+- The answer stays with the folder, not in `trust.json`. The person judged one folder, not every clone of that URL.
+- An expired question pins nothing, as today.
+- Clones made by Eva before this change get the same question once. Eva cannot tell them from a folder made by hand.
+
+### Gap 3: the key and stale records
+
+- `startFolder` and `clone.path` are the same string today. A small `cloneKey` helper still applies `resolve()`, and lowercases on Windows, so a vault path with another case still matches.
+- No `realpath`: it fails on a missing folder.
+- A new clone overwrites the record of its folder. `cloneFolderName` only picks a folder that does not exist.
+- No folder fingerprint. One agent proposed it against a folder deleted and made again at the same path. That attack needs write access to a sibling clone, and that access can already plant hooks in the sibling. So the fingerprint adds code and a Windows risk for no real gain.
+- A missing record fails safe: Eva asks.

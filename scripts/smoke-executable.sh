@@ -11,7 +11,10 @@ if command -v cygpath >/dev/null 2>&1; then work="$(cygpath -m "$work")"; fi
 trap 'rm -rf "$work"' EXIT
 
 "$executable" version
-"$executable" doctor
+# A new machine has no engine yet, so doctor may fail; it must still run and find git.
+doctor_report="$("$executable" doctor || true)"
+echo "$doctor_report"
+grep -q "ok      git" <<<"$doctor_report"
 
 EVA_TIME_ZONE="Europe/Madrid" \
   EVA_PORT="7533" \

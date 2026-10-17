@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Eva } from "../../../src/core/eva.ts";
+import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/instance/home.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
@@ -19,8 +19,9 @@ function config(overrides: Partial<EvaConfig> = {}): EvaConfig {
   return { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid", ...overrides };
 }
 
-function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}): Eva {
+function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: Partial<EvaOptions> = {}): Eva {
   eva = new Eva({
+    ...options,
     paths: homePaths(home),
     config: config(overrides),
     secrets: { claudeOauthToken: "oauth-token-value-for-tests" },
@@ -116,13 +117,29 @@ describe("Eva", () => {
     expect(Object.keys(environment).some((name) => name.startsWith("GIT_AUTHOR"))).toBe(false);
   });
 
-  test("an extra instance on the same OS user gets its own Claude config folder (plan §4.4)", async () => {
+  test("the ownConfigFolder setting gives the instance its own Claude config folder (plan §4.4)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {
       engines: { ...defaultConfig.engines, claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true } },
     });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+  });
+
+  test("an extra instance on the same OS user gets its own Claude and gh config folders (lesson 111)", async () => {
+    const engine = new FakeEngine();
+    const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
+    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
+    expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+    expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+  });
+
+  test("the instance in the default home uses the OS user's own engine config folders (plan D8)", async () => {
+    const engine = new FakeEngine();
+    const instance = start(engine, {}, { defaultHome: join(home, ".") });
+    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
+    expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBeUndefined();
+    expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBeUndefined();
   });
 
   test("a Project chat runs in a clone, which Eva creates when the project has none", async () => {
@@ -177,6 +194,81 @@ describe("Eva", () => {
         (error: unknown) => error,
       );
     expect(String(missing)).toContain("No project missing");
+  });
+
+  test("two project works at once get two different clones", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const instance = start(new FakeEngine());
+    const input = { projectId: "2025-03-02-1015-example-app", request: "Fix it.", reportToSessionId: null };
+    const works = await Promise.all([instance.startProjectWork(input), instance.startProjectWork(input)]);
+    expect(works.map((work) => work.clone).sort()).toEqual(["remote-0", "remote-1"]);
+    await instance.idle();
+    const third = await instance.startProjectWork(input);
+    expect(third.clone).toBe("remote-0");
+  });
+
+  test("two new clones at once get two different folders", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const instance = start(new FakeEngine());
+    const clones = await Promise.all([
+      instance.newClone("2025-03-02-1015-example-app"),
+      instance.newClone("2025-03-02-1015-example-app"),
+    ]);
+    expect(clones.map((clone) => clone.name).sort()).toEqual(["remote-0", "remote-1"]);
+  });
+
+  test("the report names the clone's branch and pull request, and keeps only the end of a long answer", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const longAnswer = `START${"x".repeat(5_000)}END`;
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "project" ? longAnswer : "Noted."),
+    );
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [engine],
+      // gh is faked: the test remote is not on GitHub.
+      runner: {
+        run: (command, options) =>
+          command[0] === "gh"
+            ? Promise.resolve({ exitCode: 0, stdout: "42\n", stderr: "" })
+            : systemProcessRunner.run(command, options),
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+    });
+    const instance = eva;
+    instance.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
+    });
+    const assistantChat = instance.createAssistantSession({ source: "telegram", model: "default" });
+    await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix it.",
+      reportToSessionId: assistantChat.id,
+    });
+    await waitFor(() => engine.requests.length === 2, 20_000);
+    await instance.idle();
+    const report = engine.requests[1]?.prompt ?? "";
+    expect(report).toContain("clone remote-0, branch main, pull request #42");
+    expect(report).toContain("The full answer is in the project chat.");
+    expect(report).toEndWith("END");
+    expect(report).not.toContain("START");
   });
 
   test("a failed project turn is reported as a failure", async () => {

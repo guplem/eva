@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { cloneVault, githubCredentialArguments, githubTokenVariable } from "../../../../src/core/vault/vault-clone.ts";
+import {
+  checkVaultRepository,
+  cloneVault,
+  githubCredentialArguments,
+  githubTokenVariable,
+} from "../../../../src/core/vault/vault-clone.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
@@ -67,5 +72,48 @@ describe("cloneVault (plan §11)", () => {
       }),
     );
     expect(String(failed)).toContain("git could not clone https://github.com/example/vault: not found");
+  });
+});
+
+describe("checkVaultRepository", () => {
+  test("returns null when git can read the repository, and git's reason when it cannot", async () => {
+    expect(
+      await checkVaultRepository({
+        repository: sandbox.remote,
+        runner: systemProcessRunner,
+        environment: gitEnvironment,
+      }),
+    ).toBeNull();
+    const reason = await checkVaultRepository({
+      repository: join(sandbox.root, "no-such-repository"),
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+    });
+    expect(reason).not.toBeNull();
+    expect(reason).not.toBe("");
+  });
+
+  test("asks git with Eva's credential helper, so a token in the environment reaches GitHub", async () => {
+    const commands: string[][] = [];
+    const recording: ProcessRunner = {
+      run: (command) => {
+        commands.push([...command]);
+        return Promise.resolve({ exitCode: 128, stdout: "", stderr: "" });
+      },
+    };
+    const reason = await checkVaultRepository({
+      repository: "https://github.com/example/vault",
+      runner: recording,
+      environment: {},
+    });
+    expect(commands[0]).toEqual([
+      "git",
+      ...githubCredentialArguments,
+      "ls-remote",
+      "-q",
+      "https://github.com/example/vault",
+      "HEAD",
+    ]);
+    expect(reason).toBe("git ended with exit code 128.");
   });
 });

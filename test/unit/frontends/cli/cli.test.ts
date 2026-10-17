@@ -23,12 +23,14 @@ import {
   heldBackLines,
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
-import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
+import { runDoctor, type DoctorOptions } from "../../../../src/frontends/cli/doctor.ts";
 import {
   restartMethod,
+  serviceCommand,
   serviceName,
   servicePath,
   systemdUnit,
+  windowsRunTaskCommand,
   windowsTaskCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -121,6 +123,13 @@ describe("parseArguments", () => {
 });
 
 describe("runDoctor", () => {
+  const doctorBasics = {
+    standalone: false,
+    platform: "win32",
+    userName: "person",
+    defaultEngine: "claude-code",
+  } as const satisfies Partial<DoctorOptions>;
+
   test("reports each tool, grouped by feature, and fails only on a missing required tool", async () => {
     const runner: ProcessRunner = {
       run: (command) => {
@@ -139,10 +148,10 @@ describe("runDoctor", () => {
     };
     const lines: string[] = [];
     const healthy = await runDoctor({
+      ...doctorBasics,
       runner,
       environment: { PATH: "/bin" },
       write: (line) => lines.push(line),
-      standalone: false,
     });
     expect(healthy).toBe(true);
     expect(lines.join("\n")).toContain("ok      git: git version 2.50.0");
@@ -154,7 +163,7 @@ describe("runDoctor", () => {
 
   test("a missing required tool fails the check", async () => {
     const runner: ProcessRunner = { run: () => Promise.reject(new Error("not found")) };
-    expect(await runDoctor({ runner, environment: {}, write: () => undefined, standalone: false })).toBe(false);
+    expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write: () => undefined })).toBe(false);
   });
 
   test("the single executable carries its own Bun, so bun is not checked", async () => {
@@ -165,9 +174,64 @@ describe("runDoctor", () => {
         return Promise.resolve({ exitCode: 0, stdout: "v1\n", stderr: "" });
       },
     };
-    expect(await runDoctor({ runner, environment: {}, write: () => undefined, standalone: true })).toBe(true);
+    expect(
+      await runDoctor({ ...doctorBasics, runner, environment: {}, write: () => undefined, standalone: true }),
+    ).toBe(true);
     expect(asked).not.toContain("bun");
     expect(asked).toContain("git");
+  });
+
+  function finding(programs: readonly string[]): ProcessRunner {
+    return {
+      run: (command) =>
+        programs.includes(command[0] ?? "")
+          ? Promise.resolve({ exitCode: 0, stdout: "v1\n", stderr: "" })
+          : Promise.reject(new Error("not found")),
+    };
+  }
+
+  test("the default engine's program is required, and the Linux hint gives the install command", async () => {
+    const lines: string[] = [];
+    const runner = finding(["git", "bun"]);
+    const write = (line: string): number => lines.push(line);
+    expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(false);
+    expect(lines.join("\n")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    expect(lines.indexOf("Optional:")).toBeGreaterThan(lines.findIndex((line) => line.includes("missing claude")));
+    expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, defaultEngine: "pi" })).toBe(false);
+    const withPi = finding(["git", "bun", "pi"]);
+    expect(await runDoctor({ ...doctorBasics, runner: withPi, environment: {}, write, defaultEngine: "pi" })).toBe(
+      true,
+    );
+  });
+
+  test("on Linux, it reports whether the user's services run while the user is logged out", async () => {
+    const asked: string[][] = [];
+    const linger = (answer: string): ProcessRunner => ({
+      run: (command) => {
+        asked.push([...command]);
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: command[0] === "loginctl" ? `Linger=${answer}\n` : "v1\n",
+          stderr: "",
+        });
+      },
+    });
+    const lines: string[] = [];
+    const options = {
+      ...doctorBasics,
+      environment: {},
+      write: (line: string) => lines.push(line),
+      platform: "linux" as const,
+    };
+    expect(await runDoctor({ ...options, runner: linger("yes") })).toBe(true);
+    expect(asked).toContainEqual(["loginctl", "show-user", "person", "--property=Linger"]);
+    expect(lines.join("\n")).toContain("ok      linger");
+    lines.length = 0;
+    expect(await runDoctor({ ...options, runner: linger("no") })).toBe(true);
+    expect(lines.join("\n")).toContain("loginctl enable-linger");
+    asked.length = 0;
+    await runDoctor({ ...doctorBasics, runner: linger("yes"), environment: {}, write: () => undefined });
+    expect(asked.some((command) => command[0] === "loginctl")).toBe(false);
   });
 });
 
@@ -188,14 +252,17 @@ describe("runSetup", () => {
 
   async function setup(
     answers: Partial<Record<SetupQuestion, string | string[]>>,
-    extra: { interactive?: boolean; runner?: ProcessRunner; lines?: string[] } = {},
+    extra: { interactive?: boolean; runner?: ProcessRunner; lines?: string[]; asked?: SetupQuestion[] } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
       Object.entries(answers).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]),
     ) as Partial<Record<SetupQuestion, string[]>>;
     await runSetup({
       paths: homePaths(home),
-      ask: (key) => Promise.resolve(queues[key]?.shift() ?? ""),
+      ask: (key) => {
+        extra.asked?.push(key);
+        return Promise.resolve(queues[key]?.shift() ?? "");
+      },
       write: (line) => extra.lines?.push(line),
       newToken: () => "generated-token",
       interactive: extra.interactive ?? true,
@@ -205,7 +272,10 @@ describe("runSetup", () => {
   }
 
   test("writes the answers to the config and the secrets, and creates the local API token", async () => {
-    await setup({ vault: existingVault, timeZone: "Europe/Madrid", port: "7421", trustedOwners: "owner, other" });
+    await setup(
+      { vault: existingVault, timeZone: "Europe/Madrid", port: "7421", trustedOwners: "owner, other" },
+      { interactive: false },
+    );
     expect(loadSettings(homePaths(home)).config).toMatchObject({
       vaultPath: existingVault,
       timeZone: "Europe/Madrid",
@@ -285,16 +355,100 @@ describe("runSetup", () => {
         },
       };
       const lines: string[] = [];
-      await setup({ githubToken: "token-for-the-test", vaultRepository: remote.remote }, { runner: recording, lines });
+      const asked: SetupQuestion[] = [];
+      await setup(
+        { githubToken: "token-for-the-test", vaultRepository: remote.remote },
+        { runner: recording, lines, asked },
+      );
       const config = loadSettings(homePaths(home)).config;
       expect(config.vaultPath).toBe(join(home, "vault"));
       expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
       expect(loadSecrets(homePaths(home)).githubToken).toBe("token-for-the-test");
-      expect(commands[0]?.command).toContain("clone");
-      expect(commands[0]?.token).toBe("token-for-the-test");
+      expect(commands[0]?.command).toContain("ls-remote");
+      expect(commands[1]?.command).toContain("clone");
+      expect(commands[1]?.token).toBe("token-for-the-test");
       expect(lines.join("\n")).toContain("Cloned the vault into");
+      // With a repository, the folder has a default, so a person is not asked for it.
+      expect(asked).not.toContain("vault");
     } finally {
       remote.dispose();
+    }
+  });
+
+  test("a repository that git cannot read is asked again, with git's reason, and nothing is lost", async () => {
+    const remote = createGitSandbox();
+    try {
+      const lines: string[] = [];
+      const missing = join(home, "no-such-repository");
+      await setup(
+        {
+          githubToken: ["token-for-the-test", ""],
+          vaultRepository: [missing, remote.remote],
+          timeZone: "Europe/Madrid",
+        },
+        { runner: systemProcessRunner, lines },
+      );
+      expect(lines.join("\n")).toContain(`git could not read ${missing}`);
+      expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("token-for-the-test");
+    } finally {
+      remote.dispose();
+    }
+  });
+
+  test("without a person to ask, a repository that git cannot read stops setup", async () => {
+    const missing = join(home, "no-such-repository");
+    let caught: unknown;
+    try {
+      await setup({ vaultRepository: missing }, { interactive: false, runner: systemProcessRunner });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "config_invalid")).toBe(true);
+    expect(String(caught)).toContain(`git could not read ${missing}`);
+  });
+
+  test("the GitHub token is saved before the clone, so a failed clone keeps it", async () => {
+    const cloneFails: ProcessRunner = {
+      run: (command) =>
+        Promise.resolve(
+          command.includes("clone")
+            ? { exitCode: 128, stdout: "", stderr: "network down" }
+            : { exitCode: 0, stdout: "", stderr: "" },
+        ),
+    };
+    let caught: unknown;
+    try {
+      await setup(
+        { githubToken: "token-for-the-test", vaultRepository: "https://github.com/example/vault" },
+        { runner: cloneFails },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "git_failed")).toBe(true);
+    expect(loadSecrets(homePaths(home)).githubToken).toBe("token-for-the-test");
+  });
+
+  test("with no time zone set or answered, setup keeps the computer's own time zone", async () => {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await setup({});
+    expect(loadSettings(homePaths(home)).config.timeZone).toBe(detected);
+    rmSync(homePaths(home).config);
+    await setup({}, { interactive: false });
+    expect(loadSettings(homePaths(home)).config.timeZone).toBe(detected);
+  });
+
+  test("a rerun while this home's Eva runs keeps her port (plan §4.4)", async () => {
+    const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    try {
+      const port = taken.port ?? 0;
+      await setup({ port: String(port) }, { interactive: false });
+      writeFileSync(homePaths(home).lock, String(process.pid));
+      await setup({});
+      expect(loadSettings(homePaths(home)).config.port).toBe(port);
+    } finally {
+      await taken.stop(true);
     }
   });
 
@@ -313,11 +467,11 @@ describe("runSetup", () => {
     expect(isEvaError(caught, "config_invalid")).toBe(true);
   });
 
-  test("a bad port is asked again", async () => {
-    const lines: string[] = [];
-    await setup({ port: ["high", "7500"] }, { lines });
-    expect(loadSettings(homePaths(home)).config.port).toBe(7500);
-    expect(lines.join("\n")).toContain("1024 to 65535");
+  test("a person is not asked for the port: setup takes a free one", async () => {
+    const asked: SetupQuestion[] = [];
+    await setup({ port: "7500" }, { asked });
+    expect(asked).not.toContain("port");
+    expect(loadSettings(homePaths(home)).config.port).not.toBe(7500);
   });
 
   test("without a person to ask, a bad port stops setup", async () => {
@@ -426,6 +580,20 @@ describe("service", () => {
       "/TR",
       '"C:/bun/bun.exe" "C:/eva/src/main.ts" --home "C:/home/eva"',
     ]);
+  });
+
+  test("after the install, the Windows task starts at once, under the same name", () => {
+    expect(windowsRunTaskCommand()).toEqual(["schtasks", "/Run", "/TN", "Eva"]);
+    expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
+  });
+
+  test("the single executable runs itself; a source checkout runs bun with main.ts (plan §11)", () => {
+    expect(
+      serviceCommand({ standalone: true, execPath: "C:/eva/eva.exe", mainScript: "B:/~BUN/root/eva.exe" }),
+    ).toEqual(["C:/eva/eva.exe"]);
+    expect(serviceCommand({ standalone: false, execPath: "/usr/bin/bun", mainScript: "/opt/eva/src/main.ts" })).toEqual(
+      ["/usr/bin/bun", "/opt/eva/src/main.ts"],
+    );
   });
 });
 

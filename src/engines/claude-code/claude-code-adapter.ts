@@ -115,7 +115,11 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     // folder, not the vault, and miss notes. Eva's text alone did better. `claude` still adds its identity line.
     options.systemPrompt = request.appendSystemPrompt ?? { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project"];
-    options.settings = { disableAllHooks: true };
+    // A person's own allow rule, such as `Bash(git push:*)`, would skip canUseTool and so Eva's
+    // approval. An ask rule always beats an allow rule, so every shell call and every call of
+    // Eva's own tools reaches canUseTool, which lets local actions through at once (issue #51).
+    const ask = ["Bash", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
+    options.settings = { disableAllHooks: true, permissions: { ask } };
   } else {
     // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session.
     options.systemPrompt = { type: "preset", preset: "claude_code" };

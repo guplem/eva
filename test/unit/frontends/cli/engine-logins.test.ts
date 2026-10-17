@@ -21,16 +21,16 @@ afterEach(() => {
 
 describe("withVariable", () => {
   test("a POSIX shell sets the variable for the one command, with the folder quoted", () => {
-    expect(withVariable("GH_CONFIG_DIR", "/home/o'brien/eva/engines/gh", ["gh", "auth", "login"], "linux")).toBe(
-      "GH_CONFIG_DIR='/home/o'\\''brien/eva/engines/gh' gh auth login",
+    expect(withVariable("GH_CONFIG_DIR", "/srv/o'brien/eva/engines/gh", ["gh", "auth", "login"], "linux")).toBe(
+      "GH_CONFIG_DIR='/srv/o'\\''brien/eva/engines/gh' gh auth login",
     );
   });
 
   test("PowerShell sets the variable, runs the command, and removes the variable again", () => {
     expect(
-      withVariable("GH_CONFIG_DIR", "C:\\Users\\o'brien\\eva\\engines\\gh", ["gh", "auth", "login"], "win32"),
+      withVariable("GH_CONFIG_DIR", "D:\\eva-homes\\o'brien\\eva\\engines\\gh", ["gh", "auth", "login"], "win32"),
     ).toBe(
-      "$env:GH_CONFIG_DIR = 'C:\\Users\\o''brien\\eva\\engines\\gh'; gh auth login; Remove-Item Env:GH_CONFIG_DIR",
+      "$env:GH_CONFIG_DIR = 'D:\\eva-homes\\o''brien\\eva\\engines\\gh'; gh auth login; Remove-Item Env:GH_CONFIG_DIR",
     );
   });
 });

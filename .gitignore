@@ -9,3 +9,6 @@ reports/
 test-results/
 playwright-report/
 dist/
+
+# Agent worktrees (Claude Code)
+.claude/worktrees/

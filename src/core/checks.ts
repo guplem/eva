@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineName, EnginePort } from "../shared/engine-port.ts";
+import type { EngineEventPayload } from "../shared/events.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 
 export type CheckName = "vault" | EngineName | "github" | "telegram";
@@ -70,12 +71,20 @@ async function checkEngine(name: EngineName, inputs: CheckInputs): Promise<Check
   if (engine === undefined) return { ok: false, detail: `Eva did not find ${engineLabels[name]} on this machine.` };
   const folder = mkdtempSync(join(tmpdir(), "eva-engine-check-"));
   const controller = new AbortController();
+  // The abort asks the engine to stop; the deadline ends the check even if the engine never does.
+  const deadline = new Promise<"late">((resolve) => {
+    controller.signal.addEventListener("abort", () => {
+      resolve("late");
+    });
+  });
   const timer = setTimeout(() => {
     controller.abort();
   }, inputs.engineTimeoutMs ?? engineCheckTimeoutMs);
+  const late: CheckResult = { ok: false, detail: `${engineLabels[name]} gave no answer in time.` };
+  let events: AsyncIterator<EngineEventPayload> | null = null;
   try {
     let reply = "";
-    for await (const event of engine.runTurn({
+    const stream = engine.runTurn({
       mode: "project",
       history: { kind: "new", engineSessionId: randomUUID() },
       startFolder: folder,
@@ -88,21 +97,37 @@ async function checkEngine(name: EngineName, inputs: CheckInputs): Promise<Check
       environment: inputs.engineEnvironment,
       requestApproval: () => Promise.resolve("deny"),
       signal: controller.signal,
-    })) {
+    });
+    events = stream[Symbol.asyncIterator]();
+    for (;;) {
+      const next = await Promise.race([events.next(), deadline]);
+      if (next === "late" || controller.signal.aborted) return late;
+      if (next.done === true) return { ok: false, detail: `${engineLabels[name]} stopped without an answer.` };
+      const event = next.value;
       if (event.kind === "text") reply += event.text;
-      if (controller.signal.aborted) return { ok: false, detail: `${engineLabels[name]} gave no answer in time.` };
       if (event.kind === "turn_failed") return { ok: false, detail: inputs.redact(event.reason) };
       if (event.kind === "turn_finished") {
         const preview = (reply.trim().split(/\r?\n/)[0] ?? "").slice(0, replyPreviewLength);
         return { ok: true, detail: inputs.redact(`${engineLabels[name]} answered: ${preview}`) };
       }
     }
-    return { ok: false, detail: `${engineLabels[name]} stopped without an answer.` };
   } catch (error) {
     return { ok: false, detail: inputs.redact(error instanceof Error ? error.message : "failed") };
   } finally {
     clearTimeout(timer);
-    rmSync(folder, { recursive: true, force: true });
+    controller.abort();
+    // Not awaited: a stuck engine would hold the check again. It lets the adapter clean up.
+    void events?.return?.().catch(() => undefined);
+    removeFolder(folder);
+  }
+}
+
+/** On Windows an engine that is still stopping holds its folder; a leftover temporary folder is harmless. */
+function removeFolder(folder: string): void {
+  try {
+    rmSync(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  } catch {
+    // The system cleans its temporary folder.
   }
 }
 
@@ -120,10 +145,10 @@ async function runProgram(
     });
     const output = (result.stdout.trim() || result.stderr.trim()).split(/\r?\n/)[0] ?? "";
     return result.exitCode === 0
-      ? { ok: true, detail: okDetail ?? output }
-      : { ok: false, detail: result.stderr.trim().split(/\r?\n/)[0] ?? "failed" };
+      ? { ok: true, detail: inputs.redact(okDetail ?? output) }
+      : { ok: false, detail: inputs.redact(result.stderr.trim().split(/\r?\n/)[0] ?? "failed") };
   } catch (error) {
-    return { ok: false, detail: error instanceof Error ? error.message : "failed" };
+    return { ok: false, detail: inputs.redact(error instanceof Error ? error.message : "failed") };
   }
 }
 
@@ -137,7 +162,8 @@ async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
       signal: AbortSignal.timeout(checkTimeoutMs),
     });
     if (!response.ok) return { ok: false, detail: "GitHub refused the token." };
-    const body = (await response.json()) as { login?: string };
+    // A proxy can answer 200 with a page that is not JSON; the account name is then unknown.
+    const body = (await response.json().catch(() => ({}))) as { login?: string };
     return { ok: true, detail: `The token belongs to @${body.login ?? "an unknown account"}.` };
   } catch {
     return { ok: false, detail: "GitHub could not be reached." };

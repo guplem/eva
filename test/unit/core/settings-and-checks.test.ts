@@ -225,6 +225,18 @@ describe("runCheck", () => {
       ok: false,
       detail: "pi gave no answer in time.",
     });
+    // pi answers an abort only over its RPC channel, so a stuck pi may never end the stream.
+    const deaf: EnginePort = {
+      name: "pi",
+      async *runTurn() {
+        await new Promise(() => undefined);
+        yield { kind: "turn_failed", reason: "never" };
+      },
+    };
+    expect(await runCheck("pi", inputs({ engines: [deaf], engineTimeoutMs: 20 }))).toEqual({
+      ok: false,
+      detail: "pi gave no answer in time.",
+    });
     const broken: EnginePort = {
       name: "pi",
       runTurn() {

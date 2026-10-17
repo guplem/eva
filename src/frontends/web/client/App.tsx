@@ -17,6 +17,9 @@ import { SettingsView } from "./SettingsView.tsx";
 
 type Screen = "assistant" | "project" | "settings";
 
+/** Problems come with the status, not over the socket, so the page asks for them again this often. */
+const problemPollMs = 60_000;
+
 export function App(): ReactElement {
   return (
     <ErrorToastProvider>
@@ -33,7 +36,16 @@ function EvaApp(): ReactElement {
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
+  const [problems, setProblems] = useState<readonly string[]>([]);
   const showError = useShowError();
+
+  const refreshProblems = useCallback(async (): Promise<void> => {
+    try {
+      setProblems((await api.status()).problems);
+    } catch {
+      // The next poll or the next reconnect tries again.
+    }
+  }, []);
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     try {
@@ -55,12 +67,20 @@ function EvaApp(): ReactElement {
   const recover = useCallback(async (): Promise<void> => {
     setLive((state) => ({ ...state, streaming: {} }));
     await refreshSessions();
+    await refreshProblems();
     try {
       setApprovals(await api.pendingApprovals());
     } catch {
       // The next reconnect or the next visit tries again.
     }
-  }, [refreshSessions]);
+  }, [refreshSessions, refreshProblems]);
+
+  useEffect(() => {
+    if (authenticated !== true) return undefined;
+    void refreshProblems();
+    const timer = setInterval(() => void refreshProblems(), problemPollMs);
+    return () => clearInterval(timer);
+  }, [authenticated, refreshProblems]);
 
   useEffect(() => {
     if (authenticated !== true) return undefined;
@@ -152,6 +172,16 @@ function EvaApp(): ReactElement {
           Settings
         </button>
       </header>
+      {problems.length > 0 && (
+        <section className="problem-banner" aria-label="Problems">
+          <strong>{problems.length === 1 ? "1 problem" : `${String(problems.length)} problems`}</strong>
+          <ul>
+            {problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </section>
+      )}
       {!isConnected && (
         <div className="connection-banner" role="status">
           Reconnecting…

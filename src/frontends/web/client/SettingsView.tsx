@@ -42,6 +42,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
 
   useEffect(() => {
@@ -81,26 +82,50 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       const status = await api.updateNow();
       setUpdate(status);
       setUpdateNote(null);
-      if (status.phase === "restarting") await waitForRestart();
+      if (status.phase === "restarting") {
+        setUpdateNote("Eva restarts with the new version…");
+        setUpdateNote(
+          (await waitForRestart())
+            ? "Eva restarted with the new version."
+            : "Eva did not answer after the update. Check her log.",
+        );
+      }
     } catch (error) {
       setUpdateNote(error instanceof Error ? error.message : String(error));
     }
   };
 
-  /** Eva stops for a moment after an update; the page asks again until she answers. */
-  const waitForRestart = async (): Promise<void> => {
-    setUpdateNote("Eva restarts with the new version…");
+  /** Eva stops for a moment at a restart; the page asks again until she answers. */
+  const waitForRestart = async (): Promise<boolean> => {
     for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, restartPollMs));
       try {
         setUpdate(await api.updateStatus());
-        setUpdateNote("Eva restarted with the new version.");
-        return;
+        return true;
       } catch {
         // Eva is still starting.
       }
     }
-    setUpdateNote("Eva did not answer after the update. Check her log.");
+    return false;
+  };
+
+  /** Restarts Eva after a confirm that names the running chats, which the restart stops. */
+  const restartNow = async (): Promise<void> => {
+    try {
+      const running = (await api.status()).busySessionIds.length;
+      const warning =
+        running === 0
+          ? ""
+          : `${String(running)} ${running === 1 ? "chat is" : "chats are"} running. A restart stops ${running === 1 ? "it" : "them"}. `;
+      if (!window.confirm(`${warning}Restart Eva now?`)) return;
+      await api.restart();
+      setRestartNote("Eva restarts…");
+      setRestartNote(
+        (await waitForRestart()) ? "Eva restarted." : "Eva did not answer after the restart. Check her log.",
+      );
+    } catch (error) {
+      setRestartNote(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const becomeHub = async (): Promise<void> => {
@@ -120,6 +145,17 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     }
   };
 
+  /** Ends every device login, this browser's included. The token still works. */
+  const logOutEveryDevice = async (): Promise<void> => {
+    try {
+      await api.logOutEveryDevice();
+      await api.logout();
+      onLoggedOut();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const save = async (): Promise<void> => {
     const seconds = Number(sweepSeconds);
     if (!Number.isInteger(seconds) || seconds < 10) {
@@ -135,7 +171,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           .map((root) => root.trim())
           .filter((root) => root.length > 0),
       });
-      setNotice("Saved. Restart Eva to use the new settings.");
+      setNotice("Saved. Press Restart Eva to use the new settings.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -240,9 +276,16 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             </button>
           </div>
           {updateNote !== null && <div role="status">{updateNote}</div>}
+          <div className="check-row">
+            <span style={{ flex: 1 }}>Restart Eva, for example after a settings change.</span>
+            <button onClick={() => void restartNow()}>Restart Eva</button>
+          </div>
+          {restartNote !== null && <div role="status">{restartNote}</div>}
           <div className="chip">
             Eva installs an update only when no chat is running, then restarts. The time zone, updates, vault fetch,
-            engines, trust and Google settings live in your vault, so every machine uses them.
+            engines, the Google account and the voice language live in your vault, so every machine uses them. The
+            security settings (allowed Tailscale accounts, trusted repository owners, Google access) stay on each
+            machine.
           </div>
         </fieldset>
         <fieldset>
@@ -263,6 +306,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             Save
           </button>
           <button onClick={() => void api.logout().then(onLoggedOut)}>Log out</button>
+          <button onClick={() => void logOutEveryDevice()}>Log out every device</button>
         </div>
       </div>
     </div>

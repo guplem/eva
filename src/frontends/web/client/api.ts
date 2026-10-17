@@ -1,6 +1,7 @@
-/** The web UI's client of the local API. The login cookie carries the token (plan §12). */
+/** The web UI's client of the local API. The login cookie carries the token or a device token (plan §12). */
 import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
+import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/instance/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
@@ -14,6 +15,7 @@ import type { SessionEvent } from "../../../shared/events.ts";
 export type {
   CheckResult,
   CloneDetails,
+  DeviceLoginRequest,
   EvaStatus,
   PendingApproval,
   Project,
@@ -61,6 +63,11 @@ async function request<Body>(method: string, path: string, body?: unknown): Prom
 export const api = {
   login: (token: string): Promise<void> => request("POST", "/api/login", { token }),
   logout: (): Promise<void> => request("POST", "/api/logout"),
+  requestDeviceLogin: (): Promise<DeviceLoginRequest> => request("POST", "/api/login/device", {}),
+  /** The device token never reaches the page: the server sets it as an HTTP-only cookie. */
+  deviceLoginState: (requestId: string): Promise<{ state: DeviceLoginState["state"] }> =>
+    request("GET", `/api/login/device/${encodeURIComponent(requestId)}`),
+  logOutEveryDevice: (): Promise<{ removed: number }> => request("DELETE", "/api/devices"),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<SessionRecord[]> => request("GET", "/api/sessions"),
   newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
@@ -93,6 +100,7 @@ export const api = {
     request("PUT", "/api/settings", patch),
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),

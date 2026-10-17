@@ -9,12 +9,15 @@ import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
-import type { Logger } from "../shared/logger.ts";
+import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
+import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
+import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
+import { DeviceLogins } from "./instance/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
 import { applySettingsChange, saveSettings } from "./instance/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
@@ -64,7 +67,7 @@ export interface EvaOptions {
   readonly evaCommand?: readonly string[] | null;
   /** Where Eva's own updates come from. Null: no updates (plan §10). */
   readonly updateChannel?: UpdateChannel | null;
-  /** Stops Eva after an update, so that the new version starts. */
+  /** Stops Eva so that she starts again: after an update, and for a restart on request. */
   readonly restartForUpdate?: () => void;
   /** The web UI's address for the phone through Tailscale, now. Null: Tailscale does not run here. */
   readonly remoteAccess?: () => RemoteAccess | null;
@@ -104,6 +107,8 @@ export interface EvaStatus {
   readonly remoteAccess: RemoteAccess | null;
   /** The web UI on this machine only, which needs the token. */
   readonly localUrl: string;
+  /** One line for each open problem; empty when all is good. */
+  readonly problems: readonly string[];
 }
 
 export interface PublicSettings {
@@ -137,6 +142,9 @@ const reportTextLimit = 3_000;
 const scheduleTickMs = 30_000;
 const backgroundTickMs = 60_000;
 const housekeepingIntervalMs = 24 * 60 * 60_000;
+/** The front end that asked for a restart answers first, then Eva stops. */
+const restartDelayMs = 500;
+const maxLogEntries = 100;
 /** Settings that apply at once; any other change waits for a restart. */
 const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes"];
 const noVaultState: VaultSyncState = {
@@ -153,7 +161,10 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** Null until a whisper model is configured. */
   readonly transcribe: Transcribe | null;
+  /** The web UI's device logins, which the Telegram bot confirms (plan §12). */
+  readonly deviceLogins: DeviceLogins;
   private readonly options: EvaOptions;
+  private readonly redactor: Redactor;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -174,12 +185,16 @@ export class Eva {
   private lastHousekeepingAt: Date | null;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
   private readonly cloneChoices = new Map<string, Promise<unknown>>();
+  private readonly alerts: AlertCenter;
+  /** When the vault sync went offline, for the 30-minute alert; null while it is not offline. */
+  private vaultOfflineSince: Date | null;
 
   constructor(options: EvaOptions) {
     this.options = options;
     this.sweeping = false;
     this.backgroundTicking = false;
     this.lastHousekeepingAt = null;
+    this.vaultOfflineSince = null;
     this.settings = options.config;
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
@@ -203,6 +218,13 @@ export class Eva {
 
     const redactor = new Redactor();
     for (const secret of Object.values(options.secrets)) redactor.addSecret(secret);
+    this.alerts = new AlertCenter({
+      now: options.now,
+      redactor,
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+    this.redactor = redactor;
+    this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
     const engineEnvironment = this.engineEnvironment();
     const vaultSync = this.vaultSync;
 
@@ -276,6 +298,12 @@ export class Eva {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
               send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
             },
+            reportFiring: (schedule, failure) => {
+              this.alerts.report(
+                `schedule:${schedule.id}`,
+                failure === null ? null : scheduleFiringProblem(schedule.name, failure),
+              );
+            },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
 
@@ -325,6 +353,7 @@ export class Eva {
       this.noticeRoleChange();
       this.cleanUpIfDue();
       await this.updater?.tick();
+      this.noticeUpdateProblem();
     } finally {
       this.backgroundTicking = false;
     }
@@ -374,12 +403,49 @@ export class Eva {
   }
 
   async checkForUpdate(): Promise<UpdateStatus | null> {
-    return (await this.updater?.check()) ?? null;
+    const status = (await this.updater?.check()) ?? null;
+    this.noticeUpdateProblem();
+    return status;
   }
 
   /** Installs a newer version as soon as no chat runs a turn, then restarts. */
   async updateNow(): Promise<UpdateStatus | null> {
-    return (await this.updater?.updateNow()) ?? null;
+    const status = (await this.updater?.updateNow()) ?? null;
+    this.noticeUpdateProblem();
+    return status;
+  }
+
+  /**
+   * Restarts Eva at once, through the same path as an update (exit code 4 under systemd, a new
+   * copy elsewhere). A running turn stops; the front end asks the person to confirm first.
+   */
+  restart(): void {
+    this.options.logger?.log("info", "Eva restarts on request.");
+    setTimeout(() => {
+      this.options.restartForUpdate?.();
+    }, restartDelayMs);
+  }
+
+  /** Calls the listener with each alert. Returns an unsubscribe. */
+  onAlert(listener: (alert: Alert) => Promise<void> | void): () => void {
+    return this.alerts.onAlert(listener);
+  }
+
+  /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */
+  reportProblem(key: string, problem: AlertProblem | null): void {
+    this.alerts.report(key, problem);
+  }
+
+  /** The start found the marker of a run that never stopped cleanly. */
+  reportUncleanExit(): void {
+    this.alerts.notify("unclean_exit", "warn", uncleanExitMessage);
+  }
+
+  /** The last warnings and errors of Eva's own log, at most 100. */
+  recentLogs(query: RecentLogQuery): LogEntry[] {
+    const limit = Math.min(Math.max(Math.floor(query.limit), 0), maxLogEntries);
+    if (limit === 0) return [];
+    return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
   /** Resolves when no chat runs a turn, including its save after the turn. */
@@ -411,6 +477,11 @@ export class Eva {
     }
   }
 
+  /** Removes secrets from a text that leaves the core, such as an error message (lesson 95). */
+  redact(text: string): string {
+    return this.redactor.redact(text);
+  }
+
   status(): EvaStatus {
     const sessions = this.sessions.list();
     return {
@@ -429,6 +500,7 @@ export class Eva {
       update: this.updateStatus(),
       remoteAccess: this.options.remoteAccess?.() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
+      problems: this.alerts.openProblems(),
     };
   }
 
@@ -672,8 +744,23 @@ export class Eva {
     });
   }
 
-  /** Logs a sync problem and the files that the sync held back (lessons 16, 26). */
+  private noticeUpdateProblem(): void {
+    const status = this.updater?.status();
+    if (status !== undefined) this.alerts.report("update", updateProblem(status));
+  }
+
+  private noticeSyncProblem(state: VaultSyncState): void {
+    const now = this.options.now();
+    if (state.status !== "offline") this.vaultOfflineSince = null;
+    else this.vaultOfflineSince ??= now;
+    const offlineForMs = this.vaultOfflineSince === null ? 0 : now.getTime() - this.vaultOfflineSince.getTime();
+    const problem = vaultSyncProblem(state, offlineForMs);
+    if (problem !== "keep") this.alerts.report("vault_sync", problem);
+  }
+
+  /** Logs a sync problem and the files that the sync held back (lessons 16, 26), and raises its alert. */
   private logSyncState(state: VaultSyncState): VaultSyncState {
+    this.noticeSyncProblem(state);
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
       this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
         status: state.status,

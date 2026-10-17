@@ -76,6 +76,8 @@ Write to your bot as you write to a person. Eva answers in the same chat. Each n
 | `/new`       | Start a new conversation                    |
 | `/stop`      | Stop what Eva is doing in this conversation |
 | `/status`    | Show whether everything is all right        |
+| `/logs`      | Show Eva's last warnings and errors         |
+| `/restart`   | Restart Eva (she asks you to confirm first) |
 | `/link`      | Show the address of Eva's web page          |
 | `/sync`      | Save the notebook now                       |
 | `/update`    | Install the newest version of Eva           |
@@ -90,7 +92,7 @@ You can also send voice notes, photos and files.
 Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it.
 
 1. Install the Tailscale app on the phone or computer, and sign in with the same account that you used on Eva's computer.
-2. Open the address.
+2. Open the address. The first time on each device, the page shows a short code, and Eva asks in Telegram whether to allow it. Tap **Allow** when the code matches. That device then stays logged in for a year.
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
@@ -116,6 +118,8 @@ Open **Settings** on the web page. The most useful ones:
 | **Sync**      | Saving the notebook to GitHub, and bringing in what other computers saved.                                                                      |
 
 ## Problems and answers
+
+**Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
 
 **Eva does not answer in Telegram.**
 Open the web page and look at Settings, or run `bun run eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.

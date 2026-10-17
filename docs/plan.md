@@ -130,6 +130,7 @@ The inventory is done: 155 projects, confirmed by the owner on 2026-10-14 (rules
 | **Schedules**  | Fire scheduled messages, on the hub instance only (§9)                                          |
 | **Front ends** | Local API, CLI, Telegram, web UI                                                                |
 | **Settings**   | Config and secrets in the instance home, with a test for each one                               |
+| **Alerts**     | Tell the owner about each problem without a `/status` (§4.7)                                    |
 
 ### 4.2 Layers
 
@@ -158,10 +159,12 @@ src/
 
 - **Home folder:** `--home <path>` or `EVA_HOME`. Default: `$XDG_CONFIG_HOME/eva` (Linux, else `~/.config/eva`), `%APPDATA%\eva` (Windows).
 - **Layout:**
-  - `config.json`: this machine's settings, checked against a schema: the vault folder, the machine name, the port, the project roots, program paths, Telegram, remote host names, `remoteAccess.tailscaleServe`
-  - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
+  - `config.json`: this machine's settings, checked against a schema: the vault folder, the machine name, the port, the project roots, program paths, Telegram, remote host names, `remoteAccess.tailscaleServe`, and the security settings (§12): the allowed Tailscale identities, trust, `google.readOnly`, `google.services`
+  - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, the Google account, the voice language. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
+  - The security settings never come from the vault: the Assistant agent edits the vault as normal work, and the vault syncs from other machines. Eva ignores them in the vault file. At start, after the pull, Eva moves each security key that `config.json` lacks from the vault file to `config.json`, once, and removes every security key from the vault file.
   - `secrets.json`: tokens, readable by the OS user only
-  - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`
+  - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`, `state/devices.json` (the hashes of the web UI's device tokens, §12)
+  - `state/running`: present while Eva runs; a clean stop removes it, so a start that finds it reports an unclean exit (§4.7)
   - `logs/eva-YYYY-MM-DD.jsonl`, kept for 14 days
   - `engines/claude/`, `engines/pi/`, `engines/gh/` (used only by extra instances, see below)
 - **Writes are atomic** (a temporary file, then a rename). A bad file never crashes Eva (lesson 54).
@@ -199,6 +202,16 @@ One TypeScript union crosses the engine port. Every event has `kind`, `sessionId
 | `turn_failed`     | `reason`                                                                                                                                   |
 
 Every turn stream ends with exactly one `turn_finished` or `turn_failed` (lesson 47).
+
+### 4.7 Problem alerts
+
+The owner runs Eva unattended and may have only a phone. A failure must reach the owner without a `/status`.
+
+- **An alert** has a stable key, a level, a one-line message that says what happened and what to do, and a time. The core keeps them in `src/core/alerts/`; a front end listens with `eva.onAlert`.
+- **Deduplication by key:** Eva sends an alert when the problem starts, again at most once in 24 hours while it lasts, and one "resolved" alert when it clears. A listener that fails never reaches the sync or scheduler code.
+- **Triggers:** a vault sync in `conflict` or `error`, or `offline` for more than 30 minutes; a failed update check or install (the alert names the step); a failed schedule firing; a start after an unclean exit (the `state/running` marker); a Telegram poll in `conflict`, or `failing` for more than 15 minutes.
+- **Delivery:** the Telegram bot sends each alert to the main chat. `EvaStatus.problems` lists the open problems, and the web UI shows them as a banner at the top, because a Telegram problem cannot travel over Telegram. Eva's log records each alert.
+- **Status verdict:** `eva status` and Telegram `/status` start with "All good" or "N problems", then one line for each problem.
 
 ## 5. Modes
 
@@ -332,7 +345,10 @@ In this order, after P8: the engine-neutral background task system for more engi
 Assistant mode front end, ported from v1 with lessons 56 to 63 and 123 to 127:
 
 - Topics as conversations, with the model picker first in a new topic. A topic is a chat in the web UI too.
-- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/link`, `/sync`, `/update`, `/help`.
+- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/link`, `/sync`, `/update`, `/logs [n]`, `/restart`, `/help`.
+- `/logs [n]` shows the last `n` warnings and errors of the newest log files (20 by default, 100 at most), one line each; `GET /api/logs?level=warn&limit=n` serves the same entries.
+- `/restart` asks first with a button, and says when chats are running. It restarts through the update path (exit code 4 under systemd, a new copy elsewhere); `POST /api/restart` does the same.
+- Each alert (§4.7) goes to the main chat.
 - Voice notes transcribed on the machine. Files sent from allowed folders, with offer buttons.
 - One allowed chat id, set by a pairing code that the person sends to the bot.
 - A request for project work opens a Project session and posts a link to it.
@@ -345,7 +361,8 @@ Built from the mockups in `mockups/`:
 - **Project mode:** projects with their clones in the sidebar, with search and filters, and a "New clone" button. The conversation of the selected clone as a tree, with one input for each branch, and retry and fork on each answer. The branch name and pull request number at the top.
 - **Assistant mode:** schedules (with "Add schedule") and chats in the sidebar. A message that a schedule fired shows a clock icon. Retry and fork work here too.
 - **Activity chips** under an answer ("3 commands, 2 turns", "2 background tasks") and a **background tasks panel**, in both modes, from the engine's own events (Claude Code subagents and background commands).
-- **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart.
+- **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart. A "Restart Eva" button restarts after a confirm that names the running chats.
+- **Problem banner** at the top of every screen while `EvaStatus.problems` is not empty (§4.7). The page reads the status every minute and after each reconnect.
 - **Made for a phone first:** a web manifest and icons, so the person can add Eva to the home screen. After a dropped connection or a return to the page, the UI reads the sessions and the waiting approvals (`GET /api/approvals`) again, and shows "Reconnecting…" while the socket is down. A failed action shows an error and keeps the typed text.
 - **Served by the core on `localhost`, and exposed with `tailscale serve`** (§12).
 
@@ -411,9 +428,12 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 
 - **An instance is full shell access as its OS user.** Whoever controls a front end controls the machine.
 - **Telegram:** one allowed chat id (lessons 63, 127). Telegram two-factor login is recommended.
-- **Local API and web UI:** listen on `127.0.0.1` only. Remote access only through `tailscale serve`; Eva checks the Tailscale identity header against the instance's allowlist. Local clients (the CLI) read a token from `<home>/secrets.json`. A request through `tailscale serve` from an allowed Tailscale account needs no token: Tailscale proved the account (owner, 2026-10-17). The trade-off: another OS user on the same machine could forge the header on `127.0.0.1`, so an instance on a shared machine sets `remoteAccess.tailscaleServe` to false or lists no identities only with care. `Host` and `Origin` are checked on every request and WebSocket. Never `0.0.0.0`, never Tailscale Funnel, never a public tunnel.
+- **Local API and web UI:** listen on `127.0.0.1` only. Remote access only through `tailscale serve`; Eva checks the Tailscale identity header against the instance's allowlist. Local clients (the CLI) read a token from `<home>/secrets.json`. The Tailscale identity alone never authenticates: any program on the machine, an agent that Eva runs included, can forge the header on `127.0.0.1`. `Host` and `Origin` are checked on every request and WebSocket. Never `0.0.0.0`, never Tailscale Funnel, never a public tunnel.
+- **Device login (web UI):** a browser with no valid cookie that comes through an allowed Tailscale account asks to log in. The page shows a short code, and the Telegram bot asks the paired chat to allow or deny the browser, with the same code and the account. On Allow, Eva issues a random device token and stores only its SHA-256 hash, with a label and the time, in `state/devices.json`. The page polls, and gets the token as a strict, HTTP-only cookie (`eva_device`, Secure behind HTTPS) that lasts a year. A request expires after 5 minutes; Eva takes at most 5 requests in 10 minutes. Without a Telegram bot that can ask, the page says why and asks for the token. Logout ends the device login of the browser; Settings has "Log out every device".
+- **Security settings stay on the machine:** the allowed Tailscale identities, trust, `google.readOnly` and `google.services` live in `config.json`, never in the vault (§4.4).
+- **Files:** Eva creates her home and state folders with mode 700, and her log files with mode 600 (no effect on Windows).
 - **Project trust:** the first time a clone is opened, Eva asks whether to trust it, as Claude Code itself does. A clone whose repository owner is on the allowlist (default: the owner's GitHub account) is trusted at once. An untrusted clone runs with `disableAllHooks: true` and no project MCP servers. Trust is stored in `state/trust.json`, by repository URL. Eva stores only an answer of the person: a question that expires, or a stopped turn, keeps the clone untrusted for that turn only.
-- **Secrets** live in the instance home. Logs and the event stream are redacted (lesson 95). An agent can still read any file through a shell; the real protection is the env allowlist, redaction, and secrets outside the vault where possible (lesson 116).
+- **Secrets** live in the instance home. Logs, the event stream, API error messages and Telegram error texts are redacted (lesson 95). An agent can still read any file through a shell; the real protection is the env allowlist, redaction, and secrets outside the vault where possible (lesson 116).
 - **GitHub:** a deploy key for the vault; a fine-grained token for project pull requests, scoped to project repositories; the engine repository in neither (lesson 119).
 - **Google data is untrusted input.** Read-only scopes first; outward actions through §5.5.
 - **MCP servers and skills** run pinned versions.

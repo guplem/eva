@@ -5,17 +5,12 @@
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Alert, AlertProblem } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
-import {
-  describeLastTurn,
-  describeRemoteAccess,
-  describeRole,
-  describeSync,
-  describeUpdate,
-  heldBackLines,
-} from "../cli/client.ts";
+import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import type { DeviceLoginRequest } from "../../core/instance/device-logins.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
@@ -141,10 +136,15 @@ const unreadableContents: readonly (readonly [string, string])[] = [
   ["dice", "dice"],
 ];
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+const deviceExpiredText = "This request expired.";
 /** Telegram lets a bot download at most 20 MB. */
 const maxDownloadBytes = 20 * 1024 * 1024;
 /** Telegram refuses a keyboard of more than 100 buttons. */
 const buttonsPerMessage = 50;
+/** A short Telegram outage heals by itself; only a long one needs the owner. */
+const pollFailingAlertMs = 15 * 60_000;
+const pollProblemKey = "telegram_poll";
+const defaultLogCount = 20;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
@@ -156,6 +156,8 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
   { command: "update", description: "Install the latest version of Eva" },
+  { command: "logs", description: "Show the last warnings and errors: /logs [count]" },
+  { command: "restart", description: "Restart Eva" },
   { command: "help", description: "Show the commands" },
 ];
 
@@ -168,6 +170,7 @@ export class TelegramBot {
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
+  private readonly unsubscribeAlerts: () => void;
   private readonly offers: OfferStore;
   private running = false;
   private readonly clock: Clock;
@@ -177,10 +180,11 @@ export class TelegramBot {
   private currentPollState: TelegramPollState;
   /** Aborts at stop(), so a wait in the loop ends at once. */
   private stopping: AbortController;
-  /** The approval questions in the chat, by request id, so the answer can replace their buttons. */
+  /** The approval and device login questions in the chat, by request id, so the answer can replace their buttons. */
   private readonly approvalMessages: Map<string, { chatId: number; messageId: number; text: string }>;
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
+  private readonly detachDeviceApprover: () => void;
 
   constructor(options: TelegramBotOptions) {
     this.options = options;
@@ -200,6 +204,14 @@ export class TelegramBot {
     });
     this.unsubscribeSchedules =
       options.eva.schedules?.subscribe((event) => this.onScheduleEvent(event)) ?? ((): void => undefined);
+    this.unsubscribeAlerts = options.eva.onAlert((alert) => this.sendAlert(alert));
+    // The paired chat confirms each new browser of the web UI (plan §12).
+    this.detachDeviceApprover = options.eva.deviceLogins.attachApprover({
+      canApprove: () => this.allowedChatId !== null,
+      ask: (request) => {
+        void this.askDeviceLogin(request);
+      },
+    });
   }
 
   async registerCommands(): Promise<void> {
@@ -246,6 +258,7 @@ export class TelegramBot {
     }
     this.nextPollRetryMs = firstRetryMs;
     this.currentPollState = { kind: "polling" };
+    this.reportPollProblem();
     for (const update of updates) {
       this.state.offset = update.update_id + 1;
       this.saveState();
@@ -273,14 +286,34 @@ export class TelegramBot {
           "error",
           "Another program polls this Telegram bot. Eva pauses Telegram for 10 minutes.",
         );
+        this.reportPollProblem();
         return conflictPauseMs;
       }
     }
     this.options.logger?.log("warn", "Telegram poll failed.", { reason: String(error) });
     if (this.currentPollState.kind !== "failing")
-      this.currentPollState = { kind: "failing", since: now.toISOString(), reason: errorText(error) };
+      this.currentPollState = { kind: "failing", since: now.toISOString(), reason: this.describeError(error) };
+    this.reportPollProblem();
     if (error instanceof TelegramError && error.retryAfterSeconds !== null) return error.retryAfterSeconds * 1_000;
     return this.takePollRetryMs();
+  }
+
+  /**
+   * Tells the core about a poll that cannot work. The bot cannot say it over Telegram, so the
+   * problem must reach the status and the web UI.
+   */
+  private reportPollProblem(): void {
+    this.options.eva.reportProblem(pollProblemKey, pollProblem(this.currentPollState, this.clock.now()));
+  }
+
+  /** Sends an alert to the main chat; before pairing, there is no chat to send it to. */
+  private async sendAlert(alert: Alert): Promise<void> {
+    if (this.allowedChatId === null) return;
+    await this.send(
+      this.allowedChatId,
+      null,
+      `${alert.level === "resolved" ? "Resolved" : "Problem"}: ${alert.message}`,
+    );
   }
 
   /** The exponential backoff of the poll loop: 1 second, doubled after each failure, up to 60 seconds. */
@@ -300,6 +333,10 @@ export class TelegramBot {
     this.stopping.abort();
     this.unsubscribe();
     this.unsubscribeSchedules();
+    this.unsubscribeAlerts();
+    // A bot that stops (another machine became the hub) has no poll problem any more.
+    this.options.eva.reportProblem(pollProblemKey, null);
+    this.detachDeviceApprover();
     for (const timer of this.typingTimers.values()) clearInterval(timer);
     this.typingTimers.clear();
     for (let attempt = 0; attempt < confirmAttempts; attempt += 1) {
@@ -396,7 +433,7 @@ export class TelegramBot {
     try {
       heard = (await transcribe(audio)).trim();
     } catch (error) {
-      await this.send(chatId, topicId, `The voice note could not be transcribed: ${errorText(error)}`);
+      await this.send(chatId, topicId, `The voice note could not be transcribed: ${this.describeError(error)}`);
       return;
     }
     if (heard.length === 0) {
@@ -418,7 +455,7 @@ export class TelegramBot {
       if (described.file_path === undefined) throw new Error("Telegram gave no file path");
       return await this.options.api.download(described.file_path);
     } catch (error) {
-      await this.send(chatId, topicId, `The file could not be downloaded: ${errorText(error)}`);
+      await this.send(chatId, topicId, `The file could not be downloaded: ${this.describeError(error)}`);
       return null;
     }
   }
@@ -469,6 +506,27 @@ export class TelegramBot {
           return update === null ? "This Eva cannot update herself." : describeUpdate(update);
         });
         return;
+      case "logs": {
+        const count = Number.parseInt(rest[0] ?? "", 10);
+        const entries = this.options.eva.recentLogs({
+          minimumLevel: "warn",
+          limit: Number.isNaN(count) ? defaultLogCount : count,
+        });
+        for (const part of splitForTelegram(describeLogEntries(entries), messageLimit))
+          await this.send(chatId, topicId, part);
+        return;
+      }
+      case "restart": {
+        const running = this.options.eva.status().busySessionIds.length;
+        const warning =
+          running === 0
+            ? ""
+            : `${String(running)} ${running === 1 ? "chat is" : "chats are"} running. A restart stops ${running === 1 ? "it" : "them"}. `;
+        await this.send(chatId, topicId, `${warning}Restart Eva now?`, {
+          inline_keyboard: [[{ text: "Restart", callback_data: "r:now" }]],
+        });
+        return;
+      }
       case "projects": {
         const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
         await this.send(
@@ -497,7 +555,7 @@ export class TelegramBot {
         await this.send(chatId, topicId, firstLine);
         await this.send(chatId, topicId, await work());
       } catch (error) {
-        await this.send(chatId, topicId, `The command failed: ${errorText(error)}`);
+        await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
       }
     })();
   }
@@ -567,13 +625,19 @@ export class TelegramBot {
     const isAllowed = chatId !== undefined && chatId === this.allowedChatId && this.isAllowedSender(query.from?.id);
     const [kind, first, second] = (query.data ?? "").split(":");
     const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");
+    const isDeviceAnswer = kind === "l" && first !== undefined && (second === "allow" || second === "deny");
+    // The device answer comes first, so the reply to the press can say that the request expired.
+    const deviceAnswered = isAllowed && isDeviceAnswer ? this.options.eva.deviceLogins.answer(first, second) : null;
+    const answerText = deviceAnswered === false ? deviceExpiredText : second === "allow" ? "Allowed" : "Denied";
     await this.quietCall("answerCallbackQuery", {
       callback_query_id: query.id,
-      ...(isAllowed && isApproval ? { text: second === "allow" ? "Allowed" : "Denied" } : {}),
+      ...(isAllowed && (isApproval || isDeviceAnswer) ? { text: answerText } : {}),
     });
     if (!isAllowed) return;
     if (isApproval) {
       this.options.eva.sessions.answerApproval(first, second);
+    } else if (isDeviceAnswer) {
+      await this.closeQuestion(first, answerText);
     } else if (kind === "m" && first !== undefined && models.includes(second as ModelAlias)) {
       try {
         this.options.eva.sessions.setModel(first, second as ModelAlias);
@@ -590,6 +654,10 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    } else if (kind === "r" && first === "now") {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");
+      this.options.eva.restart();
     }
   }
 
@@ -692,7 +760,7 @@ export class TelegramBot {
         { field: "document", name: file.name, bytes: new Uint8Array(readFileSync(file.path)) },
       );
     } catch (error) {
-      await this.send(chatId, topicId, `Telegram did not take ${file.relativePath}: ${errorText(error)}`);
+      await this.send(chatId, topicId, `Telegram did not take ${file.relativePath}: ${this.describeError(error)}`);
     }
   }
 
@@ -725,11 +793,7 @@ export class TelegramBot {
     try {
       await this.options.api.call("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
     } catch (error) {
-      await this.send(
-        chatId,
-        topicId,
-        `Telegram did not delete the topic: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      await this.send(chatId, topicId, `Telegram did not delete the topic: ${this.describeError(error)}`);
       return;
     }
     Reflect.deleteProperty(this.state.topics, key);
@@ -799,16 +863,36 @@ export class TelegramBot {
     if (messageId !== null) this.approvalMessages.set(event.requestId, { chatId, messageId, text });
   }
 
-  /** Shows the answer in the approval message; an edit with no keyboard removes the buttons. */
   private async closeApproval(event: Extract<SessionEvent, { kind: "approval_resolved" }>): Promise<void> {
-    const question = this.approvalMessages.get(event.requestId);
+    await this.closeQuestion(event.requestId, approvalAnswerText(event));
+  }
+
+  /** Shows the answer in the question message; an edit with no keyboard removes the buttons. */
+  private async closeQuestion(requestId: string, answerText: string): Promise<void> {
+    const question = this.approvalMessages.get(requestId);
     if (question === undefined) return;
-    this.approvalMessages.delete(event.requestId);
+    this.approvalMessages.delete(requestId);
     await this.quietCall("editMessageText", {
       chat_id: question.chatId,
       message_id: question.messageId,
-      text: `${question.text}\n\n${approvalAnswerText(event)}`.slice(0, 4_096),
+      text: `${question.text}\n\n${answerText}`.slice(0, 4_096),
     });
+  }
+
+  /** Asks the paired chat whether a new browser may open the web UI; the page shows the same code. */
+  private async askDeviceLogin(request: DeviceLoginRequest): Promise<void> {
+    const chatId = this.allowedChatId;
+    if (chatId === null) return;
+    const text = `A browser wants to open Eva (code ${request.code}, account ${request.account}). Allow?`;
+    const messageId = await this.send(chatId, null, text, {
+      inline_keyboard: [
+        [
+          { text: "Allow", callback_data: `l:${request.id}:allow` },
+          { text: "Deny", callback_data: `l:${request.id}:deny` },
+        ],
+      ],
+    });
+    if (messageId !== null) this.approvalMessages.set(request.id, { chatId, messageId, text });
   }
 
   /** Sends Markdown as Telegram HTML, split under the limit; a part with refused HTML goes again as plain text (lesson 58). */
@@ -889,17 +973,7 @@ export class TelegramBot {
   }
 
   private statusText(): string {
-    const status = this.options.eva.status();
-    return [
-      `Eva ${status.version}, ${describeRole(status)}`,
-      `Vault: ${status.vaultPath ?? "not configured"}`,
-      describeSync(status.vaultSync),
-      ...heldBackLines(status.vaultSync.withheldFiles),
-      `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
-      describeLastTurn(status.lastTurn),
-      ...(status.update === null ? [] : [describeUpdate(status.update)]),
-      ...describeRemoteAccess(status.remoteAccess),
-    ].join("\n");
+    return describeStatusLines(this.options.eva.status()).join("\n");
   }
 
   private isAllowedSender(userId: number | undefined): boolean {
@@ -916,6 +990,11 @@ export class TelegramBot {
     } catch (error) {
       this.logFailedCall(method, error);
     }
+  }
+
+  /** An error for the chat: a Telegram URL holds the bot token, and a tool's message can hold any secret (lesson 95). */
+  private describeError(error: unknown): string {
+    return this.options.eva.redact(errorText(error));
   }
 
   private logFailedCall(method: string, error: unknown): void {
@@ -989,6 +1068,27 @@ function sendRetryMs(error: unknown, retry: number): number | null {
  */
 function isHtmlRefused(error: unknown): boolean {
   return error instanceof TelegramError && error.code === 400 && /can't parse entities/i.test(error.description);
+}
+
+/** A conflict is a problem at once; a failing poll only after 15 minutes. */
+function pollProblem(state: TelegramPollState, now: Date): AlertProblem | null {
+  const resolvedMessage = "Eva reads Telegram again.";
+  if (state.kind === "conflict") {
+    return {
+      level: "error",
+      message:
+        "Another program polls this Telegram bot, so Eva cannot read Telegram. Stop the other program; Eva tries again every 10 minutes.",
+      resolvedMessage,
+    };
+  }
+  if (state.kind === "failing" && now.getTime() - new Date(state.since).getTime() > pollFailingAlertMs) {
+    return {
+      level: "error",
+      message: `Eva cannot reach Telegram for more than 15 minutes: ${state.reason}. Check the network of this machine and the bot token.`,
+      resolvedMessage,
+    };
+  }
+  return null;
 }
 
 function approvalAnswerText(event: Extract<SessionEvent, { kind: "approval_resolved" }>): string {

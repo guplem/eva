@@ -15,11 +15,14 @@ let logged: string[];
 /** Schedule names whose chat creation throws. */
 let failingChats: Set<string>;
 let failingSends: boolean;
+/** Each firing result: the schedule name and the failure, or null for a success. */
+let firings: { name: string; failure: string | null }[];
 
 beforeEach(() => {
   logged = [];
   failingChats = new Set();
   failingSends = false;
+  firings = [];
   folder = mkdtempSync(join(tmpdir(), "eva-scheduler-"));
   vault = join(folder, "vault");
   mkdirSync(join(vault, ".eva"), { recursive: true });
@@ -56,6 +59,7 @@ function createScheduler(isHub = true): Scheduler {
       },
     },
     logger: { log: (level, message) => logged.push(`${level} ${message}`) },
+    reportFiring: (schedule, failure) => firings.push({ name: schedule.name, failure }),
   });
   scheduler.subscribe((event) => {
     events.push(event);
@@ -277,6 +281,35 @@ describe("Scheduler", () => {
     failingChats.clear();
     await scheduler.tick();
     expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
+  });
+
+  test("each firing reports its result: a failure with its reason, then a success", async () => {
+    writeSchedules([morning]);
+    failingChats.add("Morning");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    failingChats.clear();
+    await scheduler.tick();
+    expect(firings).toEqual([
+      { name: "Morning", failure: "no chat for Morning" },
+      { name: "Morning", failure: null },
+    ]);
+  });
+
+  test("a prompt that fails after the chat started reports a failed firing", async () => {
+    writeSchedules([morning]);
+    failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: "the engine is gone" },
+    ]);
   });
 
   test("a prompt that fails after the chat started goes to the log, and the slot counts as fired", async () => {

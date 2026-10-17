@@ -2,6 +2,7 @@
 import type { EvaStatus } from "../../core/eva.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
+import type { LogEntry } from "../../shared/logger.ts";
 
 export interface ClientOptions {
   readonly baseUrl: string;
@@ -17,6 +18,17 @@ interface ProjectBody {
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
   return [
+    ...describeStatusLines(status),
+    ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
+  ].join("\n");
+}
+
+/** The status for `eva status` and Telegram /status: a verdict first, then the problems, then the details. */
+export function describeStatusLines(status: EvaStatus): string[] {
+  const count = status.problems.length;
+  return [
+    count === 0 ? "All good" : `${String(count)} ${count === 1 ? "problem" : "problems"}`,
+    ...status.problems.map((problem) => `• ${problem}`),
     `Eva ${status.version}, ${describeRole(status)}`,
     `Vault: ${status.vaultPath ?? "not configured"}`,
     describeSync(status.vaultSync),
@@ -27,8 +39,18 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
     describeLastTurn(status.lastTurn),
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ...describeRemoteAccess(status.remoteAccess),
-    ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
-  ].join("\n");
+  ];
+}
+
+/** One line for each log entry: the time (UTC), the level, the message and its details. */
+export function describeLogEntries(entries: readonly LogEntry[]): string {
+  if (entries.length === 0) return "No warnings or errors in the log.";
+  return entries
+    .map(
+      (entry) =>
+        `${entry.at.slice(0, 16).replace("T", " ")} ${entry.level} ${entry.message}${entry.summary === "" ? "" : ` (${entry.summary})`}`,
+    )
+    .join("\n");
 }
 
 /** The files that the sync keeps out of the vault's commits (lesson 26), one line per reason, or nothing. */
@@ -95,7 +117,8 @@ export async function requestHub(options: ClientOptions): Promise<string> {
 /** One line about Eva's version and her updates. */
 export function describeUpdate(update: UpdateStatus): string {
   const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
-  if (update.lastError !== null) return `Updates: ${automatic}; the last check failed: ${update.lastError}`;
+  if (update.lastError !== null)
+    return `Updates: ${automatic}; the last ${update.failedStep ?? "check"} failed: ${update.lastError}`;
   if (update.phase === "waiting_for_idle")
     return `Updates: ${update.latest ?? "?"} installs when the running chats end`;
   if (update.phase === "updating" || update.phase === "restarting")

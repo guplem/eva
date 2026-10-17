@@ -117,7 +117,7 @@ The last step of setup connects Eva's computer to Tailscale:
 Then, on your phone:
 
 1. Install the **Tailscale** app, sign in with the same account, and switch it on.
-2. Open the address. Send `/link` to your bot in Telegram if you forget it.
+2. Open the address. Send `/link` to your bot in Telegram if you forget it. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device: tap **Allow** when the code matches.
 3. Choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 Do the same on any other computer: install Tailscale, sign in, open the address.

@@ -94,8 +94,66 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow).toContainText("✓");
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: Log out every device ends this login too (plan §12)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Log out every device" }).click();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens (plan §12)", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  let polls = 0;
+  // The demo server has no Tailscale, so the browser plays the server's side of the device login.
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({
+      status: 201,
+      json: { id: "request-1", code: "K7QX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+    }),
+  );
+  await page.route("**/api/login/device/request-1", async (route) => {
+    polls += 1;
+    if (polls < 2) {
+      await route.fulfill({ json: { state: "pending" } });
+      return;
+    }
+    // The real server sets the device cookie here; the demo login cookie stands in for it.
+    await context.addCookies([{ name: "eva_token", value: token, url: baseURL ?? "" }]);
+    await route.fulfill({ json: { state: "allowed" } });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Confirm this device in Telegram")).toBeVisible();
+  await expect(page.getByText("K7QX")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+});
+
+test("device login: without a Telegram bot, the page says why and asks for the token", async ({ page }) => {
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({ status: 409, json: { error: "This machine runs no Telegram bot that can confirm a new device." } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("This machine runs no Telegram bot that can confirm a new device.");
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+});
+
+test("device login: a denied request offers to ask again", async ({ page }) => {
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({
+      status: 201,
+      json: { id: "request-2", code: "M3PT", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+    }),
+  );
+  await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("The request was denied in Telegram.");
+  await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
 });
 
 test("Settings: add a schedule, see its next run, and remove it (plan §9)", async ({ page }, testInfo) => {
@@ -208,6 +266,49 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.getByRole("alert")).toContainText("The chat is busy.");
   await expect(composer).toHaveValue("Keep this text");
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
+});
+
+test("open problems show in a banner at the top", async ({ page }) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, problems: ["The vault sync failed: disk full."] } });
+  });
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await expect(banner).toContainText("1 problem");
+  await expect(banner).toContainText("The vault sync failed: disk full.");
+});
+
+test("no banner shows while all is good", async ({ page }) => {
+  const statusRead = page.waitForResponse("**/api/status");
+  await logIn(page);
+  await statusRead;
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+});
+
+test("Settings: Restart Eva asks first, then restarts and waits for Eva", async ({ page }) => {
+  const restarts: string[] = [];
+  await page.route("**/api/restart", async (route) => {
+    restarts.push(route.request().method());
+    await route.fulfill({ status: 202, json: { restarting: true } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const questions: string[] = [];
+  page.once("dialog", (dialog) => {
+    questions.push(dialog.message());
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await expect.poll(() => questions).toEqual(["Restart Eva now?"]);
+  expect(restarts).toEqual([]);
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
+  expect(restarts).toEqual(["POST"]);
 });
 
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {

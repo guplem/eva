@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "bun";
@@ -158,6 +158,18 @@ describe("updateExecutable", () => {
     expect(readFileSync(executable, "utf8")).toBe("new build");
     expect(readFileSync(`${executable}.old`, "utf8")).toBe("old build");
     expect(existsSync(`${executable}.new`)).toBe(false);
+  });
+
+  test("an old executable that is still open moves aside under its own name (Windows supervisor)", async () => {
+    // A folder stands in for a file that cannot be removed, as Windows keeps a running executable.
+    mkdirSync(`${executable}.old`);
+    writeFileSync(join(`${executable}.old`, "busy"), "");
+    writeFileSync(`${executable}.old-1`, "a leftover that nothing holds any more");
+    expect(await updateExecutable(inputs())).toEqual({ status: "updated", from: "0.1.0", to: "0.2.0" });
+    expect(readFileSync(executable, "utf8")).toBe("new build");
+    const leftovers = readdirSync(folder).filter((name) => name.startsWith("eva.old-"));
+    expect(leftovers).toHaveLength(1);
+    expect(readFileSync(join(folder, leftovers[0] ?? ""), "utf8")).toBe("old build");
   });
 
   test("the same version is up to date and changes nothing", async () => {

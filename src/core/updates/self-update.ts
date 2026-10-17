@@ -3,8 +3,8 @@
  * release, after the signature and the checksum match. A running executable cannot
  * be overwritten on Windows, but it can be renamed, so the old file moves aside first.
  */
-import { chmodSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import {
@@ -138,7 +138,6 @@ async function download(release: Release, name: string): Promise<Uint8Array> {
 async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, version: string): Promise<void> {
   const executablePath = inputs.executablePath;
   const fresh = `${executablePath}.new`;
-  const old = `${executablePath}.old`;
   writeFileSync(fresh, bytes);
   chmodSync(fresh, 0o755);
   // A file that does not start on this machine must never take the old one's place (lesson 91).
@@ -153,7 +152,7 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
     rmSync(fresh, { force: true });
     throw new EvaError("update_failed", `The new executable did not start and say ${version}. Nothing changed.`);
   }
-  rmSync(old, { force: true });
+  const old = asideName(executablePath);
   renameSync(executablePath, old);
   try {
     renameSync(fresh, executablePath);
@@ -162,5 +161,29 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
     throw new EvaError("update_failed", "The new executable could not take the old one's place. Nothing changed.", {
       cause: error,
     });
+  }
+}
+
+/**
+ * Where the old executable goes. On Windows, Eva's supervisor keeps running the file from
+ * before the last update, and Windows cannot remove a running file. That file then stays,
+ * and the old executable takes a new name. Each update removes the leftovers it can.
+ */
+function asideName(executablePath: string): string {
+  const old = `${executablePath}.old`;
+  const folder = dirname(executablePath);
+  for (const name of readdirSync(folder)) {
+    if (!name.startsWith(`${basename(old)}-`)) continue;
+    try {
+      rmSync(join(folder, name), { force: true });
+    } catch {
+      // Still running: the next update tries again.
+    }
+  }
+  try {
+    rmSync(old, { force: true });
+    return old;
+  } catch {
+    return `${old}-${String(Date.now())}`;
   }
 }

@@ -733,10 +733,17 @@ repos:
 });
 
 describe("heldBackLines (lesson 26)", () => {
-  test("names the files that the secret scan keeps out, and says nothing when there are none", () => {
+  test("names the files that the sync keeps out, with the reason, and says nothing when there are none", () => {
     expect(heldBackLines([])).toEqual([]);
-    expect(heldBackLines(["Notes/keys.md", ".env"])).toEqual([
+    expect(
+      heldBackLines([
+        { path: "Notes/keys.md", reason: "secret" },
+        { path: ".env", reason: "secret" },
+        { path: "Media/video.mp4", reason: "too_large" },
+      ]),
+    ).toEqual([
       "Held back from the vault, as they look like secrets: Notes/keys.md, .env",
+      "Held back from the vault, as they are over 50 MB: Media/video.mp4",
     ]);
   });
 });

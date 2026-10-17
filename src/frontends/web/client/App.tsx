@@ -1,7 +1,15 @@
 /** The web UI (docs/plan.md §8.3): a mode switch, the two views, settings, and approvals. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { api, ApiError, subscribeToEvents, type SessionEvent, type SessionRecord } from "./api.ts";
+import {
+  api,
+  ApiError,
+  subscribeToEvents,
+  type PendingApproval,
+  type SessionEvent,
+  type SessionRecord,
+} from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
+import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
@@ -9,19 +17,23 @@ import { SettingsView } from "./SettingsView.tsx";
 
 type Screen = "assistant" | "project" | "settings";
 
-interface PendingApproval {
-  readonly requestId: string;
-  readonly toolName: string;
-  readonly summary: string;
+export function App(): ReactElement {
+  return (
+    <ErrorToastProvider>
+      <EvaApp />
+    </ErrorToastProvider>
+  );
 }
 
-export function App(): ReactElement {
+function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [screen, setScreen] = useState<Screen>("assistant");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [live, setLive] = useState<LiveState>({ streaming: {}, tasks: {} });
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
+  const showError = useShowError();
 
   const refreshSessions = useCallback(async (): Promise<void> => {
     try {
@@ -36,8 +48,35 @@ export function App(): ReactElement {
     void refreshSessions();
   }, [refreshSessions]);
 
+  /**
+   * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
+   * waits, with no event here. Read the state again, and drop the text of turns that ran meanwhile.
+   */
+  const recover = useCallback(async (): Promise<void> => {
+    setLive((state) => ({ ...state, streaming: {} }));
+    await refreshSessions();
+    try {
+      setApprovals(await api.pendingApprovals());
+    } catch {
+      // The next reconnect or the next visit tries again.
+    }
+  }, [refreshSessions]);
+
   useEffect(() => {
     if (authenticated !== true) return undefined;
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") void recover();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [authenticated, recover]);
+
+  useEffect(() => {
+    if (authenticated !== true) return undefined;
+    const onConnectionChange = (connected: boolean): void => {
+      setIsConnected(connected);
+      if (connected) void recover();
+    };
     return subscribeToEvents((event: SessionEvent) => {
       if (event.kind === "text") {
         setLive((state) => ({
@@ -67,8 +106,8 @@ export function App(): ReactElement {
         }));
       } else if (event.kind === "approval_needed") {
         setApprovals((current) => [
-          ...current,
-          { requestId: event.requestId, toolName: event.toolName, summary: event.summary },
+          ...current.filter((approval) => approval.requestId !== event.requestId),
+          { requestId: event.requestId, sessionId: event.sessionId, toolName: event.toolName, summary: event.summary },
         ]);
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         setLive((state) => {
@@ -78,15 +117,19 @@ export function App(): ReactElement {
         });
         void refreshSessions();
       }
-    });
-  }, [authenticated, refreshSessions]);
+    }, onConnectionChange);
+  }, [authenticated, refreshSessions, recover]);
 
   if (authenticated === null) return <div className="empty">Loading…</div>;
   if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (requestId: string, answer: "allow" | "deny"): Promise<void> => {
-    await api.answerApproval(requestId, answer);
-    setApprovals((current) => current.filter((approval) => approval.requestId !== requestId));
+    try {
+      await api.answerApproval(requestId, answer);
+      setApprovals((current) => current.filter((approval) => approval.requestId !== requestId));
+    } catch (caught) {
+      showError(caught);
+    }
   };
   const approval = approvals[0];
 
@@ -109,6 +152,11 @@ export function App(): ReactElement {
           Settings
         </button>
       </header>
+      {!isConnected && (
+        <div className="connection-banner" role="status">
+          Reconnecting…
+        </div>
+      )}
       {screen === "assistant" && (
         <AssistantView
           sessions={sessions}

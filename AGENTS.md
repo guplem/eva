@@ -113,6 +113,7 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 - **The release key has two halves that must match.** The private key is the `EVA_RELEASE_SIGNING_KEY` repository secret; the public key is `releasePublicKey` in `src/core/updates/release-verification.ts`. Change both together, or every `eva update` refuses the release. A `v*` tag runs `.github/workflows/release.yml`; the tag must equal the `package.json` version.
 - **Bun 1.4 ignores `timeout` in `bunfig.toml`.** The test scripts pass `--timeout 30000`; a bare `bun test <file>` gives each test 5 seconds.
 - **Bun gives each `beforeEach` and `afterEach` hook 5 seconds, apart from the test timeout.** A hook that runs git passes `gitHookTimeoutMs` from `test/support/git-sandbox.ts`, or it times out on a Windows CI runner.
+- **The single executable refuses a `Bun.file(...)` value in `Bun.serve` `routes`**, but `bun test` from source accepts it. Use a `Response` (see `staticFile` in `src/frontends/api/local-api.ts`). After you change the served files, run `bun run build:executable` and start `dist/eva` once.
 - **Git tests must clear the `GIT_*` variables** that a git hook exports, or they write the real index (lesson 104).
 
 ## Test-Driven Development (mandatory)

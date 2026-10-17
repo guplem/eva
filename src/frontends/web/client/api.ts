@@ -4,6 +4,7 @@ import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
+import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
@@ -14,6 +15,7 @@ export type {
   CheckResult,
   CloneDetails,
   EvaStatus,
+  PendingApproval,
   Project,
   PublicSettings,
   SessionEvent,
@@ -73,6 +75,7 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
   retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
+  pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
   projects: (text: string, status: string): Promise<Project[]> => {
@@ -100,17 +103,25 @@ export const api = {
 };
 
 /** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
-export function subscribeToEvents(onEvent: (event: SessionEvent) => void): () => void {
+export function subscribeToEvents(
+  onEvent: (event: SessionEvent) => void,
+  onConnectionChange: (isConnected: boolean) => void,
+): () => void {
   let socket: WebSocket | null = null;
   let closed = false;
   const connect = (): void => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${window.location.host}/api/events`);
+    socket.addEventListener("open", () => {
+      onConnectionChange(true);
+    });
     socket.addEventListener("message", (message) => {
       onEvent(JSON.parse(String(message.data)) as SessionEvent);
     });
     socket.addEventListener("close", () => {
-      if (!closed) setTimeout(connect, 2_000);
+      if (closed) return;
+      onConnectionChange(false);
+      setTimeout(connect, 2_000);
     });
   };
   connect();

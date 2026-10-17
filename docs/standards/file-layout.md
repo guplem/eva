@@ -54,4 +54,4 @@ test/
 - **Mirror the source path.** `src/core/projects/project-id.ts` has its test at `test/unit/core/projects/project-id.test.ts`.
 - **Put a fake or a sandbox that two test files use in `test/support/`** (for example `createGitSandbox` in `test/support/git-sandbox.ts`). A fake used by one file stays in that file.
 - **Never put a test file in `src/`.** It never runs, and Stryker and coverage treat it as source.
-- The web UI tests (Playwright, P5) get their own folder when they land; record it here.
+- **Put the web UI tests (Playwright) in `test/e2e/<flow>.spec.ts`.** `bun run test:e2e` runs them at desktop size and at 375 px; `bun test` skips them.

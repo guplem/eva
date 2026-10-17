@@ -68,15 +68,17 @@ describe("systemLongProcessStarter", () => {
 
   test("a stop ends a process that ignores the gentle stop, after the timeout", async () => {
     const ready = join(folder, "ready");
+    // The path goes through the environment: a script with quotes and backslashes can break on Windows.
     const child = systemLongProcessStarter(
       [
         bun,
         "-e",
-        `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(ready)}, ''); setTimeout(() => {}, 60_000)`,
+        "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.env.EVA_READY, ''); setTimeout(() => {}, 60_000)",
       ],
-      { cwd: process.cwd(), environment },
+      { cwd: process.cwd(), environment: { ...environment, EVA_READY: ready } },
     );
     await waitForFile(ready);
+    expect(existsSync(ready)).toBe(true);
     const started = Date.now();
     await child.stop(300);
     expect(Date.now() - started).toBeGreaterThanOrEqual(250);
@@ -88,6 +90,8 @@ describe("systemLongProcessStarter", () => {
   test("a stop after the process ended returns at once", async () => {
     const child = systemLongProcessStarter([bun, "-e", "process.exit(0)"], { cwd: process.cwd(), environment });
     await child.exited;
+    const started = Date.now();
     await child.stop(60_000);
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 });

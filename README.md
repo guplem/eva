@@ -45,6 +45,51 @@ bun run eva
 
 Eva keeps her settings in her home folder: `~/.config/eva` on Linux, `%APPDATA%\eva` on Windows. `config.json` holds the settings and `secrets.json` the tokens.
 
+## Install on a Linux server
+
+These steps install Eva for one user, with no `sudo`. Run them as that user, for example over SSH. They need `git`, `curl` and `python3`.
+
+1. Install Bun. The official script needs `unzip`; without it, unpack the release with Python:
+
+   ```bash
+   mkdir -p ~/.bun/bin && cd /tmp
+   curl -fsSL -o bun.zip https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip
+   python3 -c "import zipfile; zipfile.ZipFile('bun.zip').extractall('.')"
+   mv bun-linux-x64/bun ~/.bun/bin/ && rm -r bun.zip bun-linux-x64
+   echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && export PATH="$HOME/.bun/bin:$PATH"
+   ```
+
+2. Install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), then get Eva:
+
+   ```bash
+   git clone https://github.com/guplem/eva.git ~/eva
+   cd ~/eva && bun install --frozen-lockfile --production --ignore-scripts
+   ```
+
+3. Set Eva up in one command. Eva clones the vault herself. An SSH address (`git@github.com:you/vault.git`) uses the machine's SSH key; an HTTPS address uses `EVA_GITHUB_TOKEN`.
+
+   ```bash
+   EVA_TIME_ZONE="Europe/Madrid" \
+   EVA_VAULT_REPOSITORY="git@github.com:you/vault.git" \
+   EVA_GITHUB_TOKEN="..." \
+   EVA_CLAUDE_TOKEN="..." \
+   EVA_TELEGRAM_BOT_TOKEN="..." \
+   EVA_TELEGRAM_CHAT_ID="..." \
+   bun run src/main.ts setup --non-interactive
+   ```
+
+4. Start Eva with the system, and keep her running after you log out:
+
+   ```bash
+   bun run src/main.ts service install
+   loginctl enable-linger
+   systemctl --user start eva
+   ```
+
+5. Check her: `bun run src/main.ts status`. The log is in `~/.config/eva/logs/`. Then write to your bot in Telegram.
+
+To update Eva later, run `git pull` and step 2's `bun install` in `~/eva`, then `systemctl --user restart eva`.
+
 ## Optional features
 
 Each feature below stays off until you set it up. `eva doctor` shows which tools are missing.

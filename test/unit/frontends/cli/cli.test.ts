@@ -14,7 +14,7 @@ import {
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
-import { systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
+import { servicePath, systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
 import {
   firstFreePort,
   runSetup,
@@ -356,6 +356,12 @@ describe("service", () => {
     expect(unit).toContain("Restart=on-failure");
     expect(unit).toContain("RestartPreventExitStatus=2 3");
     expect(unit).toContain("Environment=PATH=/usr/bin:/bin");
+  });
+
+  test("the service PATH drops the folders that only one `bun run` has", () => {
+    expect(
+      servicePath("/tmp/bun-node-744846f8:/home/u/eva/node_modules/.bin:/home/u/.bun/bin:/usr/bin::/usr/bin"),
+    ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
   test("the Windows task starts Eva at logon", () => {

@@ -4,7 +4,7 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 ## Machines
 
-- [ ] **Server laptop:** turn it on, then stop and disable the v1 service (`systemctl --user disable --now walli-server`), point its clone at the vault (`git -C ~/Wall-I remote set-url origin git@github.com:guplem/vault.git`), and push any notes it holds.
+- [x] **Server laptop:** (done 2026-10-17: v1 removed, Eva runs there as the hub; the vault note `Projects/2026-08-09-1715-eva/server.md` describes it) turn it on, then stop and disable the v1 service (`systemctl --user disable --now walli-server`), point its clone at the vault (`git -C ~/Wall-I remote set-url origin git@github.com:guplem/vault.git`), and push any notes it holds.
 - [ ] **Other machines with a vault clone:** list them, and point each one at `guplem/vault`.
 
 ## Vault (the agent may not push to it after phase P1)
@@ -13,7 +13,7 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 ## Logins and tokens
 
-- [ ] **The v1 `.env` on this PC is gone.** The agent deleted `notes/server/` in the vault restructure (2026-10-14), and its untracked `.env` with it. It held the Telegram bot token, the allowed chat id, a `claude setup-token` token and an Anthropic API key. Nothing was revoked, so every value still works. Copy them from the server laptop (`~/Wall-I/server/.env`), or create them again: BotFather `/token`, `claude setup-token`, the Anthropic console. Then give them to Eva with `bun run eva setup`.
+- [x] **The v1 `.env` on this PC is gone.** (done 2026-10-17: the values were copied from the server laptop into Eva and into a file for the password manager) The agent deleted `notes/server/` in the vault restructure (2026-10-14), and its untracked `.env` with it. It held the Telegram bot token, the allowed chat id, a `claude setup-token` token and an Anthropic API key. Nothing was revoked, so every value still works. Copy them from the server laptop (`~/Wall-I/server/.env`), or create them again: BotFather `/token`, `claude setup-token`, the Anthropic console. Then give them to Eva with `bun run eva setup`.
 
 - [ ] **Claude login on this PC:** the standalone `claude` is not logged in (the desktop app uses its own login). Run `claude` once and log in, or run `claude setup-token` and give the token to Eva in `eva setup`.
 

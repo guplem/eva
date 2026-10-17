@@ -13,7 +13,8 @@ export type EvaErrorCode =
   | "schedule_invalid"
   | "update_failed"
   | "device_login_unavailable"
-  | "rate_limited";
+  | "rate_limited"
+  | "setting_forbidden";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

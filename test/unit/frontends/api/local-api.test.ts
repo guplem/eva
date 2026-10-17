@@ -278,6 +278,34 @@ describe("device login", () => {
     expect((await call("/api/status", { headers: { cookie } })).status).toBe(401);
   });
 
+  test("a device login changes the page's settings, but never a machine trust setting", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const device = { cookie, "content-type": "application/json" };
+    const page = await call("/api/settings", {
+      method: "PUT",
+      headers: device,
+      body: { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
+    });
+    expect(page.status).toBe(200);
+    for (const change of [
+      { remoteAccess: { allowedTailscaleIdentities: ["stranger@example.com"] } },
+      { telegram: { allowedChatId: 42 } },
+      { trust: { trustedRepositoryOwners: ["stranger"] } },
+      { engines: { claudeCode: { executable: "/tmp/other" } } },
+      { vaultPath: "/tmp/other-vault" },
+    ]) {
+      const refused = await call("/api/settings", { method: "PUT", headers: device, body: change });
+      expect(refused.status).toBe(403);
+    }
+    expect(eva.publicSettings().config.remoteAccess.allowedTailscaleIdentities).toEqual([]);
+    const withToken = await call("/api/settings", {
+      method: "PUT",
+      body: { trust: { trustedRepositoryOwners: ["me"] } },
+    });
+    expect(withToken.status).toBe(200);
+  });
+
   test("Log out every device ends every device login, and needs a login itself", async () => {
     attachApprover();
     const first = deviceCookieOf(await allowedCookie());

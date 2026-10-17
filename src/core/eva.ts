@@ -19,7 +19,7 @@ import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProb
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
-import { applySettingsChange, saveSettings } from "./settings/settings.ts";
+import { applySettingsChange, isPageSettingKey, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -614,12 +614,23 @@ export class Eva {
   /**
    * Checks and saves a settings change: the person's part in the vault, the machine's part in
    * `config.json`. The update frequency and the vault fetch apply at once; the rest at a restart.
+   * With `pageOnly`, for a device login, a machine or trust setting fails with `setting_forbidden`.
    */
-  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
+  updateSettings(
+    patch: Readonly<Record<string, unknown>>,
+    options: { readonly pageOnly: boolean } = { pageOnly: false },
+  ): { saved: true; restartNeeded: boolean } {
+    const keys = changedKeys(patch, "");
+    const forbidden = options.pageOnly ? keys.find((key) => !isPageSettingKey(key)) : undefined;
+    if (forbidden !== undefined)
+      throw new EvaError(
+        "setting_forbidden",
+        `A device login cannot change ${forbidden}. Change it on the machine with \`eva settings set\`.`,
+      );
     const changed = applySettingsChange(this.settings, patch);
     saveSettings(this.options.paths, changed);
     this.settings = changed;
-    const restartNeeded = changedKeys(patch, "").some(
+    const restartNeeded = keys.some(
       (key) => !liveSettingKeys.some((live) => key === live || key.startsWith(`${live}.`)),
     );
     return { saved: true, restartNeeded };

@@ -98,7 +98,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       try {
-        return await route(request, url, options.eva);
+        return await route(request, url, options.eva, hasValidToken(request, options.token));
       } catch (error) {
         return errorResponse(error, options.eva);
       }
@@ -202,7 +202,8 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   return json({ error: "Not found." }, 404);
 }
 
-async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
+/** `tokenLogin` is false for a device login, which may change only the page's settings. */
+async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean): Promise<Response> {
   const parts = url.pathname.split("/").filter((part) => part.length > 0);
   const method = request.method;
 
@@ -284,7 +285,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "PUT" && url.pathname === "/api/settings") {
-    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
+    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json()), { pageOnly: !tokenLogin }));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
@@ -351,6 +352,7 @@ function errorResponse(error: unknown, eva: Eva): Response {
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
   if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid")) return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);
+  if (isEvaError(error, "setting_forbidden")) return json(body, 403);
   return json(body, 409);
 }
 

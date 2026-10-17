@@ -17,6 +17,8 @@ export interface TailscaleFacts {
   readonly hostName: string;
   /** The account that owns this machine, such as `person@example.com`. */
   readonly ownerLogin: string | null;
+  /** False until the tailnet turns HTTPS on; `tailscale serve` then waits for a person instead of failing. */
+  readonly httpsEnabled: boolean;
 }
 
 /** Phone access through `tailscale serve` (plan §12): the address, or why there is none. */
@@ -27,6 +29,7 @@ export interface RemoteAccess {
 
 const tailscaleTimeoutMs = 10_000;
 const defaultPort = 7420;
+const enableHttpsPage = "https://login.tailscale.com/admin/dns";
 
 /** The vault folder and the voice model, from where `eva setup` and the README put them. */
 export function withMachineDefaults(config: EvaConfig, facts: MachineFacts): EvaConfig {
@@ -56,13 +59,18 @@ export async function readTailscale(
     if (result.exitCode !== 0) return null;
     const status = JSON.parse(result.stdout) as {
       BackendState?: unknown;
+      CertDomains?: unknown;
       Self?: { DNSName?: unknown; UserID?: unknown };
       User?: Record<string, { LoginName?: unknown } | undefined>;
     };
     const name = status.Self?.DNSName;
     if (status.BackendState !== "Running" || typeof name !== "string" || name.length < 2) return null;
     const owner = status.User?.[String(status.Self?.UserID)]?.LoginName;
-    return { hostName: name.replace(/\.$/, ""), ownerLogin: typeof owner === "string" ? owner : null };
+    return {
+      hostName: name.replace(/\.$/, ""),
+      ownerLogin: typeof owner === "string" ? owner : null,
+      httpsEnabled: Array.isArray(status.CertDomains) && status.CertDomains.length > 0,
+    };
   } catch {
     return null;
   }
@@ -86,6 +94,11 @@ export async function publishWithTailscale(
   tailscale: TailscaleFacts,
   port: number,
 ): Promise<RemoteAccess> {
+  if (!tailscale.httpsEnabled)
+    return {
+      url: null,
+      problem: `Turn on HTTPS for your tailnet once at ${enableHttpsPage}. Eva then publishes her page by herself.`,
+    };
   const httpsPort = tailnetPort(port);
   let output: string;
   try {
@@ -109,6 +122,6 @@ export async function publishWithTailscale(
     problem:
       enableLink === undefined
         ? `tailscale serve failed: ${output.trim().split("\n")[0] ?? ""}`
-        : `Turn on HTTPS for your tailnet at ${enableLink}, then restart Eva.`,
+        : `Turn on HTTPS for your tailnet once at ${enableLink}. Eva then publishes her page by herself.`,
   };
 }

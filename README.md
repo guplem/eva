@@ -74,7 +74,7 @@ Eva's web page listens on the machine only. [Tailscale](https://tailscale.com) (
 
 1. Install Tailscale on the machine that runs Eva, and log in. On Linux with `sudo`, run `curl -fsSL https://tailscale.com/install.sh | sh`, then `sudo tailscale up`. Without `sudo`, see [Tailscale without root](#tailscale-without-root).
 2. Install the Tailscale app on your phone, and log in with the same account.
-3. Restart Eva. She publishes her page in your tailnet with `tailscale serve`, and `eva status` and the Settings page show its address, such as `https://server.your-tailnet.ts.net`. A tailnet that has never used HTTPS shows a link to turn it on once; restart Eva after that.
+3. Restart Eva. She publishes her page in your tailnet with `tailscale serve`, and `eva status` and the Settings page show its address, such as `https://server.your-tailnet.ts.net`. A tailnet that has never used HTTPS shows a link to turn it on once; Eva tries again each minute, so no restart is needed after that.
 4. Open the address on the phone, and log in once with the token from `secrets.json` (`localApiToken`). The login lasts a year.
 
 Only the Tailscale account that owns the machine gets in. To let other accounts in, list them all in `remoteAccess.allowedTailscaleIdentities`. To keep Eva off the tailnet, run `eva settings set remoteAccess.tailscaleServe false`.

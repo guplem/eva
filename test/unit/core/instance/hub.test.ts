@@ -85,6 +85,7 @@ describe("machine defaults (plug and play)", () => {
     const status = (extra: Record<string, unknown>): string =>
       JSON.stringify({
         BackendState: "Running",
+        CertDomains: ["server.example-tailnet.ts.net"],
         Self: { DNSName: "server.example-tailnet.ts.net.", UserID: 7 },
         User: { "7": { LoginName: "owner@example.com" } },
         ...extra,
@@ -92,10 +93,12 @@ describe("machine defaults (plug and play)", () => {
     expect(await readTailscale(answering(0, status({})), {})).toEqual({
       hostName: "server.example-tailnet.ts.net",
       ownerLogin: "owner@example.com",
+      httpsEnabled: true,
     });
     expect(await readTailscale(answering(0, status({ User: {} })), {})).toEqual({
       hostName: "server.example-tailnet.ts.net",
       ownerLogin: null,
+      httpsEnabled: true,
     });
     expect(await readTailscale(answering(0, status({ BackendState: "NeedsLogin" })), {})).toBeNull();
     expect(await readTailscale(answering(1, status({})), {})).toBeNull();
@@ -110,7 +113,7 @@ function answering(exitCode: number, stdout: string, stderr = ""): ProcessRunner
 }
 
 describe("publishWithTailscale (plan §12)", () => {
-  const facts = { hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com" };
+  const facts = { hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com", httpsEnabled: true };
 
   test("the default instance gets an address with no port; another instance keeps its own port", async () => {
     const commands: string[][] = [];
@@ -139,12 +142,32 @@ describe("publishWithTailscale (plan §12)", () => {
     );
     expect(await publishWithTailscale(disabled, {}, facts, 7420)).toEqual({
       url: null,
-      problem: "Turn on HTTPS for your tailnet at https://login.tailscale.com/f/serve?node=abc, then restart Eva.",
+      problem:
+        "Turn on HTTPS for your tailnet once at https://login.tailscale.com/f/serve?node=abc. Eva then publishes her page by herself.",
     });
     expect((await publishWithTailscale(answering(1, "", "permission denied"), {}, facts, 7420)).problem).toContain(
       "permission denied",
     );
     const throwing: ProcessRunner = { run: () => Promise.reject(new Error("timed out")) };
     expect((await publishWithTailscale(throwing, {}, facts, 7420)).problem).toContain("timed out");
+  });
+});
+
+describe("a tailnet with HTTPS off", () => {
+  test("Eva never runs tailscale serve, which would wait for a person, and names the page that turns HTTPS on", async () => {
+    const commands: string[][] = [];
+    const recording: ProcessRunner = {
+      run: (command) => {
+        commands.push([...command]);
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      },
+    };
+    const facts = { hostName: "server.example-tailnet.ts.net", ownerLogin: null, httpsEnabled: false };
+    expect((await publishWithTailscale(recording, {}, facts, 7420)).problem).toContain(
+      "https://login.tailscale.com/admin/dns",
+    );
+    expect(commands).toEqual([]);
+    const status = JSON.stringify({ BackendState: "Running", Self: { DNSName: "server.example-tailnet.ts.net." } });
+    expect((await readTailscale(answering(0, status), {}))?.httpsEnabled).toBe(false);
   });
 });

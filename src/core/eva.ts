@@ -55,6 +55,8 @@ export interface EvaOptions {
   readonly claudeExecutable?: string | null;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
+  /** Deletes the log files past their retention; the background tick calls it once a day. */
+  readonly removeOldLogs?: () => void;
   /**
    * The command that starts this Eva, such as `[bun, main.ts]` or `[eva.exe]`. Eva writes it as an
    * `eva` script that an agent can run, for `eva work` (plan §5.3). Null: no script.
@@ -134,6 +136,7 @@ const gitStatusTimeoutMs = 20_000;
 const reportTextLimit = 3_000;
 const scheduleTickMs = 30_000;
 const backgroundTickMs = 60_000;
+const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** Settings that apply at once; any other change waits for a restart. */
 const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes"];
 const noVaultState: VaultSyncState = {
@@ -165,11 +168,18 @@ export class Eva {
   private lastTurn: LastTurnStatus | null = null;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones = new Set<string>();
+  /** A slow git step can outlast a timer period; these flags keep each task from running twice at once. */
+  private sweeping: boolean;
+  private backgroundTicking: boolean;
+  private lastHousekeepingAt: Date | null;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
   private readonly cloneChoices = new Map<string, Promise<unknown>>();
 
   constructor(options: EvaOptions) {
     this.options = options;
+    this.sweeping = false;
+    this.backgroundTicking = false;
+    this.lastHousekeepingAt = null;
     this.settings = options.config;
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
@@ -192,7 +202,10 @@ export class Eva {
 
     this.sessions = new SessionManager({
       engines: options.engines,
-      store: new SessionStore(options.paths.sessions),
+      store: new SessionStore(options.paths.sessions, {
+        now: options.now,
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
+      }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
@@ -257,6 +270,7 @@ export class Eva {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
               send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
             },
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
 
     this.lastRole = this.role();
@@ -292,11 +306,21 @@ export class Eva {
     }, backgroundTickMs);
   }
 
-  /** Once a minute: fetches the vault and checks for updates, each at the pace that the settings ask for. */
+  /**
+   * Once a minute: fetches the vault and checks for updates, each at the pace that the settings
+   * ask for, and cleans up old files once a day.
+   */
   async backgroundTick(): Promise<void> {
-    await this.pullIfDue();
-    this.noticeRoleChange();
-    await this.updater?.tick();
+    if (this.backgroundTicking) return;
+    this.backgroundTicking = true;
+    try {
+      await this.pullIfDue();
+      this.noticeRoleChange();
+      this.cleanUpIfDue();
+      await this.updater?.tick();
+    } finally {
+      this.backgroundTicking = false;
+    }
   }
 
   /** "hub" when this machine runs Telegram and the schedules (plan §4.4). */
@@ -369,12 +393,15 @@ export class Eva {
     this.backgroundTimer = null;
   }
 
-  /** Saves changes made outside a turn, and empties old Scratch files. It never runs during an Assistant turn (lessons 22, 30). */
+  /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
-    if (this.vaultSync === null) return "skipped";
-    cleanScratch(this.options.config.vaultPath ?? "", this.options.now());
-    if (this.assistantBusy()) return "skipped";
-    return this.logSyncState(await this.vaultSync.save()).status;
+    if (this.vaultSync === null || this.sweeping || this.assistantBusy()) return "skipped";
+    this.sweeping = true;
+    try {
+      return this.logSyncState(await this.vaultSync.save()).status;
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   status(): EvaStatus {
@@ -598,6 +625,21 @@ export class Eva {
     if (this.assistantBusy()) return;
     this.lastPullAt = now;
     this.logSyncState(await this.vaultSync.pull());
+  }
+
+  /**
+   * Removes old logs and Scratch files once a day (plan §9), with or without vault sync. It waits
+   * for the end of an Assistant turn, so a file never goes away under a running agent (lessons 22, 30).
+   */
+  private cleanUpIfDue(): void {
+    const now = this.options.now();
+    if (this.lastHousekeepingAt !== null && now.getTime() - this.lastHousekeepingAt.getTime() < housekeepingIntervalMs)
+      return;
+    if (this.assistantBusy()) return;
+    this.lastHousekeepingAt = now;
+    this.options.removeOldLogs?.();
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath !== null) cleanScratch(vaultPath, now);
   }
 
   private noticeRoleChange(): void {

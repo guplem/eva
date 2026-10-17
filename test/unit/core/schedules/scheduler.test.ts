@@ -11,8 +11,15 @@ let clock: Date;
 let chats: { name: string; model: ModelAlias; sessionId: string }[];
 let sent: { sessionId: string; prompt: string }[];
 let events: ScheduleEvent[];
+let logged: string[];
+/** Schedule names whose chat creation throws. */
+let failingChats: Set<string>;
+let failingSends: boolean;
 
 beforeEach(() => {
+  logged = [];
+  failingChats = new Set();
+  failingSends = false;
   folder = mkdtempSync(join(tmpdir(), "eva-scheduler-"));
   vault = join(folder, "vault");
   mkdirSync(join(vault, ".eva"), { recursive: true });
@@ -38,15 +45,17 @@ function createScheduler(isHub = true): Scheduler {
     now: () => clock,
     chats: {
       createChat: (name, model) => {
+        if (failingChats.has(name)) throw new Error(`no chat for ${name}`);
         const sessionId = `session-${String(chats.length + 1)}`;
         chats.push({ name, model, sessionId });
         return sessionId;
       },
       send: (sessionId, prompt) => {
         sent.push({ sessionId, prompt });
-        return Promise.resolve();
+        return failingSends ? Promise.reject(new Error("the engine is gone")) : Promise.resolve();
       },
     },
+    logger: { log: (level, message) => logged.push(`${level} ${message}`) },
   });
   scheduler.subscribe((event) => {
     events.push(event);
@@ -244,5 +253,41 @@ describe("Scheduler", () => {
     await scheduler.tick();
     expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
     expect(chats).toEqual([]);
+  });
+
+  test("a schedule that fails to fire never stops the others, and goes to the log", async () => {
+    writeSchedules([morning, { ...morning, id: "evening", name: "Evening" }]);
+    failingChats.add("Morning");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    expect(chats.map((chat) => chat.name)).toEqual(["Evening"]);
+    expect(logged.join("\n")).toContain("error");
+  });
+
+  test("a schedule whose chat was not created fires again at the next check", async () => {
+    writeSchedules([morning]);
+    failingChats.add("Morning");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    expect(events.filter((event) => event.kind === "schedule_fired")).toEqual([]);
+    failingChats.clear();
+    await scheduler.tick();
+    expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
+  });
+
+  test("a prompt that fails after the chat started goes to the log, and the slot counts as fired", async () => {
+    writeSchedules([morning]);
+    failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    await scheduler.tick();
+    expect(chats).toHaveLength(1);
+    expect(logged.join("\n")).toContain("error");
   });
 });

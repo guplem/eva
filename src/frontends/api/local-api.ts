@@ -82,6 +82,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       "/icon-512.png": staticFile(icon512, "image/png"),
     },
     development: false,
+    // Bun closes a request after 10 idle seconds by default. Some routes run git or gh for longer,
+    // such as a new clone or a setup report, so allow Bun's maximum.
+    idleTimeout: 255,
     fetch: async (request, bunServer) => {
       const siteRefusal = guardSite(request, options, allowedHostNames);
       if (siteRefusal !== null) return siteRefusal;
@@ -273,6 +276,15 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       reportToSessionId: reportToSessionId ?? null,
     });
     return json({ sessionId: session.id, clone: session.clone }, 202);
+  }
+  if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup"
+  ) {
+    return json(await eva.repositorySetup(decodeURIComponent(parts[2])));
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);

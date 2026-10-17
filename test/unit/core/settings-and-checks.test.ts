@@ -10,6 +10,7 @@ import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
+import { fakeGithub } from "../../support/fake-github.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -62,6 +63,10 @@ describe("repository setup", () => {
       `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\n---\n`,
     );
     const asked: string[] = [];
+    const github = fakeGithub({
+      "guplem/eva": { files: { "AGENTS.md": "rules" }, labels: ["bug"] },
+      "owner/other-app": { files: {}, labels: [] },
+    });
     const withGithub = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
@@ -71,13 +76,9 @@ describe("repository setup", () => {
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
-      githubGet: (path) => {
+      githubGet: (path, raw) => {
         asked.push(path);
-        const slug = path.split("/").slice(1, 3).join("/");
-        if (path === `repos/${slug}`) {
-          return Promise.resolve({ status: 200, body: JSON.stringify({ default_branch: "main", private: false }) });
-        }
-        return Promise.resolve({ status: 404, body: "{}" });
+        return github(path, raw);
       },
     });
     const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");

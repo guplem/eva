@@ -45,6 +45,12 @@ describe("githubSlug", () => {
     expect(githubSlug("https://gitlab.com/owner/app")).toBeNull();
     expect(githubSlug("https://evil.example/github.com/owner/app.git")).toBeNull();
     expect(githubSlug("https://github.com/owner")).toBeNull();
+    expect(githubSlug("https://github.com/../user")).toBeNull();
+    expect(githubSlug("https://github.com/:owner/:repo")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app?x=1")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app$(touch x)")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app;rm")).toBeNull();
+    expect(githubSlug("https://github.com/owner.name/app_2.js")).toBe("owner.name/app_2.js");
   });
 });
 

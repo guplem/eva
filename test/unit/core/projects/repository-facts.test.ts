@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ghApiGet, readRepositoryFacts, type GithubAnswer } from "../../../../src/core/projects/repository-facts.ts";
-import { isEvaError } from "../../../../src/shared/errors.ts";
+import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
 const slug = "owner/example-app";
@@ -43,7 +43,7 @@ function fullAnswers(): Map<string, GithubAnswer> {
         ],
       }),
     ],
-    [`repos/${slug}/labels?per_page=100`, ok([{ name: "bug" }, { name: "owner" }])],
+    [`repos/${slug}/labels?per_page=100&page=1`, ok([{ name: "bug" }, { name: "owner" }])],
     [`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, { status: 200, body: workflow }],
     [`raw:repos/${slug}/contents/.github/workflows/codeql.yaml?ref=main`, { status: 200, body: codeql }],
     [
@@ -118,7 +118,7 @@ describe("readRepositoryFacts", () => {
       codeScanningDefaultSetup: null,
       readOnlyWorkflowToken: null,
       dependabotAlerts: null,
-      requiredChecks: false,
+      requiredChecks: null,
     });
 
     answers.set(`repos/${slug}`, ok({ default_branch: "main", private: false, permissions: { admin: true } }));
@@ -150,12 +150,12 @@ describe("readRepositoryFacts", () => {
     ]);
   });
 
-  test("a settings file that is not JSON gives no allow list, and a broken workflow does not run on pull requests", async () => {
+  test("a settings file that is not JSON has no allow list, and a broken workflow does not run on pull requests", async () => {
     const answers = fullAnswers();
     answers.set(`raw:repos/${slug}/contents/.claude/settings.json?ref=main`, { status: 200, body: "{ not json" });
     answers.set(`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, { status: 200, body: "on: [" });
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
-    expect(facts.allowRules).toBeNull();
+    expect(facts.allowRules).toBe("none");
     expect(facts.workflows?.[0]?.runsOnPullRequest).toBe(false);
   });
 
@@ -228,3 +228,38 @@ function failure(promise: Promise<unknown>): Promise<unknown> {
     (error: unknown) => error,
   );
 }
+
+describe("readRepositoryFacts, failed reads", () => {
+  test("a file that GitHub does not serve is unknown, not missing", async () => {
+    const answers = fullAnswers();
+    const failure: GithubAnswer = { status: 502, body: "" };
+    answers.set(`raw:repos/${slug}/contents/.claude/settings.json?ref=main`, failure);
+    answers.set(`raw:repos/${slug}/contents/.github/workflows/checks.yml?ref=main`, failure);
+    const facts = await readRepositoryFacts(slug, fakeGet(answers));
+    expect(facts.allowRules).toBeNull();
+    expect(facts.workflows).toBeNull();
+  });
+
+  test("labels are read page by page, and a failed page makes them unknown", async () => {
+    const answers = fullAnswers();
+    const fullPage = Array.from({ length: 100 }, (_, index) => ({ name: `label-${String(index)}` }));
+    answers.set(`repos/${slug}/labels?per_page=100&page=1`, ok(fullPage));
+    answers.set(`repos/${slug}/labels?per_page=100&page=2`, ok([{ name: "owner" }]));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).labels).toContain("owner");
+    answers.delete(`repos/${slug}/labels?per_page=100&page=2`);
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).labels).toBeNull();
+  });
+
+  test("an archived repository says so, and a refused repository names the HTTP status", async () => {
+    const answers = fullAnswers();
+    answers.set(`repos/${slug}`, ok({ default_branch: "main", archived: true }));
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).isArchived).toBe(true);
+    answers.set(`repos/${slug}`, { status: 403, body: '{"message":"rate limit"}' });
+    expect(String(await failure(readRepositoryFacts(slug, fakeGet(answers))))).toContain("HTTP 403");
+  });
+
+  test("a gh call that times out says that GitHub was slow, not that gh is missing", async () => {
+    const slow: ProcessRunner = { run: () => Promise.reject(new EvaError("process_timeout", "timed out")) };
+    expect(String(await failure(ghApiGet(slow, {})("repos/a/b")))).toContain("did not answer in time");
+  });
+});

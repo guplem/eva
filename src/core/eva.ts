@@ -616,14 +616,22 @@ export class Eva {
         throw error;
       }
     };
-    const reference = await read(evaRepository);
+    let reference = await read(evaRepository);
+    // A gap in the reference would turn into false greens, such as "has every standard label".
+    if (typeof reference !== "string" && [reference.files, reference.labels, reference.allowRules].includes(null)) {
+      reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
+    }
+    const readReference = reference;
     return Promise.all(
       project.frontMatter.repos.map(async (url) => {
         const slug = githubSlug(url);
         if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.");
-        if (typeof reference === "string") return unreadableReport(url, slug, reference);
+        if (typeof readReference === "string") return unreadableReport(url, slug, readReference);
         const target = await read(slug);
-        return typeof target === "string" ? unreadableReport(url, slug, target) : evaluateSetup(reference, target);
+        if (typeof target === "string") return unreadableReport(url, slug, target);
+        if (target.isArchived)
+          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.");
+        return evaluateSetup(readReference, target);
       }),
     );
   }

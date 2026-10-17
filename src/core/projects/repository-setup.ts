@@ -27,6 +27,8 @@ export interface SetupReport {
   readonly repositoryUrl: string;
   readonly slug: string | null;
   readonly sections: readonly SetupSection[];
+  /** Every fix request that a coding agent can do, as one request. Null: nothing to fix. */
+  readonly allFixes: string | null;
   /** Why there is no report, such as a URL that is not on GitHub. */
   readonly problem: string | null;
 }
@@ -42,6 +44,7 @@ export interface RepositoryFacts {
   readonly slug: string;
   readonly defaultBranch: string;
   readonly isPrivate: boolean;
+  readonly isArchived: boolean;
   readonly isAdmin: boolean;
   readonly allowAutoMerge: boolean | null;
   readonly allowUpdateBranch: boolean | null;
@@ -50,8 +53,8 @@ export interface RepositoryFacts {
   readonly files: Readonly<Record<string, string>> | null;
   readonly workflows: readonly WorkflowFacts[] | null;
   readonly labels: readonly string[] | null;
-  /** The `permissions.allow` rules of `.claude/settings.json`. Null: no such list. */
-  readonly allowRules: readonly string[] | null;
+  /** The `permissions.allow` rules of `.claude/settings.json`, or "none" when it has none. */
+  readonly allowRules: readonly string[] | "none" | null;
   readonly requiredChecks: boolean | null;
   readonly privateVulnerabilityReporting: boolean | null;
   readonly dependabotAlerts: boolean | null;
@@ -81,36 +84,52 @@ const harnessOnlyRuleFiles = [
 ];
 const harnessOnlyRuleFolders = [".cursor/rules/"];
 const claudeOnlyFolders = [".claude/skills/", ".claude/commands/", ".claude/agents/"];
-const hookFiles = ["lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".pre-commit-config.yaml"];
+const hookFilePattern = /^(?:\.?lefthook\.(?:ya?ml|json|jsonc|toml)|\.pre-commit-config\.yaml)$/;
 
 /**
  * Shell programs whose rules fit any project. The reference's other shell rules, such as
  * `bun run *`, belong to its own stack, so other repositories do not need them.
  */
-const stackNeutralPrograms = new Set(["ls", "cat", "head", "tail", "wc", "find", "grep", "git", "gh"]);
+const stackNeutralPrograms = new Set(["ls", "cat", "head", "tail", "wc", "grep", "git", "gh"]);
 
 const needsAdmin = "Eva needs admin rights on this repository to read this.";
+const filesUnknown = "Eva could not read the files from GitHub.";
+/** The last step of each fix request. "Copy all fixes" asks for one pull request instead. */
+const pullRequestStep = " Then open a pull request.";
 
 export function evaluateSetup(reference: RepositoryFacts, target: RepositoryFacts): SetupReport {
   const context = new Context(reference, target);
   const harness = harnessItems(context);
+  const sections: SetupSection[] = [
+    { title: "Development", items: developmentItems(context), score: null },
+    { title: "Pull requests", items: pullRequestItems(context), score: null },
+    { title: "Harness agnostic", items: harness, score: scoreOf(harness) },
+    { title: "Agent permissions", items: [permissionItem(context)], score: null },
+    { title: "Security", items: securityItems(context), score: null },
+  ];
   return {
     repositoryUrl: `https://github.com/${target.slug}`,
     slug: target.slug,
+    sections,
+    allFixes: joinFixes(target.slug, sections),
     problem: null,
-    sections: [
-      { title: "Development", items: developmentItems(context), score: null },
-      { title: "Pull requests", items: pullRequestItems(context), score: null },
-      { title: "Harness agnostic", items: harness, score: scoreOf(harness) },
-      { title: "Agent permissions", items: [permissionItem(context)], score: null },
-      { title: "Security", items: securityItems(context), score: null },
-    ],
   };
 }
 
 /** A report with no sections, for a repository that Eva cannot check. */
 export function unreadableReport(repositoryUrl: string, slug: string | null, problem: string): SetupReport {
-  return { repositoryUrl, slug, sections: [], problem };
+  return { repositoryUrl, slug, sections: [], allFixes: null, problem };
+}
+
+/** One request for every fix of the red and yellow items. A grey item's steps are for the person. */
+function joinFixes(slug: string, sections: readonly SetupSection[]): string | null {
+  const fixes = sections.flatMap((section) =>
+    section.items.flatMap((item) =>
+      item.light === "grey" || item.fixRequest === null ? [] : [item.fixRequest.replace(pullRequestStep, "")],
+    ),
+  );
+  if (fixes.length === 0) return null;
+  return `In ${slug}, make each change below. Then open one pull request for all of them.\n\n${fixes.map((fix) => `- ${fix}`).join("\n")}`;
 }
 
 class Context {
@@ -149,7 +168,7 @@ function skillItems(context: Context): SetupItem[] {
   return names.map((name): SetupItem => {
     const label = `Skill ${name}`;
     const files = context.target.files;
-    if (files === null) return grey(label, context.unknownReason(false));
+    if (files === null) return grey(label, filesUnknown);
     const link = context.referenceLink("tree", `.agents/skills/${name}`);
     const wanted = filesUnder(referenceFiles, `.agents/skills/${name}/`);
     const present = filesUnder(files, `.agents/skills/${name}/`);
@@ -159,7 +178,7 @@ function skillItems(context: Context): SetupItem[] {
         label,
         light: "yellow",
         detail: "Outdated.",
-        fixRequest: `In ${context.target.slug}, update \`.agents/skills/${name}/\` to match ${link}. Keep any line that only fits this project. Then open a pull request.`,
+        fixRequest: `In ${context.target.slug}, make \`.agents/skills/${name}/\` an exact copy of ${link}. Put rules that fit only this project in \`AGENTS.md\` instead.${pullRequestStep}`,
       };
     }
     const where = `.claude/skills/${name}/`;
@@ -168,14 +187,14 @@ function skillItems(context: Context): SetupItem[] {
         label,
         light: "yellow",
         detail: `Only in ${where}, which only Claude Code reads.`,
-        fixRequest: `In ${context.target.slug}, move \`${where}\` to \`.agents/skills/${name}/\`, and update it to match ${link}. Then open a pull request.`,
+        fixRequest: `In ${context.target.slug}, move \`${where}\` to \`.agents/skills/${name}/\`, and make it an exact copy of ${link}.${pullRequestStep}`,
       };
     }
     return {
       label,
       light: "red",
       detail: "Missing.",
-      fixRequest: `In ${context.target.slug}, add the skill \`${name}\`: copy ${link} to \`.agents/skills/${name}/\`. Name it in \`AGENTS.md\` where agents need it. Then open a pull request.`,
+      fixRequest: `In ${context.target.slug}, add the skill \`${name}\`: copy ${link} to \`.agents/skills/${name}/\`. Add a line to \`AGENTS.md\` that tells agents when to use it.${pullRequestStep}`,
     };
   });
 }
@@ -199,16 +218,16 @@ function labelItem(context: Context): SetupItem {
 function hookItem(context: Context): SetupItem {
   const label = "Git hooks";
   const files = context.target.files;
-  if (files === null) return grey(label, context.unknownReason(false));
+  if (files === null) return grey(label, filesUnknown);
   const paths = Object.keys(files);
-  if (paths.some((path) => hookFiles.includes(path) || path.startsWith(".husky/"))) {
+  if (paths.some((path) => hookFilePattern.test(path) || path.startsWith(".husky/"))) {
     return green(label, "Checks run before each commit or push.");
   }
   return {
     label,
     light: "red",
     detail: "No Lefthook, Husky or pre-commit setup.",
-    fixRequest: `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${context.referenceLink("blob", "lefthook.yml")} does. Then open a pull request.`,
+    fixRequest: `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${context.referenceLink("blob", "lefthook.yml")} does.${pullRequestStep}`,
   };
 }
 
@@ -244,16 +263,17 @@ function pullRequestItems(context: Context): SetupItem[] {
 function ciItem(context: Context): SetupItem {
   const label = "CI on pull requests";
   const workflows = context.target.workflows;
-  if (workflows === null) return grey(label, context.unknownReason(false));
-  const running = workflows.filter((workflow) => workflow.runsOnPullRequest);
+  if (workflows === null) return grey(label, filesUnknown);
+  // A CodeQL workflow scans for vulnerabilities; it runs no project checks.
+  const running = workflows.filter((workflow) => workflow.runsOnPullRequest && !workflow.usesCodeql);
   if (running.length > 0) return green(label, `Runs ${running.map((workflow) => workflow.path).join(", ")}.`);
-  const example = context.reference.workflows?.find((workflow) => workflow.runsOnPullRequest);
+  const example = context.reference.workflows?.find((workflow) => workflow.runsOnPullRequest && !workflow.usesCodeql);
   const exampleText = example === undefined ? "" : ` Use ${context.referenceLink("blob", example.path)} as an example.`;
   return {
     label,
     light: "red",
     detail: "No workflow runs on pull requests.",
-    fixRequest: `In ${context.target.slug}, add a GitHub Actions workflow that runs on each pull request. It runs the format check, the lint and the tests through one script.${exampleText} Then open a pull request.`,
+    fixRequest: `In ${context.target.slug}, add a GitHub Actions workflow that runs on each pull request. It runs the format check, the lint and the tests through one script.${exampleText}${pullRequestStep}`,
   };
 }
 
@@ -295,7 +315,7 @@ function harnessItems(context: Context): SetupItem[] {
     "No harness-only rule files",
     "Skills in the open folder",
   ];
-  if (files === null) return labels.map((label) => grey(label, context.unknownReason(false)));
+  if (files === null) return labels.map((label) => grey(label, filesUnknown));
   const slug = context.target.slug;
   const paths = Object.keys(files);
   const agentsExample = context.referenceLink("blob", "AGENTS.md");
@@ -306,7 +326,7 @@ function harnessItems(context: Context): SetupItem[] {
         label: labels[0] ?? "",
         light: "red",
         detail: "Missing. Most coding harnesses read AGENTS.md.",
-        fixRequest: `In ${slug}, write the agent rules in a short root \`AGENTS.md\`, as ${agentsExample} does. Move any rules from harness files into it. Then open a pull request.`,
+        fixRequest: `In ${slug}, write the agent rules in a short root \`AGENTS.md\`, as ${agentsExample} does. Move any rules from harness files into it.${pullRequestStep}`,
       };
 
   const ruleShims = paths.filter(
@@ -318,14 +338,16 @@ function harnessItems(context: Context): SetupItem[] {
       label: labels[1] ?? "",
       light: "red",
       detail: `These hold rules: ${ruleShims.join(", ")}.`,
-      fixRequest: `In ${slug}, move the rules of ${ruleShims.join(", ")} into an \`AGENTS.md\` in the same folder. Leave only the line \`@AGENTS.md\` in each \`CLAUDE.md\`. Then open a pull request.`,
+      fixRequest: `In ${slug}, move the rules of ${ruleShims.join(", ")} into an \`AGENTS.md\` in the same folder. Leave only the line \`@AGENTS.md\` in each \`CLAUDE.md\`.${pullRequestStep}`,
     };
-  } else if (paths.includes("AGENTS.md") && !paths.includes("CLAUDE.md")) {
+  } else if (!paths.includes("AGENTS.md")) {
+    shim = grey(labels[1] ?? "", "No AGENTS.md to point to yet.");
+  } else if (!paths.includes("CLAUDE.md")) {
     shim = {
       label: labels[1] ?? "",
       light: "yellow",
       detail: "No root CLAUDE.md, and Claude Code reads only CLAUDE.md.",
-      fixRequest: `In ${slug}, add a root \`CLAUDE.md\` with the single line \`@AGENTS.md\`. Then open a pull request.`,
+      fixRequest: `In ${slug}, add a root \`CLAUDE.md\` with the single line \`@AGENTS.md\`.${pullRequestStep}`,
     };
   } else {
     shim = green(labels[1] ?? "", "Yes.");
@@ -341,7 +363,7 @@ function harnessItems(context: Context): SetupItem[] {
           label: labels[2] ?? "",
           light: "red",
           detail: `Found ${ruleFiles.join(", ")}.`,
-          fixRequest: `In ${slug}, move the rules of ${ruleFiles.join(", ")} into \`AGENTS.md\`, then delete those files. Then open a pull request.`,
+          fixRequest: `In ${slug}, move the rules of ${ruleFiles.join(", ")} into \`AGENTS.md\`, then delete those files.${pullRequestStep}`,
         };
 
   const claudeFolders = claudeOnlyFolders.filter((folder) => paths.some((path) => path.startsWith(folder)));
@@ -352,7 +374,7 @@ function harnessItems(context: Context): SetupItem[] {
           label: labels[3] ?? "",
           light: "yellow",
           detail: `Found ${claudeFolders.join(", ")}, which only Claude Code reads.`,
-          fixRequest: `In ${slug}, turn each file in ${claudeFolders.join(", ")} into a skill in \`.agents/skills/<name>/SKILL.md\`, the open skill format. Name each skill in \`AGENTS.md\` where agents need it. Then open a pull request.`,
+          fixRequest: `In ${slug}, turn each file in ${claudeFolders.join(", ")} into a skill in \`.agents/skills/<name>/SKILL.md\`, the open skill format. Add a line to \`AGENTS.md\` for each skill that tells agents when to use it.${pullRequestStep}`,
         };
 
   return [agents, shim, ruleItem, skills];
@@ -360,15 +382,17 @@ function harnessItems(context: Context): SetupItem[] {
 
 function permissionItem(context: Context): SetupItem {
   const label = "Allowed commands";
-  const neutral = (context.reference.allowRules ?? []).filter(isStackNeutral);
+  const referenceRules = context.reference.allowRules;
+  const neutral = referenceRules === null || referenceRules === "none" ? [] : referenceRules.filter(isStackNeutral);
   const rules = context.target.allowRules;
   const settingsPath = "`.claude/settings.json`";
-  if (rules === null) {
+  if (rules === null) return grey(label, filesUnknown);
+  if (rules === "none") {
     return {
       label,
       light: "red",
       detail: "No allow list, so each command asks for approval.",
-      fixRequest: `In ${context.target.slug}, add ${settingsPath} with a \`permissions.allow\` list: ${neutral.join(", ")}. Add the project's own format, lint and test commands. Then open a pull request.`,
+      fixRequest: `In ${context.target.slug}, add ${settingsPath} with a \`permissions.allow\` list: ${neutral.join(", ")}. Add the project's own format, lint and test commands.${pullRequestStep}`,
     };
   }
   const missing = neutral.filter((rule) => !rules.some((candidate) => covers(candidate, rule)));
@@ -377,7 +401,7 @@ function permissionItem(context: Context): SetupItem {
     label,
     light: "yellow",
     detail: `Missing: ${missing.join(", ")}.`,
-    fixRequest: `In ${context.target.slug}, add these rules to \`permissions.allow\` in ${settingsPath}: ${missing.join(", ")}. Then open a pull request.`,
+    fixRequest: `In ${context.target.slug}, add these rules to \`permissions.allow\` in ${settingsPath}: ${missing.join(", ")}.${pullRequestStep}`,
   };
 }
 
@@ -385,8 +409,9 @@ function securityItems(context: Context): SetupItem[] {
   const { target } = context;
   const slug = target.slug;
   const settingsPage = `https://github.com/${slug}/settings/security_analysis`;
+  // The bracket form of -f works in every shell, unlike a piped JSON body.
   const securityPatch = (field: string): string =>
-    `echo '{"security_and_analysis":{"${field}":{"status":"enabled"}}}' | gh api -X PATCH repos/${slug} --input -`;
+    `gh api -X PATCH repos/${slug} -f "security_and_analysis[${field}][status]=enabled"`;
   const codeScanning =
     target.codeScanningDefaultSetup === true || (target.workflows ?? []).some((workflow) => workflow.usesCodeql)
       ? true
@@ -489,10 +514,15 @@ function covers(candidate: string, rule: string): boolean {
   if (!candidate.includes("(")) return candidate === tool(rule);
   const wanted = shellCommand(rule);
   const given = shellCommand(candidate);
-  if (wanted === null || !given?.endsWith("*")) return false;
-  // The older `git:*` form means the same as `git *`.
-  const prefix = given.slice(0, -1).replace(/:$/, " ");
-  return wanted.startsWith(prefix);
+  if (wanted === null || given === null || !wildcardEnd.test(given)) return false;
+  return withoutWildcard(wanted).startsWith(withoutWildcard(given));
+}
+
+/** The end of a shell rule that allows any arguments: `git log*`, `git log *` and `git log:*`. */
+const wildcardEnd = /(?::\*|\s*\*)$/;
+
+function withoutWildcard(command: string): string {
+  return command.replace(wildcardEnd, "").trimEnd();
 }
 
 function shellCommand(rule: string): string | null {

@@ -14,6 +14,7 @@ const reference: RepositoryFacts = {
   slug: "guplem/eva",
   defaultBranch: "main",
   isPrivate: false,
+  isArchived: false,
   isAdmin: true,
   allowAutoMerge: true,
   allowUpdateBranch: true,
@@ -210,7 +211,15 @@ describe("evaluateSetup", () => {
     expect(partial.detail).toContain("Grep, Bash(git status*), Bash(gh pr view*)");
     expect(partial.detail).not.toContain("bun run");
 
-    expect(item(evaluateSetup(reference, target({ allowRules: null })), "Allowed commands").light).toBe("red");
+    expect(item(evaluateSetup(reference, target({ allowRules: "none" })), "Allowed commands").light).toBe("red");
+    expect(item(evaluateSetup(reference, target({ allowRules: null })), "Allowed commands").light).toBe("grey");
+    const spaced = ["Read", "Grep", "Bash(git status *)", "Bash(gh pr view:*)"];
+    expect(item(evaluateSetup(reference, target({ allowRules: spaced })), "Allowed commands").light).toBe("green");
+    const narrower = item(
+      evaluateSetup(reference, target({ allowRules: ["Read", "Grep", "Bash(git status)"] })),
+      "Allowed commands",
+    );
+    expect(narrower.detail).toContain("Bash(git status*)");
     expect(
       item(evaluateSetup(reference, target({ allowRules: ["Bash", "Read", "Grep"] })), "Allowed commands").light,
     ).toBe("green");
@@ -238,3 +247,46 @@ describe("evaluateSetup", () => {
 function withoutUndefined(files: Record<string, string | undefined>): Record<string, string> {
   return Object.fromEntries(Object.entries(files).filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
+
+describe("evaluateSetup, edge cases", () => {
+  test("no AGENTS.md leaves the CLAUDE.md item grey, not a false green", () => {
+    const report = evaluateSetup(reference, target({ files: {} }));
+    expect(item(report, "CLAUDE.md points to AGENTS.md").light).toBe("grey");
+  });
+
+  test("a CodeQL workflow alone is not CI, and any Lefthook config counts as hooks", () => {
+    const report = evaluateSetup(
+      reference,
+      target({
+        files: withoutUndefined({ ...reference.files, "lefthook.yml": undefined, "lefthook.json": "hooks" }),
+        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true }],
+      }),
+    );
+    expect(item(report, "CI on pull requests").light).toBe("red");
+    expect(item(report, "Git hooks").light).toBe("green");
+  });
+
+  test("a secret scanning fix uses a command that works in every shell", () => {
+    const report = evaluateSetup(reference, target({ secretScanning: false }));
+    expect(item(report, "Secret scanning").fixRequest).toContain(
+      'gh api -X PATCH repos/owner/example-app -f "security_and_analysis[secret_scanning][status]=enabled"',
+    );
+  });
+
+  test("an outdated skill asks for an exact copy, so the fix can turn it green", () => {
+    const files = { ...reference.files, ".agents/skills/write-commit/SKILL.md": "commit-v1" };
+    const fix = item(evaluateSetup(reference, target({ files })), "Skill write-commit").fixRequest;
+    expect(fix).toContain("an exact copy of");
+  });
+
+  test("all fixes join into one request with one pull request; grey items stay out", () => {
+    const report = evaluateSetup(reference, target({ allowAutoMerge: false, labels: ["bug"] }));
+    expect(report.allFixes).toStartWith("In owner/example-app, make each change below. Then open one pull request");
+    expect(report.allFixes).toContain(
+      "- In owner/example-app, turn on the setting so that a pull request merges itself",
+    );
+    expect(report.allFixes).not.toContain("Then open a pull request.");
+    expect(report.allFixes).not.toContain("malware");
+    expect(evaluateSetup(reference, target()).allFixes).toBeNull();
+  });
+});

@@ -4,7 +4,7 @@
  * as an admin-only address, becomes a null fact, which the report shows grey.
  */
 import { parse as parseYaml } from "yaml";
-import { EvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { RepositoryFacts, WorkflowFacts } from "./repository-setup.ts";
 
@@ -19,6 +19,9 @@ export type GithubGet = (path: string, raw?: boolean) => Promise<GithubAnswer>;
 const ghTimeoutMs = 30_000;
 const workflowPattern = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const settingsPath = ".claude/settings.json";
+const labelsPerPage = 100;
+/** A limit for the label pages, so a broken answer never loops for ever. */
+const labelPageLimit = 10;
 
 /** A GithubGet over `gh api --include`, which prints the status line before the body. */
 export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubGet {
@@ -32,9 +35,10 @@ export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<str
         timeoutMs: ghTimeoutMs,
       });
     } catch (error) {
-      throw new EvaError("github_failed", "Eva could not run gh, the GitHub CLI. Install it, then run gh auth login.", {
-        cause: error,
-      });
+      const message = isEvaError(error, "process_timeout")
+        ? "GitHub did not answer in time. Try again later."
+        : "Eva could not run gh, the GitHub CLI. Install it, then run gh auth login.";
+      throw new EvaError("github_failed", message, { cause: error });
     }
     const status = /^HTTP\/[\d.]+ (\d{3})/.exec(output.stdout);
     if (status === null) {
@@ -51,10 +55,11 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
   const repository = await get(`repos/${slug}`);
   const info = repository.status === 200 ? asRecord(parseJson(repository.body)) : null;
   if (info === null) {
-    throw new EvaError(
-      "github_failed",
-      `GitHub does not show ${slug}: it does not exist, or the gh login cannot see it.`,
-    );
+    const message =
+      repository.status === 404
+        ? `GitHub does not show ${slug}: it does not exist, or the gh login cannot see it.`
+        : `GitHub refused to show ${slug} (HTTP ${String(repository.status)}). Run gh auth status, or try again later.`;
+    throw new EvaError("github_failed", message);
   }
   const branch = typeof info["default_branch"] === "string" ? info["default_branch"] : "main";
   const isAdmin = asRecord(info["permissions"])?.["admin"] === true;
@@ -64,7 +69,7 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
 
   const [files, labels, rules, branchInfo, reporting, alerts, fixes, codeScanning, workflowToken] = await Promise.all([
     readFiles(get, `${address}/git/trees/${encodedBranch}?recursive=1`),
-    readJson(get, `${address}/labels?per_page=100`),
+    readLabels(get, `${address}/labels`),
     readJson(get, `${address}/rules/branches/${encodedBranch}`),
     readJson(get, `${address}/branches/${encodedBranch}`),
     readJson(get, `${address}/private-vulnerability-reporting`),
@@ -73,26 +78,27 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
     readJson(get, `${address}/code-scanning/default-setup`),
     readJson(get, `${address}/actions/permissions/workflow`),
   ]);
-  const readFile = (path: string): Promise<string | null> =>
+  const readFile = (path: string): Promise<FileRead> =>
     get(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
-      (answer) => (answer.status === 200 ? answer.body : null),
+      (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
   const [workflows, allowRules] = await Promise.all([
     files === null ? null : readWorkflows(Object.keys(files), readFile),
-    files === null || settingsPath in files ? readFile(settingsPath).then(readAllowRules) : null,
+    files !== null && !(settingsPath in files) ? ("none" as const) : readFile(settingsPath).then(readAllowRules),
   ]);
 
   return {
     slug,
     defaultBranch: branch,
     isPrivate: info["private"] === true,
+    isArchived: info["archived"] === true,
     isAdmin,
     allowAutoMerge: booleanOrNull(info["allow_auto_merge"]),
     allowUpdateBranch: booleanOrNull(info["allow_update_branch"]),
     deleteBranchOnMerge: booleanOrNull(info["delete_branch_on_merge"]),
     files,
     workflows,
-    labels: Array.isArray(labels) ? labels.flatMap((label) => textField(label, "name") ?? []) : null,
+    labels,
     allowRules,
     requiredChecks: readRequiredChecks(rules, branchInfo),
     privateVulnerabilityReporting: booleanOrNull(asRecord(reporting)?.["enabled"]),
@@ -107,6 +113,9 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
   };
 }
 
+/** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */
+type FileRead = { readonly text: string } | "absent" | null;
+
 async function readFiles(get: GithubGet, path: string): Promise<Record<string, string> | null> {
   const tree = asRecord(await readJson(get, path));
   // A truncated tree would make present files look missing.
@@ -120,17 +129,36 @@ async function readFiles(get: GithubGet, path: string): Promise<Record<string, s
   return files;
 }
 
+/** Every label name, page by page. Null when a page does not answer. */
+async function readLabels(get: GithubGet, path: string): Promise<string[] | null> {
+  const names: string[] = [];
+  for (let page = 1; page <= labelPageLimit; page += 1) {
+    const labels = await readJson(get, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
+    if (!Array.isArray(labels)) return null;
+    names.push(...labels.flatMap((label) => textField(label, "name") ?? []));
+    if (labels.length < labelsPerPage) return names;
+  }
+  return null;
+}
+
+/** The workflows, or null when one of them cannot be read: a missing one could hide the CI. */
 async function readWorkflows(
   paths: readonly string[],
-  readFile: (path: string) => Promise<string | null>,
-): Promise<WorkflowFacts[]> {
+  readFile: (path: string) => Promise<FileRead>,
+): Promise<WorkflowFacts[] | null> {
   const workflowPaths = paths.filter((path) => workflowPattern.test(path)).sort();
-  return Promise.all(
-    workflowPaths.map(async (path) => {
-      const text = (await readFile(path)) ?? "";
-      return { path, runsOnPullRequest: runsOnPullRequest(text), usesCodeql: text.includes("github/codeql-action/") };
-    }),
-  );
+  const texts = await Promise.all(workflowPaths.map(readFile));
+  const workflows: WorkflowFacts[] = [];
+  for (const [index, text] of texts.entries()) {
+    if (text === null) return null;
+    const content = text === "absent" ? "" : text.text;
+    workflows.push({
+      path: workflowPaths[index] ?? "",
+      runsOnPullRequest: runsOnPullRequest(content),
+      usesCodeql: content.includes("github/codeql-action/"),
+    });
+  }
+  return workflows;
 }
 
 function runsOnPullRequest(text: string): boolean {
@@ -148,18 +176,25 @@ function runsOnPullRequest(text: string): boolean {
   return asRecord(trigger)?.["pull_request"] !== undefined;
 }
 
-function readAllowRules(text: string | null): string[] | null {
-  const allow = asRecord(asRecord(text === null ? null : parseJson(text))?.["permissions"])?.["allow"];
-  return Array.isArray(allow) ? allow.filter((rule): rule is string => typeof rule === "string") : null;
+/** The allow rules; "none" for no file or no list, as Claude Code ignores a broken file. */
+function readAllowRules(text: FileRead): readonly string[] | "none" | null {
+  if (text === null) return null;
+  if (text === "absent") return "none";
+  const allow = asRecord(asRecord(parseJson(text.text))?.["permissions"])?.["allow"];
+  const rules = Array.isArray(allow) ? allow.filter((rule): rule is string => typeof rule === "string") : [];
+  return rules.length === 0 ? "none" : rules;
 }
 
 function readRequiredChecks(rules: unknown, branchInfo: unknown): boolean | null {
-  if (rules === null && branchInfo === null) return null;
   if (Array.isArray(rules) && rules.some((rule) => textField(rule, "type") === "required_status_checks")) return true;
   const checks = asRecord(asRecord(asRecord(branchInfo)?.["protection"])?.["required_status_checks"]);
-  if (checks === null || checks["enforcement_level"] === "off") return false;
-  const named = [checks["contexts"], checks["checks"]].some((list) => Array.isArray(list) && list.length > 0);
-  return named;
+  const named =
+    checks !== null &&
+    checks["enforcement_level"] !== "off" &&
+    [checks["contexts"], checks["checks"]].some((list) => Array.isArray(list) && list.length > 0);
+  if (named) return true;
+  // Only two readable answers prove that nothing requires checks.
+  return rules === null || branchInfo === null ? null : false;
 }
 
 function featureStatus(security: Record<string, unknown> | null, name: string): boolean | null {

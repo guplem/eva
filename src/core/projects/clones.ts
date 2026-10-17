@@ -110,11 +110,16 @@ export async function describeClone(
 /** `owner/name` of a GitHub repository URL, or null for any other URL. */
 export function githubSlug(repositoryUrl: string): string | null {
   // Anchored at the start: `https://evil.example/github.com/<owner>/` must not count as GitHub.
+  // Only the characters of a real GitHub name: the slug goes into API paths and into commands
+  // that the person copies, so `..`, `?`, `:owner` or `$(...)` must never pass.
   const match =
-    /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(
+    /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(
       repositoryUrl,
     );
-  return match === null ? null : `${match[1] ?? ""}/${match[2] ?? ""}`;
+  const owner = match?.[1];
+  const name = match?.[2];
+  if (owner === undefined || name === undefined || [owner, name].some((part) => /^\.+$/.test(part))) return null;
+  return `${owner}/${name}`;
 }
 
 /** True when the repository's owner is on the allowlist (default trust). GitHub only. */

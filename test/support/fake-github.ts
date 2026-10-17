@@ -3,6 +3,7 @@
  * its labels and its file contents. Every other address answers 404.
  */
 import type { GithubAnswer, GithubGet } from "../../src/core/projects/repository-facts.ts";
+import { gitBlobSha } from "../../src/core/projects/repository-setup.ts";
 
 export interface FakeRepository {
   /** Fields of `GET repos/{slug}` on top of a public repository where Eva is admin. */
@@ -31,11 +32,11 @@ function answerFor(address: string, fake: FakeRepository, path: string, raw: boo
     const tree = Object.entries(fake.files).map(([filePath, content]) => ({
       path: filePath,
       type: "blob",
-      sha: Bun.hash(content).toString(16),
+      sha: gitBlobSha(content),
     }));
     return ok({ truncated: false, tree });
   }
-  if (path === `${address}/labels?per_page=100`) return ok(fake.labels.map((name) => ({ name })));
+  if (path === `${address}/labels?per_page=100&page=1`) return ok(fake.labels.map((name) => ({ name })));
   const contents = new RegExp(`^${address}/contents/(.+)\\?ref=main$`).exec(path);
   const content = contents === null ? undefined : fake.files[decodeURIComponent(contents[1] ?? "")];
   if (raw && content !== undefined) return { status: 200, body: content };

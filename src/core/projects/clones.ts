@@ -107,13 +107,19 @@ export async function describeClone(
   return { ...clone, branch, pullRequest };
 }
 
+/** `owner/name` of a GitHub repository URL, or null for any other URL. */
+export function githubSlug(repositoryUrl: string): string | null {
+  // Anchored at the start: `https://evil.example/github.com/<owner>/` must not count as GitHub.
+  const match =
+    /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(
+      repositoryUrl,
+    );
+  return match === null ? null : `${match[1] ?? ""}/${match[2] ?? ""}`;
+}
+
 /** True when the repository's owner is on the allowlist (default trust). GitHub only. */
 export function isTrustedByDefault(repositoryUrl: string, trustedOwners: readonly string[]): boolean {
-  // Anchored at the start: `https://evil.example/github.com/<owner>/` must not count as GitHub.
-  const match = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\//i.exec(
-    repositoryUrl,
-  );
-  const owner = match?.[1]?.toLowerCase();
+  const owner = githubSlug(repositoryUrl)?.split("/")[0]?.toLowerCase();
   return owner !== undefined && trustedOwners.some((trusted) => trusted.toLowerCase() === owner);
 }
 

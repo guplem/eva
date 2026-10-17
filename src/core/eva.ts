@@ -8,12 +8,12 @@ import { delimiter, join, resolve } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
-import { EvaError } from "../shared/errors.ts";
+import { EvaError, isEvaError } from "../shared/errors.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
-import { evaVersion } from "../shared/version.ts";
+import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
@@ -28,6 +28,7 @@ import {
   CloneOriginStore,
   createClone,
   describeClone,
+  githubSlug,
   listClones,
   TrustStore,
   type Clone,
@@ -39,6 +40,13 @@ import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
+import { ghApiGet, readRepositoryFacts, type GithubGet } from "./projects/repository-facts.ts";
+import {
+  evaluateSetup,
+  unreadableReport,
+  type RepositoryFacts,
+  type SetupReport,
+} from "./projects/repository-setup.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
@@ -77,6 +85,8 @@ export interface EvaOptions {
    * the same OS user, so its engines get their own config folders (lesson 111).
    */
   readonly defaultHome?: string;
+  /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
+  readonly githubGet?: GithubGet;
 }
 
 export interface ProjectWorkInput {
@@ -591,6 +601,46 @@ export class Eva {
       );
     });
     return session;
+  }
+
+  /**
+   * The setup report of each repository of a project, judged against Eva's own repository.
+   * A repository that Eva cannot read gets a report with only the reason.
+   */
+  async repositorySetup(projectId: string): Promise<SetupReport[]> {
+    const project = this.projects().find((candidate) => candidate.id === projectId);
+    if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    if (project.frontMatter.repos.length === 0) return [];
+    const get = this.options.githubGet ?? ghApiGet(this.options.runner, this.gitEnvironment);
+    const read = async (slug: string): Promise<RepositoryFacts | string> => {
+      try {
+        return await readRepositoryFacts(slug, get);
+      } catch (error) {
+        if (isEvaError(error, "github_failed")) return error.message;
+        throw error;
+      }
+    };
+    let reference = await read(evaRepository);
+    // A gap in the reference would turn into false greens, such as "has every standard label".
+    if (
+      typeof reference !== "string" &&
+      (reference.files === null || reference.labels === null || !Array.isArray(reference.allowRules))
+    ) {
+      reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
+    }
+    const readReference = reference;
+    return Promise.all(
+      project.frontMatter.repos.map(async (url) => {
+        const slug = githubSlug(url);
+        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.");
+        if (typeof readReference === "string") return unreadableReport(url, slug, readReference);
+        const target = await read(slug);
+        if (typeof target === "string") return unreadableReport(url, slug, target);
+        if (target.isArchived)
+          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.");
+        return evaluateSetup(readReference, target);
+      }),
+    );
   }
 
   /** The clones of a project, with their branch and pull request. */

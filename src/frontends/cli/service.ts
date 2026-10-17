@@ -7,7 +7,7 @@
 import { basename } from "node:path";
 
 export interface ServiceTarget {
-  /** The command that runs Eva, such as [bun, src/main.ts] before P8 or [eva] after it. */
+  /** The command that runs Eva, from `serviceCommand`: [bun, src/main.ts] or [eva]. */
   readonly executable: readonly string[];
   readonly home: string;
 }
@@ -64,17 +64,28 @@ WantedBy=default.target
 `;
 }
 
+/**
+ * The command that the service runs. The single executable runs itself: its code lives in Bun's
+ * embedded file system, which only that executable can read (plan §11).
+ */
+export function serviceCommand(inputs: {
+  readonly standalone: boolean;
+  readonly execPath: string;
+  readonly mainScript: string;
+}): string[] {
+  return inputs.standalone ? [inputs.execPath] : [inputs.execPath, inputs.mainScript];
+}
+
 export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[] {
   const command = [...target.executable.map((part) => `"${part}"`), "--home", `"${target.home}"`].join(" ");
-  return [
-    "schtasks",
-    "/Create",
-    "/F",
-    "/SC",
-    "ONLOGON",
-    "/TN",
-    name === "eva" ? "Eva" : `Eva-${name.slice("eva-".length)}`,
-    "/TR",
-    command,
-  ];
+  return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", windowsTaskName(name), "/TR", command];
+}
+
+/** Starts the logon task now, so Eva runs without a new logon. */
+export function windowsRunTaskCommand(name = "eva"): string[] {
+  return ["schtasks", "/Run", "/TN", windowsTaskName(name)];
+}
+
+function windowsTaskName(name: string): string {
+  return name === "eva" ? "Eva" : `Eva-${name.slice("eva-".length)}`;
 }

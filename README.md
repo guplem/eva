@@ -16,8 +16,11 @@ eva setup
 
 `eva setup` asks for each setting. You install only Eva:
 
-- **An existing vault:** give its repository (for example `https://github.com/you/vault`) and a GitHub token that can read and write it. Eva clones the vault into her home folder and keeps it in sync. The token stays in Eva's `secrets.json`; it is in no git file.
+- **An existing vault:** give its repository (for example `https://github.com/you/vault`) and a GitHub token that can read and write it. Eva checks that git can read the repository, and asks again with git's reason when it cannot. Then she clones the vault into her home folder and keeps it in sync. The token stays in Eva's `secrets.json`; it is in no git file.
 - **A new vault:** give no repository. Eva creates a vault from her template, with a private GitHub repository when you name one.
+- **The time zone** is your computer's, unless you type another one. **The port** is a free one; change it later with `eva settings set port <number>`.
+
+Then run `eva service install`. Eva starts at once, and again each time you log in.
 
 For a script, such as a server install, run `eva setup --non-interactive` and give each answer in an `EVA_*` variable, for example `EVA_VAULT_REPOSITORY`, `EVA_GITHUB_TOKEN`, `EVA_CLAUDE_TOKEN`, `EVA_TELEGRAM_BOT_TOKEN` and `EVA_TELEGRAM_CHAT_ID`. `src/frontends/cli/setup.ts` lists every name.
 
@@ -92,11 +95,11 @@ bun run eva
 
 | Command                               | What it does                                                                                                   |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `bun run eva setup`                   | Asks for each setting (vault folder, tokens) and writes the config.                                            |
+| `bun run eva setup`                   | Asks for each setting (vault, tokens) and writes the config.                                                   |
 | `bun run eva doctor`                  | Checks the tools that each feature needs, and says how to install each.                                        |
 | `bun run eva`                         | Runs Eva in the foreground: the local web page, Telegram, and schedules.                                       |
 | `bun run eva chat`                    | Talks to a running Eva in this terminal.                                                                       |
-| `bun run eva service install`         | Starts Eva by itself when you log in.                                                                          |
+| `bun run eva service install`         | Starts Eva now, and by herself each time you log in.                                                           |
 | `bun run eva setup --non-interactive` | Reads each answer from an `EVA_*` variable instead, for scripts. `src/frontends/cli/setup.ts` lists the names. |
 
 ## Settings
@@ -123,7 +126,7 @@ Eva works on several machines with one vault, with no role to set. One machine i
 - **The first machine that starts with the vault becomes the hub.** The vault names it in `.eva/hub.json`.
 - **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new machine. The old hub stops its bot and schedules at its next vault fetch.
 - **The bot runs on the hub whenever the hub has a Telegram token.** A satellite never starts it, even with the token.
-- **Two Evas on one machine** work too: give each its own home folder (`--home`) and vault. `eva service install` names each service after its home folder, for example `eva-partner`.
+- **Two Evas on one machine** work too: give each its own home folder (`--home`) and vault. `eva service install` names each service after its home folder, for example `eva-partner`. An Eva whose home folder is not the default one keeps her own Claude and `gh` logins in `<home>/engines/claude` and `<home>/engines/gh`, so two people never share a login. Give her a Claude token in `eva setup`, and log her `gh` in with `GH_CONFIG_DIR=<home>/engines/gh gh auth login`.
 - **Phone access** needs no setting: see [Open Eva](#open-eva).
 
 ## Updates and vault sync
@@ -164,12 +167,10 @@ These steps install Eva for one user, with no `sudo`. Run them as that user, for
    bun run src/main.ts setup --non-interactive
    ```
 
-4. Start Eva with the system, and keep her running after you log out:
+4. Start Eva with the system. The command starts her now, and runs `loginctl enable-linger` so she keeps running after you log out. When that step fails, it prints the command for an administrator.
 
    ```bash
    bun run src/main.ts service install
-   loginctl enable-linger
-   systemctl --user start eva
    ```
 
 5. Check her: `bun run src/main.ts status`. The log is in `~/.config/eva/logs/`. Then write to your bot in Telegram.

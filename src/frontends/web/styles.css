@@ -472,3 +472,23 @@ textarea {
     min-width: calc(100vw - 40px);
   }
 }
+
+/* A pushed prompt can be long, so the fields scroll and never push the buttons off a phone screen. */
+.card-fields {
+  margin: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-fields dt {
+  font-weight: 600;
+}
+
+.card-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

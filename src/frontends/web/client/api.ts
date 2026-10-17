@@ -4,7 +4,7 @@ import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
-import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
+import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
@@ -20,6 +20,7 @@ export type {
   PendingApproval,
   Project,
   PublicSettings,
+  ScheduleCard,
   SessionEvent,
   SessionRecord,
   UpdateStatus,
@@ -108,11 +109,15 @@ export const api = {
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
+  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards"),
+  /** Says that the person saw the card with these fields. A card that changed meanwhile answers 409. */
+  confirmScheduleCard: (card: ScheduleCard): Promise<void> =>
+    request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
 };
 
 /** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
 export function subscribeToEvents(
-  onEvent: (event: SessionEvent) => void,
+  onEvent: (event: SessionEvent | ScheduleCard) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): () => void {
   let socket: WebSocket | null = null;
@@ -124,7 +129,7 @@ export function subscribeToEvents(
       onConnectionChange(true);
     });
     socket.addEventListener("message", (message) => {
-      onEvent(JSON.parse(String(message.data)) as SessionEvent);
+      onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard);
     });
     socket.addEventListener("close", () => {
       if (closed) return;

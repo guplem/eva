@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
+import { withMachineDefaults } from "./machine-defaults.ts";
 
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
@@ -36,11 +37,12 @@ export function vaultSettingsPath(vaultPath: string): string {
   return join(vaultPath, ".eva", "settings.json");
 }
 
-/** The machine's `config.json` with the vault's settings on top. */
+/** The machine's `config.json`, with the machine's own defaults, and the vault's settings on top. */
 export function loadSettings(paths: HomePaths): LoadedSettings {
   const read = readJsonTolerant(paths.config);
   if (!read.ok && read.reason === "invalid") throw new EvaError("config_invalid", `${paths.config} is not valid JSON.`);
-  return withVaultSettings(read.ok ? parseConfig(read.value, paths.config) : defaultConfig);
+  const machine = read.ok ? parseConfig(read.value, paths.config) : defaultConfig;
+  return withVaultSettings(withMachineDefaults(machine, { homeRoot: paths.root, exists: existsSync }));
 }
 
 /**

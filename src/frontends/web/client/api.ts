@@ -91,6 +91,7 @@ export const api = {
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
+  becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),

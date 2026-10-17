@@ -10,9 +10,11 @@ import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
 import {
   describeProjects,
+  describeRole,
   describeStatus,
   describeSync,
   describeUpdate,
+  requestHub,
   requestSettingsChange,
   requestSync,
   requestUpdate,
@@ -20,7 +22,13 @@ import {
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
-import { restartMethod, servicePath, systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
+import {
+  restartMethod,
+  serviceName,
+  servicePath,
+  systemdUnit,
+  windowsTaskCommand,
+} from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
 import {
   firstFreePort,
@@ -82,6 +90,7 @@ describe("parseArguments", () => {
     expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false });
     expect(parseArguments(["update", "--check"])).toEqual({ command: "update", home: undefined, checkOnly: true });
     expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
+    expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
     expect(parseArguments(["settings"])).toEqual({ command: "settings", home: undefined, action: "list" });
     expect(parseArguments(["settings", "get", "updates.frequency"])).toEqual({
       command: "settings",
@@ -209,9 +218,8 @@ describe("runSetup", () => {
     expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
   });
 
-  test("a Telegram token turns Telegram on", async () => {
+  test("a Telegram token is stored as a secret", async () => {
     await setup({ telegramToken: "123456:telegram-token-value" });
-    expect(loadSettings(homePaths(home)).config.telegram.enabled).toBe(true);
     expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");
   });
 
@@ -395,6 +403,14 @@ describe("service", () => {
     expect(restartMethod({})).toBe("new-copy");
   });
 
+  test("a second instance on the same machine gets its own service name (plan D11)", () => {
+    expect(serviceName("/u/.config/eva", "/u/.config/eva")).toBe("eva");
+    expect(serviceName("/u/.config/eva-partner", "/u/.config/eva")).toBe("eva-eva-partner");
+    expect(serviceName("/srv/Partner Home", "/u/.config/eva")).toBe("eva-partner-home");
+    expect(serviceName("/srv/__", "/u/.config/eva")).toBe("eva-instance");
+    expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
+  });
+
   test("the Windows task starts Eva at logon", () => {
     expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
       "schtasks",
@@ -484,7 +500,7 @@ repos:
   test("status and projects print short text", async () => {
     const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
     expect(before).toContain("Vault sync: ok");
-    expect(before).toMatch(/^Eva \d+\.\d+\.\d+, role: hub/);
+    expect(before).toMatch(/^Eva \d+\.\d+\.\d+, hub: this machine \(\S+\)/);
     expect(before).toContain("Last turn: none since start");
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
@@ -504,6 +520,7 @@ repos:
     const options = { baseUrl: api.url, token: "chat-token" };
     expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
     expect(await requestSync(options)).toStartWith("Vault sync: ");
+    expect(await requestHub(options)).toContain("is now the hub.");
     expect(await requestSettingsChange(options, { updates: { frequency: "weekly" } })).toBe(false);
     expect(await requestSettingsChange(options, { timeZone: "Europe/Madrid" })).toBe(true);
     expect(String(await requestSettingsChange(options, { port: 5 }).catch((caught: unknown) => caught))).toContain(
@@ -587,5 +604,15 @@ describe("describeUpdate and describeSync", () => {
     expect(describeSync({ ...state, status: "offline", lastError: "Could not reach the remote." })).toBe(
       "Vault sync: offline (Could not reach the remote.)",
     );
+  });
+});
+
+describe("describeRole", () => {
+  test("names this machine and the hub", () => {
+    expect(describeRole({ role: "hub", machine: "server", hub: "server" })).toBe("hub: this machine (server)");
+    expect(describeRole({ role: "satellite", machine: "pc", hub: "server" })).toBe(
+      "satellite: the hub is server; this machine is pc",
+    );
+    expect(describeRole({ role: "satellite", machine: "pc", hub: null })).toContain("the hub is unknown");
   });
 });

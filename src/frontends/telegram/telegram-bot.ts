@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Eva } from "../../core/eva.ts";
-import { describeLastTurn, describeSync, describeUpdate, heldBackLines } from "../cli/client.ts";
+import { describeLastTurn, describeRole, describeSync, describeUpdate, heldBackLines } from "../cli/client.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -701,7 +701,7 @@ export class TelegramBot {
   private statusText(): string {
     const status = this.options.eva.status();
     return [
-      `Eva ${status.version}`,
+      `Eva ${status.version}, ${describeRole(status)}`,
       `Vault: ${status.vaultPath ?? "not configured"}`,
       describeSync(status.vaultSync),
       ...heldBackLines(status.vaultSync.withheldFiles),

@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Eva } from "./core/eva.ts";
@@ -43,6 +43,7 @@ import {
   describeProjects,
   describeStatus,
   describeSync,
+  requestHub,
   requestSettingsChange,
   requestSync,
   requestUpdate,
@@ -50,7 +51,9 @@ import {
   type ClientOptions,
 } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
-import { restartMethod, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import { restartMethod, serviceName, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
+import { tailscaleHostName } from "./core/instance/machine-defaults.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
@@ -139,6 +142,8 @@ async function main(argv: readonly string[]): Promise<number> {
       return update(paths, command.checkOnly);
     case "sync":
       return sync(paths);
+    case "hub":
+      return hub(paths);
     case "settings":
       return settings(paths, command);
     case "status":
@@ -217,6 +222,9 @@ async function serve(paths: HomePaths): Promise<number> {
   const settingsMoved = await moveSettingsAfterPull(paths, secrets);
   const loaded = loadSettings(paths);
   const config = loaded.config;
+  const hubClaimed =
+    config.vaultPath !== null && claimHubIfUnclaimed(config.vaultPath, config.machineName ?? hostname(), new Date());
+  const tailnetName = await tailscaleHostName(systemProcessRunner, childEnvironment());
   if (secrets.localApiToken === undefined) {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
@@ -229,6 +237,7 @@ async function serve(paths: HomePaths): Promise<number> {
   logger.removeOldFiles();
   if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
+  if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
 
   const engines: EnginePort[] = [];
   const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
@@ -280,7 +289,7 @@ async function serve(paths: HomePaths): Promise<number> {
     eva,
     port: config.port,
     token: secrets.localApiToken,
-    extraHosts: config.remoteAccess.hostNames,
+    extraHosts: [...config.remoteAccess.hostNames, ...(tailnetName === null ? [] : [tailnetName])],
     allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
   });
   logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
@@ -306,8 +315,21 @@ async function serve(paths: HomePaths): Promise<number> {
         resolve(exitCode);
       })();
     };
-    bot = startTelegram(paths, eva, logger, (exitCode) => {
-      stop(exitCode);
+    // Only the hub runs Telegram; the bot starts or stops when the hub moves (plan §4.4).
+    const followRole = async (role: MachineRole): Promise<void> => {
+      if (role === "hub" && bot === null) {
+        bot = startTelegram(paths, eva, logger, (exitCode) => {
+          stop(exitCode);
+        });
+      } else if (role === "satellite" && bot !== null) {
+        const stopping = bot;
+        bot = null;
+        await stopping.stop();
+      }
+    };
+    void followRole(eva.role());
+    eva.onRoleChange((role) => {
+      void followRole(role);
     });
     process.once("SIGINT", () => {
       stop(exitCodes.clean);
@@ -318,7 +340,7 @@ async function serve(paths: HomePaths): Promise<number> {
   });
 }
 
-/** Telegram runs on the hub instance only (plan §4.4, lesson 56). */
+/** Telegram runs on the hub instance only (plan §4.4, lesson 56), whenever it has a bot token. */
 function startTelegram(
   paths: HomePaths,
   eva: Eva,
@@ -327,7 +349,7 @@ function startTelegram(
 ): TelegramBot | null {
   const config = loadSettings(paths).config;
   const token = loadSecrets(paths).telegramBotToken;
-  if (config.role !== "hub" || !config.telegram.enabled || token === undefined) return null;
+  if (token === undefined) return null;
   let pairingCode = "";
   if (config.telegram.allowedChatId === null) {
     pairingCode = `EVA-${randomBytes(4).toString("hex").toUpperCase()}`;
@@ -360,8 +382,12 @@ function pairingCodePath(paths: HomePaths): string {
 
 async function installService(paths: HomePaths): Promise<number> {
   const executable = [process.execPath, join(import.meta.dir, "main.ts")];
+  const name = serviceName(
+    paths.root,
+    resolveHomeFolder({ environment: {}, platform: process.platform, userHome: homedir() }),
+  );
   if (process.platform === "win32") {
-    const result = await systemProcessRunner.run(windowsTaskCommand({ executable, home: paths.root }), {
+    const result = await systemProcessRunner.run(windowsTaskCommand({ executable, home: paths.root }, name), {
       cwd: paths.root,
       environment: childEnvironment(),
       timeoutMs: 30_000,
@@ -369,7 +395,7 @@ async function installService(paths: HomePaths): Promise<number> {
     writeLine(result.exitCode === 0 ? "Eva now starts when you log in." : `schtasks failed: ${result.stderr.trim()}`);
     return result.exitCode === 0 ? exitCodes.clean : exitCodes.crash;
   }
-  const unitPath = join(homedir(), ".config", "systemd", "user", "eva.service");
+  const unitPath = join(homedir(), ".config", "systemd", "user", `${name}.service`);
   mkdirSync(dirname(unitPath), { recursive: true });
   writeFileSync(
     unitPath,
@@ -377,7 +403,7 @@ async function installService(paths: HomePaths): Promise<number> {
   );
   for (const step of [
     ["systemctl", "--user", "daemon-reload"],
-    ["systemctl", "--user", "enable", "--now", "eva.service"],
+    ["systemctl", "--user", "enable", "--now", `${name}.service`],
   ]) {
     const result = await systemProcessRunner.run(step, {
       cwd: paths.root,
@@ -445,6 +471,31 @@ async function sync(paths: HomePaths): Promise<number> {
   const state = await vaultSync.save();
   writeLine(describeSync(state));
   return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
+}
+
+/** `eva hub`: makes this machine the hub; the old hub stops at its next vault fetch. */
+async function hub(paths: HomePaths): Promise<number> {
+  const client = runningClient(paths);
+  if (client !== null) {
+    writeLine(await requestHub(client));
+    return exitCodes.clean;
+  }
+  const config = loadSettings(paths).config;
+  if (config.vaultPath === null) {
+    writeLine("Without a vault, this machine is always the hub.");
+    return exitCodes.clean;
+  }
+  const machine = config.machineName ?? hostname();
+  const vaultSync = new VaultSync({
+    vaultPath: config.vaultPath,
+    runner: systemProcessRunner,
+    environment: gitEnvironment(loadSecrets(paths)),
+    now: () => new Date(),
+  });
+  await vaultSync.pull();
+  claimHub(config.vaultPath, machine, new Date());
+  writeLine(`${machine} is now the hub. ${describeSync(await vaultSync.save())}`);
+  return exitCodes.clean;
 }
 
 /** `eva settings`: shows or changes a setting, through the running Eva when one runs. */

@@ -314,6 +314,11 @@ describe("updates and the vault sync", () => {
     expect((await call("/api/update/check", { method: "POST", body: {} })).status).toBe(409);
   });
 
+  test("Make this machine the hub answers with the new status", async () => {
+    const response = await call("/api/hub", { method: "POST", body: {} });
+    expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
+  });
+
   test("Sync now answers with the sync state", async () => {
     const response = await call("/api/vault/sync", { method: "POST", body: {} });
     expect(response.status).toBe(200);

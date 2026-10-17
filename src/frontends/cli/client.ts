@@ -17,7 +17,7 @@ interface ProjectBody {
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
   return [
-    `Eva ${status.version}, role: ${status.role}`,
+    `Eva ${status.version}, ${describeRole(status)}`,
     `Vault: ${status.vaultPath ?? "not configured"}`,
     describeSync(status.vaultSync),
     // Over JSON the date arrives as text; new Date reads both forms.
@@ -59,6 +59,18 @@ export async function startProjectWork(
   return input.reportToSessionId === null
     ? `Started the work in clone ${started.clone}, chat ${started.sessionId}.`
     : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
+}
+
+/** Which machine is the hub (plan §4.4), from this machine's view. */
+export function describeRole(status: Pick<EvaStatus, "role" | "machine" | "hub">): string {
+  if (status.role === "hub") return `hub: this machine (${status.machine})`;
+  return `satellite: the hub is ${status.hub ?? "unknown"}; this machine is ${status.machine}`;
+}
+
+/** `eva hub` while Eva runs. */
+export async function requestHub(options: ClientOptions): Promise<string> {
+  const status = await postJson<EvaStatus>(options, "/api/hub", {});
+  return `${status.machine} is now the hub. ${describeSync(status.vaultSync)}`;
 }
 
 /** One line about Eva's version and her updates. */

@@ -181,6 +181,7 @@ ADRs live in `adr/`. Each records one architectural decision or cross-cutting st
 | `0009-layered-testing-strategy.md`              | Unit tests with fakes at named seams, adapter contract tests, e2e with fakes, floors  |
 | `0010-person-settings-in-the-vault.md`          | The person's settings in the vault's `.eva/settings.json`; the machine's in the home  |
 | `0011-self-update-when-idle.md`                 | Self-update at a set frequency, installed only when idle, then a restart              |
+| `0012-hub-claimed-in-the-vault.md`              | The vault's `.eva/hub.json` names the hub; no role setting; it moves without restarts |
 
 ## GitHub issues, PRs, and other artifacts
 

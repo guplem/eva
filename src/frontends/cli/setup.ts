@@ -148,10 +148,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     "telegramToken",
     `Telegram bot token from BotFather (Enter to skip${secrets.telegramBotToken === undefined ? "" : ", one is saved"}): `,
   );
-  if (telegramToken !== "") {
-    secrets.telegramBotToken = telegramToken;
-    config = { ...config, telegram: { ...config.telegram, enabled: true } };
-  }
+  if (telegramToken !== "") secrets.telegramBotToken = telegramToken;
   if (secrets.telegramBotToken !== undefined) {
     const chatId = await ask(
       "telegramChatId",

@@ -34,7 +34,7 @@ function createScheduler(isHub = true): Scheduler {
     vaultPath: vault,
     statePath: join(folder, "state", "schedules-state.json"),
     timeZone: "Europe/Madrid",
-    isHub,
+    isHub: () => isHub,
     now: () => clock,
     chats: {
       createChat: (name, model) => {

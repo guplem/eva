@@ -6,6 +6,7 @@ import { runCheck } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../src/core/instance/home.ts";
 import { loadSettings, vaultSettingsPath } from "../../../src/core/instance/settings.ts";
+import { claimHub } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -235,5 +236,32 @@ describe("live settings, the vault fetch and updates", () => {
     expect((await updating.updateNow())?.phase).toBe("restarting");
     expect(steps).toEqual(["apply", "restart"]);
     updating.stop();
+  });
+});
+
+describe("the hub (plan §4.4)", () => {
+  test("this machine is the hub until another machine claims it, and takes it back with becomeHub", async () => {
+    const changes: string[] = [];
+    eva.onRoleChange((role) => changes.push(role));
+    expect(eva.status()).toMatchObject({ role: "hub", hub: null });
+    claimHub(vault, "another-machine", new Date());
+    await eva.backgroundTick();
+    expect(eva.status()).toMatchObject({ role: "satellite", hub: "another-machine" });
+    const status = await eva.becomeHub();
+    expect(status.role).toBe("hub");
+    expect(status.hub).toBe(status.machine);
+    expect(changes).toEqual(["satellite", "hub"]);
+    expect(sandbox.git(sandbox.remote, "show", "main:.eva/hub.json")).toContain(status.machine);
+    await eva.becomeHub();
+    expect(changes).toEqual(["satellite", "hub"]);
+  });
+
+  test("an unsubscribed listener hears nothing", async () => {
+    const changes: string[] = [];
+    const unsubscribe = eva.onRoleChange((role) => changes.push(role));
+    unsubscribe();
+    claimHub(vault, "another-machine", new Date());
+    await eva.backgroundTick();
+    expect(changes).toEqual([]);
   });
 });

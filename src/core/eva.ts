@@ -125,6 +125,8 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const gitStatusTimeoutMs = 20_000;
+/** The number of characters of a project answer that the report to the Assistant chat keeps. */
+const reportTextLimit = 3_000;
 const scheduleTickMs = 30_000;
 const backgroundTickMs = 60_000;
 /** Settings that apply at once; any other change waits for a restart. */
@@ -158,6 +160,8 @@ export class Eva {
   private lastTurn: LastTurnStatus | null = null;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones = new Set<string>();
+  /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
+  private readonly cloneChoices = new Map<string, Promise<unknown>>();
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -414,7 +418,7 @@ export class Eva {
     if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
     const clone =
       input.cloneName === undefined
-        ? await this.freeOrNewClone(project)
+        ? await this.oneCloneChoiceAtATime(project, () => this.freeOrNewClone(project))
         : listClones(project.path).find((candidate) => candidate.name === input.cloneName);
     if (clone === undefined)
       throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
@@ -436,8 +440,12 @@ export class Eva {
   async startProjectWork(input: ProjectWorkInput): Promise<SessionRecord> {
     const project = this.projects().find((candidate) => candidate.id === input.projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
-    const clone = await this.freeOrNewClone(project);
-    this.reservedClones.add(clone.path);
+    // The reservation happens inside the choice, so a second work cannot pick the same clone.
+    const clone = await this.oneCloneChoiceAtATime(project, async () => {
+      const chosen = await this.freeOrNewClone(project);
+      this.reservedClones.add(chosen.path);
+      return chosen;
+    });
     const session = this.sessions.createSession({
       mode: "project",
       engine: this.options.config.engines.default,
@@ -453,14 +461,19 @@ export class Eva {
       } finally {
         this.reservedClones.delete(clone.path);
       }
+      if (input.reportToSessionId === null) return;
       const last = this.sessions.get(session.id).turns.at(-1);
       const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
-      if (input.reportToSessionId !== null) {
-        await this.sessions.send(
-          input.reportToSessionId,
-          `[Project work finished: ${project.id}, clone ${clone.name}, chat ${session.id}]\n\n${result}`,
-        );
-      }
+      const details = await describeClone(clone, this.options.runner, this.gitEnvironment);
+      const place = [
+        `clone ${clone.name}`,
+        ...(details.branch === null ? [] : [`branch ${details.branch}`]),
+        ...(details.pullRequest === null ? [] : [`pull request #${String(details.pullRequest)}`]),
+      ].join(", ");
+      await this.sessions.send(
+        input.reportToSessionId,
+        `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
+      );
     });
     return session;
   }
@@ -515,9 +528,13 @@ export class Eva {
   async newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     const project = this.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project, repositoryUrl));
+  }
+
+  private async cloneInto(project: Project, repositoryUrl?: string): Promise<Clone> {
     const url = repositoryUrl ?? project.frontMatter.repos[0];
     if (url === undefined)
-      throw new EvaError("project_not_found", `Project ${projectId} lists no repository to clone.`);
+      throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
       projectPath: project.path,
       repositoryUrl: url,
@@ -526,6 +543,7 @@ export class Eva {
     });
   }
 
+  /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
     for (const clone of listClones(project.path)) {
       const busy =
@@ -533,7 +551,21 @@ export class Eva {
         this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));
       if (!busy && (await this.isClean(clone.path))) return clone;
     }
-    return this.newClone(project.id);
+    return this.cloneInto(project);
+  }
+
+  /**
+   * Runs one clone choice of a project after the previous one ends. A choice awaits git, so
+   * without this chain two callers could pick the same free clone or the same new folder (lesson 49).
+   */
+  private oneCloneChoiceAtATime<Chosen>(project: Project, choose: () => Promise<Chosen>): Promise<Chosen> {
+    const previous = this.cloneChoices.get(project.path) ?? Promise.resolve();
+    const choice = previous.then(choose, choose);
+    this.cloneChoices.set(
+      project.path,
+      choice.catch(() => undefined),
+    );
+    return choice;
   }
 
   private async isClean(folder: string): Promise<boolean> {
@@ -660,6 +692,12 @@ async function readOriginUrl(
   });
   const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
+}
+
+/** Keeps the end of a long project answer: the end usually holds the result, and a phone chat stays short. */
+function capReportText(text: string): string {
+  if (text.length <= reportTextLimit) return text;
+  return `(The answer is longer. The full answer is in the project chat.)\n\n…${text.slice(-reportTextLimit)}`;
 }
 
 /** The dotted keys that a settings change touches, such as `updates.frequency`. */

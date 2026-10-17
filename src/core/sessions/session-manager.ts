@@ -253,6 +253,8 @@ export class SessionManager {
       kind: "approval_resolved",
       requestId,
       answer: answer === "expired" ? "deny" : answer,
+      // Nobody answered: the time ran out, or the turn stopped.
+      timedOut: answer === "expired",
     });
   }
 

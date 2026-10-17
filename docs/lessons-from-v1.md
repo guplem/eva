@@ -84,7 +84,7 @@ The plan (`plan.md`) must respect every `[keep]` and `[adapt]` item. A reviewer 
 
 ## 6. Telegram
 
-56. `[keep]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers flapped for ever. Source: `de9ab58`.
+56. `[keep]` **Only one poller for each bot token.** Count 409 errors, and do not let a success reset the count. Two servers flapped for ever. Source: `de9ab58`. → Eva counts the 409 errors of the last 2 minutes. At 3, she logs an error and pauses only the bot for 10 minutes; the core runs on, because the owner may reach Eva only through Telegram.
 57. `[keep]` **Confirm the update offset before any deliberate exit.** Retry 3 times, or the whole batch replays. Source: `b8b686a`.
 58. `[keep]` **Format answers as Telegram HTML, never MarkdownV2.** Split at 4000 characters before the conversion, and fall back to plain text. Source: `server/adr/0002`, PR #58.
 59. `[keep]` **Service messages stay plain text.** Commit subjects and paths are not Markdown. Source: `server/AGENTS.md`.

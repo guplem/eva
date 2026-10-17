@@ -6,17 +6,18 @@ One TypeScript union crosses the engine port (plan §4.6). Each engine adapter t
 
 Every event has `kind`, `sessionId`, `seq`, and `at`.
 
-| kind              | Payload                                                                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `text`            | `text`, `messageId` (the engine's id of the answer message: the fork and retry point)                                          |
-| `tool_started`    | `toolUseId`, `name`, `summary`                                                                                                 |
-| `tool_finished`   | `toolUseId`, `isError`                                                                                                         |
-| `task_changed`    | `taskId`, `description`, `state` (`running` / `done` / `failed`)                                                               |
-| `approval_needed` | `requestId`, `toolName`, `summary`                                                                                             |
-| `history_lost`    | none                                                                                                                           |
-| `notice`          | `text`                                                                                                                         |
-| `turn_finished`   | `engineSessionId`, `lastMessageId`, `usage` (`inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`), `costUsd?` |
-| `turn_failed`     | `reason`                                                                                                                       |
+| kind                | Payload                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `text`              | `text`, `messageId` (the engine's id of the answer message: the fork and retry point)                                          |
+| `tool_started`      | `toolUseId`, `name`, `summary`                                                                                                 |
+| `tool_finished`     | `toolUseId`, `isError`                                                                                                         |
+| `task_changed`      | `taskId`, `description`, `state` (`running` / `done` / `failed`)                                                               |
+| `approval_needed`   | `requestId`, `toolName`, `summary`                                                                                             |
+| `approval_resolved` | `requestId`, `answer` (`allow` / `deny`), `timedOut`. The core emits it, never an engine.                                      |
+| `history_lost`      | none                                                                                                                           |
+| `notice`            | `text`                                                                                                                         |
+| `turn_finished`     | `engineSessionId`, `lastMessageId`, `usage` (`inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`), `costUsd?` |
+| `turn_failed`       | `reason`                                                                                                                       |
 
 ## Rules
 

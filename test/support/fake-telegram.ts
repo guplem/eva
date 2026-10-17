@@ -7,11 +7,14 @@ import type { Server } from "bun";
 export interface RecordedCall {
   readonly method: string;
   readonly params: Record<string, unknown>;
+  /** What the fake answered; undefined for a scripted error. */
+  result?: unknown;
 }
 
 interface ScriptedError {
   readonly code: number;
   readonly description: string;
+  readonly retryAfterSeconds: number | null;
   remaining: number;
 }
 
@@ -38,16 +41,23 @@ export class FakeTelegram {
         }
         const method = url.pathname.split("/").pop() ?? "";
         const params = await readParams(request);
-        this.calls.push({ method, params });
+        const call: RecordedCall = { method, params };
+        this.calls.push(call);
         const error = this.errors.get(method);
         if (error !== undefined && error.remaining > 0) {
           error.remaining -= 1;
           return Response.json(
-            { ok: false, error_code: error.code, description: error.description },
+            {
+              ok: false,
+              error_code: error.code,
+              description: error.description,
+              ...(error.retryAfterSeconds === null ? {} : { parameters: { retry_after: error.retryAfterSeconds } }),
+            },
             { status: error.code },
           );
         }
-        return Response.json({ ok: true, result: this.result(method, params) });
+        call.result = this.result(method, params);
+        return Response.json({ ok: true, result: call.result });
       },
     });
   }
@@ -87,10 +97,10 @@ export class FakeTelegram {
     });
   }
 
-  /** A file message from a chat: a document or a voice note, with bytes that getFile serves. */
+  /** A file message from a chat: a document, a voice note or an audio file, with bytes that getFile serves. */
   sendFile(
     chatId: number,
-    kind: "document" | "voice",
+    kind: "document" | "voice" | "audio",
     bytes: Uint8Array<ArrayBuffer>,
     options: { fileName?: string; topicId?: number; reportedSize?: number } = {},
   ): void {
@@ -112,8 +122,41 @@ export class FakeTelegram {
     });
   }
 
-  failNext(method: string, code: number, description: string, times = 1): void {
-    this.errors.set(method, { code, description, remaining: times });
+  /** A phone photo: Telegram sends several sizes, smallest first. Only the largest has bytes to download. */
+  sendPhoto(chatId: number, bytes: Uint8Array<ArrayBuffer>, caption?: string): void {
+    const fileId = `photo-${String(this.nextUpdateId)}`;
+    this.files.set(`${fileId}.bin`, bytes);
+    this.sendMessageWith(chatId, {
+      photo: [
+        { file_id: `${fileId}-small`, file_unique_id: `small-${fileId}`, width: 90, height: 60, file_size: 10 },
+        { file_id: fileId, file_unique_id: `large-${fileId}`, width: 1280, height: 853, file_size: bytes.length },
+      ],
+      ...(caption === undefined ? {} : { caption }),
+    });
+  }
+
+  /** A message with any other content, such as `{ sticker: {...} }` or a service message. */
+  sendMessageWith(chatId: number, content: Record<string, unknown>): void {
+    this.updates.push({
+      update_id: this.nextUpdateId++,
+      message: {
+        message_id: this.nextMessageId++,
+        chat: { id: chatId, type: "private" },
+        from: { id: chatId },
+        ...content,
+      },
+    });
+  }
+
+  /** The next `times` calls of a method fail; a 429 can carry Telegram's `retry_after`. */
+  failNext(
+    method: string,
+    code: number,
+    description: string,
+    times = 1,
+    retryAfterSeconds: number | null = null,
+  ): void {
+    this.errors.set(method, { code, description, retryAfterSeconds, remaining: times });
   }
 
   callsTo(method: string): RecordedCall[] {

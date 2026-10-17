@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts";
-import { HttpTelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
+import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import type { LogLevel } from "../../../../src/shared/logger.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
@@ -18,17 +19,18 @@ let telegram: FakeTelegram;
 let engine: FakeEngine;
 let eva: Eva;
 let paired: number[];
-let fatal: number[];
 let clock: Date;
+let sleeps: number[];
+let logs: { level: LogLevel; message: string }[];
 
-function createEva(script?: FakeTurnScript): void {
+function createEva(script?: FakeTurnScript, runner: ProcessRunner = systemProcessRunner): void {
   engine = new FakeEngine(script);
   eva = new Eva({
     paths: homePaths(home),
     config: { ...defaultConfig, vaultPath: sandbox.root + "/vault", timeZone: "UTC" },
     secrets: {},
     engines: [engine],
-    runner: systemProcessRunner,
+    runner,
     processEnvironment: gitEnvironment,
     now: () => clock,
     basePrompt: "Base.",
@@ -45,11 +47,25 @@ function createBot(allowedChatId: number | null = owner, extra: Partial<Telegram
     allowedUserId: null,
     pairingCode: "PAIR-1234",
     onPaired: (chatId) => paired.push(chatId),
-    onFatal: (code) => fatal.push(code),
     pollTimeoutSeconds: 0,
     typingIntervalMs: 20,
+    clock: { now: () => clock },
+    sleep: (ms) => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    },
+    logger: { log: (level, message) => logs.push({ level, message }) },
     ...extra,
   });
+}
+
+/** Runs the poll loop until a condition holds, then stops it. */
+async function runUntil(bot: TelegramBot, until: () => boolean): Promise<void> {
+  const running = bot.run();
+  for (let round = 0; round < 400 && !until(); round += 1) await Bun.sleep(5);
+  await bot.stop();
+  await running;
+  if (!until()) throw new Error("the poll loop never reached the expected state");
 }
 
 async function settle(bot: TelegramBot, until: () => boolean, rounds = 400): Promise<void> {
@@ -70,7 +86,8 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "eva-telegram-"));
   telegram = new FakeTelegram();
   paired = [];
-  fatal = [];
+  sleeps = [];
+  logs = [];
   clock = new Date("2026-10-14T10:30:00Z");
   createEva();
 }, gitHookTimeoutMs);
@@ -155,6 +172,59 @@ describe("chats", () => {
     telegram.sendText(owner, "hello");
     await settle(bot, () => telegram.callsTo("sendMessage").length >= 2);
     expect(telegram.callsTo("sendMessage")[1]?.params["parse_mode"]).toBeUndefined();
+  });
+
+  test("an answer that Telegram refuses for another reason is not sent again as plain text", async () => {
+    createEva((request) => FakeEngine.answer(request, "**Done**"));
+    const bot = createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: message thread not found");
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.callsTo("sendMessage").length >= 1);
+    await eva.idle();
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("/new")));
+    expect(telegram.sentTexts().filter((text) => text.includes("Done"))).toHaveLength(1);
+    expect(logs.some((log) => log.level === "warn")).toBe(true);
+  });
+
+  test("a message refused with 429 waits the time Telegram asks for, at most 30 seconds, then goes again", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 120", 1, 120);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.callsTo("sendMessage").length >= 2);
+    expect(sleeps).toEqual([30_000]);
+    expect(telegram.sentTexts()[1]).toBe(telegram.sentTexts()[0]);
+  });
+
+  test("a message gives up after three retries", async () => {
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests", 10, 2);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.callsTo("sendMessage").length >= 4);
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.callsTo("sendMessage").length >= 8);
+    expect(sleeps.slice(0, 3)).toEqual([2_000, 2_000, 2_000]);
+    expect(logs.some((log) => log.message.includes("Telegram call failed"))).toBe(true);
+  });
+
+  test("a message that hits a network error goes again after a short wait", async () => {
+    const http = new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl });
+    let failures = 2;
+    const flaky: TelegramApi = {
+      call: <Result>(method: string, params?: Readonly<Record<string, unknown>>): Promise<Result> => {
+        if (method === "sendMessage" && failures > 0) {
+          failures -= 1;
+          return Promise.reject(new TelegramError(method, 0, "TypeError"));
+        }
+        return http.call<Result>(method, params);
+      },
+      upload: (method, params, file) => http.upload(method, params, file),
+      download: (filePath) => http.download(filePath),
+    };
+    const bot = createBot(owner, { api: flaky });
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.callsTo("sendMessage").length >= 1);
+    expect(sleeps).toEqual([1_000, 2_000]);
   });
 
   test("a long answer is split into messages under Telegram's limit", async () => {
@@ -256,6 +326,27 @@ describe("approvals and commands", () => {
     telegram.pressButton(owner, `a:${requestId}:allow`);
     await settle(bot, () => answers.length === 1);
     expect(answers).toEqual(["allow"]);
+    expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Allowed");
+  });
+
+  test("an answered approval edits its message to show the answer, and drops the buttons", async () => {
+    createEva(async function* (request) {
+      const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, answer);
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "push it");
+    await settle(bot, () => telegram.callsTo("sendMessage").some((call) => call.params["reply_markup"] !== undefined));
+    const question = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
+    const requestId = /"a:([^:"]+):deny"/.exec(JSON.stringify(question?.params["reply_markup"]))?.[1] ?? "";
+    telegram.pressButton(owner, `a:${requestId}:deny`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+    const edit = telegram.callsTo("editMessageText")[0]?.params;
+    expect(edit?.["message_id"]).toBe((question?.result as { message_id: number }).message_id);
+    expect(edit?.["chat_id"]).toBe(owner);
+    expect(String(edit?.["text"])).toBe("Eva wants to run Bash: git push\n\nDenied");
+    expect(edit?.["reply_markup"]).toBeUndefined();
+    expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Denied");
   });
 
   test("/status, /projects and /help answer without the engine (lesson 43)", async () => {
@@ -274,16 +365,40 @@ describe("approvals and commands", () => {
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");
-    await settle(bot, () => telegram.sentTexts().length >= 1);
     telegram.sendText(owner, "/update");
-    await settle(bot, () => telegram.sentTexts().length >= 2);
     telegram.sendText(owner, "/link");
-    await settle(bot, () => telegram.sentTexts().length >= 3);
+    await settle(bot, () => telegram.sentTexts().length >= 5);
     const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("Syncing…");
+    expect(texts).toContain("Updating…");
     expect(texts).toContain("Vault sync:");
     expect(texts).toContain("This Eva cannot update herself.");
     expect(texts).toContain("On this machine only (advanced): http://127.0.0.1:");
     expect(engine.requests).toEqual([]);
+  });
+
+  test("a slow /sync runs apart from the poll loop, so other commands still answer", async () => {
+    let releaseSync: () => void = () => undefined;
+    const syncGate = new Promise<void>((resolve) => {
+      releaseSync = resolve;
+    });
+    let gateOpen = true;
+    const gatedRunner: ProcessRunner = {
+      run: async (command, options) => {
+        if (!gateOpen && command.includes("fetch")) await syncGate;
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    createEva(undefined, gatedRunner);
+    const bot = createBot();
+    gateOpen = false;
+    telegram.sendText(owner, "/sync");
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("/new")));
+    expect(telegram.sentTexts()[0]).toBe("Syncing…");
+    expect(telegram.sentTexts().some((text) => text.startsWith("Vault sync:"))).toBe(false);
+    releaseSync();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Vault sync:")));
   });
 
   test("the commands are registered with Telegram", async () => {
@@ -309,10 +424,16 @@ describe("stop and approvals from elsewhere (plan §4.1, §5.5)", () => {
     telegram.sendText(owner, "work for a long time");
     await settle(bot, () => engine.requests.length === 1);
     telegram.sendText(owner, "/stop");
-    await settle(bot, () =>
-      telegram.sentTexts().some((text) => text.includes("The turn failed: The turn was stopped.")),
-    );
+    await settle(bot, () => telegram.sentTexts().includes("Stopped."));
     expect(telegram.sentTexts()).toContain("Stopping.");
+    expect(telegram.sentTexts().filter((text) => text.startsWith("The turn failed"))).toEqual([]);
+  });
+
+  test("a turn that fails without /stop still names the reason", async () => {
+    createEva(() => [{ kind: "turn_failed", reason: "The engine is gone." }]);
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("The turn failed: The engine is gone."));
   });
 
   test("an approval from a web chat reaches the main chat, named after its chat", async () => {
@@ -333,15 +454,92 @@ describe("stop and approvals from elsewhere (plan §4.1, §5.5)", () => {
 });
 
 describe("one poller per bot (lessons 56, 57)", () => {
-  test("three conflicts stop Eva with exit code 3, even with a success between them", async () => {
+  test("three conflicts in two minutes pause the bot for ten minutes, even with a success between them", async () => {
     const bot = createBot();
     telegram.failNext("getUpdates", 409, "Conflict: terminated by other getUpdates request", 2);
-    await bot.pollOnce();
-    await bot.pollOnce();
-    await bot.pollOnce();
+    expect(await bot.pollOnce()).toBe(1_000);
+    expect(await bot.pollOnce()).toBe(2_000);
+    expect(await bot.pollOnce()).toBe(0);
     telegram.failNext("getUpdates", 409, "Conflict", 1);
+    expect(await bot.pollOnce()).toBe(10 * 60_000);
+    expect(bot.pollState()).toEqual({ kind: "conflict", since: "2026-10-14T10:30:00.000Z" });
+    expect(logs.filter((log) => log.level === "error").map((log) => log.message)).toEqual([
+      "Another program polls this Telegram bot. Eva pauses Telegram for 10 minutes.",
+    ]);
+  });
+
+  test("conflicts spread over more than two minutes never pause the bot", async () => {
+    const bot = createBot();
+    for (let conflict = 0; conflict < 4; conflict += 1) {
+      telegram.failNext("getUpdates", 409, "Conflict");
+      expect(await bot.pollOnce()).toBeLessThan(60_001);
+      clock = new Date(clock.getTime() + 61_000);
+    }
+    expect(bot.pollState().kind).toBe("failing");
+  });
+
+  test("after the pause, the bot polls again and leaves the conflict state", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 409, "Conflict", 3);
+    await runUntil(bot, () => sleeps.includes(10 * 60_000) && telegram.callsTo("getUpdates").length >= 5);
+    expect(sleeps.slice(0, 3)).toEqual([1_000, 2_000, 10 * 60_000]);
+    expect(bot.pollState()).toEqual({ kind: "polling" });
+  });
+
+  test("a failed poll waits 1 second, doubling to a 60-second cap, and a success resets the wait", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 502, "Bad Gateway", 8);
+    await runUntil(bot, () => telegram.callsTo("getUpdates").length >= 10);
+    expect(sleeps).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000]);
+    expect(bot.pollState()).toEqual({ kind: "polling" });
+    telegram.failNext("getUpdates", 502, "Bad Gateway", 1);
+    await runUntil(bot, () => sleeps.length === 9);
+    expect(sleeps.at(-1)).toBe(1_000);
+  });
+
+  test("a failed poll shows in the poll state until the next success", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 502, "Bad Gateway");
     await bot.pollOnce();
-    expect(fatal).toEqual([3]);
+    expect(bot.pollState()).toMatchObject({ kind: "failing", since: "2026-10-14T10:30:00.000Z" });
+    await bot.pollOnce();
+    expect(bot.pollState()).toEqual({ kind: "polling" });
+  });
+
+  test("a poll refused with 429 waits the time that Telegram asks for", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 429, "Too Many Requests: retry after 7", 1, 7);
+    expect(await bot.pollOnce()).toBe(7_000);
+  });
+
+  test("an unexpected error in the loop is logged, and polling continues", async () => {
+    const blocker = join(home, "blocker");
+    writeFileSync(blocker, "not a folder");
+    const bot = createBot(owner, { statePath: join(blocker, "telegram.json") });
+    telegram.sendText(owner, "/help");
+    await runUntil(bot, () => logs.some((log) => log.message.includes("poll loop")));
+    expect(sleeps).toEqual([1_000]);
+  });
+
+  test("a stop during a long wait ends the loop at once", async () => {
+    // No sleep seam: the real wait of 1 second must end at the stop.
+    const bot = new TelegramBot({
+      api: new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl }),
+      eva,
+      statePath: join(home, "state", "telegram.json"),
+      allowedChatId: owner,
+      allowedUserId: null,
+      pairingCode: "PAIR-1234",
+      onPaired: () => undefined,
+      pollTimeoutSeconds: 0,
+    });
+    telegram.failNext("getUpdates", 502, "Bad Gateway");
+    const running = bot.run();
+    for (let round = 0; round < 400 && telegram.callsTo("getUpdates").length === 0; round += 1) await Bun.sleep(5);
+    const stoppedAt = performance.now();
+    await bot.stop();
+    await running;
+    expect(performance.now() - stoppedAt).toBeLessThan(800);
   });
 
   test("a stop confirms the offset with Telegram", async () => {
@@ -422,6 +620,33 @@ describe("files (lessons 72, 74, 124)", () => {
     const bot = createBot();
     telegram.sendFile(owner, "document", new Uint8Array([1]), { fileName: "huge.zip", reportedSize: 21 * 1024 * 1024 });
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("up to 20 MB")));
+    expect(engine.requests).toEqual([]);
+  });
+
+  test("a phone photo is saved from its largest size, with its caption as the message", async () => {
+    const bot = createBot();
+    telegram.sendPhoto(owner, new Uint8Array([7, 7, 7]), "What is this?");
+    await settle(bot, () => engine.requests.length === 1);
+    const prompt = engine.requests[0]?.prompt ?? "";
+    expect(prompt).toContain("What is this?\n\n[The person sent a file");
+    const saved = /saved as (Scratch\/received\/photo-large-photo-\d+-[0-9a-f]{12}\.jpg)/.exec(prompt)?.[1] ?? "";
+    expect(existsSync(join(vault(), saved))).toBe(true);
+  });
+
+  test("an audio file is saved like a document", async () => {
+    const bot = createBot();
+    telegram.sendFile(owner, "audio", new Uint8Array([4, 5]), { fileName: "memo.mp3" });
+    await settle(bot, () => engine.requests.length === 1);
+    expect(engine.requests[0]?.prompt).toMatch(/saved as Scratch\/received\/memo-[0-9a-f]{12}\.mp3/);
+  });
+
+  test("a sticker or a video note gets one sentence, and a service message gets none", async () => {
+    const bot = createBot();
+    telegram.sendMessageWith(owner, { sticker: { file_id: "s" }, caption: "ignored" });
+    telegram.sendMessageWith(owner, { forum_topic_created: { name: "Topic" } });
+    telegram.sendMessageWith(owner, { video_note: { file_id: "v" } });
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()).toEqual(["Eva cannot read stickers yet.", "Eva cannot read video notes yet."]);
     expect(engine.requests).toEqual([]);
   });
 

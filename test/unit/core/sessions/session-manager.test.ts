@@ -310,6 +310,9 @@ describe("approvals", () => {
       toolName: "Bash",
       summary: "rm -rf build",
     });
+    expect(events.filter((event) => event.kind === "approval_resolved")).toMatchObject([
+      { answer: "allow", timedOut: false },
+    ]);
   });
 
   test("an ask that nobody answers is denied after the timeout", async () => {
@@ -321,7 +324,10 @@ describe("approvals", () => {
     const manager = createManager(engine, { approvalTimeoutMs: 20 });
     await manager.send(newAssistantSession(manager), "go");
     expect(answers).toEqual(["deny"]);
-    expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({ answer: "deny" });
+    expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({
+      answer: "deny",
+      timedOut: true,
+    });
   });
 
   function askingManager(

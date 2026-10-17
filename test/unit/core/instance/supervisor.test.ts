@@ -33,8 +33,11 @@ describe("restartDecision", () => {
 });
 
 interface FakeRun {
-  /** The exit code, or "hold" for a child that runs until it is stopped. */
-  readonly exit: number | "hold" | "fail-to-start";
+  /**
+   * The exit code; "hold" for a child that runs until it is stopped; "stuck" for one that never
+   * ends, even after a hard stop; "stop-fails" for one whose stop throws.
+   */
+  readonly exit: number | "hold" | "stuck" | "stop-fails" | "fail-to-start";
   /** How long the run lasts on the fake clock. */
   readonly lastsMs?: number;
 }
@@ -62,16 +65,18 @@ function fakeSupervisor(runs: readonly FakeRun[]): Fake {
     index += 1;
     if (run.exit === "fail-to-start") throw new EvaError("process_failed", "Could not start eva.");
     clock += run.lastsMs ?? 1_000;
+    const exit = run.exit;
     const exited =
-      run.exit === "hold"
-        ? new Promise<number>((resolve) => {
-            releaseHeld = resolve;
-          })
-        : Promise.resolve(run.exit);
+      typeof exit === "number"
+        ? Promise.resolve(exit)
+        : new Promise<number>((resolve) => {
+            if (exit === "hold") releaseHeld = resolve;
+          });
     return {
       exited,
       stop: (timeoutMs) => {
         stopTimeouts.push(timeoutMs);
+        if (exit === "stop-fails") return Promise.reject(new Error("taskkill could not start"));
         releaseHeld?.(143);
         return Promise.resolve();
       },
@@ -87,7 +92,7 @@ function fakeSupervisor(runs: readonly FakeRun[]): Fake {
     sleep: (ms) => {
       delays.push(ms);
       clock += ms;
-      return runs.some((run) => run.exit === "hold") && ms > 0
+      return runs.some((run) => run.exit === "hold" || run.exit === "stuck" || run.exit === "stop-fails") && ms > 0
         ? new Promise<void>((resolve) => pendingSleeps.push(resolve))
         : Promise.resolve();
     },
@@ -154,5 +159,20 @@ describe("superviseEva", () => {
     fake.supervisor.stop();
     expect(await fake.supervisor.done).toBe(0);
     expect(fake.starts()).toBe(1);
+  });
+
+  test("a stop ends the supervisor even when the child never ends, so the supervisor never hangs", async () => {
+    const fake = fakeSupervisor([{ exit: "stuck" }]);
+    await Bun.sleep(0);
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+  });
+
+  test("a stop that fails is logged, and the supervisor still ends", async () => {
+    const fake = fakeSupervisor([{ exit: "stop-fails" }]);
+    await Bun.sleep(0);
+    fake.supervisor.stop();
+    expect(await fake.supervisor.done).toBe(0);
+    expect(fake.logs.join("\n")).toContain("taskkill could not start");
   });
 });

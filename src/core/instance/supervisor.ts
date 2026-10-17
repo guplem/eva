@@ -64,7 +64,9 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
   const state: { stopping: boolean; child: LongProcess | null } = { stopping: false, child: null };
   // A function, so the loop reads a stop that happens while it awaits.
   const isStopping = (): boolean => state.stopping;
-  const stopped = Promise.withResolvers<undefined>();
+  const stopAsked = Promise.withResolvers<undefined>();
+  // The child's stop is bounded, but its exit may never come: this ends the wait for it.
+  const stopEnded = Promise.withResolvers<number>();
   const environment = { ...options.environment, [supervisedVariable]: String(options.pid) };
 
   const done = (async () => {
@@ -74,7 +76,7 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
       let exitCode: number;
       try {
         state.child = options.start(options.command, { cwd: options.cwd, environment });
-        exitCode = await state.child.exited;
+        exitCode = await Promise.race([state.child.exited, stopEnded.promise]);
       } catch (error) {
         options.log(`Eva could not start: ${error instanceof Error ? error.message : String(error)}`);
         exitCode = exitCodes.crash;
@@ -88,7 +90,7 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
       options.log(
         `Eva stopped with exit code ${String(exitCode)}. She starts again in ${String(decision.afterMs / 1000)} s.`,
       );
-      await Promise.race([options.sleep(decision.afterMs), stopped.promise]);
+      await Promise.race([options.sleep(decision.afterMs), stopAsked.promise]);
       if (isStopping()) return exitCodes.clean;
     }
   })();
@@ -98,8 +100,14 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
     stop: () => {
       if (state.stopping) return;
       state.stopping = true;
-      stopped.resolve(undefined);
-      void state.child?.stop(options.stopTimeoutMs);
+      stopAsked.resolve(undefined);
+      void (state.child?.stop(options.stopTimeoutMs) ?? Promise.resolve())
+        .catch((error: unknown) => {
+          options.log(`Eva could not be stopped: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => {
+          stopEnded.resolve(exitCodes.clean);
+        });
     },
   };
 }

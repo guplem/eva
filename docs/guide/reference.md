@@ -52,7 +52,7 @@ Eva looks for a new version every day by default (`updates.frequency`: `off`, `h
 - **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. She never touches a copy with your own changes, your own commits, or another branch.
 - **Installed as one executable** (a GitHub release): Eva takes the newest signed release.
 - **Update now:** the **Update now** button in Settings, `/update` in Telegram, or `eva update`.
-- **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the version before and after. It also waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
+- **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the result. The engine update waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
 
 ## Notebook sync
 
@@ -83,6 +83,7 @@ Eva sends each alert to your Telegram chat when the problem starts, again once a
 | The notebook sync failed                | A git step failed, for example a full disk or a refused push.                       |
 | The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                  |
 | The update check or install failed      | The alert names the step. A failed install keeps the old version.                   |
+| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.              |
 | A reminder failed to run                | The alert names the reminder.                                                       |
 | Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                   |
 | Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.               |

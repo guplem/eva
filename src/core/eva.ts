@@ -496,7 +496,7 @@ export class Eva {
     return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
-  /** Resolves when no chat runs a turn, including its save after the turn, and no schedule fires. */
+  /** Resolves when no work runs (see `workRuns`), or after the timeout. */
   async idle(timeoutMs = 60_000): Promise<void> {
     const started = Date.now();
     while (this.workRuns()) {

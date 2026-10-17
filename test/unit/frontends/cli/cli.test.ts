@@ -561,15 +561,17 @@ describe("service", () => {
 
   test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
     const alive = (pid: number): boolean => pid === 42;
-    expect(restartMethod({ INVOCATION_ID: "abc" }, alive)).toBe("supervisor");
-    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive)).toBe("supervisor");
-    expect(restartMethod({}, alive)).toBe("new-copy");
+    expect(restartMethod({ INVOCATION_ID: "abc" }, alive, 1)).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 42)).toBe("supervisor");
+    expect(restartMethod({}, alive, 42)).toBe("new-copy");
   });
 
   test("an Eva whose supervisor has ended starts a new copy, so an update never leaves her stopped", () => {
     const alive = (pid: number): boolean => pid === 42;
-    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive)).toBe("new-copy");
-    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive, 7)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive, 42)).toBe("new-copy");
+    // An orphan gets a new parent; another process may now hold the supervisor's old pid.
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 1)).toBe("new-copy");
   });
 
   test("a second instance on the same machine gets its own service name", () => {

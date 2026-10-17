@@ -46,11 +46,15 @@ export function servicePath(path: string, separator = ":"): string {
 export function restartMethod(
   environment: Readonly<Record<string, string | undefined>>,
   isProcessAlive: (pid: number) => boolean,
+  parentPid: number,
 ): "supervisor" | "new-copy" {
   // systemd sets INVOCATION_ID for each run of a unit.
   if (environment["INVOCATION_ID"] !== undefined) return "supervisor";
   const supervisor = Number(environment[supervisedVariable]);
-  return Number.isSafeInteger(supervisor) && supervisor > 0 && isProcessAlive(supervisor) ? "supervisor" : "new-copy";
+  // Another process can get a dead supervisor's pid. On Linux, an orphan also gets a new parent.
+  return Number.isSafeInteger(supervisor) && supervisor > 0 && supervisor === parentPid && isProcessAlive(supervisor)
+    ? "supervisor"
+    : "new-copy";
 }
 
 export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {

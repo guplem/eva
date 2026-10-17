@@ -23,7 +23,7 @@ import {
 import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { stopWithinDeadline } from "./core/instance/shutdown.ts";
-import { superviseEva } from "./core/instance/supervisor.ts";
+import { superviseEva, supervisedVariable } from "./core/instance/supervisor.ts";
 import {
   changeSettings,
   describeSettings,
@@ -394,7 +394,10 @@ async function serve(paths: HomePaths): Promise<number> {
           clearRunMarker(paths.runningMarker);
           lock.release();
           logger.log("info", "Eva stopped.", { exitCode });
-          if (exitCode === exitCodes.update && restartMethod(process.env, isProcessAlive) === "new-copy") {
+          if (
+            exitCode === exitCodes.update &&
+            restartMethod(process.env, isProcessAlive, process.ppid) === "new-copy"
+          ) {
             startNewCopy();
             resolve(exitCodes.clean);
           } else {
@@ -746,7 +749,8 @@ function startNewCopy(): void {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
-    env: { ...process.env, [oldCopyVariable]: String(process.pid) },
+    // The copy runs outside any supervisor, so it must not carry a supervisor's pid.
+    env: { ...process.env, [oldCopyVariable]: String(process.pid), [supervisedVariable]: undefined },
   }).unref();
 }
 

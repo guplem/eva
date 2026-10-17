@@ -7,6 +7,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   homePaths,
+  instanceEngineFolders,
   loadSecrets,
   saveSecrets,
   type EvaConfig,
@@ -19,6 +20,7 @@ import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../cor
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { engineLoginReport, engineLoginSteps, loginToGitHub } from "./engine-logins.ts";
 
 export type SetupQuestion =
   | "timeZone"
@@ -71,6 +73,9 @@ export interface SetupOptions {
   readonly interactive: boolean;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
+  /** The platform's default home: a setup in any other home sets up an extra instance. */
+  readonly defaultHome: string;
+  readonly platform: NodeJS.Platform;
 }
 
 const ghTimeoutMs = 120_000;
@@ -82,6 +87,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const ask = async (key: SetupQuestion, question: string): Promise<string> =>
     (await options.ask(key, question)).trim();
   options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
+  // First, so the person can log in to gh before setup runs `gh repo create`.
+  const engineFolders = instanceEngineFolders(paths, options.defaultHome);
+  for (const line of engineLoginSteps(engineFolders, options.platform)) options.write(line);
 
   const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? detectedTimeZone}]: `);
@@ -127,7 +135,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       await cloneVault({ repository, folder: config.vaultPath, runner: options.runner, environment: gitEnvironment() });
       options.write(`Cloned the vault into ${config.vaultPath}.`);
     } else {
-      await offerNewVault(options, config.vaultPath, config.timeZone ?? detectedTimeZone, ask);
+      await offerNewVault(options, engineFolders, config.vaultPath, config.timeZone ?? detectedTimeZone, ask);
     }
   }
 
@@ -204,6 +212,14 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   secrets.localApiToken ??= options.newToken();
   saveSettings(paths, config);
   saveSecrets(paths, secrets);
+  const logins = await engineLoginReport({
+    folders: engineFolders,
+    claudeTokenSaved: secrets.claudeOauthToken !== undefined,
+    runner: options.runner,
+    environment: options.environment,
+    platform: options.platform,
+  });
+  for (const line of logins) options.write(line);
   const files = [
     paths.config,
     paths.secrets,
@@ -215,6 +231,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 /** A missing or empty vault folder: Eva can start a vault there from her template. */
 async function offerNewVault(
   options: SetupOptions,
+  engineFolders: Readonly<Record<string, string>>,
   folder: string,
   timeZone: string,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
@@ -237,12 +254,18 @@ async function offerNewVault(
   if (repository === "") return;
   const result = await options.runner.run(
     ["gh", "repo", "create", repository, "--private", "--source", folder, "--remote", "origin", "--push"],
-    { cwd: folder, environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: ghTimeoutMs },
+    {
+      cwd: folder,
+      environment: { ...options.environment, ...engineFolders, GIT_TERMINAL_PROMPT: "0" },
+      timeoutMs: ghTimeoutMs,
+    },
   );
+  const ghFolder = engineFolders["GH_CONFIG_DIR"];
+  const login = ghFolder === undefined ? "gh auth login" : loginToGitHub(ghFolder, options.platform);
   options.write(
     result.exitCode === 0
       ? `Created the private repository ${repository} and pushed the vault.`
-      : `gh could not create the repository: ${result.stderr.trim()}. Run \`gh auth login\`, then push the vault yourself.`,
+      : `gh could not create the repository: ${result.stderr.trim()}. Run \`${login}\`, then push the vault yourself.`,
   );
 }
 

@@ -125,6 +125,8 @@ async function main(argv: readonly string[]): Promise<number> {
         newToken: () => randomBytes(24).toString("base64url"),
         runner: systemProcessRunner,
         environment: childEnvironment(),
+        defaultHome: defaultHomeFolder(),
+        platform: process.platform,
       };
       const networkOptions = {
         runner: systemProcessRunner,

@@ -254,7 +254,13 @@ describe("runSetup", () => {
 
   async function setup(
     answers: Partial<Record<SetupQuestion, string | string[]>>,
-    extra: { interactive?: boolean; runner?: ProcessRunner; lines?: string[]; asked?: SetupQuestion[] } = {},
+    extra: {
+      interactive?: boolean;
+      runner?: ProcessRunner;
+      lines?: string[];
+      asked?: SetupQuestion[];
+      defaultHome?: string;
+    } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
       Object.entries(answers).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]),
@@ -270,6 +276,8 @@ describe("runSetup", () => {
       interactive: extra.interactive ?? true,
       runner: extra.runner ?? okRunner,
       environment: gitEnvironment,
+      defaultHome: extra.defaultHome ?? home,
+      platform: "linux",
     });
   }
 
@@ -529,6 +537,38 @@ describe("runSetup", () => {
     const lines: string[] = [];
     await setup({ vault: emptyFolder, createVault: "y", githubRepository: "my-vault" }, { runner: ghFails, lines });
     expect(lines.join("\n")).toContain("gh could not create the repository: not logged in");
+  });
+
+  test("an extra instance hears about its own engine logins first, and gets a login report at the end", async () => {
+    const lines: string[] = [];
+    const ghEnvironments: Readonly<Record<string, string>>[] = [];
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] === "gh") ghEnvironments.push(options.environment);
+        return Promise.resolve({ exitCode: command[0] === "gh" ? 1 : 0, stdout: "", stderr: "not logged in" });
+      },
+    };
+    const emptyFolder = join(home, "empty");
+    await setup(
+      { vault: emptyFolder, createVault: "y", githubRepository: "my-vault", claudeToken: "a-claude-token" },
+      { lines, runner, defaultHome: join(home, "..", "default-eva-home") },
+    );
+    const ghFolder = join(home, "engines", "gh");
+    expect(lines[1]).toContain("extra instance");
+    expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login`);
+    expect(lines.join("\n")).toContain(`gh could not create the repository: not logged in. Run \`GH_CONFIG_DIR=`);
+    // gh repo create and the login check both use this instance's gh folder.
+    expect(ghEnvironments.length).toBeGreaterThan(0);
+    expect(ghEnvironments.every((environment) => environment["GH_CONFIG_DIR"] === ghFolder)).toBe(true);
+    expect(lines.join("\n")).toContain("- Claude: logged in.");
+    expect(lines.join("\n")).toContain("- GitHub: not logged in.");
+  });
+
+  test("the instance in the default home hears nothing about engine logins", async () => {
+    const lines: string[] = [];
+    await setup({}, { lines });
+    expect(lines.join("\n")).not.toContain("extra instance");
+    expect(lines.join("\n")).not.toContain("Engine logins");
   });
 
   test("each question has its own environment variable for --non-interactive", () => {

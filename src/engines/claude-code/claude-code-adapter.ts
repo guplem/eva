@@ -119,7 +119,9 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     // approval. An ask rule always beats an allow rule, so every shell call and every call of
     // Eva's own tools reaches canUseTool, which lets local actions through at once (issue #51).
     const ask = ["Bash", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
-    options.settings = { disableAllHooks: true, permissions: { ask } };
+    // Claude Code's memory folder stays on one machine, outside the vault, so a fact stored there
+    // never reaches the person's other machines (issue #68).
+    options.settings = { disableAllHooks: true, autoMemoryEnabled: false, permissions: { ask } };
   } else {
     // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session.
     options.systemPrompt = { type: "preset", preset: "claude_code" };

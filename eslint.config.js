@@ -2,7 +2,7 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["node_modules/", "coverage/", "reports/", ".stryker-tmp/", "*.config.js", ".dependency-cruiser.cjs"] },
+  { ignores: ["node_modules/", "coverage/", "*.config.js", ".dependency-cruiser.cjs"] },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

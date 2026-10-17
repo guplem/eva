@@ -1,4 +1,4 @@
-/** Assistant mode (mockups/assistant-mode.png): chats in the sidebar, the conversation, background tasks. */
+/** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";

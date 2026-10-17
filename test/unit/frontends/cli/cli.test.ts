@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
-import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/instance/home.ts";
-import { loadSettings } from "../../../../src/core/instance/settings.ts";
+import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
+import { loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";

@@ -4,7 +4,7 @@
  * the same moment.
  */
 import type { Logger } from "../../shared/logger.ts";
-import type { EvaConfig } from "../instance/home.ts";
+import type { EvaConfig } from "../settings/home.ts";
 
 export type UpdateFrequency = EvaConfig["updates"]["frequency"];
 

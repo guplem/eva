@@ -10,7 +10,7 @@ import type { Eva } from "../../core/eva.ts";
 import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
-import type { DeviceLoginRequest } from "../../core/instance/device-logins.ts";
+import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";

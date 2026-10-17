@@ -1,7 +1,5 @@
 node_modules/
 coverage/
-reports/
-.stryker-tmp/
 *.log
 .env.local
 .DS_Store

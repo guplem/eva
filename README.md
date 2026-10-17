@@ -142,21 +142,20 @@ Run `bun run eva doctor` on Eva's computer. It lists the tools that are missing,
 
 Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes the architecture and the rules of the code; it is written for AI coding agents and for developers. Its section "What must not change" lists the goals that guide every change.
 
-| Task                       | Command                 |
-| -------------------------- | ----------------------- |
-| Install the git hooks once | `bunx lefthook install` |
-| Run every check            | `bun run check`         |
-| Format the code            | `bun run format`        |
-| Run the tests              | `bun test`              |
+| Task                                       | Command          |
+| ------------------------------------------ | ---------------- |
+| Install the dependencies and the git hooks | `bun install`    |
+| Run every check                            | `bun run check`  |
+| Format the code                            | `bun run format` |
+| Run the tests                              | `bun test`       |
 
 `bun run check` runs the same checks as the continuous integration (CI) on every pull request: format, lint, types, architecture rules, dead code, a personal-data check, and the tests with coverage.
 
 | Document                                           | What it holds                                 |
 | -------------------------------------------------- | --------------------------------------------- |
-| [docs/standards/](docs/standards/README.md)        | How the code is written                       |
 | [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
-| [docs/owner-todo.md](docs/owner-todo.md)           | Steps that only the owner can do              |
-| [docs/mockups/](docs/mockups/)                     | Sketches of the app                           |
+
+Steps that only the owner can do are GitHub issues with the `owner` label.
 
 ## License
 

@@ -1,7 +1,7 @@
 /**
  * The SDK messages below are built from the Claude Agent SDK 0.3.300 types, not captured
  * from a real run: no login was available when this adapter was written. Replace them with
- * a capture from scripts/capture-claude-fixtures.ts (docs/owner-todo.md).
+ * a capture from scripts/capture-claude-fixtures.ts (issue #54).
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";

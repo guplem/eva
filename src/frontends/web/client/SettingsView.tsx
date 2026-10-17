@@ -1,5 +1,5 @@
 /**
- * Settings (mockups/settings.png): Setup, Updates, Projects, Schedules and Appearance, with a Test
+ * Settings: Setup, Updates, Projects, Schedules and Appearance, with a Test
  * button for each part. The two dropdowns save at once; Eva uses them without a restart.
  */
 import { useEffect, useState, type ReactElement } from "react";

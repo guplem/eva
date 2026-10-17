@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
-import { defaultConfig, homePaths } from "../../src/core/instance/home.ts";
+import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner } from "../../src/shared/process-runner.ts";

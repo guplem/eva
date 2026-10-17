@@ -17,11 +17,11 @@ import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
-import { DeviceLogins } from "./instance/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
-import { applySettingsChange, saveSettings } from "./instance/settings.ts";
+import { DeviceLogins } from "./remote-access/device-logins.ts";
+import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
+import { applySettingsChange, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
-import type { RemoteAccess } from "./instance/machine-defaults.ts";
+import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {

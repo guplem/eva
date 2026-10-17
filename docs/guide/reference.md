@@ -52,6 +52,7 @@ Eva looks for a new version every day by default (`updates.frequency`: `off`, `h
 - **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. She never touches a copy with your own changes, your own commits, or another branch.
 - **Installed as one executable** (a GitHub release): Eva takes the newest signed release.
 - **Update now:** the **Update now** button in Settings, `/update` in Telegram, or `eva update`.
+- **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the version before and after. It also waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
 
 ## Notebook sync
 

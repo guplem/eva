@@ -5,7 +5,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -75,7 +75,7 @@ import type { EnginePort } from "./shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/environment.ts";
 import { isEvaError } from "./shared/errors.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
-import { writeFileAtomic } from "./shared/files.ts";
+import { readTextTolerant, writeFileAtomic } from "./shared/files.ts";
 import { FileLogger } from "./shared/logger.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
@@ -200,10 +200,7 @@ async function runClientCommand(
   const baseUrl = `http://127.0.0.1:${String(config.port)}`;
   try {
     if (command.command === "status") {
-      const codePath = paths.telegramPairingCode;
-      writeLine(
-        await describeStatus({ baseUrl, token }, existsSync(codePath) ? readFileSync(codePath, "utf-8").trim() : null),
-      );
+      writeLine(await describeStatus({ baseUrl, token }, readTextTolerant(paths.telegramPairingCode)?.trim() ?? null));
     } else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
     else if (command.command === "work") {
       writeLine(

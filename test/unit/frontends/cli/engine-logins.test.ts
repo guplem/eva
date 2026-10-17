@@ -2,24 +2,36 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { engineLoginReport, engineLoginSteps, withVariable } from "../../../../src/frontends/cli/engine-logins.ts";
+import { engineFolders, homePaths, type EngineFolders } from "../../../../src/core/settings/home.ts";
+import {
+  engineLoginReport,
+  engineLoginState,
+  engineLoginSteps,
+  quoteForShell,
+  withVariable,
+  type EngineLoginState,
+} from "../../../../src/frontends/cli/engine-logins.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
 let home: string;
-let folders: Record<string, string>;
+let folders: EngineFolders;
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "eva-logins-"));
-  folders = {
-    CLAUDE_CONFIG_DIR: join(home, "engines", "claude"),
-    PI_CODING_AGENT_DIR: join(home, "engines", "pi-agent"),
-    GH_CONFIG_DIR: join(home, "engines", "gh"),
-  };
+  folders = engineFolders(homePaths(home));
 });
 afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe("withVariable", () => {
+const nothing: EngineLoginState = { claudeToken: false, pi: "missing", gh: false };
+const everything: EngineLoginState = { claudeToken: true, pi: "ok", gh: true };
+
+function writePiLogin(content: string): void {
+  mkdirSync(folders.piAgent, { recursive: true });
+  writeFileSync(join(folders.piAgent, "auth.json"), content);
+}
+
+describe("withVariable and quoteForShell", () => {
   test("a POSIX shell sets the variable for the one command, with the folder quoted", () => {
     expect(withVariable("GH_CONFIG_DIR", "/srv/o'brien/eva/engines/gh", ["gh", "auth", "login"], "linux")).toBe(
       "GH_CONFIG_DIR='/srv/o'\\''brien/eva/engines/gh' gh auth login",
@@ -33,92 +45,102 @@ describe("withVariable", () => {
       "$env:GH_CONFIG_DIR = 'D:\\eva-homes\\o''brien\\eva\\engines\\gh'; gh auth login; Remove-Item Env:GH_CONFIG_DIR",
     );
   });
-});
 
-describe("engineLoginSteps", () => {
-  test("an extra instance explains why, and gives one login step for each engine", () => {
-    const text = engineLoginSteps(folders, "linux").join("\n");
-    expect(text).toContain("not in the default home");
-    expect(text).toContain("claude setup-token");
-    expect(text).toContain("your own Claude account");
-    expect(text).toContain(`PI_CODING_AGENT_DIR='${folders["PI_CODING_AGENT_DIR"] ?? ""}' pi`);
-    expect(text).toContain("/login");
-    expect(text).toContain("Never choose Anthropic");
-    expect(text).toContain(`GH_CONFIG_DIR='${folders["GH_CONFIG_DIR"] ?? ""}' gh auth login`);
-  });
-
-  test("the first instance needs no steps", () => {
-    expect(engineLoginSteps({}, "linux")).toEqual([]);
+  test("PowerShell also ends a string at a curly quote, so each one is doubled", () => {
+    expect(quoteForShell("D:\\eva-homes\\O\u2019Brien", "win32")).toBe("'D:\\eva-homes\\O\u2019\u2019Brien'");
   });
 });
 
-describe("engineLoginReport", () => {
+describe("engineLoginState", () => {
   const ghRunner = (
     exitCode: number,
-    calls: { environment: Readonly<Record<string, string>> }[] = [],
+    calls: { command: readonly string[]; environment: Readonly<Record<string, string>> }[] = [],
   ): ProcessRunner => ({
     run: (command, options) => {
-      if (command.join(" ") === "gh auth status") calls.push({ environment: options.environment });
+      calls.push({ command, environment: options.environment });
       return Promise.resolve({ exitCode, stdout: "", stderr: "" });
     },
   });
 
-  test("each login that is in place shows as done; gh is asked with this instance's folder", async () => {
-    mkdirSync(folders["PI_CODING_AGENT_DIR"] ?? "", { recursive: true });
-    writeFileSync(join(folders["PI_CODING_AGENT_DIR"] ?? "", "auth.json"), '{"openai-codex":{"type":"oauth"}}');
-    const calls: { environment: Readonly<Record<string, string>> }[] = [];
-    const lines = await engineLoginReport({
+  test("reads the saved Claude token, pi's login file, and gh's login in this instance's folder", async () => {
+    writePiLogin('{"openai-codex":{"type":"oauth"}}');
+    const calls: { command: readonly string[]; environment: Readonly<Record<string, string>> }[] = [];
+    const state = await engineLoginState({
       folders,
       claudeTokenSaved: true,
       runner: ghRunner(0, calls),
       environment: { PATH: "/bin" },
-      platform: "linux",
     });
-    expect(lines.join("\n")).toContain("Claude: logged in");
-    expect(lines.join("\n")).toContain("pi: logged in");
-    expect(lines.join("\n")).toContain("GitHub: logged in");
-    expect(calls[0]?.environment).toEqual({ PATH: "/bin", ...folders, GIT_TERMINAL_PROMPT: "0" });
+    expect(state).toEqual(everything);
+    expect(calls[0]?.command).toEqual(["gh", "auth", "status", "--hostname", "github.com"]);
+    expect(calls[0]?.environment).toEqual({ PATH: "/bin", GH_CONFIG_DIR: folders.gh, GIT_TERMINAL_PROMPT: "0" });
   });
 
-  test("each missing login says what to run", async () => {
-    mkdirSync(folders["PI_CODING_AGENT_DIR"] ?? "", { recursive: true });
-    writeFileSync(join(folders["PI_CODING_AGENT_DIR"] ?? "", "auth.json"), "{}");
-    const text = (
-      await engineLoginReport({
-        folders,
-        claudeTokenSaved: false,
-        runner: ghRunner(1),
-        environment: {},
-        platform: "linux",
-      })
-    ).join("\n");
-    expect(text).toContain("Claude: not logged in");
-    expect(text).toContain("claude setup-token");
-    expect(text).toContain("pi: not logged in");
-    expect(text).toContain("GitHub: not logged in");
-    expect(text).toContain("gh auth login");
+  test("an empty pi login file and a failed gh check are missing logins", async () => {
+    writePiLogin("{}");
+    expect(await engineLoginState({ folders, claudeTokenSaved: false, runner: ghRunner(1), environment: {} })).toEqual(
+      nothing,
+    );
   });
 
-  test("a missing gh program or a broken pi file counts as not logged in, and never stops setup", async () => {
-    mkdirSync(folders["PI_CODING_AGENT_DIR"] ?? "", { recursive: true });
-    writeFileSync(join(folders["PI_CODING_AGENT_DIR"] ?? "", "auth.json"), "{broken");
+  test("a Claude login in pi is found, because Eva never uses a Claude login through pi", async () => {
+    writePiLogin('{"anthropic":{"type":"oauth"}}');
+    const state = await engineLoginState({ folders, claudeTokenSaved: true, runner: ghRunner(0), environment: {} });
+    expect(state.pi).toBe("claude");
+  });
+
+  test("a missing gh program or a broken pi file counts as missing, and never stops setup", async () => {
+    writePiLogin("{broken");
     const throwing: ProcessRunner = { run: () => Promise.reject(new Error("no gh")) };
-    const text = (
-      await engineLoginReport({ folders, claudeTokenSaved: true, runner: throwing, environment: {}, platform: "linux" })
-    ).join("\n");
-    expect(text).toContain("pi: not logged in");
-    expect(text).toContain("GitHub: not logged in");
+    expect(await engineLoginState({ folders, claudeTokenSaved: false, runner: throwing, environment: {} })).toEqual(
+      nothing,
+    );
+  });
+});
+
+describe("engineLoginSteps", () => {
+  test("explains why, and gives one step for each missing login, GitHub first", () => {
+    const steps = engineLoginSteps(nothing, folders, "linux");
+    const text = steps.join("\n");
+    expect(text).toContain("second Eva on this computer");
+    expect(text).toContain("keeps going");
+    expect(text.indexOf("- GitHub")).toBeLessThan(text.indexOf("- Claude"));
+    expect(text).toContain(`GH_CONFIG_DIR='${folders.gh}' gh auth login --insecure-storage`);
+    expect(text).toContain("claude setup-token");
+    expect(text).toContain("your own Claude account");
+    expect(text).toContain(`PI_CODING_AGENT_DIR='${folders.piAgent}' pi`);
+    expect(text).toContain("/login inside pi");
+    expect(text).toContain("Never choose Anthropic");
   });
 
-  test("the first instance gets no report", async () => {
-    expect(
-      await engineLoginReport({
-        folders: {},
-        claudeTokenSaved: false,
-        runner: ghRunner(1),
-        environment: {},
-        platform: "linux",
-      }),
-    ).toEqual([]);
+  test("on Windows, the steps say to use PowerShell", () => {
+    expect(engineLoginSteps(nothing, folders, "win32").join("\n")).toContain("PowerShell");
+  });
+
+  test("no steps when every login is in place", () => {
+    expect(engineLoginSteps(everything, folders, "linux")).toEqual([]);
+  });
+});
+
+describe("engineLoginReport", () => {
+  test("each login in place shows as done", () => {
+    const text = engineLoginReport(everything, folders, home, "linux").join("\n");
+    expect(text).toContain("- Claude: token saved.");
+    expect(text).toContain("- pi: logged in.");
+    expect(text).toContain("- GitHub: logged in.");
+  });
+
+  test("each missing login says what to run, and how to run setup again for this home", () => {
+    const text = engineLoginReport(nothing, folders, home, "linux").join("\n");
+    expect(text).toContain("- Claude: no token yet.");
+    expect(text).toContain(`eva --home '${home}' setup`);
+    expect(text).toContain("- pi: not logged in.");
+    expect(text).toContain("- GitHub: not logged in.");
+    expect(text).toContain("gh auth login --insecure-storage");
+  });
+
+  test("a Claude login in pi gets a warning", () => {
+    const text = engineLoginReport({ ...everything, pi: "claude" }, folders, home, "linux").join("\n");
+    expect(text).toContain("pi has a Claude login");
   });
 });

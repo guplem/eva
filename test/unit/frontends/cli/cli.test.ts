@@ -528,15 +528,19 @@ describe("runSetup", () => {
     const emptyFolder = join(home, "empty");
     await setup({ vault: emptyFolder, createVault: "no" });
     expect(existsSync(join(emptyFolder, "AGENTS.md"))).toBe(false);
+    const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const ghFails: ProcessRunner = {
-      run: (command, options) =>
-        command[0] === "gh"
-          ? Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" })
-          : systemProcessRunner.run(command, options),
+      run: (command, options) => {
+        if (command[0] !== "gh") return systemProcessRunner.run(command, options);
+        ghEnvironments.push(options.environment);
+        return Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" });
+      },
     };
     const lines: string[] = [];
     await setup({ vault: emptyFolder, createVault: "y", githubRepository: "my-vault" }, { runner: ghFails, lines });
-    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in");
+    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in. Run `gh auth login`");
+    // The first instance uses the OS user's own gh login.
+    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBeUndefined();
   });
 
   test("an extra instance hears about its own engine logins first, and gets a login report at the end", async () => {
@@ -554,20 +558,22 @@ describe("runSetup", () => {
       { lines, runner, defaultHome: join(home, "..", "default-eva-home") },
     );
     const ghFolder = join(home, "engines", "gh");
-    expect(lines[1]).toContain("extra instance");
-    expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login`);
+    const firstStep = lines.findIndex((line) => line.includes("second Eva on this computer"));
+    expect(firstStep).toBeGreaterThan(-1);
+    expect(firstStep).toBeLessThan(lines.findIndex((line) => line.startsWith("Created a new vault")));
+    expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
     expect(lines.join("\n")).toContain(`gh could not create the repository: not logged in. Run \`GH_CONFIG_DIR=`);
     // gh repo create and the login check both use this instance's gh folder.
     expect(ghEnvironments.length).toBeGreaterThan(0);
     expect(ghEnvironments.every((environment) => environment["GH_CONFIG_DIR"] === ghFolder)).toBe(true);
-    expect(lines.join("\n")).toContain("- Claude: logged in.");
+    expect(lines.join("\n")).toContain("- Claude: token saved.");
     expect(lines.join("\n")).toContain("- GitHub: not logged in.");
   });
 
   test("the instance in the default home hears nothing about engine logins", async () => {
     const lines: string[] = [];
     await setup({}, { lines });
-    expect(lines.join("\n")).not.toContain("extra instance");
+    expect(lines.join("\n")).not.toContain("second Eva");
     expect(lines.join("\n")).not.toContain("Engine logins");
   });
 

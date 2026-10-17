@@ -9,7 +9,8 @@ import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
   { name: "vault", label: "Vault repository" },
-  { name: "engine", label: "Claude Code" },
+  { name: "claude-code", label: "Claude Code" },
+  { name: "pi", label: "pi" },
   { name: "github", label: "GitHub (gh)" },
   { name: "telegram", label: "Telegram bot" },
 ];

@@ -7,7 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
-import type { CheckName } from "../../core/checks.ts";
+import { checkNames } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
@@ -59,7 +59,6 @@ const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
-const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
 /** The login cookies live a year; the person logs out to end them. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
 const tokenCookie = "eva_token";

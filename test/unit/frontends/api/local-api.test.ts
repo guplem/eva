@@ -500,6 +500,10 @@ describe("web routes", () => {
     const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
     expect(result.ok).toBe(true);
     expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
+    const engineCheck = await json<{ ok: boolean }>(
+      await call("/api/checks/claude-code", { method: "POST", body: {} }),
+    );
+    expect(engineCheck.ok).toBe(true);
   });
 
   test("schedules: add, list, refuse an invalid one, and remove", async () => {

@@ -54,8 +54,6 @@ export interface EvaOptions {
   readonly now: () => Date;
   readonly basePrompt: string;
   readonly gatherMs?: number;
-  /** The claude program, for the engine check. */
-  readonly claudeExecutable?: string | null;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
   /** Deletes the log files past their retention; the background tick calls it once a day. */
@@ -641,7 +639,9 @@ export class Eva {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
       environment: this.gitEnvironment,
-      claudeExecutable: this.options.claudeExecutable ?? null,
+      engines: this.options.engines,
+      engineEnvironment: this.engineEnvironment(),
+      redact: (text) => this.redactor.redact(text),
       telegramToken: this.options.secrets.telegramBotToken ?? null,
     });
   }

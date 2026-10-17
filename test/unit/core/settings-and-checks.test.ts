@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCheck } from "../../../src/core/checks.ts";
+import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../src/core/settings/home.ts";
 import { loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
+import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
@@ -84,77 +85,121 @@ describe("settings", () => {
 
 describe("runCheck", () => {
   const okRunner: ProcessRunner = {
-    run: () => Promise.resolve({ exitCode: 0, stdout: "2.1.286 (Claude Code)\n", stderr: "" }),
+    run: () => Promise.resolve({ exitCode: 0, stdout: "Logged in to github.com\n", stderr: "" }),
   };
   const failingRunner: ProcessRunner = {
     run: () => Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" }),
   };
 
+  function inputs(overrides: Partial<CheckInputs> = {}): CheckInputs {
+    return {
+      vaultPath: null,
+      runner: okRunner,
+      environment: {},
+      engines: [],
+      engineEnvironment: {},
+      redact: (text) => text.replaceAll("secret-value", "[redacted]"),
+      telegramToken: null,
+      ...overrides,
+    };
+  }
+
   test("the vault check proves push access, and pushes nothing (lesson 98)", async () => {
     expect(
-      await runCheck("vault", {
-        vaultPath: vault,
-        runner: systemProcessRunner,
-        environment: gitEnvironment,
-        claudeExecutable: null,
-        telegramToken: null,
-      }),
+      await runCheck("vault", inputs({ vaultPath: vault, runner: systemProcessRunner, environment: gitEnvironment })),
     ).toEqual({ ok: true, detail: "Eva can push to the vault's remote." });
     expect(sandbox.git(sandbox.remote, "branch", "--list", "eva-access-check")).toBe("");
-    expect(
-      await runCheck("vault", {
-        vaultPath: null,
-        runner: okRunner,
-        environment: {},
-        claudeExecutable: null,
-        telegramToken: null,
-      }),
-    ).toMatchObject({ ok: false });
+    expect(await runCheck("vault", inputs())).toMatchObject({ ok: false });
   });
 
-  test("the engine and GitHub checks run their programs", async () => {
-    const inputs = { vaultPath: vault, environment: {}, claudeExecutable: "/bin/claude", telegramToken: null };
-    expect(await runCheck("engine", { ...inputs, runner: okRunner })).toEqual({
-      ok: true,
-      detail: "2.1.286 (Claude Code)",
+  test("the GitHub check runs gh", async () => {
+    expect(await runCheck("github", inputs({ runner: failingRunner }))).toEqual({ ok: false, detail: "not logged in" });
+    expect(await runCheck("github", inputs())).toEqual({ ok: true, detail: "gh is logged in." });
+  });
+
+  test("an engine check runs one tiny real turn in an empty folder, with nothing of Eva's added", async () => {
+    let folder = "";
+    let folderWasEmpty = false;
+    const engine = new FakeEngine((request) => {
+      folder = request.startFolder;
+      folderWasEmpty = readdirSync(folder).length === 0;
+      return FakeEngine.answer(request, "OK\nmore text");
     });
-    expect(await runCheck("github", { ...inputs, runner: failingRunner })).toEqual({
-      ok: false,
-      detail: "not logged in",
+    const result = await runCheck("claude-code", inputs({ engines: [engine], engineEnvironment: { HOME: "/h" } }));
+    expect(result).toEqual({ ok: true, detail: "Claude Code answered: OK" });
+    const request = engine.requests[0];
+    expect(request).toMatchObject({
+      mode: "project",
+      trusted: false,
+      model: "default",
+      appendSystemPrompt: null,
+      pluginFolders: [],
+      mcpServers: {},
+      environment: { HOME: "/h" },
     });
-    expect(await runCheck("engine", { ...inputs, claudeExecutable: null, runner: okRunner })).toMatchObject({
+    expect(request?.history.kind).toBe("new");
+    expect(await request?.requestApproval({ requestId: "r", toolName: "Bash", summary: "ls" })).toBe("deny");
+    expect(folderWasEmpty).toBe(true);
+    expect(existsSync(folder)).toBe(false);
+  });
+
+  test("an engine check names a failed turn, a missing engine and a turn that never ends", async () => {
+    const failing = new FakeEngine(() => [{ kind: "turn_failed", reason: "Not logged in: secret-value" }]);
+    expect(await runCheck("claude-code", inputs({ engines: [failing] }))).toEqual({
       ok: false,
+      detail: "Not logged in: [redacted]",
+    });
+    expect(await runCheck("pi", inputs({ engines: [failing] }))).toEqual({
+      ok: false,
+      detail: "Eva did not find pi on this machine.",
+    });
+    const silent: EnginePort = {
+      name: "pi",
+      async *runTurn(request) {
+        await new Promise((resolve) => request.signal.addEventListener("abort", resolve));
+        yield { kind: "turn_failed", reason: "aborted" };
+      },
+    };
+    expect(await runCheck("pi", inputs({ engines: [silent], engineTimeoutMs: 20 }))).toEqual({
+      ok: false,
+      detail: "pi gave no answer in time.",
+    });
+    const broken: EnginePort = {
+      name: "pi",
+      runTurn() {
+        throw new Error("spawn failed: secret-value");
+      },
+    };
+    expect(await runCheck("pi", inputs({ engines: [broken] }))).toEqual({
+      ok: false,
+      detail: "spawn failed: [redacted]",
     });
   });
 
   test("the Telegram check asks Telegram who the bot is, and never shows the token", async () => {
     const telegram = new FakeTelegram();
-    const inputs = { vaultPath: null, runner: okRunner, environment: {}, claudeExecutable: null };
     try {
-      const result = await runCheck("telegram", {
-        ...inputs,
-        telegramToken: telegram.token,
-        telegramBaseUrl: telegram.baseUrl,
-      });
+      const result = await runCheck(
+        "telegram",
+        inputs({ telegramToken: telegram.token, telegramBaseUrl: telegram.baseUrl }),
+      );
       expect(result).toEqual({ ok: true, detail: "@eva_test_bot" });
       telegram.failNext("getMe", 401, "Unauthorized");
-      const refused = await runCheck("telegram", {
-        ...inputs,
-        telegramToken: telegram.token,
-        telegramBaseUrl: telegram.baseUrl,
-      });
+      const refused = await runCheck(
+        "telegram",
+        inputs({ telegramToken: telegram.token, telegramBaseUrl: telegram.baseUrl }),
+      );
       expect(refused).toEqual({ ok: false, detail: "Telegram refused the token." });
     } finally {
       telegram.stop();
     }
-    const offline = await runCheck("telegram", {
-      ...inputs,
-      telegramToken: "123:abc",
-      telegramBaseUrl: "http://127.0.0.1:1",
-    });
+    const offline = await runCheck(
+      "telegram",
+      inputs({ telegramToken: "123:abc", telegramBaseUrl: "http://127.0.0.1:1" }),
+    );
     expect(offline.ok).toBe(false);
     expect(offline.detail).not.toContain("123:abc");
-    expect((await runCheck("telegram", { ...inputs, telegramToken: null })).ok).toBe(false);
+    expect((await runCheck("telegram", inputs())).ok).toBe(false);
   });
 });
 

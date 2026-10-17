@@ -7,9 +7,16 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Alert, AlertProblem } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
-import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
+import {
+  describeLogEntries,
+  describeProjectLines,
+  describeStatusLines,
+  describeSync,
+  describeUpdate,
+} from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -151,7 +158,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "delete", description: "Delete this topic and forget its chat" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
-  { command: "projects", description: "Search the projects" },
+  { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
@@ -528,12 +535,8 @@ export class TelegramBot {
         return;
       }
       case "projects": {
-        const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
-        await this.send(
-          chatId,
-          topicId,
-          projects.length === 0 ? "No project matches." : projects.map((project) => `• ${project.id}`).join("\n"),
-        );
+        const projects = this.options.eva.projects(parseProjectQuery(rest.join(" "))).slice(0, 20);
+        await this.send(chatId, topicId, describeProjectLines(projects).join("\n"));
         return;
       }
       default:

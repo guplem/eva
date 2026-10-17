@@ -162,13 +162,16 @@ export async function requestSettingsChange(
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);
-  if (projects.length === 0) return "No project matches.";
-  return projects
-    .flatMap((project) => [
-      [project.id, project.frontMatter.status ?? "?", project.title, ...hashTags(project.frontMatter.tags)].join("  "),
-      ...project.warnings.map((warning) => `  ⚠ ${warning}`),
-    ])
-    .join("\n");
+  return describeProjectLines(projects).join("\n");
+}
+
+/** One line per project for `eva projects` and Telegram /projects, each warning under its project. */
+export function describeProjectLines(projects: readonly ProjectBody[]): string[] {
+  if (projects.length === 0) return ["No project matches."];
+  return projects.flatMap((project) => [
+    [project.id, project.frontMatter.status ?? "?", project.title, ...hashTags(project.frontMatter.tags)].join("  "),
+    ...project.warnings.map((warning) => `  ⚠ ${warning}`),
+  ]);
 }
 
 function hashTags(tags: readonly string[]): string[] {

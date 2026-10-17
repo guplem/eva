@@ -441,6 +441,29 @@ describe("approvals and commands", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("/projects reads the filter words, and shows the tags and the warnings", async () => {
+    const vault = join(sandbox.root, "vault");
+    sandbox.write(
+      vault,
+      "Projects/2025-02-01-0900-tax-report/AGENTS.md",
+      "---\ncreated: 2025-02-01T09:00\nstatus: active\ntags: [life]\n---\n# Taxes\n",
+    );
+    sandbox.write(
+      vault,
+      "Projects/2024-01-01-0900-photo-sorter/AGENTS.md",
+      "---\ncreated: 2024-01-01T09:00\ntags: [life]\n---\n",
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "/projects status:active");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    telegram.sendText(owner, "/projects #life sorter");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()).toEqual([
+      "2025-02-01-0900-tax-report  active  Taxes  #life",
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter  #life\n  ⚠ status must be idea, active, paused or closed",
+    ]);
+  });
+
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");

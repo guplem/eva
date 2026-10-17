@@ -38,7 +38,7 @@ has a control on the settings page, and the control saves the setting.
    - Telegram: bot token field with Test, pairing state (paired chat, or the pairing code).
    - Engines: default engine, Claude Code default model, login step for each engine, Test for each.
    - Time zone.
-   - Allowed Tailscale identities (see gap G5).
+   - Allowed Tailscale identities, read-only (see G5).
 4. **Appearance: theme and density.** A theme choice (system, light, dark) and a density choice
    (comfortable, compact) that the page applies.
 5. **Section order:** Setup, Updates, Appearance, Projects, then Schedules until #39 moves it.
@@ -61,4 +61,50 @@ has a control on the settings page, and the control saves the setting.
 
 ## Decisions
 
-To be filled after the gap research.
+Three research agents (two mid-tier, one upper-tier) agreed on every gap. None needs the owner.
+
+- **G0 (found in research). A device login changes only the page's settings.** Today
+  `PUT /api/settings` takes any key from any login, so a device login can change
+  `remoteAccess.*`, `trust`, `telegram.allowedChatId`, the executables and `vaultPath`. Fix:
+  a request that logged in with a device cookie may change only an allowlist: the vault's shared
+  keys, `sync`, `projectRoots`. Any other key fails with a new `EvaError` code, `setting_forbidden`
+  (HTTP 403). A token login (the CLI's bearer token, or the token cookie) may change every key, so
+  `eva settings set` keeps working. An allowlist protects each new key by default.
+- **G1. Secrets.** Write-only `PUT /api/secrets/<name>` and `DELETE /api/secrets/<name>` for
+  `githubToken`, `telegramBotToken` and `claudeOauthToken` only. The core adds the value to the
+  redactor first, then saves `secrets.json`. The value never comes back. The running Eva keeps its
+  copy for the checks, so Test checks the saved value at once. The git and engine environments and
+  the Telegram bot read the secrets at start, so the answer says "Restart Eva to use it". A live
+  pick-up needs a refactor of the preparers and is not worth it now.
+- **G2. Vault repository.** Show the remote read-only (redacted), the folder, the existing Test
+  (a push dry run, lesson 98), the fetch interval, **Sync now**, and the sync state. Changing the
+  remote or cloning another vault stays in `eva setup`: a vault switch under a running sync risks
+  lost changes. The sketch's "Automatically fetch" switch is the existing fetch interval dropdown.
+- **G3. Telegram.** Token field with Test and the pairing state: "paired", or the pairing code
+  while unpaired. The pairing code path moves into `HomePaths`, so the core can read it. No unpair
+  and no chat id on the page: with the code on the page, unpair would be a takeover path.
+- **G4. Engines.** Default engine and Claude Code default model (vault settings, save at once).
+  Claude Code login: the write-only token from `claude setup-token` (lesson 97). pi login: pi keeps
+  its own login on the machine; the page shows the command and the Test result. Never a Claude
+  login for pi. The checks `claude-code` and `pi` replace `engine`. Each runs one turn through the
+  engine port: project mode, untrusted, an empty temporary folder, model `default`, no prompt,
+  skills or MCP servers, a deny-all approval, the engine environment, and a 90 s timeout. It
+  passes on `turn_finished` and shows the start of the redacted reply. An engine that Eva did not
+  find says so.
+- **G4b. GitHub Test.** Today it runs `gh auth status`, but Eva's git uses the saved token. The
+  check now asks the GitHub API who the token belongs to (`GET /user`, with a base URL seam). With
+  no saved token, it falls back to `gh auth status`.
+- **G5. Allowed Tailscale identities.** Read-only on the page, with the `eva settings set` line
+  for this machine. G0 blocks it from a device login. A phone path (Telegram Allow) belongs to #42.
+- **G6. Appearance.** Theme (system, light, dark) and density (comfortable, compact) per browser
+  in `localStorage`, read in try/catch, applied as `data-theme` and `data-density` on `<html>`.
+  Density depends on the screen, so a vault key would be wrong for a phone and a desktop at once.
+- **G7. Save model.** Dropdowns save at once. Text fields wait for Save. Each secret field has
+  its own Save and Remove, then Test. The notice says "Restart Eva" only when the answer has
+  `restartNeeded`.
+
+## Follow-ups (not in this PR)
+
+- Switch the vault or clone a first vault from the page.
+- A pi login from the phone.
+- Change the allowed Tailscale identities from the phone through a Telegram Allow (#42).

@@ -207,4 +207,14 @@ bun run eva --home ~/eva-partner setup
 bun run eva --home ~/eva-partner service install
 ```
 
-Setup picks a free port for her. Her Claude and GitHub logins stay in her home folder, so two people never share a login.
+Setup picks a free port for her. Her Claude, pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription:
+
+| Engine      | Folder             | Variable              |
+| ----------- | ------------------ | --------------------- |
+| Claude Code | `engines/claude`   | `CLAUDE_CONFIG_DIR`   |
+| pi          | `engines/pi-agent` | `PI_CODING_AGENT_DIR` |
+| GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       |
+
+Setup gives the login command for each engine, with the right folder for her. Run each command in another terminal. At the end, setup shows which logins are in place. Run `eva --home ~/eva-partner setup` again to check them later.
+
+The first Eva on a computer uses the computer user's own logins, the same as when the person runs Claude Code, pi or `gh` by hand.

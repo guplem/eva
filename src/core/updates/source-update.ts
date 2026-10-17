@@ -77,7 +77,7 @@ async function apply(options: SourceCheckoutOptions): Promise<UpdateCheck> {
 
 /** Installs the new dependencies, or goes back to the old commit when that fails. */
 async function install(options: SourceCheckoutOptions, previous: string): Promise<void> {
-  // A server install has no development tools (README); keep the same kind of install.
+  // A server install has no development tools (docs/guide/setup.md); keep the same kind of install.
   const production = !existsSync(join(options.folder, "node_modules", "typescript"));
   const command = [
     options.bunExecutable,

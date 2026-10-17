@@ -37,7 +37,7 @@ export function describeAccess(access: { remoteAccess: RemoteAccess | null; loca
   const lines =
     remote === null
       ? [
-          "Phone and other computers: not set up. Install Tailscale on this machine, then run `eva setup` again (README, Open Eva).",
+          "Phone and other computers: not set up. Install Tailscale on this machine, then run `eva setup` again (docs/guide/setup.md, Open Eva on your phone).",
         ]
       : remote.url === null
         ? [`Phone and other computers: ${remote.problem ?? "not available"}`]
@@ -78,7 +78,9 @@ async function logIn(options: NetworkSetupOptions): Promise<TailscaleFacts | nul
     .run(["tailscale", "version"], { cwd: ".", environment: options.environment, timeoutMs: loginTimeoutMs })
     .catch(() => null);
   if (version?.exitCode !== 0) {
-    options.write(`Tailscale is not installed. Install it from ${installPage}; without admin rights, see the README.`);
+    options.write(
+      `Tailscale is not installed. Install it from ${installPage}; without admin rights, see docs/guide/setup.md (Tailscale without root).`,
+    );
     return null;
   }
   if (!options.interactive) {

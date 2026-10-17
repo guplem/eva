@@ -129,8 +129,7 @@ class Context {
 
   /** Why a fact that needs admin rights or a public repository is unknown. */
   unknownReason(publicOnly: boolean): string {
-    if (publicOnly && this.target.isPrivate)
-      return "GitHub gives this free to public repositories only. A private one needs a paid plan.";
+    if (publicOnly && this.target.isPrivate) return "GitHub gives this free to public repositories only.";
     return this.target.isAdmin ? "Eva could not read this from GitHub." : needsAdmin;
   }
 

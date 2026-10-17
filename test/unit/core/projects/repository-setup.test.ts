@@ -146,7 +146,7 @@ describe("evaluateSetup", () => {
       target({ isPrivate: true, privateVulnerabilityReporting: null, secretScanning: null, requiredChecks: false }),
     );
     expect(item(report, "Private vulnerability reporting").light).toBe("grey");
-    expect(item(report, "Secret scanning").detail).toContain("private");
+    expect(item(report, "Secret scanning").detail).toContain("public repositories only");
     expect(item(report, "Required checks before merge").light).toBe("grey");
   });
 

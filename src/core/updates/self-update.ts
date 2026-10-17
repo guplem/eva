@@ -7,6 +7,7 @@ import { chmodSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:
 import { basename, dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { evaRepository } from "../../shared/version.ts";
 import {
   assetNameFor,
   checksumsFileName,
@@ -106,7 +107,7 @@ export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
 }
 
 async function latestRelease(inputs: UpdateInputs): Promise<Release> {
-  const url = `${inputs.apiBaseUrl ?? "https://api.github.com"}/repos/${inputs.repository ?? "guplem/eva"}/releases/latest`;
+  const url = `${inputs.apiBaseUrl ?? "https://api.github.com"}/repos/${inputs.repository ?? evaRepository}/releases/latest`;
   let response: Response;
   try {
     response = await fetch(url, {

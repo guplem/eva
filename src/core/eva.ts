@@ -325,7 +325,8 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
-            isIdle: () => !this.workRuns(),
+            // A waiting engine update runs first: the restart would lose it, as it lives in memory.
+            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -338,8 +339,9 @@ export class Eva {
             executable: claudeExecutable,
             runner: options.runner,
             environment: this.engineToolEnvironment(),
-            // Eva's own update ends in a restart, which would cut `claude update` off.
-            isIdle: () => !this.workRuns() && !this.installsOwnUpdate(),
+            // A restart would cut `claude update` off, so it waits for Eva's own download. Once the
+            // new version is in place, her restart waits for this update instead.
+            isIdle: () => !this.workRuns() && !this.downloadsOwnUpdate(),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -804,9 +806,8 @@ export class Eva {
     });
   }
 
-  private installsOwnUpdate(): boolean {
-    const phase = this.updater?.status().phase;
-    return phase === "updating" || phase === "restarting";
+  private downloadsOwnUpdate(): boolean {
+    return this.updater?.status().phase === "updating";
   }
 
   /**

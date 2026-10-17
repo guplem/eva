@@ -634,7 +634,7 @@ describe("Eva", () => {
     expect(restarts).toEqual(["restart"]);
   });
 
-  test("the engine update waits while Eva's own update installs, because her restart would cut it off", async () => {
+  test("an engine update pressed during Eva's own install runs before her restart", async () => {
     const finishInstallGate: { open: (() => void) | null } = { open: null };
     const claudeRuns: string[] = [];
     const runner: ProcessRunner = {
@@ -672,8 +672,14 @@ describe("Eva", () => {
     expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
     finishInstallGate.open?.();
     await installing;
-    expect(restarts).toEqual(["restart"]);
     expect(claudeRuns).toEqual([]);
+    // The waiting engine update holds the restart, or the restart would lose it.
+    expect(restarts).toEqual([]);
+    await instance.backgroundTick();
+    await waitFor(() => instance.engineUpdateStatus()?.last !== null);
+    expect(claudeRuns).toEqual(["/opt/claude --version", "/opt/claude update", "/opt/claude --version"]);
+    await instance.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
   });
 
   test("an update waits while a schedule fires, before its chat gets the prompt (lesson 92)", async () => {

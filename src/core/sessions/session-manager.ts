@@ -104,6 +104,13 @@ interface SessionRuntime {
 }
 
 const titleLength = 60;
+/** What a turn did, for the activity chips under its answer. */
+interface TurnActivity {
+  readonly toolCount: number;
+  readonly commandCount: number;
+  readonly taskCount: number;
+}
+
 const defaultTitle = "New chat";
 const maxFollowUps = 20;
 
@@ -322,7 +329,9 @@ export class SessionManager {
     let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
     let lastText: string | null = null;
     const answerParts: string[] = [];
-    let toolCount = 0;
+    const activity = { toolCount: 0, commandCount: 0, taskCount: 0 };
+    // A task sends several events as its state changes, so each task counts once.
+    const taskIds = new Set<string>();
 
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
@@ -383,13 +392,20 @@ ${prompt}`,
           lastText = payload.messageId;
           answerParts.push(payload.text);
         }
-        if (payload.kind === "tool_started") toolCount += 1;
+        if (payload.kind === "tool_started") {
+          activity.toolCount += 1;
+          if (payload.category === "command") activity.commandCount += 1;
+        }
+        if (payload.kind === "task_changed") {
+          taskIds.add(payload.taskId);
+          activity.taskCount = taskIds.size;
+        }
         if (payload.kind === "turn_finished") {
           finished = payload;
           // Record first: a front end that reloads the list on this event must find the turn in it.
           this.recordTurn(
             session,
-            { userText: this.options.redactor.redact(prompt), answerText: answerParts.join("\n\n"), toolCount },
+            { userText: this.options.redactor.redact(prompt), answerText: answerParts.join("\n\n"), ...activity },
             payload,
             lastText,
           );
@@ -403,7 +419,7 @@ ${prompt}`,
       clearTimeout(timeout);
       runtime.controller = null;
     }
-    if (finished === null) this.recordFailure(session.id, prompt, answerParts, toolCount, historyLost);
+    if (finished === null) this.recordFailure(session.id, prompt, answerParts, activity, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
@@ -429,7 +445,7 @@ ${prompt}`,
 
   private recordTurn(
     session: SessionRecord,
-    turn: { userText: string; answerText: string; toolCount: number },
+    turn: { userText: string; answerText: string } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
   ): void {
@@ -454,7 +470,7 @@ ${prompt}`,
     sessionId: string,
     prompt: string,
     answerParts: readonly string[],
-    toolCount: number,
+    activity: TurnActivity,
     historyLost: boolean,
   ): void {
     const current = this.options.store.get(sessionId);
@@ -472,7 +488,7 @@ ${prompt}`,
         {
           userText: this.options.redactor.redact(prompt),
           answerText: answerParts.join("\n\n"),
-          toolCount,
+          ...activity,
           failure: last,
           lastMessageId: null,
           at,

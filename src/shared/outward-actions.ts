@@ -4,6 +4,7 @@
  * Claude Code and pi ask for the same actions. Tool names differ in case between the two
  * engines (`Bash` and `bash`), so the shell tool is matched without case.
  */
+import type { ToolCategory } from "./events.ts";
 
 /** Shell commands that publish, push or send. */
 const outwardCommandPattern =
@@ -19,6 +20,11 @@ export function reachesOtherPeople(toolName: string, input: Readonly<Record<stri
     outwardMcpPattern.test(toolName) ||
     (calendarEventToolPattern.test(toolName) && eventReachesOthers(input))
   );
+}
+
+/** Each adapter tags its tool calls with this one rule, so the core knows no engine's tool names. */
+export function toolCategory(name: string): ToolCategory {
+  return name.toLowerCase() === "bash" ? "command" : "tool";
 }
 
 /** One line that says what a tool call does, for an approval button or an activity chip. */

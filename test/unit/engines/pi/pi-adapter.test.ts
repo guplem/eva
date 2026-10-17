@@ -181,7 +181,7 @@ describe("PiEngine", () => {
     const fake = new FakePi([{ records: loadPiFixture("tool-call") }]);
     const events = await drain(engine(fake).runTurn(request()));
     expect(events.filter((event) => event.kind.startsWith("tool"))).toEqual([
-      { kind: "tool_started", toolUseId: "call_fake_29", name: "bash", summary: "echo hi" },
+      { kind: "tool_started", toolUseId: "call_fake_29", name: "bash", category: "command", summary: "echo hi" },
       { kind: "tool_finished", toolUseId: "call_fake_29", isError: false },
     ]);
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", lastMessageId: null });

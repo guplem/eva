@@ -172,6 +172,7 @@ describe("mapSdkMessages", () => {
         kind: "tool_started",
         toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83",
         name: "Read",
+        category: "tool",
         summary: "Read /demo-vault\\Methods\\Morning Routine.md",
       },
       { kind: "tool_finished", toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83", isError: false },
@@ -197,7 +198,13 @@ describe("mapSdkMessages", () => {
     const agentToolUseId = "toolu_01BECqHSvNztXpQRA8tYD8gk";
     const events = await collect(loadCapture("subagent-task"));
     expect(events.slice(0, -1)).toEqual([
-      { kind: "tool_started", toolUseId: agentToolUseId, name: "Agent", summary: "Agent Read file and report title" },
+      {
+        kind: "tool_started",
+        toolUseId: agentToolUseId,
+        name: "Agent",
+        category: "tool",
+        summary: "Agent Read file and report title",
+      },
       {
         kind: "task_changed",
         taskId: "af535f9743f2b5266",

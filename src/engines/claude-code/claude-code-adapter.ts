@@ -5,7 +5,7 @@
  */
 import { query as sdkQuery, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
-import { reachesOtherPeople, summarizeToolCall } from "../../shared/outward-actions.ts";
+import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
 
 type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
@@ -152,6 +152,7 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
               kind: "tool_started",
               toolUseId: block.id,
               name: block.name,
+              category: toolCategory(block.name),
               summary: summarizeToolCall(block.name, block.input),
             };
           }

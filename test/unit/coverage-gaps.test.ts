@@ -65,7 +65,7 @@ describe("describeEvent", () => {
   test("gives each event kind its terminal line", () => {
     const events: SessionEvent[] = [
       { ...base, kind: "text", text: "Hi", messageId: "m" },
-      { ...base, kind: "tool_started", toolUseId: "t", name: "Read", summary: "Read a.md" },
+      { ...base, kind: "tool_started", toolUseId: "t", name: "Read", category: "tool", summary: "Read a.md" },
       { ...base, kind: "task_changed", taskId: "k", description: "search", state: "running" },
       { ...base, kind: "approval_needed", requestId: "r", toolName: "Bash", summary: "git push" },
       { ...base, kind: "notice", text: "saved" },

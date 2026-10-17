@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  scheduleCardProblem,
   scheduleFiringProblem,
   updateProblem,
   vaultOfflineAlertMs,
@@ -68,6 +69,16 @@ describe("scheduleFiringProblem", () => {
     const problem = scheduleFiringProblem("Lunch", "no engine");
     expect(problem.message).toContain("Lunch");
     expect(problem.message).toContain("no engine");
+    expect(problem.resolvedMessage).toContain("Lunch");
+  });
+});
+
+describe("scheduleCardProblem", () => {
+  test("names the schedule and a fix from a phone", () => {
+    const problem = scheduleCardProblem("Lunch");
+    expect(problem.message).toContain("Lunch");
+    expect(problem.message).toContain("web app");
+    expect(problem.message).toContain("Telegram");
     expect(problem.resolvedMessage).toContain("Lunch");
   });
 });

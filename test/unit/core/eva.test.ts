@@ -634,6 +634,22 @@ describe("Eva alerts", () => {
     expect(alerts[0]?.message).toContain("Lunch");
   });
 
+  test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([expect.stringContaining("Lunch")]);
+    expect(alerts.map((alert) => alert.key)).toEqual(["schedule_card:lunch"]);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([]);
+  });
+
   test("a front end reports its own problem, and the status carries it", () => {
     const instance = start(new FakeEngine());
     instance.reportProblem("telegram_poll", {

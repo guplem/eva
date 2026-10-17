@@ -15,7 +15,13 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
-import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
+import {
+  scheduleCardProblem,
+  scheduleFiringProblem,
+  uncleanExitMessage,
+  updateProblem,
+  vaultSyncProblem,
+} from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
@@ -303,6 +309,10 @@ export class Eva {
                 `schedule:${schedule.id}`,
                 failure === null ? null : scheduleFiringProblem(schedule.name, failure),
               );
+            },
+            reportCard: (scheduleId, name, waiting) => {
+              // Its own key: a good firing clears `schedule:<id>`, but must not clear this one.
+              this.alerts.report(`schedule_card:${scheduleId}`, waiting ? scheduleCardProblem(name) : null);
             },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });

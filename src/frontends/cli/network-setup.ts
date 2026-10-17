@@ -43,7 +43,7 @@ export function describeAccess(access: { remoteAccess: RemoteAccess | null; loca
         ? [`Phone and other computers: ${remote.problem ?? "not available"}`]
         : [
             `Open Eva: ${remote.url}`,
-            "It works on any phone or computer that is signed in to Tailscale with your account, with no login.",
+            "It works on any phone or computer that is signed in to Tailscale with your account. The first time, tap Allow in Telegram.",
           ];
   return [
     ...lines,

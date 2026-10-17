@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
+import type { DeviceLoginRequest } from "../../../../src/core/instance/device-logins.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
@@ -127,11 +128,15 @@ describe("guards (plan §12)", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  test("an allowed Tailscale account through the tailnet name needs no token; a local request still does", async () => {
-    const tailnet = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" };
-    expect((await call("/api/status", { headers: tailnet })).status).toBe(200);
+  test("a Tailscale identity alone never authenticates: a forged header on 127.0.0.1 gets a 401", async () => {
+    // Any program on the machine can send these headers, also an agent that Eva runs.
+    const forged = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" };
+    expect((await call("/api/status", { headers: forged })).status).toBe(401);
     expect(
-      (await call("/api/status", { headers: { ...tailnet, "tailscale-user-login": "stranger@example.com" } })).status,
+      (await call("/api/approvals/any", { method: "POST", body: { answer: "allow" }, headers: forged })).status,
+    ).toBe(401);
+    expect(
+      (await call("/api/status", { headers: { ...forged, "tailscale-user-login": "stranger@example.com" } })).status,
     ).toBe(403);
     expect((await call("/api/status", { headers: { "tailscale-user-login": "owner@example.com" } })).status).toBe(401);
     expect((await call("/api/status", { headers: { host: "eva.example-tailnet.ts.net" } })).status).toBe(403);
@@ -144,6 +149,144 @@ describe("guards (plan §12)", () => {
     expect(
       (await call("/api/status", { headers: headers({ "tailscale-user-login": "owner@example.com" }) })).status,
     ).toBe(200);
+  });
+});
+
+describe("device login (plan §12)", () => {
+  const tailnet = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" };
+  let asked: DeviceLoginRequest[];
+
+  function attachApprover(canApprove = true): void {
+    eva.deviceLogins.attachApprover({ canApprove: () => canApprove, ask: (request) => asked.push(request) });
+  }
+
+  async function requestLogin(extra: Record<string, string> = {}): Promise<Response> {
+    return call("/api/login/device", { method: "POST", headers: { ...tailnet, ...extra } });
+  }
+
+  /** Runs the whole flow, and returns the `set-cookie` header of the answer that allowed the device. */
+  async function allowedCookie(extra: Record<string, string> = {}): Promise<string> {
+    const request = await json<DeviceLoginRequest>(await requestLogin(extra));
+    eva.deviceLogins.answer(request.id, "allow");
+    const answer = await call(`/api/login/device/${request.id}`, { headers: { ...tailnet, ...extra } });
+    return answer.headers.get("set-cookie") ?? "";
+  }
+
+  function deviceCookieOf(setCookie: string): string {
+    return /eva_device=[^;]+/.exec(setCookie)?.[0] ?? "";
+  }
+
+  beforeEach(() => {
+    asked = [];
+  });
+
+  test("an allowed account asks, the owner allows, and the page gets a strict, HTTP-only device cookie for a year", async () => {
+    attachApprover();
+    const created = await requestLogin();
+    expect(created.status).toBe(201);
+    const request = await json<DeviceLoginRequest>(created);
+    expect(request.account).toBe("owner@example.com");
+    expect(asked.map((entry) => entry.code)).toEqual([request.code]);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "pending",
+    });
+    eva.deviceLogins.answer(request.id, "allow");
+    const allowed = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(allowed)).toEqual({ state: "allowed" });
+    const setCookie = allowed.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("eva_device=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Strict");
+    expect(setCookie).toContain(`Max-Age=${String(365 * 24 * 60 * 60)}`);
+    expect(setCookie).not.toContain("Secure");
+    const cookie = deviceCookieOf(setCookie);
+    expect((await call("/api/status", { headers: { ...tailnet, cookie } })).status).toBe(200);
+    expect((await call("/api/status", { headers: { cookie } })).status).toBe(200);
+    expect((await call("/api/status", { headers: { ...tailnet, cookie: "eva_device=forged" } })).status).toBe(401);
+  });
+
+  test("behind HTTPS the device cookie is Secure", async () => {
+    attachApprover();
+    expect(await allowedCookie({ "x-forwarded-proto": "https" })).toContain("Secure");
+  });
+
+  test("a denied request gives no cookie", async () => {
+    attachApprover();
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    eva.deviceLogins.answer(request.id, "deny");
+    const denied = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(denied)).toEqual({ state: "denied" });
+    expect(denied.headers.get("set-cookie")).toBeNull();
+  });
+
+  test("only an allowed Tailscale account on the tailnet name may ask", async () => {
+    attachApprover();
+    expect((await call("/api/login/device", { method: "POST", headers: {} })).status).toBe(403);
+    expect((await call("/api/login/device", { method: "POST", headers: headers() })).status).toBe(403);
+    expect((await requestLogin({ "tailscale-user-login": "stranger@example.com" })).status).toBe(403);
+    expect((await call("/api/login/device/unknown", { headers: {} })).status).toBe(403);
+    expect((await call("/api/login/device", { method: "PUT", headers: tailnet })).status).toBe(404);
+    expect(asked).toEqual([]);
+  });
+
+  test("another account cannot collect the cookie of a request", async () => {
+    const shared = startLocalApi({
+      eva,
+      port: 0,
+      token,
+      extraHosts: ["eva.example-tailnet.ts.net"],
+      allowedTailscaleIdentities: ["owner@example.com", "partner@example.com"],
+    });
+    try {
+      attachApprover();
+      const created = await fetch(`${shared.url}/api/login/device`, { method: "POST", headers: tailnet });
+      const request = await json<DeviceLoginRequest>(created);
+      eva.deviceLogins.answer(request.id, "allow");
+      const stolen = await fetch(`${shared.url}/api/login/device/${request.id}`, {
+        headers: { ...tailnet, "tailscale-user-login": "partner@example.com" },
+      });
+      expect(await json<unknown>(stolen)).toEqual({ state: "expired" });
+      expect(stolen.headers.get("set-cookie")).toBeNull();
+    } finally {
+      shared.stop();
+    }
+  });
+
+  test("without a Telegram bot that can ask, the page learns why and falls back to the token", async () => {
+    const refused = await requestLogin();
+    expect(refused.status).toBe(409);
+    expect((await json<{ error: string }>(refused)).error).toContain("Telegram");
+    attachApprover(false);
+    expect((await requestLogin()).status).toBe(409);
+  });
+
+  test("too many requests in 10 minutes are refused with a 429", async () => {
+    attachApprover();
+    for (let count = 0; count < 5; count += 1) expect((await requestLogin()).status).toBe(201);
+    expect((await requestLogin()).status).toBe(429);
+    expect(asked).toHaveLength(5);
+  });
+
+  test("logout clears both cookies and logs the device out", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const logout = await call("/api/logout", { method: "POST", headers: { cookie } });
+    expect(logout.status).toBe(204);
+    const cleared = logout.headers.getSetCookie();
+    expect(cleared.some((line) => line.startsWith("eva_token=;") && line.includes("Max-Age=0"))).toBe(true);
+    expect(cleared.some((line) => line.startsWith("eva_device=;") && line.includes("Max-Age=0"))).toBe(true);
+    expect((await call("/api/status", { headers: { cookie } })).status).toBe(401);
+  });
+
+  test("Log out every device ends every device login, and needs a login itself", async () => {
+    attachApprover();
+    const first = deviceCookieOf(await allowedCookie());
+    const second = deviceCookieOf(await allowedCookie());
+    expect((await call("/api/devices", { method: "DELETE", headers: {} })).status).toBe(401);
+    const removed = await call("/api/devices", { method: "DELETE", headers: { cookie: first } });
+    expect(await json<unknown>(removed)).toEqual({ removed: 2 });
+    expect((await call("/api/status", { headers: { cookie: first } })).status).toBe(401);
+    expect((await call("/api/status", { headers: { cookie: second } })).status).toBe(401);
   });
 });
 
@@ -209,6 +352,15 @@ describe("routes", () => {
     expect((await call("/api/sessions/missing/messages", { method: "POST", body: { text: "x" } })).status).toBe(404);
     expect((await call("/api/sessions", { method: "POST", body: { mode: "dreaming" } })).status).toBe(400);
     expect((await call("/api/nothing-here")).status).toBe(404);
+  });
+
+  test("an error message leaves the API redacted (lesson 95)", async () => {
+    const secretShaped = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const response = await call(`/api/sessions/${secretShaped}/messages`, { method: "POST", body: { text: "x" } });
+    expect(response.status).toBe(404);
+    const message = (await json<{ error: string }>(response)).error;
+    expect(message).toContain("[redacted]");
+    expect(message).not.toContain(secretShaped);
   });
 
   test("an approval answer reaches the waiting turn", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileLogger, readRecentLogEntries } from "../../../src/shared/logger.ts";
@@ -51,6 +51,21 @@ describe("FileLogger", () => {
     });
     writeFileSync(join(folder, "file-not-folder"), "x");
     expect(() => logger.log("info", "hello")).not.toThrow();
+  });
+
+  test("creates the log folder and files for the OS user only (plan §12)", () => {
+    const logs = join(folder, "logs");
+    const logger = new FileLogger({
+      folder: logs,
+      redactor: new Redactor(),
+      now: () => new Date("2026-10-14T10:30:00Z"),
+    });
+    logger.log("info", "hello");
+    expect(existsSync(join(logs, "eva-2026-10-14.jsonl"))).toBe(true);
+    // Windows has no POSIX modes.
+    if (process.platform === "win32") return;
+    expect(statSync(logs).mode & 0o777).toBe(0o700);
+    expect(statSync(join(logs, "eva-2026-10-14.jsonl")).mode & 0o777).toBe(0o600);
   });
 });
 

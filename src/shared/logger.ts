@@ -34,8 +34,11 @@ export class FileLogger implements Logger {
     const record = { at: at.toISOString(), level, message, ...(details === undefined ? {} : { details }) };
     const line = this.options.redactor.redact(JSON.stringify(record));
     try {
-      mkdirSync(this.options.folder, { recursive: true });
-      appendFileSync(join(this.options.folder, `eva-${at.toISOString().slice(0, 10)}.jsonl`), `${line}\n`);
+      // The log can hold chat text, so only the OS user may read it. Windows ignores the mode.
+      mkdirSync(this.options.folder, { recursive: true, mode: 0o700 });
+      appendFileSync(join(this.options.folder, `eva-${at.toISOString().slice(0, 10)}.jsonl`), `${line}\n`, {
+        mode: 0o600,
+      });
     } catch {
       // A full disk or a missing folder must never stop Eva.
     }

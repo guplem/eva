@@ -145,6 +145,17 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     }
   };
 
+  /** Ends every device login, this browser's included. The token still works. */
+  const logOutEveryDevice = async (): Promise<void> => {
+    try {
+      await api.logOutEveryDevice();
+      await api.logout();
+      onLoggedOut();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const save = async (): Promise<void> => {
     const seconds = Number(sweepSeconds);
     if (!Number.isInteger(seconds) || seconds < 10) {
@@ -272,7 +283,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           {restartNote !== null && <div role="status">{restartNote}</div>}
           <div className="chip">
             Eva installs an update only when no chat is running, then restarts. The time zone, updates, vault fetch,
-            engines, trust and Google settings live in your vault, so every machine uses them.
+            engines, the Google account and the voice language live in your vault, so every machine uses them. The
+            security settings (allowed Tailscale accounts, trusted repository owners, Google access) stay on each
+            machine.
           </div>
         </fieldset>
         <fieldset>
@@ -293,6 +306,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             Save
           </button>
           <button onClick={() => void api.logout().then(onLoggedOut)}>Log out</button>
+          <button onClick={() => void logOutEveryDevice()}>Log out every device</button>
         </div>
       </div>
     </div>

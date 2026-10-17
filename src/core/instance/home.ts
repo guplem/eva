@@ -2,6 +2,7 @@
  * The instance home folder: where one Eva instance keeps its config, secrets, state
  * and logs (docs/plan.md §4.4).
  */
+import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
@@ -37,6 +38,7 @@ export interface HomePaths {
   readonly telegramState: string;
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
+  readonly devices: string;
   readonly logsFolder: string;
   readonly enginesFolder: string;
 }
@@ -54,9 +56,19 @@ export function homePaths(root: string): HomePaths {
     schedulesState: join(stateFolder, "schedules-state.json"),
     telegramState: join(stateFolder, "telegram.json"),
     runningMarker: join(stateFolder, "running"),
+    devices: join(stateFolder, "devices.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
   };
+}
+
+/** Creates the home and state folders, readable by the OS user only. Windows ignores the mode. */
+export function createHomeFolders(paths: HomePaths): void {
+  for (const folder of [paths.root, paths.stateFolder]) {
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
+    // mkdirSync leaves the mode of a folder that exists as it is: an older install made it with the default mode.
+    chmodSync(folder, 0o700);
+  }
 }
 
 const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);

@@ -11,7 +11,9 @@ export type EvaErrorCode =
   | "session_busy"
   | "session_not_found"
   | "schedule_invalid"
-  | "update_failed";
+  | "update_failed"
+  | "device_login_unavailable"
+  | "rate_limited";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

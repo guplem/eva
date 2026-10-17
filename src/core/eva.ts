@@ -17,6 +17,7 @@ import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
+import { DeviceLogins } from "./instance/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
 import { applySettingsChange, saveSettings } from "./instance/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
@@ -160,7 +161,10 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** Null until a whisper model is configured. */
   readonly transcribe: Transcribe | null;
+  /** The web UI's device logins, which the Telegram bot confirms (plan §12). */
+  readonly deviceLogins: DeviceLogins;
   private readonly options: EvaOptions;
+  private readonly redactor: Redactor;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -219,6 +223,8 @@ export class Eva {
       redactor,
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+    this.redactor = redactor;
+    this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
     const engineEnvironment = this.engineEnvironment();
     const vaultSync = this.vaultSync;
 
@@ -469,6 +475,11 @@ export class Eva {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  /** Removes secrets from a text that leaves the core, such as an error message (lesson 95). */
+  redact(text: string): string {
+    return this.redactor.redact(text);
   }
 
   status(): EvaStatus {

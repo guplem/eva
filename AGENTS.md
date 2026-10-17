@@ -33,6 +33,7 @@ A change to one of these goals needs the owner.
 - **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`), with an environment from `buildChildEnvironment` and a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
+- **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
 - **Comment the why, never the what.**
 - **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
 - **A step that only the owner can do** becomes a GitHub issue with the `owner` label. Then continue with fakes.

@@ -4,6 +4,7 @@
  * an environment variable instead (`setupEnvironmentNames`), and a bad answer stops setup.
  */
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   homePaths,
   loadConfig,
@@ -14,12 +15,15 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../../core/instance/home.ts";
+import { cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 export type SetupQuestion =
   | "timeZone"
+  | "githubToken"
+  | "vaultRepository"
   | "vault"
   | "createVault"
   | "name"
@@ -30,6 +34,7 @@ export type SetupQuestion =
   | "trustedOwners"
   | "claudeToken"
   | "telegramToken"
+  | "telegramChatId"
   | "googleEmail"
   | "googleClientId"
   | "googleClientSecret"
@@ -38,6 +43,8 @@ export type SetupQuestion =
 /** The environment variable that answers each question in `eva setup --non-interactive`. */
 export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   timeZone: "EVA_TIME_ZONE",
+  githubToken: "EVA_GITHUB_TOKEN",
+  vaultRepository: "EVA_VAULT_REPOSITORY",
   vault: "EVA_VAULT_PATH",
   createVault: "EVA_CREATE_VAULT",
   name: "EVA_PERSON_NAME",
@@ -48,6 +55,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",
   telegramToken: "EVA_TELEGRAM_BOT_TOKEN",
+  telegramChatId: "EVA_TELEGRAM_CHAT_ID",
   googleEmail: "EVA_GOOGLE_EMAIL",
   googleClientId: "EVA_GOOGLE_CLIENT_ID",
   googleClientSecret: "EVA_GOOGLE_CLIENT_SECRET",
@@ -78,10 +86,36 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? "UTC"}]: `);
   if (timeZone !== "") config = { ...config, timeZone };
 
-  const vaultPath = await ask("vault", `Vault folder (a git clone of your vault) [${config.vaultPath ?? "none"}]: `);
-  if (vaultPath !== "") config = { ...config, vaultPath };
+  const githubToken = await ask(
+    "githubToken",
+    `GitHub token, for a private vault over HTTPS (Enter to skip${secrets.githubToken === undefined ? "" : ", one is saved"}): `,
+  );
+  if (githubToken !== "") secrets.githubToken = githubToken;
+
+  // Eva clones the vault herself (plan §11): the repository is enough, the folder has a default.
+  const repository = await ask(
+    "vaultRepository",
+    "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
+  );
+  const defaultFolder = config.vaultPath ?? (repository === "" ? null : join(paths.root, "vault"));
+  const vaultPath = await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `);
+  const chosenFolder = vaultPath === "" ? defaultFolder : vaultPath;
+  if (chosenFolder !== null) config = { ...config, vaultPath: chosenFolder };
   if (config.vaultPath !== null && isEmptyFolder(config.vaultPath)) {
-    await offerNewVault(options, config.vaultPath, config.timeZone ?? "UTC", ask);
+    if (repository !== "") {
+      await cloneVault({
+        repository,
+        folder: config.vaultPath,
+        runner: options.runner,
+        environment: {
+          ...options.environment,
+          ...(secrets.githubToken === undefined ? {} : { [githubTokenVariable]: secrets.githubToken }),
+        },
+      });
+      options.write(`Cloned the vault into ${config.vaultPath}.`);
+    } else {
+      await offerNewVault(options, config.vaultPath, config.timeZone ?? "UTC", ask);
+    }
   }
 
   const engine = await ask("engine", `Default engine, claude-code or pi [${config.engines.default}]: `);
@@ -114,6 +148,18 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (telegramToken !== "") {
     secrets.telegramBotToken = telegramToken;
     config = { ...config, telegram: { ...config.telegram, enabled: true } };
+  }
+  if (secrets.telegramBotToken !== undefined) {
+    const chatId = await ask(
+      "telegramChatId",
+      `Telegram chat id that may talk to Eva (Enter to pair with a code instead) [${config.telegram.allowedChatId === null ? "none" : String(config.telegram.allowedChatId)}]: `,
+    );
+    if (/^-?\d+$/.test(chatId)) config = { ...config, telegram: { ...config.telegram, allowedChatId: Number(chatId) } };
+    else if (chatId !== "") {
+      const problem = "A Telegram chat id is a whole number.";
+      if (!options.interactive) throw new EvaError("config_invalid", problem);
+      options.write(`${problem} Pair the chat with the code from \`eva status\` instead.`);
+    }
   }
 
   const googleEmail = await ask(

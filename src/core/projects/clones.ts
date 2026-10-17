@@ -3,6 +3,7 @@
  * a parallel workspace. Trust decides whether a clone's own hooks and MCP servers may
  * run (§12).
  */
+import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
@@ -64,11 +65,15 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   const name = cloneFolderName(options.projectPath, repository);
   const reposFolder = join(options.projectPath, "repos");
   const path = join(reposFolder, name);
-  const result = await options.runner.run(["git", "clone", "-q", options.repositoryUrl, path], {
-    cwd: options.projectPath,
-    environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
-    timeoutMs: cloneTimeoutMs,
-  });
+  // Eva's credential helper, so a private project repository clones with the GitHub token too.
+  const result = await options.runner.run(
+    ["git", ...githubCredentialArguments, "clone", "-q", options.repositoryUrl, path],
+    {
+      cwd: options.projectPath,
+      environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
+      timeoutMs: cloneTimeoutMs,
+    },
+  );
   if (result.exitCode !== 0) {
     throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${result.stderr.trim()}`);
   }

@@ -29,6 +29,7 @@ import { Scheduler } from "./schedules/scheduler.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
+import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
@@ -132,7 +133,13 @@ export class Eva {
   constructor(options: EvaOptions) {
     this.options = options;
     const vaultPath = options.config.vaultPath;
-    this.gitEnvironment = buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist);
+    // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
+    const githubToken = options.secrets.githubToken;
+    this.gitEnvironment = buildChildEnvironment(
+      options.processEnvironment,
+      baseEnvironmentAllowlist,
+      githubToken === undefined ? {} : { [githubTokenVariable]: githubToken },
+    );
     this.vaultSync =
       vaultPath === null
         ? null

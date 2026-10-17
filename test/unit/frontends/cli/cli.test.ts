@@ -237,6 +237,45 @@ describe("runSetup", () => {
     }
   });
 
+  test("Eva clones the vault from its repository into her home, with the GitHub token (plan §11)", async () => {
+    const remote = createGitSandbox();
+    try {
+      const commands: { command: string[]; token: string | undefined }[] = [];
+      const recording: ProcessRunner = {
+        run: (command, options) => {
+          commands.push({ command: [...command], token: options.environment["EVA_GITHUB_TOKEN"] });
+          return systemProcessRunner.run(command, options);
+        },
+      };
+      const lines: string[] = [];
+      await setup({ githubToken: "token-for-the-test", vaultRepository: remote.remote }, { runner: recording, lines });
+      const config = loadConfig(homePaths(home));
+      expect(config.vaultPath).toBe(join(home, "vault"));
+      expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("token-for-the-test");
+      expect(commands[0]?.command).toContain("clone");
+      expect(commands[0]?.token).toBe("token-for-the-test");
+      expect(lines.join("\n")).toContain("Cloned the vault into");
+    } finally {
+      remote.dispose();
+    }
+  });
+
+  test("a Telegram chat id skips the pairing code; a wrong one is refused", async () => {
+    await setup({ telegramToken: "123456:telegram-token-value", telegramChatId: "-100123" });
+    expect(loadConfig(homePaths(home)).telegram.allowedChatId).toBe(-100123);
+    const lines: string[] = [];
+    await setup({ telegramChatId: "my chat" }, { lines });
+    expect(lines.join("\n")).toContain("whole number");
+    let caught: unknown;
+    try {
+      await setup({ telegramChatId: "my chat" }, { interactive: false });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "config_invalid")).toBe(true);
+  });
+
   test("a bad port is asked again", async () => {
     const lines: string[] = [];
     await setup({ port: ["high", "7500"] }, { lines });

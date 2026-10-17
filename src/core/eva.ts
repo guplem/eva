@@ -643,6 +643,7 @@ export class Eva {
       engineEnvironment: this.engineEnvironment(),
       redact: (text) => this.redactor.redact(text),
       telegramToken: this.options.secrets.telegramBotToken ?? null,
+      githubToken: this.options.secrets.githubToken ?? null,
     });
   }
 

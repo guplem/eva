@@ -31,6 +31,10 @@ export interface CheckInputs {
   readonly telegramToken: string | null;
   /** The Bot API address; a test points it at a fake server. */
   readonly telegramBaseUrl?: string;
+  /** The token of Eva's git commands; null: the GitHub check asks gh instead. */
+  readonly githubToken: string | null;
+  /** The GitHub API address; a test points it at a fake server. */
+  readonly githubBaseUrl?: string;
   /** A test makes it short. */
   readonly engineTimeoutMs?: number;
 }
@@ -44,7 +48,7 @@ const replyPreviewLength = 80;
 
 export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<CheckResult> {
   if (name === "telegram") return checkTelegram(inputs);
-  if (name === "github") return runProgram(["gh", "auth", "status"], process.cwd(), inputs, "gh is logged in.");
+  if (name === "github") return checkGithub(inputs);
   if (name === "claude-code" || name === "pi") return checkEngine(name, inputs);
   if (inputs.vaultPath === null) return { ok: false, detail: "No vault is configured." };
   // A dry-run push to a branch that does not exist checks write access: a read-only key passes
@@ -120,6 +124,23 @@ async function runProgram(
       : { ok: false, detail: result.stderr.trim().split(/\r?\n/)[0] ?? "failed" };
   } catch (error) {
     return { ok: false, detail: error instanceof Error ? error.message : "failed" };
+  }
+}
+
+/** Eva's git commands use the saved token, not gh's login, so the token itself is what to check. */
+async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
+  if (inputs.githubToken === null)
+    return runProgram(["gh", "auth", "status"], process.cwd(), inputs, "gh is logged in.");
+  try {
+    const response = await fetch(`${inputs.githubBaseUrl ?? "https://api.github.com"}/user`, {
+      headers: { authorization: `Bearer ${inputs.githubToken}`, accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(checkTimeoutMs),
+    });
+    if (!response.ok) return { ok: false, detail: "GitHub refused the token." };
+    const body = (await response.json()) as { login?: string };
+    return { ok: true, detail: `The token belongs to @${body.login ?? "an unknown account"}.` };
+  } catch {
+    return { ok: false, detail: "GitHub could not be reached." };
   }
 }
 

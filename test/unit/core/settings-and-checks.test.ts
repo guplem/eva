@@ -100,6 +100,7 @@ describe("runCheck", () => {
       engineEnvironment: {},
       redact: (text) => text.replaceAll("secret-value", "[redacted]"),
       telegramToken: null,
+      githubToken: null,
       ...overrides,
     };
   }
@@ -112,9 +113,35 @@ describe("runCheck", () => {
     expect(await runCheck("vault", inputs())).toMatchObject({ ok: false });
   });
 
-  test("the GitHub check runs gh", async () => {
+  test("without a saved GitHub token, the GitHub check runs gh", async () => {
     expect(await runCheck("github", inputs({ runner: failingRunner }))).toEqual({ ok: false, detail: "not logged in" });
     expect(await runCheck("github", inputs())).toEqual({ ok: true, detail: "gh is logged in." });
+  });
+
+  test("with a saved GitHub token, the GitHub check asks GitHub whose token it is", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer good-token" && new URL(request.url).pathname === "/user"
+          ? Response.json({ login: "example-owner" })
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    const githubBaseUrl = `http://127.0.0.1:${String(github.port)}`;
+    try {
+      expect(await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl }))).toEqual({
+        ok: true,
+        detail: "The token belongs to @example-owner.",
+      });
+      expect(await runCheck("github", inputs({ githubToken: "bad-token", githubBaseUrl }))).toEqual({
+        ok: false,
+        detail: "GitHub refused the token.",
+      });
+    } finally {
+      await github.stop(true);
+    }
+    const offline = await runCheck("github", inputs({ githubToken: "bad-token", githubBaseUrl: "http://127.0.0.1:1" }));
+    expect(offline).toEqual({ ok: false, detail: "GitHub could not be reached." });
   });
 
   test("an engine check runs one tiny real turn in an empty folder, with nothing of Eva's added", async () => {

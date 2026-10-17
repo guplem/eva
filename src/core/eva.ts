@@ -260,6 +260,7 @@ export class Eva {
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
+          cloneOrigins: this.cloneOrigins,
           trustedOwners: options.config.trust.trustedRepositoryOwners,
           environment: engineEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, this.gitEnvironment),

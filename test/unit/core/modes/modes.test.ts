@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
-import { TrustStore } from "../../../../src/core/projects/clones.ts";
+import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
 import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
 import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
@@ -190,19 +190,39 @@ describe("Assistant mode", () => {
 });
 
 describe("Project mode", () => {
+  const originalUrl = "https://github.com/owner/example-app.git";
   let clone: string;
+  let origins: CloneOriginStore;
 
   beforeEach(() => {
     clone = sandbox.clone("clone");
-    sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/owner/example-app.git");
+    sandbox.git(clone, "remote", "set-url", "origin", originalUrl);
+    origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+    // Most tests use a clone that Eva made: its origin is on record.
+    origins.recordClone(clone, originalUrl);
   }, gitHookTimeoutMs);
 
   const deny = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("deny") };
   const allow = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("allow") };
 
+  function recording(answer: PrepareAnswer): {
+    questions: string[];
+    ask: (q: string, d: string) => Promise<PrepareAnswer>;
+  } {
+    const questions: string[] = [];
+    return {
+      questions,
+      ask: (question: string, detail: string): Promise<PrepareAnswer> => {
+        questions.push(`${question}: ${detail}`);
+        return Promise.resolve(answer);
+      },
+    };
+  }
+
   function project(trustedOwners: string[], store = new TrustStore(join(sandbox.root, "trust.json"))): ProjectPreparer {
     return new ProjectPreparer({
       trustStore: store,
+      cloneOrigins: origins,
       trustedOwners,
       environment: { PATH: "/bin" },
       readRemote: (folder) => Promise.resolve(sandbox.git(folder, "remote", "get-url", "origin")),
@@ -224,36 +244,24 @@ describe("Project mode", () => {
 
   test("the first clone of a stranger's repository asks the person, and the answer is kept", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    const questions: string[] = [];
-    const recording = {
-      ask: (question: string, detail: string): Promise<ApprovalAnswer> => {
-        questions.push(`${question}: ${detail}`);
-        return Promise.resolve("deny");
-      },
-    };
+    const asking = recording("deny");
     const cloneSession = session({ mode: "project", startFolder: clone });
-    expect((await project([], store).prepare(cloneSession, recording)).trusted).toBe(false);
-    expect((await project([], store).prepare(cloneSession, recording)).trusted).toBe(false);
-    expect(questions).toHaveLength(1);
-    expect(questions[0]).toContain("https://github.com/owner/example-app.git");
-    store.remember("https://github.com/owner/example-app.git", "trusted");
+    expect((await project([], store).prepare(cloneSession, asking)).trusted).toBe(false);
+    expect((await project([], store).prepare(cloneSession, asking)).trusted).toBe(false);
+    expect(asking.questions).toHaveLength(1);
+    expect(asking.questions[0]).toContain(originalUrl);
+    store.remember(originalUrl, "trusted");
     expect((await project([], store).prepare(cloneSession, deny)).trusted).toBe(true);
   });
 
   test("a trust question that expires keeps the clone untrusted for this turn only, and asks again next time", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    let asked = 0;
-    const expired = {
-      ask: (): Promise<PrepareAnswer> => {
-        asked += 1;
-        return Promise.resolve("expired");
-      },
-    };
+    const expired = recording("expired");
     const cloneSession = session({ mode: "project", startFolder: clone });
     expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
-    expect(store.decision("https://github.com/owner/example-app.git")).toBe("unknown");
+    expect(store.decision(originalUrl)).toBe("unknown");
     expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
-    expect(asked).toBe(2);
+    expect(expired.questions).toHaveLength(2);
   });
 
   test("an allowed repository is trusted from then on", async () => {
@@ -261,27 +269,100 @@ describe("Project mode", () => {
     expect((await project([], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted).toBe(
       true,
     );
-    expect(store.decision("https://github.com/owner/example-app.git")).toBe("trusted");
+    expect(store.decision(originalUrl)).toBe("trusted");
   });
 
   test("a person's untrusted answer wins over the owner allowlist", async () => {
     const store = new TrustStore(join(sandbox.root, "trust.json"));
-    store.remember("https://github.com/owner/example-app.git", "untrusted");
+    store.remember(originalUrl, "untrusted");
     expect(
       (await project(["owner"], store).prepare(session({ mode: "project", startFolder: clone }), allow)).trusted,
     ).toBe(false);
   });
 
-  test("a folder with no remote, or a remote that cannot be read, is untrusted", async () => {
-    for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
-      const preparer = new ProjectPreparer({
-        trustStore: new TrustStore(join(sandbox.root, "t.json")),
-        trustedOwners: ["owner"],
-        environment: {},
-        readRemote,
-      });
-      expect((await preparer.prepare(session({ mode: "project", startFolder: clone }), allow)).trusted).toBe(false);
-    }
+  test("a clone whose origin now points to a trusted owner keeps the decision of the URL Eva cloned from", async () => {
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    store.remember(originalUrl, "untrusted");
+    sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/trusted/x.git");
+    store.remember("https://github.com/trusted/x.git", "trusted");
+    const asking = recording("allow");
+    const prepared = await project(["trusted"], store).prepare(
+      session({ mode: "project", startFolder: clone }),
+      asking,
+    );
+    expect(prepared.trusted).toBe(false);
+    expect(asking.questions).toEqual([]);
+  });
+
+  test("a clone whose origin changed asks about the URL Eva cloned from, not the new one", async () => {
+    sandbox.git(clone, "remote", "set-url", "origin", "https://github.com/other/x.git");
+    const asking = recording("deny");
+    expect((await project([]).prepare(session({ mode: "project", startFolder: clone }), asking)).trusted).toBe(false);
+    expect(asking.questions).toHaveLength(1);
+    expect(asking.questions[0]).toContain(originalUrl);
+    expect(asking.questions[0]).not.toContain("other/x");
+  });
+
+  describe("a folder that Eva did not clone", () => {
+    let handMade: string;
+
+    beforeEach(() => {
+      handMade = sandbox.clone("hand-made");
+      sandbox.git(handMade, "remote", "set-url", "origin", originalUrl);
+    }, gitHookTimeoutMs);
+
+    test("is asked about, even when its origin names a trusted owner or a trusted URL", async () => {
+      const store = new TrustStore(join(sandbox.root, "trust.json"));
+      store.remember(originalUrl, "trusted");
+      const asking = recording("deny");
+      const prepared = await project(["owner"], store).prepare(
+        session({ mode: "project", startFolder: handMade }),
+        asking,
+      );
+      expect(prepared.trusted).toBe(false);
+      expect(asking.questions).toHaveLength(1);
+      expect(asking.questions[0]).toContain("hand-made");
+      expect(asking.questions[0]).toContain("Eva did not clone");
+      expect(asking.questions[0]).toContain(originalUrl);
+    });
+
+    test("keeps the answer for that folder only, and a later origin change does not matter", async () => {
+      const store = new TrustStore(join(sandbox.root, "trust.json"));
+      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      expect((await project([], store).prepare(handMadeSession, allow)).trusted).toBe(true);
+      expect(store.decision(originalUrl)).toBe("unknown");
+      expect(origins.origin(handMade)).toEqual({ url: originalUrl, decision: "trusted" });
+      sandbox.git(handMade, "remote", "set-url", "origin", "https://github.com/other/x.git");
+      const asking = recording("deny");
+      expect((await project([], store).prepare(handMadeSession, asking)).trusted).toBe(true);
+      expect(asking.questions).toEqual([]);
+    });
+
+    test("an expired question keeps nothing and asks again next time", async () => {
+      const expired = recording("expired");
+      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      expect((await project([]).prepare(handMadeSession, expired)).trusted).toBe(false);
+      expect(origins.origin(handMade)).toBeNull();
+      expect((await project([]).prepare(handMadeSession, expired)).trusted).toBe(false);
+      expect(expired.questions).toHaveLength(2);
+    });
+
+    test("with no remote, or a remote that cannot be read, is untrusted with no question", async () => {
+      for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
+        const preparer = new ProjectPreparer({
+          trustStore: new TrustStore(join(sandbox.root, "t.json")),
+          cloneOrigins: origins,
+          trustedOwners: ["owner"],
+          environment: {},
+          readRemote,
+        });
+        const asking = recording("allow");
+        expect((await preparer.prepare(session({ mode: "project", startFolder: handMade }), asking)).trusted).toBe(
+          false,
+        );
+        expect(asking.questions).toEqual([]);
+      }
+    });
   });
 
   test("after a turn nothing happens", async () => {

@@ -166,6 +166,30 @@ describe("Eva", () => {
     });
   });
 
+  test("a clone that Eva made keeps the trust of the URL she cloned, after its origin changes", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const engine = new FakeEngine();
+    const instance = start(engine, { trust: { trustedRepositoryOwners: ["trusted"] } });
+    const questions: string[] = [];
+    instance.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") questions.push(event.summary);
+    });
+    const session = await instance.createProjectSession({
+      projectId: "2025-03-02-1015-example-app",
+      source: "cli",
+      model: "default",
+    });
+    sandbox.git(session.startFolder, "remote", "set-url", "origin", "https://github.com/trusted/x.git");
+    await instance.sessions.send(session.id, "fix it");
+    expect(engine.requests[0]?.trusted).toBe(false);
+    expect(questions.join("\n")).toContain(sandbox.remote);
+    expect(questions.join("\n")).not.toContain("trusted/x");
+  });
+
   test("the assistant gives work to a project, and the result comes back to its chat", async () => {
     sandbox.write(
       vault,

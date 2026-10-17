@@ -220,6 +220,20 @@ textarea {
   border: 1px solid var(--border);
 }
 
+.badge.warning {
+  margin-left: 6px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
 .branches {
   display: flex;
   gap: 16px;

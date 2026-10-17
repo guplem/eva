@@ -123,10 +123,23 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
               onClick={() => void openClones(project)}
             >
               {project.title}
+              {project.warnings.length > 0 && (
+                <span className="badge warning">
+                  {project.warnings.length} {project.warnings.length === 1 ? "warning" : "warnings"}
+                </span>
+              )}
               <div className="muted">{project.id}</div>
             </button>
             {openProject === project.id && (
               <div style={{ paddingLeft: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+                {/* The text shows in the list, not in a tooltip: a phone has no hover. */}
+                {project.warnings.length > 0 && (
+                  <ul className="warnings" aria-label={`Warnings of ${project.title}`}>
+                    {project.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
                 {clones.map((clone) => (
                   <button
                     key={clone.name}

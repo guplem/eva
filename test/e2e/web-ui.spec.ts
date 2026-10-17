@@ -101,6 +101,16 @@ test("the tag filter shows only the projects with that tag", async ({ page }) =>
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
 });
 
+test("a project with a bad front matter field shows its warnings", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  const project = page.getByRole("button", { name: /Broken notes/ });
+  await expect(project).toContainText("1 warning");
+  await project.click();
+  await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
+});
+
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

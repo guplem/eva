@@ -4,6 +4,7 @@ import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
@@ -24,6 +25,8 @@ export type {
   PublicSettings,
   SessionEvent,
   SessionRecord,
+  SetupItem,
+  SetupReport,
   UpdateStatus,
   VaultSyncState,
 };
@@ -95,6 +98,8 @@ export const api = {
   },
   clones: (projectId: string): Promise<CloneDetails[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
+  repositorySetup: (projectId: string): Promise<SetupReport[]> =>
+    request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
   newClone: (projectId: string): Promise<CloneDetails> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),

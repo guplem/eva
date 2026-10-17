@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   cloneFolderName,
   createClone,
+  githubSlug,
   isTrustedByDefault,
   listClones,
   repositoryName,
@@ -31,6 +32,25 @@ describe("repositoryName", () => {
     expect(repositoryName("https://github.com/owner/example-app.git/")).toBe("example-app");
     expect(repositoryName("git@github.com:owner/Tool.git")).toBe("Tool");
     expect(repositoryName("C:\\repos\\local.git")).toBe("local");
+  });
+});
+
+describe("githubSlug", () => {
+  test("reads owner/name from each GitHub URL form, and nothing else", () => {
+    expect(githubSlug("https://github.com/owner/app")).toBe("owner/app");
+    expect(githubSlug("https://github.com/owner/app.git/")).toBe("owner/app");
+    expect(githubSlug("git@github.com:Owner/app.git")).toBe("Owner/app");
+    expect(githubSlug("ssh://git@github.com/owner/app.git")).toBe("owner/app");
+    expect(githubSlug("https://token@github.com/owner/app.git")).toBe("owner/app");
+    expect(githubSlug("https://gitlab.com/owner/app")).toBeNull();
+    expect(githubSlug("https://evil.example/github.com/owner/app.git")).toBeNull();
+    expect(githubSlug("https://github.com/owner")).toBeNull();
+    expect(githubSlug("https://github.com/../user")).toBeNull();
+    expect(githubSlug("https://github.com/:owner/:repo")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app?x=1")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app$(touch x)")).toBeNull();
+    expect(githubSlug("https://github.com/owner/app;rm")).toBeNull();
+    expect(githubSlug("https://github.com/owner.name/app_2.js")).toBe("owner.name/app_2.js");
   });
 });
 

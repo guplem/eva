@@ -23,6 +23,7 @@ import {
 import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { stopWithinDeadline } from "./core/instance/shutdown.ts";
+import { superviseEva, supervisedVariable } from "./core/instance/supervisor.ts";
 import {
   changeSettings,
   describeSettings,
@@ -63,6 +64,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
@@ -77,6 +79,7 @@ import { isEvaError } from "./shared/errors.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
 import { writeFileAtomic } from "./shared/files.ts";
 import { FileLogger } from "./shared/logger.ts";
+import { systemLongProcessStarter } from "./shared/long-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
 import { evaVersion } from "./shared/version.ts";
@@ -155,6 +158,8 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "service-install":
       return installService(paths);
+    case "supervise":
+      return supervise(paths);
     case "update":
       return update(paths, command.checkOnly);
     case "sync":
@@ -390,7 +395,10 @@ async function serve(paths: HomePaths): Promise<number> {
           clearRunMarker(paths.runningMarker);
           lock.release();
           logger.log("info", "Eva stopped.", { exitCode });
-          if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
+          if (
+            exitCode === exitCodes.update &&
+            restartMethod(process.env, isProcessAlive, process.ppid) === "new-copy"
+          ) {
             startNewCopy();
             resolve(exitCodes.clean);
           } else {
@@ -474,6 +482,15 @@ async function installService(paths: HomePaths): Promise<number> {
       writeLine("If it says that access is denied, open the terminal with Run as administrator, then try again.");
       return exitCodes.crash;
     }
+    const settings = await runStep(windowsTaskSettingsCommand(name));
+    if (settings.exitCode !== 0)
+      writeLine(`Windows may stop Eva after three days, or on battery: ${settings.stderr.trim()}`);
+    // A running Eva keeps the lock, so the new task's Eva would only exit 3.
+    if (runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) !== null) {
+      writeLine("Eva now starts when you log in. She already runs, so the new task takes over at your next logon.");
+      writeLine(`To switch now, stop her, then run: ${windowsRunTaskCommand(name).join(" ")}`);
+      return exitCodes.clean;
+    }
     const started = await runStep(windowsRunTaskCommand(name));
     writeLine(
       started.exitCode === 0
@@ -507,6 +524,42 @@ async function installService(paths: HomePaths): Promise<number> {
       : `loginctl enable-linger failed: ${linger.stderr.trim()}. Eva stops when you log out until an administrator runs \`sudo loginctl enable-linger ${userInfo().username}\`.`,
   );
   return exitCodes.clean;
+}
+
+/** `eva supervise`: runs Eva as a child, and starts her again after a crash or an update. */
+async function supervise(paths: HomePaths): Promise<number> {
+  createHomeFolders(paths);
+  const logger = new FileLogger({ folder: paths.logsFolder, redactor: new Redactor(), now: () => new Date() });
+  const command = serviceCommand({
+    standalone: isStandalone(),
+    execPath: process.execPath,
+    mainScript: join(import.meta.dir, "main.ts"),
+  });
+  const supervisor = superviseEva({
+    command: [...command, "--home", paths.root],
+    cwd: paths.root,
+    // The child is Eva herself, not an agent, so she gets the whole environment (lesson 96 covers agents).
+    environment: Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
+    start: systemLongProcessStarter,
+    now: () => Date.now(),
+    sleep: (ms) => Bun.sleep(ms),
+    // A warning, so the restart shows in `/logs` on the phone, and a line for a person at the console.
+    log: (message) => {
+      logger.log("warn", message);
+      writeLine(message);
+    },
+    stopTimeoutMs: shutdownDeadlineMs + hardExitGraceMs,
+    pid: process.pid,
+  });
+  process.once("SIGINT", () => {
+    supervisor.stop();
+  });
+  process.once("SIGTERM", () => {
+    supervisor.stop();
+  });
+  return supervisor.done;
 }
 
 /** The home folder that Eva uses when no `--home` or `EVA_HOME` names one. */
@@ -698,7 +751,8 @@ function startNewCopy(): void {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
-    env: { ...process.env, [oldCopyVariable]: String(process.pid) },
+    // The copy runs outside any supervisor, so it must not carry a supervisor's pid.
+    env: { ...process.env, [oldCopyVariable]: String(process.pid), [supervisedVariable]: undefined },
   }).unref();
 }
 

@@ -13,8 +13,9 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../../core/instance/home.ts";
+import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/instance/settings.ts";
-import { cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
+import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -82,44 +83,58 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     (await options.ask(key, question)).trim();
   options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
 
-  const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? "UTC"}]: `);
+  const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? detectedTimeZone}]: `);
   if (timeZone !== "") config = { ...config, timeZone };
 
-  const githubToken = await ask(
-    "githubToken",
-    `GitHub token, for a private vault over HTTPS (Enter to skip${secrets.githubToken === undefined ? "" : ", one is saved"}): `,
-  );
-  if (githubToken !== "") secrets.githubToken = githubToken;
-
-  // Eva clones the vault herself (plan §11): the repository is enough, the folder has a default.
-  const repository = await ask(
-    "vaultRepository",
-    "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
-  );
+  const askRepository = async (): Promise<string> => {
+    const githubToken = await ask(
+      "githubToken",
+      `GitHub token, for a private vault over HTTPS (Enter to skip${secrets.githubToken === undefined ? "" : ", one is saved"}): `,
+    );
+    if (githubToken !== "") {
+      secrets.githubToken = githubToken;
+      // Saved now, so a failed clone never makes the person type the token again.
+      saveSecrets(paths, secrets);
+    }
+    return ask(
+      "vaultRepository",
+      "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
+    );
+  };
+  let repository = await askRepository();
+  // Eva clones the vault herself (plan §11): with a repository, the folder has a default, so only
+  // a script (EVA_VAULT_PATH) picks another one.
   const defaultFolder = config.vaultPath ?? (repository === "" ? null : join(paths.root, "vault"));
-  const vaultPath = await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `);
+  const vaultPath =
+    repository === "" || !options.interactive ? await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `) : "";
   const chosenFolder = vaultPath === "" ? defaultFolder : vaultPath;
   if (chosenFolder !== null) config = { ...config, vaultPath: chosenFolder };
   if (config.vaultPath !== null && isEmptyFolder(config.vaultPath)) {
+    const gitEnvironment = (): Record<string, string> => ({
+      ...options.environment,
+      ...(secrets.githubToken === undefined ? {} : { [githubTokenVariable]: secrets.githubToken }),
+    });
+    while (repository !== "") {
+      const reason = await checkVaultRepository({ repository, runner: options.runner, environment: gitEnvironment() });
+      if (reason === null) break;
+      const problem = `git could not read ${repository}: ${reason}`;
+      if (!options.interactive) throw new EvaError("config_invalid", problem);
+      options.write(`${problem}\nCheck the address and the token, then try again.`);
+      repository = await askRepository();
+    }
     if (repository !== "") {
-      await cloneVault({
-        repository,
-        folder: config.vaultPath,
-        runner: options.runner,
-        environment: {
-          ...options.environment,
-          ...(secrets.githubToken === undefined ? {} : { [githubTokenVariable]: secrets.githubToken }),
-        },
-      });
+      await cloneVault({ repository, folder: config.vaultPath, runner: options.runner, environment: gitEnvironment() });
       options.write(`Cloned the vault into ${config.vaultPath}.`);
     } else {
-      await offerNewVault(options, config.vaultPath, config.timeZone ?? "UTC", ask);
+      await offerNewVault(options, config.vaultPath, config.timeZone ?? detectedTimeZone, ask);
     }
   }
 
   // A cloned vault brings the person's settings from another machine; an answer above still wins.
   config = withVaultSettings(config).config;
   if (timeZone !== "") config = { ...config, timeZone };
+  else if (config.timeZone === null) config = { ...config, timeZone: detectedTimeZone };
 
   const engine = await ask("engine", `Default engine, claude-code or pi [${config.engines.default}]: `);
   if (engine === "claude-code" || engine === "pi")
@@ -130,7 +145,13 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     options.write(`${problem} The engine stays ${config.engines.default}.`);
   }
 
-  config = { ...config, port: await askPort(options, ask, await firstFreePort(config.port)) };
+  // The running Eva of this home holds her own port, so a rerun of setup keeps it (plan §4.4).
+  const freePort =
+    runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) === null
+      ? await firstFreePort(config.port)
+      : config.port;
+  // Only a script (EVA_PORT) picks the port; a person gets the free one, and `eva settings` changes it.
+  config = { ...config, port: options.interactive ? freePort : await readPort(ask, freePort) };
 
   const owners = await ask(
     "trustedOwners",
@@ -225,25 +246,21 @@ async function offerNewVault(
   );
 }
 
-async function askPort(
-  options: SetupOptions,
+async function readPort(
   ask: (key: SetupQuestion, question: string) => Promise<string>,
   current: number,
 ): Promise<number> {
-  for (;;) {
-    const port = await ask("port", `Local port [${String(current)}]: `);
-    if (port === "") return current;
-    const value = Number(port);
-    if (Number.isInteger(value) && value >= 1024 && value <= 65535) return value;
-    const problem = "The port must be a whole number from 1024 to 65535.";
-    if (!options.interactive) throw new EvaError("config_invalid", problem);
-    options.write(problem);
-  }
+  const port = await ask("port", `Local port [${String(current)}]: `);
+  if (port === "") return current;
+  const value = Number(port);
+  if (Number.isInteger(value) && value >= 1024 && value <= 65535) return value;
+  throw new EvaError("config_invalid", "The port must be a whole number from 1024 to 65535.");
 }
 
 /**
  * The first port from `start` up that nothing listens on, so a second instance on one machine
- * gets its own port (plan §4.4). The running instance's own port counts as taken too.
+ * gets its own port (plan §4.4). A running instance's own port counts as taken too, so the
+ * caller skips this check for the home whose Eva runs now.
  */
 export async function firstFreePort(start: number): Promise<number> {
   for (let port = start; port < Math.min(start + 50, 65_536); port += 1) {

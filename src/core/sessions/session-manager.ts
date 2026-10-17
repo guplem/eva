@@ -33,9 +33,15 @@ export interface TurnOutcome {
   readonly finished: boolean;
 }
 
+/**
+ * The answer to a question of a mode. `expired`: nobody answered in time, or the turn stopped.
+ * A mode may remember only an answer of the person, never an expired question.
+ */
+export type PrepareAnswer = ApprovalAnswer | "expired";
+
 /** What a preparer may do during its step: ask the person, as a tool approval does. */
 export interface PrepareContext {
-  readonly ask: (question: string, detail: string) => Promise<ApprovalAnswer>;
+  readonly ask: (question: string, detail: string) => Promise<PrepareAnswer>;
 }
 
 /** What each mode does around a turn (Assistant: pull, prompt, save, skill runs; Project: trust). */
@@ -107,7 +113,7 @@ export class SessionManager {
   private readonly runtimes = new Map<string, SessionRuntime>();
   private readonly approvals = new Map<
     string,
-    { readonly question: PendingApproval; readonly resolve: (answer: ApprovalAnswer) => void }
+    { readonly question: PendingApproval; readonly resolve: (answer: PrepareAnswer) => void }
   >();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
@@ -234,16 +240,31 @@ export class SessionManager {
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
+    this.resolveApproval(requestId, answer);
+  }
+
+  /** Front ends see an expired question as denied; only the asker learns that it expired. */
+  private resolveApproval(requestId: string, answer: PrepareAnswer): void {
     const pending = this.approvals.get(requestId);
     if (pending === undefined) return;
     this.approvals.delete(requestId);
     pending.resolve(answer);
-    this.emit(pending.question.sessionId, { kind: "approval_resolved", requestId, answer });
+    this.emit(pending.question.sessionId, {
+      kind: "approval_resolved",
+      requestId,
+      answer: answer === "expired" ? "deny" : answer,
+    });
   }
 
   /** The approvals that wait for an answer, so a front end that missed the event still shows them. */
   pendingApprovals(): PendingApproval[] {
     return [...this.approvals.values()].map((pending) => pending.question);
+  }
+
+  private expireApprovals(sessionId: string): void {
+    for (const [requestId, pending] of this.approvals) {
+      if (pending.question.sessionId === sessionId) this.resolveApproval(requestId, "expired");
+    }
   }
 
   private retryFromStart(session: SessionRecord): SessionRecord {
@@ -310,6 +331,10 @@ export class SessionManager {
     const runtime = this.runtimeOf(sessionId);
     const controller = new AbortController();
     runtime.controller = controller;
+    // A stopped turn waits for no answer any more, so its open questions end now.
+    controller.signal.addEventListener("abort", () => {
+      this.expireApprovals(sessionId);
+    });
     const timeout = setTimeout(() => {
       controller.abort();
     }, this.options.turnTimeoutMs);
@@ -319,9 +344,14 @@ export class SessionManager {
       const prepared = await preparer.prepare(session, {
         ask: (question, detail) => this.requestApproval(sessionId, question, detail),
       });
+      const history = this.historyOf(session);
+      // A continue after failed turns only: the engine may never have created its session. Its
+      // lost-history retry then starts one, and nothing was lost, so the person sees no notice.
+      const isContinueAfterFailure =
+        history.kind === "continue" && !session.turns.some((past) => past.failure === null);
       const stream = engine.runTurn({
         mode: session.mode,
-        history: this.historyOf(session),
+        history,
         startFolder: prepared.startFolder,
         prompt:
           prepared.messagePrefix === null
@@ -335,14 +365,18 @@ ${prompt}`,
         mcpServers: prepared.mcpServers,
         trusted: prepared.trusted,
         environment: prepared.environment,
-        requestApproval: (request) => this.requestApproval(sessionId, request.toolName, request.summary),
+        requestApproval: async (request) =>
+          (await this.requestApproval(sessionId, request.toolName, request.summary)) === "allow" ? "allow" : "deny",
         signal: controller.signal,
       });
       for await (const raw of stream) {
         if (turn.ended) continue;
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
         const payload = redactPayload(raw, this.options.redactor);
-        if (payload.kind === "history_lost") historyLost = true;
+        if (payload.kind === "history_lost") {
+          historyLost = true;
+          if (isContinueAfterFailure) continue;
+        }
         if (payload.kind === "text") {
           lastText = payload.messageId;
           answerParts.push(payload.text);
@@ -377,6 +411,7 @@ ${prompt}`,
     if (session.turns.some((turn) => turn.failure === null)) {
       return { kind: "continue", engineSessionId: session.engineSessionId };
     }
+    // A fork learns its engine id only from a finished turn, so after a failed fork turn it forks again.
     if (session.forkFromEngineSessionId !== null && session.forkAtMessageId !== null) {
       return {
         kind: "fork",
@@ -384,6 +419,9 @@ ${prompt}`,
         atMessageId: session.forkAtMessageId,
       };
     }
+    // A failed or stopped turn may have created the engine session already. A second "new"
+    // with the same id would then fail on every later message.
+    if (session.turns.length > 0) return { kind: "continue", engineSessionId: session.engineSessionId };
     return { kind: "new", engineSessionId: session.engineSessionId };
   }
 
@@ -441,11 +479,11 @@ ${prompt}`,
     });
   }
 
-  private requestApproval(sessionId: string, toolName: string, summary: string): Promise<ApprovalAnswer> {
+  private requestApproval(sessionId: string, toolName: string, summary: string): Promise<PrepareAnswer> {
     const requestId = this.options.newId();
-    return new Promise<ApprovalAnswer>((resolve) => {
+    return new Promise<PrepareAnswer>((resolve) => {
       const timer = setTimeout(() => {
-        this.answerApproval(requestId, "deny");
+        this.resolveApproval(requestId, "expired");
       }, this.options.approvalTimeoutMs);
       this.approvals.set(requestId, {
         question: { requestId, sessionId, toolName, summary: this.options.redactor.redact(summary) },

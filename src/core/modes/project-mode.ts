@@ -54,6 +54,8 @@ export class ProjectPreparer implements TurnPreparer {
       "Trust this repository",
       `${remote}: allow its hooks, settings and MCP servers to run? Deny keeps them off.`,
     );
+    // Only the person's own answer is kept. An expired question leaves this turn untrusted and asks again next time.
+    if (answer === "expired") return false;
     this.options.trustStore.remember(remote, answer === "allow" ? "trusted" : "untrusted");
     return answer === "allow";
   }

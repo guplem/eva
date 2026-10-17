@@ -2,6 +2,7 @@
  * `eva doctor`: checks each tool that Eva uses, grouped by feature, so a missing optional
  * tool never blocks the core (docs/plan.md §11, lesson 94).
  */
+import type { EngineName } from "../../shared/engine-port.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 interface ToolCheck {
@@ -9,7 +10,10 @@ interface ToolCheck {
   readonly versionArguments: readonly string[];
   readonly feature: string;
   readonly required: boolean;
+  /** The engine that this program runs: it is required when it is the default engine. */
+  readonly engine?: EngineName;
   readonly install: string;
+  readonly installOnLinux?: string;
   /** How to update the tool (lesson 94). */
   readonly update: string;
 }
@@ -36,7 +40,9 @@ const tools: readonly ToolCheck[] = [
     versionArguments: ["--version"],
     feature: "the Claude Code engine",
     required: false,
+    engine: "claude-code",
     install: "https://code.claude.com",
+    installOnLinux: "curl -fsSL https://claude.ai/install.sh | bash",
     update: "claude update",
   },
   {
@@ -44,6 +50,7 @@ const tools: readonly ToolCheck[] = [
     versionArguments: ["--version"],
     feature: "the pi engine (ChatGPT, Copilot, API keys)",
     required: false,
+    engine: "pi",
     install: "https://pi.dev",
     update: "npm install -g @mariozechner/pi-coding-agent@latest",
   },
@@ -103,30 +110,51 @@ export interface DoctorOptions {
   readonly write: (line: string) => void;
   /** True when Eva runs as one executable, which carries its own Bun (plan §11). */
   readonly standalone: boolean;
+  readonly platform: NodeJS.Platform;
+  /** The OS user, for the Linux check that the user's services run while the user is logged out. */
+  readonly userName: string;
+  /** The default engine's program is required: without it, no chat works. */
+  readonly defaultEngine: EngineName;
 }
 
 /** Prints one line per tool. Returns false when a required tool is missing. */
 export async function runDoctor(options: DoctorOptions): Promise<boolean> {
   let healthy = true;
+  const needed = tools
+    .filter((tool) => !(options.standalone && tool.program === "bun"))
+    .map((tool) => ({ ...tool, required: tool.required || tool.engine === options.defaultEngine }));
   for (const group of [true, false]) {
     options.write(group ? "Required:" : "Optional:");
-    const needed = tools.filter((tool) => !(options.standalone && tool.program === "bun"));
     for (const tool of needed.filter((candidate) => candidate.required === group)) {
-      const version = await versionOf(tool, options);
+      const version = await firstOutputLine([tool.program, ...tool.versionArguments], options);
       if (version === null) {
         if (tool.required) healthy = false;
-        options.write(`  missing ${tool.program} (for ${tool.feature}): install it from ${tool.install}`);
+        const install =
+          options.platform === "linux" && tool.installOnLinux !== undefined
+            ? `run \`${tool.installOnLinux}\``
+            : `install it from ${tool.install}`;
+        options.write(`  missing ${tool.program} (for ${tool.feature}): ${install}`);
       } else {
         options.write(`  ok      ${tool.program}: ${version} (update: ${tool.update})`);
       }
     }
   }
+  if (options.platform === "linux") options.write(await describeLinger(options));
   return healthy;
 }
 
-async function versionOf(tool: ToolCheck, options: DoctorOptions): Promise<string | null> {
+/** Without linger, systemd stops the user's services, Eva too, when the user logs out (lesson 85). */
+async function describeLinger(options: DoctorOptions): Promise<string> {
+  const answer = await firstOutputLine(["loginctl", "show-user", options.userName, "--property=Linger"], options);
+  return answer === "Linger=yes"
+    ? "  ok      linger: Eva keeps running when you log out"
+    : "  missing linger (for Eva while you are logged out): run `loginctl enable-linger`";
+}
+
+/** The first line that the command prints, or null when it fails or does not exist. */
+async function firstOutputLine(command: readonly string[], options: DoctorOptions): Promise<string | null> {
   try {
-    const result = await options.runner.run([tool.program, ...tool.versionArguments], {
+    const result = await options.runner.run(command, {
       cwd: process.cwd(),
       environment: options.environment,
       timeoutMs: 15_000,

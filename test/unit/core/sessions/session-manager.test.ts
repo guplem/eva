@@ -34,7 +34,7 @@ function createManager(
   let nextId = 0;
   const manager = new SessionManager({
     engines: [engine],
-    store: new SessionStore(join(folder, "sessions.json")),
+    store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
     preparers: { assistant: preparer, project: preparer },
     now: () => new Date("2026-10-14T12:00:00Z"),
     newId: () => {
@@ -321,6 +321,68 @@ describe("approvals", () => {
     const manager = createManager(engine, { approvalTimeoutMs: 20 });
     await manager.send(newAssistantSession(manager), "go");
     expect(answers).toEqual(["deny"]);
+    expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({ answer: "deny" });
+  });
+
+  function askingManager(
+    answers: string[],
+    overrides: { approvalTimeoutMs?: number; turnTimeoutMs?: number } = {},
+  ): SessionManager {
+    const asking: TurnPreparer = {
+      prepare: async (session, context) => {
+        answers.push(await context.ask("Trust this repository", "example"));
+        return preparer.prepare(session, context);
+      },
+      afterTurn: () => Promise.resolve(null),
+    };
+    let nextId = 0;
+    const manager = new SessionManager({
+      engines: [new FakeEngine()],
+      store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
+      preparers: { assistant: asking, project: asking },
+      now: () => new Date("2026-10-14T12:00:00Z"),
+      newId: () => {
+        nextId += 1;
+        return `id-${String(nextId)}`;
+      },
+      redactor: new Redactor(),
+      gatherMs: 5,
+      approvalTimeoutMs: overrides.approvalTimeoutMs ?? 30_000,
+      turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+    });
+    manager.subscribe((event) => events.push(event));
+    return manager;
+  }
+
+  test("a mode's question that nobody answers tells the mode it expired, not that the person said no", async () => {
+    const answers: string[] = [];
+    const manager = askingManager(answers, { approvalTimeoutMs: 20 });
+    await manager.send(newAssistantSession(manager), "go");
+    expect(answers).toEqual(["expired"]);
+  });
+
+  test("a stop ends a mode's open question as expired at once", async () => {
+    const answers: string[] = [];
+    const manager = askingManager(answers);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    for (let attempt = 0; attempt < 200 && !events.some((event) => event.kind === "approval_needed"); attempt += 1) {
+      await Bun.sleep(5);
+    }
+    expect(manager.stop(sessionId)).toBe(true);
+    await turn;
+    expect(answers).toEqual(["expired"]);
+    expect(events.find((event) => event.kind === "approval_resolved")).toMatchObject({ answer: "deny" });
+  });
+
+  test("a mode's question that the person answers gets that answer", async () => {
+    const answers: string[] = [];
+    const manager = askingManager(answers);
+    manager.subscribe((event) => {
+      if (event.kind === "approval_needed") manager.answerApproval(event.requestId, "allow");
+    });
+    await manager.send(newAssistantSession(manager), "go");
+    expect(answers).toEqual(["allow"]);
   });
 
   test("lists the approvals that wait for an answer, redacted, so a front end that reconnects sees them", async () => {
@@ -417,15 +479,53 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     expect(manager.isBusy(sessionId)).toBe(false);
   });
 
-  test("a failed first turn does not make the next one continue a session that never existed", async () => {
+  test("failed first turn, then a second message: the second continues the engine session that the first created", async () => {
     const engine = new FakeEngine((request, turnNumber) =>
-      turnNumber === 1 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
+      turnNumber === 1
+        ? [
+            { kind: "text", text: "Starting.", messageId: "m1" },
+            { kind: "turn_failed", reason: "The turn was stopped." },
+          ]
+        : FakeEngine.answer(request, "ok"),
     );
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "one");
     await manager.send(sessionId, "two");
-    expect(engine.requests[1]?.history.kind).toBe("new");
+    expect(engine.requests[0]?.history.kind).toBe("new");
+    expect(engine.requests[1]?.history).toEqual({
+      kind: "continue",
+      engineSessionId: manager.get(sessionId).engineSessionId,
+    });
+  });
+
+  test("after a failed first turn that never created the engine session, the engine's lost-history retry stays silent", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1
+        ? [{ kind: "turn_failed", reason: "offline" }]
+        : [{ kind: "history_lost" }, ...FakeEngine.answer(request, "ok")],
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    expect(engine.requests[1]?.history.kind).toBe("continue");
+    expect(events.some((event) => event.kind === "history_lost")).toBe(false);
+    expect(manager.get(sessionId)).toMatchObject({ historyLost: false });
+  });
+
+  test("a fork whose first turn failed forks again on the next message", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 2 ? [{ kind: "turn_failed", reason: "offline" }] : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    const atMessageId = manager.get(sessionId).turns[0]?.lastMessageId ?? "";
+    const fork = manager.fork(sessionId, atMessageId);
+    await manager.send(fork.id, "two");
+    await manager.send(fork.id, "three");
+    expect(engine.requests[2]?.history).toMatchObject({ kind: "fork", atMessageId });
   });
 
   test("a lost history that the retry could not replace starts a new engine session next time (lesson 46)", async () => {

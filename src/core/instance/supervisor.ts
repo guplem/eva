@@ -6,9 +6,9 @@ import { exitCodes } from "../../shared/exit-codes.ts";
 import type { LongProcess, LongProcessStarter } from "../../shared/long-process.ts";
 
 /**
- * The supervisor's pid, set for a supervised Eva, as systemd sets INVOCATION_ID: an update then
- * exits 4 for the supervisor, instead of starting a copy of Eva that nobody supervises. A pid,
- * not a flag, so an Eva whose supervisor has ended knows that nobody would restart her.
+ * The supervisor sets its pid in this variable for Eva, as systemd sets INVOCATION_ID.
+ * An update then exits 4 for the supervisor, and Eva starts no copy that nobody supervises.
+ * With a pid, an Eva whose supervisor has ended can see that nobody would restart her.
  */
 export const supervisedVariable = "EVA_SUPERVISED";
 
@@ -57,8 +57,8 @@ export interface Supervisor {
 }
 
 /**
- * Runs Eva, and starts her again after a crash or an update. It never gives up after many
- * crashes: the phone is often the only way in, and each new Eva reports the crash there.
+ * Runs Eva, and starts her again after a crash or an update. It restarts her after any number
+ * of crashes. The phone is often the only way in, and each new Eva reports the crash there.
  */
 export function superviseEva(options: SupervisorOptions): Supervisor {
   const state: { stopping: boolean; child: LongProcess | null } = { stopping: false, child: null };
@@ -88,7 +88,9 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
       if (decision.kind === "stop") return decision.exitCode;
       if (decision.crash) crashes += 1;
       options.log(
-        `Eva stopped with exit code ${String(exitCode)}. She starts again in ${String(decision.afterMs / 1000)} s.`,
+        decision.crash
+          ? `Eva stopped with exit code ${String(exitCode)}. She starts again in ${String(decision.afterMs / 1000)} s.`
+          : "Eva stopped for an update. She starts again now.",
       );
       await Promise.race([options.sleep(decision.afterMs), stopAsked.promise]);
       if (isStopping()) return exitCodes.clean;

@@ -121,6 +121,7 @@ describe("superviseEva", () => {
     const fake = fakeSupervisor([{ exit: 1 }, { exit: 4 }, { exit: 1 }, { exit: 0 }]);
     expect(await fake.supervisor.done).toBe(0);
     expect(fake.delays).toEqual([5_000, 0, 10_000]);
+    expect(fake.logs.join("\n")).toContain("Eva stopped for an update. She starts again now.");
   });
 
   test("a run of ten minutes or more resets the crash delay", async () => {

@@ -1,7 +1,7 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
-import type { VaultSyncState } from "../../core/vault/vault-sync.ts";
+import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
 
 export interface ClientOptions {
   readonly baseUrl: string;
@@ -31,9 +31,16 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
   ].join("\n");
 }
 
-/** The files that the secret scan keeps out of the vault's commits (lesson 26), or nothing. */
-export function heldBackLines(files: readonly string[]): string[] {
-  return files.length === 0 ? [] : [`Held back from the vault, as they look like secrets: ${files.join(", ")}`];
+/** The files that the sync keeps out of the vault's commits (lesson 26), one line per reason, or nothing. */
+export function heldBackLines(files: readonly WithheldFile[]): string[] {
+  const reasons: readonly (readonly [WithheldReason, string])[] = [
+    ["secret", "as they look like secrets"],
+    ["too_large", "as they are over 50 MB"],
+  ];
+  return reasons.flatMap(([reason, because]) => {
+    const paths = files.filter((file) => file.reason === reason).map((file) => file.path);
+    return paths.length === 0 ? [] : [`Held back from the vault, ${because}: ${paths.join(", ")}`];
+  });
 }
 
 /** One line with the last turn's tokens, so a broken prompt cache shows (lesson 120). */

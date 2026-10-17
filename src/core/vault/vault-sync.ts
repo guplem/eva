@@ -5,19 +5,28 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 
 export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
 
+/** Why a file stays out of the commit: it looks like a secret, or it is over the size limit. */
+export type WithheldReason = "secret" | "too_large";
+
+export interface WithheldFile {
+  readonly path: string;
+  readonly reason: WithheldReason;
+}
+
 export interface VaultSyncState {
   readonly status: VaultSyncStatus;
   readonly lastCommitAt: Date | null;
   readonly lastPushAt: Date | null;
   readonly lastError: string | null;
-  /** Files the secret scan kept out of the last commit. */
-  readonly withheldFiles: readonly string[];
+  /** Files that the last commit left out. */
+  readonly withheldFiles: readonly WithheldFile[];
 }
 
 export interface VaultSyncOptions {
@@ -26,6 +35,7 @@ export interface VaultSyncOptions {
   /** The environment of every git process; Eva adds GIT_TERMINAL_PROMPT=0. */
   readonly environment: Readonly<Record<string, string>>;
   readonly now: () => Date;
+  readonly logger?: Logger;
 }
 
 const networkTimeoutMs = 60_000;
@@ -33,11 +43,20 @@ const localTimeoutMs = 20_000;
 const maxPushAttempts = 3;
 /** Files bigger than this are not scanned for secrets: binaries, archives, exports. */
 const maxScannedFileBytes = 1_000_000;
+/** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
+const maxCommittedFileBytes = 50 * 1024 * 1024;
+/** The `git status --porcelain` codes of a path with a merge conflict. */
+const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 
 interface GitResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+}
+
+interface StatusEntry {
+  readonly code: string;
+  readonly path: string;
 }
 
 export class VaultSync {
@@ -64,6 +83,8 @@ export class VaultSync {
     return this.serialize(async () => {
       const branch = await this.checkedDefaultBranch();
       if (branch === null) return this.state;
+      const unmerged = unmergedPaths(await this.statusEntries());
+      if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0) return this.update({ status: "offline", lastError: "Could not reach the remote." });
       await this.rebaseOnto(branch);
@@ -76,18 +97,19 @@ export class VaultSync {
     return this.serialize(async () => {
       const branch = await this.checkedDefaultBranch();
       if (branch === null) return this.state;
-      const committed = await this.commitChanges();
+      const entries = await this.statusEntries();
+      const committed = await this.commitChanges(entries);
       if (!committed) return this.state;
+      // A rebase needs a clean index, so the other notes stay committed here until a person fixes the file.
+      const unmerged = unmergedPaths(entries);
+      if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
       await this.pushWithRetry(branch);
       return this.state;
     });
   }
 
   private async checkedDefaultBranch(): Promise<string | null> {
-    if (this.rebaseInProgress()) {
-      this.update({ status: "error", lastError: "A rebase is still open in the vault. Finish or abort it by hand." });
-      return null;
-    }
+    if (this.rebaseInProgress() && !(await this.abortLeftoverRebase())) return null;
     const defaultBranch = await this.defaultBranch();
     const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
     if (current !== defaultBranch) {
@@ -97,11 +119,44 @@ export class VaultSync {
     return defaultBranch;
   }
 
+  /**
+   * Only Eva rebases the vault, so an open rebase is one that a crash or a timeout left behind.
+   * An abort resets the tracked files, so Eva refuses when one has an edit (lesson 22).
+   */
+  private async abortLeftoverRebase(): Promise<boolean> {
+    const edited = (await this.statusEntries())
+      .filter((entry) => !unmergedCodes.has(entry.code) && "MDT".includes(entry.code[1] ?? " "))
+      .map((entry) => entry.path);
+    if (edited.length > 0) {
+      this.update({
+        status: "error",
+        lastError: `A rebase is still open in the vault, and these files changed since: ${edited.join(", ")}. Finish or abort it by hand.`,
+      });
+      return false;
+    }
+    const abort = await this.git(["rebase", "--abort"], localTimeoutMs);
+    if (abort.exitCode !== 0) {
+      this.update({
+        status: "error",
+        lastError: `A rebase is still open in the vault, and git rebase --abort failed: ${firstLine(abort.stderr)}`,
+      });
+      return false;
+    }
+    this.options.logger?.log("warn", "Eva aborted a rebase that was left open in the vault.");
+    return true;
+  }
+
   /** Returns false when the commit failed; true when it committed or had nothing to commit. */
-  private async commitChanges(): Promise<boolean> {
-    const changed = await this.changedPaths();
-    const withheld = changed.filter((path) => this.mustWithhold(path));
-    const kept = changed.filter((path) => !withheld.includes(path));
+  private async commitChanges(entries: readonly StatusEntry[]): Promise<boolean> {
+    const unmerged = unmergedPaths(entries);
+    const withheld: WithheldFile[] = [];
+    const kept: string[] = [];
+    for (const { path } of entries) {
+      if (unmerged.includes(path)) continue;
+      const reason = this.withheldReason(path);
+      if (reason === null) kept.push(path);
+      else withheld.push({ path, reason });
+    }
     this.update({ withheldFiles: withheld });
     if (kept.length === 0) return true;
 
@@ -111,9 +166,11 @@ export class VaultSync {
       return false;
     }
     const plural = kept.length === 1 ? "file" : "files";
+    // git refuses a full commit while a file has conflict markers; --only commits the other files.
+    const onlyKept = unmerged.length === 0 ? [] : ["--only", "--", ...kept];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
-      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(kept.length)} ${plural})`],
+      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(kept.length)} ${plural})`, ...onlyKept],
       localTimeoutMs,
     );
     if (commit.exitCode !== 0) {
@@ -125,6 +182,7 @@ export class VaultSync {
   }
 
   private async pushWithRetry(branch: string): Promise<void> {
+    let pushError = "";
     for (let attempt = 1; attempt <= maxPushAttempts; attempt += 1) {
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0) {
@@ -141,23 +199,60 @@ export class VaultSync {
         this.update({ status: "ok", lastError: null, lastPushAt: this.options.now() });
         return;
       }
+      pushError = firstLine(pushed.stderr);
     }
-    this.update({ status: "error", lastError: `The push failed ${String(maxPushAttempts)} times.` });
+    this.update({ status: "error", lastError: `The push failed ${String(maxPushAttempts)} times: ${pushError}` });
   }
 
-  /** Rebases on the remote branch. On a conflict it aborts, keeps the local commits, and returns false. */
+  /**
+   * Rebases on the remote branch. On a conflict it aborts, keeps the local commits, and returns false.
+   * When the autostash does not apply again, git can still exit 0: it leaves conflict markers in
+   * the files, or keeps the edits only in the stash. Eva reports both as a conflict, and never
+   * drops the stash.
+   */
   private async rebaseOnto(branch: string): Promise<boolean> {
+    const stashesBefore = await this.stashCount();
     const rebase = await this.git(["rebase", "-q", "--autostash", `origin/${branch}`], localTimeoutMs);
-    if (rebase.exitCode === 0) {
-      this.update({ status: "ok", lastError: null });
-      return true;
+    if (rebase.exitCode !== 0) {
+      // The conflicted files tell a real conflict from a timeout or a git failure.
+      const conflicted = unmergedPaths(await this.statusEntries());
+      await this.git(["rebase", "--abort"], localTimeoutMs);
+      this.update(
+        conflicted.length > 0
+          ? {
+              status: "conflict",
+              lastError: "The vault conflicts with the remote. The notes are committed here; nothing was pushed.",
+            }
+          : { status: "error", lastError: `The rebase on the remote failed: ${firstLine(rebase.stderr)}` },
+      );
+      return false;
     }
-    await this.git(["rebase", "--abort"], localTimeoutMs);
-    this.update({
+    const unmerged = unmergedPaths(await this.statusEntries());
+    if (unmerged.length > 0) {
+      this.reportConflictMarkers(unmerged);
+      return false;
+    }
+    if ((await this.stashCount()) > stashesBefore) {
+      this.update({
+        status: "conflict",
+        lastError: "Local edits clash with the remote. Git keeps them in the stash: see git stash list.",
+      });
+      return false;
+    }
+    this.update({ status: "ok", lastError: null });
+    return true;
+  }
+
+  private reportConflictMarkers(paths: readonly string[]): VaultSyncState {
+    return this.update({
       status: "conflict",
-      lastError: "The vault conflicts with the remote. The notes are committed here; nothing was pushed.",
+      lastError: `These files have conflict markers: ${paths.join(", ")}. Fix each file and run git add on it. Nothing was pushed.`,
     });
-    return false;
+  }
+
+  private async stashCount(): Promise<number> {
+    const list = await this.git(["stash", "list"], localTimeoutMs);
+    return list.stdout.split("\n").filter((line) => line.trim().length > 0).length;
   }
 
   private async hasUnpushedCommits(branch: string): Promise<boolean> {
@@ -171,34 +266,38 @@ export class VaultSync {
     return head.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : "main";
   }
 
-  private async changedPaths(): Promise<string[]> {
+  private async statusEntries(): Promise<StatusEntry[]> {
     const status = await this.git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], localTimeoutMs);
-    const entries = status.stdout.split("\0").filter((entry) => entry.length > 0);
-    const paths: string[] = [];
-    for (let index = 0; index < entries.length; index += 1) {
-      const entry = entries[index] ?? "";
-      const code = entry.slice(0, 2);
-      paths.push(entry.slice(3));
+    const fields = status.stdout.split("\0").filter((field) => field.length > 0);
+    const entries: StatusEntry[] = [];
+    for (let index = 0; index < fields.length; index += 1) {
+      const field = fields[index] ?? "";
+      const code = field.slice(0, 2);
+      entries.push({ code, path: field.slice(3) });
       // A rename or copy entry is followed by its source path, which must be staged too.
       if (code.startsWith("R") || code.startsWith("C")) {
         index += 1;
-        const source = entries[index];
-        if (source !== undefined) paths.push(source);
+        const source = fields[index];
+        if (source !== undefined) entries.push({ code, path: source });
       }
     }
-    return paths;
+    return entries;
   }
 
-  /** A file outside a project folder that holds a secret stays out of the commit (plan §6). */
-  private mustWithhold(relativePath: string): boolean {
-    if (relativePath.startsWith("Projects/")) return false;
+  /**
+   * A file over the size limit stays out of the commit everywhere. A file outside a project
+   * folder that holds a secret stays out too (plan §6).
+   */
+  private withheldReason(relativePath: string): WithheldReason | null {
     const absolutePath = join(this.options.vaultPath, relativePath);
     try {
       const info = statSync(absolutePath);
-      if (!info.isFile() || info.size > maxScannedFileBytes) return false;
-      return containsSecretPattern(readFileSync(absolutePath, "utf-8"));
+      if (!info.isFile()) return null;
+      if (info.size > maxCommittedFileBytes) return "too_large";
+      if (relativePath.startsWith("Projects/") || info.size > maxScannedFileBytes) return null;
+      return containsSecretPattern(readFileSync(absolutePath, "utf-8")) ? "secret" : null;
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -230,6 +329,19 @@ export class VaultSync {
     this.state = { ...this.state, ...changes };
     return this.state;
   }
+}
+
+function unmergedPaths(entries: readonly StatusEntry[]): string[] {
+  return entries.filter((entry) => unmergedCodes.has(entry.code)).map((entry) => entry.path);
+}
+
+function firstLine(text: string): string {
+  return (
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "git gave no reason."
+  );
 }
 
 function pathExists(path: string): boolean {

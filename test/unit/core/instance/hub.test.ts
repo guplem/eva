@@ -30,24 +30,39 @@ afterEach(() => {
 
 describe("the hub claim (plan §4.4)", () => {
   test("without a vault, or before any claim, this machine is the hub", () => {
-    expect(machineRole(null, "laptop")).toBe("hub");
-    expect(machineRole(vault, "laptop")).toBe("hub");
+    expect(machineRole(null, "laptop", "satellite")).toBe("hub");
+    expect(machineRole(vault, "laptop", "satellite")).toBe("hub");
     expect(readHubClaim(vault)).toBeNull();
+  });
+
+  test("a broken claim keeps the last known role, so two machines never both become the hub", () => {
+    mkdirSync(join(vault, ".eva"));
+    for (const broken of ["{ not json", "null", JSON.stringify({ machine: "" })]) {
+      writeFileSync(hubFilePath(vault), broken);
+      expect(machineRole(vault, "pc", "satellite")).toBe("satellite");
+      expect(machineRole(vault, "server", "hub")).toBe("hub");
+    }
+  });
+
+  test("a broken claim is never claimed over by a machine that starts", () => {
+    mkdirSync(join(vault, ".eva"));
+    writeFileSync(hubFilePath(vault), "{ not json");
+    expect(claimHubIfUnclaimed(vault, "pc", now)).toBe(false);
   });
 
   test("the first machine claims the hub, and the others become satellites", () => {
     expect(claimHubIfUnclaimed(vault, "server", now)).toBe(true);
     expect(claimHubIfUnclaimed(vault, "pc", now)).toBe(false);
     expect(readHubClaim(vault)).toEqual({ machine: "server", since: "2026-10-17T10:00:00.000Z" });
-    expect(machineRole(vault, "server")).toBe("hub");
-    expect(machineRole(vault, "pc")).toBe("satellite");
+    expect(machineRole(vault, "server", "hub")).toBe("hub");
+    expect(machineRole(vault, "pc", "hub")).toBe("satellite");
   });
 
   test("any machine can take the hub over", () => {
     claimHub(vault, "server", now);
     claimHub(vault, "pc", now);
-    expect(machineRole(vault, "pc")).toBe("hub");
-    expect(machineRole(vault, "server")).toBe("satellite");
+    expect(machineRole(vault, "pc", "hub")).toBe("hub");
+    expect(machineRole(vault, "server", "hub")).toBe("satellite");
   });
 
   test("a broken or empty claim counts as no claim", () => {

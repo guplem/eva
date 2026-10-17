@@ -174,7 +174,13 @@ export class Eva {
     this.vaultSync =
       vaultPath === null
         ? null
-        : new VaultSync({ vaultPath, runner: options.runner, environment: this.gitEnvironment, now: options.now });
+        : new VaultSync({
+            vaultPath,
+            runner: options.runner,
+            environment: this.gitEnvironment,
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
 
     const redactor = new Redactor();
     for (const secret of Object.values(options.secrets)) redactor.addSecret(secret);
@@ -250,7 +256,8 @@ export class Eva {
             },
           });
 
-    this.lastRole = this.role();
+    // A broken claim at start may hide another hub; a satellite never starts a second Telegram bot.
+    this.lastRole = machineRole(options.config.vaultPath, this.machine, "satellite");
     const channel = options.updateChannel ?? null;
     this.updater =
       channel === null
@@ -292,7 +299,7 @@ export class Eva {
 
   /** "hub" when this machine runs Telegram and the schedules (plan §4.4). */
   role(): MachineRole {
-    return machineRole(this.options.config.vaultPath, this.machine);
+    return machineRole(this.options.config.vaultPath, this.machine, this.lastRole);
   }
 
   /** Calls the listener when this machine becomes the hub or stops being it. Returns an unsubscribe. */
@@ -586,7 +593,7 @@ export class Eva {
     });
   }
 
-  /** Logs a sync problem and the files that the secret scan held back (lessons 16, 26). */
+  /** Logs a sync problem and the files that the sync held back (lessons 16, 26). */
   private logSyncState(state: VaultSyncState): VaultSyncState {
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
       this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
@@ -595,7 +602,7 @@ export class Eva {
       });
     }
     if (state.withheldFiles.length > 0) {
-      this.options.logger?.log("warn", "Vault sync held back files that look like secrets.", {
+      this.options.logger?.log("warn", "Vault sync held back files that look like secrets or are too large.", {
         files: state.withheldFiles,
       });
     }

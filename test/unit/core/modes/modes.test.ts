@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { TrustStore } from "../../../../src/core/projects/clones.ts";
+import type { PrepareAnswer } from "../../../../src/core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
 import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -237,6 +238,22 @@ describe("Project mode", () => {
     expect(questions[0]).toContain("https://github.com/owner/example-app.git");
     store.remember("https://github.com/owner/example-app.git", "trusted");
     expect((await project([], store).prepare(cloneSession, deny)).trusted).toBe(true);
+  });
+
+  test("a trust question that expires keeps the clone untrusted for this turn only, and asks again next time", async () => {
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    let asked = 0;
+    const expired = {
+      ask: (): Promise<PrepareAnswer> => {
+        asked += 1;
+        return Promise.resolve("expired");
+      },
+    };
+    const cloneSession = session({ mode: "project", startFolder: clone });
+    expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
+    expect(store.decision("https://github.com/owner/example-app.git")).toBe("unknown");
+    expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
+    expect(asked).toBe(2);
   });
 
   test("an allowed repository is trusted from then on", async () => {

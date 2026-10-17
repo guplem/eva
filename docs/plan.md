@@ -158,7 +158,7 @@ src/
 
 - **Home folder:** `--home <path>` or `EVA_HOME`. Default: `$XDG_CONFIG_HOME/eva` (Linux, else `~/.config/eva`), `%APPDATA%\eva` (Windows).
 - **Layout:**
-  - `config.json`: this machine's settings, checked against a schema: the vault folder, the role, the port, the project roots, program paths, Telegram, remote host names
+  - `config.json`: this machine's settings, checked against a schema: the vault folder, the machine name, the port, the project roots, program paths, Telegram, remote host names, `remoteAccess.tailscaleServe`
   - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
   - `secrets.json`: tokens, readable by the OS user only
   - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`
@@ -240,7 +240,7 @@ flowchart TD
 ### 5.3 Assistant and projects
 
 - **The assistant can read any project's notes and front matter.**
-- **The assistant can give work to a project.** "Implement X in project Y" opens a Project mode session in a free clone of Y, or in a new clone, with the request as its first message. The project's own skills (for example pskill's `implement-issue`) do the work. The assistant reports the result. This replaces a vault-level `implement` pskill.
+- **The assistant can give work to a project.** "Implement X in project Y" opens a Project mode session in a free clone of Y, or in a new clone, with the request as its first message. The project's own skills (for example pskill's `implement-issue`) do the work. The assistant reports the result. The report names the clone, its branch and its open pull request, and keeps the last 3000 characters of the answer; the full answer stays in the Project chat. Eva chooses one clone of a project at a time, so two tasks never get the same clone. This replaces a vault-level `implement` pskill.
 - **Project mode never works on the rest of the vault.**
 
 ### 5.4 Programmatic skills without hooks
@@ -260,7 +260,7 @@ pskill keeps a run going with a Stop hook. Eva has no hooks (D7), so Eva calls t
 
 - **Claude Code `canUseTool`** (and a pi extension hook) turns a permission ask into an `approval_needed` event.
 - **Every attached front end shows it:** a Telegram button, a web UI dialog, a CLI y/n prompt. The first answer wins.
-- **No answer within 10 minutes** denies the call.
+- **No answer within 10 minutes** denies the call. A stop of the turn denies it at once.
 - **Assistant mode asks only for actions that reach other people:** a calendar invite to others, sharing a file, sending a message or email, opening an issue, pushing outside the vault. Adding an event to the person's own calendar needs no approval.
 
 ## 6. Vault sync
@@ -315,6 +315,7 @@ In this order, after P8: the engine-neutral background task system for more engi
 | `eva status`                                                                  | Engines, vault sync, sessions, versions                          |
 | `eva chat [--project <id> [--clone <n>]] [--engine <name>] [--model <alias>]` | A conversation in the terminal, in either mode                   |
 | `eva projects [query]`                                                        | Search projects                                                  |
+| `eva work <project> <request>`                                                | Give work to a project; a free clone runs it in a Project chat   |
 | `eva service install`                                                         | systemd user service on Linux (lesson 85), logon task on Windows |
 | `eva update [--check]`                                                        | Install the latest version and restart; `--check` only looks     |
 | `eva sync`                                                                    | Sync the vault now                                               |
@@ -394,7 +395,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **Before P8:** clone `guplem/eva`, run `bun install`, then `bun run eva setup` and `bun run eva`.
 - **From P8:** download one executable for Windows or Linux from GitHub Releases.
 - **The partner:** a Windows laptop, an Android phone, a Claude subscription, and her own instance on the owner's Linux server. Her own home folder, port, vault and bot; her own `claude` login or setup token in her instance's engine folder.
-- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its config; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
+- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its settings; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
 - **Vault creation:** a GitHub login by device flow, then a private vault created from the template repository.
 - **Google:** she logs in with the owner's OAuth client.
 - **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`, then the network: Tailscale sign-in and HTTPS, each with a link and a wait, ending with the address that opens Eva on every device. The Assistant answers "what is your address?" with `eva link`.
@@ -406,7 +407,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **An instance is full shell access as its OS user.** Whoever controls a front end controls the machine.
 - **Telegram:** one allowed chat id (lessons 63, 127). Telegram two-factor login is recommended.
 - **Local API and web UI:** listen on `127.0.0.1` only. Remote access only through `tailscale serve`; Eva checks the Tailscale identity header against the instance's allowlist. Local clients (the CLI) read a token from `<home>/secrets.json`. A request through `tailscale serve` from an allowed Tailscale account needs no token: Tailscale proved the account (owner, 2026-10-17). The trade-off: another OS user on the same machine could forge the header on `127.0.0.1`, so an instance on a shared machine sets `remoteAccess.tailscaleServe` to false or lists no identities only with care. `Host` and `Origin` are checked on every request and WebSocket. Never `0.0.0.0`, never Tailscale Funnel, never a public tunnel.
-- **Project trust:** the first time a clone is opened, Eva asks whether to trust it, as Claude Code itself does. A clone whose repository owner is on the allowlist (default: the owner's GitHub account) is trusted at once. An untrusted clone runs with `disableAllHooks: true` and no project MCP servers. Trust is stored in `state/trust.json`, by repository URL.
+- **Project trust:** the first time a clone is opened, Eva asks whether to trust it, as Claude Code itself does. A clone whose repository owner is on the allowlist (default: the owner's GitHub account) is trusted at once. An untrusted clone runs with `disableAllHooks: true` and no project MCP servers. Trust is stored in `state/trust.json`, by repository URL. Eva stores only an answer of the person: a question that expires, or a stopped turn, keeps the clone untrusted for that turn only.
 - **Secrets** live in the instance home. Logs and the event stream are redacted (lesson 95). An agent can still read any file through a shell; the real protection is the env allowlist, redaction, and secrets outside the vault where possible (lesson 116).
 - **GitHub:** a deploy key for the vault; a fine-grained token for project pull requests, scoped to project repositories; the engine repository in neither (lesson 119).
 - **Google data is untrusted input.** Read-only scopes first; outward actions through §5.5.

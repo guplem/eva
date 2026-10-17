@@ -22,18 +22,18 @@ export function hubFilePath(vaultPath: string): string {
 /** The vault's hub, or null when no machine claimed it yet or the file is broken. */
 export function readHubClaim(vaultPath: string): HubClaim | null {
   const read = readJsonTolerant(hubFilePath(vaultPath));
-  if (!read.ok || read.value === null || typeof read.value !== "object") return null;
-  const { machine, since } = read.value as Partial<Record<keyof HubClaim, unknown>>;
-  return typeof machine === "string" && machine.length > 0
-    ? { machine, since: typeof since === "string" ? since : "" }
-    : null;
+  return read.ok ? parseHubClaim(read.value) : null;
 }
 
-/** Without a vault, or before any claim, this machine is the hub. */
-export function machineRole(vaultPath: string | null, machine: string): MachineRole {
-  if (vaultPath === null) return "hub";
+/**
+ * Without a vault, or before any claim, this machine is the hub. A broken claim file keeps
+ * `roleIfBroken` (the last known role): with "hub" as the answer, every machine runs Telegram.
+ */
+export function machineRole(vaultPath: string | null, machine: string, roleIfBroken: MachineRole): MachineRole {
+  if (vaultPath === null || !existsSync(hubFilePath(vaultPath))) return "hub";
   const claim = readHubClaim(vaultPath);
-  return claim === null || claim.machine === machine ? "hub" : "satellite";
+  if (claim === null) return roleIfBroken;
+  return claim.machine === machine ? "hub" : "satellite";
 }
 
 /** Makes this machine the hub. Eva's sync commits and pushes the file. */
@@ -48,7 +48,16 @@ export function claimHub(vaultPath: string, machine: string, now: Date): HubClai
  * claims a hub that another machine already pushed. Returns true when it claimed.
  */
 export function claimHubIfUnclaimed(vaultPath: string, machine: string, now: Date): boolean {
-  if (!existsSync(vaultPath) || readHubClaim(vaultPath) !== null) return false;
+  // A broken file may hide another machine's claim; a person repairs it with `eva hub`.
+  if (!existsSync(vaultPath) || existsSync(hubFilePath(vaultPath))) return false;
   claimHub(vaultPath, machine, now);
   return true;
+}
+
+function parseHubClaim(value: unknown): HubClaim | null {
+  if (value === null || typeof value !== "object") return null;
+  const { machine, since } = value as Partial<Record<keyof HubClaim, unknown>>;
+  return typeof machine === "string" && machine.length > 0
+    ? { machine, since: typeof since === "string" ? since : "" }
+    : null;
 }

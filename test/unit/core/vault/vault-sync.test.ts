@@ -1,20 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { EvaError } from "../../../../src/shared/errors.ts";
+import type { Logger } from "../../../../src/shared/logger.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
 let vault: string;
 let other: string;
 
-function createSync(path: string): VaultSync {
+function createSync(path: string, seams: { runner?: ProcessRunner; logger?: Logger } = {}): VaultSync {
   return new VaultSync({
     vaultPath: path,
-    runner: systemProcessRunner,
+    runner: seams.runner ?? systemProcessRunner,
     environment: gitEnvironment,
     now: () => new Date(2026, 9, 14, 12, 0),
+    ...(seams.logger === undefined ? {} : { logger: seams.logger }),
   });
 }
 
@@ -74,7 +77,7 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, "Methods/Safe.md", "safe\n");
     const state = await createSync(vault).save();
     expect(state.status).toBe("ok");
-    expect(state.withheldFiles).toEqual(["Toolbox/keys.md"]);
+    expect(state.withheldFiles).toEqual([{ path: "Toolbox/keys.md", reason: "secret" }]);
     expect(remoteFiles()).toContain("Methods/Safe.md");
     expect(remoteFiles()).not.toContain("Toolbox/keys.md");
     expect(existsSync(join(vault, "Toolbox/keys.md"))).toBe(true);
@@ -106,16 +109,6 @@ describe("VaultSync.save", () => {
     const state = await createSync(vault).save();
     expect(state.status).toBe("offline");
     expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
-  });
-
-  test("refuses to save while a rebase is open (lesson 22)", async () => {
-    const gitFolder = sandbox.git(vault, "rev-parse", "--absolute-git-dir");
-    sandbox.write(gitFolder, "rebase-merge/head-name", "refs/heads/main\n");
-    sandbox.write(vault, "note.md", "kept\n");
-    const state = await createSync(vault).save();
-    expect(state.status).toBe("error");
-    expect(state.lastError).toContain("rebase");
-    expect(sandbox.git(vault, "status", "--porcelain")).toContain("note.md");
   });
 
   test("stays out of a branch that is not the default branch", async () => {
@@ -163,4 +156,129 @@ describe("VaultSync.pull", () => {
     await createSync(vault).pull();
     expect(readFileSync(join(vault, "draft.md"), "utf-8")).toBe("in progress\n");
   });
+
+  test("reports a conflict when an edit that is not committed clashes with the remote, and keeps the stash", async () => {
+    // git 2.55 exits 0 here: it writes conflict markers into the file and keeps the autostash.
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const state = await createSync(vault).pull();
+    expect(state.status).toBe("conflict");
+    expect(state.lastError).toContain("AGENTS.md");
+    expect(sandbox.git(vault, "stash", "list")).toContain("autostash");
+  });
+
+  test("never commits conflict markers, but still commits the other notes and pushes nothing", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const sync = createSync(vault);
+    await sync.pull();
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    const state = await sync.save();
+    expect(state.status).toBe("conflict");
+    expect(state.lastError).toContain("AGENTS.md");
+    expect(sandbox.git(vault, "show", "HEAD:Methods/New.md")).toBe("Steps.");
+    expect(sandbox.git(vault, "show", "HEAD:AGENTS.md")).not.toContain("<<<<<<<");
+    expect(remoteFiles()).not.toContain("Methods/New.md");
+    expect(sandbox.git(vault, "status", "--porcelain")).toContain("UU AGENTS.md");
+  });
+
+  test("reports a conflict when the autostash stays in the stash with no conflicted file", async () => {
+    pushFromOther("other.md", "news\n");
+    let rebased = false;
+    const leavesStash: ProcessRunner = {
+      async run(command, options) {
+        const result = await systemProcessRunner.run(command, options);
+        if (command[1] === "rebase") rebased = true;
+        const isStashList = command[1] === "stash" && command[2] === "list";
+        return isStashList && rebased ? { ...result, stdout: `${result.stdout}stash@{0}: autostash\n` } : result;
+      },
+    };
+    const state = await createSync(vault, { runner: leavesStash }).pull();
+    expect(state.status).toBe("conflict");
+    expect(state.lastError).toContain("stash");
+  });
 });
+
+describe("VaultSync safety", () => {
+  test("aborts a rebase that a crash left open, logs it, then saves (lesson 22)", async () => {
+    stopRebaseOnRemote();
+    const logged: string[] = [];
+    const logger: Logger = { log: (_level, message) => logged.push(message) };
+    sandbox.write(vault, "fresh.md", "new note\n");
+    const state = await createSync(vault, { logger }).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles().split("\n").sort()).toEqual(["AGENTS.md", "fresh.md", "mine.md", "other.md"]);
+    expect(existsSync(join(vault, ".git", "rebase-merge"))).toBe(false);
+    expect(logged.join("\n")).toContain("rebase");
+  });
+
+  test("refuses to abort an open rebase while a tracked file has an edit, as the abort would lose it (lesson 22)", async () => {
+    stopRebaseOnRemote();
+    sandbox.write(vault, "AGENTS.md", "# Edited while the rebase was open\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("error");
+    expect(state.lastError).toContain("rebase");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# Edited while the rebase was open\n");
+  });
+
+  test("reports a rebase that fails with no conflict as an error with its reason", async () => {
+    pushFromOther("other.md", "news\n");
+    const timesOut: ProcessRunner = {
+      run(command, options) {
+        return command[1] === "rebase" && command[2] === "-q"
+          ? Promise.reject(new EvaError("process_timeout", "git rebase timed out."))
+          : systemProcessRunner.run(command, options);
+      },
+    };
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault, { runner: timesOut }).save();
+    expect(state.status).toBe("error");
+    expect(state.lastError).toContain("timed out");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  test("keeps a file over 50 MB out of the commit, in and out of a project folder", async () => {
+    const big = Buffer.alloc(50 * 1024 * 1024 + 1);
+    sandbox.write(vault, "Media/video.mp4", "");
+    writeFileSync(join(vault, "Media/video.mp4"), big);
+    sandbox.write(vault, "Projects/2025-01-01-1200-app/export.zip", "");
+    writeFileSync(join(vault, "Projects/2025-01-01-1200-app/export.zip"), big);
+    sandbox.write(vault, "Methods/Safe.md", "safe\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([
+      { path: "Media/video.mp4", reason: "too_large" },
+      { path: "Projects/2025-01-01-1200-app/export.zip", reason: "too_large" },
+    ]);
+    expect(remoteFiles()).toContain("Methods/Safe.md");
+    expect(remoteFiles()).not.toContain("video.mp4");
+  });
+
+  test("names the remote's reason when every push fails", async () => {
+    sandbox.write(sandbox.remote, "hooks/pre-receive", "#!/bin/sh\necho 'rejected by the remote policy' >&2\nexit 1\n");
+    chmodSync(join(sandbox.remote, "hooks", "pre-receive"), 0o755);
+    sandbox.write(vault, "note.md", "kept\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("error");
+    expect(state.lastError).toContain("rejected by the remote policy");
+  });
+});
+
+function pushFromOther(relativePath: string, content: string): void {
+  sandbox.write(other, relativePath, content);
+  sandbox.git(other, "add", "-A");
+  sandbox.git(other, "commit", "-q", "-m", "other");
+  sandbox.git(other, "push", "-q", "origin", "main");
+}
+
+/** Leaves the vault in an open rebase, the way a crash in the middle of a sync does. */
+function stopRebaseOnRemote(): void {
+  pushFromOther("other.md", "news\n");
+  sandbox.write(vault, "mine.md", "mine\n");
+  sandbox.git(vault, "add", "-A");
+  sandbox.git(vault, "commit", "-q", "-m", "mine");
+  sandbox.git(vault, "fetch", "-q", "origin");
+  // An exec step that fails stops the rebase with no conflict.
+  expect(() => sandbox.git(vault, "rebase", "-q", "-x", "false", "origin/main")).toThrow();
+  expect(existsSync(join(vault, ".git", "rebase-merge"))).toBe(true);
+}

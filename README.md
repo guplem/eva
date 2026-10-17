@@ -131,7 +131,7 @@ eva settings set updates.frequency weekly
 
 Eva works on several machines with one vault, with no role to set. One machine is the **hub**: it runs the Telegram bot and the schedules. Every other machine is a **satellite**: it syncs the vault and serves its own terminal and web page.
 
-- **The first machine that starts with the vault becomes the hub.** The vault names it in `.eva/hub.json`.
+- **The first machine that starts with the vault becomes the hub.** The vault names it in `.eva/hub.json`. When that file is broken, each machine keeps its role; run `eva hub` on the machine that must be the hub to repair it.
 - **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new machine. The old hub stops its bot and schedules at its next vault fetch.
 - **The bot runs on the hub whenever the hub has a Telegram token.** A satellite never starts it, even with the token.
 - **Two Evas on one machine** work too: give each its own home folder (`--home`) and vault. `eva service install` names each service after its home folder, for example `eva-partner`. An Eva whose home folder is not the default one keeps her own Claude and `gh` logins in `<home>/engines/claude` and `<home>/engines/gh`, so two people never share a login. Give her a Claude token in `eva setup`, and log her `gh` in with `GH_CONFIG_DIR=<home>/engines/gh gh auth login`.
@@ -141,6 +141,8 @@ Eva works on several machines with one vault, with no role to set. One machine i
 
 - **Updates:** Eva looks for a new version every day by default (`updates.frequency`: `off`, `hourly`, `daily` or `weekly`). She installs it only when no chat is running, then restarts. The single executable takes the latest signed release. An install from source takes the newest commit of `main`, and runs `bun install` when the dependencies changed; it never touches a checkout with local changes, its own commits, or another branch. Update now with the **Update now** button on the Settings page, Telegram `/update`, or `eva update` (`eva update --check` only looks).
 - **Vault sync:** Eva pulls the vault before each Assistant turn, saves and pushes after it, and fetches other machines' changes every 5 minutes (`sync.pullIntervalMinutes`; `null` means only before each turn). Sync now with the **Sync now** button, Telegram `/sync`, or `eva sync`.
+- **Files that Eva keeps out of the vault:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB. `eva status` names them. GitHub refuses files over 100 MB.
+- **A sync conflict:** Eva stops the pushes and names the files in `eva status`. Fix the conflict markers (`<<<<<<<`) in each file, then run `git add` on it. Eva never drops a stash, so `git stash list` can still hold a copy of your edits.
 
 ## Install on a Linux server
 

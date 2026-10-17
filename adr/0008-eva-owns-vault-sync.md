@@ -12,8 +12,9 @@ Source: plan §1 (D7), §5.4, §6; owner answer 4 (`docs/review-2026-10-14.md`);
 - **The cycle:** `git pull --rebase --autostash` before each Assistant turn; commit and push after it; an idle sweep every 60 seconds that never runs during an Assistant turn. Project turns do not block the sweep.
 - **A periodic fetch** (`sync.pullIntervalMinutes`, default 5 minutes, or off) brings other machines' changes in between turns, and never during an Assistant turn. **Sync now** (`eva sync`, Telegram `/sync`, the web UI) pulls, then commits and pushes.
 - **Every git step has a timeout** (60 seconds for a network step, 20 for a local step), runs with `GIT_TERMINAL_PROMPT=0`, and stops gently, then hard, then cleans up.
-- **A conflict never discards a change.** Eva aborts the rebase, keeps the local commits, stops pushing, and tells the person in every front end.
-- **A secret scan runs before each commit.** A matching file outside `Projects/*/` stays out of the commit; the scan never blocks the whole commit (lesson 27).
+- **A conflict never discards a change.** Eva aborts the rebase, keeps the local commits, stops pushing, and tells the person in every front end. An autostash that does not apply again is a conflict too, even when git exits 0. Eva never commits conflict markers and never drops the stash.
+- **Eva aborts a rebase that a crash left open,** because only she rebases the vault. She refuses when a tracked file has an edit, because the abort would lose it (lesson 22).
+- **A secret scan runs before each commit.** A matching file outside `Projects/*/` stays out of the commit; the scan never blocks the whole commit (lesson 27). A file over 50 MB stays out everywhere, so GitHub's 100 MB limit never blocks every push.
 - **No agent hooks.** Eva sets `disableAllHooks: true` in Assistant mode, and the vault's pskill config writes no hooks (`hook_files: []`).
 - **Programmatic skill runs continue without a Stop hook.** After each Assistant turn, Eva runs the pskill stop logic herself, for the session that just ended (plan §5.4).
 

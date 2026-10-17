@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../src/core/instance/home.ts";
 import { loadSettings, vaultSettingsPath } from "../../../src/core/instance/settings.ts";
-import { claimHub } from "../../../src/core/instance/hub.ts";
+import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -254,6 +254,21 @@ describe("the hub (plan §4.4)", () => {
     expect(sandbox.git(sandbox.remote, "show", "main:.eva/hub.json")).toContain(status.machine);
     await eva.becomeHub();
     expect(changes).toEqual(["satellite", "hub"]);
+  });
+
+  test("a broken claim file keeps the role that this machine had", async () => {
+    const changes: string[] = [];
+    eva.onRoleChange((role) => changes.push(role));
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(hubFilePath(vault), "{ not json");
+    await eva.backgroundTick();
+    expect(eva.role()).toBe("hub");
+    claimHub(vault, "another-machine", new Date());
+    await eva.backgroundTick();
+    writeFileSync(hubFilePath(vault), "{ not json");
+    await eva.backgroundTick();
+    expect(eva.role()).toBe("satellite");
+    expect(changes).toEqual(["satellite"]);
   });
 
   test("an unsubscribed listener hears nothing", async () => {

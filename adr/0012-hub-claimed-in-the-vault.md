@@ -13,6 +13,7 @@ Source: plan §4.4; owner requests of 2026-10-17; lesson 56.
 - **Any machine takes the hub over** with `eva hub` or the web UI button. It writes the claim and pushes at once.
 - **The role is live.** Each machine reads the claim on each background tick. When the role changes, the scheduler follows on its next tick, and `main.ts` starts or stops the Telegram bot. No restart.
 - **Telegram has no on/off switch.** The hub runs the bot whenever it has a token.
+- **A broken claim file keeps each machine's last role.** A machine that starts with a broken file is a satellite, and claims nothing. A missing file means "no claim"; a broken file can hide one, and "hub" on every machine gives two bots. `eva hub` writes a good file.
 - **Without a vault, a machine is its own hub.** Two instances with different vaults on one machine each claim their own vault's hub.
 
 **Rejected alternative:** a `role` setting in each machine's config. Every new machine had to change it, and a forgotten change gave two hubs.

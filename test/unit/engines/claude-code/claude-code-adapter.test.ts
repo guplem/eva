@@ -112,8 +112,15 @@ describe("buildQueryOptions", () => {
     // An "ask" rule wins over any "allow" rule, so every such call reaches canUseTool and Eva's approval.
     expect(options.settings).toEqual({
       disableAllHooks: true,
+      autoMemoryEnabled: false,
       permissions: { ask: ["Bash", "mcp__google"] },
     });
+  });
+
+  test("Assistant mode: Claude Code's auto-memory is off, so a fact lands in the vault (issue #68)", () => {
+    const options = buildQueryOptions(request(), "/bin/claude");
+    // The memory folder is on one machine, outside git: no other machine would see the fact.
+    expect(options.settings).toMatchObject({ autoMemoryEnabled: false });
   });
 
   test("Project mode: the harness exactly as a manual session, with no Eva text", () => {

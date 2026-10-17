@@ -53,7 +53,7 @@ import {
 import { runDoctor } from "./frontends/cli/doctor.ts";
 import { restartMethod, serviceName, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
-import { tailscaleHostName } from "./core/instance/machine-defaults.ts";
+import { publishWithTailscale, readTailscale } from "./core/instance/machine-defaults.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
@@ -224,7 +224,14 @@ async function serve(paths: HomePaths): Promise<number> {
   const config = loaded.config;
   const hubClaimed =
     config.vaultPath !== null && claimHubIfUnclaimed(config.vaultPath, config.machineName ?? hostname(), new Date());
-  const tailnetName = await tailscaleHostName(systemProcessRunner, childEnvironment());
+  const tailscale = config.remoteAccess.tailscaleServe
+    ? await readTailscale(systemProcessRunner, childEnvironment())
+    : null;
+  const ownerLogin = tailscale?.ownerLogin ?? null;
+  const remoteAccess =
+    tailscale === null
+      ? null
+      : await publishWithTailscale(systemProcessRunner, childEnvironment(), tailscale, config.port);
   if (secrets.localApiToken === undefined) {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
@@ -238,6 +245,8 @@ async function serve(paths: HomePaths): Promise<number> {
   if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
+  if (remoteAccess !== null)
+    logger.log(remoteAccess.url === null ? "warn" : "info", "Tailscale access.", { ...remoteAccess });
 
   const engines: EnginePort[] = [];
   const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
@@ -270,6 +279,7 @@ async function serve(paths: HomePaths): Promise<number> {
     restartForUpdate: () => {
       restart?.();
     },
+    remoteAccess,
   });
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
@@ -289,8 +299,12 @@ async function serve(paths: HomePaths): Promise<number> {
     eva,
     port: config.port,
     token: secrets.localApiToken,
-    extraHosts: [...config.remoteAccess.hostNames, ...(tailnetName === null ? [] : [tailnetName])],
-    allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
+    extraHosts: [...config.remoteAccess.hostNames, ...(tailscale === null ? [] : [tailscale.hostName])],
+    // Plug and play: with no list, only the account that owns this machine in Tailscale gets in.
+    allowedTailscaleIdentities:
+      config.remoteAccess.allowedTailscaleIdentities.length > 0 || ownerLogin === null
+        ? config.remoteAccess.allowedTailscaleIdentities
+        : [ownerLogin],
   });
   logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
   writeLine(`Eva ${evaVersion} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);

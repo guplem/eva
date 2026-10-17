@@ -391,7 +391,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **Before P8:** clone `guplem/eva`, run `bun install`, then `bun run eva setup` and `bun run eva`.
 - **From P8:** download one executable for Windows or Linux from GitHub Releases.
 - **The partner:** a Windows laptop, an Android phone, a Claude subscription, and her own instance on the owner's Linux server. Her own home folder, port, vault and bot; her own `claude` login or setup token in her instance's engine folder.
-- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its config.
+- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its config; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
 - **Vault creation:** a GitHub login by device flow, then a private vault created from the template repository.
 - **Google:** she logs in with the owner's OAuth client.
 - **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`.

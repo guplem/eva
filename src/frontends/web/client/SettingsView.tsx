@@ -55,6 +55,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     });
   }, []);
 
+  const remote = status?.remoteAccess ?? null;
   if (settings === null) return <div className="empty">Loading the settings…</div>;
 
   const runCheck = async (name: string): Promise<void> => {
@@ -146,6 +147,12 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
         <fieldset>
           <legend>Setup</legend>
           <div>Vault folder: {settings.config.vaultPath ?? "not configured"}</div>
+          {remote !== null && (
+            <div>
+              Phone access:{" "}
+              {remote.url === null ? (remote.problem ?? "not available") : <a href={remote.url}>{remote.url}</a>}
+            </div>
+          )}
           {status !== null && (
             <div className="check-row">
               <span style={{ flex: 1 }}>

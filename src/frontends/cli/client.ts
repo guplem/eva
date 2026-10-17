@@ -26,6 +26,7 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
+    ...describeRemoteAccess(status.remoteAccess),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
@@ -65,6 +66,12 @@ export async function startProjectWork(
 export function describeRole(status: Pick<EvaStatus, "role" | "machine" | "hub">): string {
   if (status.role === "hub") return `hub: this machine (${status.machine})`;
   return `satellite: the hub is ${status.hub ?? "unknown"}; this machine is ${status.machine}`;
+}
+
+/** The web UI's address for the phone, or why there is none; nothing without Tailscale. */
+export function describeRemoteAccess(remote: EvaStatus["remoteAccess"]): string[] {
+  if (remote === null) return [];
+  return [remote.url === null ? `Phone access: ${remote.problem ?? "not available"}` : `Phone access: ${remote.url}`];
 }
 
 /** `eva hub` while Eva runs. */

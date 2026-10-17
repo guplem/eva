@@ -207,14 +207,16 @@ bun run eva --home ~/eva-partner setup
 bun run eva --home ~/eva-partner service install
 ```
 
-Setup picks a free port for her. Her Claude, pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription:
+Setup picks a free port for her. Her pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Her Claude token stays in her `secrets.json`.
 
-| Engine      | Folder             | Variable              |
-| ----------- | ------------------ | --------------------- |
-| Claude Code | `engines/claude`   | `CLAUDE_CONFIG_DIR`   |
-| pi          | `engines/pi-agent` | `PI_CODING_AGENT_DIR` |
-| GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       |
+| Engine      | Folder             | Variable              | What it holds                 |
+| ----------- | ------------------ | --------------------- | ----------------------------- |
+| Claude Code | `engines/claude`   | `CLAUDE_CONFIG_DIR`   | Claude's settings and history |
+| pi          | `engines/pi-agent` | `PI_CODING_AGENT_DIR` | pi's login and settings       |
+| GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       | gh's login                    |
 
-Setup gives the login command for each engine, with the right folder for her. Run each command in another terminal. At the end, setup shows which logins are in place. Run `eva --home ~/eva-partner setup` again to check them later.
+Setup gives one login step for each engine, with her folder in the command. Run each step in another terminal while setup goes on. On Windows, use PowerShell. At the end, setup shows which logins are in place. Run `bun run eva --home ~/eva-partner setup` again to check them later.
+
+The GitHub step uses `gh auth login --insecure-storage`. gh otherwise keeps its token in the system keyring under one name for all folders, and her login would replace yours. With the flag, her token stays in her own folder, readable only by your computer user.
 
 The first Eva on a computer uses the computer user's own logins, the same as when the person runs Claude Code, pi or `gh` by hand.

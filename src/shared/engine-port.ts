@@ -39,7 +39,10 @@ export interface TurnRequest {
   readonly startFolder: string;
   readonly prompt: string;
   readonly model: ModelAlias;
-  /** Assistant mode: the text appended to the engine's own system prompt. Byte-identical every turn (lesson 40). */
+  /**
+   * Assistant mode: Eva's prompt. Claude Code uses it in place of its own system prompt; pi appends it.
+   * Byte-identical every turn (lesson 40).
+   */
   readonly appendSystemPrompt: string | null;
   /** Assistant mode: local plugin folders, such as the vault's `.eva/`. */
   readonly pluginFolders: readonly string[];

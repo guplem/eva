@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverProjects, parseFrontMatter, searchProjects } from "../../../../src/core/projects/project-catalog.ts";
+import {
+  discoverProjects,
+  parseFrontMatter,
+  parseProjectQuery,
+  searchProjects,
+} from "../../../../src/core/projects/project-catalog.ts";
 
 let vault: string;
 
@@ -136,5 +141,22 @@ describe("searchProjects", () => {
     expect(searchProjects(projects, { tag: "LIFE" }).map((project) => project.id)).toEqual([
       "2025-02-01-0900-tax-report",
     ]);
+  });
+});
+
+describe("parseProjectQuery", () => {
+  test("reads the status and tag words, and keeps the rest as text", () => {
+    expect(parseProjectQuery("photo status:Active #hobby booth")).toEqual({
+      text: "photo booth",
+      status: "active",
+      tag: "hobby",
+    });
+    expect(parseProjectQuery("tag:life")).toEqual({ text: "", tag: "life" });
+  });
+
+  test("status:any removes the status filter, and an unknown status stays a search word", () => {
+    expect(parseProjectQuery("status:any taxes")).toEqual({ text: "taxes" });
+    expect(parseProjectQuery("status:dreaming")).toEqual({ text: "status:dreaming" });
+    expect(parseProjectQuery("  ")).toEqual({ text: "" });
   });
 });

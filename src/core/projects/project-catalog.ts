@@ -96,6 +96,26 @@ export interface ProjectQuery {
   readonly tag?: string;
 }
 
+/**
+ * Reads the filter words of a free text search: `status:active`, `tag:work` and `#work`.
+ * Telegram and the CLI send free text only, so the filters live in the text.
+ */
+export function parseProjectQuery(input: string): ProjectQuery {
+  const words: string[] = [];
+  let status: ProjectStatus | undefined;
+  let tag: string | undefined;
+  for (const word of input.split(/\s+/).filter((candidate) => candidate.length > 0)) {
+    const lower = word.toLowerCase();
+    if (lower === "status:any") status = undefined;
+    else if (lower.startsWith("status:") && statuses.includes(lower.slice(7) as ProjectStatus)) {
+      status = lower.slice(7) as ProjectStatus;
+    } else if (lower.startsWith("tag:") && word.length > 4) tag = word.slice(4);
+    else if (word.startsWith("#") && word.length > 1) tag = word.slice(1);
+    else words.push(word);
+  }
+  return { text: words.join(" "), ...(status === undefined ? {} : { status }), ...(tag === undefined ? {} : { tag }) };
+}
+
 /** Projects that match every given filter, the most recently created first. */
 export function searchProjects(projects: readonly Project[], query: ProjectQuery): Project[] {
   const words = (query.text ?? "")

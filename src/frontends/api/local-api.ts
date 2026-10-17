@@ -9,6 +9,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import type { CheckName } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
+import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -211,11 +212,12 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
-    const text = url.searchParams.get("text");
     const tag = url.searchParams.get("tag");
+    // The CLI sends its words as they are, so the filter words are read here.
+    const query = parseProjectQuery(url.searchParams.get("text") ?? "");
     return json(
       eva.projects({
-        ...(text === null ? {} : { text }),
+        ...query,
         ...(status === undefined ? {} : { status }),
         ...(tag === null ? {} : { tag }),
       }),

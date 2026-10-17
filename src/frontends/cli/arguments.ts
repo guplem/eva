@@ -10,6 +10,7 @@ export type CliCommand =
   | { readonly command: "version"; readonly home: string | undefined }
   | { readonly command: "update"; readonly home: string | undefined; readonly checkOnly: boolean }
   | { readonly command: "sync"; readonly home: string | undefined }
+  | { readonly command: "hub"; readonly home: string | undefined }
   | {
       readonly command: "settings";
       readonly home: string | undefined;
@@ -53,6 +54,7 @@ Commands:
   update            Install the latest version of Eva, then restart her
       --check                            only look for a newer version
   sync              Bring the vault's remote changes in, then save and push this machine's changes
+  hub               Make this machine the hub, which runs Telegram and the schedules
   settings          Show every setting; "(vault)" marks the settings that every machine shares
   settings get <key>          Show one setting, such as updates.frequency
   settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
@@ -95,6 +97,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "help":
     case "version":
     case "sync":
+    case "hub":
       return { command: name, home };
     case "update":
       return { command: "update", home, checkOnly: switchesSeen.has("--check") };

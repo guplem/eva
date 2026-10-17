@@ -165,7 +165,8 @@ src/
 - **Writes are atomic** (a temporary file, then a rename). A bad file never crashes Eva (lesson 54).
 - **Port:** default 7420. `eva setup` picks the next free port for each new instance.
 - **Engine config folders:** the first instance of an OS user uses the user's own `~/.claude`, pi and `gh` folders, so Project mode sees the same user settings, skills and history as a manual session (D8). Each extra instance on the same OS user sets `CLAUDE_CONFIG_DIR`, pi's agent folder and `GH_CONFIG_DIR` to its `engines/` folders, so two people never share a login (lesson 111).
-- **Roles:** `hub` or `satellite`, in the config. The hub runs Telegram and schedules. A satellite (for example a PC with a vault clone) syncs the vault and serves its own CLI and web UI. Default: `hub`.
+- **Roles:** `hub` or `satellite`, with no setting (ADR 0012). The vault names its hub in `.eva/hub.json`: the first machine that starts with the vault claims it, after a pull. `eva hub` or the web UI moves it; the old hub notices at its next vault fetch and stops Telegram and the schedules without a restart. The hub runs Telegram whenever it has a bot token. Without a vault, a machine is its own hub. A satellite (for example a PC with a vault clone) syncs the vault and serves its own CLI and web UI.
+- **Plug and play:** each machine setting has a default that Eva finds on the machine: the vault folder (`<home>/vault`), the voice model (`<home>/voice/ggml-base.bin`), the machine name (the host name), the remote host name (`tailscale status`), the program paths (`PATH`), and a free port at setup. `eva service install` names the service `eva` for the default home and `eva-<folder>` for any other, so two instances never share one service.
 
 ### 4.5 Sessions, forks and retry
 
@@ -315,6 +316,7 @@ In this order, after P8: the engine-neutral background task system for more engi
 | `eva service install`                                                         | systemd user service on Linux (lesson 85), logon task on Windows |
 | `eva update [--check]`                                                        | Install the latest version and restart; `--check` only looks     |
 | `eva sync`                                                                    | Sync the vault now                                               |
+| `eva hub`                                                                     | Make this machine the hub                                        |
 | `eva settings [get <key> \| set <key> <value>]`                               | Show or change a setting; works while Eva runs or not            |
 
 ### 8.2 Telegram

@@ -3,6 +3,7 @@
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
 import { chmodSync } from "node:fs";
+import { hostname } from "node:os";
 import { delimiter, join } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
@@ -16,6 +17,7 @@ import { evaVersion } from "../shared/version.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
 import { applySettingsChange, saveSettings } from "./instance/settings.ts";
+import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
@@ -79,7 +81,11 @@ export interface LastTurnStatus extends TurnUsage {
 export interface EvaStatus {
   readonly version: string;
   readonly vaultPath: string | null;
-  readonly role: EvaConfig["role"];
+  readonly role: MachineRole;
+  /** This machine's name, as `.eva/hub.json` names the hub. */
+  readonly machine: string;
+  /** The hub's machine name, or null before any machine claims it. */
+  readonly hub: string | null;
   readonly vaultSync: VaultSyncState;
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
@@ -140,6 +146,9 @@ export class Eva {
   private lastPullAt: Date | null = null;
   private settings: EvaConfig;
   private readonly updater: Updater | null;
+  private readonly machine: string;
+  private lastRole: MachineRole;
+  private readonly roleListeners = new Set<(role: MachineRole) => void>();
   private lastTurn: LastTurnStatus | null = null;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones = new Set<string>();
@@ -147,6 +156,7 @@ export class Eva {
   constructor(options: EvaOptions) {
     this.options = options;
     this.settings = options.config;
+    this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
     // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
     const githubToken = options.secrets.githubToken;
@@ -226,7 +236,7 @@ export class Eva {
             vaultPath,
             statePath: options.paths.schedulesState,
             timeZone: options.config.timeZone ?? "UTC",
-            isHub: options.config.role === "hub",
+            isHub: () => this.role() === "hub",
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
@@ -234,6 +244,7 @@ export class Eva {
             },
           });
 
+    this.lastRole = this.role();
     const channel = options.updateChannel ?? null;
     this.updater =
       channel === null
@@ -269,7 +280,33 @@ export class Eva {
   /** Once a minute: fetches the vault and checks for updates, each at the pace that the settings ask for. */
   async backgroundTick(): Promise<void> {
     await this.pullIfDue();
+    this.noticeRoleChange();
     await this.updater?.tick();
+  }
+
+  /** "hub" when this machine runs Telegram and the schedules (plan §4.4). */
+  role(): MachineRole {
+    return machineRole(this.options.config.vaultPath, this.machine);
+  }
+
+  /** Calls the listener when this machine becomes the hub or stops being it. Returns an unsubscribe. */
+  onRoleChange(listener: (role: MachineRole) => void): () => void {
+    this.roleListeners.add(listener);
+    return () => {
+      this.roleListeners.delete(listener);
+    };
+  }
+
+  /** "Make this machine the hub": writes the claim, and pushes it so the old hub sees it at its next fetch. */
+  async becomeHub(): Promise<EvaStatus> {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath !== null && readHubClaim(vaultPath)?.machine !== this.machine) {
+      claimHub(vaultPath, this.machine, this.options.now());
+      this.options.logger?.log("info", "This machine is now the hub.", { machine: this.machine });
+      await this.syncVault();
+    }
+    this.noticeRoleChange();
+    return this.status();
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
@@ -330,7 +367,12 @@ export class Eva {
     return {
       version: evaVersion,
       vaultPath: this.options.config.vaultPath,
-      role: this.options.config.role,
+      role: this.role(),
+      machine: this.machine,
+      hub:
+        this.options.config.vaultPath === null
+          ? this.machine
+          : (readHubClaim(this.options.config.vaultPath)?.machine ?? null),
       vaultSync: this.vaultSync?.currentState ?? noVaultState,
       sessionCount: sessions.length,
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
@@ -511,6 +553,17 @@ export class Eva {
     if (this.assistantBusy()) return;
     this.lastPullAt = now;
     this.logSyncState(await this.vaultSync.pull());
+  }
+
+  private noticeRoleChange(): void {
+    const role = this.role();
+    if (role === this.lastRole) return;
+    this.lastRole = role;
+    this.options.logger?.log(
+      "info",
+      role === "hub" ? "This machine became the hub." : "Another machine is now the hub.",
+    );
+    for (const listener of this.roleListeners) listener(role);
   }
 
   private assistantBusy(): boolean {

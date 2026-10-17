@@ -61,7 +61,8 @@ const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);
 const configSchema = z.object({
   version: z.literal(1).default(1),
   vaultPath: z.string().min(1).nullable().default(null),
-  role: z.enum(["hub", "satellite"]).default("hub"),
+  /** This machine's name in `.eva/hub.json`. Null: the computer's host name. */
+  machineName: z.string().min(1).nullable().default(null),
   port: z.number().int().min(1024).max(65535).default(7420),
   timeZone: z.string().min(1).nullable().default(null),
   projectRoots: z.array(z.string().min(1)).default([]),
@@ -112,12 +113,11 @@ const configSchema = z.object({
     }),
   telegram: z
     .object({
-      enabled: z.boolean().default(false),
       allowedChatId: z.number().int().nullable().default(null),
       /** The person who paired the chat; in a group, only this person may act. */
       allowedUserId: z.number().int().nullable().default(null),
     })
-    .default({ enabled: false, allowedChatId: null, allowedUserId: null }),
+    .default({ allowedChatId: null, allowedUserId: null }),
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),

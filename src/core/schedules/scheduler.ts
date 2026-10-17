@@ -53,7 +53,8 @@ export interface SchedulerOptions {
   readonly vaultPath: string;
   readonly statePath: string;
   readonly timeZone: string;
-  readonly isHub: boolean;
+  /** Only the hub runs schedules; the hub can move while Eva runs. */
+  readonly isHub: () => boolean;
   readonly now: () => Date;
   readonly chats: ScheduledChatStarter;
 }
@@ -111,7 +112,7 @@ export class Scheduler {
 
   /** One check of every schedule. The core calls it every 30 seconds. */
   async tick(): Promise<void> {
-    if (!this.options.isHub || this.ticking) return;
+    if (!this.options.isHub() || this.ticking) return;
     this.ticking = true;
     try {
       await this.checkAll();

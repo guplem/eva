@@ -235,6 +235,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
   }
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
+  if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
     if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
     if (method === "POST") {

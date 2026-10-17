@@ -9,7 +9,7 @@ Source: plan §1 (D14), §4.4; owner request of 2026-10-17; lesson 54.
 ## Decision
 
 - **Two files.** The person's settings live in the vault, in `.eva/settings.json`. The machine's settings stay in `<home>/config.json`. One schema covers both; `sharedSettingKeys` in `src/core/instance/settings.ts` lists the vault's keys.
-- **The vault's keys:** the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. **The machine's keys:** the vault folder, the role, the port, the project roots, program paths, Telegram, remote host names.
+- **The vault's keys:** the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. **The machine's keys:** the vault folder, the machine name, the port, the project roots, program paths, the Telegram chat, remote host names. Each has a default that Eva finds on the machine (plan §4.4, "Plug and play").
 - **Secrets never go in the vault.** They stay in `secrets.json`.
 - **The vault wins.** Eva reads `config.json`, then puts the vault file on top. A machine key in the vault file is ignored.
 - **A broken vault file never stops Eva** (lesson 54). It can arrive from another machine, so Eva logs the problem and keeps `config.json`.

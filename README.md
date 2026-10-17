@@ -58,6 +58,16 @@ eva settings set updates.frequency weekly
 
 `eva settings` lists every setting and marks the vault's settings with `(vault)`. The update frequency and the vault fetch apply at once; any other change applies at the next restart.
 
+## Machines and the hub
+
+Eva works on several machines with one vault, with no role to set. One machine is the **hub**: it runs the Telegram bot and the schedules. Every other machine is a **satellite**: it syncs the vault and serves its own terminal and web page.
+
+- **The first machine that starts with the vault becomes the hub.** The vault names it in `.eva/hub.json`.
+- **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new machine. The old hub stops its bot and schedules at its next vault fetch.
+- **The bot runs on the hub whenever the hub has a Telegram token.** A satellite never starts it, even with the token.
+- **Two Evas on one machine** work too: give each its own home folder (`--home`) and vault. `eva service install` names each service after its home folder, for example `eva-partner`.
+- **Phone access** through `tailscale serve` needs no setting: Eva reads the machine's Tailscale name at start.
+
 ## Updates and vault sync
 
 - **Updates:** Eva looks for a new version every day by default (`updates.frequency`: `off`, `hourly`, `daily` or `weekly`). She installs it only when no chat is running, then restarts. The single executable takes the latest signed release. An install from source takes the newest commit of `main`, and runs `bun install` when the dependencies changed; it never touches a checkout with local changes, its own commits, or another branch. Update now with the **Update now** button on the Settings page, Telegram `/update`, or `eva update` (`eva update --check` only looks).
@@ -112,10 +122,10 @@ Eva updates herself from then on (see [Updates and vault sync](#updates-and-vaul
 
 Each feature below stays off until you set it up. `eva doctor` shows which tools are missing.
 
-- **Schedules.** Ask Eva for a reminder or a daily summary, or use **Add schedule** on the Settings page. Eva writes `.eva/schedules.json` in the vault. Before a schedule first runs, Telegram shows a setup card with every field: check it. Only the hub instance (`"role": "hub"`) runs schedules.
+- **Schedules.** Ask Eva for a reminder or a daily summary, or use **Add schedule** on the Settings page. Eva writes `.eva/schedules.json` in the vault. Before a schedule first runs, Telegram shows a setup card with every field: check it. Only the hub runs schedules (see [Machines and the hub](#machines-and-the-hub)).
 - **Files.** Eva can send a vault file in Telegram, and saves each file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
-- **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`), and set `voice.modelPath` with `eva settings set voice.modelPath <file>`. The audio never leaves the machine.
+- **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`), and put the model at `voice/ggml-base.bin` in Eva's home folder. Eva finds it there; for another place, run `eva settings set voice.modelPath <file>`. The audio never leaves the machine.
 - **Google (Calendar, Drive, Contacts, Tasks).** Install [uv](https://docs.astral.sh/uv/). Create an OAuth client in Google Cloud, of type "Desktop app", and set its publishing status to "In production" so that the login does not expire after 7 days. Put its id and secret in `secrets.json` as `googleOauthClientId` and `googleOauthClientSecret`, and your account with `eva settings set google.email <address>`. The first Google request gives you a link to log in. Eva starts with read-only access; set `google.readOnly` to `false` to let her add events. She asks you before any change that reaches other people, such as an invitation.
 
 ## Develop

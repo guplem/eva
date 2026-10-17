@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { describeSync, describeUpdate } from "../../cli/client.ts";
-import { api, type CheckResult, type PublicSettings, type UpdateStatus } from "./api.ts";
+import { api, type CheckResult, type EvaStatus, type PublicSettings, type UpdateStatus } from "./api.ts";
 import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
@@ -42,8 +42,10 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [status, setStatus] = useState<EvaStatus | null>(null);
 
   useEffect(() => {
+    void api.status().then(setStatus);
     void api.updateStatus().then(setUpdate);
     void api.settings().then((loaded) => {
       setSettings(loaded);
@@ -100,6 +102,14 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     setUpdateNote("Eva did not answer after the update. Check her log.");
   };
 
+  const becomeHub = async (): Promise<void> => {
+    try {
+      setStatus(await api.becomeHub());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const syncNow = async (): Promise<void> => {
     setSyncNote("Syncing…");
     try {
@@ -136,6 +146,18 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
         <fieldset>
           <legend>Setup</legend>
           <div>Vault folder: {settings.config.vaultPath ?? "not configured"}</div>
+          {status !== null && (
+            <div className="check-row">
+              <span style={{ flex: 1 }}>
+                {status.role === "hub"
+                  ? `This machine (${status.machine}) is the hub: it runs Telegram and the schedules.`
+                  : `This machine (${status.machine}) is a satellite. The hub is ${status.hub ?? "unknown"}.`}
+              </span>
+              {status.role === "satellite" && (
+                <button onClick={() => void becomeHub()}>Make this machine the hub</button>
+              )}
+            </div>
+          )}
           {checks.map((check) => {
             const result = results[check.name];
             return (

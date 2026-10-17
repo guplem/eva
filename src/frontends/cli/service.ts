@@ -4,10 +4,25 @@
  * restart (lesson 89, docs/plan.md §4.3).
  */
 
+import { basename } from "node:path";
+
 export interface ServiceTarget {
   /** The command that runs Eva, such as [bun, src/main.ts] before P8 or [eva] after it. */
   readonly executable: readonly string[];
   readonly home: string;
+}
+
+/**
+ * The service's name: `eva` for the default home, and `eva-<folder>` for any other, so a second
+ * instance on the same machine (plan D11) never replaces the first one's service.
+ */
+export function serviceName(home: string, defaultHome: string): string {
+  if (home === defaultHome) return "eva";
+  const folder = basename(home)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `eva-${folder === "" ? "instance" : folder}`;
 }
 
 /**
@@ -49,7 +64,17 @@ WantedBy=default.target
 `;
 }
 
-export function windowsTaskCommand(target: ServiceTarget): string[] {
+export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[] {
   const command = [...target.executable.map((part) => `"${part}"`), "--home", `"${target.home}"`].join(" ");
-  return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", "Eva", "/TR", command];
+  return [
+    "schtasks",
+    "/Create",
+    "/F",
+    "/SC",
+    "ONLOGON",
+    "/TN",
+    name === "eva" ? "Eva" : `Eva-${name.slice("eva-".length)}`,
+    "/TR",
+    command,
+  ];
 }

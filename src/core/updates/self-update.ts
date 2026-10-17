@@ -172,8 +172,15 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
 function asideName(executablePath: string): string {
   const old = `${executablePath}.old`;
   const folder = dirname(executablePath);
-  for (const name of readdirSync(folder)) {
-    if (!name.startsWith(`${basename(old)}-`)) continue;
+  const leftover = `${basename(old)}-`;
+  let names: string[] = [];
+  try {
+    names = readdirSync(folder);
+  } catch {
+    // Removing the leftovers is a courtesy: the update goes on without it.
+  }
+  // Only the names that this function gives: never a file of the person's own.
+  for (const name of names.filter((each) => each.startsWith(leftover) && /^\d+$/.test(each.slice(leftover.length)))) {
     try {
       rmSync(join(folder, name), { force: true });
     } catch {

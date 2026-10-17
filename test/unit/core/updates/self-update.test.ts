@@ -165,11 +165,17 @@ describe("updateExecutable", () => {
     mkdirSync(`${executable}.old`);
     writeFileSync(join(`${executable}.old`, "busy"), "");
     writeFileSync(`${executable}.old-1`, "a leftover that nothing holds any more");
+    mkdirSync(`${executable}.old-2`);
+    writeFileSync(join(`${executable}.old-2`, "busy"), "a leftover that still runs");
+    writeFileSync(`${executable}.old-notes`, "a file of the person's own");
     expect(await updateExecutable(inputs())).toEqual({ status: "updated", from: "0.1.0", to: "0.2.0" });
     expect(readFileSync(executable, "utf8")).toBe("new build");
-    const leftovers = readdirSync(folder).filter((name) => name.startsWith("eva.old-"));
-    expect(leftovers).toHaveLength(1);
-    expect(readFileSync(join(folder, leftovers[0] ?? ""), "utf8")).toBe("old build");
+    expect(existsSync(`${executable}.old-1`)).toBe(false);
+    expect(existsSync(`${executable}.old-2`)).toBe(true);
+    expect(existsSync(`${executable}.old-notes`)).toBe(true);
+    const moved = readdirSync(folder).filter((name) => /^eva\.old-\d{4,}$/.test(name));
+    expect(moved).toHaveLength(1);
+    expect(readFileSync(join(folder, moved[0] ?? ""), "utf8")).toBe("old build");
   });
 
   test("the same version is up to date and changes nothing", async () => {

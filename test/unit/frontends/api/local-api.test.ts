@@ -487,6 +487,42 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(404);
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
   });
+
+  test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
+    await call("/api/schedules", { method: "POST", body: entry });
+    await eva.schedules?.tick();
+    const cards = await json<{ scheduleId: string; fields: Record<string, string> }[]>(
+      await call("/api/schedule-cards"),
+    );
+    expect(cards.map((card) => card.scheduleId)).toEqual(["morning"]);
+    const fields = cards[0]?.fields ?? {};
+    const stale = await call("/api/schedule-cards/morning", {
+      method: "POST",
+      body: { fields: { ...fields, at: "06:00" } },
+    });
+    expect(stale.status).toBe(409);
+    expect((await call("/api/schedule-cards/morning", { method: "POST", body: { fields } })).status).toBe(204);
+    expect(await json(await call("/api/schedule-cards"))).toEqual([]);
+    expect((await call("/api/schedule-cards/morning", { method: "POST", body: {} })).status).toBe(400);
+  });
+
+  test("the WebSocket carries setup cards, and a card that only reached a socket still waits", async () => {
+    const events: { kind: string }[] = [];
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "07:30", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    while (!events.some((event) => event.kind === "schedule_card")) await Bun.sleep(10);
+    socket.close();
+    expect(eva.schedules?.waitingCards()).toHaveLength(1);
+  });
 });
 
 describe("without a vault", () => {

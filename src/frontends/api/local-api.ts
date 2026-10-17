@@ -33,7 +33,7 @@ export interface LocalApi {
 }
 
 interface SocketData {
-  unsubscribe: (() => void) | null;
+  unsubscribe: (() => void)[];
 }
 
 const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("default");
@@ -55,6 +55,7 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
+const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -93,7 +94,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
-        return bunServer.upgrade(request, { data: { unsubscribe: null } })
+        return bunServer.upgrade(request, { data: { unsubscribe: [] } })
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
@@ -105,15 +106,28 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     },
     websocket: {
       open(socket: ServerWebSocket<SocketData>) {
-        socket.data.unsubscribe = options.eva.sessions.subscribe((event: SessionEvent) => {
-          socket.send(JSON.stringify(event));
-        });
+        socket.data.unsubscribe.push(
+          options.eva.sessions.subscribe((event: SessionEvent) => {
+            socket.send(JSON.stringify(event));
+          }),
+        );
+        const schedules = options.eva.schedules;
+        if (schedules !== null) {
+          socket.data.unsubscribe.push(
+            schedules.subscribe((event) => {
+              if (event.kind === "schedule_card") socket.send(JSON.stringify(event));
+              // A socket is no proof that anyone saw the card: a sleeping phone keeps a dead
+              // socket open. The card counts when the person confirms it over HTTP.
+              return false;
+            }),
+          );
+        }
       },
       message() {
         // Commands go over HTTP; the socket only carries events to the client.
       },
       close(socket: ServerWebSocket<SocketData>) {
-        socket.data.unsubscribe?.();
+        for (const unsubscribe of socket.data.unsubscribe) unsubscribe();
       },
     },
   });
@@ -313,6 +327,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     return json(await eva.runCheck(name));
   }
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
+  if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
@@ -338,6 +353,24 @@ async function schedulesRoute(
     return schedules.remove(decodeURIComponent(scheduleId))
       ? new Response(null, { status: 204 })
       : json({ error: "No such schedule." }, 404);
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The setup cards that wait for the person (lesson 66): list them, or confirm one that the person saw. */
+async function scheduleCardsRoute(
+  request: Request,
+  method: string,
+  scheduleId: string | undefined,
+  eva: Eva,
+): Promise<Response> {
+  const schedules = eva.schedules;
+  if (method === "GET" && scheduleId === undefined) return json(schedules?.waitingCards() ?? []);
+  if (method === "POST" && scheduleId !== undefined) {
+    const { fields } = cardSeenSchema.parse(await request.json());
+    return schedules?.confirmCard(decodeURIComponent(scheduleId), fields) === true
+      ? new Response(null, { status: 204 })
+      : json({ error: "This card changed or no longer waits. Look at the current card." }, 409);
   }
   return json({ error: "Not found." }, 404);
 }

@@ -524,6 +524,17 @@ describe("web routes", () => {
     expect((await call("/api/secrets/githubToken", { method: "PUT", body: { value: " " } })).status).toBe(400);
   });
 
+  test("an engine check may take longer than Bun's 10 s idle timeout", async () => {
+    // A cold start of a real engine often takes more than 10 s.
+    turnScript = async function* (request) {
+      await Bun.sleep(14_000);
+      yield* FakeEngine.answer(request, "OK");
+    };
+    // With no body, Bun counts the wait as idle: the case that closed the socket.
+    const result = await json<{ ok: boolean }>(await call("/api/checks/claude-code", { method: "POST" }));
+    expect(result.ok).toBe(true);
+  }, 30_000);
+
   test("a check runs by name, and an unknown check is a 404", async () => {
     const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
     expect(result.ok).toBe(true);

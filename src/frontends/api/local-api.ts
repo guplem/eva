@@ -97,6 +97,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
+      // Bun closes a request after 10 idle seconds, and an engine check waits for a whole real
+      // turn. The check ends itself at its own deadline.
+      if (url.pathname.startsWith("/api/checks/")) bunServer.timeout(request, 0);
       try {
         return await route(request, url, options.eva, hasValidToken(request, options.token));
       } catch (error) {

@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Eva } from "./core/eva.ts";
@@ -52,7 +52,15 @@ import {
   type ClientOptions,
 } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
-import { restartMethod, serviceName, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import {
+  restartMethod,
+  serviceCommand,
+  serviceName,
+  servicePath,
+  systemdUnit,
+  windowsRunTaskCommand,
+  windowsTaskCommand,
+} from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
 import { publishWithTailscale, readTailscale } from "./core/instance/machine-defaults.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
@@ -101,23 +109,11 @@ async function main(argv: readonly string[]): Promise<number> {
   );
 
   switch (command.command) {
-    case "doctor": {
-      const healthy = await runDoctor({
-        runner: systemProcessRunner,
-        environment: childEnvironment(),
-        write: writeLine,
-        standalone: isStandalone(),
-      });
-      return healthy ? exitCodes.clean : exitCodes.crash;
-    }
+    case "doctor":
+      return (await doctor(paths)) ? exitCodes.clean : exitCodes.crash;
     case "setup": {
       // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
-      await runDoctor({
-        runner: systemProcessRunner,
-        environment: childEnvironment(),
-        write: writeLine,
-        standalone: isStandalone(),
-      });
+      await doctor(paths);
       const setupOptions = {
         paths,
         write: writeLine,
@@ -172,6 +168,18 @@ async function main(argv: readonly string[]): Promise<number> {
     case "run":
       return serve(paths);
   }
+}
+
+function doctor(paths: HomePaths): Promise<boolean> {
+  return runDoctor({
+    runner: systemProcessRunner,
+    environment: childEnvironment(),
+    write: writeLine,
+    standalone: isStandalone(),
+    platform: process.platform,
+    userName: userInfo().username,
+    defaultEngine: loadSettings(paths).config.engines.default,
+  });
 }
 
 async function runClientCommand(
@@ -298,6 +306,7 @@ async function serve(paths: HomePaths): Promise<number> {
       restart?.();
     },
     remoteAccess: () => remoteAccess,
+    defaultHome: defaultHomeFolder(),
   });
   // Until the tailnet turns HTTPS on, Eva tries again, so the person never needs a restart.
   const publishRetry = setInterval(() => {
@@ -423,19 +432,28 @@ function pairingCodePath(paths: HomePaths): string {
 }
 
 async function installService(paths: HomePaths): Promise<number> {
-  const executable = [process.execPath, join(import.meta.dir, "main.ts")];
-  const name = serviceName(
-    paths.root,
-    resolveHomeFolder({ environment: {}, platform: process.platform, userHome: homedir() }),
-  );
+  const executable = serviceCommand({
+    standalone: isStandalone(),
+    execPath: process.execPath,
+    mainScript: join(import.meta.dir, "main.ts"),
+  });
+  const name = serviceName(paths.root, defaultHomeFolder());
+  const runStep = (step: readonly string[]): ReturnType<typeof systemProcessRunner.run> =>
+    systemProcessRunner.run(step, { cwd: paths.root, environment: childEnvironment(), timeoutMs: 30_000 });
   if (process.platform === "win32") {
-    const result = await systemProcessRunner.run(windowsTaskCommand({ executable, home: paths.root }, name), {
-      cwd: paths.root,
-      environment: childEnvironment(),
-      timeoutMs: 30_000,
-    });
-    writeLine(result.exitCode === 0 ? "Eva now starts when you log in." : `schtasks failed: ${result.stderr.trim()}`);
-    return result.exitCode === 0 ? exitCodes.clean : exitCodes.crash;
+    const created = await runStep(windowsTaskCommand({ executable, home: paths.root }, name));
+    if (created.exitCode !== 0) {
+      writeLine(`schtasks failed: ${created.stderr.trim()}`);
+      writeLine("If it says that access is denied, open the terminal with Run as administrator, then try again.");
+      return exitCodes.crash;
+    }
+    const started = await runStep(windowsRunTaskCommand(name));
+    writeLine(
+      started.exitCode === 0
+        ? "Eva now starts when you log in, and she runs now."
+        : `Eva now starts when you log in. She did not start now: ${started.stderr.trim()}`,
+    );
+    return exitCodes.clean;
   }
   const unitPath = join(homedir(), ".config", "systemd", "user", `${name}.service`);
   mkdirSync(dirname(unitPath), { recursive: true });
@@ -447,18 +465,28 @@ async function installService(paths: HomePaths): Promise<number> {
     ["systemctl", "--user", "daemon-reload"],
     ["systemctl", "--user", "enable", "--now", `${name}.service`],
   ]) {
-    const result = await systemProcessRunner.run(step, {
-      cwd: paths.root,
-      environment: childEnvironment(),
-      timeoutMs: 30_000,
-    });
+    const result = await runStep(step);
     if (result.exitCode !== 0) {
       writeLine(`${step.join(" ")} failed: ${result.stderr.trim()}`);
       return exitCodes.crash;
     }
   }
-  writeLine(`Installed ${unitPath}. Run \`loginctl enable-linger\` once so Eva runs while you are logged out.`);
+  writeLine(`Installed ${unitPath}. Eva runs now.`);
+  // Linger keeps the user's services running after logout (lesson 85); Eva works without it.
+  const linger = await runStep(["loginctl", "enable-linger"]);
+  writeLine(
+    linger.exitCode === 0
+      ? "Eva keeps running when you log out."
+      : `loginctl enable-linger failed: ${linger.stderr.trim()}. Eva stops when you log out until an administrator runs \`sudo loginctl enable-linger ${userInfo().username}\`.`,
+  );
   return exitCodes.clean;
+}
+
+/** The home folder that Eva uses when no `--home` or `EVA_HOME` names one. */
+function defaultHomeFolder(): string {
+  // Only EVA_HOME is left out: APPDATA and XDG_CONFIG_HOME still move the default folder.
+  const environment = { APPDATA: process.env["APPDATA"], XDG_CONFIG_HOME: process.env["XDG_CONFIG_HOME"] };
+  return resolveHomeFolder({ environment, platform: process.platform, userHome: homedir() });
 }
 
 async function withPrompt(work: (ask: (question: string) => Promise<string>) => Promise<void>): Promise<void> {

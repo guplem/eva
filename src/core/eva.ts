@@ -4,7 +4,7 @@
  */
 import { chmodSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
@@ -66,6 +66,11 @@ export interface EvaOptions {
   readonly restartForUpdate?: () => void;
   /** The web UI's address for the phone through Tailscale, now. Null: Tailscale does not run here. */
   readonly remoteAccess?: () => RemoteAccess | null;
+  /**
+   * The platform's default home folder. An instance with another home is an extra instance on
+   * the same OS user, so its engines get their own config folders (plan §4.4, lesson 111).
+   */
+  readonly defaultHome?: string;
 }
 
 export interface ProjectWorkInput {
@@ -653,8 +658,10 @@ export class Eva {
     return folder;
   }
 
-  /** The engine's environment: the allowlist, the Claude token, and an own config folder when asked (plan §4.4). */
+  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance (plan §4.4). */
   private engineEnvironment(): Record<string, string> {
+    const defaultHome = this.options.defaultHome;
+    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
     const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
@@ -664,9 +671,11 @@ export class Eva {
     }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (this.options.config.engines.claudeCode.ownConfigFolder) {
+    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
       extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
     }
+    // pi's folder is left out on purpose: pi has no documented variable for it yet.
+    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
 }

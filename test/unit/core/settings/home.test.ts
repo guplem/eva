@@ -6,6 +6,7 @@ import {
   createHomeFolders,
   defaultConfig,
   homePaths,
+  instanceEngineFolders,
   loadConfig,
   loadSecrets,
   resolveHomeFolder,
@@ -20,6 +21,25 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(home, { recursive: true, force: true });
+});
+
+describe("instanceEngineFolders (lesson 111)", () => {
+  test("an extra instance keeps the Claude, pi and gh logins in its own engines folder", () => {
+    const paths = homePaths(join(home, "eva-partner"));
+    expect(instanceEngineFolders(paths, join(home, "eva"))).toEqual({
+      CLAUDE_CONFIG_DIR: join(home, "eva-partner", "engines", "claude"),
+      PI_CODING_AGENT_DIR: join(home, "eva-partner", "engines", "pi-agent"),
+      GH_CONFIG_DIR: join(home, "eva-partner", "engines", "gh"),
+    });
+  });
+
+  test("the instance in the default home uses the OS user's own folders, even with a trailing separator", () => {
+    expect(instanceEngineFolders(homePaths(join(home, "eva")), join(home, "eva") + "/")).toEqual({});
+  });
+
+  test("without a known default home, the instance counts as the first one", () => {
+    expect(instanceEngineFolders(homePaths(join(home, "eva")), undefined)).toEqual({});
+  });
 });
 
 describe("resolveHomeFolder", () => {

@@ -4,7 +4,7 @@
  */
 import { chmodSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, join } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
@@ -18,7 +18,7 @@ import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-cente
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
+import { instanceEngineFolders, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
 import { applySettingsChange, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
@@ -796,9 +796,10 @@ export class Eva {
 
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
-    const defaultHome = this.options.defaultHome;
-    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
-    const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
+    const extra: Record<string, string> = {
+      ...instanceEngineFolders(this.options.paths, this.options.defaultHome),
+      EVA_HOME: this.options.paths.root,
+    };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
       // The agent finds `eva` first, so `eva work` reaches this instance.
@@ -807,11 +808,9 @@ export class Eva {
     }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
+    if (this.options.config.engines.claudeCode.ownConfigFolder) {
       extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
     }
-    // pi's folder is left out on purpose: pi has no documented variable for it yet.
-    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
 }

@@ -127,11 +127,12 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
   });
 
-  test("an extra instance on the same OS user gets its own Claude and gh config folders (lesson 111)", async () => {
+  test("an extra instance on the same OS user gets its own Claude, pi and gh config folders (lesson 111)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBe(join(home, "engines", "pi-agent"));
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
   });
 
@@ -140,6 +141,7 @@ describe("Eva", () => {
     const instance = start(engine, {}, { defaultHome: join(home, ".") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBeUndefined();
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBeUndefined();
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBeUndefined();
   });
 

@@ -3,7 +3,7 @@
  * and logs.
  */
 import { chmodSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -59,6 +59,22 @@ export function homePaths(root: string): HomePaths {
     devices: join(stateFolder, "devices.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
+  };
+}
+
+/**
+ * The engine login folders of an extra instance, as environment variables. An instance is
+ * extra when its home is not the platform default. Without its own folders, it would use
+ * the first person's logins and subscription (lesson 111). The first instance gets none, so
+ * Project mode matches a session that the person opens by hand.
+ */
+export function instanceEngineFolders(paths: HomePaths, defaultHome: string | undefined): Record<string, string> {
+  if (defaultHome === undefined || resolve(defaultHome) === resolve(paths.root)) return {};
+  return {
+    CLAUDE_CONFIG_DIR: join(paths.enginesFolder, "claude"),
+    // Not `engines/pi`: pi reads `<agent folder>/prompts/` as templates, and Eva writes her prompts there.
+    PI_CODING_AGENT_DIR: join(paths.enginesFolder, "pi-agent"),
+    GH_CONFIG_DIR: join(paths.enginesFolder, "gh"),
   };
 }
 

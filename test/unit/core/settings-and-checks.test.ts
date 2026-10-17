@@ -54,6 +54,67 @@ describe("clones of a project", () => {
   });
 });
 
+describe("repository setup", () => {
+  test("each repository of a project gets a report; one that is not on GitHub gets a reason", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-04-01-0900-other-app/AGENTS.md",
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\n---\n`,
+    );
+    const asked: string[] = [];
+    const withGithub = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubGet: (path) => {
+        asked.push(path);
+        const slug = path.split("/").slice(1, 3).join("/");
+        if (path === `repos/${slug}`) {
+          return Promise.resolve({ status: 200, body: JSON.stringify({ default_branch: "main", private: false }) });
+        }
+        return Promise.resolve({ status: 404, body: "{}" });
+      },
+    });
+    const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
+    withGithub.stop();
+    expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
+    expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
+    expect(reports[1]?.problem).toBe("Only a repository on GitHub has a setup report.");
+    expect(asked).toContain("repos/guplem/eva");
+    expect(String(await withGithub.repositorySetup("missing").catch((error: unknown) => error))).toContain(
+      "No project",
+    );
+  });
+
+  test("when GitHub cannot be read, each report says why", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-04-01-0900-other-app/AGENTS.md",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+    );
+    const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
+    const withoutGh = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: failing,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    const reports = await withoutGh.repositorySetup("2025-04-01-0900-other-app");
+    withoutGh.stop();
+    expect(reports[0]?.problem).toContain("gh auth login");
+    expect(reports[0]?.sections).toEqual([]);
+  });
+});
+
 describe("settings", () => {
   test("the public settings hold the config and only whether each secret is set", () => {
     const settings = eva.publicSettings();

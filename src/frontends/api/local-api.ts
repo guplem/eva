@@ -274,6 +274,15 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     });
     return json({ sessionId: session.id, clone: session.clone }, 202);
   }
+  if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "setup"
+  ) {
+    return json(await eva.repositorySetup(decodeURIComponent(parts[2])));
+  }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);
     if (method === "GET") return json(await eva.clones(projectId));

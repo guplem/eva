@@ -316,7 +316,7 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
-            isIdle: () => !this.sessions.list().some((session) => this.sessions.isBusy(session.id)),
+            isIdle: () => !this.workRuns(),
             restart: options.restartForUpdate ?? ((): void => undefined),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
@@ -448,13 +448,23 @@ export class Eva {
     return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
-  /** Resolves when no chat runs a turn, including its save after the turn. */
+  /** Resolves when no chat runs a turn, including its save after the turn, and no schedule fires. */
   async idle(timeoutMs = 60_000): Promise<void> {
     const started = Date.now();
-    while (this.sessions.list().some((session) => this.sessions.isBusy(session.id))) {
+    while (this.workRuns()) {
       if (Date.now() - started > timeoutMs) return;
       await Bun.sleep(20);
     }
+  }
+
+  /**
+   * True while a chat runs a turn or holds a gathered message, or a schedule fires. A firing
+   * schedule has a moment between its new chat and its first message (lesson 92).
+   */
+  private workRuns(): boolean {
+    return (
+      this.schedules?.isFiring() === true || this.sessions.list().some((session) => this.sessions.isActive(session.id))
+    );
   }
 
   stop(): void {

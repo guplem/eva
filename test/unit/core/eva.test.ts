@@ -512,6 +512,33 @@ describe("Eva", () => {
     expect(checks).toBe(1);
   });
 
+  test("an update waits for a message that is still gathering, then installs (lesson 92)", async () => {
+    const restarts: string[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 50,
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    const session = eva.createAssistantSession({ source: "schedule", model: "default" });
+    const turn = eva.sessions.send(session.id, "Plan my day.");
+    expect((await eva.updateNow())?.phase).toBe("waiting_for_idle");
+    await turn;
+    await eva.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+  });
+
   test("voice notes stay off until a whisper model is configured", () => {
     expect(start(new FakeEngine()).transcribe).toBeNull();
     const voice = { ...defaultConfig.voice, modelPath: "/models/ggml-base.bin" };

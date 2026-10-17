@@ -86,7 +86,7 @@ Your notebook (the vault) is a private GitHub repository of notes. Choose one:
    Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator** and run the command again.
 
    If Eva crashes, she starts again within a minute. On the hub, she then tells you in Telegram. She does not start again after you stop her, or when her settings are wrong.
-   If you installed the service before this behavior existed, run the command again once. The change takes effect at your next logon.
+   On Windows, if you installed the service before this behavior existed, run the command again once. The change takes effect at your next logon.
 
 5. Pair your Telegram chat, so that Eva answers only you. Run `bun run eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
 

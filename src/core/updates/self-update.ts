@@ -165,9 +165,9 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
 }
 
 /**
- * Where the old executable goes. On Windows, Eva's supervisor keeps running the file from
- * before the last update, and Windows cannot remove a running file. That file then stays,
- * and the old executable takes a new name. Each update removes the leftovers it can.
+ * Where the old executable goes. Windows cannot remove a running file, and Eva's supervisor
+ * still runs the file from before the last update. So `.old` can stay, and the old executable
+ * then gets a unique name. Each update removes the leftovers that it can.
  */
 function asideName(executablePath: string): string {
   const old = `${executablePath}.old`;

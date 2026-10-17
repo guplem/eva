@@ -42,8 +42,8 @@ export const systemLongProcessStarter: LongProcessStarter = (command, options) =
     exited,
     stop: async (timeoutMs) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
-      // Windows has no gentle signal for another process: a Ctrl+C in the console already
-      // reaches the child, so the supervisor only waits, then stops the whole tree.
+      // Windows has no gentle signal for another process. A Ctrl+C in the console already
+      // reaches the child, so here the supervisor only waits, then stops the whole tree.
       if (process.platform !== "win32") child.kill("SIGTERM");
       const ended = await Promise.race([exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);
       if (ended) return;

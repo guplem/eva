@@ -52,7 +52,7 @@ Commands:
       --engine <claude-code|pi>
   projects [words]  Search the projects
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
-  service install   Start Eva by itself (systemd on Linux, a logon task on Windows)
+  service install   Start Eva by herself, and again after a crash (systemd on Linux, a logon task on Windows)
   supervise         Run Eva, and start her again after a crash (the Windows logon task runs this)
   update            Install the latest version of Eva, then restart her
       --check                            only look for a newer version

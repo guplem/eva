@@ -156,7 +156,7 @@ src/
 
 - **Home folder:** `--home <path>` or `EVA_HOME`. Default: `$XDG_CONFIG_HOME/eva` (Linux, else `~/.config/eva`), `%APPDATA%\eva` (Windows).
 - **Layout:**
-  - `config.json`: this machine's settings, checked against a schema: the vault folder, the role, the port, the project roots, program paths, Telegram, remote host names
+  - `config.json`: this machine's settings, checked against a schema: the vault folder, the machine name, the port, the project roots, program paths, Telegram, remote host names, `remoteAccess.tailscaleServe`
   - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
   - `secrets.json`: tokens, readable by the OS user only
   - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`
@@ -313,6 +313,7 @@ In this order, after P8: the engine-neutral background task system for more engi
 | `eva status`                                                                  | Engines, vault sync, sessions, versions                          |
 | `eva chat [--project <id> [--clone <n>]] [--engine <name>] [--model <alias>]` | A conversation in the terminal, in either mode                   |
 | `eva projects [query]`                                                        | Search projects                                                  |
+| `eva work <project> <request>`                                                | Give work to a project; a free clone runs it in a Project chat   |
 | `eva service install`                                                         | systemd user service on Linux (lesson 85), logon task on Windows |
 | `eva update [--check]`                                                        | Install the latest version and restart; `--check` only looks     |
 | `eva sync`                                                                    | Sync the vault now                                               |
@@ -392,7 +393,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **Before P8:** clone `guplem/eva`, run `bun install`, then `bun run eva setup` and `bun run eva`.
 - **From P8:** download one executable for Windows or Linux from GitHub Releases.
 - **The partner:** a Windows laptop, an Android phone, a Claude subscription, and her own instance on the owner's Linux server. Her own home folder, port, vault and bot; her own `claude` login or setup token in her instance's engine folder.
-- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its config; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
+- **Tailscale:** her phone and laptop join the owner's tailnet. Each instance accepts only the Tailscale identities in its settings; with none listed, only the account that owns the machine in Tailscale. At start, when Tailscale runs, Eva publishes her web UI with `tailscale serve` (HTTPS port 443 for the default port 7420, her own port otherwise) and shows the address in `eva status` and Settings (`remoteAccess.tailscaleServe`, default on).
 - **Vault creation:** a GitHub login by device flow, then a private vault created from the template repository.
 - **Google:** she logs in with the owner's OAuth client.
 - **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`, then the network: Tailscale sign-in and HTTPS, each with a link and a wait, ending with the address that opens Eva on every device. The Assistant answers "what is your address?" with `eva link`.

@@ -90,21 +90,29 @@ bun install
 bun run eva
 ```
 
-| Command                               | What it does                                                                                                   |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `bun run eva setup`                   | Asks for each setting (vault folder, tokens) and writes the config.                                            |
-| `bun run eva doctor`                  | Checks the tools that each feature needs, and says how to install each.                                        |
-| `bun run eva`                         | Runs Eva in the foreground: the local web page, Telegram, and schedules.                                       |
-| `bun run eva chat`                    | Talks to a running Eva in this terminal.                                                                       |
-| `bun run eva service install`         | Starts Eva by itself when you log in.                                                                          |
-| `bun run eva setup --non-interactive` | Reads each answer from an `EVA_*` variable instead, for scripts. `src/frontends/cli/setup.ts` lists the names. |
+| Command                                                 | What it does                                                                                                   |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bun run eva setup`                                     | Asks for each setting (vault folder, tokens) and writes the config.                                            |
+| `bun run eva doctor`                                    | Checks the tools that each feature needs, and says how to install each.                                        |
+| `bun run eva`                                           | Runs Eva in the foreground: the local web page, Telegram, and schedules.                                       |
+| `bun run eva chat`                                      | Talks to a running Eva in this terminal.                                                                       |
+| `bun run eva service install`                           | Starts Eva by itself when you log in.                                                                          |
+| `bun run eva setup --non-interactive`                   | Reads each answer from an `EVA_*` variable instead, for scripts. `src/frontends/cli/setup.ts` lists the names. |
+| `bun run eva status`                                    | Shows the engines, the vault sync and the sessions.                                                            |
+| `bun run eva projects [words]`                          | Searches the projects.                                                                                         |
+| `bun run eva work <project> <request>`                  | Gives work to a project. A Project chat in a free clone runs it.                                               |
+| `bun run eva update [--check]`                          | Installs the latest version, then restarts. `--check` only looks.                                              |
+| `bun run eva sync`                                      | Brings the vault's remote changes in, then saves and pushes this machine's changes.                            |
+| `bun run eva hub`                                       | Makes this machine the hub, which runs Telegram and the schedules.                                             |
+| `bun run eva link`                                      | Shows the address that opens Eva on your phone and other computers.                                            |
+| `bun run eva settings [get <key> \| set <key> <value>]` | Shows or changes a setting.                                                                                    |
 
 ## Settings
 
 Eva keeps two kinds of settings:
 
 - **Your settings live in your vault,** in `.eva/settings.json`, so every machine with the vault uses the same ones: the time zone, updates, the vault fetch, the default engine and model, trust, Google, and the voice language.
-- **This machine's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows): `config.json` holds the vault folder, the port, the role and program paths, and `secrets.json` holds the tokens. Tokens never go in the vault.
+- **This machine's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows): `config.json` holds the vault folder, the machine name, the port, the project roots, the program paths, the Telegram chat, the remote host names, `remoteAccess.tailscaleServe`, and `secrets.json` holds the tokens. Tokens never go in the vault.
 
 An older `config.json` moves your settings to the vault by itself at the next start. Change a setting on the web Settings page, or with a command, while Eva runs or not:
 

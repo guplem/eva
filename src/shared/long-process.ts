@@ -30,9 +30,9 @@ export const systemLongProcessStarter: LongProcessStarter = (command, options) =
       env: { ...options.environment },
       stdin: "ignore",
       // The child writes to the supervisor's own output; a pipe that nobody reads would block it.
+      // No windowsHide: it can give the child a console of its own, which a Ctrl+C never reaches.
       stdout: "inherit",
       stderr: "inherit",
-      windowsHide: true,
     });
   } catch (error) {
     throw new EvaError("process_failed", `Could not start ${command[0] ?? "a process"}.`, { cause: error });

@@ -75,7 +75,9 @@ Three research agents (two mid-tier, one upper-tier) agreed on every gap. None n
   redactor first, then saves `secrets.json`. The value never comes back. The running Eva keeps its
   copy for the checks, so Test checks the saved value at once. The git and engine environments and
   the Telegram bot read the secrets at start, so the answer says "Restart Eva to use it". A live
-  pick-up needs a refactor of the preparers and is not worth it now.
+  pick-up needs a refactor of the preparers and is not worth it now. Review round 1 changed one
+  part: only a token login may save or remove a token. A token decides whose account Eva uses, so
+  a lost phone with a device login must not swap it (`setting_forbidden`, as G0).
 - **G2. Vault repository.** Show the remote read-only (redacted), the folder, the existing Test
   (a push dry run, lesson 98), the fetch interval, **Sync now**, and the sync state. Changing the
   remote or cloning another vault stays in `eva setup`: a vault switch under a running sync risks

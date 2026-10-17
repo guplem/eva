@@ -10,6 +10,7 @@ describe("assistantBasePrompt", () => {
       "## Acting in the world",
       "## Projects",
       "## Sending files",
+      "## Your own state",
     ]) {
       expect(assistantBasePrompt).toContain(section);
     }

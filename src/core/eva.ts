@@ -200,11 +200,11 @@ export class Eva {
     const vaultPath = options.config.vaultPath;
     // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
     const githubToken = options.secrets.githubToken;
-    this.gitEnvironment = buildChildEnvironment(
-      options.processEnvironment,
-      baseEnvironmentAllowlist,
-      githubToken === undefined ? {} : { [githubTokenVariable]: githubToken },
-    );
+    this.gitEnvironment = buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist, {
+      // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
+      ...instanceEngineFolders(options.paths, options.defaultHome),
+      ...(githubToken === undefined ? {} : { [githubTokenVariable]: githubToken }),
+    });
     this.vaultSync =
       vaultPath === null
         ? null

@@ -136,6 +136,28 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
   });
 
+  test("Eva's own gh calls in an extra instance use its gh folder, not the first person's login", async () => {
+    const ghEnvironments: Record<string, string>[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command, options) => {
+          if (command[0] === "gh") ghEnvironments.push({ ...options.environment });
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      defaultHome: join(home, "..", "default-eva-home"),
+    });
+    await eva.runCheck("github");
+    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+  });
+
   test("the instance in the default home uses the OS user's own engine config folders", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {}, { defaultHome: join(home, ".") });

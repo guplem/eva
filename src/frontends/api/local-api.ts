@@ -4,11 +4,15 @@
  * `tailscale serve`. Every request passes the guards of §12 first.
  */
 import { timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import type { CheckName } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
 import webPage from "../web/index.html";
+import icon192 from "../web/icons/icon-192.png" with { type: "file" };
+import icon512 from "../web/icons/icon-512.png" with { type: "file" };
+import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
 
@@ -61,8 +65,14 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
-    // The page and its bundled scripts hold no data, so they load before the login.
-    routes: { "/": webPage },
+    // The page, its bundled files and the icons hold no data, so they load before the login. The
+    // bundle gives the manifest a hashed path but leaves its icon paths as written, so those get fixed routes.
+    routes: {
+      "/": webPage,
+      "/icon.svg": staticFile(iconSvg, "image/svg+xml"),
+      "/icon-192.png": staticFile(icon192, "image/png"),
+      "/icon-512.png": staticFile(icon512, "image/png"),
+    },
     development: false,
     fetch: async (request, bunServer) => {
       const siteRefusal = guardSite(request, options, allowedHostNames);
@@ -158,6 +168,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
 
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
   if (method === "GET" && url.pathname === "/api/sessions") return json(eva.sessions.list());
+  if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
     const text = url.searchParams.get("text");
@@ -338,4 +349,9 @@ function safeHost(origin: string): string | null {
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
+}
+
+/** A route value must be a Response: the single executable refuses a `Bun.file` there. */
+function staticFile(path: string, contentType: string): Response {
+  return new Response(readFileSync(path), { headers: { "content-type": contentType } });
 }

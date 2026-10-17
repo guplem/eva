@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
 import { Conversation, rootChats } from "./Conversation.tsx";
+import { useShowError } from "./error-toast.tsx";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -28,17 +29,31 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   const [clones, setClones] = useState<CloneDetails[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const showError = useShowError();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      void api.projects(search, status).then(setProjects);
+      api.projects(search, status).then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, status]);
+  }, [search, status, showError]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);
-    setClones(await api.clones(project.id));
+    try {
+      setClones(await api.clones(project.id));
+    } catch (caught) {
+      showError(caught);
+    }
+  };
+
+  const startChat = async (current: Selection): Promise<void> => {
+    try {
+      await api.newProjectChat(current.project.id, current.clone.name, "default");
+      await onChanged();
+    } catch (caught) {
+      showError(caught);
+    }
   };
 
   const newClone = async (project: Project): Promise<void> => {
@@ -114,6 +129,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           </div>
         ))}
       </nav>
+      {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
         {selection === null ? (
           <div className="empty">Pick a project and one of its clones.</div>
@@ -128,12 +144,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
             </div>
             {chat === undefined ? (
               <div className="empty">
-                <button
-                  className="primary"
-                  onClick={() =>
-                    void api.newProjectChat(selection.project.id, selection.clone.name, "default").then(onChanged)
-                  }
-                >
+                <button className="primary" onClick={() => void startChat(selection)}>
                   Start a chat in this clone
                 </button>
               </div>

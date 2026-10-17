@@ -73,19 +73,38 @@ textarea {
   padding: 8px 10px;
 }
 
+/* 100dvh follows the visible height when the phone browser shows or hides its address bar. */
 .app {
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  height: 100dvh;
 }
 
+.app > .layout,
+.app > .main {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The safe-area insets keep the content clear of the notch when Eva runs from the home screen. */
 .topbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px
+    max(16px, env(safe-area-inset-left));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+.connection-banner {
+  padding: 4px 16px;
+  font-size: 13px;
+  text-align: center;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
 }
 
 .mode-switch {
@@ -114,6 +133,7 @@ textarea {
   display: grid;
   grid-template-columns: 280px 1fr auto;
   min-height: 0;
+  position: relative;
 }
 
 .sidebar {
@@ -188,10 +208,11 @@ textarea {
 .branches {
   display: flex;
   gap: 16px;
-  padding: 16px 20px;
-  align-items: flex-start;
-  overflow-x: auto;
+  padding: 16px 20px 0;
+  align-items: stretch;
+  overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .branch {
@@ -247,9 +268,15 @@ textarea {
   color: var(--text-muted);
 }
 
+/* The composer stays at the bottom of the conversation, also while the messages scroll. */
 .composer {
   display: flex;
   gap: 8px;
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  padding: 8px 0 max(16px, env(safe-area-inset-bottom));
+  background: var(--background);
 }
 
 .composer textarea {
@@ -293,6 +320,7 @@ textarea {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  z-index: 20;
 }
 
 .dialog {
@@ -356,7 +384,30 @@ textarea {
   color: var(--danger);
 }
 
-.menu-button {
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(480px, calc(100vw - 32px));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--danger);
+  background: var(--surface);
+  color: var(--danger);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.toast span {
+  flex: 1;
+}
+
+.menu-button,
+.sidebar-backdrop {
   display: none;
 }
 
@@ -371,9 +422,27 @@ textarea {
 
   .sidebar.open {
     display: flex;
-    position: fixed;
-    inset: 52px 0 0 0;
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(320px, 85vw);
     z-index: 10;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    border: none;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  /* A finger needs a target of 44 px or more. */
+  button,
+  select,
+  input {
+    min-height: 44px;
   }
 
   .tasks {

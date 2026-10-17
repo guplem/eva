@@ -79,6 +79,14 @@ export interface SessionManagerOptions {
   readonly turnTimeoutMs: number;
 }
 
+/** An approval that waits for an answer. The summary is already redacted. */
+export interface PendingApproval {
+  readonly requestId: string;
+  readonly sessionId: string;
+  readonly toolName: string;
+  readonly summary: string;
+}
+
 type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
@@ -103,7 +111,10 @@ export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
-  private readonly approvals = new Map<string, { sessionId: string; resolve: (answer: PrepareAnswer) => void }>();
+  private readonly approvals = new Map<
+    string,
+    { readonly question: PendingApproval; readonly resolve: (answer: PrepareAnswer) => void }
+  >();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
@@ -238,16 +249,21 @@ export class SessionManager {
     if (pending === undefined) return;
     this.approvals.delete(requestId);
     pending.resolve(answer);
-    this.emit(pending.sessionId, {
+    this.emit(pending.question.sessionId, {
       kind: "approval_resolved",
       requestId,
       answer: answer === "expired" ? "deny" : answer,
     });
   }
 
+  /** The approvals that wait for an answer, so a front end that missed the event still shows them. */
+  pendingApprovals(): PendingApproval[] {
+    return [...this.approvals.values()].map((pending) => pending.question);
+  }
+
   private expireApprovals(sessionId: string): void {
     for (const [requestId, pending] of this.approvals) {
-      if (pending.sessionId === sessionId) this.resolveApproval(requestId, "expired");
+      if (pending.question.sessionId === sessionId) this.resolveApproval(requestId, "expired");
     }
   }
 
@@ -470,7 +486,7 @@ ${prompt}`,
         this.resolveApproval(requestId, "expired");
       }, this.options.approvalTimeoutMs);
       this.approvals.set(requestId, {
-        sessionId,
+        question: { requestId, sessionId, toolName, summary: this.options.redactor.redact(summary) },
         resolve: (answer) => {
           clearTimeout(timer);
           resolve(answer);

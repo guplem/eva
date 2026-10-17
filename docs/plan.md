@@ -346,6 +346,7 @@ Built from the mockups in `mockups/`:
 - **Assistant mode:** schedules (with "Add schedule") and chats in the sidebar. A message that a schedule fired shows a clock icon. Retry and fork work here too.
 - **Activity chips** under an answer ("3 commands, 2 turns", "2 background tasks") and a **background tasks panel**, in both modes, from the engine's own events (Claude Code subagents and background commands).
 - **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart.
+- **Made for a phone first:** a web manifest and icons, so the person can add Eva to the home screen. After a dropped connection or a return to the page, the UI reads the sessions and the waiting approvals (`GET /api/approvals`) again, and shows "Reconnecting…" while the socket is down. A failed action shows an error and keeps the typed text.
 - **Served by the core on `localhost`, and exposed with `tailscale serve`** (§12).
 
 ## 9. Assistant features

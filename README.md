@@ -40,6 +40,7 @@ Eva has one address for all your devices, such as `https://server.your-tailnet.t
 
 1. Install the Tailscale app, and sign in with the same account as the machine that runs Eva.
 2. Open the address. Tailscale proves who you are, so Eva asks for no login.
+3. Optional: add the page to your home screen ("Add to Home screen" in the browser menu). Eva then opens like an app, without the address bar.
 
 A device without Tailscale cannot reach Eva. Remove a borrowed device from the Tailscale admin page (Machines, then Remove) when you are done with it.
 

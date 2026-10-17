@@ -384,6 +384,29 @@ describe("approvals", () => {
     await manager.send(newAssistantSession(manager), "go");
     expect(answers).toEqual(["allow"]);
   });
+
+  test("lists the approvals that wait for an answer, redacted, so a front end that reconnects sees them", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const engine = new FakeEngine(async function* (request) {
+      await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "echo the-secret-value-123" });
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine, { redactor });
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    while (manager.pendingApprovals().length === 0) await Bun.sleep(5);
+    const [pending] = manager.pendingApprovals();
+    expect(pending).toEqual({
+      requestId: expect.any(String) as string,
+      sessionId,
+      toolName: "Bash",
+      summary: "echo [redacted]",
+    });
+    manager.answerApproval(pending?.requestId ?? "", "allow");
+    await turn;
+    expect(manager.pendingApprovals()).toEqual([]);
+  });
 });
 
 describe("after a turn", () => {

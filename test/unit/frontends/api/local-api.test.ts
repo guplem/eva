@@ -7,7 +7,7 @@ import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts"
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
-import { FakeEngine } from "../../../support/fake-engine.ts";
+import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const token = "local-api-token-for-tests";
@@ -16,6 +16,8 @@ let home: string;
 let eva: Eva;
 let api: LocalApi;
 let engine: FakeEngine;
+/** The fixture engine runs this script; a test may replace it before its first turn. */
+let turnScript: FakeTurnScript | null;
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
   return { authorization: `Bearer ${token}`, "content-type": "application/json", ...extra };
@@ -49,7 +51,10 @@ beforeEach(() => {
   sandbox.git(vault, "commit", "-q", "-m", "files");
   sandbox.git(vault, "push", "-q", "origin", "main");
   home = mkdtempSync(join(tmpdir(), "eva-api-"));
-  engine = new FakeEngine();
+  turnScript = null;
+  engine = new FakeEngine((request, turnNumber) =>
+    turnScript === null ? FakeEngine.answer(request, `answer ${String(turnNumber)}`) : turnScript(request, turnNumber),
+  );
   eva = new Eva({
     paths: homePaths(home),
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
@@ -211,6 +216,27 @@ describe("routes", () => {
     const response = await call("/api/approvals/unknown-request", { method: "POST", body: { answer: "allow" } });
     expect(response.status).toBe(204);
   });
+
+  test("lists the approvals that wait, so a client that reconnects can still answer them", async () => {
+    expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
+    turnScript = async function* (request) {
+      await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "gh issue create" });
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    let listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+    while (listed.length === 0) {
+      await Bun.sleep(10);
+      listed = await json<{ requestId: string }[]>(await call("/api/approvals"));
+    }
+    expect(listed[0]).toMatchObject({ sessionId: session.id, toolName: "Bash", summary: "gh issue create" });
+    eva.sessions.answerApproval(listed[0]?.requestId ?? "", "deny");
+    await turn;
+    expect(await json<unknown[]>(await call("/api/approvals"))).toEqual([]);
+  });
 });
 
 describe("web routes (plan §8.3)", () => {
@@ -219,6 +245,22 @@ describe("web routes (plan §8.3)", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain("<title>Eva</title>");
+  });
+
+  test("the web manifest and the icons load with no token, so the phone can add Eva to its home screen", async () => {
+    const host = { host: new URL(api.url).host };
+    const page = await (await fetch(`${api.url}/`, { headers: host })).text();
+    const linkOf = (rel: string): string => new RegExp(`rel="${rel}"[^>]*href="([^"]+)"`).exec(page)?.[1] ?? "";
+    const manifest = await fetch(new URL(linkOf("manifest"), api.url), { headers: host });
+    expect(manifest.status).toBe(200);
+    const body = JSON.parse(await manifest.text()) as { name: string; display: string; icons: { src: string }[] };
+    expect(body).toMatchObject({ name: "Eva", display: "standalone", start_url: "/" });
+    const iconPaths = [...body.icons.map((icon) => icon.src), linkOf("apple-touch-icon"), linkOf("icon")];
+    for (const path of iconPaths) {
+      const response = await fetch(new URL(path, api.url), { headers: host });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toStartWith("image/");
+    }
   });
 
   test("login sets a strict, HTTP-only cookie for a valid token, and logout clears it", async () => {

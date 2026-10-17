@@ -33,6 +33,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -591,6 +592,17 @@ describe("service", () => {
       "/TR",
       '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
     ]);
+  });
+
+  test("the Windows task runs with no time limit, and on battery too, so Windows never stops the supervisor", () => {
+    const command = windowsTaskSettingsCommand("eva-partner");
+    expect(command.slice(0, 4)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]);
+    const script = command[4] ?? "";
+    expect(script).toContain("Set-ScheduledTask -TaskName 'Eva-partner'");
+    expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
+    expect(script).toContain("-AllowStartIfOnBatteries");
+    expect(script).toContain("-DontStopIfGoingOnBatteries");
+    expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 
   test("after the install, the Windows task starts at once, under the same name", () => {

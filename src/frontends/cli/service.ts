@@ -91,6 +91,23 @@ export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[
   return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", windowsTaskName(name), "/TR", command];
 }
 
+/**
+ * Lifts the limits that `schtasks /Create` sets on each task: Windows stops a task after three
+ * days, and when a laptop switches to its battery. Either stop would end the supervisor.
+ */
+export function windowsTaskSettingsCommand(name = "eva"): string[] {
+  const settings =
+    "New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries";
+  // The task name comes from serviceName, which keeps only letters, digits and dashes, so the quotes are safe.
+  return [
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    `Set-ScheduledTask -TaskName '${windowsTaskName(name)}' -Settings (${settings}) | Out-Null`,
+  ];
+}
+
 /** Starts the logon task now, so Eva runs without a new logon. */
 export function windowsRunTaskCommand(name = "eva"): string[] {
   return ["schtasks", "/Run", "/TN", windowsTaskName(name)];

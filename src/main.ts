@@ -64,6 +64,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
@@ -477,6 +478,14 @@ async function installService(paths: HomePaths): Promise<number> {
       writeLine("If it says that access is denied, open the terminal with Run as administrator, then try again.");
       return exitCodes.crash;
     }
+    const settings = await runStep(windowsTaskSettingsCommand(name));
+    if (settings.exitCode !== 0)
+      writeLine(`Windows may stop Eva after three days, or on battery: ${settings.stderr.trim()}`);
+    // A running Eva keeps the lock, so the new task's Eva would only exit 3.
+    if (runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) !== null) {
+      writeLine("Eva now starts when you log in. She already runs, so the new task takes over at your next logon.");
+      return exitCodes.clean;
+    }
     const started = await runStep(windowsRunTaskCommand(name));
     writeLine(
       started.exitCode === 0
@@ -531,9 +540,10 @@ async function supervise(paths: HomePaths): Promise<number> {
     start: systemLongProcessStarter,
     now: () => Date.now(),
     sleep: (ms) => Bun.sleep(ms),
-    // A warning, so the restart shows in `/logs` on the phone.
+    // A warning, so the restart shows in `/logs` on the phone, and a line for a person at the console.
     log: (message) => {
       logger.log("warn", message);
+      writeLine(message);
     },
     stopTimeoutMs: shutdownDeadlineMs + hardExitGraceMs,
     pid: process.pid,

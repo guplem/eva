@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Eva } from "../../core/eva.ts";
-import { describeLastTurn, heldBackLines } from "../cli/client.ts";
+import { describeLastTurn, describeSync, describeUpdate, heldBackLines } from "../cli/client.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -103,6 +103,8 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects" },
   { command: "schedules", description: "List the schedules" },
+  { command: "sync", description: "Sync the vault now" },
+  { command: "update", description: "Install the latest version of Eva" },
   { command: "help", description: "Show the commands" },
 ];
 
@@ -334,6 +336,14 @@ export class TelegramBot {
       case "schedules":
         await this.listSchedules(chatId, topicId);
         return;
+      case "sync":
+        await this.send(chatId, topicId, describeSync(await this.options.eva.syncVault()));
+        return;
+      case "update": {
+        const update = await this.options.eva.updateNow();
+        await this.send(chatId, topicId, update === null ? "This Eva cannot update herself." : describeUpdate(update));
+        return;
+      }
       case "projects": {
         const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
         await this.send(
@@ -693,10 +703,11 @@ export class TelegramBot {
     return [
       `Eva ${status.version}`,
       `Vault: ${status.vaultPath ?? "not configured"}`,
-      `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
+      describeSync(status.vaultSync),
       ...heldBackLines(status.vaultSync.withheldFiles),
       `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
       describeLastTurn(status.lastTurn),
+      ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ].join("\n");
   }
 

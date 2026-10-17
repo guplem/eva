@@ -25,6 +25,8 @@ This plan says what Eva does and why. `intent.md` records what the owner wants. 
 | D11 | Any number of instances can run, under one OS user or several                                                                                                    | Each instance has its own home folder, port and vault. Isolation between instances is the user's responsibility.                      |
 | D12 | TypeScript, run with Bun                                                                                                                                         | One language for core and UI. The Agent SDK, pi and ACP ship TypeScript libraries.                                                    |
 | D13 | One conversation list for each instance, shown by every front end                                                                                                | A chat started in Telegram continues in the web app, and back.                                                                        |
+| D14 | A person's settings live in the vault (`.eva/settings.json`); a machine's settings and all secrets stay in the instance home (owner, 2026-10-17)                 | Every machine with the vault uses the same settings, with no copy to keep in step.                                                    |
+| D15 | Eva updates herself at a frequency in the settings, only when no chat runs, then restarts (owner, 2026-10-17)                                                    | A server install stays current with no SSH session.                                                                                   |
 
 ## 2. Repositories
 
@@ -154,7 +156,8 @@ src/
 
 - **Home folder:** `--home <path>` or `EVA_HOME`. Default: `$XDG_CONFIG_HOME/eva` (Linux, else `~/.config/eva`), `%APPDATA%\eva` (Windows).
 - **Layout:**
-  - `config.json`: settings, checked against a schema
+  - `config.json`: this machine's settings, checked against a schema: the vault folder, the role, the port, the project roots, program paths, Telegram, remote host names
+  - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
   - `secrets.json`: tokens, readable by the OS user only
   - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`
   - `logs/eva-YYYY-MM-DD.jsonl`, kept for 14 days
@@ -262,6 +265,8 @@ pskill keeps a run going with a Stop hook. Eva has no hooks (D7), so Eva calls t
 - **Before each Assistant turn:** `git pull --rebase --autostash` on the default branch (read from `origin/HEAD`).
 - **After each Assistant turn:** commit everything, then push.
 - **Idle sweep every 60 seconds** (configurable): commit, pull and push when something changed. It never runs during an Assistant turn (lessons 22, 30). Project turns do not block it.
+- **Periodic fetch** (`sync.pullIntervalMinutes`, default 5; null: only before each Assistant turn): a pull that brings another machine's changes in between turns. It never runs during an Assistant turn, and a pull before a turn resets its clock. The setting applies at once.
+- **Sync now:** a pull, then a commit and push, from `eva sync`, Telegram `/sync`, or the web UI. It refuses while an Assistant turn runs.
 - **Commit message:** `eva: autosave (<n> files)`.
 - **Push** only when `HEAD` has commits that the remote lacks. Retry pull and push up to 3 times (lessons 23, 25).
 - **Timeouts:** 60 seconds for a network step, 20 seconds for a local step. Gentle stop, then hard stop, then cleanup (lessons 24, 81). `GIT_TERMINAL_PROMPT=0` (lesson 100).
@@ -308,13 +313,16 @@ In this order, after P8: the engine-neutral background task system for more engi
 | `eva chat [--project <id> [--clone <n>]] [--engine <name>] [--model <alias>]` | A conversation in the terminal, in either mode                   |
 | `eva projects [query]`                                                        | Search projects                                                  |
 | `eva service install`                                                         | systemd user service on Linux (lesson 85), logon task on Windows |
+| `eva update [--check]`                                                        | Install the latest version and restart; `--check` only looks     |
+| `eva sync`                                                                    | Sync the vault now                                               |
+| `eva settings [get <key> \| set <key> <value>]`                               | Show or change a setting; works while Eva runs or not            |
 
 ### 8.2 Telegram
 
 Assistant mode front end, ported from v1 with lessons 56 to 63 and 123 to 127:
 
 - Topics as conversations, with the model picker first in a new topic. A topic is a chat in the web UI too.
-- Commands: `/new`, `/delete`, `/status`, `/projects`, `/schedules`, `/update`, `/help`.
+- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/sync`, `/update`, `/help`.
 - Voice notes transcribed on the machine. Files sent from allowed folders, with offer buttons.
 - One allowed chat id, set by a pairing code that the person sends to the bot.
 - A request for project work opens a Project session and posts a link to it.
@@ -327,7 +335,7 @@ Built from the mockups in `mockups/`:
 - **Project mode:** projects with their clones in the sidebar, with search and filters, and a "New clone" button. The conversation of the selected clone as a tree, with one input for each branch, and retry and fork on each answer. The branch name and pull request number at the top.
 - **Assistant mode:** schedules (with "Add schedule") and chats in the sidebar. A message that a schedule fired shows a clock icon. Retry and fork work here too.
 - **Activity chips** under an answer ("3 commands, 2 turns", "2 background tasks") and a **background tasks panel**, in both modes, from the engine's own events (Claude Code subagents and background commands).
-- **Settings:** sections Setup, Appearance (theme, density), Projects. GitHub, vault repository, automatic fetch, Telegram, engines with login and Test, time zone, project roots, Tailscale identities.
+- **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart.
 - **Served by the core on `localhost`, and exposed with `tailscale serve`** (§12).
 
 ## 9. Assistant features
@@ -386,6 +394,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **Google:** she logs in with the owner's OAuth client.
 - **Setup order in `eva setup`:** doctor, vault, engine, Telegram (pairing code), Google, time zone, a few questions that write her `.eva/assistant.md`.
 - **Nothing personal is hardcoded in the engine.**
+- **Updates (D15):** `updates.frequency` (`off`, `hourly`, `daily` by default, `weekly`). Eva checks at that pace, and installs only when no chat runs a turn; then she exits with code 4. systemd starts her again; elsewhere she starts a new copy of herself first, which waits for the old one to exit. A single executable takes the latest signed release (§12). A source checkout fast-forwards to its remote default branch and runs `bun install` when `package.json` or `bun.lock` changed; it refuses on local changes, own commits, or another branch, and goes back to the old commit when the install fails. Eva's GitHub token reaches a private engine repository.
 
 ## 12. Security model
 
@@ -397,7 +406,7 @@ The autonomous implementation runs from P1 to P8. "Later" (§7.3) is out of that
 - **GitHub:** a deploy key for the vault; a fine-grained token for project pull requests, scoped to project repositories; the engine repository in neither (lesson 119).
 - **Google data is untrusted input.** Read-only scopes first; outward actions through §5.5.
 - **MCP servers and skills** run pinned versions.
-- **Releases** come only from CI on tags; self-update checks a signature.
+- **Releases** come only from CI on tags; self-update checks a signature. A source checkout updates only from its own remote's default branch, whose commits passed CI.
 - **A schedule is a second way in** (lesson 67). The setup card stays.
 - **Issues that Eva files** go to the person's private repository, never to `guplem/eva`.
 

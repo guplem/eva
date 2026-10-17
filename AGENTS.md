@@ -179,6 +179,8 @@ ADRs live in `adr/`. Each records one architectural decision or cross-cutting st
 | `0007-assistant-and-project-modes.md`           | Assistant mode is Eva's behaviour; Project mode is a transparent harness wrapper      |
 | `0008-eva-owns-vault-sync.md`                   | Vault sync in Eva's code; no agent hooks in Eva or the vault                          |
 | `0009-layered-testing-strategy.md`              | Unit tests with fakes at named seams, adapter contract tests, e2e with fakes, floors  |
+| `0010-person-settings-in-the-vault.md`          | The person's settings in the vault's `.eva/settings.json`; the machine's in the home  |
+| `0011-self-update-when-idle.md`                 | Self-update at a set frequency, installed only when idle, then a restart              |
 
 ## GitHub issues, PRs, and other artifacts
 

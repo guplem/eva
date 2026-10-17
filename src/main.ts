@@ -3,6 +3,7 @@
  * Eva's entry point. It only wires the layers together (docs/plan.md §4.2), so it holds no
  * decision worth a test; every piece it joins has its own tests.
  */
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -14,20 +15,42 @@ import {
   loadConfig,
   loadSecrets,
   resolveHomeFolder,
-  saveConfig,
   saveSecrets,
+  type EvaSecrets,
   type HomePaths,
 } from "./core/instance/home.ts";
-import { acquireInstanceLock, isProcessAlive } from "./core/instance/instance-lock.ts";
+import { acquireInstanceLock, isProcessAlive, runningInstancePid } from "./core/instance/instance-lock.ts";
+import {
+  changeSettings,
+  describeSettings,
+  isSharedSettingKey,
+  loadSettings,
+  moveSettingsToVault,
+  settingChange,
+} from "./core/instance/settings.ts";
+import { executableUpdateChannel } from "./core/updates/self-update.ts";
+import { sourceUpdateChannel } from "./core/updates/source-update.ts";
+import type { UpdateChannel } from "./core/updates/updater.ts";
+import { githubTokenVariable } from "./core/vault/vault-clone.ts";
+import { VaultSync } from "./core/vault/vault-sync.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { parseArguments, usageText, type CliCommand } from "./frontends/cli/arguments.ts";
 import { runChat } from "./frontends/cli/chat.ts";
-import { describeProjects, describeStatus, startProjectWork } from "./frontends/cli/client.ts";
+import {
+  describeProjects,
+  describeStatus,
+  describeSync,
+  requestSettingsChange,
+  requestSync,
+  requestUpdate,
+  startProjectWork,
+  type ClientOptions,
+} from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
-import { servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import { restartMethod, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
@@ -40,7 +63,6 @@ import { FileLogger } from "./shared/logger.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
 import { evaVersion } from "./shared/version.ts";
-import { updateExecutable } from "./core/updates/self-update.ts";
 
 function write(text: string): void {
   process.stdout.write(text);
@@ -64,7 +86,6 @@ async function main(argv: readonly string[]): Promise<number> {
     writeLine(evaVersion);
     return exitCodes.clean;
   }
-  if (command.command === "update") return update();
   const paths = homePaths(
     resolveHomeFolder({
       flag: command.home,
@@ -114,6 +135,12 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "service-install":
       return installService(paths);
+    case "update":
+      return update(paths, command.checkOnly);
+    case "sync":
+      return sync(paths);
+    case "settings":
+      return settings(paths, command);
     case "status":
     case "projects":
     case "chat":
@@ -128,7 +155,7 @@ async function runClientCommand(
   command: Extract<CliCommand, { command: "status" | "projects" | "chat" | "work" }>,
   paths: HomePaths,
 ): Promise<number> {
-  const config = loadConfig(paths);
+  const config = loadSettings(paths).config;
   const token = loadSecrets(paths).localApiToken;
   if (token === undefined) {
     process.stderr.write("No local token yet. Run `eva setup` first.\n");
@@ -185,8 +212,11 @@ async function runClientCommand(
 
 async function serve(paths: HomePaths): Promise<number> {
   mkdirSync(paths.root, { recursive: true });
-  const config = loadConfig(paths);
+  await waitForOldCopy();
   const secrets = { ...loadSecrets(paths) };
+  const settingsMoved = await moveSettingsAfterPull(paths, secrets);
+  const loaded = loadSettings(paths);
+  const config = loaded.config;
   if (secrets.localApiToken === undefined) {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
@@ -197,6 +227,8 @@ async function serve(paths: HomePaths): Promise<number> {
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
   logger.removeOldFiles();
+  if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
+  if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
 
   const engines: EnginePort[] = [];
   const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
@@ -225,6 +257,10 @@ async function serve(paths: HomePaths): Promise<number> {
     basePrompt: assistantBasePrompt,
     logger,
     evaCommand: isStandalone() ? [process.execPath] : [process.execPath, Bun.main],
+    updateChannel: updateChannel(secrets),
+    restartForUpdate: () => {
+      restart?.();
+    },
   });
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
@@ -252,6 +288,9 @@ async function serve(paths: HomePaths): Promise<number> {
 
   return new Promise<number>((resolve) => {
     let bot: TelegramBot | null = null;
+    restart = () => {
+      stop(exitCodes.update);
+    };
     const stop = (exitCode: number): void => {
       void (async () => {
         await bot?.stop();
@@ -259,6 +298,11 @@ async function serve(paths: HomePaths): Promise<number> {
         eva.stop();
         lock.release();
         logger.log("info", "Eva stopped.", { exitCode });
+        if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
+          startNewCopy();
+          resolve(exitCodes.clean);
+          return;
+        }
         resolve(exitCode);
       })();
     };
@@ -281,7 +325,7 @@ function startTelegram(
   logger: FileLogger,
   onFatal: (exitCode: number) => void,
 ): TelegramBot | null {
-  const config = loadConfig(paths);
+  const config = loadSettings(paths).config;
   const token = loadSecrets(paths).telegramBotToken;
   if (config.role !== "hub" || !config.telegram.enabled || token === undefined) return null;
   let pairingCode = "";
@@ -298,11 +342,7 @@ function startTelegram(
     allowedUserId: config.telegram.allowedUserId,
     pairingCode,
     onPaired: (chatId, userId) => {
-      const current = loadConfig(paths);
-      saveConfig(paths, {
-        ...current,
-        telegram: { ...current.telegram, allowedChatId: chatId, allowedUserId: userId },
-      });
+      changeSettings(paths, { telegram: { allowedChatId: chatId, allowedUserId: userId } });
       rmSync(pairingCodePath(paths), { force: true });
       logger.log("info", "Telegram paired.");
     },
@@ -362,26 +402,151 @@ async function withPrompt(work: (ask: (question: string) => Promise<string>) => 
   }
 }
 
-/** `eva update`: only the single executable updates itself; a source checkout uses git. */
-async function update(): Promise<number> {
-  if (!isStandalone()) {
-    writeLine("Eva runs from source here. Update it with `git pull` and `bun install`.");
+let restart: (() => void) | null = null;
+
+/** `eva update`: the running Eva updates and restarts herself; a stopped Eva is updated here. */
+async function update(paths: HomePaths, checkOnly: boolean): Promise<number> {
+  const client = runningClient(paths);
+  if (client !== null) {
+    writeLine(await requestUpdate(client, checkOnly));
     return exitCodes.clean;
   }
-  const result = await updateExecutable({
-    currentVersion: evaVersion,
-    executablePath: process.execPath,
-    platform: process.platform,
-    arch: process.arch,
-    runner: systemProcessRunner,
-    environment: childEnvironment(),
-  });
+  const channel = updateChannel(loadSecrets(paths));
+  const found = checkOnly ? await channel.check() : await channel.apply();
   writeLine(
-    result.status === "up_to_date"
-      ? `Eva ${result.version} is the latest version.`
-      : `Updated Eva from ${result.from} to ${result.to}. Restart Eva to use it.`,
+    found.current === found.latest
+      ? `Eva ${found.current} is the latest version.`
+      : checkOnly
+        ? `Eva ${found.latest} is available (this is ${found.current}). Run \`eva update\` to install it.`
+        : `Updated Eva from ${found.current} to ${found.latest}.`,
   );
   return exitCodes.clean;
+}
+
+/** `eva sync`: the running Eva syncs; a stopped Eva syncs here. */
+async function sync(paths: HomePaths): Promise<number> {
+  const client = runningClient(paths);
+  if (client !== null) {
+    writeLine(await requestSync(client));
+    return exitCodes.clean;
+  }
+  const vaultPath = loadConfig(paths).vaultPath;
+  if (vaultPath === null) {
+    writeLine("No vault is configured. Run `eva setup` first.");
+    return exitCodes.badConfig;
+  }
+  const vaultSync = new VaultSync({
+    vaultPath,
+    runner: systemProcessRunner,
+    environment: gitEnvironment(loadSecrets(paths)),
+    now: () => new Date(),
+  });
+  await vaultSync.pull();
+  const state = await vaultSync.save();
+  writeLine(describeSync(state));
+  return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
+}
+
+/** `eva settings`: shows or changes a setting, through the running Eva when one runs. */
+async function settings(paths: HomePaths, command: Extract<CliCommand, { command: "settings" }>): Promise<number> {
+  const loaded = loadSettings(paths);
+  if (loaded.problem !== null) writeLine(`The vault's settings were not used: ${loaded.problem}`);
+  const lines = describeSettings(loaded.config);
+  if (command.action === "list") {
+    writeLine(lines.join("\n"));
+    return exitCodes.clean;
+  }
+  const key = command.key ?? "";
+  if (command.action === "get") {
+    const found = lines.filter((line) => line.startsWith(`${key} = `) || line.startsWith(`${key}.`));
+    writeLine(found.length === 0 ? `${key} is not a setting.` : found.join("\n"));
+    return found.length === 0 ? exitCodes.badConfig : exitCodes.clean;
+  }
+  const change = settingChange(key, command.value ?? "");
+  const client = runningClient(paths);
+  const place = isSharedSettingKey(key) ? "in the vault, for every machine" : "on this machine";
+  if (client === null) {
+    changeSettings(paths, change);
+    writeLine(`Saved ${key} ${place}.`);
+  } else {
+    const restartNeeded = await requestSettingsChange(client, change);
+    writeLine(`Saved ${key} ${place}.${restartNeeded ? " Restart Eva to use it." : " Eva uses it now."}`);
+  }
+  return exitCodes.clean;
+}
+
+/** The API of the Eva that runs with this home, or null when none runs. */
+function runningClient(paths: HomePaths): ClientOptions | null {
+  const token = loadSecrets(paths).localApiToken;
+  if (token === undefined || runningInstancePid(paths.lock, isProcessAlive) === null) return null;
+  return { baseUrl: `http://127.0.0.1:${String(loadConfig(paths).port)}`, token };
+}
+
+/** Signed releases for the single executable; git for a source checkout. */
+function updateChannel(secrets: EvaSecrets): UpdateChannel {
+  if (isStandalone()) {
+    return executableUpdateChannel({
+      currentVersion: evaVersion,
+      executablePath: process.execPath,
+      platform: process.platform,
+      arch: process.arch,
+      runner: systemProcessRunner,
+      environment: childEnvironment(),
+    });
+  }
+  return sourceUpdateChannel({
+    folder: dirname(import.meta.dir),
+    runner: systemProcessRunner,
+    environment: gitEnvironment(secrets),
+    bunExecutable: process.execPath,
+  });
+}
+
+/**
+ * Pulls the vault before the settings move to it, so this machine never starts a settings file
+ * that another machine already pushed (a conflict that would stop the vault's pushes).
+ */
+async function moveSettingsAfterPull(paths: HomePaths, secrets: EvaSecrets): Promise<boolean> {
+  const vaultPath = loadConfig(paths).vaultPath;
+  if (vaultPath === null || !existsSync(vaultPath)) return false;
+  await new VaultSync({
+    vaultPath,
+    runner: systemProcessRunner,
+    environment: gitEnvironment(secrets),
+    now: () => new Date(),
+  }).pull();
+  return moveSettingsToVault(paths);
+}
+
+const oldCopyVariable = "EVA_WAIT_FOR_PID";
+const oldCopyWaitMs = 60_000;
+
+/** After an update, the new copy starts first; the lock is free only when the old copy has gone. */
+function startNewCopy(): void {
+  const command = isStandalone() ? [process.execPath] : [process.execPath, Bun.main];
+  const [program = process.execPath, ...arguments_] = [...command, ...process.argv.slice(2)];
+  // The new copy is Eva herself, not an agent, so it gets Eva's whole environment (lesson 96 covers agents).
+  spawn(program, arguments_, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    env: { ...process.env, [oldCopyVariable]: String(process.pid) },
+  }).unref();
+}
+
+async function waitForOldCopy(): Promise<void> {
+  const pid = Number(process.env[oldCopyVariable]);
+  if (!Number.isSafeInteger(pid) || pid <= 0) return;
+  const started = Date.now();
+  while (isProcessAlive(pid) && Date.now() - started < oldCopyWaitMs) await Bun.sleep(200);
+}
+
+function gitEnvironment(secrets: EvaSecrets): Record<string, string> {
+  return buildChildEnvironment(
+    process.env,
+    baseEnvironmentAllowlist,
+    secrets.githubToken === undefined ? {} : { [githubTokenVariable]: secrets.githubToken },
+  );
 }
 
 /** A `bun build --compile` executable runs its code from Bun's embedded file system. */

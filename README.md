@@ -21,8 +21,6 @@ eva setup
 
 For a script, such as a server install, run `eva setup --non-interactive` and give each answer in an `EVA_*` variable, for example `EVA_VAULT_REPOSITORY`, `EVA_GITHUB_TOKEN`, `EVA_CLAUDE_TOKEN`, `EVA_TELEGRAM_BOT_TOKEN` and `EVA_TELEGRAM_CHAT_ID`. `src/frontends/cli/setup.ts` lists every name.
 
-`eva update` replaces the executable with the latest release, after a check of its signature.
-
 ## Run from source
 
 You need [git](https://git-scm.com/) and [Bun](https://bun.sh/) 1.4 or newer.
@@ -43,7 +41,27 @@ bun run eva
 | `bun run eva service install`         | Starts Eva by itself when you log in.                                                                          |
 | `bun run eva setup --non-interactive` | Reads each answer from an `EVA_*` variable instead, for scripts. `src/frontends/cli/setup.ts` lists the names. |
 
-Eva keeps her settings in her home folder: `~/.config/eva` on Linux, `%APPDATA%\eva` on Windows. `config.json` holds the settings and `secrets.json` the tokens.
+## Settings
+
+Eva keeps two kinds of settings:
+
+- **Your settings live in your vault,** in `.eva/settings.json`, so every machine with the vault uses the same ones: the time zone, updates, the vault fetch, the default engine and model, trust, Google, and the voice language.
+- **This machine's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows): `config.json` holds the vault folder, the port, the role and program paths, and `secrets.json` holds the tokens. Tokens never go in the vault.
+
+An older `config.json` moves your settings to the vault by itself at the next start. Change a setting on the web Settings page, or with a command, while Eva runs or not:
+
+```bash
+eva settings
+eva settings get updates.frequency
+eva settings set updates.frequency weekly
+```
+
+`eva settings` lists every setting and marks the vault's settings with `(vault)`. The update frequency and the vault fetch apply at once; any other change applies at the next restart.
+
+## Updates and vault sync
+
+- **Updates:** Eva looks for a new version every day by default (`updates.frequency`: `off`, `hourly`, `daily` or `weekly`). She installs it only when no chat is running, then restarts. The single executable takes the latest signed release. An install from source takes the newest commit of `main`, and runs `bun install` when the dependencies changed; it never touches a checkout with local changes, its own commits, or another branch. Update now with the **Update now** button on the Settings page, Telegram `/update`, or `eva update` (`eva update --check` only looks).
+- **Vault sync:** Eva pulls the vault before each Assistant turn, saves and pushes after it, and fetches other machines' changes every 5 minutes (`sync.pullIntervalMinutes`; `null` means only before each turn). Sync now with the **Sync now** button, Telegram `/sync`, or `eva sync`.
 
 ## Install on a Linux server
 
@@ -88,7 +106,7 @@ These steps install Eva for one user, with no `sudo`. Run them as that user, for
 
 5. Check her: `bun run src/main.ts status`. The log is in `~/.config/eva/logs/`. Then write to your bot in Telegram.
 
-To update Eva later, run `git pull` and step 2's `bun install` in `~/eva`, then `systemctl --user restart eva`.
+Eva updates herself from then on (see [Updates and vault sync](#updates-and-vault-sync)). For a private copy of the repository, she uses the GitHub token from setup.
 
 ## Optional features
 
@@ -97,8 +115,8 @@ Each feature below stays off until you set it up. `eva doctor` shows which tools
 - **Schedules.** Ask Eva for a reminder or a daily summary, or use **Add schedule** on the Settings page. Eva writes `.eva/schedules.json` in the vault. Before a schedule first runs, Telegram shows a setup card with every field: check it. Only the hub instance (`"role": "hub"`) runs schedules.
 - **Files.** Eva can send a vault file in Telegram, and saves each file that you send her in `Scratch/received/` in the vault. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
-- **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`), and set `voice.modelPath` in `config.json`. The audio never leaves the machine.
-- **Google (Calendar, Drive, Contacts, Tasks).** Install [uv](https://docs.astral.sh/uv/). Create an OAuth client in Google Cloud, of type "Desktop app", and set its publishing status to "In production" so that the login does not expire after 7 days. Put its id and secret in `secrets.json` as `googleOauthClientId` and `googleOauthClientSecret`, and your account in `config.json` as `google.email`. The first Google request gives you a link to log in. Eva starts with read-only access; set `google.readOnly` to `false` to let her add events. She asks you before any change that reaches other people, such as an invitation.
+- **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`), and set `voice.modelPath` with `eva settings set voice.modelPath <file>`. The audio never leaves the machine.
+- **Google (Calendar, Drive, Contacts, Tasks).** Install [uv](https://docs.astral.sh/uv/). Create an OAuth client in Google Cloud, of type "Desktop app", and set its publishing status to "In production" so that the login does not expire after 7 days. Put its id and secret in `secrets.json` as `googleOauthClientId` and `googleOauthClientSecret`, and your account with `eva settings set google.email <address>`. The first Google request gives you a link to log in. Eva starts with read-only access; set `google.readOnly` to `false` to let her add events. She asks you before any change that reaches other people, such as an invitation.
 
 ## Develop
 

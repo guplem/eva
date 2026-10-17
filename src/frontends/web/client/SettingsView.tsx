@@ -1,6 +1,10 @@
-/** Settings (mockups/settings.png): Setup, Projects, Schedules and Appearance, with a Test button for each part. */
+/**
+ * Settings (mockups/settings.png): Setup, Updates, Projects, Schedules and Appearance, with a Test
+ * button for each part. The two dropdowns save at once; Eva uses them without a restart.
+ */
 import { useEffect, useState, type ReactElement } from "react";
-import { api, type CheckResult, type PublicSettings } from "./api.ts";
+import { describeSync, describeUpdate } from "../../cli/client.ts";
+import { api, type CheckResult, type PublicSettings, type UpdateStatus } from "./api.ts";
 import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
@@ -10,6 +14,24 @@ const checks: readonly { name: string; label: string }[] = [
   { name: "telegram", label: "Telegram bot" },
 ];
 
+const pullChoices: readonly { value: string; label: string }[] = [
+  { value: "null", label: "Only before each Assistant turn" },
+  { value: "1", label: "Every minute" },
+  { value: "5", label: "Every 5 minutes" },
+  { value: "15", label: "Every 15 minutes" },
+  { value: "60", label: "Every hour" },
+];
+
+const updateChoices: readonly { value: PublicSettings["config"]["updates"]["frequency"]; label: string }[] = [
+  { value: "off", label: "Never" },
+  { value: "hourly", label: "Every hour" },
+  { value: "daily", label: "Every day" },
+  { value: "weekly", label: "Every week" },
+];
+
+const restartPollMs = 3_000;
+const restartPollLimit = 60;
+
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [results, setResults] = useState<Record<string, CheckResult | "running">>({});
@@ -17,8 +39,12 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [sweepSeconds, setSweepSeconds] = useState("");
   const [projectRoots, setProjectRoots] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   useEffect(() => {
+    void api.updateStatus().then(setUpdate);
     void api.settings().then((loaded) => {
       setSettings(loaded);
       setTimeZone(loaded.config.timeZone ?? "");
@@ -33,6 +59,54 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     setResults((current) => ({ ...current, [name]: "running" }));
     const result = await api.check(name);
     setResults((current) => ({ ...current, [name]: result }));
+  };
+
+  /** A dropdown saves its own value at once. */
+  const saveNow = async (change: Record<string, unknown>): Promise<void> => {
+    try {
+      await api.saveSettings(change);
+      setSettings(await api.settings());
+      setUpdate(await api.updateStatus());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const updateNow = async (): Promise<void> => {
+    setUpdateNote("Checking…");
+    try {
+      const status = await api.updateNow();
+      setUpdate(status);
+      setUpdateNote(null);
+      if (status.phase === "restarting") await waitForRestart();
+    } catch (error) {
+      setUpdateNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** Eva stops for a moment after an update; the page asks again until she answers. */
+  const waitForRestart = async (): Promise<void> => {
+    setUpdateNote("Eva restarts with the new version…");
+    for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, restartPollMs));
+      try {
+        setUpdate(await api.updateStatus());
+        setUpdateNote("Eva restarted with the new version.");
+        return;
+      } catch {
+        // Eva is still starting.
+      }
+    }
+    setUpdateNote("Eva did not answer after the update. Check her log.");
+  };
+
+  const syncNow = async (): Promise<void> => {
+    setSyncNote("Syncing…");
+    try {
+      setSyncNote(describeSync(await api.syncVault()));
+    } catch (error) {
+      setSyncNote(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const save = async (): Promise<void> => {
@@ -89,10 +163,58 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             Time zone
             <input value={timeZone} placeholder="Europe/Madrid" onChange={(event) => setTimeZone(event.target.value)} />
           </label>
+          <div className="check-row">
+            <label style={{ flex: 1 }}>
+              Fetch the vault's changes
+              <select
+                value={String(settings.config.sync.pullIntervalMinutes)}
+                onChange={(event) =>
+                  void saveNow({
+                    sync: { pullIntervalMinutes: event.target.value === "null" ? null : Number(event.target.value) },
+                  })
+                }
+              >
+                {pullChoices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button onClick={() => void syncNow()}>Sync now</button>
+          </div>
+          {syncNote !== null && <div role="status">{syncNote}</div>}
           <label>
-            Vault sync interval (seconds)
+            Vault save interval (seconds)
             <input inputMode="numeric" value={sweepSeconds} onChange={(event) => setSweepSeconds(event.target.value)} />
           </label>
+        </fieldset>
+        <fieldset>
+          <legend>Updates</legend>
+          <div>{update === null ? "This Eva cannot update herself." : describeUpdate(update)}</div>
+          <div className="check-row">
+            <label style={{ flex: 1 }}>
+              Install updates automatically
+              <select
+                value={settings.config.updates.frequency}
+                onChange={(event) => void saveNow({ updates: { frequency: event.target.value } })}
+              >
+                {updateChoices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button disabled={update === null} onClick={() => void updateNow()}>
+              Update now
+            </button>
+          </div>
+          {updateNote !== null && <div role="status">{updateNote}</div>}
+          <div className="chip">
+            Eva installs an update only when no chat is running, then restarts. The time zone, updates, vault fetch,
+            engines, trust and Google settings live in your vault, so every machine uses them.
+          </div>
         </fieldset>
         <fieldset>
           <legend>Projects</legend>

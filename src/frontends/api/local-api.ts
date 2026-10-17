@@ -234,6 +234,14 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "PUT" && url.pathname === "/api/settings") {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
   }
+  if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
+  if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
+    if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
+    if (method === "POST") {
+      const status = url.pathname === "/api/update" ? await eva.updateNow() : await eva.checkForUpdate();
+      return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
+    }
+  }
   if (method === "POST" && parts[0] === "api" && parts[1] === "checks" && parts[2] !== undefined) {
     const name = checkNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "No such check." }, 404);

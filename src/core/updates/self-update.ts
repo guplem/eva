@@ -18,6 +18,7 @@ import {
   signedVersion,
   verifyChecksumsSignature,
 } from "./release-verification.ts";
+import type { UpdateChannel } from "./updater.ts";
 
 export interface UpdateInputs {
   readonly currentVersion: string;
@@ -81,6 +82,27 @@ export async function updateExecutable(inputs: UpdateInputs): Promise<UpdateResu
 
   await replaceExecutable(inputs, executable, version);
   return { status: "updated", from: inputs.currentVersion, to: version };
+}
+
+/** The signed releases on GitHub, as an update channel for the single executable. */
+export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
+  return {
+    kind: "executable",
+    async check() {
+      const release = await latestRelease(inputs);
+      return {
+        current: inputs.currentVersion,
+        latest: release.tag_name.replace(/^v/, ""),
+        available: isNewerVersion(release.tag_name, inputs.currentVersion),
+      };
+    },
+    async apply() {
+      const result = await updateExecutable(inputs);
+      return result.status === "updated"
+        ? { current: result.from, latest: result.to, available: false }
+        : { current: result.version, latest: result.version, available: false };
+    },
+  };
 }
 
 async function latestRelease(inputs: UpdateInputs): Promise<Release> {

@@ -8,7 +8,15 @@ export type CliCommand =
   | { readonly command: "status"; readonly home: string | undefined }
   | { readonly command: "help"; readonly home: string | undefined }
   | { readonly command: "version"; readonly home: string | undefined }
-  | { readonly command: "update"; readonly home: string | undefined }
+  | { readonly command: "update"; readonly home: string | undefined; readonly checkOnly: boolean }
+  | { readonly command: "sync"; readonly home: string | undefined }
+  | {
+      readonly command: "settings";
+      readonly home: string | undefined;
+      readonly action: "list" | "get" | "set";
+      readonly key?: string;
+      readonly value?: string;
+    }
   | { readonly command: "service-install"; readonly home: string | undefined }
   | { readonly command: "projects"; readonly home: string | undefined; readonly query: string }
   | {
@@ -42,7 +50,12 @@ Commands:
   projects [words]  Search the projects
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
   service install   Start Eva by itself (systemd on Linux, a logon task on Windows)
-  update            Replace this executable with the latest signed release
+  update            Install the latest version of Eva, then restart her
+      --check                            only look for a newer version
+  sync              Bring the vault's remote changes in, then save and push this machine's changes
+  settings          Show every setting; "(vault)" marks the settings that every machine shares
+  settings get <key>          Show one setting, such as updates.frequency
+  settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
   version           Show Eva's version
   help              Show this text
 `;
@@ -50,7 +63,7 @@ Commands:
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const engines: readonly EngineName[] = ["claude-code", "pi"];
 /** Options that take no value. */
-const switches: readonly string[] = ["--non-interactive"];
+const switches: readonly string[] = ["--non-interactive", "--check"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];
@@ -81,8 +94,12 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "status":
     case "help":
     case "version":
-    case "update":
+    case "sync":
       return { command: name, home };
+    case "update":
+      return { command: "update", home, checkOnly: switchesSeen.has("--check") };
+    case "settings":
+      return settingsCommand(home, rest);
     case "projects":
       return { command: "projects", home, query: rest.join(" ") };
     case "work": {
@@ -112,6 +129,15 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     default:
       return usageError(`Unknown command ${name}.`);
   }
+}
+
+function settingsCommand(home: string | undefined, rest: readonly string[]): CliCommand {
+  const [action, key, ...value] = rest;
+  if (action === undefined) return { command: "settings", home, action: "list" };
+  if (action === "get" && key !== undefined && value.length === 0) return { command: "settings", home, action, key };
+  if (action === "set" && key !== undefined && value.length > 0)
+    return { command: "settings", home, action, key, value: value.join(" ") };
+  return usageError("Use: eva settings, eva settings get <key>, or eva settings set <key> <value>");
 }
 
 function usageError(message: string): CliCommand {

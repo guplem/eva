@@ -7,7 +7,7 @@ This file is a working plan. The last commit of the PR deletes it; the PR descri
 An instance is extra when its home folder is not the platform default.
 Each extra instance keeps its Claude, pi and gh logins in `<home>/engines/`.
 `eva setup` explains this and walks through each engine login for that instance.
-The person's subscription is never used by another person (ADR 0006, lesson 111).
+The person's subscription is never used by another person (lesson 111).
 
 ## Today
 
@@ -34,4 +34,12 @@ The person's subscription is never used by another person (ADR 0006, lesson 111)
 
 ## Decisions
 
-(Filled in after the gap review.)
+Three reviewers (two mid-tier, one upper-tier) agreed on each gap. None needs the owner.
+
+- **G1.** pi's agent folder is `engines/pi-agent`, a sibling of `engines/pi`. pi reads `<agentDir>/prompts/*.md` as prompt templates, and Eva writes a per-session prompt to `engines/pi/prompts/`. One folder would turn each of those into a slash command, and would mix pi's `auth.json` with Eva's files.
+- **G2.** Setup prints the steps and never runs an interactive login. `ProcessRunner` captures output, and a new seam with inherited input and output would break `--non-interactive`. Setup already works this way (`claude setup-token`, `gh auth login`). The steps show at the start of setup, before `gh repo create` can run. Each command uses the platform's shell: POSIX on Linux, PowerShell on Windows. At the end, setup checks each login through the seam (`gh auth status`) or the files (`auth.json` for pi, the saved token for Claude) and reports what is missing. The Claude step warns that the browser may be signed in to another person's account.
+- **G3.** Yes. Eva's own `gh` calls (setup's `gh repo create`, the settings-page check, `gh pr view` in the project view) get the instance's folder variables. Without them, an extra instance uses another person's gh login. `EVA_GITHUB_TOKEN` feeds only git's credential helper, so it does not cover `gh`.
+- **G4.** Move the extra-instance test (`resolve(defaultHome) !== resolve(root)`) next to `HomePaths` in `src/core/settings/home.ts`. `main.ts` passes `defaultHomeFolder()` to setup, as it already does to `Eva`.
+- **G5.** Nothing. The first instance keeps the OS user's own folders, so Project mode matches a manual session. `ownConfigFolder` stays a Claude-only opt-in.
+
+Out of scope: the environment allowlist drops a `CLAUDE_CONFIG_DIR`, `GH_CONFIG_DIR` or `PI_CODING_AGENT_DIR` that the person sets in their own shell. That is a separate follow-up.

@@ -110,7 +110,12 @@ describe("engineLoginSteps", () => {
     expect(text).toContain("your own Claude account");
     expect(text).toContain(`PI_CODING_AGENT_DIR='${folders.piAgent}' pi`);
     expect(text).toContain("/login inside pi");
+    expect(text).toContain("answer No");
     expect(text).toContain("Never choose Anthropic");
+  });
+
+  test("a Claude login in pi gets a step to log out of it", () => {
+    expect(engineLoginSteps({ ...everything, pi: "claude" }, folders, "linux").join("\n")).toContain("/logout");
   });
 
   test("on Windows, the steps say to use PowerShell", () => {
@@ -124,23 +129,23 @@ describe("engineLoginSteps", () => {
 
 describe("engineLoginReport", () => {
   test("each login in place shows as done", () => {
-    const text = engineLoginReport(everything, folders, home, "linux").join("\n");
+    const text = engineLoginReport(everything, folders, "run setup again", "linux").join("\n");
     expect(text).toContain("- Claude: token saved.");
     expect(text).toContain("- pi: logged in.");
     expect(text).toContain("- GitHub: logged in.");
   });
 
-  test("each missing login says what to run, and how to run setup again for this home", () => {
-    const text = engineLoginReport(nothing, folders, home, "linux").join("\n");
+  test("each missing login says what to run", () => {
+    const text = engineLoginReport(nothing, folders, "run setup again", "linux").join("\n");
     expect(text).toContain("- Claude: no token yet.");
-    expect(text).toContain(`eva --home '${home}' setup`);
+    expect(text).toContain("Then run setup again.");
     expect(text).toContain("- pi: not logged in.");
     expect(text).toContain("- GitHub: not logged in.");
     expect(text).toContain("gh auth login --insecure-storage");
   });
 
   test("a Claude login in pi gets a warning", () => {
-    const text = engineLoginReport({ ...everything, pi: "claude" }, folders, home, "linux").join("\n");
+    const text = engineLoginReport({ ...everything, pi: "claude" }, folders, "run setup again", "linux").join("\n");
     expect(text).toContain("pi has a Claude login");
   });
 });

@@ -27,6 +27,7 @@ import {
   engineLoginState,
   engineLoginSteps,
   loginToGitHub,
+  quoteForShell,
   type EngineLoginState,
 } from "./engine-logins.ts";
 
@@ -104,7 +105,8 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       runner: options.runner,
       environment: options.environment,
     });
-  if (engineFolders !== null) {
+  // A script gets no steps: setup ends at once, and the report at the end says what to run.
+  if (engineFolders !== null && options.interactive) {
     for (const line of engineLoginSteps(await loginState(engineFolders), engineFolders, options.platform)) {
       options.write(line);
     }
@@ -233,7 +235,12 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   saveSecrets(paths, secrets);
   if (engineFolders !== null) {
     const state = await loginState(engineFolders);
-    for (const line of engineLoginReport(state, engineFolders, paths.root, options.platform)) options.write(line);
+    const claudeTokenHint = options.interactive
+      ? `run \`eva --home ${quoteForShell(paths.root, options.platform)} setup\` again, and give it the token`
+      : `run setup again with the token in ${setupEnvironmentNames.claudeToken}`;
+    for (const line of engineLoginReport(state, engineFolders, claudeTokenHint, options.platform)) {
+      options.write(line);
+    }
   }
   const files = [
     paths.config,

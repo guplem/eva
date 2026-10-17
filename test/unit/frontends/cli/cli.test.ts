@@ -570,6 +570,17 @@ describe("runSetup", () => {
     expect(lines.join("\n")).toContain("- GitHub: not logged in.");
   });
 
+  test("a missing Claude token names how to run setup again: this home for a person, the variable for a script", async () => {
+    const extraHome = { defaultHome: join(home, "..", "default-eva-home") };
+    const lines: string[] = [];
+    await setup({}, { lines, ...extraHome });
+    expect(lines.join("\n")).toContain(`run \`eva --home '${home}' setup\` again`);
+    const scriptLines: string[] = [];
+    await setup({}, { lines: scriptLines, interactive: false, ...extraHome });
+    expect(scriptLines.join("\n")).not.toContain("Setup keeps going");
+    expect(scriptLines.join("\n")).toContain("run setup again with the token in EVA_CLAUDE_TOKEN");
+  });
+
   test("the instance in the default home hears nothing about engine logins", async () => {
     const lines: string[] = [];
     await setup({}, { lines });

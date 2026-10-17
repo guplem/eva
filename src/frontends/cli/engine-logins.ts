@@ -38,42 +38,46 @@ export async function engineLoginState(options: EngineLoginStateOptions): Promis
 export function engineLoginSteps(state: EngineLoginState, folders: EngineFolders, platform: NodeJS.Platform): string[] {
   const steps = [
     // First, so the person can log in before setup runs `gh repo create` for a new vault.
-    ...(state.gh ? [] : [`- GitHub: run \`${loginToGitHub(folders.gh, platform)}\`.`]),
+    ...(state.gh ? [] : [`- GitHub: ${ghStep(folders, platform)}`]),
     ...(state.claudeToken
       ? []
       : [
-          "- Claude: run `claude setup-token`. A browser opens: check that it is signed in to your own Claude account. Give setup the token when it asks for it.",
+          "- Claude: run `claude setup-token`. A browser opens. Check that it is signed in to your own Claude account. Setup asks for the token below.",
         ]),
-    ...(state.pi === "ok" ? [] : [`- pi: ${piStep(folders, platform)}`]),
+    ...(state.pi === "ok" ? [] : [`- pi: ${piStep(state.pi, folders, platform)}`]),
   ];
   if (steps.length === 0) return [];
   return [
-    "This Eva is not in the default home, so it is a second Eva on this computer, for another person.",
-    "It keeps its own logins in the engines folder of its home, so it never uses another person's account or subscription.",
-    `Log in to each engine for this Eva in another ${platform === "win32" ? "PowerShell window" : "terminal"}. Setup keeps going while you do:`,
+    "This Eva is not in the default home. So it is a second Eva on this computer, for another person.",
+    "It keeps its own logins for its engines: the AI tools Claude Code and pi, and the GitHub tool gh.",
+    "So it never uses another person's account or subscription.",
+    `Open another ${platform === "win32" ? "PowerShell window" : "terminal"}, and log in there. Setup keeps going while you do:`,
     ...steps,
   ];
 }
 
-/** One line for each engine login: done, or what to run. */
+/**
+ * One line for each engine login: done, or what to run. `claudeTokenHint` says how to give
+ * setup a new Claude token, which differs between a person and a script.
+ */
 export function engineLoginReport(
   state: EngineLoginState,
   folders: EngineFolders,
-  homeRoot: string,
+  claudeTokenHint: string,
   platform: NodeJS.Platform,
 ): string[] {
   const pi = {
     ok: "- pi: logged in.",
-    missing: `- pi: not logged in. You need this only to chat with pi. ${piStep(folders, platform)}`,
-    claude: `- pi: pi has a Claude login. Run \`${runPi(folders, platform)}\`, type /logout inside pi, then log in with another provider.`,
+    missing: `- pi: not logged in. You need this only to chat with pi. ${piStep("missing", folders, platform)}`,
+    claude: `- pi: ${piStep("claude", folders, platform)}`,
   }[state.pi];
   return [
     "Engine logins of this Eva:",
     state.claudeToken
       ? "- Claude: token saved."
-      : `- Claude: no token yet. Run \`claude setup-token\`, then run \`eva --home ${quoteForShell(homeRoot, platform)} setup\` again and give it the token.`,
+      : `- Claude: no token yet. Run \`claude setup-token\`. Then ${claudeTokenHint}.`,
     pi,
-    state.gh ? "- GitHub: logged in." : `- GitHub: not logged in. Run \`${loginToGitHub(folders.gh, platform)}\`.`,
+    state.gh ? "- GitHub: logged in." : `- GitHub: not logged in. ${ghStep(folders, platform)}`,
   ];
 }
 
@@ -104,8 +108,16 @@ export function quoteForShell(value: string, platform: NodeJS.Platform): string 
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function piStep(folders: EngineFolders, platform: NodeJS.Platform): string {
-  return `Run \`${runPi(folders, platform)}\`, then type /login inside pi. Never choose Anthropic: a Claude login in pi charges your Claude account extra.`;
+function ghStep(folders: EngineFolders, platform: NodeJS.Platform): string {
+  // `gh auth setup-git` changes the OS user's global git settings, which every Eva shares.
+  return `Run \`${loginToGitHub(folders.gh, platform)}\`. When gh asks to authenticate git, answer No.`;
+}
+
+function piStep(login: "missing" | "claude", folders: EngineFolders, platform: NodeJS.Platform): string {
+  if (login === "claude") {
+    return `pi has a Claude login. Run \`${runPi(folders, platform)}\`. Type /logout inside pi, then /login with another provider.`;
+  }
+  return `Run \`${runPi(folders, platform)}\`. Type /login inside pi. Never choose Anthropic: a Claude login in pi bills as extra usage.`;
 }
 
 function runPi(folders: EngineFolders, platform: NodeJS.Platform): string {

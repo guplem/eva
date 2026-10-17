@@ -5,6 +5,7 @@
  */
 
 import { basename } from "node:path";
+import { homePaths, isExtraInstance } from "../../core/settings/home.ts";
 
 export interface ServiceTarget {
   /** The command that runs Eva, from `serviceCommand`: [bun, src/main.ts] or [eva]. */
@@ -16,8 +17,8 @@ export interface ServiceTarget {
  * The service's name: `eva` for the default home, and `eva-<folder>` for any other, so a second
  * instance on the same machine never replaces the first one's service.
  */
-export function serviceName(home: string, defaultHome: string): string {
-  if (home === defaultHome) return "eva";
+export function serviceName(home: string, defaultHome: string, platform: NodeJS.Platform = process.platform): string {
+  if (!isExtraInstance(homePaths(home), defaultHome, platform)) return "eva";
   const folder = basename(home)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")

@@ -624,6 +624,8 @@ describe("service", () => {
     expect(serviceName("/u/.config/eva-partner", "/u/.config/eva")).toBe("eva-eva-partner");
     expect(serviceName("/srv/Partner Home", "/u/.config/eva")).toBe("eva-partner-home");
     expect(serviceName("/srv/__", "/u/.config/eva")).toBe("eva-instance");
+    // The same default-home test as the engine logins: Windows ignores letter case.
+    expect(serviceName("D:\\Eva-Homes\\EVA", "d:\\eva-homes\\eva\\", "win32")).toBe("eva");
     expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
   });
 

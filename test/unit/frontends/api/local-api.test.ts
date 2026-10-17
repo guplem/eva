@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -565,6 +565,74 @@ describe("an Eva with an update channel", () => {
     } finally {
       updatingApi.stop();
       updating.stop();
+    }
+  });
+});
+
+describe("problems, logs and restart", () => {
+  test("the status carries the open problems", async () => {
+    eva.reportProblem("vault_sync", { level: "error", message: "The vault sync failed.", resolvedMessage: "Fixed." });
+    expect(await json<{ problems: string[] }>(await call("/api/status"))).toMatchObject({
+      problems: ["The vault sync failed."],
+    });
+  });
+
+  test("GET /api/logs gives the last warnings and errors, and the error level only errors", async () => {
+    const folder = homePaths(home).logsFolder;
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "eva-2026-10-14.jsonl"),
+      [
+        { at: "2026-10-14T09:00:00.000Z", level: "warn", message: "A warning.", details: { reason: "slow" } },
+        { at: "2026-10-14T10:00:00.000Z", level: "error", message: "An error." },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join("\n") + "\n",
+    );
+    expect(await json<unknown>(await call("/api/logs?limit=5"))).toEqual([
+      { at: "2026-10-14T09:00:00.000Z", level: "warn", message: "A warning.", summary: "reason: slow" },
+      { at: "2026-10-14T10:00:00.000Z", level: "error", message: "An error.", summary: "" },
+    ]);
+    expect(await json<{ message: string }[]>(await call("/api/logs?level=error"))).toMatchObject([
+      { message: "An error." },
+    ]);
+    expect((await call("/api/logs?level=info")).status).toBe(400);
+    expect((await call("/api/logs?limit=many")).status).toBe(400);
+  });
+
+  test("POST /api/restart answers first, then restarts Eva through the update path", async () => {
+    const restarts: string[] = [];
+    const restarting = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    const restartingApi = startLocalApi({
+      eva: restarting,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const response = await fetch(`${restartingApi.url}/api/restart`, {
+        method: "POST",
+        headers: headers(),
+        body: "{}",
+      });
+      expect(response.status).toBe(202);
+      expect(restarts).toEqual([]);
+      for (let round = 0; round < 200 && restarts.length === 0; round += 1) await Bun.sleep(10);
+      expect(restarts).toEqual(["restart"]);
+    } finally {
+      restartingApi.stop();
+      restarting.stop();
     }
   });
 });

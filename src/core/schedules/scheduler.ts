@@ -59,6 +59,8 @@ export interface SchedulerOptions {
   readonly now: () => Date;
   readonly chats: ScheduledChatStarter;
   readonly logger?: Logger;
+  /** Hears the result of each firing: the reason of a failure, or null when it fired. */
+  readonly reportFiring?: (schedule: Schedule, failure: string | null) => void;
 }
 
 export interface ScheduleView {
@@ -141,6 +143,7 @@ export class Scheduler {
           scheduleId: schedule.id,
           reason: errorText(error),
         });
+        this.options.reportFiring?.(schedule, errorText(error));
       }
     }
   }
@@ -180,6 +183,7 @@ export class Scheduler {
       file: schedule.file,
       sessionId,
     });
+    this.options.reportFiring?.(schedule, null);
     if (sessionId !== null && schedule.prompt !== null) {
       // Nobody awaits the turn, so its failure goes to the log here (lesson 50).
       this.options.chats.send(sessionId, schedule.prompt).catch((error: unknown) => {
@@ -187,6 +191,7 @@ export class Scheduler {
           scheduleId: schedule.id,
           reason: errorText(error),
         });
+        this.options.reportFiring?.(schedule, errorText(error));
       });
     }
   }

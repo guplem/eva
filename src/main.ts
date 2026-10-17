@@ -21,6 +21,7 @@ import {
   type HomePaths,
 } from "./core/instance/home.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
+import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { stopWithinDeadline } from "./core/instance/shutdown.ts";
 import {
   changeSettings,
@@ -271,6 +272,7 @@ async function serve(paths: HomePaths): Promise<number> {
     bootId: readBootId(process.platform),
     isProcessAlive,
   });
+  const startedAfterUncleanExit = startRunMarker(paths.runningMarker, new Date());
 
   const redactor = new Redactor();
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
@@ -384,6 +386,7 @@ async function serve(paths: HomePaths): Promise<number> {
           }, shutdownDeadlineMs);
           if (outcome.kind !== "stopped") logger.log("warn", "Eva did not stop cleanly.", { ...outcome });
         } finally {
+          clearRunMarker(paths.runningMarker);
           lock.release();
           logger.log("info", "Eva stopped.", { exitCode });
           if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
@@ -409,6 +412,8 @@ async function serve(paths: HomePaths): Promise<number> {
     eva.onRoleChange((role) => {
       void followRole(role);
     });
+    // After the bot starts, so that the alert reaches Telegram too.
+    if (startedAfterUncleanExit) eva.reportUncleanExit();
     process.once("SIGINT", () => {
       stop(exitCodes.clean);
     });

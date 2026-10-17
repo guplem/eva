@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/instance/home.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
@@ -555,5 +556,126 @@ describe("Eva", () => {
     });
     expect(eva.status().vaultPath).toBeNull();
     expect(() => eva?.createAssistantSession({ source: "cli", model: "default" })).toThrow("vault");
+  });
+});
+
+describe("Eva alerts", () => {
+  function collectAlerts(instance: Eva): Alert[] {
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    return alerts;
+  }
+
+  test("a vault offline for more than 30 minutes is a problem, and a good sync clears it", async () => {
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    sandbox.git(vault, "remote", "set-url", "origin", join(home, "missing.git"));
+    expect((await instance.syncVault()).status).toBe("offline");
+    clock = new Date(clock.getTime() + 20 * 60_000);
+    await instance.syncVault();
+    expect(alerts).toEqual([]);
+    clock = new Date(clock.getTime() + 11 * 60_000);
+    await instance.syncVault();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["vault_sync", "warn"]]);
+    expect(instance.status().problems).toHaveLength(1);
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    expect((await instance.syncVault()).status).toBe("ok");
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+    expect(instance.status().problems).toEqual([]);
+  });
+
+  test("a failed update check and a failed install each raise an alert that names the step", async () => {
+    let failCheck = true;
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        updateChannel: {
+          kind: "source",
+          check: () =>
+            failCheck
+              ? Promise.reject(new Error("no network"))
+              : Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true }),
+          apply: () => Promise.reject(new Error("bun install failed")),
+        },
+      },
+    );
+    const alerts = collectAlerts(instance);
+    await instance.checkForUpdate();
+    expect(alerts.at(-1)?.message).toStartWith("The update check failed: no network.");
+    failCheck = false;
+    await instance.checkForUpdate();
+    expect(alerts.at(-1)?.level).toBe("resolved");
+    await instance.updateNow();
+    expect(alerts.at(-1)?.message).toStartWith("The update install failed: bun install failed.");
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    await instance.backgroundTick();
+    expect(instance.status().problems[0]).toStartWith("The update install failed");
+  });
+
+  test("a schedule that fails to fire raises an alert named after the schedule", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    await instance.schedules?.tick();
+    // The chat list cannot be saved, so the firing's chat cannot start.
+    mkdirSync(join(home, "state", "sessions.json"), { recursive: true });
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    expect(alerts.map((alert) => alert.key)).toEqual(["schedule:lunch"]);
+    expect(alerts[0]?.message).toContain("Lunch");
+  });
+
+  test("a front end reports its own problem, and the status carries it", () => {
+    const instance = start(new FakeEngine());
+    instance.reportProblem("telegram_poll", {
+      level: "error",
+      message: "Another program polls the bot.",
+      resolvedMessage: "Telegram works again.",
+    });
+    expect(instance.status().problems).toEqual(["Another program polls the bot."]);
+    instance.reportProblem("telegram_poll", null);
+    expect(instance.status().problems).toEqual([]);
+  });
+
+  test("a start after an unclean exit sends one alert that stays out of the problems", () => {
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    instance.reportUncleanExit();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["unclean_exit", "warn"]]);
+    expect(instance.status().problems).toEqual([]);
+  });
+
+  test("the recent log entries come from the instance's log folder, at most 100", () => {
+    const instance = start(new FakeEngine());
+    const logs = homePaths(home).logsFolder;
+    mkdirSync(logs, { recursive: true });
+    const records = Array.from({ length: 120 }, (_, index) =>
+      JSON.stringify({ at: "2026-10-14T10:00:00.000Z", level: "warn", message: `Warning ${String(index)}.` }),
+    );
+    writeFileSync(join(logs, "eva-2026-10-14.jsonl"), records.join("\n") + "\n");
+    expect(instance.recentLogs({ minimumLevel: "warn", limit: 5 }).map((entry) => entry.message)).toEqual([
+      "Warning 115.",
+      "Warning 116.",
+      "Warning 117.",
+      "Warning 118.",
+      "Warning 119.",
+    ]);
+    expect(instance.recentLogs({ minimumLevel: "warn", limit: 500 })).toHaveLength(100);
+    expect(instance.recentLogs({ minimumLevel: "error", limit: 0 })).toEqual([]);
+  });
+
+  test("a restart on request goes through the update restart path", async () => {
+    const restarts: string[] = [];
+    const instance = start(new FakeEngine(), {}, { restartForUpdate: () => restarts.push("restart") });
+    instance.restart();
+    await waitFor(() => restarts.length === 1);
+    expect(restarts).toEqual(["restart"]);
   });
 });

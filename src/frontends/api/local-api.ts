@@ -55,6 +55,10 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
+const logsQuerySchema = z.object({
+  level: z.enum(["warn", "error"]).default("warn"),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
 /** The login cookies live a year; the person logs out to end them. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
@@ -291,6 +295,17 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       const status = url.pathname === "/api/update" ? await eva.updateNow() : await eva.checkForUpdate();
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
+  }
+  if (method === "GET" && url.pathname === "/api/logs") {
+    const query = logsQuerySchema.parse({
+      level: url.searchParams.get("level") ?? undefined,
+      limit: url.searchParams.get("limit") ?? undefined,
+    });
+    return json(eva.recentLogs({ minimumLevel: query.level, limit: query.limit }));
+  }
+  if (method === "POST" && url.pathname === "/api/restart") {
+    eva.restart();
+    return json({ restarting: true }, 202);
   }
   if (method === "POST" && parts[0] === "api" && parts[1] === "checks" && parts[2] !== undefined) {
     const name = checkNames.find((candidate) => candidate === parts[2]);

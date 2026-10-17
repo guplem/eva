@@ -25,6 +25,9 @@ export interface UpdateChannel {
 
 export type UpdatePhase = "idle" | "checking" | "waiting_for_idle" | "updating" | "restarting";
 
+/** The step that set `lastError`, so a failed install never reads as a failed check. */
+export type UpdateStep = "check" | "install";
+
 export interface UpdateStatus {
   readonly kind: UpdateChannel["kind"];
   readonly frequency: UpdateFrequency;
@@ -34,6 +37,7 @@ export interface UpdateStatus {
   readonly available: boolean;
   readonly lastCheckAt: string | null;
   readonly lastError: string | null;
+  readonly failedStep: UpdateStep | null;
 }
 
 export interface UpdaterOptions {
@@ -60,6 +64,7 @@ export class Updater {
   private last: UpdateCheck | null;
   private lastCheckAt: Date | null;
   private lastError: string | null;
+  private failedStep: UpdateStep | null;
 
   constructor(options: UpdaterOptions) {
     this.options = options;
@@ -67,6 +72,7 @@ export class Updater {
     this.last = null;
     this.lastCheckAt = null;
     this.lastError = null;
+    this.failedStep = null;
   }
 
   status(): UpdateStatus {
@@ -79,6 +85,7 @@ export class Updater {
       available: this.last?.available ?? false,
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       lastError: this.lastError,
+      failedStep: this.failedStep,
     };
   }
 
@@ -89,8 +96,10 @@ export class Updater {
     try {
       this.last = await this.options.channel.check();
       this.lastError = null;
+      this.failedStep = null;
     } catch (error) {
       this.lastError = errorText(error);
+      this.failedStep = "check";
     } finally {
       this.lastCheckAt = this.options.now();
       this.phase = "idle";
@@ -133,6 +142,7 @@ export class Updater {
       this.options.restart();
     } catch (error) {
       this.lastError = errorText(error);
+      this.failedStep = "install";
       this.options.logger?.log("warn", "The update failed.", { reason: this.lastError });
       this.phase = "idle";
     }

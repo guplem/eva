@@ -31,4 +31,7 @@ A reply from the agent reads well on each front end. Line breaks show. Markdown,
 
 ## Decisions
 
-To be filled after the gap review.
+- G1: **Own renderer.** The runtime has five dependencies, and none parses Markdown. A library such as `marked` passes raw HTML through, so it also needs a sanitizer. Our renderer escapes all text first and adds only its own tags, so it is safe by construction. Telegram needs its own subset converter anyway (lesson 58), and both share one inline converter.
+- G2: **`src/frontends/markdown-inline.ts`** holds the shared inline converter. **`src/frontends/web/client/web-format.ts`** holds `toWebHtml`. Not `src/shared/`: that layer holds types and seams, and this code serves front ends only. No layer rule forbids the imports, and the web bundle follows relative imports. Tests mirror the paths under `test/unit/frontends/`.
+- G3: **`<br>` for a single line break** in a paragraph, chat style. A blank line starts a new paragraph. Telegram shows each line break, and the web shows the person's own messages with `pre-wrap`, so the answer now matches both. Lists, tables and code blocks keep their own structure.
+- G4: **The screenshot shows the web app.** A list ran into one paragraph. Telegram, the terminal and the cards keep their line breaks. The fix covers the web app only, for the finished and the streaming answer. An e2e check proves that a two-line answer renders as two blocks.

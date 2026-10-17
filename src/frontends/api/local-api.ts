@@ -291,8 +291,9 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
     const name = pageSecretNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "The page cannot change this secret." }, 404);
-    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value));
-    if (method === "DELETE") return json(eva.saveSecret(name, null));
+    const options = { pageOnly: !tokenLogin };
+    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value, options));
+    if (method === "DELETE") return json(eva.saveSecret(name, null, options));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());

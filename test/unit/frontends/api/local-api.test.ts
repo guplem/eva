@@ -306,6 +306,19 @@ describe("device login", () => {
     expect(withToken.status).toBe(200);
   });
 
+  test("a device login can neither replace nor remove a token", async () => {
+    attachApprover();
+    const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
+    const replaced = await call("/api/secrets/claudeOauthToken", {
+      method: "PUT",
+      headers: device,
+      body: { value: "sk-ant-oat-stranger-token" },
+    });
+    expect(replaced.status).toBe(403);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE", headers: device })).status).toBe(403);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
+  });
+
   test("Log out every device ends every device login, and needs a login itself", async () => {
     attachApprover();
     const first = deviceCookieOf(await allowedCookie());

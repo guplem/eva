@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../src/core/settings/home.ts";
-import { loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
+import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
@@ -110,6 +110,13 @@ describe("settings", () => {
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: "EVA-1234ABCD" });
     sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
     expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
+  });
+
+  test("a settings change keeps a Telegram pairing that the bot saved meanwhile", () => {
+    eva.updateSettings({ timeZone: "UTC" });
+    changeSettings(homePaths(home), { telegram: { allowedChatId: 4242, allowedUserId: 7 } });
+    eva.updateSettings({ timeZone: "Europe/Madrid" });
+    expect(loadSettings(homePaths(home)).config.telegram).toEqual({ allowedChatId: 4242, allowedUserId: 7 });
   });
 
   test("an invalid update is refused and nothing is saved", () => {

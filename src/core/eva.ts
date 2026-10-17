@@ -2,7 +2,7 @@
  * One Eva instance: the core that every front end talks to. It joins the
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
-import { chmodSync } from "node:fs";
+import { chmodSync, existsSync } from "node:fs";
 import { hostname } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { readTextTolerant, writeFileAtomic } from "../shared/files.ts";
@@ -635,7 +635,7 @@ export class Eva {
         "setting_forbidden",
         `A device login cannot change ${forbidden}. Change it on the machine with \`eva settings set\`.`,
       );
-    const changed = applySettingsChange(this.settings, patch);
+    const changed = applySettingsChange(this.savedSettings(), patch);
     saveSettings(this.options.paths, changed);
     this.settings = changed;
     const restartNeeded = keys.some(
@@ -647,13 +647,7 @@ export class Eva {
   async setupState(): Promise<SetupState> {
     const vaultPath = this.options.config.vaultPath;
     const remote = vaultPath === null ? null : await readOriginUrl(vaultPath, this.options.runner, this.gitEnvironment);
-    // The bot saves a new pairing to config.json while Eva runs, so the file knows better than memory.
-    let pairedChat = this.settings.telegram.allowedChatId;
-    try {
-      pairedChat = loadSettings(this.options.paths).config.telegram.allowedChatId;
-    } catch {
-      // A bad config.json stops the next start, which says why; the page keeps the known value.
-    }
+    const pairedChat = this.savedSettings().telegram.allowedChatId;
     const code = readTextTolerant(this.options.paths.telegramPairingCode)?.trim() ?? "";
     return {
       vaultRemote: remote === null ? null : this.redactor.redact(remote.replace(/\/\/[^/@]*@/, "//")),
@@ -666,7 +660,14 @@ export class Eva {
    * Saves one secret that the settings page may change, or removes it with null. The value never
    * comes back. The git, engine and Telegram processes read the secrets at start, so a restart follows.
    */
-  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
+  saveSecret(
+    name: PageSecretName,
+    value: string | null,
+    options: { readonly pageOnly: boolean } = { pageOnly: false },
+  ): { saved: true; restartNeeded: true } {
+    // A token decides whose account Eva uses, so a lost phone with a device login must not swap it.
+    if (options.pageOnly)
+      throw new EvaError("setting_forbidden", "A device login cannot change a token. Log in with the token instead.");
     const trimmed = value?.trim() ?? null;
     if (trimmed === "") throw new EvaError("config_invalid", "A secret cannot be empty. Remove it instead.");
     // Before anything else, so the value never reaches a log or an error unredacted.
@@ -678,6 +679,19 @@ export class Eva {
     saveSecrets(this.options.paths, secrets);
     this.secrets = secrets;
     return { saved: true, restartNeeded: true };
+  }
+
+  /**
+   * The settings as saved now. The Telegram bot saves a new pairing to `config.json` while Eva
+   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory.
+   */
+  private savedSettings(): EvaConfig {
+    if (!existsSync(this.options.paths.config)) return this.settings;
+    try {
+      return loadSettings(this.options.paths).config;
+    } catch {
+      return this.settings;
+    }
   }
 
   runCheck(name: CheckName): Promise<CheckResult> {

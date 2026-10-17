@@ -148,6 +148,8 @@ src/
 ### 4.3 Process model
 
 - **One core process for each instance.** It holds `<home>/eva.lock`. A second start exits with code 3.
+- **A stale lock never blocks a start.** The lock holds the pid and, on Linux, the boot id. Eva takes over a lock whose process no longer runs, or a lock from an earlier boot.
+- **A stop always ends.** Eva gives her front ends and the core 20 seconds to stop, then releases the lock and exits.
 - **The core serves a local API** on its port: HTTP for commands, WebSocket for events. `eva chat`, `eva status`, the web UI and other tools are clients of this API. Telegram runs inside the core.
 - **The API checks `Host` and `Origin`** on every request and every WebSocket upgrade, and requires a token (§12).
 - **Exit codes** (lesson 89): `0` clean stop, `1` crash, `2` bad config, `3` second instance (never retried), `4` restart for an update. The systemd unit sets `RestartPreventExitStatus=2 3`.
@@ -353,7 +355,7 @@ Built from the mockups in `mockups/`:
 - **Keep** has no API for personal accounts. Out of scope.
 - **Schedules:** definitions in `.eva/schedules.json`; only the hub fires them (lesson 118). A new or changed schedule shows a setup card first (lesson 66). Each firing starts a fresh chat (lesson 126), named after the schedule, in a configured time zone (lesson 68). "Add schedule" in the web UI writes the file.
 - **Voice:** `whisper.cpp` plus `ffmpeg` to decode Telegram's Opus audio (spike S6). "Heard: ..." first, VAD, audio in memory only, one note at a time (lesson 123).
-- **Files to send:** only from allowed folders, with the path resolved first (lesson 72). Scratch files older than a week are removed.
+- **Files to send:** only from allowed folders, with the path resolved first (lesson 72). Once a day, Eva removes Scratch files older than a week, also with vault sync off.
 - **PDFs** through a typst binary.
 
 ## 10. Phases

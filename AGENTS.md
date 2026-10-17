@@ -135,6 +135,7 @@ The gate: CI runs `bun run check` on every PR, on Ubuntu and on Windows. No rule
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `build:`. Whenever you commit, use the `write-commit` skill.
 - CI (`.github/workflows/pull-request-checks.yml`) runs the `checks` job on `ubuntu-latest` and `windows-latest`, and the `secrets` job (gitleaks), on every PR and on `main`. Lefthook runs the format check and lint before each commit, and `bun run check` before each push.
 - **No merge ruleset protects `main`** (owner decision, 2026-10-14). An agent may merge its own PR only when every check is green on both Ubuntu and Windows. **Never merge on red, pending, or missing checks.**
+- **Merge a PR only when its branch contains the latest `main`.** Two PRs that are each green can break `main` together (2026-10-17: a changed function signature in one, a new caller in the other). Merge `main` into the branch, wait for green, then merge with `gh pr merge --match-head-commit`.
 - **Never push to a person's vault** outside phase P1.
 
 ## Documentation Organization

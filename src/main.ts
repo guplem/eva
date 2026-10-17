@@ -19,7 +19,8 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "./core/instance/home.ts";
-import { acquireInstanceLock, isProcessAlive, runningInstancePid } from "./core/instance/instance-lock.ts";
+import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
+import { stopWithinDeadline } from "./core/instance/shutdown.ts";
 import {
   changeSettings,
   describeSettings,
@@ -262,12 +263,15 @@ async function serve(paths: HomePaths): Promise<number> {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
   }
-  const lock = acquireInstanceLock(paths.lock, { pid: process.pid, isProcessAlive });
+  const lock = acquireInstanceLock(paths.lock, {
+    pid: process.pid,
+    bootId: readBootId(process.platform),
+    isProcessAlive,
+  });
 
   const redactor = new Redactor();
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
-  logger.removeOldFiles();
   if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
@@ -300,6 +304,9 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
     logger,
+    removeOldLogs: () => {
+      logger.removeOldFiles();
+    },
     evaCommand: isStandalone() ? [process.execPath] : [process.execPath, Bun.main],
     updateChannel: updateChannel(secrets),
     restartForUpdate: () => {
@@ -330,6 +337,12 @@ async function serve(paths: HomePaths): Promise<number> {
       reason: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
     });
   });
+  // An exception that nobody catches leaves the core in an unknown state: log it, and let the service restart Eva.
+  process.on("uncaughtException", (error: Error) => {
+    logger.log("error", "Eva stopped on an error that nobody caught.", { reason: error.stack ?? error.message });
+    lock.release();
+    process.exit(exitCodes.crash);
+  });
   eva.startBackgroundWork();
   const api = startLocalApi({
     eva,
@@ -350,20 +363,31 @@ async function serve(paths: HomePaths): Promise<number> {
     restart = () => {
       stop(exitCodes.update);
     };
+    let stopping = false;
     const stop = (exitCode: number): void => {
+      if (stopping) return;
+      stopping = true;
+      // The last guard: a stop that still hangs after its deadline ends the process here.
+      setTimeout(() => process.exit(exitCode), shutdownDeadlineMs + hardExitGraceMs).unref();
       void (async () => {
-        await bot?.stop();
-        api.stop();
-        eva.stop();
-        clearInterval(publishRetry);
-        lock.release();
-        logger.log("info", "Eva stopped.", { exitCode });
-        if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
-          startNewCopy();
-          resolve(exitCodes.clean);
-          return;
+        try {
+          const outcome = await stopWithinDeadline(async () => {
+            clearInterval(publishRetry);
+            eva.stop();
+            await bot?.stop();
+            api.stop();
+          }, shutdownDeadlineMs);
+          if (outcome.kind !== "stopped") logger.log("warn", "Eva did not stop cleanly.", { ...outcome });
+        } finally {
+          lock.release();
+          logger.log("info", "Eva stopped.", { exitCode });
+          if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
+            startNewCopy();
+            resolve(exitCodes.clean);
+          } else {
+            resolve(exitCode);
+          }
         }
-        resolve(exitCode);
       })();
     };
     // Only the hub runs Telegram; the bot starts or stops when the hub moves (plan §4.4).
@@ -610,7 +634,8 @@ async function settings(paths: HomePaths, command: Extract<CliCommand, { command
 /** The API of the Eva that runs with this home, or null when none runs. */
 function runningClient(paths: HomePaths): ClientOptions | null {
   const token = loadSecrets(paths).localApiToken;
-  if (token === undefined || runningInstancePid(paths.lock, isProcessAlive) === null) return null;
+  const probe = { bootId: readBootId(process.platform), isProcessAlive };
+  if (token === undefined || runningInstancePid(paths.lock, probe) === null) return null;
   return { baseUrl: `http://127.0.0.1:${String(loadConfig(paths).port)}`, token };
 }
 
@@ -652,6 +677,9 @@ async function moveSettingsAfterPull(paths: HomePaths, secrets: EvaSecrets): Pro
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";
 const tailscaleRetryMs = 60_000;
+/** systemd sends SIGKILL 90 seconds after SIGTERM by default; Eva ends well before that. */
+const shutdownDeadlineMs = 20_000;
+const hardExitGraceMs = 5_000;
 const oldCopyWaitMs = 60_000;
 
 /** After an update, the new copy starts first; the lock is free only when the old copy has gone. */

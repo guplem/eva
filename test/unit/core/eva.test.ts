@@ -428,12 +428,87 @@ describe("Eva", () => {
     expect(lines.join("\n")).toContain('warn Vault sync failed. {"status":"offline"');
   });
 
-  test("the idle sweep removes Scratch files older than a week (plan §9)", async () => {
+  test("the background tick removes old Scratch files and old logs once a day, also with sync off (plan §9)", async () => {
     sandbox.write(vault, "Scratch/old.pdf", "old");
-    const instance = start(new FakeEngine());
+    let logCleanups = 0;
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({ sync: { ...defaultConfig.sync, enabled: false } }),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      removeOldLogs: () => {
+        logCleanups += 1;
+      },
+    });
     clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
-    await instance.sweep();
+    await eva.backgroundTick();
     expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
+    expect(logCleanups).toBe(1);
+    await eva.backgroundTick();
+    expect(logCleanups).toBe(1);
+    clock = new Date(clock.getTime() + 24 * 60 * 60_000);
+    await eva.backgroundTick();
+    expect(logCleanups).toBe(2);
+  });
+
+  test("the Scratch cleanup waits while an Assistant turn runs (lessons 22, 30)", async () => {
+    sandbox.write(vault, "Scratch/old.pdf", "old");
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine, { sync: { ...defaultConfig.sync, enabled: false } });
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    clock = new Date(Date.now() + 8 * 24 * 60 * 60_000);
+    await instance.backgroundTick();
+    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(true);
+    release();
+    await turn;
+    await instance.backgroundTick();
+    expect(existsSync(join(vault, "Scratch", "old.pdf"))).toBe(false);
+  });
+
+  test("a second idle sweep never starts while one runs", async () => {
+    const instance = start(new FakeEngine());
+    sandbox.write(vault, "Notes/local.md", "local\n");
+    const first = instance.sweep();
+    expect(await instance.sweep()).toBe("skipped");
+    expect(await first).toBe("ok");
+  });
+
+  test("a second background tick never starts while one runs", async () => {
+    let checks = 0;
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "source",
+        check: () => {
+          checks += 1;
+          return Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false });
+        },
+        apply: () => Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false }),
+      },
+    });
+    // The first tick waits on its vault fetch; a second tick at that moment must do nothing.
+    const first = eva.backgroundTick();
+    await eva.backgroundTick();
+    expect(checks).toBe(0);
+    await first;
+    expect(checks).toBe(1);
   });
 
   test("voice notes stay off until a whisper model is configured", () => {

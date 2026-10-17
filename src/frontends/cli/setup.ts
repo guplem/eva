@@ -13,7 +13,7 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../../core/instance/home.ts";
-import { isProcessAlive, runningInstancePid } from "../../core/instance/instance-lock.ts";
+import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/instance/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
@@ -147,7 +147,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it (plan §4.4).
   const freePort =
-    runningInstancePid(paths.lock, isProcessAlive) === null ? await firstFreePort(config.port) : config.port;
+    runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) === null
+      ? await firstFreePort(config.port)
+      : config.port;
   // Only a script (EVA_PORT) picks the port; a person gets the free one, and `eva settings` changes it.
   config = { ...config, port: options.interactive ? freePort : await readPort(ask, freePort) };
 

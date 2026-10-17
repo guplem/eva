@@ -34,7 +34,7 @@ function createManager(
   let nextId = 0;
   const manager = new SessionManager({
     engines: [engine],
-    store: new SessionStore(join(folder, "sessions.json")),
+    store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
     preparers: { assistant: preparer, project: preparer },
     now: () => new Date("2026-10-14T12:00:00Z"),
     newId: () => {
@@ -338,7 +338,7 @@ describe("approvals", () => {
     let nextId = 0;
     const manager = new SessionManager({
       engines: [new FakeEngine()],
-      store: new SessionStore(join(folder, "sessions.json")),
+      store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
       preparers: { assistant: asking, project: asking },
       now: () => new Date("2026-10-14T12:00:00Z"),
       newId: () => {

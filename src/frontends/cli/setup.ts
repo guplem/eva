@@ -13,7 +13,7 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../../core/instance/home.ts";
-import { loadSettings, saveSettings, withVaultSettings } from "../../core/instance/settings.ts";
+import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/instance/settings.ts";
 import { cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
@@ -186,7 +186,12 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   secrets.localApiToken ??= options.newToken();
   saveSettings(paths, config);
   saveSecrets(paths, secrets);
-  options.write(`Saved ${paths.config} and ${paths.secrets}. Run \`eva doctor\`, then \`eva\`.`);
+  const files = [
+    paths.config,
+    paths.secrets,
+    ...(config.vaultPath !== null && existsSync(config.vaultPath) ? [vaultSettingsPath(config.vaultPath)] : []),
+  ];
+  options.write(`Saved ${files.join(", ")}. Run \`eva doctor\`, then \`eva\`.`);
 }
 
 /** A missing or empty vault folder: Eva can start a vault there from her template (plan §11). */

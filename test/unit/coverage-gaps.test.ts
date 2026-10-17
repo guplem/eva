@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
-import { defaultConfig, homePaths } from "../../src/core/instance/home.ts";
+import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { isProcessAlive } from "../../src/core/instance/instance-lock.ts";
 import { abortControllerFor } from "../../src/engines/claude-code/claude-code-adapter.ts";
 import { describeEvent } from "../../src/frontends/cli/chat.ts";

@@ -8,7 +8,7 @@ import {
   tailnetPort,
   type RemoteAccess,
   type TailscaleFacts,
-} from "../../core/instance/machine-defaults.ts";
+} from "../../core/remote-access/tailscale.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 export interface NetworkSetupOptions {

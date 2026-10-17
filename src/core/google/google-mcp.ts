@@ -4,7 +4,7 @@
  * (lesson 117). Google stays off until the person sets an account and an OAuth client.
  */
 import type { McpServerSpec } from "../../shared/engine-port.ts";
-import type { EvaConfig, EvaSecrets } from "../instance/home.ts";
+import type { EvaConfig, EvaSecrets } from "../settings/home.ts";
 
 /** Change it on purpose only, after a check of the new tool names (the approval rule reads them). */
 export const workspaceMcpVersion = "2.1.0";

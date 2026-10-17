@@ -7,7 +7,7 @@ import {
   DeviceLogins,
   type DeviceLoginApprover,
   type DeviceLoginRequest,
-} from "../../../../src/core/instance/device-logins.ts";
+} from "../../../../src/core/remote-access/device-logins.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let folder: string;

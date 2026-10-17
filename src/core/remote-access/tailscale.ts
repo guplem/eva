@@ -1,15 +1,8 @@
 /**
- * Plug and play: each machine setting that is left empty takes a value that Eva finds on the
- * machine itself, so a new machine needs no settings beyond the vault and the tokens.
+ * Phone access through Tailscale: Eva reads the machine's Tailscale state and publishes her web
+ * UI inside the tailnet only.
  */
-import { join } from "node:path";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import type { EvaConfig } from "./home.ts";
-
-export interface MachineFacts {
-  readonly homeRoot: string;
-  readonly exists: (path: string) => boolean;
-}
 
 /** What Tailscale says about this machine, when it runs and is logged in. */
 export interface TailscaleFacts {
@@ -30,20 +23,6 @@ export interface RemoteAccess {
 const tailscaleTimeoutMs = 10_000;
 const defaultPort = 7420;
 const enableHttpsPage = "https://login.tailscale.com/admin/dns";
-
-/** The vault folder and the voice model, from where `eva setup` and the README put them. */
-export function withMachineDefaults(config: EvaConfig, facts: MachineFacts): EvaConfig {
-  const vaultFolder = join(facts.homeRoot, "vault");
-  const voiceModel = join(facts.homeRoot, "voice", "ggml-base.bin");
-  return {
-    ...config,
-    vaultPath: config.vaultPath ?? (facts.exists(join(vaultFolder, ".git")) ? vaultFolder : null),
-    voice: {
-      ...config.voice,
-      modelPath: config.voice.modelPath ?? (facts.exists(voiceModel) ? voiceModel : null),
-    },
-  };
-}
 
 /** Null when Tailscale is missing, stopped, or not logged in. */
 export async function readTailscale(

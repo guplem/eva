@@ -11,7 +11,7 @@ import {
   resolveHomeFolder,
   saveConfig,
   saveSecrets,
-} from "../../../../src/core/instance/home.ts";
+} from "../../../../src/core/settings/home.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let home: string;

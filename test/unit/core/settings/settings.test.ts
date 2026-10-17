@@ -8,7 +8,7 @@ import {
   loadConfig,
   saveConfig,
   type HomePaths,
-} from "../../../../src/core/instance/home.ts";
+} from "../../../../src/core/settings/home.ts";
 import {
   changeSettings,
   describeSettings,
@@ -21,7 +21,7 @@ import {
   settingChange,
   vaultSettingsPath,
   withVaultSettings,
-} from "../../../../src/core/instance/settings.ts";
+} from "../../../../src/core/settings/settings.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let root: string;

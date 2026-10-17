@@ -12,9 +12,9 @@ import {
   type EvaConfig,
   type EvaSecrets,
   type HomePaths,
-} from "../../core/instance/home.ts";
+} from "../../core/settings/home.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
-import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/instance/settings.ts";
+import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/settings/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";

@@ -567,7 +567,10 @@ describe("Eva", () => {
       claudeExecutable: "/opt/claude",
     });
     expect(eva.engineUpdateStatus()).toEqual({ phase: "idle", last: null });
-    expect((await eva.updateEngine())?.last).toMatchObject({ outcome: "updated", after: "2.2.0 (Claude Code)" });
+    expect(eva.updateEngine()?.phase).toBe("updating");
+    const instance = eva;
+    await waitFor(() => instance.engineUpdateStatus()?.phase === "idle");
+    expect(instance.engineUpdateStatus()?.last).toMatchObject({ outcome: "updated", after: "2.2.0 (Claude Code)" });
     expect(claudeRuns.map((run) => run.command)).toEqual([
       "/opt/claude --version",
       "/opt/claude update",
@@ -616,7 +619,7 @@ describe("Eva", () => {
     eva = instance;
     const turn = instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "go");
     await waitFor(() => engine.requests.length >= 1);
-    expect((await instance.updateEngine())?.phase).toBe("waiting_for_idle");
+    expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
     release();
     await turn;
     const tick = instance.backgroundTick();
@@ -629,10 +632,10 @@ describe("Eva", () => {
     expect(restarts).toEqual(["restart"]);
   });
 
-  test("an Eva with no claude program has no engine update", async () => {
+  test("an Eva with no claude program has no engine update", () => {
     const instance = start(new FakeEngine());
     expect(instance.engineUpdateStatus()).toBeNull();
-    expect(await instance.updateEngine()).toBeNull();
+    expect(instance.updateEngine()).toBeNull();
   });
 
   test("voice notes stay off until a whisper model is configured", () => {

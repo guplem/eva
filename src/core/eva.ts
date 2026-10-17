@@ -436,9 +436,15 @@ export class Eva {
     return this.engineUpdater?.status() ?? null;
   }
 
-  /** Runs `claude update` as soon as no chat runs a turn. Null when no claude program was found. */
-  async updateEngine(): Promise<EngineUpdateStatus | null> {
-    return (await this.engineUpdater?.updateNow()) ?? null;
+  /**
+   * Starts `claude update` as soon as no chat runs a turn, and answers at once: the update can
+   * outlast an HTTP request. Null when no claude program was found.
+   */
+  updateEngine(): EngineUpdateStatus | null {
+    const updater = this.engineUpdater;
+    if (updater === null) return null;
+    this.inBackground("The engine update", () => updater.updateNow());
+    return updater.status();
   }
 
   /**

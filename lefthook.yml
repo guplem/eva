@@ -1,4 +1,4 @@
-# Git hooks. Install them once with `bunx lefthook install`.
+# Git hooks. `bun install` installs them (the `prepare` script).
 pre-commit:
   parallel: true
   commands:

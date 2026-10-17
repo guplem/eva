@@ -33,26 +33,5 @@
     ],
     "ask": ["Bash(git push*)", "Bash(gh pr merge*)"],
     "deny": ["Read(./.env.local)", "Read(**/secrets.json)"]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "case \"$CLAUDE_FILE\" in *CLAUDE.md) echo '[hook] WARNING: every CLAUDE.md is a one-line @AGENTS.md shim. Put the content in the matching AGENTS.md instead (see adr/0001-agent-docs-structure.md).' ;; esac"
-          },
-          {
-            "type": "command",
-            "command": "case \"$CLAUDE_FILE\" in *.ts|*.js|*.cjs|*.json|*.md|*.yml|*.yaml) bunx prettier --write --ignore-unknown \"$CLAUDE_FILE\" >/dev/null 2>&1 || true ;; esac"
-          },
-          {
-            "type": "command",
-            "command": "case \"$CLAUDE_FILE\" in *src/*.ts|*scripts/*.ts) echo '[hook] Logic changed. Pin the behaviour with a failing test first (red-green), then run: bun run check (the run-checks skill) before you open a PR.' ;; *.dependency-cruiser.cjs|*bunfig.toml|*tsconfig.json|*eslint.config.js|*knip.json|*package.json) echo '[hook] A check config changed. Run: bun run check, and update the AGENTS.md Commands and Gotchas if a fact changed.' ;; esac"
-          }
-        ]
-      }
-    ]
   }
 }

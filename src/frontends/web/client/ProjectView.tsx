@@ -1,5 +1,5 @@
 /**
- * Project mode (mockups/project-mode.png): projects with search and filters, their clones,
+ * Project mode: projects with search and filters, their clones,
  * "New clone", and the conversation of the selected clone with its branch and pull request.
  */
 import { useEffect, useState, type ReactElement } from "react";

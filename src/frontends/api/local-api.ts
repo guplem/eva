@@ -1,5 +1,5 @@
 /**
- * The local API of one Eva instance: HTTP for commands, a WebSocket for events (ADR 0004).
+ * The local API of one Eva instance: HTTP for commands, a WebSocket for events.
  * It listens on the loopback address only; remote access goes through
  * `tailscale serve`. Every request passes the guards below first.
  */

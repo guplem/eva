@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
-import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts";
+import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
 import type { LogLevel } from "../../../../src/shared/logger.ts";

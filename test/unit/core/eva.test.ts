@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
-import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/instance/home.ts";
+import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";

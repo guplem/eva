@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { googleMcpServer, workspaceMcpVersion } from "../../../../src/core/google/google-mcp.ts";
-import { defaultConfig } from "../../../../src/core/instance/home.ts";
+import { defaultConfig } from "../../../../src/core/settings/home.ts";
 
 const secrets = { googleOauthClientId: "client-id", googleOauthClientSecret: "client-secret" };
 const inputs = {

@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The job name is the required check. Never rename it.
+  # No ruleset requires this job: the agent that merges checks that it is green on both systems.
   checks:
     strategy:
       fail-fast: false
@@ -38,7 +38,7 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      # Browser tests of the three mockup screens, at desktop size and at 375 px.
+      # Browser tests of the web UI, at desktop size and at 375 px.
       - run: bun run test:e2e
 
   # The single executable, started the way a new person starts it.

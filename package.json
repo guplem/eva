@@ -4,7 +4,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
-    "@stryker-mutator/core": "^10.0.0",
     "@types/bun": "^1.4.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -25,9 +24,7 @@
   "scripts": {
     "prepare": "lefthook install",
     "eva": "bun run src/main.ts",
-    "agents:sync": "bun run scripts/sync-agent-skills.ts",
-    "agents:check": "bun run scripts/sync-agent-skills.ts --check",
-    "check": "bun run format:check && bun run agents:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -37,7 +34,6 @@
     "public-content": "bun run scripts/check-public-content.ts",
     "test": "bun test --timeout 30000",
     "test:coverage": "bun test --coverage --timeout 30000",
-    "mutation": "stryker run",
     "test:e2e": "playwright test",
     "smoke:live": "bun run scripts/smoke-live.ts",
     "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"

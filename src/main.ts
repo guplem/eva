@@ -19,7 +19,7 @@ import {
   saveSecrets,
   type EvaSecrets,
   type HomePaths,
-} from "./core/instance/home.ts";
+} from "./core/settings/home.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { stopWithinDeadline } from "./core/instance/shutdown.ts";
@@ -31,7 +31,7 @@ import {
   moveSecuritySettingsFromVault,
   moveSettingsToVault,
   settingChange,
-} from "./core/instance/settings.ts";
+} from "./core/settings/settings.ts";
 import { executableUpdateChannel } from "./core/updates/self-update.ts";
 import { sourceUpdateChannel } from "./core/updates/source-update.ts";
 import type { UpdateChannel } from "./core/updates/updater.ts";
@@ -66,7 +66,7 @@ import {
   windowsTaskCommand,
 } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
-import { publishWithTailscale, readTailscale } from "./core/instance/machine-defaults.ts";
+import { publishWithTailscale, readTailscale } from "./core/remote-access/tailscale.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { describeAccess, runNetworkSetup } from "./frontends/cli/network-setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";

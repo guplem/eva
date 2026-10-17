@@ -105,6 +105,85 @@ test("Settings: Log out every device ends this login too", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
+test("Settings: a token saves write-only, shows as saved, and can be removed", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const field = page.getByLabel("GitHub token", { exact: true });
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+  await field.fill("ghp_e2e-example-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  await expect(field).toHaveValue("");
+  await expect(page.getByRole("status").filter({ hasText: "Restart Eva" })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  expect(await page.content()).not.toContain("e2e-example-token");
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Remove the GitHub token" }).click();
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+});
+
+test("Settings: each engine has a Test that runs a tiny real prompt", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const claudeRow = page.locator(".check-row", { hasText: "Test the Claude Code token" });
+  await claudeRow.getByRole("button", { name: "Test" }).click();
+  await expect(claudeRow).toContainText("✓ Claude Code answered:");
+  const piRow = page.locator(".check-row", { hasText: "Test pi" });
+  await piRow.getByRole("button", { name: "Test" }).click();
+  await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
+  await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
+  await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
+});
+
+test("Settings: the default model saves at once", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByLabel("Claude Code model").selectOption("sonnet");
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
+  await page.getByLabel("Claude Code model").selectOption("default");
+});
+
+test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as { vaultSync: Record<string, unknown> };
+    status.vaultSync = {
+      ...status.vaultSync,
+      status: "conflict",
+      lastError: "Notes/plan.md has a conflict.",
+      withheldFiles: [
+        { path: "Notes/keys.md", reason: "secret" },
+        { path: "Media/film.mov", reason: "too_large" },
+      ],
+    };
+    await route.fulfill({ response, json: status });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
+  await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
+});
+
+test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByLabel("Theme").selectOption("dark");
+  await page.getByLabel("Density").selectOption("compact");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+});
+
 test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
   page,
   context,

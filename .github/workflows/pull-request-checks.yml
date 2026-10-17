@@ -9,6 +9,9 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # No ruleset requires this job: the agent that merges checks that it is green on both systems.
   checks:

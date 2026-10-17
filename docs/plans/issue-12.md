@@ -47,8 +47,17 @@ Nine reviewers (three per gap) agreed on each point below.
   Any other exit restarts after 5 s, then 10 s, 20 s and 30 s at most, so a restart always comes within a minute.
   A run of 10 minutes or more resets the delay. The supervisor never gives up: the phone is the only way in.
   Each restarted Eva already reports the unclean exit to the phone through the run marker.
-- D5 (G3). The supervisor sets `EVA_SUPERVISED=1` for the child. `restartMethod` then returns "supervisor", so an update exits 4 and the supervisor restarts the new code.
+- D5 (G3). The supervisor sets `EVA_SUPERVISED` to its own pid for the child. `restartMethod` returns "supervisor" only while that pid is alive and is Eva's parent. An update then exits 4, and the supervisor starts the new code.
   Without it, Eva starts a detached copy and exits 0, and the supervisor stops.
 - D6 (G3). The supervisor does not restart itself after an update. It stays small and rarely changes.
   On Windows, the running supervisor keeps `eva.exe.old` open, so the next update cannot delete that file.
   `replaceExecutable` then moves the old file aside under a unique name, and it removes the older leftovers that it can.
+- D7 (review). The install lifts the task's three-day limit and its battery stops with `Set-ScheduledTask`. A failure there is a warning.
+- D8 (review). When Eva already runs, the install says that the new task takes over at the next logon. It does not start a second Eva.
+- D9 (review). The child stays in the supervisor's console (no `windowsHide`), so a Ctrl+C reaches her. The wait for her exit ends when her bounded stop ends.
+
+## Known limits
+
+- A stop that only the supervisor sees (`schtasks /End`, Task Manager) ends Eva hard on Windows. Her next start then reports an unclean exit.
+- On Windows, a new process can reuse a dead supervisor's pid. The parent check catches this on Linux only.
+- A crash before Eva writes her run marker repeats every 30 s with no message to the phone. This gap existed before.

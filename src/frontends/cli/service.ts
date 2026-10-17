@@ -1,10 +1,12 @@
 /**
  * `eva service install`: starts Eva by herself, as a systemd user service on Linux (lesson 85)
- * or a logon task on Windows. Exit codes 2 (bad config) and 3 (second instance) never
+ * or a logon task on Windows. The logon task runs Eva's own supervisor, which restarts her
+ * after a crash as systemd does. Exit codes 2 (bad config) and 3 (second instance) never
  * restart (lesson 89).
  */
 
 import { basename } from "node:path";
+import { supervisedVariable } from "../../core/instance/supervisor.ts";
 
 export interface ServiceTarget {
   /** The command that runs Eva, from `serviceCommand`: [bun, src/main.ts] or [eva]. */
@@ -38,12 +40,14 @@ export function servicePath(path: string, separator = ":"): string {
 }
 
 /**
- * How Eva starts again after an update. systemd restarts her on exit code 4; anywhere
- * else, such as a Windows logon task or a terminal, she starts a new copy of herself first.
+ * How Eva starts again after an update. systemd and Eva's own supervisor restart her on exit
+ * code 4; anywhere else, such as a terminal, she starts a new copy of herself first.
  */
 export function restartMethod(environment: Readonly<Record<string, string | undefined>>): "supervisor" | "new-copy" {
   // systemd sets INVOCATION_ID for each run of a unit.
-  return environment["INVOCATION_ID"] === undefined ? "new-copy" : "supervisor";
+  return environment["INVOCATION_ID"] === undefined && environment[supervisedVariable] === undefined
+    ? "new-copy"
+    : "supervisor";
 }
 
 export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {
@@ -76,8 +80,11 @@ export function serviceCommand(inputs: {
   return inputs.standalone ? [inputs.execPath] : [inputs.execPath, inputs.mainScript];
 }
 
+/** The logon task runs the supervisor, because Task Scheduler cannot restart Eva after a crash. */
 export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[] {
-  const command = [...target.executable.map((part) => `"${part}"`), "--home", `"${target.home}"`].join(" ");
+  const command = [...target.executable.map((part) => `"${part}"`), "supervise", "--home", `"${target.home}"`].join(
+    " ",
+  );
   return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", windowsTaskName(name), "/TR", command];
 }
 

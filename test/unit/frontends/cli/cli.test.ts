@@ -77,6 +77,7 @@ describe("parseArguments", () => {
       query: "photo booth",
     });
     expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
+    expect(parseArguments(["supervise", "--home", "/h"])).toEqual({ command: "supervise", home: "/h" });
     expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
     expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
       command: "setup",
@@ -557,8 +558,9 @@ describe("service", () => {
     ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
-  test("after an update, systemd restarts Eva; anywhere else she starts a new copy", () => {
+  test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
     expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "1" })).toBe("supervisor");
     expect(restartMethod({})).toBe("new-copy");
   });
 
@@ -570,7 +572,7 @@ describe("service", () => {
     expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
   });
 
-  test("the Windows task starts Eva at logon", () => {
+  test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
     expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
       "schtasks",
       "/Create",
@@ -580,7 +582,7 @@ describe("service", () => {
       "/TN",
       "Eva",
       "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" --home "C:/home/eva"',
+      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
     ]);
   });
 

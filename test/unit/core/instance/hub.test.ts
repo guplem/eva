@@ -28,7 +28,7 @@ afterEach(() => {
   rmSync(vault, { recursive: true, force: true });
 });
 
-describe("the hub claim (plan §4.4)", () => {
+describe("the hub claim", () => {
   test("without a vault, or before any claim, this machine is the hub", () => {
     expect(machineRole(null, "laptop", "satellite")).toBe("hub");
     expect(machineRole(vault, "laptop", "satellite")).toBe("hub");
@@ -127,7 +127,7 @@ function answering(exitCode: number, stdout: string, stderr = ""): ProcessRunner
   return { run: () => Promise.resolve({ exitCode, stdout, stderr }) };
 }
 
-describe("publishWithTailscale (plan §12)", () => {
+describe("publishWithTailscale", () => {
   const facts = { hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com", httpsEnabled: true };
 
   test("the default instance gets an address with no port; another instance keeps its own port", async () => {

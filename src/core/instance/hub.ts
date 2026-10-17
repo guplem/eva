@@ -1,5 +1,5 @@
 /**
- * Which machine is the hub (plan §4.4): the vault names it in `.eva/hub.json`, so every machine
+ * Which machine is the hub: the vault names it in `.eva/hub.json`, so every machine
  * with the vault agrees, and nobody sets a role by hand. The first machine that starts with the
  * vault claims the hub; any machine takes it over with `eva hub` or the web UI. Only the hub
  * runs Telegram and the schedules.

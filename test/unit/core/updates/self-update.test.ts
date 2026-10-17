@@ -23,7 +23,7 @@ function signText(text: string): string {
   return sign(null, Buffer.from(text, "utf8"), keys.privateKey).toString("base64");
 }
 
-describe("release verification (plan §12)", () => {
+describe("release verification", () => {
   test("a signature matches only its key and its exact text", () => {
     const sums = "aa  eva-linux-x64\n";
     const signature = signText(sums);

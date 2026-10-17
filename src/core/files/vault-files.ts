@@ -1,5 +1,5 @@
 /**
- * Files that reach a chat (docs/plan.md §9, lessons 72 to 74, 124). The model names a file
+ * Files that reach a chat (lessons 72 to 74, 124). The model names a file
  * with a marker line in its answer; a marker is plain text, so every engine can write it.
  * Only a file inside the vault can be sent, and the path is resolved before the check, so
  * neither `..` nor a symbolic link can point out (lesson 72).
@@ -33,7 +33,7 @@ export type SendableFile =
 /** Telegram lets a bot upload at most 50 MB. */
 export const maxSendableBytes = 50 * 1024 * 1024;
 export const scratchFolderName = "Scratch";
-/** Scratch files older than this are removed (plan §9). */
+/** Scratch files older than this are removed. */
 const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
 const markerPattern = /^\s*\[\[\s*(attach|offer)\s*:\s*(.+?)\s*\]\]\s*$/i;
 const fencePattern = /^\s*(```|~~~)/;

@@ -309,7 +309,7 @@ describe("ClaudeCodeEngine", () => {
     expect(calls[1]).not.toHaveProperty("resume");
   });
 
-  test("Assistant mode asks for approval only for actions that reach other people (plan §5.5)", async () => {
+  test("Assistant mode asks for approval only for actions that reach other people", async () => {
     const asked: string[] = [];
     let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
     const engine = new ClaudeCodeEngine({
@@ -355,7 +355,7 @@ describe("ClaudeCodeEngine", () => {
 
 type CanUseTool = (name: string, input: Record<string, unknown>) => Promise<{ behavior: string }>;
 
-describe("the approval gate for Google writes (plan §5.5, §9)", () => {
+describe("the approval gate for Google writes", () => {
   async function decisions(inputs: Record<string, unknown>[]): Promise<string[]> {
     let canUseTool: CanUseTool | undefined;
     const engine = new ClaudeCodeEngine({

@@ -1,7 +1,7 @@
 /**
  * `eva service install`: starts Eva by herself, as a systemd user service on Linux (lesson 85)
  * or a logon task on Windows. Exit codes 2 (bad config) and 3 (second instance) never
- * restart (lesson 89, docs/plan.md §4.3).
+ * restart (lesson 89).
  */
 
 import { basename } from "node:path";
@@ -14,7 +14,7 @@ export interface ServiceTarget {
 
 /**
  * The service's name: `eva` for the default home, and `eva-<folder>` for any other, so a second
- * instance on the same machine (plan D11) never replaces the first one's service.
+ * instance on the same machine never replaces the first one's service.
  */
 export function serviceName(home: string, defaultHome: string): string {
   if (home === defaultHome) return "eva";
@@ -38,7 +38,7 @@ export function servicePath(path: string, separator = ":"): string {
 }
 
 /**
- * How Eva starts again after an update. systemd restarts her on exit code 4 (plan §4.3); anywhere
+ * How Eva starts again after an update. systemd restarts her on exit code 4; anywhere
  * else, such as a Windows logon task or a terminal, she starts a new copy of herself first.
  */
 export function restartMethod(environment: Readonly<Record<string, string | undefined>>): "supervisor" | "new-copy" {
@@ -66,7 +66,7 @@ WantedBy=default.target
 
 /**
  * The command that the service runs. The single executable runs itself: its code lives in Bun's
- * embedded file system, which only that executable can read (plan §11).
+ * embedded file system, which only that executable can read.
  */
 export function serviceCommand(inputs: {
   readonly standalone: boolean;

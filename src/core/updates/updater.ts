@@ -1,5 +1,5 @@
 /**
- * Eva's automatic updates (plan §10): a check at the frequency in the settings, and an install
+ * Eva's automatic updates: a check at the frequency in the settings, and an install
  * only when no chat runs a turn, so a restart never cuts a turn off. A manual update waits for
  * the same moment.
  */

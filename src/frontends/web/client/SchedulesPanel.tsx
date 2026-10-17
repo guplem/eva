@@ -1,4 +1,4 @@
-/** The schedules of `.eva/schedules.json`: list, remove, and "Add schedule" (plan §9). */
+/** The schedules of `.eva/schedules.json`: list, remove, and "Add schedule". */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type ScheduleList } from "./api.ts";
 

@@ -1,4 +1,4 @@
-/** Reads the `eva` command line (docs/plan.md §8.1). */
+/** Reads the `eva` command line. */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 
 export type CliCommand =

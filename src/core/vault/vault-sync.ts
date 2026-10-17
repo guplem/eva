@@ -1,5 +1,5 @@
 /**
- * Eva keeps the vault in sync in her own code (docs/plan.md §6, D7): pull before an
+ * Eva keeps the vault in sync in her own code: pull before an
  * Assistant turn, commit and push after it, and an idle sweep. Nothing here ever
  * discards a change; a conflict stops the pushes and asks a person.
  */
@@ -286,7 +286,7 @@ export class VaultSync {
 
   /**
    * A file over the size limit stays out of the commit everywhere. A file outside a project
-   * folder that holds a secret stays out too (plan §6).
+   * folder that holds a secret stays out too.
    */
   private withheldReason(relativePath: string): WithheldReason | null {
     const absolutePath = join(this.options.vaultPath, relativePath);

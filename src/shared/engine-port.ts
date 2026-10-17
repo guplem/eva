@@ -1,6 +1,6 @@
 /**
  * The engine port: what the core asks of an engine adapter (Claude Code, pi). The core
- * never imports an adapter; `src/main.ts` passes the adapters in (docs/plan.md §4.2).
+ * never imports an adapter; `src/main.ts` passes the adapters in.
  */
 import type { EngineEventPayload } from "./events.ts";
 
@@ -25,7 +25,7 @@ export interface ApprovalRequest {
 
 export type ApprovalAnswer = "allow" | "deny";
 
-/** A local MCP server that the engine starts for the turn, such as the Google tools (plan §9). */
+/** A local MCP server that the engine starts for the turn, such as the Google tools. */
 export interface McpServerSpec {
   readonly command: string;
   readonly args: readonly string[];
@@ -43,9 +43,9 @@ export interface TurnRequest {
   readonly appendSystemPrompt: string | null;
   /** Assistant mode: local plugin folders, such as the vault's `.eva/`. */
   readonly pluginFolders: readonly string[];
-  /** Assistant mode: the MCP servers that Eva adds. Project mode: none, so the clone's own apply (D8). */
+  /** Assistant mode: the MCP servers that Eva adds. Project mode: none, so the clone's own apply. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
-  /** Project mode: false runs the clone with its hooks and project MCP servers off (plan §12). */
+  /** Project mode: false runs the clone with its hooks and project MCP servers off. */
   readonly trusted: boolean;
   /** The whole environment of the engine process (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;

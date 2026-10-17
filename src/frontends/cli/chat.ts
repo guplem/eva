@@ -1,4 +1,4 @@
-/** `eva chat`: a conversation in the terminal, as a client of the local API (docs/plan.md §8.1). */
+/** `eva chat`: a conversation in the terminal, as a client of the local API. */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 
@@ -86,7 +86,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
         options.write(`Eva refused the message: ${await sent.text()}\n`);
         continue;
       }
-      // Wait for the turn end; answer each approval here, with y or n (plan §5.5).
+      // Wait for the turn end; answer each approval here, with y or n.
       while (!turnIsOver()) {
         const requestId = questions.shift();
         if (requestId === undefined) {

@@ -1,5 +1,5 @@
 /**
- * Device login for the web UI (docs/plan.md §12). A browser that comes through an allowed
+ * Device login for the web UI. A browser that comes through an allowed
  * Tailscale account asks to log in, the owner allows it in Telegram, and the browser gets a
  * device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
  */

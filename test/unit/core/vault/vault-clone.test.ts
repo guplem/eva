@@ -26,7 +26,7 @@ async function failure(run: Promise<unknown>): Promise<unknown> {
   );
 }
 
-describe("cloneVault (plan §11)", () => {
+describe("cloneVault", () => {
   test("clones the vault into a new folder, and keeps Eva's credential helper in it", async () => {
     const folder = join(sandbox.root, "eva-home", "vault");
     await cloneVault({ repository: sandbox.remote, folder, runner: systemProcessRunner, environment: gitEnvironment });

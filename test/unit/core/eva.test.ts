@@ -118,7 +118,7 @@ describe("Eva", () => {
     expect(Object.keys(environment).some((name) => name.startsWith("GIT_AUTHOR"))).toBe(false);
   });
 
-  test("the ownConfigFolder setting gives the instance its own Claude config folder (plan §4.4)", async () => {
+  test("the ownConfigFolder setting gives the instance its own Claude config folder", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {
       engines: { ...defaultConfig.engines, claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true } },
@@ -135,7 +135,7 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
   });
 
-  test("the instance in the default home uses the OS user's own engine config folders (plan D8)", async () => {
+  test("the instance in the default home uses the OS user's own engine config folders", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {}, { defaultHome: join(home, ".") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
@@ -166,7 +166,7 @@ describe("Eva", () => {
     });
   });
 
-  test("the assistant gives work to a project, and the result comes back to its chat (plan §5.3)", async () => {
+  test("the assistant gives work to a project, and the result comes back to its chat", async () => {
     sandbox.write(
       vault,
       "Projects/2025-03-02-1015-example-app/AGENTS.md",
@@ -429,7 +429,7 @@ describe("Eva", () => {
     expect(lines.join("\n")).toContain('warn Vault sync failed. {"status":"offline"');
   });
 
-  test("the background tick removes old Scratch files and old logs once a day, also with sync off (plan §9)", async () => {
+  test("the background tick removes old Scratch files and old logs once a day, also with sync off", async () => {
     sandbox.write(vault, "Scratch/old.pdf", "old");
     let logCleanups = 0;
     eva = new Eva({

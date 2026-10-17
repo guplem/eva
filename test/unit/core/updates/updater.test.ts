@@ -68,7 +68,7 @@ function harness(): Harness {
   };
 }
 
-describe("Updater (plan §10)", () => {
+describe("Updater", () => {
   test("before a check, the status knows the channel and the frequency only", () => {
     expect(harness().updater.status()).toEqual({
       kind: "source",

@@ -1,5 +1,5 @@
 /**
- * `eva setup`: asks for each setting and writes the instance home (docs/plan.md §8.1, §11).
+ * `eva setup`: asks for each setting and writes the instance home.
  * An empty answer keeps the current value. With `--non-interactive`, each answer comes from
  * an environment variable instead (`setupEnvironmentNames`), and a bad answer stops setup.
  */
@@ -103,7 +103,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     );
   };
   let repository = await askRepository();
-  // Eva clones the vault herself (plan §11): with a repository, the folder has a default, so only
+  // Eva clones the vault herself: with a repository, the folder has a default, so only
   // a script (EVA_VAULT_PATH) picks another one.
   const defaultFolder = config.vaultPath ?? (repository === "" ? null : join(paths.root, "vault"));
   const vaultPath =
@@ -145,7 +145,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     options.write(`${problem} The engine stays ${config.engines.default}.`);
   }
 
-  // The running Eva of this home holds her own port, so a rerun of setup keeps it (plan §4.4).
+  // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
     runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) === null
       ? await firstFreePort(config.port)
@@ -212,7 +212,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   options.write(`Saved ${files.join(", ")}. Run \`eva doctor\`, then \`eva\`.`);
 }
 
-/** A missing or empty vault folder: Eva can start a vault there from her template (plan §11). */
+/** A missing or empty vault folder: Eva can start a vault there from her template. */
 async function offerNewVault(
   options: SetupOptions,
   folder: string,
@@ -259,7 +259,7 @@ async function readPort(
 
 /**
  * The first port from `start` up that nothing listens on, so a second instance on one machine
- * gets its own port (plan §4.4). A running instance's own port counts as taken too, so the
+ * gets its own port. A running instance's own port counts as taken too, so the
  * caller skips this check for the home whose Eva runs now.
  */
 export async function firstFreePort(start: number): Promise<number> {

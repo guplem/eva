@@ -1,7 +1,7 @@
 /**
  * The pi extension that Eva writes to disk and loads with `pi --mode rpc -e <file>`. pi has no
  * permission prompts, so this extension asks the RPC client before each tool call, and the
- * policy stays in the adapter (plan §5.5). Eva keeps the source as text because the single
+ * policy stays in the adapter. Eva keeps the source as text because the single
  * executable has no source files on disk, and pi runs in its own process.
  *
  * Each tool call emits one `extension_ui_request` with `method: "confirm"`, the title below,

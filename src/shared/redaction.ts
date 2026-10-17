@@ -42,7 +42,7 @@ export class Redactor {
   }
 }
 
-/** True when the text holds a well-known secret shape. Used by the vault secret scan (plan §6). */
+/** True when the text holds a well-known secret shape. Used by the vault secret scan. */
 export function containsSecretPattern(text: string): boolean {
   return secretPatterns.some((pattern) => {
     pattern.lastIndex = 0;

@@ -1,6 +1,6 @@
 /**
  * Contract tests for the pi adapter on records captured from pi 0.73.1 against a fake model
- * server (test/fixtures/pi/, plan §10, P7). A live run with a real login is in
+ * server (test/fixtures/pi/). A live run with a real login is in
  * docs/owner-todo.md.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -188,7 +188,7 @@ describe("PiEngine", () => {
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", lastMessageId: null });
   });
 
-  test("Assistant mode allows a local command at once, and asks the person before an outward one (plan §5.5)", async () => {
+  test("Assistant mode allows a local command at once, and asks the person before an outward one", async () => {
     const asked: ApprovalRequest[] = [];
     const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
       asked.push(approval);
@@ -207,7 +207,7 @@ describe("PiEngine", () => {
     expect(outward.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
-  test("Project mode runs pi's tools without a question, as pi itself does (D8)", async () => {
+  test("Project mode runs pi's tools without a question, as pi itself does", async () => {
     const asked: string[] = [];
     const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
     await drain(

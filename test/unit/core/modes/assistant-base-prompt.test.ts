@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
 
 describe("assistantBasePrompt", () => {
-  test("holds the rules every person needs (plan §5.2)", () => {
+  test("holds the rules every person needs", () => {
     expect(assistantBasePrompt).toStartWith("# You are Eva");
     for (const section of [
       "## Answering from the notes",

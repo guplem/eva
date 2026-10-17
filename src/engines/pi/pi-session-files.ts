@@ -2,7 +2,7 @@
  * pi keeps each conversation as a tree in a JSONL session file: a `session` header, then
  * entries with an `id` and a `parentId`. RPC events carry no entry ids, so Eva reads the file
  * after a turn for the id of the last answer, and writes a branch file herself for a fork,
- * because RPC can neither cut at an answer nor let Eva name the new file (spike, P7).
+ * because RPC can neither cut at an answer nor let Eva name the new file (captured pi 0.73.1 output).
  */
 import { existsSync, readFileSync } from "node:fs";
 import { writeFileAtomic } from "../../shared/files.ts";

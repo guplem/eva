@@ -1,6 +1,6 @@
 /**
  * The instance home folder: where one Eva instance keeps its config, secrets, state
- * and logs (docs/plan.md §4.4).
+ * and logs.
  */
 import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -138,18 +138,18 @@ const configSchema = z.object({
     .default({ trustedRepositoryOwners: [] }),
   google: z
     .object({
-      /** The Google account that the Google tools act for. Google stays off until it is set (plan §9). */
+      /** The Google account that the Google tools act for. Google stays off until it is set. */
       email: z.string().min(1).nullable().default(null),
       services: z
         .array(z.enum(["calendar", "drive", "contacts", "tasks", "gmail"]))
         .default(["calendar", "drive", "contacts", "tasks"]),
-      /** Start with read-only scopes (plan §9). */
+      /** Start with read-only scopes. */
       readOnly: z.boolean().default(true),
     })
     .default({ email: null, services: ["calendar", "drive", "contacts", "tasks"], readOnly: true }),
   voice: z
     .object({
-      /** A whisper.cpp model file. Voice notes stay off until it is set (plan §9). */
+      /** A whisper.cpp model file. Voice notes stay off until it is set. */
       modelPath: z.string().min(1).nullable().default(null),
       vadModelPath: z.string().min(1).nullable().default(null),
       whisperExecutable: z.string().min(1).default("whisper-cli"),

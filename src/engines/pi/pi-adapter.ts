@@ -1,7 +1,7 @@
 /**
- * The pi engine (docs/plan.md §7, ADR 0006): one `pi --mode rpc` child process per turn,
+ * The pi engine (ADR 0006): one `pi --mode rpc` child process per turn,
  * started on the turn's session file. Facts come from captured pi 0.73.1 output
- * (test/fixtures/pi/, docs/spikes.md "pi RPC").
+ * (test/fixtures/pi/).
  *
  * - **Session handle:** Eva's engine session id names the file `<sessions>/<id>.jsonl`, so
  *   Eva knows the handle before the first turn (lesson 44).
@@ -12,7 +12,9 @@
  * - **Approvals:** the extension in pi-approval-extension.ts asks before each tool call; the
  *   shared outward-action rule decides.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
- *   ran, with the session file complete (spike).
+ *   ran, with the session file complete.
+ * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
+ *   the person's global pi settings, so Eva never sends them.
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -221,7 +223,7 @@ export interface PiArgumentInputs {
   readonly model: string | null;
 }
 
-/** The pi command line for one turn (plan §5.1, contract-tested like the Claude Code options). */
+/** The pi command line for one turn (contract-tested like the Claude Code options). */
 export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs): string[] {
   const args = [
     "--mode",
@@ -238,12 +240,12 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   ];
   if (inputs.model !== null) args.push("--model", inputs.model);
   if (request.mode === "assistant") {
-    // Assistant mode has no hooks (D7); pi's hooks are extensions. Eva's own extension still loads.
+    // Assistant mode has no hooks; pi's hooks are extensions. Eva's own extension still loads.
     args.push("--no-extensions");
     if (inputs.promptFile !== null) args.push("--append-system-prompt", inputs.promptFile);
     for (const folder of request.pluginFolders) args.push("--skill", join(folder, "skills"));
   } else if (!request.trusted) {
-    // Project mode on an untrusted clone: none of the clone's own extensions (plan §12).
+    // Project mode on an untrusted clone: none of the clone's own extensions.
     args.push("--no-extensions");
   }
   return args;
@@ -265,7 +267,7 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
 }
 
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
-  // Project mode is pi exactly as the person runs it, and pi itself asks nothing (D8).
+  // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });
 }

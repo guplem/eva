@@ -1,6 +1,6 @@
 /**
- * Eva in a Telegram chat (docs/plan.md §8.2), ported from Wall-I v1 with lessons 56 to 63
- * and 123 to 127. Each topic is one chat of the instance's single conversation list (D13);
+ * Eva in a Telegram chat, ported from Wall-I v1 with lessons 56 to 63
+ * and 123 to 127. Each topic is one chat of the instance's single conversation list;
  * a message outside every topic belongs to the main chat.
  */
 import { readFileSync } from "node:fs";
@@ -36,7 +36,7 @@ export interface TelegramBotOptions {
   readonly logger?: Logger;
   readonly pollTimeoutSeconds?: number;
   readonly typingIntervalMs?: number;
-  /** Turns a voice note into text (plan §9). Without it, a voice note gets a sentence that says so. */
+  /** Turns a voice note into text. Without it, a voice note gets a sentence that says so. */
   readonly transcribe?: (audio: Uint8Array) => Promise<string>;
   /** Gives the time of each 409 conflict, for the conflict window. */
   readonly clock?: Clock;
@@ -205,7 +205,7 @@ export class TelegramBot {
     this.unsubscribeSchedules =
       options.eva.schedules?.subscribe((event) => this.onScheduleEvent(event)) ?? ((): void => undefined);
     this.unsubscribeAlerts = options.eva.onAlert((alert) => this.sendAlert(alert));
-    // The paired chat confirms each new browser of the web UI (plan §12).
+    // The paired chat confirms each new browser of the web UI.
     this.detachDeviceApprover = options.eva.deviceLogins.attachApprover({
       canApprove: () => this.allowedChatId !== null,
       ask: (request) => {
@@ -687,7 +687,7 @@ export class TelegramBot {
     );
   }
 
-  /** Setup cards, firings and file problems of the schedules (plan §9, lessons 66, 70, 126). */
+  /** Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). */
   private async onScheduleEvent(event: ScheduleEvent): Promise<void> {
     const chatId = this.allowedChatId;
     if (chatId === null) return;
@@ -807,7 +807,7 @@ export class TelegramBot {
     }
     const target = this.targetOf(event.sessionId);
     if (target === null) {
-      // Every attached front end shows an approval (plan §5.5), also for a chat that lives elsewhere.
+      // Every attached front end shows an approval, also for a chat that lives elsewhere.
       if (event.kind === "approval_needed" && this.allowedChatId !== null) {
         const title = this.options.eva.sessions.list().find((session) => session.id === event.sessionId)?.title;
         await this.sendApproval(this.allowedChatId, null, event, title ?? "another chat");

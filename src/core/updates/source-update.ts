@@ -1,5 +1,5 @@
 /**
- * Updates for an Eva that runs from a git checkout, such as a server install (plan §10): a
+ * Updates for an Eva that runs from a git checkout, such as a server install: a
  * fast-forward to the remote branch, then `bun install` when the dependencies changed. The
  * checkout's commits on `main` passed CI on Ubuntu and Windows before they merged.
  */

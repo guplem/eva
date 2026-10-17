@@ -103,7 +103,7 @@ describe("secrets", () => {
 });
 
 describe("createHomeFolders", () => {
-  test("creates the home and state folders for the OS user only, also when they exist (plan §12)", () => {
+  test("creates the home and state folders for the OS user only, also when they exist", () => {
     const paths = homePaths(join(home, "eva"));
     mkdirSync(paths.root, { mode: 0o755 });
     createHomeFolders(paths);

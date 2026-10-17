@@ -1,5 +1,5 @@
 /**
- * Fires the schedules of `.eva/schedules.json` (docs/plan.md §9). Only the hub fires them,
+ * Fires the schedules of `.eva/schedules.json`. Only the hub fires them,
  * because every machine runs an instance (lesson 118). A new or changed schedule gets a
  * setup card before it first fires (lesson 66). Each firing with a prompt starts a fresh
  * chat named after the schedule (lesson 126).

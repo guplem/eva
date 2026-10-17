@@ -1,6 +1,6 @@
 /**
- * `eva update` (docs/plan.md §10, P8): replaces the single executable with the latest GitHub
- * release, after the signature and the checksum match (plan §12). A running executable cannot
+ * `eva update`: replaces the single executable with the latest GitHub
+ * release, after the signature and the checksum match. A running executable cannot
  * be overwritten on Windows, but it can be renamed, so the old file moves aside first.
  */
 import { chmodSync, renameSync, rmSync, writeFileSync } from "node:fs";

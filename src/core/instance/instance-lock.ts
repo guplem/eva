@@ -1,5 +1,5 @@
 /**
- * One core process for each instance home (docs/plan.md §4.3, lesson 20). The lock is a
+ * One core process for each instance home (lesson 20). The lock is a
  * file that holds the owner's pid and, on Linux, the boot id. It is created exclusively,
  * and a lock whose owner no longer runs is taken over, so a crash never blocks the next start.
  */

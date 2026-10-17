@@ -54,7 +54,7 @@ afterEach(() => {
   sandbox.dispose();
 }, gitHookTimeoutMs);
 
-describe("source update channel (plan §10)", () => {
+describe("source update channel", () => {
   test("an up-to-date checkout has nothing to install", async () => {
     const head = sandbox.git(checkout, "rev-parse", "--short", "HEAD");
     expect(await channel().check()).toEqual({ current: head, latest: head, available: false });

@@ -1,5 +1,5 @@
 /**
- * `bun run smoke:live`: two real Claude Code turns through Eva's own adapter (plan §10, P3),
+ * `bun run smoke:live`: two real Claude Code turns through Eva's own adapter,
  * in a neutral demo vault with an isolated Claude config folder. It checks one turn end per
  * turn, that the second turn continues the first, and that the prompt cache answers.
  * It needs a subscription token from `claude setup-token`; without one it says so and stops.

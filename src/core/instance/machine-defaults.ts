@@ -21,7 +21,7 @@ export interface TailscaleFacts {
   readonly httpsEnabled: boolean;
 }
 
-/** Phone access through `tailscale serve` (plan §12): the address, or why there is none. */
+/** Phone access through `tailscale serve`: the address, or why there is none. */
 export interface RemoteAccess {
   readonly url: string | null;
   readonly problem: string | null;
@@ -78,14 +78,14 @@ export async function readTailscale(
 
 /**
  * The HTTPS port in the tailnet: 443 for the default instance, so the phone needs no port in
- * the address, and Eva's own port for any other instance on the machine (plan D11).
+ * the address, and Eva's own port for any other instance on the machine.
  */
 export function tailnetPort(port: number): number {
   return port === defaultPort ? 443 : port;
 }
 
 /**
- * Publishes the web UI in the tailnet only, never on the internet (no Funnel, plan D10). The
+ * Publishes the web UI in the tailnet only, never on the internet (no Funnel). The
  * command is safe to repeat; Tailscale keeps the setting across restarts.
  */
 export async function publishWithTailscale(

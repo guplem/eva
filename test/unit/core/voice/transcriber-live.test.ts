@@ -1,5 +1,5 @@
 /**
- * A real voice note through real ffmpeg and whisper.cpp (plan §10, P6). The `voice` CI job
+ * A real voice note through real ffmpeg and whisper.cpp. The `voice` CI job
  * builds whisper.cpp, records a note with espeak-ng, and sets the variables below. Without
  * them, the test is skipped, so a machine without the tools still passes `bun test`.
  */

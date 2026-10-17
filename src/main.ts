@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Eva's entry point. It only wires the layers together (docs/plan.md §4.2), so it holds no
+ * Eva's entry point. It only wires the layers together, so it holds no
  * decision worth a test; every piece it joins has its own tests.
  */
 import { spawn } from "node:child_process";
@@ -116,7 +116,7 @@ async function main(argv: readonly string[]): Promise<number> {
     case "doctor":
       return (await doctor(paths)) ? exitCodes.clean : exitCodes.crash;
     case "setup": {
-      // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
+      // The setup order starts with the doctor: a missing tool shows before any question.
       await doctor(paths);
       createHomeFolders(paths);
       const setupOptions = {
@@ -147,7 +147,7 @@ async function main(argv: readonly string[]): Promise<number> {
       } else {
         await withPrompt(async (ask) => {
           await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
-          // The last step: the address that opens Eva on every other device (plan §11).
+          // The last step: the address that opens Eva on every other device.
           await runNetworkSetup({ ...networkOptions, interactive: true, ask, port: loadSettings(paths).config.port });
         });
       }
@@ -398,7 +398,7 @@ async function serve(paths: HomePaths): Promise<number> {
         }
       })();
     };
-    // Only the hub runs Telegram; the bot starts or stops when the hub moves (plan §4.4).
+    // Only the hub runs Telegram; the bot starts or stops when the hub moves.
     const followRole = async (role: MachineRole): Promise<void> => {
       if (role === "hub" && bot === null) {
         bot = startTelegram(paths, eva, logger);
@@ -423,7 +423,7 @@ async function serve(paths: HomePaths): Promise<number> {
   });
 }
 
-/** Telegram runs on the hub instance only (plan §4.4, lesson 56), whenever it has a bot token. */
+/** Telegram runs on the hub instance only (lesson 56), whenever it has a bot token. */
 function startTelegram(paths: HomePaths, eva: Eva, logger: FileLogger): TelegramBot | null {
   const config = loadSettings(paths).config;
   const token = loadSecrets(paths).telegramBotToken;
@@ -664,7 +664,7 @@ function updateChannel(secrets: EvaSecrets): UpdateChannel {
 /**
  * Pulls the vault before the settings move to it, so this machine never starts a settings file
  * that another machine already pushed (a conflict that would stop the vault's pushes). Then the
- * security settings move the other way, out of the vault (plan §12).
+ * security settings move the other way, out of the vault.
  */
 async function moveSettingsAfterPull(
   paths: HomePaths,

@@ -1,5 +1,5 @@
 /**
- * A fake Google MCP server for tests (docs/plan.md §10, P6). It speaks MCP over stdio, one
+ * A fake Google MCP server for tests. It speaks MCP over stdio, one
  * JSON-RPC message per line, offers `manage_event` like `workspace-mcp`, and appends each tool
  * call to the file in FAKE_MCP_LOG, so a test can see whether a call reached the server.
  */

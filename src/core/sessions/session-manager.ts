@@ -1,7 +1,7 @@
 /**
  * Runs conversations: one turn at a time per session, with message gathering and queueing,
- * forks and retries, approvals, and exactly one end event per turn (docs/plan.md §4.5,
- * §5.5; lessons 44, 47, 48, 49, 51, 114).
+ * forks and retries, approvals, and exactly one end event per turn
+ * (lessons 44, 47, 48, 49, 51, 114).
  */
 import type {
   ApprovalAnswer,
@@ -73,9 +73,9 @@ export interface SessionManagerOptions {
   readonly redactor: Redactor;
   /** How long a first message waits for more messages to join its turn (lesson 51). */
   readonly gatherMs: number;
-  /** An approval nobody answers is denied after this time (plan §5.5). */
+  /** An approval nobody answers is denied after this time. */
   readonly approvalTimeoutMs: number;
-  /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good (plan §6). */
+  /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good. */
   readonly turnTimeoutMs: number;
 }
 
@@ -178,7 +178,7 @@ export class SessionManager {
     return this.runtimes.get(sessionId)?.busy ?? false;
   }
 
-  /** Stops the running turn of a chat (plan §4.1). False when no turn runs. */
+  /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;
     if (controller === null) return false;

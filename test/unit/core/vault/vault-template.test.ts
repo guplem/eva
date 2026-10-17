@@ -36,7 +36,7 @@ function git(cwd: string, ...args: string[]): string {
     .trim();
 }
 
-describe("the vault template (plan §11)", () => {
+describe("the vault template", () => {
   test("holds the agent map, Eva's files and no personal data", () => {
     const files = vaultTemplateFiles(answers);
     expect(Object.keys(files).sort()).toEqual([

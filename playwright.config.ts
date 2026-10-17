@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/** Browser tests of the web UI (docs/plan.md §10, P5), at desktop size and at 375 px. */
+/** Browser tests of the web UI, at desktop size and at 375 px. */
 export default defineConfig({
   testDir: "test/e2e",
   testMatch: "**/*.spec.ts",

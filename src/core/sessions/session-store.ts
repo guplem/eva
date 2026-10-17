@@ -1,6 +1,6 @@
 /**
- * The session index of one instance, in `state/sessions.json` (docs/plan.md §4.5). Every
- * front end shows this one list (D13). A broken file starts an empty list, never a crash
+ * The session index of one instance, in `state/sessions.json`. Every
+ * front end shows this one list. A broken file starts an empty list, never a crash
  * (lesson 54), and a bad entry costs only that session (lesson 69).
  */
 import { copyFileSync } from "node:fs";

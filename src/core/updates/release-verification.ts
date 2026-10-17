@@ -1,5 +1,5 @@
 /**
- * Self-update checks a signature (docs/plan.md §12). The release workflow lists the SHA-256
+ * Self-update checks a signature. The release workflow lists the SHA-256
  * of each executable in `SHA256SUMS` and signs that file with an Ed25519 key that only the
  * workflow holds (the `EVA_RELEASE_SIGNING_KEY` secret). Eva carries the public key, so a
  * download that someone changed, or a release that CI did not build, never replaces her.

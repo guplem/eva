@@ -1,7 +1,7 @@
 /**
- * Eva's log: one JSON line per record in `logs/eva-YYYY-MM-DD.jsonl`, kept for 14 days
- * (docs/plan.md §4.4). Every record is redacted first (lesson 95). Logging never throws.
- * `readRecentLogEntries` reads the last warnings and errors back, for `/logs` (plan §8.2).
+ * Eva's log: one JSON line per record in `logs/eva-YYYY-MM-DD.jsonl`, kept for 14 days.
+ * Every record is redacted first (lesson 95). Logging never throws.
+ * `readRecentLogEntries` reads the last warnings and errors back, for `/logs`.
  */
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";

@@ -38,10 +38,10 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      # Browser tests of the three mockup screens, at desktop size and at 375 px (plan §10, P5).
+      # Browser tests of the three mockup screens, at desktop size and at 375 px.
       - run: bun run test:e2e
 
-  # The single executable, started the way a new person starts it (plan §10, P8).
+  # The single executable, started the way a new person starts it.
   package:
     strategy:
       fail-fast: false
@@ -82,7 +82,7 @@ jobs:
           cmake -S "$RUNNER_TEMP/whisper.cpp" -B "$RUNNER_TEMP/whisper.cpp"/build -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/whisper.cpp"/build --config Release --target whisper-cli -j 4
           bash "$RUNNER_TEMP/whisper.cpp"/models/download-ggml-model.sh base.en
-      # A recorded voice note, as Telegram sends it: Opus audio in an Ogg file (plan §10, P6).
+      # A recorded voice note, as Telegram sends it: Opus audio in an Ogg file.
       - name: Record a voice note
         run: |
           espeak-ng -w "$RUNNER_TEMP/note.wav" "Please buy milk and bread tomorrow morning."

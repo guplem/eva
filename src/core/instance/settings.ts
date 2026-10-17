@@ -1,6 +1,6 @@
 /**
  * The settings of a person live in the vault, in `.eva/settings.json`, so every machine with the
- * vault uses the same ones (plan §4.4). The settings of one machine, such as the vault folder,
+ * vault uses the same ones. The settings of one machine, such as the vault folder,
  * the port and the program paths, stay in the home's `config.json`. Secrets never go in the vault.
  */
 import { existsSync } from "node:fs";
@@ -25,7 +25,7 @@ export const sharedSettingKeys: readonly string[] = [
 
 /**
  * Settings that decide who gets in and what an agent may do. The Assistant agent edits the vault
- * as normal work, and the vault syncs from other machines, so these stay in `config.json` (plan §12).
+ * as normal work, and the vault syncs from other machines, so these stay in `config.json`.
  */
 const securitySettingKeys: readonly string[] = [
   "remoteAccess.allowedTailscaleIdentities",

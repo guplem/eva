@@ -1,5 +1,5 @@
 /**
- * A fake `pi --mode rpc` for adapter tests (docs/plan.md §10, P7). It replays records captured
+ * A fake `pi --mode rpc` for adapter tests. It replays records captured
  * from pi 0.73.1 (test/fixtures/pi/) the way pi sends them: it starts on the `prompt` command,
  * pauses after an `extension_ui_request` until the answer comes, and pauses after an
  * `agent_end` (with the `auto_retry_*` records that pi emits in the same tick) until the next

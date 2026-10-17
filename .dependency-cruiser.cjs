@@ -1,4 +1,4 @@
-/** Enforces the layers of docs/plan.md §4.2. */
+/** Enforces the source layers of ADR 0005. */
 module.exports = {
   forbidden: [
     {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks one built Eva executable the way a new person starts it (plan §10, P8):
+# Checks one built Eva executable the way a new person starts it:
 # `eva version`, `eva doctor`, then `eva setup --non-interactive` with a new vault.
 # Usage: bash scripts/smoke-executable.sh <path to the executable>
 set -euo pipefail

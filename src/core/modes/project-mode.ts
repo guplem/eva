@@ -1,7 +1,7 @@
 /**
- * Project mode: the harness exactly as if the person opened the clone (docs/plan.md D8).
+ * Project mode: the harness exactly as if the person opened the clone.
  * Eva adds no prompt and no plugin. She only decides trust: an untrusted clone runs with
- * its hooks, project settings and project MCP servers off (§12). The first time a clone of
+ * its hooks, project settings and project MCP servers off. The first time a clone of
  * an unknown repository opens, Eva asks the person, as Claude Code itself does.
  */
 import { isTrustedByDefault, type TrustStore } from "../projects/clones.ts";

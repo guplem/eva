@@ -1,5 +1,5 @@
 /**
- * The Test buttons of the settings page (docs/plan.md §8.3): one real, small check for each
+ * The Test buttons of the settings page: one real, small check for each
  * part Eva depends on. A check never shows a secret, even in its error text.
  */
 import type { ProcessRunner } from "../shared/process-runner.ts";

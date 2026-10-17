@@ -1,5 +1,5 @@
 /**
- * The network step of `eva setup` (plan §11, §12): it brings the machine into the person's
+ * The network step of `eva setup`: it brings the machine into the person's
  * tailnet, turns HTTPS on, and ends with the address that opens Eva on every other device.
  * Each step that needs the person shows a link and waits; nothing here needs root.
  */

@@ -79,6 +79,26 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await expect(answer).toContainText("Fix the bug");
 });
 
+test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await page.getByRole("button", { name: "New clone" }).click();
+  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  await openList(page);
+  const chats = page.getByRole("group", { name: "Chats in this clone" });
+  await expect(chats.locator(".list-item")).toHaveCount(1);
+  await chats.getByRole("button", { name: "New chat", exact: true }).click();
+  await openList(page);
+  await expect(chats.locator(".list-item")).toHaveCount(2);
+  await expect(chats.locator(".list-item").first()).toHaveAttribute("aria-current", "true");
+  await chats.locator(".list-item").last().click();
+  await openList(page);
+  await expect(chats.locator(".list-item").last()).toHaveAttribute("aria-current", "true");
+});
+
 test("the status filter hides a closed project until Any status", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Project" }).click();

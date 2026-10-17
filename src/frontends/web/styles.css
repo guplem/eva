@@ -226,6 +226,13 @@ textarea {
   border-color: var(--danger);
 }
 
+.clone-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+}
+
 .warnings {
   margin: 0;
   padding-left: 18px;

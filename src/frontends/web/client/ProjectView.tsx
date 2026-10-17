@@ -30,6 +30,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   const [openProject, setOpenProject] = useState<string | null>(null);
   const [clones, setClones] = useState<CloneDetails[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const showError = useShowError();
 
@@ -54,10 +55,18 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
     }
   };
 
+  const selectClone = (next: Selection): void => {
+    setSelection(next);
+    setSelectedChatId(null);
+    onNavigate();
+  };
+
   const startChat = async (current: Selection): Promise<void> => {
     try {
-      await api.newProjectChat(current.project.id, current.clone.name, "default");
+      const chat = await api.newProjectChat(current.project.id, current.clone.name, "default");
       await onChanged();
+      setSelectedChatId(chat.id);
+      onNavigate();
     } catch (caught) {
       showError(caught);
     }
@@ -70,10 +79,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
       const details = await api.clones(project.id);
       setClones(details);
       const clone = details.find((candidate) => candidate.name === created.name);
-      if (clone !== undefined) {
-        setSelection({ project, clone });
-        onNavigate();
-      }
+      if (clone !== undefined) selectClone({ project, clone });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -81,7 +87,8 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
 
   const cloneChats =
     selection === null ? [] : rootChats(sessions.filter((session) => session.startFolder === selection.clone.path));
-  const chat = cloneChats[0];
+  // The newest chat opens first, as in Assistant mode.
+  const chat = cloneChats.find((candidate) => candidate.id === selectedChatId) ?? cloneChats[0];
 
   return (
     <div className="layout">
@@ -141,17 +148,34 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                   </ul>
                 )}
                 {clones.map((clone) => (
-                  <button
-                    key={clone.name}
-                    className="list-item"
-                    aria-current={selection?.clone.path === clone.path}
-                    onClick={() => {
-                      setSelection({ project, clone });
-                      onNavigate();
-                    }}
-                  >
-                    {clone.name}
-                  </button>
+                  <div key={clone.name} style={{ display: "contents" }}>
+                    <button
+                      className="list-item"
+                      aria-current={selection?.clone.path === clone.path}
+                      onClick={() => selectClone({ project, clone })}
+                    >
+                      {clone.name}
+                    </button>
+                    {selection?.clone.path === clone.path && (
+                      <div role="group" aria-label="Chats in this clone" className="clone-chats">
+                        {cloneChats.map((candidate) => (
+                          <button
+                            key={candidate.id}
+                            className="list-item"
+                            aria-current={candidate.id === chat?.id}
+                            onClick={() => {
+                              setSelectedChatId(candidate.id);
+                              onNavigate();
+                            }}
+                          >
+                            {candidate.title}
+                            <div className="muted">{candidate.source}</div>
+                          </button>
+                        ))}
+                        <button onClick={() => void startChat(selection)}>New chat</button>
+                      </div>
+                    )}
+                  </div>
                 ))}
                 <button onClick={() => void newClone(project)}>New clone</button>
               </div>

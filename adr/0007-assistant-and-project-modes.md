@@ -21,7 +21,7 @@ Source: spike S3 (below); owner decisions of 2026-10-14; lessons 5, 11, 40.
 - **Project mode adds nothing of Eva's** to the session. A `CLAUDE.md` in the clone stops `AGENTS.md` loading, exactly as a manual session does.
 - **Spike S3** (a real run on 2026-10-14) showed what a Project session loads. With no `CLAUDE.md`, Claude Code walks up past the clone's git root and loads every `AGENTS.md`: vault, project, and clone. With a `CLAUDE.md` anywhere in that chain, it loads no `AGENTS.md`. `.eva/skills/` never appears. So the vault must never hold a `CLAUDE.md`.
 - **The assistant can give work to a project.** It opens a Project mode session in a free clone, or a new clone, with the request as the first message. Project mode never works on the rest of the vault.
-- **An untrusted clone** (its repository owner is not on the allowlist) runs with `disableAllHooks: true` and no project MCP servers until the person trusts it.
+- **An untrusted clone** (its repository owner is not on the allowlist) runs with only the user's settings: no project instructions or skills, `disableAllHooks: true`, and no project MCP servers, until the person trusts it. Only the person's own answer is stored; an unanswered trust question asks again next time.
 - **The Assistant prompt is byte-identical on every turn** (lesson 40). A missing `.eva/assistant.md` fails the turn (lesson 11).
 
 `append` stays the default for the Assistant prompt until spike S4, an owner check in `docs/owner-todo.md`, compares it with replace.

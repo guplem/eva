@@ -11,6 +11,7 @@ Source: lessons 20, 54, 85, 89.
 - **One core process per instance.** It holds `<home>/eva.lock`. A second start exits with code 3.
 - **The core serves a local API on its port:** HTTP for commands, WebSocket for events. `eva chat`, `eva status`, the web UI, and other tools are clients of this API. Telegram runs inside the core.
 - **The API listens on `127.0.0.1` only.** It checks `Host` and `Origin` on every request and every WebSocket upgrade. Local clients send a token from `<home>/secrets.json`. Remote access goes only through `tailscale serve`, with the Tailscale identity header checked against the instance's allowlist. Never `0.0.0.0`, never Tailscale Funnel, never a public tunnel.
+- **The Tailscale identity is a check, never a login.** Any program on the machine can forge the header on `127.0.0.1`, an agent included. A new browser logs in once: the page shows a code, and the person taps Allow in Telegram, which gives that browser a device cookie (`src/core/instance/device-logins.ts`). Without a Telegram bot on the machine, the page asks for the token.
 - **Exit codes are a contract with the supervisor** (lesson 89): `0` clean stop, `1` crash, `2` bad config, `3` second instance (never retried), `4` restart for an update.
 - **Each instance has its own home folder,** port (default 7420), vault, and state files. Writes are atomic, and a bad file never crashes Eva (lesson 54).
 - **One conversation list per instance.** Every front end shows the same list.

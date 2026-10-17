@@ -15,7 +15,13 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
-import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
+import {
+  engineUpdateProblem,
+  scheduleFiringProblem,
+  uncleanExitMessage,
+  updateProblem,
+  vaultSyncProblem,
+} from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
@@ -332,7 +338,8 @@ export class Eva {
             executable: claudeExecutable,
             runner: options.runner,
             environment: this.engineToolEnvironment(),
-            isIdle: () => !this.workRuns(),
+            // Eva's own update ends in a restart, which would cut `claude update` off.
+            isIdle: () => !this.workRuns() && !this.installsOwnUpdate(),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -367,8 +374,10 @@ export class Eva {
       await this.pullIfDue();
       this.noticeRoleChange();
       this.cleanUpIfDue();
-      // The engine update goes first: Eva's own update restarts her.
-      await this.engineUpdater?.tick();
+      // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
+      // its download can take minutes, and the next ticks must still fetch the vault.
+      const engineUpdater = this.engineUpdater;
+      if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateProblem();
     } finally {
@@ -433,7 +442,12 @@ export class Eva {
   }
 
   engineUpdateStatus(): EngineUpdateStatus | null {
-    return this.engineUpdater?.status() ?? null;
+    if (this.engineUpdater === null) return null;
+    const status = this.engineUpdater.status();
+    if (status.last === null) return status;
+    // The detail is the output of `claude update`, which a page shows.
+    const detail = status.last.detail === null ? null : this.redact(status.last.detail);
+    return { ...status, last: { ...status.last, detail } };
   }
 
   /**
@@ -443,7 +457,7 @@ export class Eva {
   updateEngine(): EngineUpdateStatus | null {
     const updater = this.engineUpdater;
     if (updater === null) return null;
-    this.inBackground("The engine update", () => updater.updateNow());
+    this.runEngineUpdate(() => updater.updateNow());
     return updater.status();
   }
 
@@ -490,8 +504,9 @@ export class Eva {
   }
 
   /**
-   * True while a chat runs a turn or holds a gathered message, or a schedule fires. A firing
-   * schedule has a moment between its new chat and its first message (lesson 92).
+   * True while a chat runs a turn or holds a gathered message, a schedule fires, or `claude
+   * update` runs. A firing schedule has a moment between its new chat and its first message
+   * (lesson 92). Eva's own update must not restart her during `claude update`.
    */
   private workRuns(): boolean {
     return (
@@ -789,6 +804,24 @@ export class Eva {
     });
   }
 
+  private installsOwnUpdate(): boolean {
+    const phase = this.updater?.status().phase;
+    return phase === "updating" || phase === "restarting";
+  }
+
+  /**
+   * Runs one step of the engine update apart, then reports its result, so a failure reaches the
+   * phone also when the page has stopped asking.
+   */
+  private runEngineUpdate(step: () => Promise<unknown>): void {
+    this.inBackground("The engine update", async () => {
+      await step();
+      const status = this.engineUpdater?.status();
+      if (status?.phase === "idle" && status.last !== null)
+        this.alerts.report("engine_update", engineUpdateProblem(status.last));
+    });
+  }
+
   private noticeUpdateProblem(): void {
     const status = this.updater?.status();
     if (status !== undefined) this.alerts.report("update", updateProblem(status));
@@ -839,7 +872,6 @@ export class Eva {
     return folder;
   }
 
-  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   /**
    * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
    * folder, so the run acts on the same install, and no token, which such a run never needs.
@@ -866,6 +898,7 @@ export class Eva {
     return defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
   }
 
+  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
     const isExtraInstance = this.isExtraInstance();
     const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };

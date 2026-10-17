@@ -589,11 +589,11 @@ describe("Eva", () => {
       await new Promise<void>((resolve) => (release = resolve));
       yield* FakeEngine.answer(request, "ok");
     });
-    let finishUpdate: () => void = () => undefined;
+    const finishUpdateGate: { open: (() => void) | null } = { open: null };
     const runner: ProcessRunner = {
       run: async (command, options) => {
         if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
-        if (command[1] === "update") await new Promise<void>((resolve) => (finishUpdate = resolve));
+        if (command[1] === "update") await new Promise<void>((resolve) => (finishUpdateGate.open = resolve));
         return { exitCode: 0, stdout: "2.1.0 (Claude Code)\n", stderr: "" };
       },
     };
@@ -622,14 +622,91 @@ describe("Eva", () => {
     expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
     release();
     await turn;
-    const tick = instance.backgroundTick();
-    await waitFor(() => instance.engineUpdateStatus()?.phase === "updating");
+    // The engine update runs apart, so the tick never waits for its download.
+    await instance.backgroundTick();
+    expect(instance.engineUpdateStatus()?.phase).toBe("updating");
     expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
-    finishUpdate();
-    await tick;
+    await waitFor(() => finishUpdateGate.open !== null);
+    finishUpdateGate.open?.();
+    await waitFor(() => instance.engineUpdateStatus()?.phase === "idle");
     expect(instance.engineUpdateStatus()?.last?.outcome).toBe("up_to_date");
     await instance.backgroundTick();
     expect(restarts).toEqual(["restart"]);
+  });
+
+  test("the engine update waits while Eva's own update installs, because her restart would cut it off", async () => {
+    const finishInstallGate: { open: (() => void) | null } = { open: null };
+    const claudeRuns: string[] = [];
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        claudeRuns.push(command.join(" "));
+        return Promise.resolve({ exitCode: 0, stdout: "2.1.0\n", stderr: "" });
+      },
+    };
+    const restarts: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+      claudeExecutable: "/opt/claude",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: async () => {
+          await new Promise<void>((resolve) => (finishInstallGate.open = resolve));
+          return { current: "0.1.0", latest: "0.2.0", available: false };
+        },
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    eva = instance;
+    const installing = instance.updateNow();
+    await waitFor(() => finishInstallGate.open !== null);
+    expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
+    finishInstallGate.open?.();
+    await installing;
+    expect(restarts).toEqual(["restart"]);
+    expect(claudeRuns).toEqual([]);
+  });
+
+  test("an update waits while a schedule fires, before its chat gets the prompt (lesson 92)", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        },
+      },
+    );
+    const releaseGate: { open: (() => void) | null } = { open: null };
+    // The first check sends the setup card; a slow card send keeps the check running.
+    const unsubscribe = instance.schedules?.subscribe(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseGate.open = resolve;
+        }),
+    );
+    const check = instance.schedules?.tick();
+    await waitFor(() => releaseGate.open !== null);
+    expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+    unsubscribe?.();
+    releaseGate.open?.();
+    await check;
   });
 
   test("an Eva with no claude program has no engine update", () => {
@@ -739,6 +816,40 @@ describe("Eva alerts", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
     expect(instance.status().problems[0]).toStartWith("The update install failed");
+  });
+
+  test("a failed engine update reaches the phone as an alert, and a good one clears it", async () => {
+    let refuse = true;
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: { githubToken: "secret-value-for-tests" },
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) =>
+          Promise.resolve(
+            command[1] === "update" && refuse
+              ? { exitCode: 1, stdout: "", stderr: "Installed with npm. Token secret-value-for-tests.\n" }
+              : { exitCode: 0, stdout: "2.1.0\n", stderr: "" },
+          ),
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    eva = instance;
+    const alerts = collectAlerts(instance);
+    instance.updateEngine();
+    await waitFor(() => alerts.length >= 1);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["engine_update", "warn"]]);
+    expect(alerts[0]?.message).toStartWith("The Claude Code update failed: Installed with npm.");
+    expect(alerts[0]?.message).not.toContain("secret-value-for-tests");
+    expect(instance.engineUpdateStatus()?.last?.detail).not.toContain("secret-value-for-tests");
+    refuse = false;
+    instance.updateEngine();
+    await waitFor(() => alerts.length >= 2);
+    expect(alerts[1]?.level).toBe("resolved");
   });
 
   test("a schedule that fails to fire raises an alert named after the schedule", async () => {

@@ -106,6 +106,16 @@ describe("buildQueryOptions", () => {
     expect(options.resume).toBeUndefined();
   });
 
+  test("Assistant mode: Eva's ask rules beat a person's own allow rules for the shell and Eva's tools (issue #51)", () => {
+    const server = { command: "uvx", args: [], environment: {} };
+    const options = buildQueryOptions(request({ mcpServers: { google: server } }), "/bin/claude");
+    // An "ask" rule wins over any "allow" rule, so every such call reaches canUseTool and Eva's approval.
+    expect(options.settings).toEqual({
+      disableAllHooks: true,
+      permissions: { ask: ["Bash", "mcp__google"] },
+    });
+  });
+
   test("Project mode: the harness exactly as a manual session, with no Eva text", () => {
     const options = buildQueryOptions(
       request({ mode: "project", appendSystemPrompt: null, pluginFolders: [], startFolder: "/clone" }),

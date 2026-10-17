@@ -271,6 +271,18 @@ describe("approvals and commands", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/sync");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    telegram.sendText(owner, "/update");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("Vault sync:");
+    expect(texts).toContain("This Eva cannot update herself.");
+    expect(engine.requests).toEqual([]);
+  });
+
   test("the commands are registered with Telegram", async () => {
     const bot = createBot();
     await bot.registerCommands();

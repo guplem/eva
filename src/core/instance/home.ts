@@ -69,8 +69,13 @@ const configSchema = z.object({
     .object({
       enabled: z.boolean().default(true),
       sweepSeconds: z.number().int().min(10).default(60),
+      /** Minutes between two fetches of the vault's remote. Null: only before each Assistant turn. */
+      pullIntervalMinutes: z.number().int().min(1).nullable().default(5),
     })
-    .default({ enabled: true, sweepSeconds: 60 }),
+    .default({ enabled: true, sweepSeconds: 60, pullIntervalMinutes: 5 }),
+  updates: z
+    .object({ frequency: z.enum(["off", "hourly", "daily", "weekly"]).default("daily") })
+    .default({ frequency: "daily" }),
   engines: z
     .object({
       default: z.enum(["claude-code", "pi"]).default("claude-code"),

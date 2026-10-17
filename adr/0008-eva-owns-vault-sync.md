@@ -10,6 +10,7 @@ Source: plan §1 (D7), §5.4, §6; owner answer 4 (`docs/review-2026-10-14.md`);
 
 - **The core syncs the vault,** inside the one core process (ADR 0004), at an explicit vault path, on the vault's default branch only. Sync never enters a clone under `Projects/*/repos/`.
 - **The cycle:** `git pull --rebase --autostash` before each Assistant turn; commit and push after it; an idle sweep every 60 seconds that never runs during an Assistant turn. Project turns do not block the sweep.
+- **A periodic fetch** (`sync.pullIntervalMinutes`, default 5 minutes, or off) brings other machines' changes in between turns, and never during an Assistant turn. **Sync now** (`eva sync`, Telegram `/sync`, the web UI) pulls, then commits and pushes.
 - **Every git step has a timeout** (60 seconds for a network step, 20 for a local step), runs with `GIT_TERMINAL_PROMPT=0`, and stops gently, then hard, then cleans up.
 - **A conflict never discards a change.** Eva aborts the rebase, keeps the local commits, stops pushing, and tells the person in every front end.
 - **A secret scan runs before each commit.** A matching file outside `Projects/*/` stays out of the commit; the scan never blocks the whole commit (lesson 27).

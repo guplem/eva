@@ -306,3 +306,56 @@ describe("without a vault", () => {
     }
   });
 });
+
+describe("updates and the vault sync", () => {
+  test("without an update channel, the status is null and an update is refused", async () => {
+    expect(await json<unknown>(await call("/api/update"))).toBeNull();
+    expect((await call("/api/update", { method: "POST", body: {} })).status).toBe(409);
+    expect((await call("/api/update/check", { method: "POST", body: {} })).status).toBe(409);
+  });
+
+  test("Sync now answers with the sync state", async () => {
+    const response = await call("/api/vault/sync", { method: "POST", body: {} });
+    expect(response.status).toBe(200);
+    expect(await json<{ status: string }>(response)).toMatchObject({ status: "ok" });
+  });
+});
+
+describe("an Eva with an update channel", () => {
+  test("the API checks, then installs", async () => {
+    const restarts: string[] = [];
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const post = (path: string): Promise<Response> =>
+        fetch(`${updatingApi.url}${path}`, { method: "POST", headers: headers(), body: "{}" });
+      expect(await json<unknown>(await post("/api/update/check"))).toMatchObject({ available: true, latest: "0.2.0" });
+      expect(await json<unknown>(await post("/api/update"))).toMatchObject({ phase: "restarting" });
+      expect(restarts).toEqual(["restart"]);
+    } finally {
+      updatingApi.stop();
+      updating.stop();
+    }
+  });
+});

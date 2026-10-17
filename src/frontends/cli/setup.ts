@@ -7,14 +7,13 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   homePaths,
-  loadConfig,
   loadSecrets,
-  saveConfig,
   saveSecrets,
   type EvaConfig,
   type EvaSecrets,
   type HomePaths,
 } from "../../core/instance/home.ts";
+import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/instance/settings.ts";
 import { cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
@@ -77,7 +76,7 @@ const ghTimeoutMs = 120_000;
 
 export async function runSetup(options: SetupOptions): Promise<void> {
   const paths = homePaths(options.paths.root);
-  let config: EvaConfig = loadConfig(paths);
+  let config: EvaConfig = loadSettings(paths).config;
   const secrets: EvaSecrets = { ...loadSecrets(paths) };
   const ask = async (key: SetupQuestion, question: string): Promise<string> =>
     (await options.ask(key, question)).trim();
@@ -117,6 +116,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       await offerNewVault(options, config.vaultPath, config.timeZone ?? "UTC", ask);
     }
   }
+
+  // A cloned vault brings the person's settings from another machine; an answer above still wins.
+  config = withVaultSettings(config).config;
+  if (timeZone !== "") config = { ...config, timeZone };
 
   const engine = await ask("engine", `Default engine, claude-code or pi [${config.engines.default}]: `);
   if (engine === "claude-code" || engine === "pi")
@@ -181,9 +184,14 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (voiceModel !== "") config = { ...config, voice: { ...config.voice, modelPath: voiceModel } };
 
   secrets.localApiToken ??= options.newToken();
-  saveConfig(paths, config);
+  saveSettings(paths, config);
   saveSecrets(paths, secrets);
-  options.write(`Saved ${paths.config} and ${paths.secrets}. Run \`eva doctor\`, then \`eva\`.`);
+  const files = [
+    paths.config,
+    paths.secrets,
+    ...(config.vaultPath !== null && existsSync(config.vaultPath) ? [vaultSettingsPath(config.vaultPath)] : []),
+  ];
+  options.write(`Saved ${files.join(", ")}. Run \`eva doctor\`, then \`eva\`.`);
 }
 
 /** A missing or empty vault folder: Eva can start a vault there from her template (plan §11). */

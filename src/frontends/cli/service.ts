@@ -22,6 +22,15 @@ export function servicePath(path: string, separator = ":"): string {
     .join(separator);
 }
 
+/**
+ * How Eva starts again after an update. systemd restarts her on exit code 4 (plan §4.3); anywhere
+ * else, such as a Windows logon task or a terminal, she starts a new copy of herself first.
+ */
+export function restartMethod(environment: Readonly<Record<string, string | undefined>>): "supervisor" | "new-copy" {
+  // systemd sets INVOCATION_ID for each run of a unit.
+  return environment["INVOCATION_ID"] === undefined ? "new-copy" : "supervisor";
+}
+
 export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {
   return `[Unit]
 Description=Eva, a personal super harness

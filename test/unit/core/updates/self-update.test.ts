@@ -12,7 +12,7 @@ import {
   sha256Hex,
   verifyChecksumsSignature,
 } from "../../../../src/core/updates/release-verification.ts";
-import { updateExecutable } from "../../../../src/core/updates/self-update.ts";
+import { executableUpdateChannel, updateExecutable } from "../../../../src/core/updates/self-update.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 const keys = generateKeyPairSync("ed25519");
@@ -130,6 +130,28 @@ describe("updateExecutable", () => {
       (error: unknown) => error,
     );
   }
+
+  test("as an update channel, a check finds the release and installs nothing", async () => {
+    const channel = executableUpdateChannel(inputs());
+    expect(channel.kind).toBe("executable");
+    expect(await channel.check()).toEqual({ current: "0.1.0", latest: "0.2.0", available: true });
+    expect(await executableUpdateChannel(inputs("0.2.0")).check()).toMatchObject({ available: false });
+    expect(readFileSync(executable, "utf8")).toBe("old build");
+  });
+
+  test("as an update channel, apply installs the release, and is a no-op when up to date", async () => {
+    expect(await executableUpdateChannel(inputs("0.2.0")).apply()).toEqual({
+      current: "0.2.0",
+      latest: "0.2.0",
+      available: false,
+    });
+    expect(await executableUpdateChannel(inputs()).apply()).toEqual({
+      current: "0.1.0",
+      latest: "0.2.0",
+      available: false,
+    });
+    expect(readFileSync(executable, "utf8")).toBe("new build");
+  });
 
   test("a newer signed release replaces the executable, and the old one stays beside it", async () => {
     expect(await updateExecutable(inputs())).toEqual({ status: "updated", from: "0.1.0", to: "0.2.0" });

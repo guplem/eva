@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireInstanceLock } from "../../../../src/core/instance/instance-lock.ts";
+import { acquireInstanceLock, runningInstancePid } from "../../../../src/core/instance/instance-lock.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let home: string;
@@ -52,5 +52,15 @@ describe("acquireInstanceLock", () => {
     const lock = acquireInstanceLock(join(home, "eva.lock"), { pid: process.pid, isProcessAlive: () => true });
     lock.release();
     lock.release();
+  });
+});
+
+describe("runningInstancePid", () => {
+  test("names the Eva that holds the lock only while she runs", () => {
+    const lockPath = join(home, "eva.lock");
+    expect(runningInstancePid(lockPath, () => true)).toBeNull();
+    writeFileSync(lockPath, "4242");
+    expect(runningInstancePid(lockPath, () => true)).toBe(4242);
+    expect(runningInstancePid(lockPath, () => false)).toBeNull();
   });
 });

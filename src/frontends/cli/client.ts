@@ -1,5 +1,7 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
+import type { UpdateStatus } from "../../core/updates/updater.ts";
+import type { VaultSyncState } from "../../core/vault/vault-sync.ts";
 
 export interface ClientOptions {
   readonly baseUrl: string;
@@ -17,12 +19,13 @@ export async function describeStatus(options: ClientOptions, pairingCode: string
   return [
     `Eva ${status.version}, role: ${status.role}`,
     `Vault: ${status.vaultPath ?? "not configured"}`,
-    `Vault sync: ${status.vaultSync.status}${status.vaultSync.lastError === null ? "" : ` (${status.vaultSync.lastError})`}`,
+    describeSync(status.vaultSync),
     // Over JSON the date arrives as text; new Date reads both forms.
     `Last push: ${status.vaultSync.lastPushAt === null ? "none since start" : new Date(status.vaultSync.lastPushAt).toISOString()}`,
     ...heldBackLines(status.vaultSync.withheldFiles),
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
+    ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
@@ -58,11 +61,64 @@ export async function startProjectWork(
     : `Started the work in clone ${started.clone}, chat ${started.sessionId}. Its result arrives in this chat as a new message when it ends.`;
 }
 
+/** One line about Eva's version and her updates. */
+export function describeUpdate(update: UpdateStatus): string {
+  const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
+  if (update.lastError !== null) return `Updates: ${automatic}; the last check failed: ${update.lastError}`;
+  if (update.phase === "waiting_for_idle")
+    return `Updates: ${update.latest ?? "?"} installs when the running chats end`;
+  if (update.phase === "updating" || update.phase === "restarting")
+    return `Updates: installing ${update.latest ?? "?"}; Eva restarts in a moment`;
+  if (update.current === null) return `Updates: ${automatic}; not checked yet`;
+  return update.available
+    ? `Updates: ${update.latest ?? "?"} is available (this is ${update.current}); ${automatic}`
+    : `Updates: ${update.current} is the latest; ${automatic}`;
+}
+
+/** One line about the vault sync. */
+export function describeSync(state: VaultSyncState): string {
+  return `Vault sync: ${state.status}${state.lastError === null ? "" : ` (${state.lastError})`}`;
+}
+
+/** `eva update` and `eva update --check` while Eva runs: the running Eva does the work. */
+export async function requestUpdate(options: ClientOptions, checkOnly: boolean): Promise<string> {
+  return describeUpdate(await postJson<UpdateStatus>(options, checkOnly ? "/api/update/check" : "/api/update", {}));
+}
+
+/** `eva sync` while Eva runs. */
+export async function requestSync(options: ClientOptions): Promise<string> {
+  return describeSync(await postJson<VaultSyncState>(options, "/api/vault/sync", {}));
+}
+
+/** `eva settings set` while Eva runs, so the running Eva uses the change too. */
+export async function requestSettingsChange(
+  options: ClientOptions,
+  change: Readonly<Record<string, unknown>>,
+): Promise<boolean> {
+  const response = await fetch(`${options.baseUrl}/api/settings`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify(change),
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  return ((await response.json()) as { restartNeeded: boolean }).restartNeeded;
+}
+
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);
   if (projects.length === 0) return "No project matches.";
   return projects.map((project) => `${project.id}  ${project.frontMatter.status ?? "?"}  ${project.title}`).join("\n");
+}
+
+async function postJson<Body>(options: ClientOptions, path: string, body: unknown): Promise<Body> {
+  const response = await fetch(`${options.baseUrl}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  return (await response.json()) as Body;
 }
 
 async function getJson<Body>(options: ClientOptions, path: string): Promise<Body> {

@@ -3,18 +3,25 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
-import { defaultConfig, homePaths, loadConfig, loadSecrets } from "../../../../src/core/instance/home.ts";
+import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/instance/home.ts";
+import { loadSettings } from "../../../../src/core/instance/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
 import {
   describeProjects,
   describeStatus,
+  describeSync,
+  describeUpdate,
+  requestSettingsChange,
+  requestSync,
+  requestUpdate,
   heldBackLines,
   startProjectWork,
 } from "../../../../src/frontends/cli/client.ts";
 import { runDoctor } from "../../../../src/frontends/cli/doctor.ts";
-import { servicePath, systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
+import { restartMethod, servicePath, systemdUnit, windowsTaskCommand } from "../../../../src/frontends/cli/service.ts";
+import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
 import {
   firstFreePort,
   runSetup,
@@ -72,6 +79,25 @@ describe("parseArguments", () => {
     expect(parseArguments(["work", "only-a-project"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", home: undefined, engine: "pi" });
     expect(parseArguments(["chat", "--engine", "codex"])).toMatchObject({ command: "usage-error" });
+    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false });
+    expect(parseArguments(["update", "--check"])).toEqual({ command: "update", home: undefined, checkOnly: true });
+    expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
+    expect(parseArguments(["settings"])).toEqual({ command: "settings", home: undefined, action: "list" });
+    expect(parseArguments(["settings", "get", "updates.frequency"])).toEqual({
+      command: "settings",
+      home: undefined,
+      action: "get",
+      key: "updates.frequency",
+    });
+    expect(parseArguments(["settings", "set", "timeZone", "Europe/Madrid"])).toEqual({
+      command: "settings",
+      home: undefined,
+      action: "set",
+      key: "timeZone",
+      value: "Europe/Madrid",
+    });
+    expect(parseArguments(["settings", "set", "timeZone"])).toMatchObject({ command: "usage-error" });
+    expect(parseArguments(["settings", "remove", "x"])).toMatchObject({ command: "usage-error" });
   });
 
   test("an unknown command or a bad option is a usage error", () => {
@@ -168,7 +194,7 @@ describe("runSetup", () => {
 
   test("writes the answers to the config and the secrets, and creates the local API token", async () => {
     await setup({ vault: existingVault, timeZone: "Europe/Madrid", port: "7421", trustedOwners: "owner, other" });
-    expect(loadConfig(homePaths(home))).toMatchObject({
+    expect(loadSettings(homePaths(home)).config).toMatchObject({
       vaultPath: existingVault,
       timeZone: "Europe/Madrid",
       port: 7421,
@@ -179,13 +205,13 @@ describe("runSetup", () => {
 
   test("an empty answer keeps the current value, and a Claude token is stored as a secret", async () => {
     await setup({ claudeToken: "a-claude-setup-token-value" });
-    expect(loadConfig(homePaths(home)).port).toBe(defaultConfig.port);
+    expect(loadSettings(homePaths(home)).config.port).toBe(defaultConfig.port);
     expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
   });
 
   test("a Telegram token turns Telegram on", async () => {
     await setup({ telegramToken: "123456:telegram-token-value" });
-    expect(loadConfig(homePaths(home)).telegram.enabled).toBe(true);
+    expect(loadSettings(homePaths(home)).config.telegram.enabled).toBe(true);
     expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");
   });
 
@@ -196,7 +222,7 @@ describe("runSetup", () => {
       googleClientSecret: "client-secret",
       voiceModel: "/models/ggml-base.bin",
     });
-    const config = loadConfig(homePaths(home));
+    const config = loadSettings(homePaths(home)).config;
     expect(config.google.email).toBe("person@example.com");
     expect(config.voice.modelPath).toBe("/models/ggml-base.bin");
     expect(loadSecrets(homePaths(home))).toMatchObject({
@@ -212,10 +238,10 @@ describe("runSetup", () => {
 
   test("the default engine can change; a wrong one is refused", async () => {
     await setup({ engine: "pi" });
-    expect(loadConfig(homePaths(home)).engines.default).toBe("pi");
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
     const lines: string[] = [];
     await setup({ engine: "codex" }, { lines });
-    expect(loadConfig(homePaths(home)).engines.default).toBe("pi");
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
     expect(lines.join("\n")).toContain("must be claude-code or pi");
     let caught: unknown;
     try {
@@ -249,7 +275,7 @@ describe("runSetup", () => {
       };
       const lines: string[] = [];
       await setup({ githubToken: "token-for-the-test", vaultRepository: remote.remote }, { runner: recording, lines });
-      const config = loadConfig(homePaths(home));
+      const config = loadSettings(homePaths(home)).config;
       expect(config.vaultPath).toBe(join(home, "vault"));
       expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
       expect(loadSecrets(homePaths(home)).githubToken).toBe("token-for-the-test");
@@ -263,7 +289,7 @@ describe("runSetup", () => {
 
   test("a Telegram chat id skips the pairing code; a wrong one is refused", async () => {
     await setup({ telegramToken: "123456:telegram-token-value", telegramChatId: "-100123" });
-    expect(loadConfig(homePaths(home)).telegram.allowedChatId).toBe(-100123);
+    expect(loadSettings(homePaths(home)).config.telegram.allowedChatId).toBe(-100123);
     const lines: string[] = [];
     await setup({ telegramChatId: "my chat" }, { lines });
     expect(lines.join("\n")).toContain("whole number");
@@ -279,7 +305,7 @@ describe("runSetup", () => {
   test("a bad port is asked again", async () => {
     const lines: string[] = [];
     await setup({ port: ["high", "7500"] }, { lines });
-    expect(loadConfig(homePaths(home)).port).toBe(7500);
+    expect(loadSettings(homePaths(home)).config.port).toBe(7500);
     expect(lines.join("\n")).toContain("1024 to 65535");
   });
 
@@ -362,6 +388,11 @@ describe("service", () => {
     expect(
       servicePath("/tmp/bun-node-744846f8:/home/u/eva/node_modules/.bin:/home/u/.bun/bin:/usr/bin::/usr/bin"),
     ).toBe("/home/u/.bun/bin:/usr/bin");
+  });
+
+  test("after an update, systemd restarts Eva; anywhere else she starts a new copy (plan §4.3)", () => {
+    expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
+    expect(restartMethod({})).toBe("new-copy");
   });
 
   test("the Windows task starts Eva at logon", () => {
@@ -469,6 +500,17 @@ repos:
     expect((error as Error).message).toContain("401");
   });
 
+  test("update, sync and settings commands go through the running Eva", async () => {
+    const options = { baseUrl: api.url, token: "chat-token" };
+    expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
+    expect(await requestSync(options)).toStartWith("Vault sync: ");
+    expect(await requestSettingsChange(options, { updates: { frequency: "weekly" } })).toBe(false);
+    expect(await requestSettingsChange(options, { timeZone: "Europe/Madrid" })).toBe(true);
+    expect(String(await requestSettingsChange(options, { port: 5 }).catch((caught: unknown) => caught))).toContain(
+      "400",
+    );
+  });
+
   test("sends each line, prints the answer, and stops at /exit", async () => {
     const lines = ["Hello", "/exit"];
     const output: string[] = [];
@@ -507,5 +549,43 @@ describe("heldBackLines (lesson 26)", () => {
     expect(heldBackLines(["Notes/keys.md", ".env"])).toEqual([
       "Held back from the vault, as they look like secrets: Notes/keys.md, .env",
     ]);
+  });
+});
+
+describe("describeUpdate and describeSync", () => {
+  const base: UpdateStatus = {
+    kind: "source",
+    frequency: "daily",
+    phase: "idle",
+    current: "aaa1111",
+    latest: "aaa1111",
+    available: false,
+    lastCheckAt: "2026-10-17T10:00:00.000Z",
+    lastError: null,
+  };
+
+  test("each state of the updates reads as one line", () => {
+    expect(describeUpdate(base)).toBe("Updates: aaa1111 is the latest; checks daily");
+    expect(describeUpdate({ ...base, latest: "bbb2222", available: true, frequency: "off" })).toBe(
+      "Updates: bbb2222 is available (this is aaa1111); automatic updates off",
+    );
+    expect(describeUpdate({ ...base, current: null, latest: null })).toBe("Updates: checks daily; not checked yet");
+    expect(describeUpdate({ ...base, lastError: "offline" })).toBe(
+      "Updates: checks daily; the last check failed: offline",
+    );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
+      "Updates: bbb2222 installs when the running chats end",
+    );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
+      "Updates: installing bbb2222; Eva restarts in a moment",
+    );
+  });
+
+  test("the sync line names the reason of a problem", () => {
+    const state = { status: "ok" as const, lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] };
+    expect(describeSync(state)).toBe("Vault sync: ok");
+    expect(describeSync({ ...state, status: "offline", lastError: "Could not reach the remote." })).toBe(
+      "Vault sync: offline (Could not reach the remote.)",
+    );
   });
 });

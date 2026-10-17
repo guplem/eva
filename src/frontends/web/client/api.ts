@@ -5,10 +5,22 @@ import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { UpdateStatus } from "../../../core/updates/updater.ts";
+import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
-export type { CheckResult, CloneDetails, EvaStatus, Project, PublicSettings, SessionEvent, SessionRecord };
+export type {
+  CheckResult,
+  CloneDetails,
+  EvaStatus,
+  Project,
+  PublicSettings,
+  SessionEvent,
+  SessionRecord,
+  UpdateStatus,
+  VaultSyncState,
+};
 
 export interface ScheduleList {
   readonly schedules: readonly ScheduleView[];
@@ -76,6 +88,9 @@ export const api = {
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
+  updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
+  updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),

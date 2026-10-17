@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
-import { defaultConfig, homePaths, loadConfig } from "../../../src/core/instance/home.ts";
+import { defaultConfig, homePaths } from "../../../src/core/instance/home.ts";
+import { loadSettings, vaultSettingsPath } from "../../../src/core/instance/settings.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -68,7 +69,7 @@ describe("settings", () => {
   test("an update is checked, saved, and asks for a restart", () => {
     const result = eva.updateSettings({ timeZone: "Europe/Madrid", sync: { enabled: true, sweepSeconds: 120 } });
     expect(result).toEqual({ saved: true, restartNeeded: true });
-    expect(loadConfig(homePaths(home))).toMatchObject({
+    expect(loadSettings(homePaths(home)).config).toMatchObject({
       timeZone: "Europe/Madrid",
       sync: { sweepSeconds: 120 },
       vaultPath: vault,
@@ -153,5 +154,86 @@ describe("runCheck", () => {
     expect(offline.ok).toBe(false);
     expect(offline.detail).not.toContain("123:abc");
     expect((await runCheck("telegram", { ...inputs, telegramToken: null })).ok).toBe(false);
+  });
+});
+
+describe("live settings, the vault fetch and updates", () => {
+  test("the update frequency and the vault fetch apply at once and live in the vault", () => {
+    expect(eva.updateSettings({ updates: { frequency: "weekly" }, sync: { pullIntervalMinutes: 15 } })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    expect(eva.publicSettings().config.updates.frequency).toBe("weekly");
+    expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toContain('"frequency": "weekly"');
+  });
+
+  test("the background tick fetches the vault at the interval in the settings", async () => {
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/first.md", "first\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "first");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    await eva.backgroundTick();
+    expect(existsSync(join(vault, "Notes", "first.md"))).toBe(true);
+    sandbox.write(other, "Notes/second.md", "second\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "second");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    await eva.backgroundTick();
+    expect(existsSync(join(vault, "Notes", "second.md"))).toBe(false);
+    expect(await eva.syncVault()).toMatchObject({ status: "ok" });
+    expect(existsSync(join(vault, "Notes", "second.md"))).toBe(true);
+  });
+
+  test("with no fetch interval, only a turn or Sync now brings changes in", async () => {
+    eva.updateSettings({ sync: { pullIntervalMinutes: null } });
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/remote.md", "remote\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "remote");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    await eva.backgroundTick();
+    expect(existsSync(join(vault, "Notes", "remote.md"))).toBe(false);
+  });
+
+  test("Sync now pushes this machine's changes", async () => {
+    sandbox.write(vault, "Notes/local.md", "local\n");
+    expect(await eva.syncVault()).toMatchObject({ status: "ok" });
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s")).toContain("eva: autosave");
+  });
+
+  test("without an update channel, Eva reports no updates", async () => {
+    expect(eva.updateStatus()).toBeNull();
+    expect(eva.status().update).toBeNull();
+    expect(await eva.checkForUpdate()).toBeNull();
+    expect(await eva.updateNow()).toBeNull();
+  });
+
+  test("with an update channel, Update now installs and asks for a restart", async () => {
+    const steps: string[] = [];
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "source",
+        check: () => Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true }),
+        apply: () => {
+          steps.push("apply");
+          return Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: false });
+        },
+      },
+      restartForUpdate: () => steps.push("restart"),
+    });
+    expect(await updating.checkForUpdate()).toMatchObject({ available: true, phase: "idle" });
+    expect(await updating.syncVault()).toMatchObject({ status: "skipped" });
+    expect((await updating.updateNow())?.phase).toBe("restarting");
+    expect(steps).toEqual(["apply", "restart"]);
+    updating.stop();
   });
 });

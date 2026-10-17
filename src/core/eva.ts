@@ -14,7 +14,8 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
-import { parseConfig, saveConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./instance/home.ts";
+import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
+import { applySettingsChange, saveSettings } from "./instance/settings.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
@@ -34,6 +35,7 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
   readonly paths: HomePaths;
@@ -55,6 +57,10 @@ export interface EvaOptions {
    * `eva` script that an agent can run, for `eva work` (plan §5.3). Null: no script.
    */
   readonly evaCommand?: readonly string[] | null;
+  /** Where Eva's own updates come from. Null: no updates (plan §10). */
+  readonly updateChannel?: UpdateChannel | null;
+  /** Stops Eva after an update, so that the new version starts. */
+  readonly restartForUpdate?: () => void;
 }
 
 export interface ProjectWorkInput {
@@ -78,6 +84,7 @@ export interface EvaStatus {
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
   readonly lastTurn: LastTurnStatus | null;
+  readonly update: UpdateStatus | null;
 }
 
 export interface PublicSettings {
@@ -107,6 +114,9 @@ const approvalTimeoutMs = 10 * 60_000;
 const turnTimeoutMs = 2 * 60 * 60_000;
 const gitStatusTimeoutMs = 20_000;
 const scheduleTickMs = 30_000;
+const backgroundTickMs = 60_000;
+/** Settings that apply at once; any other change waits for a restart. */
+const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes"];
 const noVaultState: VaultSyncState = {
   status: "skipped",
   lastCommitAt: null,
@@ -126,12 +136,17 @@ export class Eva {
   private readonly gitEnvironment: Record<string, string>;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
+  private backgroundTimer: ReturnType<typeof setInterval> | null = null;
+  private lastPullAt: Date | null = null;
+  private settings: EvaConfig;
+  private readonly updater: Updater | null;
   private lastTurn: LastTurnStatus | null = null;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones = new Set<string>();
 
   constructor(options: EvaOptions) {
     this.options = options;
+    this.settings = options.config;
     const vaultPath = options.config.vaultPath;
     // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
     const githubToken = options.secrets.githubToken;
@@ -160,7 +175,10 @@ export class Eva {
             vaultSync === null
               ? { pull: () => Promise.resolve(noVaultState), save: () => Promise.resolve(noVaultState) }
               : {
-                  pull: async () => this.logSyncState(await vaultSync.pull()),
+                  pull: async () => {
+                    this.lastPullAt = options.now();
+                    return this.logSyncState(await vaultSync.pull());
+                  },
                   save: async () => this.logSyncState(await vaultSync.save()),
                 },
           basePrompt: options.basePrompt,
@@ -215,6 +233,19 @@ export class Eva {
               send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
             },
           });
+
+    const channel = options.updateChannel ?? null;
+    this.updater =
+      channel === null
+        ? null
+        : new Updater({
+            channel,
+            frequency: () => this.settings.updates.frequency,
+            isIdle: () => !this.sessions.list().some((session) => this.sessions.isBusy(session.id)),
+            restart: options.restartForUpdate ?? ((): void => undefined),
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
   }
 
   /** Starts the idle sweep (plan §6) and the schedule checks (plan §9). */
@@ -230,6 +261,42 @@ export class Eva {
         this.inBackground("The schedule check", () => schedules.tick());
       }, scheduleTickMs);
     }
+    this.backgroundTimer ??= setInterval(() => {
+      this.inBackground("The vault fetch and the update check", () => this.backgroundTick());
+    }, backgroundTickMs);
+  }
+
+  /** Once a minute: fetches the vault and checks for updates, each at the pace that the settings ask for. */
+  async backgroundTick(): Promise<void> {
+    await this.pullIfDue();
+    await this.updater?.tick();
+  }
+
+  /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
+  async syncVault(): Promise<VaultSyncState> {
+    if (this.vaultSync === null) return noVaultState;
+    if (this.assistantBusy())
+      return {
+        ...this.vaultSync.currentState,
+        status: "skipped",
+        lastError: "Eva is working in an Assistant chat. Sync again when it ends.",
+      };
+    this.lastPullAt = this.options.now();
+    this.logSyncState(await this.vaultSync.pull());
+    return this.logSyncState(await this.vaultSync.save());
+  }
+
+  updateStatus(): UpdateStatus | null {
+    return this.updater?.status() ?? null;
+  }
+
+  async checkForUpdate(): Promise<UpdateStatus | null> {
+    return (await this.updater?.check()) ?? null;
+  }
+
+  /** Installs a newer version as soon as no chat runs a turn, then restarts. */
+  async updateNow(): Promise<UpdateStatus | null> {
+    return (await this.updater?.updateNow()) ?? null;
   }
 
   /** Resolves when no chat runs a turn, including its save after the turn. */
@@ -244,18 +311,17 @@ export class Eva {
   stop(): void {
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
     if (this.scheduleTimer !== null) clearInterval(this.scheduleTimer);
+    if (this.backgroundTimer !== null) clearInterval(this.backgroundTimer);
     this.sweepTimer = null;
     this.scheduleTimer = null;
+    this.backgroundTimer = null;
   }
 
   /** Saves changes made outside a turn, and empties old Scratch files. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
     if (this.vaultSync === null) return "skipped";
     cleanScratch(this.options.config.vaultPath ?? "", this.options.now());
-    const assistantBusy = this.sessions
-      .list()
-      .some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
-    if (assistantBusy) return "skipped";
+    if (this.assistantBusy()) return "skipped";
     return this.logSyncState(await this.vaultSync.save()).status;
   }
 
@@ -269,6 +335,7 @@ export class Eva {
       sessionCount: sessions.length,
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,
+      update: this.updateStatus(),
     };
   }
 
@@ -360,7 +427,7 @@ export class Eva {
   publicSettings(): PublicSettings {
     const secrets = this.options.secrets;
     return {
-      config: this.options.config,
+      config: this.settings,
       secretsSet: {
         telegramBotToken: secrets.telegramBotToken !== undefined,
         claudeOauthToken: secrets.claudeOauthToken !== undefined,
@@ -370,22 +437,18 @@ export class Eva {
     };
   }
 
-  /** Checks and saves a settings change. The running instance keeps its settings until a restart. */
-  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: true } {
-    const merged: Record<string, unknown> = { ...this.options.config };
-    for (const [key, value] of Object.entries(patch)) {
-      const current = merged[key];
-      merged[key] =
-        value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        current !== null &&
-        typeof current === "object"
-          ? { ...current, ...value }
-          : value;
-    }
-    saveConfig(this.options.paths, parseConfig(merged, "The settings change"));
-    return { saved: true, restartNeeded: true };
+  /**
+   * Checks and saves a settings change: the person's part in the vault, the machine's part in
+   * `config.json`. The update frequency and the vault fetch apply at once; the rest at a restart.
+   */
+  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
+    const changed = applySettingsChange(this.settings, patch);
+    saveSettings(this.options.paths, changed);
+    this.settings = changed;
+    const restartNeeded = changedKeys(patch, "").some(
+      (key) => !liveSettingKeys.some((live) => key === live || key.startsWith(`${live}.`)),
+    );
+    return { saved: true, restartNeeded };
   }
 
   runCheck(name: CheckName): Promise<CheckResult> {
@@ -439,6 +502,21 @@ export class Eva {
   }
 
   /** Runs a task that nobody awaits, and logs its failure instead of losing it (lesson 50). */
+  private async pullIfDue(): Promise<void> {
+    const minutes = this.settings.sync.pullIntervalMinutes;
+    if (this.vaultSync === null || minutes === null || !this.settings.sync.enabled) return;
+    const now = this.options.now();
+    if (this.lastPullAt !== null && now.getTime() - this.lastPullAt.getTime() < minutes * 60_000) return;
+    // A pull never changes the files under a running Assistant turn (lessons 22, 30).
+    if (this.assistantBusy()) return;
+    this.lastPullAt = now;
+    this.logSyncState(await this.vaultSync.pull());
+  }
+
+  private assistantBusy(): boolean {
+    return this.sessions.list().some((session) => session.mode === "assistant" && this.sessions.isBusy(session.id));
+  }
+
   private inBackground(what: string, task: () => Promise<unknown>): void {
     task().catch((error: unknown) => {
       this.options.logger?.log("error", `${what} failed.`, {
@@ -521,4 +599,10 @@ async function readOriginUrl(
   });
   const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
+}
+
+/** The dotted keys that a settings change touches, such as `updates.frequency`. */
+function changedKeys(change: unknown, prefix: string): string[] {
+  if (change === null || typeof change !== "object" || Array.isArray(change)) return [prefix];
+  return Object.entries(change).flatMap(([key, value]) => changedKeys(value, prefix === "" ? key : `${prefix}.${key}`));
 }

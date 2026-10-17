@@ -47,6 +47,12 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
+/** The pid of the Eva that holds the lock now, or null when none runs. */
+export function runningInstancePid(lockPath: string, isAlive: (pid: number) => boolean): number | null {
+  const holder = readHolderPid(lockPath);
+  return holder !== null && isAlive(holder) ? holder : null;
+}
+
 function tryCreate(lockPath: string, pid: number): boolean {
   try {
     writeFileSync(lockPath, String(pid), { flag: "wx" });

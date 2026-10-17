@@ -108,6 +108,9 @@ describe("settings", () => {
     mkdirSync(homePaths(home).stateFolder, { recursive: true });
     writeFileSync(homePaths(home).telegramPairingCode, "EVA-1234ABCD\n");
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: "EVA-1234ABCD" });
+    // Without a bot token no bot reads the code, so an old code file must not show.
+    eva.saveSecret("telegramBotToken", null);
+    expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: null });
     sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
     expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
   });
@@ -117,6 +120,14 @@ describe("settings", () => {
     changeSettings(homePaths(home), { telegram: { allowedChatId: 4242, allowedUserId: 7 } });
     eva.updateSettings({ timeZone: "Europe/Madrid" });
     expect(loadSettings(homePaths(home)).config.telegram).toEqual({ allowedChatId: 4242, allowedUserId: 7 });
+  });
+
+  test("with a broken vault settings file, a change keeps the vault's values from memory", () => {
+    eva.updateSettings({ updates: { frequency: "off" } });
+    writeFileSync(vaultSettingsPath(vault), "{ not json");
+    eva.updateSettings({ sync: { pullIntervalMinutes: 15 } });
+    expect(eva.publicSettings().config.updates.frequency).toBe("off");
+    expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toContain('"frequency": "off"');
   });
 
   test("an invalid update is refused and nothing is saved", () => {

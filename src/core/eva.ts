@@ -648,7 +648,11 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     const remote = vaultPath === null ? null : await readOriginUrl(vaultPath, this.options.runner, this.gitEnvironment);
     const pairedChat = this.savedSettings().telegram.allowedChatId;
-    const code = readTextTolerant(this.options.paths.telegramPairingCode)?.trim() ?? "";
+    // Only a running bot reads the code, and it runs only with a token; an old file stays after a removal.
+    const code =
+      this.secrets.telegramBotToken === undefined
+        ? ""
+        : (readTextTolerant(this.options.paths.telegramPairingCode)?.trim() ?? "");
     return {
       vaultRemote: remote === null ? null : this.redactor.redact(remote.replace(/\/\/[^/@]*@/, "//")),
       telegram: { paired: pairedChat !== null, pairingCode: pairedChat === null && code !== "" ? code : null },
@@ -683,12 +687,14 @@ export class Eva {
 
   /**
    * The settings as saved now. The Telegram bot saves a new pairing to `config.json` while Eva
-   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory.
+   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory:
+   * with a broken vault file, the loaded copy holds defaults, and a save would sync them everywhere.
    */
   private savedSettings(): EvaConfig {
     if (!existsSync(this.options.paths.config)) return this.settings;
     try {
-      return loadSettings(this.options.paths).config;
+      const loaded = loadSettings(this.options.paths);
+      return loaded.problem === null ? loaded.config : this.settings;
     } catch {
       return this.settings;
     }

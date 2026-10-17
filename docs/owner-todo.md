@@ -6,6 +6,7 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 - [x] **Server laptop:** (done 2026-10-17: v1 removed, Eva runs there as the hub; the vault note `Projects/2026-08-09-1715-eva/server.md` describes it) turn it on, then stop and disable the v1 service (`systemctl --user disable --now walli-server`), point its clone at the vault (`git -C ~/Wall-I remote set-url origin git@github.com:guplem/vault.git`), and push any notes it holds.
 - [ ] **Other machines with a vault clone:** list them, and point each one at `guplem/vault`.
+- [ ] **Self-update on the server laptop:** Eva's GitHub token there reaches only the vault, so GitHub refuses it for the private `guplem/eva` (403), and each update check fails. Make `guplem/eva` public, or give that fine-grained token read access to `guplem/eva` (Contents: read).
 
 ## Vault (the agent may not push to it after phase P1)
 

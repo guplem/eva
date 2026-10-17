@@ -25,6 +25,7 @@ import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
+  CloneOriginStore,
   createClone,
   describeClone,
   listClones,
@@ -167,6 +168,7 @@ export class Eva {
   private readonly redactor: Redactor;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
+  private readonly cloneOrigins: CloneOriginStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -196,6 +198,7 @@ export class Eva {
     this.lastHousekeepingAt = null;
     this.vaultOfflineSince = null;
     this.settings = options.config;
+    this.cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
     // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
@@ -651,6 +654,7 @@ export class Eva {
       repositoryUrl: url,
       runner: this.options.runner,
       environment: this.gitEnvironment,
+      origins: this.cloneOrigins,
     });
   }
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CloneOriginStore,
   cloneFolderName,
   createClone,
   isTrustedByDefault,
@@ -51,25 +52,31 @@ describe("clone folders", () => {
     expect(listClones(project)[0]).toMatchObject({ repository: "example-app", index: 0 });
   });
 
-  test("creates a clone in the next free folder", async () => {
+  test("creates a clone in the next free folder, and records the URL it came from", async () => {
+    const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const clone = await createClone({
       projectPath: project,
       repositoryUrl: sandbox.remote,
       runner: systemProcessRunner,
       environment: gitEnvironment,
+      origins,
     });
     expect(clone.name).toBe("remote-0");
     expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("seed");
+    expect(origins.origin(clone.path)).toEqual({ url: sandbox.remote });
   });
 
-  test("reports a clone that fails", async () => {
+  test("reports a clone that fails, and records nothing", async () => {
+    const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const error: unknown = await createClone({
       projectPath: project,
       repositoryUrl: join(sandbox.root, "missing.git"),
       runner: systemProcessRunner,
       environment: gitEnvironment,
+      origins,
     }).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
+    expect(origins.origin(join(project, "repos", "missing-0"))).toBeNull();
   });
 });
 
@@ -99,5 +106,52 @@ describe("trust", () => {
     const path = join(sandbox.root, "trust.json");
     sandbox.write(sandbox.root, "trust.json", "{broken");
     expect(new TrustStore(path).decision("https://github.com/owner/app")).toBe("unknown");
+  });
+});
+
+describe("clone origins", () => {
+  const folder = (name: string): string => join(project, "repos", name);
+
+  test("the store keeps the URL that Eva cloned from, by clone folder", () => {
+    const path = join(sandbox.root, "clone-origins.json");
+    const store = new CloneOriginStore(path);
+    expect(store.origin(folder("app-0"))).toBeNull();
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(new CloneOriginStore(path).origin(folder("app-0"))).toEqual({ url: "https://github.com/owner/app.git" });
+    expect(new CloneOriginStore(path).origin(folder("app-1"))).toBeNull();
+  });
+
+  test("a person's answer about a folder that Eva did not clone stays with that folder", () => {
+    const path = join(sandbox.root, "clone-origins.json");
+    new CloneOriginStore(path).recordAnswer(folder("app-0"), "https://github.com/owner/app.git", "untrusted");
+    expect(new CloneOriginStore(path).origin(folder("app-0"))).toEqual({
+      url: "https://github.com/owner/app.git",
+      decision: "untrusted",
+    });
+  });
+
+  test("a new clone in a folder replaces its old record", () => {
+    const store = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+    store.recordAnswer(folder("app-0"), "https://github.com/stranger/old.git", "trusted");
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(store.origin(folder("app-0"))).toEqual({ url: "https://github.com/owner/app.git" });
+  });
+
+  test("the same folder, written another way, finds the same record", () => {
+    const store = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(store.origin(join(project, "repos", ".", "app-0"))).toEqual({ url: "https://github.com/owner/app.git" });
+  });
+
+  test("a broken or odd origins file means no records yet", () => {
+    for (const content of [
+      "{broken",
+      "[]",
+      JSON.stringify({ x: { url: 3 } }),
+      JSON.stringify({ x: { url: "u", decision: "maybe" } }),
+    ]) {
+      sandbox.write(sandbox.root, "clone-origins.json", content);
+      expect(new CloneOriginStore(join(sandbox.root, "clone-origins.json")).origin("x")).toBeNull();
+    }
   });
 });

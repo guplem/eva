@@ -80,6 +80,14 @@ const tools: readonly ToolCheck[] = [
     update: "download a newer release, or build it again",
   },
   {
+    program: "tailscale",
+    versionArguments: ["version"],
+    feature: "opening Eva on your phone and other computers",
+    required: false,
+    install: "https://tailscale.com/download",
+    update: "with the installer or package manager that installed tailscale",
+  },
+  {
     program: "typst",
     versionArguments: ["--version"],
     feature: "PDFs",

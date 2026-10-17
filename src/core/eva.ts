@@ -95,6 +95,8 @@ export interface EvaStatus {
   readonly lastTurn: LastTurnStatus | null;
   readonly update: UpdateStatus | null;
   readonly remoteAccess: RemoteAccess | null;
+  /** The web UI on this machine only, which needs the token. */
+  readonly localUrl: string;
 }
 
 export interface PublicSettings {
@@ -383,6 +385,7 @@ export class Eva {
       lastTurn: this.lastTurn,
       update: this.updateStatus(),
       remoteAccess: this.options.remoteAccess?.() ?? null,
+      localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
     };
   }
 

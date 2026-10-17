@@ -21,6 +21,64 @@ eva setup
 
 For a script, such as a server install, run `eva setup --non-interactive` and give each answer in an `EVA_*` variable, for example `EVA_VAULT_REPOSITORY`, `EVA_GITHUB_TOKEN`, `EVA_CLAUDE_TOKEN`, `EVA_TELEGRAM_BOT_TOKEN` and `EVA_TELEGRAM_CHAT_ID`. `src/frontends/cli/setup.ts` lists every name.
 
+## Open Eva
+
+Eva has one address for all your devices, such as `https://server.your-tailnet.ts.net`. It opens her web page on your phone or any computer, from anywhere, with no login. The page is never on the public internet: only your own devices reach it, through [Tailscale](https://tailscale.com) (a free private network between your devices).
+
+**Find the address** in any of these places:
+
+- Ask Eva in any chat: "what is your address?"
+- Telegram: `/link`.
+- The Settings page, under Setup.
+- On the machine that runs Eva: `eva link` or `eva status`.
+- The last step of `eva setup` prints it.
+
+**Open it on a phone or another computer:**
+
+1. Install the Tailscale app, and sign in with the same account as the machine that runs Eva.
+2. Open the address. Tailscale proves who you are, so Eva asks for no login.
+
+A device without Tailscale cannot reach Eva. Remove a borrowed device from the Tailscale admin page (Machines, then Remove) when you are done with it.
+
+**Set it up once, on the machine that runs Eva.** `eva setup` guides you through each step and waits for you:
+
+1. Install Tailscale on the machine. On Linux with `sudo`: `curl -fsSL https://tailscale.com/install.sh | sh`. Without `sudo`, see [Tailscale without root](#tailscale-without-root).
+2. Sign in: setup prints a link; open it on any device.
+3. Turn HTTPS on for your tailnet, once: setup prints the page.
+4. Setup prints the address. From then on, Eva publishes it each time she starts (`tailscale serve`).
+
+**Advanced: on the machine that runs Eva.** The same page also listens at `http://127.0.0.1:7420` (or the instance's port), on that machine only. There, no Tailscale proves who you are, so the page asks once for the token `localApiToken` from `secrets.json` in Eva's home folder; the login lasts a year. The `eva` commands on that machine read the token by themselves.
+
+Only the Tailscale account that owns the machine gets in. To let other accounts in, list them all in `remoteAccess.allowedTailscaleIdentities`. To keep Eva off the tailnet, run `eva settings set remoteAccess.tailscaleServe false`.
+
+### Tailscale without root
+
+Tailscale runs as a normal user in its userspace mode. Download the static build for your machine from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/#static), and put `tailscale` and `tailscaled` in `~/.local/lib/tailscale/`. Then:
+
+1. Create `~/.local/bin/tailscale`, so every command finds the user's own socket, and make it executable:
+
+   ```bash
+   #!/bin/sh
+   exec "$HOME/.local/lib/tailscale/tailscale" --socket="$HOME/.local/share/tailscale/tailscaled.sock" "$@"
+   ```
+
+2. Create `~/.config/systemd/user/tailscaled.service`:
+
+   ```ini
+   [Unit]
+   Description=Tailscale for this user
+   After=network-online.target
+
+   [Service]
+   ExecStart=%h/.local/lib/tailscale/tailscaled --tun=userspace-networking --statedir=%h/.local/share/tailscale --socket=%h/.local/share/tailscale/tailscaled.sock
+   Restart=on-failure
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+3. Run `systemctl --user enable --now tailscaled`, then `tailscale up`, and open the link that it prints.
+
 ## Run from source
 
 You need [git](https://git-scm.com/) and [Bun](https://bun.sh/) 1.4 or newer.
@@ -66,46 +124,7 @@ Eva works on several machines with one vault, with no role to set. One machine i
 - **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new machine. The old hub stops its bot and schedules at its next vault fetch.
 - **The bot runs on the hub whenever the hub has a Telegram token.** A satellite never starts it, even with the token.
 - **Two Evas on one machine** work too: give each its own home folder (`--home`) and vault. `eva service install` names each service after its home folder, for example `eva-partner`.
-- **Phone access** needs no setting: see [Phone access](#phone-access).
-
-## Phone access
-
-Eva's web page listens on the machine only. [Tailscale](https://tailscale.com) (a free private network between your own devices) brings it to your phone, never to the internet.
-
-1. Install Tailscale on the machine that runs Eva, and log in. On Linux with `sudo`, run `curl -fsSL https://tailscale.com/install.sh | sh`, then `sudo tailscale up`. Without `sudo`, see [Tailscale without root](#tailscale-without-root).
-2. Install the Tailscale app on your phone, and log in with the same account.
-3. Restart Eva. She publishes her page in your tailnet with `tailscale serve`, and `eva status` and the Settings page show its address, such as `https://server.your-tailnet.ts.net`. A tailnet that has never used HTTPS shows a link to turn it on once; Eva tries again each minute, so no restart is needed after that.
-4. Open the address on the phone. Tailscale proves your account, so the page opens with no token.
-
-Only the Tailscale account that owns the machine gets in. To let other accounts in, list them all in `remoteAccess.allowedTailscaleIdentities`. To keep Eva off the tailnet, run `eva settings set remoteAccess.tailscaleServe false`.
-
-### Tailscale without root
-
-Tailscale runs as a normal user in its userspace mode. Download the static build for your machine from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/#static), and put `tailscale` and `tailscaled` in `~/.local/lib/tailscale/`. Then:
-
-1. Create `~/.local/bin/tailscale`, so every command finds the user's own socket, and make it executable:
-
-   ```bash
-   #!/bin/sh
-   exec "$HOME/.local/lib/tailscale/tailscale" --socket="$HOME/.local/share/tailscale/tailscaled.sock" "$@"
-   ```
-
-2. Create `~/.config/systemd/user/tailscaled.service`:
-
-   ```ini
-   [Unit]
-   Description=Tailscale for this user
-   After=network-online.target
-
-   [Service]
-   ExecStart=%h/.local/lib/tailscale/tailscaled --tun=userspace-networking --statedir=%h/.local/share/tailscale --socket=%h/.local/share/tailscale/tailscaled.sock
-   Restart=on-failure
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-3. Run `systemctl --user enable --now tailscaled`, then `tailscale up`, and open the link that it prints.
+- **Phone access** needs no setting: see [Open Eva](#open-eva).
 
 ## Updates and vault sync
 

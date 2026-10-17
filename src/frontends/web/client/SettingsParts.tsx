@@ -1,9 +1,12 @@
 /** The small parts of the settings page: a Test row, a write-only secret field, and the vault sync state. */
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api, type CheckResult, type PageSecretName, type VaultSyncState } from "./api.ts";
 
-/** One Test button and its result. The check runs on the server, with the saved settings. */
-export function CheckRow({ name, label }: { name: string; label: ReactNode }): ReactElement {
+/**
+ * One Test button and its result. The check runs on the server, with the saved settings. The
+ * label also names the button, because a page with five buttons called "Test" is no help to a screen reader.
+ */
+export function CheckRow({ name, label }: { name: string; label: string }): ReactElement {
   const [result, setResult] = useState<CheckResult | "running" | null>(null);
   const run = async (): Promise<void> => {
     setResult("running");
@@ -16,13 +19,13 @@ export function CheckRow({ name, label }: { name: string; label: ReactNode }): R
   return (
     <div className="check-row">
       <span style={{ flex: 1 }}>{label}</span>
-      {result === "running" && <span>Testing…</span>}
-      {result !== null && result !== "running" && (
-        <span className={result.ok ? "ok" : "failed"}>
-          {result.ok ? "✓" : "✗"} {result.detail}
-        </span>
-      )}
-      <button onClick={() => void run()}>Test</button>
+      <span role="status" className={result === null || result === "running" ? "" : result.ok ? "ok" : "failed"}>
+        {result === "running" && "Testing…"}
+        {result !== null && result !== "running" && `${result.ok ? "✓" : "✗"} ${result.detail}`}
+      </span>
+      <button aria-label={label} onClick={() => void run()}>
+        Test
+      </button>
     </div>
   );
 }
@@ -45,12 +48,16 @@ interface SecretFieldProps {
 export function SecretField({ name, label, saved, help, check, onChanged }: SecretFieldProps): ReactElement {
   const [value, setValue] = useState("");
   const [isSaved, setIsSaved] = useState(saved);
+  // The page loads the settings again after a save elsewhere on it.
+  useEffect(() => {
+    setIsSaved(saved);
+  }, [saved]);
   const save = async (): Promise<void> => {
     try {
       await api.saveSecret(name, value);
       setValue("");
       setIsSaved(true);
-      onChanged(`Saved the ${label}. Press Restart Eva to use it everywhere; Test uses it now.`);
+      onChanged(`Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`);
     } catch (error) {
       onChanged(error instanceof Error ? error.message : String(error));
     }

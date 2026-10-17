@@ -41,4 +41,10 @@ export function applyAppearance(appearance: Appearance): void {
   if (appearance.theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", appearance.theme);
   root.setAttribute("data-density", appearance.density);
+  // The phone's browser bar takes its color from these tags, so they follow the chosen theme too.
+  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    meta.dataset["media"] ??= meta.media;
+    const own = meta.dataset["media"].includes(appearance.theme);
+    meta.media = appearance.theme === "system" ? meta.dataset["media"] : own ? "all" : "not all";
+  }
 }

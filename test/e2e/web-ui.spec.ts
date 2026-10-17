@@ -107,6 +107,8 @@ test("Settings: Log out every device ends this login too", async ({ page }) => {
 
 test("Settings: a token saves write-only, shows as saved, and can be removed", async ({ page }) => {
   await logIn(page);
+  // A failed earlier run must not leave a token for this one.
+  await page.request.delete("/api/secrets/githubToken");
   await page.getByRole("button", { name: "Settings" }).click();
   const field = page.getByLabel("GitHub token", { exact: true });
   await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
@@ -143,10 +145,12 @@ test("Settings: the default model saves at once", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByLabel("Claude Code model").selectOption("sonnet");
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
-  await page.getByLabel("Claude Code model").selectOption("default");
+  // Later tests share the demo vault.
+  await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
 });
 
 test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
@@ -439,6 +443,19 @@ test.describe("on a phone", () => {
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
+  });
+
+  test("on Settings too, every button is at least 44 px tall and nothing is wider than the screen", async ({
+    page,
+  }) => {
+    await logIn(page);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("GitHub token", { exact: true })).toBeVisible();
+    const heights = await page
+      .locator("button:visible, select:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 
   test("the composer sits at the bottom of the screen", async ({ page }) => {

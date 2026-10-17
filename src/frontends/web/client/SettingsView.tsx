@@ -66,23 +66,38 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
 
   useEffect(() => {
-    void api.status().then((loaded) => {
-      setStatus(loaded);
-      setSyncState(loaded.vaultSync);
-    });
-    void api.updateStatus().then(setUpdate);
-    void api.setupState().then(setSetup);
-    void api.settings().then((loaded) => {
-      setSettings(loaded);
-      setTimeZone(loaded.config.timeZone ?? "");
-      setSweepSeconds(String(loaded.config.sync.sweepSeconds));
-      setProjectRoots(loaded.config.projectRoots.join("\n"));
-      setPiModel(loaded.config.engines.pi.models.default ?? "");
-    });
+    // A failed load must reach the person: every problem must reach the phone.
+    const showProblem = (error: unknown): void => {
+      setNotice(error instanceof Error ? error.message : String(error));
+    };
+    api
+      .status()
+      .then((loaded) => {
+        setStatus(loaded);
+        setSyncState(loaded.vaultSync);
+      })
+      .catch(showProblem);
+    api.updateStatus().then(setUpdate).catch(showProblem);
+    api.setupState().then(setSetup).catch(showProblem);
+    api
+      .settings()
+      .then((loaded) => {
+        setSettings(loaded);
+        setTimeZone(loaded.config.timeZone ?? "");
+        setSweepSeconds(String(loaded.config.sync.sweepSeconds));
+        setProjectRoots(loaded.config.projectRoots.join("\n"));
+        setPiModel(loaded.config.engines.pi.models.default ?? "");
+      })
+      .catch(showProblem);
   }, []);
 
   const remote = status?.remoteAccess ?? null;
-  if (settings === null) return <div className="empty">Loading the settings…</div>;
+  if (settings === null)
+    return (
+      <div className="empty" role="status">
+        {notice === null ? "Loading the settings…" : `The settings did not load: ${notice}`}
+      </div>
+    );
   const config = settings.config;
 
   /** A dropdown saves its own value at once. */
@@ -240,7 +255,8 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
 
           <h3>Vault</h3>
           <div>Folder: {config.vaultPath ?? "not configured. Run `eva setup` on this machine."}</div>
-          <CheckRow name="vault" label={`Vault repository: ${setup?.vaultRemote ?? "no remote"}`} />
+          <div>Repository: {setup?.vaultRemote ?? "no remote"}</div>
+          <CheckRow name="vault" label="Test the vault repository" />
           <div className="check-row">
             <label style={{ flex: 1 }}>
               Fetch the vault&apos;s changes
@@ -351,8 +367,11 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             {identities.length === 0 ? "Only the Tailscale account that owns this machine." : identities.join(", ")}
           </div>
           <div className="hint">
-            For safety, a phone cannot change this list. On this machine, run `eva settings set
-            remoteAccess.allowedTailscaleIdentities`.
+            A device login cannot change this list or the tokens. To change the list, run this on the machine, with
+            every account that may ask:{" "}
+            <code>
+              eva settings set remoteAccess.allowedTailscaleIdentities &apos;[&quot;you@example.com&quot;]&apos;
+            </code>
           </div>
         </fieldset>
         <fieldset>
@@ -397,7 +416,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               value={appearance.theme}
               onChange={(event) => changeAppearance({ theme: event.target.value as Appearance["theme"] })}
             >
-              <option value="system">Like the system</option>
+              <option value="system">Use the system setting</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>

@@ -49,7 +49,7 @@
           },
           {
             "type": "command",
-            "command": "case \"$CLAUDE_FILE\" in *src/*.ts|*scripts/*.ts) echo '[hook] Logic changed. Pin the behaviour with a failing test first (red-green), then run: bun run check (the validate agent) before you open a PR.' ;; *.dependency-cruiser.cjs|*bunfig.toml|*tsconfig.json|*eslint.config.js|*knip.json|*package.json) echo '[hook] A check config changed. Run: bun run check, and update the AGENTS.md Commands and Gotchas if a fact changed.' ;; esac"
+            "command": "case \"$CLAUDE_FILE\" in *src/*.ts|*scripts/*.ts) echo '[hook] Logic changed. Pin the behaviour with a failing test first (red-green), then run: bun run check (the run-checks skill) before you open a PR.' ;; *.dependency-cruiser.cjs|*bunfig.toml|*tsconfig.json|*eslint.config.js|*knip.json|*package.json) echo '[hook] A check config changed. Run: bun run check, and update the AGENTS.md Commands and Gotchas if a fact changed.' ;; esac"
           }
         ]
       }

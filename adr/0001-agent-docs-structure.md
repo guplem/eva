@@ -1,31 +1,34 @@
-# AGENTS.md map with Claude-Code-only skills, subagents, and ADRs
+# Agent files in open formats: AGENTS.md, Agent Skills, and thin tool adapters
 
 ## Context
 
-This repository started with the design documents in `docs/` and a CI setup, but no agent documentation. AI agents build most of the engine (plan §13), so the repository must carry its own rules. It adopts the owner's shared personal standard: a root `AGENTS.md` as the always-loaded map, on-demand skills, subagents for delegated checks, and living ADRs. The repo is developed with Claude Code only, so no multi-tool sync machinery is needed.
+AI agents build most of the engine (plan §13), so the repository must carry its own rules. Eva is a public, personal project: anyone may fork it and work on it with the coding tool that they already use, such as Codex, Cursor, GitHub Copilot or Claude Code. Each tool has its own files, but two open formats are read by most of them: `AGENTS.md` for instructions, and Agent Skills (`SKILL.md`) for procedures. Claude Code reads neither at its default paths: it needs `CLAUDE.md` and `.claude/skills/`.
 
 ## Decision
 
-- `AGENTS.md` at the repo root is the canonical, always-loaded map. `CLAUDE.md` is a one-line `@AGENTS.md` shim so Claude Code loads it. Tools that read `AGENTS.md` natively work without extra files.
-- Areas that earn their own doc follow the same pattern: `<area>/AGENTS.md` holds the content, next to a one-line `<area>/CLAUDE.md` shim that makes Claude Code load it on demand when working in that area. A nested `AGENTS.md` without its shim never loads.
-- Skills live committed directly at `.claude/skills/<name>/SKILL.md`. No `.agents/skills/` canonical tree, no gitignored mirror, no sync scripts.
-- All skills are model-invocable (no `disable-model-invocation` frontmatter). The set is small, so the startup-context cost of their descriptions is low.
-- Subagents live at `.claude/agents/<name>.md` (`pattern-scout`, `adr-checker`, `validate`, `docs-checker`).
-- ADRs live in this single `adr/` directory, indexed as one-line rows in the root `AGENTS.md`, and are living documents updated in place. The folder's conventions live in `adr/AGENTS.md`, auto-loaded via its `adr/CLAUDE.md` shim.
-- Code patterns live in `docs/standards/`, one file per pattern, linked from `AGENTS.md` (plan §13).
-- `.claude/settings.json` holds the permission allow/deny lists and PostToolUse hooks.
+- **Every rule lives in an open format.** `AGENTS.md` (at the root, and in an area such as `adr/`) holds the instructions. `.agents/skills/<name>/SKILL.md` holds each procedure. A file for one tool only never holds a rule; it only points to one.
+- **`CLAUDE.md` is a one-line `@AGENTS.md` shim**, next to each `AGENTS.md`, so Claude Code loads the same text. A nested `AGENTS.md` without its shim never loads in Claude Code.
+- **`.claude/skills/` is a committed copy of `.agents/skills/`.** `bun run agents:sync` (`scripts/sync-agent-skills.ts`) writes it, and `bun run agents:check`, part of `bun run check`, fails when the copy drifts. A fresh clone works in Claude Code with no extra step.
+- **The delegated checks are skills:** `scout-patterns`, `check-adrs`, `check-docs` and `run-checks`. Any tool can follow them. In Claude Code, `.claude/agents/` keeps four thin subagents (`pattern-scout`, `adr-checker`, `docs-checker`, `validate`) that only tell a subagent to follow the skill, so its reading stays out of the main context.
+- **Enforcement does not depend on the tool.** Lefthook git hooks and CI run every check. `.claude/settings.json` (permissions, format-on-edit hooks) is comfort for Claude Code only.
+- **No file for any other single tool** (no `GEMINI.md`, `.cursor/` or `.codex/`). A tool that reads `AGENTS.md` and `.agents/skills/` needs nothing more.
+- ADRs live in `adr/`, indexed as one-line rows in the root `AGENTS.md`, and are living documents updated in place. Code patterns live in `docs/standards/`.
 
-**Rejected alternative:** no `CLAUDE.md` at all, as in the vault (plan §2.2). The vault avoids a `CLAUDE.md` so that Claude Code reads every `AGENTS.md` up the folder chain. The engine repository needs its own rules loaded at session start, and the shim does that with no duplicated text.
+**Rejected alternatives:**
+
+- **Symlinks from `.claude/skills/` to `.agents/skills/`.** Git on Windows checks a symlink out as a small text file by default, so Claude Code on Windows would find no skills.
+- **A gitignored `.claude/skills/` mirror.** A fresh clone would have no skills in Claude Code until someone ran the sync.
+- **Skills only in `.claude/skills/`** (the first version of this ADR). Only Claude Code reads that path, so other tools got no procedures.
 
 ## Consequences
 
 **Positive:**
 
-- One canonical copy of each instruction; the always-on context stays small because procedures load on demand as skills.
-- No sync scripts or mirrors to maintain.
+- One canonical copy of each rule and procedure, readable by most coding tools.
+- The always-on context stays small, because procedures load on demand as skills.
 
 **Trade-offs and follow-up:**
 
-- A clone of this repository inside a vault (`Projects/<project>/repos/eva-<n>/`) has a `CLAUDE.md`, so a session in it loads only this repository's docs, not the vault and project `AGENTS.md` files above it (spike S3). This matches opening the clone by hand, which is what Project mode wants.
-- Skills, subagents, and settings are Claude-Code-only surfaces. If another agent tool is adopted, move skills to a canonical `.agents/skills/` tree with a gitignored `.claude/skills/` mirror and a sync script.
-- If the number of skills grows enough that their always-loaded descriptions bloat startup context, add `disable-model-invocation: true` to the human-invoked ones and introduce an `/invoke` chaining skill.
+- A skill edit needs `bun run agents:sync`; `bun run check` and the pre-push hook catch a forgotten one.
+- A clone of this repository inside a vault (`Projects/<project>/repos/eva-<n>/`) has a `CLAUDE.md`, so a Claude Code session in it loads only this repository's docs, not the vault and project `AGENTS.md` files above it (spike S3). This matches opening the clone by hand, which is what Project mode wants.
+- If the number of skills grows enough that their descriptions bloat startup context, mark the human-invoked ones as not model-invocable.

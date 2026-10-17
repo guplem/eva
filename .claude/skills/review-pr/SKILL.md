@@ -81,13 +81,13 @@ Always spawn these four analysis agents:
 
 Also spawn, as siblings (they cannot run inside the analysis agents):
 
-- **validate** (always): run the repo's checks (format, lint/typecheck, tests, build) for the touched areas and report each as pass or fail, with failing output verbatim.
-- **pattern-scout** (only when the diff adds a new seam, core module, engine adapter, front-end command, or event kind): find how similar ones are built here and report the convention with real examples.
-- **adr-checker** in consult mode (only when the diff touches an ADR-relevant area): find the ADRs that constrain this area and summarize what they require.
+- **run-checks** (always): run the repo's checks (format, lint/typecheck, tests, build) for the touched areas and report each as pass or fail, with failing output verbatim.
+- **scout-patterns** (only when the diff adds a new seam, core module, engine adapter, front-end command, or event kind): find how similar ones are built here and report the convention with real examples.
+- **check-adrs** in consult mode (only when the diff touches an ADR-relevant area): find the ADRs that constrain this area and summarize what they require.
 
 ## 4. Synthesize and triage (all modes)
 
-1. **Collect** every finding, plus the validate results and `gh pr checks`. Use the pattern-scout and adr-checker reports as evidence.
+1. **Collect** every finding, plus the run-checks results and `gh pr checks`. Use the scout-patterns and check-adrs reports as evidence.
 2. **Verify mechanically.** For every finding, open the cited file at the cited lines with Read and copy the exact offending line(s) into the finding. If the code does not show what the finding claims, delete the finding. No quote, no finding.
 3. **Deduplicate.** Merge findings that share one root cause into one; keep the highest severity.
 4. **Classify severity.**
@@ -121,7 +121,7 @@ Present the changes as if to a graduate engineer with little experience. The use
 - **How it works** (mechanism): trace the flow end to end. Do not just list files; explain what calls what and in what order, using real code from the PR. Scale the depth to the PR: a 20-line fix needs a paragraph; a big feature needs a full walkthrough.
 - **Changes grouped by purpose**, not by path: "to add X, these files...", "to wire it up, these...".
 - **What is done well**: good decisions, clean patterns. The posted review body leads with this too.
-- **Operational results**: what passed and failed from validate and `gh pr checks`. Split failures into infra/config problems, real logic failures (these are findings), and external problems (missing secrets, third-party outages).
+- **Operational results**: what passed and failed from run-checks and `gh pr checks`. Split failures into infra/config problems, real logic failures (these are findings), and external problems (missing secrets, third-party outages).
 - **Findings index**: a numbered list of every finding that survived phase 4, so the user sees the total before the questions begin. Example:
   ```
   1. [Required]   Rows silently dropped on create - src/repo/userRepo.ts:58 - fix in this PR

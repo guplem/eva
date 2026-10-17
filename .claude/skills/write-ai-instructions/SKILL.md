@@ -1,11 +1,11 @@
 ---
 name: write-ai-instructions
-description: Author or edit AI-facing instruction files in this repo - AGENTS.md, skills under .claude/skills/, subagents under .claude/agents/, and spawned-agent prompts. Covers the prompt-writing rules for current Claude models, the map-not-manual standard for AGENTS.md, the living-document rule, and when and where to persist a new rule. Use when editing any AI-instruction file.
+description: Author or edit AI-facing instruction files in this repo - AGENTS.md, skills under .agents/skills/, the subagent wrappers under .claude/agents/, and spawned-agent prompts. Covers the prompt-writing rules for current AI models, the map-not-manual standard for AGENTS.md, the living-document rule, and when and where to persist a new rule. Use when editing any AI-instruction file.
 ---
 
 # Writing prompts for agents, skills, and rules
 
-These rules apply when you author or edit any AI-facing content in this repo: `AGENTS.md`, skills under `.claude/skills/`, subagents under `.claude/agents/`, and prompts for agents you spawn. They match how current Claude models read instructions: more literally, with fewer default tool calls and subagents, and with response length scaled to the task.
+These rules apply when you author or edit any AI-facing content in this repo: `AGENTS.md`, skills under `.agents/skills/`, the subagent wrappers under `.claude/agents/`, and prompts for agents you spawn. They match how current AI models read instructions: more literally, with fewer default tool calls and subagents, and with response length scaled to the task.
 
 - **Be explicit, not inferential.** State what must happen for every case. Do not expect the model to generalize "do X for case A" to "also do X for case B": list both, or write "applies to all `<category>`". Instructions the reader must interpret get interpreted narrowly.
 - **Name the tool or action.** The model prefers reasoning over using tools. If a step needs an exhaustive search, say "search exhaustively" or "find several examples". If a step needs parallel subagents, say "launch them in parallel in a single message". If a step needs a specific file, name it by path.
@@ -50,7 +50,7 @@ A gotcha may move into a skill only if a one-line warning stays inline in `AGENT
 
 ### Mechanics (this repo)
 
-- Skills live committed at `.claude/skills/<name>/SKILL.md`; subagents at `.claude/agents/<name>.md`. There are no sync scripts or mirrors; `adr/0001-agent-docs-structure.md` records why. This repo has no area docs yet; if one earns its place, put the content in `<area>/AGENTS.md` and a one-line `@AGENTS.md` shim in `<area>/CLAUDE.md`.
+- Skills live at `.agents/skills/<name>/SKILL.md`, the open format that most coding tools read; write every rule there or in `AGENTS.md`, never in a file for one tool only. `bun run agents:sync` copies the skills to `.claude/skills/` for Claude Code; never edit that copy. A file in `.claude/agents/` only points to a skill. `adr/0001-agent-docs-structure.md` records why. This repo has no area docs yet; if one earns its place, put the content in `<area>/AGENTS.md` and a one-line `@AGENTS.md` shim in `<area>/CLAUDE.md`.
 - Keep every skill model-invocable (no `disable-model-invocation` frontmatter) while the skill set stays small, and write each description to name exactly when the skill applies.
 - Every `CLAUDE.md` (root or area) is a one-line `@AGENTS.md` shim; never put content in it.
 
@@ -65,7 +65,7 @@ Write every persisted rule in the shared, version-controlled file that fits it:
 - A rule that guides **AI behavior or coding decisions** -> `AGENTS.md`.
 - A **code pattern** (how code is written here, checkable in review) -> the matching file in `docs/standards/`.
 - A **procedure** ("how to do X") -> a skill.
-- A **new** architectural pattern or cross-cutting standard -> a new ADR; a **change** to an existing pattern -> update that ADR in place. The **adr-checker** agent writes both.
+- A **new** architectural pattern or cross-cutting standard -> a new ADR; a **change** to an existing pattern -> update that ADR in place. The **check-adrs** skill writes both.
 - A **repeatable shell action triggered by a tool event** -> a Claude Code hook in `.claude/settings.json`.
 
 **Write no personal data into any of these files.** The repository is public; use neutral examples.

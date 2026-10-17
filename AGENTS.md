@@ -6,20 +6,18 @@ Eva is a personal "super harness": one service that runs AI coding agents (Claud
 
 `docs/plan.md` is the design source of truth, approved by the owner on 2026-10-14. Read the plan section for the area that you change before you write code. A change to an approved decision (plan §1) needs the owner: add it to `docs/owner-todo.md` and continue with the current decision. Human setup: `README.md`.
 
-Delegate to these agents at the right moment (each agent's own description says what it does). They fall into two groups, by when they run.
+Run these skills (`.agents/skills/<name>/SKILL.md`) at the right moment. When your tool can run a separate agent (a subagent), hand each one to a subagent, so the files it reads stay out of your own context.
 
-**Before you implement (explore agents, launched as preparation):**
+**Before you implement:**
 
-- **pattern-scout**: before implementing any non-trivial module, seam, adapter, or front-end command, and any time you ask "how do we do X here?". Returns real code examples with the rules distilled from them.
-- **adr-checker** (consult mode): before implementing in an ADR-relevant area (the "Architecture Decision Records (ADRs)" section lists them). Returns the decisions the work must follow.
+- **scout-patterns**: before implementing any non-trivial module, seam, adapter, or front-end command, and any time you ask "how do we do X here?". Returns real code examples with the rules distilled from them.
+- **check-adrs** (consult mode): before implementing in an ADR-relevant area (the "Architecture Decision Records (ADRs)" section lists them). Returns the decisions the work must follow.
 
 **After you implement, before you ship:**
 
-- **docs-checker**: after a change that could affect documented content. Checks every documentation location (code comments, `README.md`, `AGENTS.md`, ADRs, `docs/`) against the code and fixes drift.
-- **validate**: just before you create a PR or push. Runs `bun run check` the way CI does and reports pass or fail.
-- **adr-checker** (maintain mode): after you introduce a new architectural pattern or change one an ADR records. Creates or updates the ADR.
-
-Beyond these, spawn subagents freely: hand off research, code exploration, and parallel analysis so the files they read stay out of your own context. Give each subagent one task.
+- **check-docs**: after a change that could affect documented content. Checks every documentation location (code comments, `README.md`, `AGENTS.md`, ADRs, `docs/`) against the code and fixes drift.
+- **run-checks**: just before you create a PR or push. Runs `bun run check` the way CI does and reports pass or fail.
+- **check-adrs** (maintain mode): after you introduce a new architectural pattern or change one an ADR records. Creates or updates the ADR.
 
 ## Writing style
 
@@ -67,7 +65,7 @@ Run every command from the repository root.
 | Run Eva from source                 | `bun run eva [subcommand]` |                                                                                                               |
 | Build the single executable         | `bun run build:executable` | Writes `dist/eva`. `bash scripts/smoke-executable.sh dist/eva` starts it the way a new person does.           |
 
-Whenever you need to confirm the code still passes, delegate to the **validate** agent (it runs `bun run check` the way CI does).
+Whenever you need to confirm the code still passes, run the **run-checks** skill (it runs `bun run check` the way CI does).
 
 ## Architecture
 
@@ -116,6 +114,7 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 - **Bun 1.4 ignores `timeout` in `bunfig.toml`.** The test scripts pass `--timeout 30000`; a bare `bun test <file>` gives each test 5 seconds.
 - **Bun gives each `beforeEach` and `afterEach` hook 5 seconds, apart from the test timeout.** A hook that runs git passes `gitHookTimeoutMs` from `test/support/git-sandbox.ts`, or it times out on a Windows CI runner.
 - **The single executable refuses a `Bun.file(...)` value in `Bun.serve` `routes`**, but `bun test` from source accepts it. Use a `Response` (see `staticFile` in `src/frontends/api/local-api.ts`). After you change the served files, run `bun run build:executable` and start `dist/eva` once.
+- **On Windows, an agent's Bash tool can turn `\\` into `\`**, even inside a quoted heredoc. A script passed inline with escape sequences (`"\\n"`) then writes broken files. Write such content with your file-editing tool, or write the script to a file first and run it.
 - **Git tests must clear the `GIT_*` variables** that a git hook exports, or they write the real index (lesson 104).
 
 ## Test-Driven Development (mandatory)
@@ -141,6 +140,15 @@ The gate: CI runs `bun run check` on every PR, on Ubuntu and on Windows. No rule
 - **Merge a PR only when its branch contains the latest `main`.** Two PRs that are each green can break `main` together (2026-10-17: a changed function signature in one, a new caller in the other). Merge `main` into the branch, wait for green, then merge with `gh pr merge --match-head-commit`.
 - **Never push to a person's vault** outside phase P1.
 
+### Parallel work
+
+Several agents or sessions can work on this repository at once. Each one needs its own working tree.
+
+- **One owner per branch.** Never push to a branch that another agent or session works on. When you find unknown commits on your branch, stop and ask.
+- **Use a git worktree for parallel work** (`git worktree add`), or a separate clone. Agent tools keep theirs in `.claude/worktrees/`, which git ignores; never stage it.
+- **Bring each branch up to date before its merge.** Merge `main` into the branch, run `bun run check` again, and wait for green CI (see the merge rule above).
+- **Delete a worktree only when it is clean and its branch is merged** (`git worktree remove`).
+
 ## Documentation Organization
 
 Each kind of knowledge has one home. Write a change in the home that matches it; never duplicate the same content across homes. What decides the home is **when the file loads** and **how deep it goes**, not its subject.
@@ -150,11 +158,11 @@ Each kind of knowledge has one home. Write a change in the home that matches it;
 | `AGENTS.md`                      | Every session                    | The map: architecture facts, conventions, gotchas, and the ADR index. Points to the homes below; does not repeat their depth. (`CLAUDE.md` is a one-line `@AGENTS.md` shim.)                            |
 | `docs/standards/*.md`            | On demand, when you write code   | One code pattern per file, as rules a reviewer can check.                                                                                                                                               |
 | `docs/plan.md`                   | On demand, per area              | The approved design: what Eva does and why. The other `docs/` files feed it: `intent.md`, `lessons-from-v1.md`, `review-2026-10-14.md`, `spikes.md`. `owner-todo.md` lists steps only the owner can do. |
-| `.claude/skills/<name>/SKILL.md` | On demand, when the task matches | One procedure: how to do X.                                                                                                                                                                             |
-| `adr/NNNN-*.md`                  | On demand, via adr-checker       | One architectural decision and its why.                                                                                                                                                                 |
+| `.agents/skills/<name>/SKILL.md` | On demand, when the task matches | One procedure: how to do X. `.claude/skills/` is a generated copy (see "Agent files").                                                                                                                  |
+| `adr/NNNN-*.md`                  | On demand, via check-adrs        | One architectural decision and its why.                                                                                                                                                                 |
 | `README.md`                      | Read by humans                   | What the project is, setup, run, test.                                                                                                                                                                  |
 
-**All of these files are living: keep them true.** When you learn something that helps future agents, update the right file in the same session. When a file holds wrong or outdated information, fix it or remove it. This covers code comments too. After implementation, the **docs-checker** agent catches drift you missed.
+**All of these files are living: keep them true.** When you learn something that helps future agents, update the right file in the same session. When a file holds wrong or outdated information, fix it or remove it. This covers code comments too. After implementation, the **check-docs** skill catches drift you missed.
 
 **Rules:**
 
@@ -164,17 +172,30 @@ Each kind of knowledge has one home. Write a change in the home that matches it;
 - An ADR records a decision from `docs/plan.md` and its why. When the plan and an ADR disagree, the plan wins: fix the ADR.
 - `CLAUDE.md` is a one-line `@AGENTS.md` shim; edit `AGENTS.md` instead.
 
+### Agent files
+
+Any coding tool can work on this repository. Only open, shared formats hold rules; files for one tool only point to them (ADR 0001).
+
+| File                             | Who reads it                                     | Holds                                                                                                        |
+| -------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `AGENTS.md` (root and `adr/`)    | Most coding tools                                | Every rule.                                                                                                  |
+| `CLAUDE.md`                      | Claude Code                                      | Only `@AGENTS.md`.                                                                                           |
+| `.agents/skills/<name>/SKILL.md` | Most coding tools (the open Agent Skills format) | The skills. Edit them only here.                                                                             |
+| `.claude/skills/`                | Claude Code                                      | A copy of `.agents/skills/`. `bun run agents:sync` writes it; `bun run check` fails when it drifts.          |
+| `.claude/agents/<name>.md`       | Claude Code                                      | Subagents that run a skill in their own context: `pattern-scout`, `adr-checker`, `docs-checker`, `validate`. |
+| `.claude/settings.json`          | Claude Code                                      | Extra comfort only (permissions, format-on-edit). Git hooks and CI enforce every rule for every tool.        |
+
 ## Architecture Decision Records (ADRs)
 
 ADRs live in `adr/`. Each records one architectural decision or cross-cutting standard and why. **One ADR per pattern, kept alive:** when a pattern changes, update its ADR in place; create a new ADR only for a genuinely new pattern. Most changes need no ADR. Conventions: `adr/AGENTS.md` (auto-loads through its `adr/CLAUDE.md` shim when you work in `adr/`).
 
-**Before implementing** in an area that may carry a decision, delegate to the **adr-checker** agent in consult mode. These areas usually carry decisions: the repository split and public content, the process model and the local API, the layer rules, engine adapters and the engine port, the two modes and their engine options, vault sync, and the testing strategy.
+**Before implementing** in an area that may carry a decision, run the **check-adrs** skill in consult mode. These areas usually carry decisions: the repository split and public content, the process model and the local API, the layer rules, engine adapters and the engine port, the two modes and their engine options, vault sync, and the testing strategy.
 
-**After implementing**, delegate to the **adr-checker** agent in maintain mode only if you introduced a new architectural pattern or changed one an ADR already records.
+**After implementing**, run the **check-adrs** skill in maintain mode only if you introduced a new architectural pattern or changed one an ADR already records.
 
 | ADR                                             | Topic                                                                                 |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `0001-agent-docs-structure.md`                  | `AGENTS.md` map + Claude-Code-only skills/subagents/settings                          |
+| `0001-agent-docs-structure.md`                  | Rules in open formats (`AGENTS.md`, `.agents/skills/`); thin adapters for Claude Code |
 | `0002-public-engine-private-vault.md`           | Two repositories: a public engine with no personal data, and one private vault        |
 | `0003-typescript-on-bun.md`                     | TypeScript for core and UI, run with Bun                                              |
 | `0004-one-core-process-with-local-api.md`       | One core process per instance; front ends are clients of a local HTTP + WebSocket API |
@@ -204,7 +225,7 @@ Whenever you create a GitHub issue, use the `create-issue` skill. Whenever you i
 
 ## Coding standards
 
-- **Match existing patterns.** Before writing code, find similar implementations and follow their style, structure, and conventions (the **pattern-scout** agent does this).
+- **Match existing patterns.** Before writing code, find similar implementations and follow their style, structure, and conventions (the **scout-patterns** skill does this).
 - **Explicit type annotations** are mandatory for all parameters, return types, and non-trivial variables. No `any`. ESLint enforces explicit return types.
 - **Comment the _why_, never the _what_.** A comment must carry what the code cannot: a non-obvious constraint, an intentional divergence, a trap a future reader would reintroduce. Cite the plan section or the lesson number when one applies. Do not document self-explanatory names or signatures, and match the comment density of the surrounding file.
 
@@ -218,7 +239,7 @@ Whenever a fix attempt fails or a bug needs root-causing, use the `debug` skill.
 
 ## Writing prompts for agents and rules
 
-Whenever you author or edit an AI-facing file (`AGENTS.md`, skills under `.claude/skills/`, subagents under `.claude/agents/`, prompts for agents you spawn), use the `write-ai-instructions` skill.
+Whenever you author or edit an AI-facing file (`AGENTS.md`, skills under `.agents/skills/`, the wrappers in `.claude/agents/`, prompts for agents you spawn), use the `write-ai-instructions` skill.
 
 ## Self-updating rules
 

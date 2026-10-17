@@ -3,7 +3,7 @@
  * and logs.
  */
 import { chmodSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, win32 } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -62,20 +62,43 @@ export function homePaths(root: string): HomePaths {
   };
 }
 
-/**
- * The engine login folders of an extra instance, as environment variables. An instance is
- * extra when its home is not the platform default. Without its own folders, it would use
- * the first person's logins and subscription (lesson 111). The first instance gets none, so
- * Project mode matches a session that the person opens by hand.
- */
-export function instanceEngineFolders(paths: HomePaths, defaultHome: string | undefined): Record<string, string> {
-  if (defaultHome === undefined || resolve(defaultHome) === resolve(paths.root)) return {};
+/** The engine login folders of an instance home. */
+export interface EngineFolders {
+  readonly claude: string;
+  readonly piAgent: string;
+  readonly gh: string;
+}
+
+export function engineFolders(paths: HomePaths): EngineFolders {
   return {
-    CLAUDE_CONFIG_DIR: join(paths.enginesFolder, "claude"),
+    claude: join(paths.enginesFolder, "claude"),
     // Not `engines/pi`: pi reads `<agent folder>/prompts/` as templates, and Eva writes her prompts there.
-    PI_CODING_AGENT_DIR: join(paths.enginesFolder, "pi-agent"),
-    GH_CONFIG_DIR: join(paths.enginesFolder, "gh"),
+    piAgent: join(paths.enginesFolder, "pi-agent"),
+    gh: join(paths.enginesFolder, "gh"),
   };
+}
+
+/** The variables that point each engine at its folder. */
+export function engineFolderVariables(folders: EngineFolders): Record<string, string> {
+  return { CLAUDE_CONFIG_DIR: folders.claude, PI_CODING_AGENT_DIR: folders.piAgent, GH_CONFIG_DIR: folders.gh };
+}
+
+/**
+ * True when the home is not the platform default, such as a second person's Eva on this OS
+ * user. An extra instance needs its own engine folders: with the OS user's folders, it would
+ * use the first person's logins and subscription (lesson 111). The first instance keeps the OS
+ * user's folders, so Project mode matches a session that the person opens by hand.
+ */
+export function isExtraInstance(
+  paths: HomePaths,
+  defaultHome: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (defaultHome === undefined) return false;
+  // Windows paths ignore letter case, so `--home` with other capitals still names the default home.
+  const normalize = (path: string): string =>
+    platform === "win32" ? win32.resolve(path).toLowerCase() : resolve(path);
+  return normalize(defaultHome) !== normalize(paths.root);
 }
 
 /** Creates the home and state folders, readable by the OS user only. Windows ignores the mode. */

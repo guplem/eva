@@ -18,7 +18,14 @@ import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-cente
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import { instanceEngineFolders, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
+import {
+  engineFolders,
+  engineFolderVariables,
+  isExtraInstance,
+  type EvaConfig,
+  type EvaSecrets,
+  type HomePaths,
+} from "./settings/home.ts";
 import { applySettingsChange, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
@@ -202,7 +209,9 @@ export class Eva {
     const githubToken = options.secrets.githubToken;
     this.gitEnvironment = buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist, {
       // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
-      ...instanceEngineFolders(options.paths, options.defaultHome),
+      ...(isExtraInstance(options.paths, options.defaultHome)
+        ? { GH_CONFIG_DIR: engineFolders(options.paths).gh }
+        : {}),
       ...(githubToken === undefined ? {} : { [githubTokenVariable]: githubToken }),
     });
     this.vaultSync =
@@ -796,8 +805,9 @@ export class Eva {
 
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
+    const folders = engineFolders(this.options.paths);
     const extra: Record<string, string> = {
-      ...instanceEngineFolders(this.options.paths, this.options.defaultHome),
+      ...(isExtraInstance(this.options.paths, this.options.defaultHome) ? engineFolderVariables(folders) : {}),
       EVA_HOME: this.options.paths.root,
     };
     const scripts = this.writeEvaScripts();
@@ -809,7 +819,7 @@ export class Eva {
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
     if (this.options.config.engines.claudeCode.ownConfigFolder) {
-      extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
+      extra["CLAUDE_CONFIG_DIR"] = folders.claude;
     }
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }

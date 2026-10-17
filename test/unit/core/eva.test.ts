@@ -156,6 +156,8 @@ describe("Eva", () => {
     });
     await eva.runCheck("github");
     expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+    // Only gh needs its folder; git and the Google tools get no engine folder.
+    expect(ghEnvironments[0]?.["CLAUDE_CONFIG_DIR"]).toBeUndefined();
   });
 
   test("the instance in the default home uses the OS user's own engine config folders", async () => {

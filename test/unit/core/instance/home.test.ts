@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createHomeFolders,
   defaultConfig,
   homePaths,
   loadConfig,
@@ -98,5 +99,18 @@ describe("secrets", () => {
     const paths = homePaths(home);
     writeFileSync(paths.secrets, JSON.stringify({ telegramBotToken: 5 }));
     expect(() => loadSecrets(paths)).toThrow("secrets.json");
+  });
+});
+
+describe("createHomeFolders", () => {
+  test("creates the home and state folders for the OS user only, also when they exist (plan §12)", () => {
+    const paths = homePaths(join(home, "eva"));
+    mkdirSync(paths.root, { mode: 0o755 });
+    createHomeFolders(paths);
+    expect(existsSync(paths.stateFolder)).toBe(true);
+    // Windows has no POSIX modes; the call must still succeed there.
+    if (process.platform === "win32") return;
+    expect(statSync(paths.root).mode & 0o777).toBe(0o700);
+    expect(statSync(paths.stateFolder).mode & 0o777).toBe(0o700);
   });
 });

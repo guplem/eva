@@ -120,6 +120,80 @@ describe("access (lessons 63, 127)", () => {
   });
 });
 
+describe("device login (plan §12)", () => {
+  function deviceQuestion(): { text: string; buttons: string } | undefined {
+    const call = telegram.callsTo("sendMessage").find((sent) => String(sent.params["text"]).startsWith("A browser"));
+    return call === undefined
+      ? undefined
+      : { text: String(call.params["text"]), buttons: JSON.stringify(call.params["reply_markup"]) };
+  }
+
+  test("a request asks the paired chat with the code and the account, and Allow lets the browser in", async () => {
+    const bot = createBot();
+    expect(eva.deviceLogins.canApprove()).toBe(true);
+    const request = eva.deviceLogins.request("owner@example.com", "owner@example.com, a phone");
+    await settle(bot, () => deviceQuestion() !== undefined);
+    expect(deviceQuestion()?.text).toBe(
+      `A browser wants to open Eva (code ${request.code}, account owner@example.com). Allow?`,
+    );
+    expect(deviceQuestion()?.buttons).toContain(`l:${request.id}:allow`);
+    expect(deviceQuestion()?.buttons).toContain(`l:${request.id}:deny`);
+    telegram.pressButton(owner, `l:${request.id}:allow`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+    expect(String(telegram.callsTo("editMessageText")[0]?.params["text"])).toEndWith("\n\nAllowed");
+    expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Allowed");
+    expect(eva.deviceLogins.check(request.id, "owner@example.com").state).toBe("allowed");
+  });
+
+  test("Deny refuses the browser", async () => {
+    const bot = createBot();
+    const request = eva.deviceLogins.request("owner@example.com", "x");
+    await settle(bot, () => deviceQuestion() !== undefined);
+    telegram.pressButton(owner, `l:${request.id}:deny`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+    expect(String(telegram.callsTo("editMessageText")[0]?.params["text"])).toEndWith("\n\nDenied");
+    expect(eva.deviceLogins.check(request.id, "owner@example.com")).toEqual({ state: "denied" });
+  });
+
+  test("a press after the request expired says so, and lets nobody in", async () => {
+    const bot = createBot();
+    const request = eva.deviceLogins.request("owner@example.com", "x");
+    await settle(bot, () => deviceQuestion() !== undefined);
+    clock = new Date(clock.getTime() + 6 * 60_000);
+    telegram.pressButton(owner, `l:${request.id}:allow`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+    expect(String(telegram.callsTo("editMessageText")[0]?.params["text"])).toEndWith("\n\nThis request expired.");
+    expect(eva.deviceLogins.check(request.id, "owner@example.com")).toEqual({ state: "expired" });
+  });
+
+  test("a stranger's press lets nobody in", async () => {
+    const bot = createBot();
+    const request = eva.deviceLogins.request("owner@example.com", "x");
+    await settle(bot, () => deviceQuestion() !== undefined);
+    telegram.pressButton(999, `l:${request.id}:allow`);
+    await settle(bot, () => telegram.callsTo("answerCallbackQuery").length === 1);
+    expect(eva.deviceLogins.check(request.id, "owner@example.com")).toEqual({ state: "pending" });
+  });
+
+  test("a bot with no paired chat, or a stopped bot, cannot confirm a device", async () => {
+    const unpaired = createBot(null);
+    expect(eva.deviceLogins.canApprove()).toBe(false);
+    await unpaired.stop();
+    const paired = createBot();
+    expect(eva.deviceLogins.canApprove()).toBe(true);
+    await paired.stop();
+    expect(eva.deviceLogins.canApprove()).toBe(false);
+  });
+
+  test("an error text in the chat is redacted (lesson 95)", async () => {
+    const secretShaped = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const bot = createBot(owner, { transcribe: () => Promise.reject(new Error(`whisper read ${secretShaped}`)) });
+    telegram.sendFile(owner, "voice", new Uint8Array([1]));
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toBe("The voice note could not be transcribed: whisper read [redacted]");
+  });
+});
+
 describe("a group chat (security review)", () => {
   test("pairing keeps the person who paired, and only that person may act or press a button", async () => {
     const group = -1001;

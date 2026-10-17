@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Eva } from "./core/eva.ts";
 import {
+  createHomeFolders,
   homePaths,
   loadConfig,
   loadSecrets,
@@ -26,6 +27,7 @@ import {
   describeSettings,
   isSharedSettingKey,
   loadSettings,
+  moveSecuritySettingsFromVault,
   moveSettingsToVault,
   settingChange,
 } from "./core/instance/settings.ts";
@@ -115,6 +117,7 @@ async function main(argv: readonly string[]): Promise<number> {
     case "setup": {
       // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
       await doctor(paths);
+      createHomeFolders(paths);
       const setupOptions = {
         paths,
         write: writeLine,
@@ -243,7 +246,7 @@ async function runClientCommand(
 }
 
 async function serve(paths: HomePaths): Promise<number> {
-  mkdirSync(paths.root, { recursive: true });
+  createHomeFolders(paths);
   await waitForOldCopy();
   const secrets = { ...loadSecrets(paths) };
   const settingsMoved = await moveSettingsAfterPull(paths, secrets);
@@ -272,7 +275,9 @@ async function serve(paths: HomePaths): Promise<number> {
   const redactor = new Redactor();
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
-  if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
+  if (settingsMoved.toVault) logger.log("info", "Moved the shared settings from config.json to the vault.");
+  if (settingsMoved.toMachine)
+    logger.log("info", "Moved the security settings from the vault to config.json; the vault's copy is ignored now.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
   if (remoteAccess !== null)
@@ -653,18 +658,22 @@ function updateChannel(secrets: EvaSecrets): UpdateChannel {
 
 /**
  * Pulls the vault before the settings move to it, so this machine never starts a settings file
- * that another machine already pushed (a conflict that would stop the vault's pushes).
+ * that another machine already pushed (a conflict that would stop the vault's pushes). Then the
+ * security settings move the other way, out of the vault (plan §12).
  */
-async function moveSettingsAfterPull(paths: HomePaths, secrets: EvaSecrets): Promise<boolean> {
+async function moveSettingsAfterPull(
+  paths: HomePaths,
+  secrets: EvaSecrets,
+): Promise<{ toVault: boolean; toMachine: boolean }> {
   const vaultPath = loadConfig(paths).vaultPath;
-  if (vaultPath === null || !existsSync(vaultPath)) return false;
+  if (vaultPath === null || !existsSync(vaultPath)) return { toVault: false, toMachine: false };
   await new VaultSync({
     vaultPath,
     runner: systemProcessRunner,
     environment: gitEnvironment(secrets),
     now: () => new Date(),
   }).pull();
-  return moveSettingsToVault(paths);
+  return { toVault: moveSettingsToVault(paths), toMachine: moveSecuritySettingsFromVault(paths) };
 }
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";

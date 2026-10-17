@@ -19,10 +19,19 @@ export const sharedSettingKeys: readonly string[] = [
   "engines.default",
   "engines.claudeCode.defaultModel",
   "engines.pi.models",
-  "trust",
-  "google",
+  "google.email",
   "voice.language",
+];
+
+/**
+ * Settings that decide who gets in and what an agent may do. The Assistant agent edits the vault
+ * as normal work, and the vault syncs from other machines, so these stay in `config.json` (plan §12).
+ */
+const securitySettingKeys: readonly string[] = [
   "remoteAccess.allowedTailscaleIdentities",
+  "trust",
+  "google.readOnly",
+  "google.services",
 ];
 
 type SettingsObject = Record<string, unknown>;
@@ -101,6 +110,29 @@ export function moveSettingsToVault(paths: HomePaths): boolean {
   return true;
 }
 
+/**
+ * Moves the security settings out of the vault file, once, for a vault from before they stayed on
+ * the machine. The owner or an earlier migration wrote those values, so a key that `config.json`
+ * lacks takes the vault's value. The vault file loses every security key. Returns true on a change.
+ */
+export function moveSecuritySettingsFromVault(paths: HomePaths): boolean {
+  const machineRead = readJsonTolerant(paths.config);
+  if (!machineRead.ok || !isObject(machineRead.value)) return false;
+  const machine = machineRead.value;
+  const vaultPath = parseConfig(machine, paths.config).vaultPath;
+  if (vaultPath === null) return false;
+  const file = vaultSettingsPath(vaultPath);
+  const vaultRead = readJsonTolerant(file);
+  if (!vaultRead.ok || !isObject(vaultRead.value)) return false;
+  if (Object.keys(pickKeys(vaultRead.value, securitySettingKeys)).length === 0) return false;
+  const missingKeys = securitySettingKeys.filter((key) => Object.keys(pickKeys(machine, [key])).length === 0);
+  const moved = mergeSettings(pickKeys(vaultRead.value, missingKeys), machine);
+  // A bad value in config.json would stop Eva at every start, so a bad vault value is dropped instead.
+  if (isValidConfig(moved)) writeFileAtomic(paths.config, toJson(moved));
+  writeFileAtomic(file, toJson(omitKeys(vaultRead.value, securitySettingKeys)));
+  return true;
+}
+
 /** True for a dotted key that names a setting, such as `updates.frequency`. */
 export function isSettingKey(key: string): boolean {
   let current: unknown = defaultConfig;
@@ -165,14 +197,30 @@ function pickKeys(source: unknown, keys: readonly string[]): SettingsObject {
 
 function omitKeys(source: SettingsObject, keys: readonly string[]): SettingsObject {
   const copy = structuredClone(source);
-  for (const key of keys) {
-    const parts = key.split(".");
-    const last = parts.pop() ?? "";
-    let parent: unknown = copy;
-    for (const part of parts) parent = isObject(parent) ? parent[part] : undefined;
-    if (isObject(parent)) Reflect.deleteProperty(parent, last);
-  }
+  for (const key of keys) removeKey(copy, key.split("."));
   return copy;
+}
+
+/** Removes a dotted key, and each parent object that the removal leaves empty. */
+function removeKey(parent: unknown, parts: readonly string[]): void {
+  const [first, ...rest] = parts;
+  if (!isObject(parent) || first === undefined) return;
+  if (rest.length === 0) {
+    Reflect.deleteProperty(parent, first);
+    return;
+  }
+  removeKey(parent[first], rest);
+  const child = parent[first];
+  if (isObject(child) && Object.keys(child).length === 0) Reflect.deleteProperty(parent, first);
+}
+
+function isValidConfig(value: unknown): boolean {
+  try {
+    parseConfig(value, "config.json");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isObject(value: unknown): value is SettingsObject {

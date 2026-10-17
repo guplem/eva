@@ -610,7 +610,8 @@ describe("an Eva with a claude program", () => {
       });
       const response = await fetch(engineUpdate, { method: "POST", headers: headers(), body: "{}" });
       expect(await json<unknown>(response)).toMatchObject({ phase: "updating" });
-      while (updating.engineUpdateStatus()?.phase !== "idle") await Bun.sleep(5);
+      for (let round = 0; round < 200 && updating.engineUpdateStatus()?.phase !== "idle"; round += 1)
+        await Bun.sleep(10);
       expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toMatchObject({
         phase: "idle",
         last: { outcome: "updated", before: "2.1.0", after: "2.2.0" },

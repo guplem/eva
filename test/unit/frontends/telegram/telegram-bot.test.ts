@@ -477,7 +477,7 @@ describe("approvals and commands", () => {
     const bot = createBot();
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     const turn = eva.sessions.send(session.id, "work");
-    while (engine.requests.length === 0) await Bun.sleep(5);
+    for (let round = 0; round < 400 && engine.requests.length === 0; round += 1) await Bun.sleep(5);
     telegram.sendText(owner, "/update");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("installs when")));
     expect(restarts).toEqual([]);

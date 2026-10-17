@@ -149,6 +149,15 @@ Several agents or sessions can work on this repository at once. Each one needs i
 - **Bring each branch up to date before its merge.** Merge `main` into the branch, run `bun run check` again, and wait for green CI (see the merge rule above).
 - **Delete a worktree only when it is clean and its branch is merged** (`git worktree remove`).
 
+## Keep the instructions simple
+
+The owner must always understand what an agent does, and why. So every instruction file (this file, skills, ADRs, the assistant prompt) follows these rules:
+
+- **One home per fact.** Before you add a rule, search for it. Change it in its one home, and delete any copy or contradiction that you find.
+- **As short as possible**, in the plain English of "Writing style". Cut each sentence that does not change what an agent does.
+- **Few exceptions, known patterns.** Prefer a common convention to a custom rule. An exception names its reason in the same sentence.
+- **Say why** when a rule is not obvious, in a few words, so that a reader can judge it later.
+
 ## Documentation Organization
 
 Each kind of knowledge has one home. Write a change in the home that matches it; never duplicate the same content across homes. What decides the home is **when the file loads** and **how deep it goes**, not its subject.

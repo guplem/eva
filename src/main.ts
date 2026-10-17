@@ -27,7 +27,7 @@ import { parseArguments, usageText, type CliCommand } from "./frontends/cli/argu
 import { runChat } from "./frontends/cli/chat.ts";
 import { describeProjects, describeStatus, startProjectWork } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
-import { systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import { servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
@@ -331,7 +331,10 @@ async function installService(paths: HomePaths): Promise<number> {
   }
   const unitPath = join(homedir(), ".config", "systemd", "user", "eva.service");
   mkdirSync(dirname(unitPath), { recursive: true });
-  writeFileSync(unitPath, systemdUnit({ executable, home: paths.root, path: process.env["PATH"] ?? "/usr/bin:/bin" }));
+  writeFileSync(
+    unitPath,
+    systemdUnit({ executable, home: paths.root, path: servicePath(process.env["PATH"] ?? "/usr/bin:/bin") }),
+  );
   for (const step of [
     ["systemctl", "--user", "daemon-reload"],
     ["systemctl", "--user", "enable", "--now", "eva.service"],

@@ -10,6 +10,18 @@ export interface ServiceTarget {
   readonly home: string;
 }
 
+/**
+ * The PATH for the service file, without the folders that `bun run` adds for one run only
+ * (a temporary `bun-node-*` folder and `node_modules/.bin`), which a service must never depend on.
+ */
+export function servicePath(path: string, separator = ":"): string {
+  return path
+    .split(separator)
+    .filter((folder) => folder !== "" && !/bun-node-|node_modules/.test(folder))
+    .filter((folder, index, folders) => folders.indexOf(folder) === index)
+    .join(separator);
+}
+
 export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {
   return `[Unit]
 Description=Eva, a personal super harness

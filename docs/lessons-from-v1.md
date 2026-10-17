@@ -158,7 +158,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 107. **Codex loads `AGENTS.md` only from the nearest git root down to the start folder.** A session started in a nested clone does not see the parent folders. `project_root_markers` changes the root, but only from user config or `-c`.
 108. **pi and OpenCode walk up through parent folders.** Claude Code walks up to the filesystem root and ignores git boundaries.
 109. **Agent hooks run only from the start folder. Git hooks run in whatever repository receives the commit.** Project sessions start in the clone, so the project's own agent hooks run.
-110. **Unverified: the `claude` program may add its own identity line before a custom system prompt.** The SDK docs say it sends only what you provide. Spike S5, an owner check in `owner-todo.md`, logs a real request to settle it.
+110. **The `claude` program adds its own identity line before a custom system prompt,** and a billing line before that. The SDK docs say it sends only what you provide. Source: spike S5 (#56) logged a real request.
 111. **Each Eva instance gives its engines their own config folders** (`CLAUDE_CONFIG_DIR`, pi's agent folder, `GH_CONFIG_DIR`). Two instances on one OS user otherwise share one login, and a person would use another person's subscription.
 112. **A `CLAUDE.md` in the start folder or any folder above it stops Claude Code from reading `AGENTS.md`.** The SDK setting `claude-md-and-agents-md` loads both. Source: https://code.claude.com/docs/en/memory
 113. **The Agent SDK without `systemPrompt` uses a minimal prompt,** not the Claude Code prompt that `claude -p` uses. Pass the `claude_code` preset. Source: https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts

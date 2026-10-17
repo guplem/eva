@@ -4,7 +4,7 @@
  */
 import { chmodSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
@@ -55,6 +55,8 @@ export interface EvaOptions {
   readonly claudeExecutable?: string | null;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
+  /** Deletes the log files past their retention; the background tick calls it once a day. */
+  readonly removeOldLogs?: () => void;
   /**
    * The command that starts this Eva, such as `[bun, main.ts]` or `[eva.exe]`. Eva writes it as an
    * `eva` script that an agent can run, for `eva work` (plan §5.3). Null: no script.
@@ -66,6 +68,11 @@ export interface EvaOptions {
   readonly restartForUpdate?: () => void;
   /** The web UI's address for the phone through Tailscale, now. Null: Tailscale does not run here. */
   readonly remoteAccess?: () => RemoteAccess | null;
+  /**
+   * The platform's default home folder. An instance with another home is an extra instance on
+   * the same OS user, so its engines get their own config folders (plan §4.4, lesson 111).
+   */
+  readonly defaultHome?: string;
 }
 
 export interface ProjectWorkInput {
@@ -125,8 +132,11 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const gitStatusTimeoutMs = 20_000;
+/** The number of characters of a project answer that the report to the Assistant chat keeps. */
+const reportTextLimit = 3_000;
 const scheduleTickMs = 30_000;
 const backgroundTickMs = 60_000;
+const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** Settings that apply at once; any other change waits for a restart. */
 const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes"];
 const noVaultState: VaultSyncState = {
@@ -158,9 +168,18 @@ export class Eva {
   private lastTurn: LastTurnStatus | null = null;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones = new Set<string>();
+  /** A slow git step can outlast a timer period; these flags keep each task from running twice at once. */
+  private sweeping: boolean;
+  private backgroundTicking: boolean;
+  private lastHousekeepingAt: Date | null;
+  /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
+  private readonly cloneChoices = new Map<string, Promise<unknown>>();
 
   constructor(options: EvaOptions) {
     this.options = options;
+    this.sweeping = false;
+    this.backgroundTicking = false;
+    this.lastHousekeepingAt = null;
     this.settings = options.config;
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
@@ -183,7 +202,10 @@ export class Eva {
 
     this.sessions = new SessionManager({
       engines: options.engines,
-      store: new SessionStore(options.paths.sessions),
+      store: new SessionStore(options.paths.sessions, {
+        now: options.now,
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
+      }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
@@ -248,6 +270,7 @@ export class Eva {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
               send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
             },
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
 
     this.lastRole = this.role();
@@ -283,11 +306,21 @@ export class Eva {
     }, backgroundTickMs);
   }
 
-  /** Once a minute: fetches the vault and checks for updates, each at the pace that the settings ask for. */
+  /**
+   * Once a minute: fetches the vault and checks for updates, each at the pace that the settings
+   * ask for, and cleans up old files once a day.
+   */
   async backgroundTick(): Promise<void> {
-    await this.pullIfDue();
-    this.noticeRoleChange();
-    await this.updater?.tick();
+    if (this.backgroundTicking) return;
+    this.backgroundTicking = true;
+    try {
+      await this.pullIfDue();
+      this.noticeRoleChange();
+      this.cleanUpIfDue();
+      await this.updater?.tick();
+    } finally {
+      this.backgroundTicking = false;
+    }
   }
 
   /** "hub" when this machine runs Telegram and the schedules (plan §4.4). */
@@ -360,12 +393,15 @@ export class Eva {
     this.backgroundTimer = null;
   }
 
-  /** Saves changes made outside a turn, and empties old Scratch files. It never runs during an Assistant turn (lessons 22, 30). */
+  /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
-    if (this.vaultSync === null) return "skipped";
-    cleanScratch(this.options.config.vaultPath ?? "", this.options.now());
-    if (this.assistantBusy()) return "skipped";
-    return this.logSyncState(await this.vaultSync.save()).status;
+    if (this.vaultSync === null || this.sweeping || this.assistantBusy()) return "skipped";
+    this.sweeping = true;
+    try {
+      return this.logSyncState(await this.vaultSync.save()).status;
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   status(): EvaStatus {
@@ -414,7 +450,7 @@ export class Eva {
     if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
     const clone =
       input.cloneName === undefined
-        ? await this.freeOrNewClone(project)
+        ? await this.oneCloneChoiceAtATime(project, () => this.freeOrNewClone(project))
         : listClones(project.path).find((candidate) => candidate.name === input.cloneName);
     if (clone === undefined)
       throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
@@ -436,8 +472,12 @@ export class Eva {
   async startProjectWork(input: ProjectWorkInput): Promise<SessionRecord> {
     const project = this.projects().find((candidate) => candidate.id === input.projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${input.projectId} in the vault.`);
-    const clone = await this.freeOrNewClone(project);
-    this.reservedClones.add(clone.path);
+    // The reservation happens inside the choice, so a second work cannot pick the same clone.
+    const clone = await this.oneCloneChoiceAtATime(project, async () => {
+      const chosen = await this.freeOrNewClone(project);
+      this.reservedClones.add(chosen.path);
+      return chosen;
+    });
     const session = this.sessions.createSession({
       mode: "project",
       engine: this.options.config.engines.default,
@@ -453,14 +493,19 @@ export class Eva {
       } finally {
         this.reservedClones.delete(clone.path);
       }
+      if (input.reportToSessionId === null) return;
       const last = this.sessions.get(session.id).turns.at(-1);
       const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
-      if (input.reportToSessionId !== null) {
-        await this.sessions.send(
-          input.reportToSessionId,
-          `[Project work finished: ${project.id}, clone ${clone.name}, chat ${session.id}]\n\n${result}`,
-        );
-      }
+      const details = await describeClone(clone, this.options.runner, this.gitEnvironment);
+      const place = [
+        `clone ${clone.name}`,
+        ...(details.branch === null ? [] : [`branch ${details.branch}`]),
+        ...(details.pullRequest === null ? [] : [`pull request #${String(details.pullRequest)}`]),
+      ].join(", ");
+      await this.sessions.send(
+        input.reportToSessionId,
+        `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
+      );
     });
     return session;
   }
@@ -515,9 +560,13 @@ export class Eva {
   async newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     const project = this.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project, repositoryUrl));
+  }
+
+  private async cloneInto(project: Project, repositoryUrl?: string): Promise<Clone> {
     const url = repositoryUrl ?? project.frontMatter.repos[0];
     if (url === undefined)
-      throw new EvaError("project_not_found", `Project ${projectId} lists no repository to clone.`);
+      throw new EvaError("project_not_found", `Project ${project.id} lists no repository to clone.`);
     return createClone({
       projectPath: project.path,
       repositoryUrl: url,
@@ -526,6 +575,7 @@ export class Eva {
     });
   }
 
+  /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
     for (const clone of listClones(project.path)) {
       const busy =
@@ -533,7 +583,21 @@ export class Eva {
         this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));
       if (!busy && (await this.isClean(clone.path))) return clone;
     }
-    return this.newClone(project.id);
+    return this.cloneInto(project);
+  }
+
+  /**
+   * Runs one clone choice of a project after the previous one ends. A choice awaits git, so
+   * without this chain two callers could pick the same free clone or the same new folder (lesson 49).
+   */
+  private oneCloneChoiceAtATime<Chosen>(project: Project, choose: () => Promise<Chosen>): Promise<Chosen> {
+    const previous = this.cloneChoices.get(project.path) ?? Promise.resolve();
+    const choice = previous.then(choose, choose);
+    this.cloneChoices.set(
+      project.path,
+      choice.catch(() => undefined),
+    );
+    return choice;
   }
 
   private async isClean(folder: string): Promise<boolean> {
@@ -561,6 +625,21 @@ export class Eva {
     if (this.assistantBusy()) return;
     this.lastPullAt = now;
     this.logSyncState(await this.vaultSync.pull());
+  }
+
+  /**
+   * Removes old logs and Scratch files once a day (plan §9), with or without vault sync. It waits
+   * for the end of an Assistant turn, so a file never goes away under a running agent (lessons 22, 30).
+   */
+  private cleanUpIfDue(): void {
+    const now = this.options.now();
+    if (this.lastHousekeepingAt !== null && now.getTime() - this.lastHousekeepingAt.getTime() < housekeepingIntervalMs)
+      return;
+    if (this.assistantBusy()) return;
+    this.lastHousekeepingAt = now;
+    this.options.removeOldLogs?.();
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath !== null) cleanScratch(vaultPath, now);
   }
 
   private noticeRoleChange(): void {
@@ -621,8 +700,10 @@ export class Eva {
     return folder;
   }
 
-  /** The engine's environment: the allowlist, the Claude token, and an own config folder when asked (plan §4.4). */
+  /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance (plan §4.4). */
   private engineEnvironment(): Record<string, string> {
+    const defaultHome = this.options.defaultHome;
+    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
     const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
@@ -632,9 +713,11 @@ export class Eva {
     }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (this.options.config.engines.claudeCode.ownConfigFolder) {
+    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
       extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
     }
+    // pi's folder is left out on purpose: pi has no documented variable for it yet.
+    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
 }
@@ -660,6 +743,12 @@ async function readOriginUrl(
   });
   const url = result.stdout.trim();
   return result.exitCode === 0 && url.length > 0 ? url : null;
+}
+
+/** Keeps the end of a long project answer: the end usually holds the result, and a phone chat stays short. */
+function capReportText(text: string): string {
+  if (text.length <= reportTextLimit) return text;
+  return `(The answer is longer. The full answer is in the project chat.)\n\n…${text.slice(-reportTextLimit)}`;
 }
 
 /** The dotted keys that a settings change touches, such as `updates.frequency`. */

@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Eva } from "./core/eva.ts";
@@ -19,7 +19,8 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "./core/instance/home.ts";
-import { acquireInstanceLock, isProcessAlive, runningInstancePid } from "./core/instance/instance-lock.ts";
+import { acquireInstanceLock, isProcessAlive, readBootId, runningInstancePid } from "./core/instance/instance-lock.ts";
+import { stopWithinDeadline } from "./core/instance/shutdown.ts";
 import {
   changeSettings,
   describeSettings,
@@ -52,7 +53,15 @@ import {
   type ClientOptions,
 } from "./frontends/cli/client.ts";
 import { runDoctor } from "./frontends/cli/doctor.ts";
-import { restartMethod, serviceName, servicePath, systemdUnit, windowsTaskCommand } from "./frontends/cli/service.ts";
+import {
+  restartMethod,
+  serviceCommand,
+  serviceName,
+  servicePath,
+  systemdUnit,
+  windowsRunTaskCommand,
+  windowsTaskCommand,
+} from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
 import { publishWithTailscale, readTailscale } from "./core/instance/machine-defaults.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
@@ -101,23 +110,11 @@ async function main(argv: readonly string[]): Promise<number> {
   );
 
   switch (command.command) {
-    case "doctor": {
-      const healthy = await runDoctor({
-        runner: systemProcessRunner,
-        environment: childEnvironment(),
-        write: writeLine,
-        standalone: isStandalone(),
-      });
-      return healthy ? exitCodes.clean : exitCodes.crash;
-    }
+    case "doctor":
+      return (await doctor(paths)) ? exitCodes.clean : exitCodes.crash;
     case "setup": {
       // The setup order starts with the doctor (plan §11): a missing tool shows before any question.
-      await runDoctor({
-        runner: systemProcessRunner,
-        environment: childEnvironment(),
-        write: writeLine,
-        standalone: isStandalone(),
-      });
+      await doctor(paths);
       const setupOptions = {
         paths,
         write: writeLine,
@@ -172,6 +169,18 @@ async function main(argv: readonly string[]): Promise<number> {
     case "run":
       return serve(paths);
   }
+}
+
+function doctor(paths: HomePaths): Promise<boolean> {
+  return runDoctor({
+    runner: systemProcessRunner,
+    environment: childEnvironment(),
+    write: writeLine,
+    standalone: isStandalone(),
+    platform: process.platform,
+    userName: userInfo().username,
+    defaultEngine: loadSettings(paths).config.engines.default,
+  });
 }
 
 async function runClientCommand(
@@ -254,12 +263,15 @@ async function serve(paths: HomePaths): Promise<number> {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
   }
-  const lock = acquireInstanceLock(paths.lock, { pid: process.pid, isProcessAlive });
+  const lock = acquireInstanceLock(paths.lock, {
+    pid: process.pid,
+    bootId: readBootId(process.platform),
+    isProcessAlive,
+  });
 
   const redactor = new Redactor();
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
-  logger.removeOldFiles();
   if (settingsMoved) logger.log("info", "Moved the shared settings from config.json to the vault.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
@@ -292,12 +304,16 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => new Date(),
     basePrompt: assistantBasePrompt,
     logger,
+    removeOldLogs: () => {
+      logger.removeOldFiles();
+    },
     evaCommand: isStandalone() ? [process.execPath] : [process.execPath, Bun.main],
     updateChannel: updateChannel(secrets),
     restartForUpdate: () => {
       restart?.();
     },
     remoteAccess: () => remoteAccess,
+    defaultHome: defaultHomeFolder(),
   });
   // Until the tailnet turns HTTPS on, Eva tries again, so the person never needs a restart.
   const publishRetry = setInterval(() => {
@@ -321,6 +337,12 @@ async function serve(paths: HomePaths): Promise<number> {
       reason: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
     });
   });
+  // An exception that nobody catches leaves the core in an unknown state: log it, and let the service restart Eva.
+  process.on("uncaughtException", (error: Error) => {
+    logger.log("error", "Eva stopped on an error that nobody caught.", { reason: error.stack ?? error.message });
+    lock.release();
+    process.exit(exitCodes.crash);
+  });
   eva.startBackgroundWork();
   const api = startLocalApi({
     eva,
@@ -341,20 +363,31 @@ async function serve(paths: HomePaths): Promise<number> {
     restart = () => {
       stop(exitCodes.update);
     };
+    let stopping = false;
     const stop = (exitCode: number): void => {
+      if (stopping) return;
+      stopping = true;
+      // The last guard: a stop that still hangs after its deadline ends the process here.
+      setTimeout(() => process.exit(exitCode), shutdownDeadlineMs + hardExitGraceMs).unref();
       void (async () => {
-        await bot?.stop();
-        api.stop();
-        eva.stop();
-        clearInterval(publishRetry);
-        lock.release();
-        logger.log("info", "Eva stopped.", { exitCode });
-        if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
-          startNewCopy();
-          resolve(exitCodes.clean);
-          return;
+        try {
+          const outcome = await stopWithinDeadline(async () => {
+            clearInterval(publishRetry);
+            eva.stop();
+            await bot?.stop();
+            api.stop();
+          }, shutdownDeadlineMs);
+          if (outcome.kind !== "stopped") logger.log("warn", "Eva did not stop cleanly.", { ...outcome });
+        } finally {
+          lock.release();
+          logger.log("info", "Eva stopped.", { exitCode });
+          if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
+            startNewCopy();
+            resolve(exitCodes.clean);
+          } else {
+            resolve(exitCode);
+          }
         }
-        resolve(exitCode);
       })();
     };
     // Only the hub runs Telegram; the bot starts or stops when the hub moves (plan §4.4).
@@ -415,19 +448,28 @@ function pairingCodePath(paths: HomePaths): string {
 }
 
 async function installService(paths: HomePaths): Promise<number> {
-  const executable = [process.execPath, join(import.meta.dir, "main.ts")];
-  const name = serviceName(
-    paths.root,
-    resolveHomeFolder({ environment: {}, platform: process.platform, userHome: homedir() }),
-  );
+  const executable = serviceCommand({
+    standalone: isStandalone(),
+    execPath: process.execPath,
+    mainScript: join(import.meta.dir, "main.ts"),
+  });
+  const name = serviceName(paths.root, defaultHomeFolder());
+  const runStep = (step: readonly string[]): ReturnType<typeof systemProcessRunner.run> =>
+    systemProcessRunner.run(step, { cwd: paths.root, environment: childEnvironment(), timeoutMs: 30_000 });
   if (process.platform === "win32") {
-    const result = await systemProcessRunner.run(windowsTaskCommand({ executable, home: paths.root }, name), {
-      cwd: paths.root,
-      environment: childEnvironment(),
-      timeoutMs: 30_000,
-    });
-    writeLine(result.exitCode === 0 ? "Eva now starts when you log in." : `schtasks failed: ${result.stderr.trim()}`);
-    return result.exitCode === 0 ? exitCodes.clean : exitCodes.crash;
+    const created = await runStep(windowsTaskCommand({ executable, home: paths.root }, name));
+    if (created.exitCode !== 0) {
+      writeLine(`schtasks failed: ${created.stderr.trim()}`);
+      writeLine("If it says that access is denied, open the terminal with Run as administrator, then try again.");
+      return exitCodes.crash;
+    }
+    const started = await runStep(windowsRunTaskCommand(name));
+    writeLine(
+      started.exitCode === 0
+        ? "Eva now starts when you log in, and she runs now."
+        : `Eva now starts when you log in. She did not start now: ${started.stderr.trim()}`,
+    );
+    return exitCodes.clean;
   }
   const unitPath = join(homedir(), ".config", "systemd", "user", `${name}.service`);
   mkdirSync(dirname(unitPath), { recursive: true });
@@ -439,18 +481,28 @@ async function installService(paths: HomePaths): Promise<number> {
     ["systemctl", "--user", "daemon-reload"],
     ["systemctl", "--user", "enable", "--now", `${name}.service`],
   ]) {
-    const result = await systemProcessRunner.run(step, {
-      cwd: paths.root,
-      environment: childEnvironment(),
-      timeoutMs: 30_000,
-    });
+    const result = await runStep(step);
     if (result.exitCode !== 0) {
       writeLine(`${step.join(" ")} failed: ${result.stderr.trim()}`);
       return exitCodes.crash;
     }
   }
-  writeLine(`Installed ${unitPath}. Run \`loginctl enable-linger\` once so Eva runs while you are logged out.`);
+  writeLine(`Installed ${unitPath}. Eva runs now.`);
+  // Linger keeps the user's services running after logout (lesson 85); Eva works without it.
+  const linger = await runStep(["loginctl", "enable-linger"]);
+  writeLine(
+    linger.exitCode === 0
+      ? "Eva keeps running when you log out."
+      : `loginctl enable-linger failed: ${linger.stderr.trim()}. Eva stops when you log out until an administrator runs \`sudo loginctl enable-linger ${userInfo().username}\`.`,
+  );
   return exitCodes.clean;
+}
+
+/** The home folder that Eva uses when no `--home` or `EVA_HOME` names one. */
+function defaultHomeFolder(): string {
+  // Only EVA_HOME is left out: APPDATA and XDG_CONFIG_HOME still move the default folder.
+  const environment = { APPDATA: process.env["APPDATA"], XDG_CONFIG_HOME: process.env["XDG_CONFIG_HOME"] };
+  return resolveHomeFolder({ environment, platform: process.platform, userHome: homedir() });
 }
 
 async function withPrompt(work: (ask: (question: string) => Promise<string>) => Promise<void>): Promise<void> {
@@ -574,7 +626,8 @@ async function settings(paths: HomePaths, command: Extract<CliCommand, { command
 /** The API of the Eva that runs with this home, or null when none runs. */
 function runningClient(paths: HomePaths): ClientOptions | null {
   const token = loadSecrets(paths).localApiToken;
-  if (token === undefined || runningInstancePid(paths.lock, isProcessAlive) === null) return null;
+  const probe = { bootId: readBootId(process.platform), isProcessAlive };
+  if (token === undefined || runningInstancePid(paths.lock, probe) === null) return null;
   return { baseUrl: `http://127.0.0.1:${String(loadConfig(paths).port)}`, token };
 }
 
@@ -616,6 +669,9 @@ async function moveSettingsAfterPull(paths: HomePaths, secrets: EvaSecrets): Pro
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";
 const tailscaleRetryMs = 60_000;
+/** systemd sends SIGKILL 90 seconds after SIGTERM by default; Eva ends well before that. */
+const shutdownDeadlineMs = 20_000;
+const hardExitGraceMs = 5_000;
 const oldCopyWaitMs = 60_000;
 
 /** After an update, the new copy starts first; the lock is free only when the old copy has gone. */

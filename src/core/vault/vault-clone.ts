@@ -15,6 +15,7 @@ const credentialKey = "credential.https://github.com.helper";
 const credentialHelper = `!f() { test "$1" = get && echo username=x-access-token && echo "password=$${githubTokenVariable}"; }; f`;
 const cloneTimeoutMs = 10 * 60_000;
 const configTimeoutMs = 20_000;
+const checkTimeoutMs = 60_000;
 
 /** git options for one command: no other helper (such as a desktop login window), then Eva's. */
 export const githubCredentialArguments: readonly string[] = [
@@ -30,6 +31,19 @@ export interface VaultCloneInputs {
   readonly runner: ProcessRunner;
   /** Eva's git environment; it holds `EVA_GITHUB_TOKEN` when a token is set. */
   readonly environment: Readonly<Record<string, string>>;
+}
+
+/**
+ * Asks git whether it can read the repository with Eva's credentials, before setup clones it.
+ * Returns null when it can, or git's reason when it cannot (a wrong address or token).
+ */
+export async function checkVaultRepository(inputs: Omit<VaultCloneInputs, "folder">): Promise<string | null> {
+  const result = await inputs.runner.run(
+    ["git", ...githubCredentialArguments, "ls-remote", "-q", inputs.repository, "HEAD"],
+    { cwd: process.cwd(), environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: checkTimeoutMs },
+  );
+  if (result.exitCode === 0) return null;
+  return result.stderr.trim() || `git ended with exit code ${String(result.exitCode)}.`;
 }
 
 /** Clones the vault into an empty or missing folder, and keeps Eva's credential helper in the clone. */

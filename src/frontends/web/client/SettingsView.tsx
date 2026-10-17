@@ -36,7 +36,7 @@ const updateChoices: readonly { value: PublicSettings["config"]["updates"]["freq
   { value: "weekly", label: "Every week" },
 ];
 
-const restartPollMs = 3_000;
+const statusPollMs = 3_000;
 const restartPollLimit = 60;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
@@ -60,7 +60,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   useEffect(() => {
     void api.status().then(setStatus);
     void api.updateStatus().then(setUpdate);
-    void api.engineUpdateStatus().then(setEngineUpdate);
+    api.engineUpdateStatus().then(setEngineUpdate, () => {
+      setEngineReadFailures((count) => count + 1);
+    });
     void api.settings().then((loaded) => {
       setSettings(loaded);
       setTimeZone(loaded.config.timeZone ?? "");
@@ -72,12 +74,12 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   // The engine update can wait for a long turn, then download for minutes. The page asks
   // until it ends, also after a reload or a failed read on a weak phone connection.
   useEffect(() => {
-    if (engineUpdate === "loading" || engineUpdate === null || engineUpdate.phase === "idle") return;
+    if (engineUpdate === null || (engineUpdate !== "loading" && engineUpdate.phase === "idle")) return;
     const timer = setTimeout(() => {
       api.engineUpdateStatus().then(setEngineUpdate, () => {
         setEngineReadFailures((count) => count + 1);
       });
-    }, restartPollMs);
+    }, statusPollMs);
     return () => {
       clearTimeout(timer);
     };
@@ -110,11 +112,15 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       setUpdate(status);
       setUpdateNote(null);
       if (status.phase === "restarting") {
-        setUpdateNote("Eva restarts with the new version…");
+        setUpdateNote("Eva restarts with the new version when no chat runs…");
+        // The old Eva answers "restarting" until she stops; only the new one answers otherwise.
+        const result = await waitForRestart((answer) => answer?.phase !== "restarting");
         setUpdateNote(
-          (await waitForRestart())
+          result === "restarted"
             ? "Eva restarted with the new version."
-            : "Eva did not answer after the update. Check her log.",
+            : result === "waiting"
+              ? "Eva restarts with the new version when no chat runs."
+              : "Eva did not answer after the update. Check her log.",
         );
       }
     } catch (error) {
@@ -132,18 +138,26 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     }
   };
 
-  /** Eva stops for a moment at a restart; the page asks again until she answers. */
-  const waitForRestart = async (): Promise<boolean> => {
+  /**
+   * Eva stops for a moment at a restart; the page asks again until she answers as the new Eva.
+   * "waiting" means that the old Eva still answers at the end.
+   */
+  const waitForRestart = async (
+    isNewEva: (answer: UpdateStatus | null) => boolean = () => true,
+  ): Promise<"restarted" | "waiting" | "silent"> => {
+    let answered = false;
     for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, restartPollMs));
+      await new Promise((resolve) => setTimeout(resolve, statusPollMs));
       try {
-        setUpdate(await api.updateStatus());
-        return true;
+        const answer = await api.updateStatus();
+        setUpdate(answer);
+        if (isNewEva(answer)) return "restarted";
+        answered = true;
       } catch {
-        // Eva is still starting.
+        answered = false;
       }
     }
-    return false;
+    return answered ? "waiting" : "silent";
   };
 
   /** Restarts Eva after a confirm that names the running chats, which the restart stops. */
@@ -158,7 +172,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       await api.restart();
       setRestartNote("Eva restarts…");
       setRestartNote(
-        (await waitForRestart()) ? "Eva restarted." : "Eva did not answer after the restart. Check her log.",
+        (await waitForRestart()) === "restarted"
+          ? "Eva restarted."
+          : "Eva did not answer after the restart. Check her log.",
       );
     } catch (error) {
       setRestartNote(error instanceof Error ? error.message : String(error));

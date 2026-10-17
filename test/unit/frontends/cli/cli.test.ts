@@ -757,7 +757,7 @@ describe("describeEngineUpdate", () => {
   test("each state of the engine update reads as one line", () => {
     expect(describeEngineUpdate({ phase: "idle", last: null })).toBe("Claude Code: no update has run yet");
     expect(describeEngineUpdate({ phase: "waiting_for_idle", last: null })).toBe(
-      "Claude Code: the update starts when the running chats end",
+      "Claude Code: the update starts when the running chats and Eva's own update end",
     );
     expect(describeEngineUpdate({ phase: "updating", last: null })).toBe("Claude Code: updating…");
     expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "updated" } })).toBe(
@@ -809,8 +809,9 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
       "Updates: bbb2222 installs when the running chats end",
     );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
-      "Updates: installing bbb2222; Eva restarts in a moment",
+      "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
   });
 

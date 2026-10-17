@@ -311,6 +311,38 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
+test("Settings: Update now waits until the new Eva answers, not the old one", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    current: "0.1.0",
+    latest: "0.2.0",
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  let restarting = false;
+  let readsWhileRestarting = 0;
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      restarting = true;
+      await route.fulfill({ json: { ...base, phase: "restarting" } });
+      return;
+    }
+    if (restarting) readsWhileRestarting += 1;
+    // The old Eva answers twice more while a chat ends, then the new one answers.
+    const old = restarting && readsWhileRestarting <= 2;
+    await route.fulfill({ json: { ...base, phase: old ? "restarting" : "idle", available: !restarting } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Update now" }).click();
+  await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
+  await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
+  expect(readsWhileRestarting).toBe(3);
+});
+
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;
@@ -347,7 +379,9 @@ test("Settings: a page opened during the engine update follows it, past a failed
   });
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByText("Claude Code: the update starts when the running chats end")).toBeVisible();
+  await expect(
+    page.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeDisabled();
   await expect(page.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeEnabled();

@@ -122,8 +122,10 @@ export function describeUpdate(update: UpdateStatus): string {
     return `Updates: ${automatic}; the last ${update.failedStep ?? "check"} failed: ${update.lastError}`;
   if (update.phase === "waiting_for_idle")
     return `Updates: ${update.latest ?? "?"} installs when the running chats end`;
-  if (update.phase === "updating" || update.phase === "restarting")
-    return `Updates: installing ${update.latest ?? "?"}; Eva restarts in a moment`;
+  if (update.phase === "updating") return `Updates: installing ${update.latest ?? "?"}`;
+  // The restart waits for the running chats, which can take hours (lesson 92).
+  if (update.phase === "restarting")
+    return `Updates: ${update.latest ?? "?"} is installed; Eva restarts when no chat runs`;
   if (update.current === null) return `Updates: ${automatic}; not checked yet`;
   return update.available
     ? `Updates: ${update.latest ?? "?"} is available (this is ${update.current}); ${automatic}`
@@ -132,7 +134,8 @@ export function describeUpdate(update: UpdateStatus): string {
 
 /** One line about the engine update of the settings page. */
 export function describeEngineUpdate(update: EngineUpdateStatus): string {
-  if (update.phase === "waiting_for_idle") return "Claude Code: the update starts when the running chats end";
+  if (update.phase === "waiting_for_idle")
+    return "Claude Code: the update starts when the running chats and Eva's own update end";
   if (update.phase === "updating") return "Claude Code: updating…";
   const last = update.last;
   if (last === null) return "Claude Code: no update has run yet";

@@ -17,12 +17,18 @@ let failingChats: Set<string>;
 let failingSends: boolean;
 /** Each firing result: the schedule name and the failure, or null for a success. */
 let firings: { name: string; failure: string | null }[];
+/** What the test listener answers: true when it showed the event to the person. */
+let shows: boolean;
+/** Each waiting-card report: the schedule id, its name, and whether its card waits. */
+let cardReports: { scheduleId: string; name: string; waiting: boolean }[];
 
 beforeEach(() => {
   logged = [];
   failingChats = new Set();
   failingSends = false;
   firings = [];
+  shows = true;
+  cardReports = [];
   folder = mkdtempSync(join(tmpdir(), "eva-scheduler-"));
   vault = join(folder, "vault");
   mkdirSync(join(vault, ".eva"), { recursive: true });
@@ -60,9 +66,11 @@ function createScheduler(isHub = true): Scheduler {
     },
     logger: { log: (level, message) => logged.push(`${level} ${message}`) },
     reportFiring: (schedule, failure) => firings.push({ name: schedule.name, failure }),
+    reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
   });
   scheduler.subscribe((event) => {
     events.push(event);
+    return shows;
   });
   return scheduler;
 }
@@ -205,8 +213,8 @@ describe("Scheduler", () => {
     let release = (): void => undefined;
     const unsubscribe = scheduler.subscribe(
       () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
+        new Promise<boolean>((resolve) => {
+          release = () => resolve(true);
         }),
     );
     const first = scheduler.tick();
@@ -322,5 +330,135 @@ describe("Scheduler", () => {
     await scheduler.tick();
     expect(chats).toHaveLength(1);
     expect(logged.join("\n")).toContain("error");
+  });
+
+  describe("a card that no front end shows (lessons 66, 67)", () => {
+    test("the schedule never fires, the card goes out again at each check, and the wait is reported", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
+      expect(chats).toEqual([]);
+      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: true });
+      expect(scheduler.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+    });
+
+    test("a card shown later skips the slot that is due then, and clears the wait", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      shows = true;
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      await scheduler.tick();
+      expect(events.map((event) => event.kind)).toEqual(["schedule_card", "schedule_card"]);
+      expect(chats).toEqual([]);
+      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
+      expect(scheduler.waitingCards()).toEqual([]);
+      clock = new Date("2026-07-02T05:30:00Z");
+      await scheduler.tick();
+      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
+    });
+
+    test("a listener that throws does not count as shown", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      scheduler.subscribe(() => {
+        throw new Error("front end down");
+      });
+      await scheduler.tick();
+      expect(scheduler.waitingCards()).toHaveLength(1);
+    });
+
+    test("a waiting card follows a change to its schedule", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      writeSchedules([{ ...morning, at: "08:00" }]);
+      await scheduler.tick();
+      expect(scheduler.waitingCards().map((card) => card.fields.at)).toEqual(["08:00"]);
+    });
+
+    test("a confirmed card counts as shown, but only with the fields that wait", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      const [card] = scheduler.waitingCards();
+      expect(scheduler.confirmCard("morning", { ...card?.fields, at: "06:00" })).toBe(false);
+      expect(scheduler.confirmCard("evening", card?.fields ?? {})).toBe(false);
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
+      expect(scheduler.waitingCards()).toEqual([]);
+      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
+    });
+
+    test("a confirmed card whose schedule changed in the file meanwhile does not count", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      const [card] = scheduler.waitingCards();
+      writeSchedules([{ ...morning, prompt: "Something someone pushed." }]);
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
+    });
+
+    test("a confirmed card skips the slot that is due at that moment", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:30:00Z");
+      const [card] = scheduler.waitingCards();
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
+      await scheduler.tick();
+      expect(chats).toEqual([]);
+    });
+
+    test("the wait clears when the schedule is removed, by Eva or by hand", async () => {
+      writeSchedules([morning, { ...morning, id: "evening", name: "Evening" }]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      scheduler.remove("morning");
+      writeSchedules([]);
+      await scheduler.tick();
+      expect(cardReports.filter((report) => !report.waiting).map((report) => report.scheduleId)).toEqual([
+        "morning",
+        "evening",
+      ]);
+      expect(scheduler.waitingCards()).toEqual([]);
+    });
+
+    test("the wait clears when this machine stops being the hub", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      let isHub = true;
+      const scheduler = new Scheduler({
+        vaultPath: vault,
+        statePath: join(folder, "state", "schedules-state.json"),
+        timeZone: "Europe/Madrid",
+        isHub: () => isHub,
+        now: () => clock,
+        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+        reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
+      });
+      await scheduler.tick();
+      isHub = false;
+      await scheduler.tick();
+      expect(cardReports).toEqual([
+        { scheduleId: "morning", name: "Morning", waiting: true },
+        { scheduleId: "morning", name: "Morning", waiting: false },
+      ]);
+      expect(scheduler.waitingCards()).toEqual([]);
+    });
   });
 });

@@ -78,6 +78,7 @@ describe("Eva", () => {
     const instance = start(engine);
     instance.startBackgroundWork();
     instance.startBackgroundWork();
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     clock = new Date("2026-10-14T10:45:00Z");
     await instance.schedules?.tick();
@@ -623,6 +624,7 @@ describe("Eva alerts", () => {
     );
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     // The chat list cannot be saved, so the firing's chat cannot start.
     mkdirSync(join(home, "state", "sessions.json"), { recursive: true });

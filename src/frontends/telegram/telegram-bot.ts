@@ -687,23 +687,19 @@ export class TelegramBot {
     );
   }
 
-  /** Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). */
-  private async onScheduleEvent(event: ScheduleEvent): Promise<void> {
+  /**
+   * Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). True when the
+   * paired chat got the event: a card that failed to go out waits for the next check.
+   */
+  private async onScheduleEvent(event: ScheduleEvent): Promise<boolean> {
     const chatId = this.allowedChatId;
-    if (chatId === null) return;
+    if (chatId === null) return false;
     if (event.kind === "schedule_problems") {
-      await this.send(
-        chatId,
-        null,
-        ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n"),
-      );
-      return;
+      const text = ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n");
+      return (await this.send(chatId, null, text)) !== null;
     }
     const topicId = await this.scheduleTopic(chatId, event.scheduleId, event.name);
-    if (event.kind === "schedule_card") {
-      await this.send(chatId, topicId, cardText(event));
-      return;
-    }
+    if (event.kind === "schedule_card") return (await this.send(chatId, topicId, cardText(event))) !== null;
     const current = this.state.topics[keyOf(chatId, topicId)];
     const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
     // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
@@ -715,6 +711,7 @@ export class TelegramBot {
     }
     if (event.text !== null) await this.send(chatId, topicId, event.text);
     if (event.file !== null) await this.sendVaultFile(chatId, topicId, event.file);
+    return true;
   }
 
   /** The schedule's topic. A topic deleted in the app answers a typing action with 400, so a new one opens (lesson 70). */

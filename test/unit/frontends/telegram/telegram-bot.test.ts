@@ -978,6 +978,24 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBeUndefined();
   });
 
+  test("a card that Telegram fails to send waits, and goes out again at the next check (lesson 66)", async () => {
+    writeSchedules([morning]);
+    createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
+    await eva.schedules?.tick();
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toContain("New schedule: Morning");
+    expect(eva.schedules?.waitingCards()).toEqual([]);
+  });
+
+  test("before pairing, a card waits instead of counting as shown", async () => {
+    writeSchedules([morning]);
+    createBot(null);
+    await eva.schedules?.tick();
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+  });
+
   test("file problems go to the main chat; nothing goes out before pairing", async () => {
     writeSchedules([{ id: "Bad" }]);
     createBot(null);

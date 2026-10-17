@@ -122,6 +122,16 @@ describe("guards (plan §12)", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
+  test("an allowed Tailscale account through the tailnet name needs no token; a local request still does", async () => {
+    const tailnet = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" };
+    expect((await call("/api/status", { headers: tailnet })).status).toBe(200);
+    expect(
+      (await call("/api/status", { headers: { ...tailnet, "tailscale-user-login": "stranger@example.com" } })).status,
+    ).toBe(403);
+    expect((await call("/api/status", { headers: { "tailscale-user-login": "owner@example.com" } })).status).toBe(401);
+    expect((await call("/api/status", { headers: { host: "eva.example-tailnet.ts.net" } })).status).toBe(403);
+  });
+
   test("refuses a Tailscale identity that is not on the allowlist", async () => {
     expect(
       (await call("/api/status", { headers: headers({ "tailscale-user-login": "stranger@example.com" }) })).status,

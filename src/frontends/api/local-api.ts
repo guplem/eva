@@ -69,7 +69,8 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (siteRefusal !== null) return siteRefusal;
       const url = new URL(request.url);
       if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options.token);
-      if (!hasValidToken(request, options.token)) return json({ error: "A valid token is required." }, 401);
+      if (!hasValidToken(request, options.token) && !isAllowedTailscaleUser(request, options))
+        return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
         return bunServer.upgrade(request, { data: { unsubscribe: null } })
           ? undefined
@@ -287,6 +288,23 @@ function errorResponse(error: unknown): Response {
     return json({ error: error.message }, 400);
   if (isEvaError(error)) return json({ error: error.message }, 409);
   return json({ error: "Eva failed to handle the request." }, 500);
+}
+
+/**
+ * A request through `tailscale serve` carries the Tailscale account that Tailscale proved, so an
+ * allowed account needs no token: the phone opens Eva with no login (plan §12). Only a remote host
+ * name counts, and only with a non-empty allowlist; a local client still needs the token.
+ */
+function isAllowedTailscaleUser(request: Request, options: LocalApiOptions): boolean {
+  const host = hostNameOf(request.headers.get("host"));
+  const identity = request.headers.get("tailscale-user-login");
+  return (
+    host !== null &&
+    host !== "127.0.0.1" &&
+    host !== "localhost" &&
+    identity !== null &&
+    options.allowedTailscaleIdentities.includes(identity)
+  );
 }
 
 function hasValidToken(request: Request, token: string): boolean {

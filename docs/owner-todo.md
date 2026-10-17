@@ -16,6 +16,8 @@ Steps that only the owner can do. The implementing agent adds a line when it rea
 
 - [x] **The v1 `.env` on this PC is gone.** (done 2026-10-17: the values were copied from the server laptop into Eva and into a file for the password manager) The agent deleted `notes/server/` in the vault restructure (2026-10-14), and its untracked `.env` with it. It held the Telegram bot token, the allowed chat id, a `claude setup-token` token and an Anthropic API key. Nothing was revoked, so every value still works. Copy them from the server laptop (`~/Wall-I/server/.env`), or create them again: BotFather `/token`, `claude setup-token`, the Anthropic console. Then give them to Eva with `bun run eva setup`.
 
+- [ ] **Device login on a real phone:** after this version reaches the hub, open Eva's address on the phone. The page now says "Confirm this device in Telegram"; tap Allow in the chat when the code matches. Tests cover the flow only with a fake Telegram and a fake Tailscale header.
+
 - [ ] **Claude login on this PC:** the standalone `claude` is not logged in (the desktop app uses its own login). Run `claude` once and log in, or run `claude setup-token` and give the token to Eva in `eva setup`.
 
 ## Engine checks with a real login (phase P3)

@@ -26,7 +26,7 @@ For a script, such as a server install, run `eva setup --non-interactive` and gi
 
 ## Open Eva
 
-Eva has one address for all your devices, such as `https://server.your-tailnet.ts.net`. It opens her web page on your phone or any computer, from anywhere, with no login. The page is never on the public internet: only your own devices reach it, through [Tailscale](https://tailscale.com) (a free private network between your devices).
+Eva has one address for all your devices, such as `https://server.your-tailnet.ts.net`. It opens her web page on your phone or any computer, from anywhere, with no password to type. The page is never on the public internet: only your own devices reach it, through [Tailscale](https://tailscale.com) (a free private network between your devices).
 
 **Find the address** in any of these places:
 
@@ -39,7 +39,7 @@ Eva has one address for all your devices, such as `https://server.your-tailnet.t
 **Open it on a phone or another computer:**
 
 1. Install the Tailscale app, and sign in with the same account as the machine that runs Eva.
-2. Open the address. Tailscale proves who you are, so Eva asks for no login.
+2. Open the address. The first time on each device, the page says "Confirm this device in Telegram" and shows a short code. Eva asks in your Telegram chat; tap Allow when the code matches. The page opens, and the device stays logged in for a year.
 3. Optional: add the page to your home screen ("Add to Home screen" in the browser menu). Eva then opens like an app, without the address bar.
 
 A device without Tailscale cannot reach Eva. Remove a borrowed device from the Tailscale admin page (Machines, then Remove) when you are done with it.
@@ -53,7 +53,9 @@ A device without Tailscale cannot reach Eva. Remove a borrowed device from the T
 
 **Advanced: on the machine that runs Eva.** The same page also listens at `http://127.0.0.1:7420` (or the instance's port), on that machine only. There, no Tailscale proves who you are, so the page asks once for the token `localApiToken` from `secrets.json` in Eva's home folder; the login lasts a year. The `eva` commands on that machine read the token by themselves.
 
-Only the Tailscale account that owns the machine gets in. To let other accounts in, list them all in `remoteAccess.allowedTailscaleIdentities`. To keep Eva off the tailnet, run `eva settings set remoteAccess.tailscaleServe false`.
+Only the Tailscale account that owns the machine can ask to get in. To let other accounts ask, list them all in `remoteAccess.allowedTailscaleIdentities`. To keep Eva off the tailnet, run `eva settings set remoteAccess.tailscaleServe false`.
+
+When the machine runs no Telegram bot (a satellite, or no bot token), the page says so and asks for the token instead. To end every device login, open Settings and tap "Log out every device".
 
 ### Tailscale without root
 
@@ -115,8 +117,9 @@ bun run eva
 
 Eva keeps two kinds of settings:
 
-- **Your settings live in your vault,** in `.eva/settings.json`, so every machine with the vault uses the same ones: the time zone, updates, the vault fetch, the default engine and model, trust, Google, and the voice language.
+- **Your settings live in your vault,** in `.eva/settings.json`, so every machine with the vault uses the same ones: the time zone, updates, the vault fetch, the default engine and model, the Google account, and the voice language.
 - **This machine's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows): `config.json` holds the vault folder, the machine name, the port, the project roots, the program paths, the Telegram chat, the remote host names, `remoteAccess.tailscaleServe`, and `secrets.json` holds the tokens. Tokens never go in the vault.
+- **The security settings stay on each machine,** in `config.json`: the allowed Tailscale accounts, the trusted repository owners, and the Google access (`google.readOnly`, `google.services`). Eva ignores them in the vault, because agents edit the vault. An older vault that holds them gives them to `config.json` once, at the next start.
 
 An older `config.json` moves your settings to the vault by itself at the next start. Change a setting on the web Settings page, or with a command, while Eva runs or not:
 

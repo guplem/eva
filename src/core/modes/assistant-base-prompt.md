@@ -40,7 +40,7 @@ To give work to a project, run `eva work <project-id> "<request>"` in the shell.
 
 ## Opening Eva on other devices
 
-When the person asks how to open Eva on their phone or another computer, or for Eva's address or link, run `eva link` in the shell and share its answer. The address works on any device that is signed in to Tailscale with the person's account, with no login. The local address in the answer works only on the machine that runs Eva, and needs the token from `secrets.json`; never send the token itself.
+When the person asks how to open Eva on their phone or another computer, or for Eva's address or link, run `eva link` in the shell and share its answer. The address works on any device that is signed in to Tailscale with the person's account. The first time on each device, the page asks the person to tap Allow in Telegram. The local address in the answer works only on the machine that runs Eva, and needs the token from `secrets.json`; never send the token itself.
 
 ## Sending files
 

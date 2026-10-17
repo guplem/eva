@@ -94,8 +94,66 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow).toContainText("✓");
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: Log out every device ends this login too (plan §12)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Log out every device" }).click();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens (plan §12)", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  let polls = 0;
+  // The demo server has no Tailscale, so the browser plays the server's side of the device login.
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({
+      status: 201,
+      json: { id: "request-1", code: "K7QX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+    }),
+  );
+  await page.route("**/api/login/device/request-1", async (route) => {
+    polls += 1;
+    if (polls < 2) {
+      await route.fulfill({ json: { state: "pending" } });
+      return;
+    }
+    // The real server sets the device cookie here; the demo login cookie stands in for it.
+    await context.addCookies([{ name: "eva_token", value: token, url: baseURL ?? "" }]);
+    await route.fulfill({ json: { state: "allowed" } });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Confirm this device in Telegram")).toBeVisible();
+  await expect(page.getByText("K7QX")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+});
+
+test("device login: without a Telegram bot, the page says why and asks for the token", async ({ page }) => {
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({ status: 409, json: { error: "This machine runs no Telegram bot that can confirm a new device." } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("This machine runs no Telegram bot that can confirm a new device.");
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+});
+
+test("device login: a denied request offers to ask again", async ({ page }) => {
+  await page.route("**/api/login/device", (route) =>
+    route.fulfill({
+      status: 201,
+      json: { id: "request-2", code: "M3PT", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+    }),
+  );
+  await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("The request was denied in Telegram.");
+  await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
 });
 
 test("Settings: add a schedule, see its next run, and remove it (plan §9)", async ({ page }, testInfo) => {

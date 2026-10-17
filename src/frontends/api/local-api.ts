@@ -56,8 +56,12 @@ const settingsPatchSchema = z.record(z.string(), z.unknown());
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
 const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
-/** The login cookie lives a year; the person logs out to end it. */
+/** The login cookies live a year; the person logs out to end them. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
+const tokenCookie = "eva_token";
+const deviceCookie = "eva_device";
+/** The part of the browser's user agent that the device label keeps. */
+const deviceLabelBrowserLength = 120;
 
 export function startLocalApi(options: LocalApiOptions): LocalApi {
   const allowedHostNames = new Set(["127.0.0.1", "localhost", ...options.extraHosts.map((host) => host.toLowerCase())]);
@@ -78,8 +82,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       const siteRefusal = guardSite(request, options, allowedHostNames);
       if (siteRefusal !== null) return siteRefusal;
       const url = new URL(request.url);
-      if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options.token);
-      if (!hasValidToken(request, options.token) && !isAllowedTailscaleUser(request, options))
+      if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options);
+      if (url.pathname === "/api/login/device" || url.pathname.startsWith("/api/login/device/"))
+        return deviceLogin(request, url, options);
+      // A Tailscale identity alone never authenticates: any program on this machine can forge the header.
+      if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
         return bunServer.upgrade(request, { data: { unsubscribe: null } })
@@ -89,7 +96,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       try {
         return await route(request, url, options.eva);
       } catch (error) {
-        return errorResponse(error);
+        return errorResponse(error, options.eva);
       }
     },
     websocket: {
@@ -138,14 +145,15 @@ function guardSite(request: Request, options: LocalApiOptions, allowedHostNames:
 }
 
 /** Login and logout for the web UI: a strict, HTTP-only cookie, never a token in a URL (plan §12). */
-async function session(request: Request, url: URL, token: string): Promise<Response> {
+async function session(request: Request, url: URL, options: LocalApiOptions): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Not found." }, 404);
-  const secure = request.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "";
   if (url.pathname === "/api/logout") {
-    return new Response(null, {
-      status: 204,
-      headers: { "set-cookie": `eva_token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}` },
-    });
+    const deviceToken = cookieValue(request, deviceCookie);
+    if (deviceToken !== null) options.eva.deviceLogins.forget(deviceToken);
+    const headers = new Headers();
+    headers.append("set-cookie", cookieHeader(request, tokenCookie, "", 0));
+    headers.append("set-cookie", cookieHeader(request, deviceCookie, "", 0));
+    return new Response(null, { status: 204, headers });
   }
   let candidate: string;
   try {
@@ -153,13 +161,41 @@ async function session(request: Request, url: URL, token: string): Promise<Respo
   } catch {
     return json({ error: "The request body is invalid." }, 400);
   }
-  if (!sameText(candidate, token)) return json({ error: "This token is not valid." }, 401);
+  if (!sameText(candidate, options.token)) return json({ error: "This token is not valid." }, 401);
   return new Response(null, {
     status: 204,
-    headers: {
-      "set-cookie": `eva_token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${String(cookieMaxAgeSeconds)}${secure}`,
-    },
+    headers: { "set-cookie": cookieHeader(request, tokenCookie, options.token, cookieMaxAgeSeconds) },
   });
+}
+
+/**
+ * Device login (plan §12): a browser that comes through an allowed Tailscale account asks, the
+ * owner allows it in Telegram, and the page polls until it gets the device cookie. Only such a
+ * browser may ask, and only for itself: a request of another account looks expired.
+ */
+function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Response {
+  const account = allowedTailscaleAccount(request, options);
+  if (account === null)
+    return json({ error: "A device login works only through Tailscale, from an allowed account." }, 403);
+  const deviceLogins = options.eva.deviceLogins;
+  const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
+  try {
+    if (request.method === "POST" && url.pathname === "/api/login/device") {
+      const browser = (request.headers.get("user-agent") ?? "an unknown browser").slice(0, deviceLabelBrowserLength);
+      return json(deviceLogins.request(account, `${account}, ${browser}`), 201);
+    }
+    if (request.method === "GET" && id.length > 0) {
+      const found = deviceLogins.check(id, account);
+      if (found.state !== "allowed") return json({ state: found.state });
+      return Response.json(
+        { state: "allowed" },
+        { headers: { "set-cookie": cookieHeader(request, deviceCookie, found.token, cookieMaxAgeSeconds) } },
+      );
+    }
+  } catch (error) {
+    return errorResponse(error, options.eva);
+  }
+  return json({ error: "Not found." }, 404);
 }
 
 async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
@@ -246,6 +282,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "PUT" && url.pathname === "/api/settings") {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
   }
+  if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
@@ -290,39 +327,50 @@ async function schedulesRoute(
   return json({ error: "Not found." }, 404);
 }
 
-function errorResponse(error: unknown): Response {
+/** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
+function errorResponse(error: unknown, eva: Eva): Response {
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);
-  if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found"))
-    return json({ error: error.message }, 404);
-  if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid"))
-    return json({ error: error.message }, 400);
-  if (isEvaError(error)) return json({ error: error.message }, 409);
-  return json({ error: "Eva failed to handle the request." }, 500);
+  if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
+  const body = { error: eva.redact(error.message) };
+  if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
+  if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid")) return json(body, 400);
+  if (isEvaError(error, "rate_limited")) return json(body, 429);
+  return json(body, 409);
 }
 
 /**
- * A request through `tailscale serve` carries the Tailscale account that Tailscale proved, so an
- * allowed account needs no token: the phone opens Eva with no login (plan §12). Only a remote host
- * name counts, and only with a non-empty allowlist; a local client still needs the token.
+ * The Tailscale account that `tailscale serve` names for a request to a remote host name, when
+ * the allowlist holds it, or null. It decides only who may ask for a device login: a local program
+ * can forge the header, so it never authenticates a request alone (plan §12).
  */
-function isAllowedTailscaleUser(request: Request, options: LocalApiOptions): boolean {
+function allowedTailscaleAccount(request: Request, options: LocalApiOptions): string | null {
   const host = hostNameOf(request.headers.get("host"));
   const identity = request.headers.get("tailscale-user-login");
-  return (
-    host !== null &&
-    host !== "127.0.0.1" &&
-    host !== "localhost" &&
-    identity !== null &&
-    options.allowedTailscaleIdentities.includes(identity)
-  );
+  const remote = host !== null && host !== "127.0.0.1" && host !== "localhost";
+  return remote && identity !== null && options.allowedTailscaleIdentities.includes(identity) ? identity : null;
 }
 
 function hasValidToken(request: Request, token: string): boolean {
   const authorization = request.headers.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") === true ? authorization.slice("Bearer ".length) : null;
-  const cookie = /(?:^|;\s*)eva_token=([^;]+)/.exec(request.headers.get("cookie") ?? "")?.[1] ?? null;
+  const cookie = cookieValue(request, tokenCookie);
   return [bearer, cookie].some((candidate) => candidate !== null && sameText(candidate, token));
+}
+
+function hasValidDeviceCookie(request: Request, eva: Eva): boolean {
+  const deviceToken = cookieValue(request, deviceCookie);
+  return deviceToken !== null && eva.deviceLogins.isValidToken(deviceToken);
+}
+
+function cookieValue(request: Request, name: string): string | null {
+  return new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(request.headers.get("cookie") ?? "")?.[1] ?? null;
+}
+
+/** A strict, HTTP-only cookie; Secure when `tailscale serve` forwards HTTPS. Max-Age 0 clears it. */
+function cookieHeader(request: Request, name: string, value: string, maxAgeSeconds: number): string {
+  const secure = request.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "";
+  return `${name}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${String(maxAgeSeconds)}${secure}`;
 }
 
 function sameText(first: string, second: string): boolean {

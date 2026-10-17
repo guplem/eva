@@ -129,6 +129,12 @@ describe("superviseEva", () => {
     expect(fake.delays).toEqual([5_000, 10_000, 5_000]);
   });
 
+  test("a run just short of ten minutes keeps the crash delay growing", async () => {
+    const fake = fakeSupervisor([{ exit: 1 }, { exit: 1 }, { exit: 1, lastsMs: 10 * 60_000 - 1 }, { exit: 0 }]);
+    await fake.supervisor.done;
+    expect(fake.delays).toEqual([5_000, 10_000, 20_000]);
+  });
+
   test("marks the child with the supervisor's pid, so an update exits 4 instead of starting a copy", async () => {
     const fake = fakeSupervisor([{ exit: 0 }]);
     await fake.supervisor.done;

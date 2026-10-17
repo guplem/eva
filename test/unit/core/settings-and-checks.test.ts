@@ -96,6 +96,7 @@ describe("runCheck", () => {
         vaultPath: vault,
         runner: systemProcessRunner,
         environment: gitEnvironment,
+        engineEnvironment: {},
         claudeExecutable: null,
         telegramToken: null,
       }),
@@ -106,6 +107,7 @@ describe("runCheck", () => {
         vaultPath: null,
         runner: okRunner,
         environment: {},
+        engineEnvironment: {},
         claudeExecutable: null,
         telegramToken: null,
       }),
@@ -113,7 +115,13 @@ describe("runCheck", () => {
   });
 
   test("the engine and GitHub checks run their programs", async () => {
-    const inputs = { vaultPath: vault, environment: {}, claudeExecutable: "/bin/claude", telegramToken: null };
+    const inputs = {
+      vaultPath: vault,
+      environment: {},
+      engineEnvironment: {},
+      claudeExecutable: "/bin/claude",
+      telegramToken: null,
+    };
     expect(await runCheck("engine", { ...inputs, runner: okRunner })).toEqual({
       ok: true,
       detail: "2.1.286 (Claude Code)",
@@ -127,9 +135,34 @@ describe("runCheck", () => {
     });
   });
 
+  test("the engine check runs claude with the engine environment, never the git one (lesson 96)", async () => {
+    const seen: Readonly<Record<string, string>>[] = [];
+    const recordingRunner: ProcessRunner = {
+      run: (_command, options) => {
+        seen.push(options.environment);
+        return Promise.resolve({ exitCode: 0, stdout: "2.1.286 (Claude Code)\n", stderr: "" });
+      },
+    };
+    await runCheck("engine", {
+      vaultPath: vault,
+      runner: recordingRunner,
+      environment: { GITHUB_TOKEN: "github-token-value" },
+      engineEnvironment: { CLAUDE_CONFIG_DIR: "/engines/claude" },
+      claudeExecutable: "/bin/claude",
+      telegramToken: null,
+    });
+    expect(seen).toEqual([{ CLAUDE_CONFIG_DIR: "/engines/claude", GIT_TERMINAL_PROMPT: "0" }]);
+  });
+
   test("the Telegram check asks Telegram who the bot is, and never shows the token", async () => {
     const telegram = new FakeTelegram();
-    const inputs = { vaultPath: null, runner: okRunner, environment: {}, claudeExecutable: null };
+    const inputs = {
+      vaultPath: null,
+      runner: okRunner,
+      environment: {},
+      engineEnvironment: {},
+      claudeExecutable: null,
+    };
     try {
       const result = await runCheck("telegram", {
         ...inputs,

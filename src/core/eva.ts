@@ -668,6 +668,7 @@ export class Eva {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
       environment: this.gitEnvironment,
+      engineEnvironment: this.engineToolEnvironment(),
       claudeExecutable: this.options.claudeExecutable ?? null,
       telegramToken: this.options.secrets.telegramBotToken ?? null,
     });

@@ -56,24 +56,30 @@ function harness(
 
 describe("EngineUpdater", () => {
   test("a new version after `claude update` is an update (lesson 93)", async () => {
-    const { updater, commands, timeouts } = harness(["2.1.0", "2.2.0"]);
+    const { updater, commands, timeouts, logs } = harness(["2.1.0", "2.2.0"]);
     expect(await updater.updateNow()).toEqual({
       phase: "idle",
       last: {
         outcome: "updated",
-        before: "2.1.0 (Claude Code)",
-        after: "2.2.0 (Claude Code)",
+        before: "2.1.0",
+        after: "2.2.0",
         detail: null,
         at: "2026-10-17T10:00:00.000Z",
       },
     });
     expect(commands).toEqual(["/opt/claude --version", "/opt/claude update", "/opt/claude --version"]);
     expect(timeouts[1]).toBeGreaterThan(timeouts[0] ?? 0);
+    expect(logs).toEqual(["info: Claude Code was updated."]);
   });
 
   test("the same version after a clean exit means it was already the latest, whatever the text says", async () => {
-    const { updater } = harness(["2.1.0", "2.1.0"], { exitCode: 0, stdout: "Successfully updated!\n", stderr: "" });
-    expect((await updater.updateNow()).last).toMatchObject({ outcome: "up_to_date", before: "2.1.0 (Claude Code)" });
+    const { updater, logs } = harness(["2.1.0", "2.1.0"], {
+      exitCode: 0,
+      stdout: "Successfully updated!\n",
+      stderr: "",
+    });
+    expect((await updater.updateNow()).last).toMatchObject({ outcome: "up_to_date", before: "2.1.0" });
+    expect(logs).toEqual(["info: Claude Code is already the latest version."]);
   });
 
   test("a failed exit is a failure with the first line of the error, and the version stays", async () => {
@@ -84,9 +90,9 @@ describe("EngineUpdater", () => {
     });
     expect((await updater.updateNow()).last).toMatchObject({
       outcome: "failed",
-      before: "2.1.0 (Claude Code)",
-      after: "2.1.0 (Claude Code)",
-      detail: "Claude Code was installed with npm.",
+      before: "2.1.0",
+      after: "2.1.0",
+      detail: "Claude Code was installed with npm. Update Claude Code with the tool that installed it.",
     });
     expect(logs).toEqual(["warn: The Claude Code update failed."]);
   });
@@ -98,7 +104,9 @@ describe("EngineUpdater", () => {
 
   test("a failed exit with no error text still says why", async () => {
     const { updater } = harness(["2.1.0", "2.1.0"], { exitCode: 3, stdout: "", stderr: "" });
-    expect((await updater.updateNow()).last?.detail).toBe("claude update exited with code 3.");
+    expect((await updater.updateNow()).last?.detail).toBe(
+      "claude update exited with code 3. Update Claude Code with the tool that installed it.",
+    );
   });
 
   test("an update that cannot start or times out is a failure, never a throw", async () => {
@@ -107,6 +115,11 @@ describe("EngineUpdater", () => {
       outcome: "failed",
       detail: "/opt/claude ran past 300000 ms.",
     });
+  });
+
+  test("an unreadable version before a clean update never reads as an update", async () => {
+    const { updater } = harness([null, "2.2.0"]);
+    expect((await updater.updateNow()).last).toMatchObject({ outcome: "up_to_date", before: null, after: "2.2.0" });
   });
 
   test("a version read that throws gives no version, never a throw (lesson 94)", async () => {

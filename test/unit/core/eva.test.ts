@@ -570,7 +570,7 @@ describe("Eva", () => {
     expect(eva.updateEngine()?.phase).toBe("updating");
     const instance = eva;
     await waitFor(() => instance.engineUpdateStatus()?.phase === "idle");
-    expect(instance.engineUpdateStatus()?.last).toMatchObject({ outcome: "updated", after: "2.2.0 (Claude Code)" });
+    expect(instance.engineUpdateStatus()?.last).toMatchObject({ outcome: "updated", after: "2.2.0" });
     expect(claudeRuns.map((run) => run.command)).toEqual([
       "/opt/claude --version",
       "/opt/claude update",

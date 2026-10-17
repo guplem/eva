@@ -752,12 +752,7 @@ describe("heldBackLines (lesson 26)", () => {
 });
 
 describe("describeEngineUpdate", () => {
-  const result = {
-    before: "2.1.0 (Claude Code)",
-    after: "2.2.0 (Claude Code)",
-    detail: null,
-    at: "2026-10-17T10:00:00Z",
-  };
+  const result = { before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
 
   test("each state of the engine update reads as one line", () => {
     expect(describeEngineUpdate({ phase: "idle", last: null })).toBe("Claude Code: no update has run yet");
@@ -766,17 +761,20 @@ describe("describeEngineUpdate", () => {
     );
     expect(describeEngineUpdate({ phase: "updating", last: null })).toBe("Claude Code: updating…");
     expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "updated" } })).toBe(
-      "Claude Code: updated from 2.1.0 (Claude Code) to 2.2.0 (Claude Code); the next turn uses it",
+      "Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it",
     );
     expect(
       describeEngineUpdate({ phase: "idle", last: { ...result, after: result.before, outcome: "up_to_date" } }),
-    ).toBe("Claude Code: 2.1.0 (Claude Code) is the latest");
+    ).toBe("Claude Code: 2.1.0 is the latest");
   });
 
-  test("a failed update says why and what to do", () => {
-    expect(
-      describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed", detail: "installed with npm" } }),
-    ).toBe("Claude Code: the update failed: installed with npm. Update it with the tool that installed it.");
+  test("a failed update says why", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed", detail: "No network." } })).toBe(
+      "Claude Code: the update failed: No network.",
+    );
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed" } })).toBe(
+      "Claude Code: the update failed: unknown reason.",
+    );
   });
 });
 

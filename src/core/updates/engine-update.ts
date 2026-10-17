@@ -10,7 +10,7 @@ export type EngineUpdatePhase = "idle" | "waiting_for_idle" | "updating";
 
 export interface EngineUpdateResult {
   readonly outcome: "updated" | "up_to_date" | "failed";
-  /** The first line of `claude --version`; null when it could not be read. */
+  /** The version that `claude --version` gives; null when it could not be read. */
   readonly before: string | null;
   readonly after: string | null;
   /** Why the update failed; null when it did not. */
@@ -62,7 +62,7 @@ export class EngineUpdater {
     return this.run();
   }
 
-  /** Called once a minute: runs a waiting update when no chat runs a turn. */
+  /** Called from Eva's background tick: runs a waiting update when no chat runs a turn. */
   async tick(): Promise<void> {
     if (this.phase === "waiting_for_idle" && this.options.isIdle()) await this.run();
   }
@@ -73,12 +73,16 @@ export class EngineUpdater {
       const before = await this.version();
       const failure = await this.update();
       const after = await this.version();
-      const outcome = failure !== null || after === null ? "failed" : after === before ? "up_to_date" : "updated";
+      // With no version before, a clean exit can only say that the version now is the latest.
+      const outcome =
+        failure !== null || after === null ? "failed" : before === null || after === before ? "up_to_date" : "updated";
       const detail = outcome !== "failed" ? null : (failure ?? "claude did not say its version after the update.");
       this.last = { outcome, before, after, detail, at: this.options.now().toISOString() };
       if (outcome === "failed")
         this.options.logger?.log("warn", "The Claude Code update failed.", { reason: detail ?? "" });
-      else this.options.logger?.log("info", "Claude Code was updated.", { from: before ?? "", to: after });
+      else if (outcome === "updated")
+        this.options.logger?.log("info", "Claude Code was updated.", { from: before ?? "", to: after });
+      else this.options.logger?.log("info", "Claude Code is already the latest version.", { version: after });
     } finally {
       this.phase = "idle";
     }
@@ -94,17 +98,18 @@ export class EngineUpdater {
         timeoutMs: updateTimeoutMs,
       });
       if (result.exitCode === 0) return null;
-      return (
+      // An install from a package manager, such as npm, refuses `claude update`.
+      const reason =
         firstLine(result.stderr) ??
         firstLine(result.stdout) ??
-        `claude update exited with code ${String(result.exitCode)}.`
-      );
+        `claude update exited with code ${String(result.exitCode)}.`;
+      return `${reason} Update Claude Code with the tool that installed it.`;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
   }
 
-  /** The first line of `claude --version`, or null; a version read never throws (lesson 94). */
+  /** The version that `claude --version` gives, or null; a version read never throws (lesson 94). */
   private async version(): Promise<string | null> {
     try {
       const result = await this.options.runner.run([this.options.executable, "--version"], {
@@ -112,7 +117,8 @@ export class EngineUpdater {
         environment: this.options.environment,
         timeoutMs: versionTimeoutMs,
       });
-      return result.exitCode === 0 ? firstLine(result.stdout) : null;
+      // The output is "2.1.0 (Claude Code)"; the page already names Claude Code.
+      return result.exitCode === 0 ? (firstLine(result.stdout)?.replace(/\s*\(Claude Code\)$/, "") ?? null) : null;
     } catch {
       return null;
     }

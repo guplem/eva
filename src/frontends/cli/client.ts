@@ -136,8 +136,7 @@ export function describeEngineUpdate(update: EngineUpdateStatus): string {
   if (update.phase === "updating") return "Claude Code: updating…";
   const last = update.last;
   if (last === null) return "Claude Code: no update has run yet";
-  if (last.outcome === "failed")
-    return `Claude Code: the update failed: ${last.detail ?? "unknown reason"}. Update it with the tool that installed it.`;
+  if (last.outcome === "failed") return `Claude Code: the update failed: ${last.detail ?? "unknown reason."}`;
   if (last.outcome === "up_to_date") return `Claude Code: ${last.after ?? "?"} is the latest`;
   return `Claude Code: updated from ${last.before ?? "?"} to ${last.after ?? "?"}; the next turn uses it`;
 }

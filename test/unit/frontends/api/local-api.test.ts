@@ -613,7 +613,7 @@ describe("an Eva with a claude program", () => {
       while (updating.engineUpdateStatus()?.phase !== "idle") await Bun.sleep(5);
       expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toMatchObject({
         phase: "idle",
-        last: { outcome: "updated", before: "2.1.0 (Claude Code)", after: "2.2.0 (Claude Code)" },
+        last: { outcome: "updated", before: "2.1.0", after: "2.2.0" },
       });
     } finally {
       updatingApi.stop();

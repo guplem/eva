@@ -228,7 +228,7 @@ async function serve(paths: HomePaths): Promise<number> {
     ? await readTailscale(systemProcessRunner, childEnvironment())
     : null;
   const ownerLogin = tailscale?.ownerLogin ?? null;
-  const remoteAccess =
+  let remoteAccess =
     tailscale === null
       ? null
       : await publishWithTailscale(systemProcessRunner, childEnvironment(), tailscale, config.port);
@@ -279,8 +279,17 @@ async function serve(paths: HomePaths): Promise<number> {
     restartForUpdate: () => {
       restart?.();
     },
-    remoteAccess,
+    remoteAccess: () => remoteAccess,
   });
+  // Until the tailnet turns HTTPS on, Eva tries again, so the person never needs a restart.
+  const publishRetry = setInterval(() => {
+    if (tailscale === null || (remoteAccess !== null && remoteAccess.url !== null)) return;
+    void readTailscale(systemProcessRunner, childEnvironment()).then(async (fresh) => {
+      if (fresh === null) return;
+      remoteAccess = await publishWithTailscale(systemProcessRunner, childEnvironment(), fresh, config.port);
+      if (remoteAccess.url !== null) logger.log("info", "Tailscale access.", { ...remoteAccess });
+    });
+  }, tailscaleRetryMs);
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
       logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
@@ -319,6 +328,7 @@ async function serve(paths: HomePaths): Promise<number> {
         await bot?.stop();
         api.stop();
         eva.stop();
+        clearInterval(publishRetry);
         lock.release();
         logger.log("info", "Eva stopped.", { exitCode });
         if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
@@ -584,6 +594,7 @@ async function moveSettingsAfterPull(paths: HomePaths, secrets: EvaSecrets): Pro
 }
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";
+const tailscaleRetryMs = 60_000;
 const oldCopyWaitMs = 60_000;
 
 /** After an update, the new copy starts first; the lock is free only when the old copy has gone. */

@@ -64,8 +64,8 @@ export interface EvaOptions {
   readonly updateChannel?: UpdateChannel | null;
   /** Stops Eva after an update, so that the new version starts. */
   readonly restartForUpdate?: () => void;
-  /** The web UI's address for the phone through Tailscale. Null: Tailscale does not run here. */
-  readonly remoteAccess?: RemoteAccess | null;
+  /** The web UI's address for the phone through Tailscale, now. Null: Tailscale does not run here. */
+  readonly remoteAccess?: () => RemoteAccess | null;
 }
 
 export interface ProjectWorkInput {
@@ -382,7 +382,7 @@ export class Eva {
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,
       update: this.updateStatus(),
-      remoteAccess: this.options.remoteAccess ?? null,
+      remoteAccess: this.options.remoteAccess?.() ?? null,
     };
   }
 

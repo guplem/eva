@@ -846,8 +846,14 @@ describe("Eva alerts", () => {
     expect(alerts[0]?.message).toStartWith("The Claude Code update failed: Installed with npm.");
     expect(alerts[0]?.message).not.toContain("secret-value-for-tests");
     expect(instance.engineUpdateStatus()?.last?.detail).not.toContain("secret-value-for-tests");
+    // A tick with no waiting update never reports the old failure again, not even a day later.
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    await instance.backgroundTick();
+    await Bun.sleep(20);
+    expect(alerts).toHaveLength(1);
     refuse = false;
-    instance.updateEngine();
+    // The answer to a press still carries the old result while the new run starts.
+    expect(instance.updateEngine()?.last?.detail).not.toContain("secret-value-for-tests");
     await waitFor(() => alerts.length >= 2);
     expect(alerts[1]?.level).toBe("resolved");
   });

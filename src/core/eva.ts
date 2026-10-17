@@ -458,7 +458,7 @@ export class Eva {
     const updater = this.engineUpdater;
     if (updater === null) return null;
     this.runEngineUpdate(() => updater.updateNow());
-    return updater.status();
+    return this.engineUpdateStatus();
   }
 
   /**
@@ -814,11 +814,12 @@ export class Eva {
    * phone also when the page has stopped asking.
    */
   private runEngineUpdate(step: () => Promise<unknown>): void {
+    const previous = this.engineUpdater?.status().last ?? null;
     this.inBackground("The engine update", async () => {
       await step();
-      const status = this.engineUpdater?.status();
-      if (status?.phase === "idle" && status.last !== null)
-        this.alerts.report("engine_update", engineUpdateProblem(status.last));
+      // A step that ran nothing keeps the old result; reporting it again would repeat its alert.
+      const last = this.engineUpdater?.status().last ?? null;
+      if (last !== null && last !== previous) this.alerts.report("engine_update", engineUpdateProblem(last));
     });
   }
 

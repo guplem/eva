@@ -33,6 +33,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -77,6 +78,7 @@ describe("parseArguments", () => {
       query: "photo booth",
     });
     expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
+    expect(parseArguments(["supervise", "--home", "/h"])).toEqual({ command: "supervise", home: "/h" });
     expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
     expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
       command: "setup",
@@ -557,9 +559,19 @@ describe("service", () => {
     ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
-  test("after an update, systemd restarts Eva; anywhere else she starts a new copy", () => {
-    expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
-    expect(restartMethod({})).toBe("new-copy");
+  test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ INVOCATION_ID: "abc" }, alive, 1)).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 42)).toBe("supervisor");
+    expect(restartMethod({}, alive, 42)).toBe("new-copy");
+  });
+
+  test("an Eva whose supervisor has ended starts a new copy, so an update never leaves her stopped", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive, 7)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive, 42)).toBe("new-copy");
+    // An orphan gets a new parent; another process may now hold the supervisor's old pid.
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 1)).toBe("new-copy");
   });
 
   test("a second instance on the same machine gets its own service name", () => {
@@ -570,7 +582,7 @@ describe("service", () => {
     expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
   });
 
-  test("the Windows task starts Eva at logon", () => {
+  test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
     expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
       "schtasks",
       "/Create",
@@ -580,8 +592,21 @@ describe("service", () => {
       "/TN",
       "Eva",
       "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" --home "C:/home/eva"',
+      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
     ]);
+  });
+
+  test("the Windows task runs with no time limit, and on battery too, so Windows never stops the supervisor", () => {
+    const command = windowsTaskSettingsCommand("eva-partner");
+    expect(command.slice(0, 4)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]);
+    const script = command[4] ?? "";
+    expect(script).toContain("Set-ScheduledTask -TaskName 'Eva-partner'");
+    expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
+    expect(script).toContain("-AllowStartIfOnBatteries");
+    expect(script).toContain("-DontStopIfGoingOnBatteries");
+    // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
+    expect(script).toContain("-ErrorAction Stop");
+    expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 
   test("after the install, the Windows task starts at once, under the same name", () => {

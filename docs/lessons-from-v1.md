@@ -9,7 +9,7 @@ Wall-I v1 was a Python Telegram server plus a vault, in one repository. It ran f
 - `[adapt]`: the lesson applies, but the new design changes how. The arrow (→) says how.
 - `[obsolete]`: the new design removes the cause.
 
-The code must respect every `[keep]` and `[adapt]` item. The "Rules" section of `AGENTS.md` says how.
+The code must respect every `[keep]` and `[adapt]` item. A code comment cites one as "lesson N".
 
 ## 1. Where Claude Code reads instructions, settings, skills and subagents
 

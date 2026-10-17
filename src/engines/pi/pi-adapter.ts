@@ -1,5 +1,5 @@
 /**
- * The pi engine (ADR 0006): one `pi --mode rpc` child process per turn,
+ * The pi engine: one `pi --mode rpc` child process per turn,
  * started on the turn's session file. Facts come from captured pi 0.73.1 output
  * (test/fixtures/pi/).
  *

@@ -1,4 +1,4 @@
-/** Enforces the source layers of ADR 0005. */
+/** Enforces the source layers (the Architecture section of AGENTS.md). */
 module.exports = {
   forbidden: [
     {
@@ -31,7 +31,7 @@ module.exports = {
     },
     {
       name: "frontends-never-import-engines",
-      comment: "A front end never names an engine (v1 ADR 0003).",
+      comment: "A front end never names an engine.",
       severity: "error",
       from: { path: "^src/frontends/" },
       to: { path: "^src/engines/" },

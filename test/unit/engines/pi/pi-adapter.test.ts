@@ -1,7 +1,6 @@
 /**
  * Contract tests for the pi adapter on records captured from pi 0.73.1 against a fake model
- * server (test/fixtures/pi/). A live run with a real login is in
- * docs/owner-todo.md.
+ * server (test/fixtures/pi/). A live run with a real login is issue #59.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

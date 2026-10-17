@@ -334,6 +334,25 @@ test("Settings: Update Claude Code starts the update and shows its result", asyn
   expect(posts).toEqual(["POST"]);
 });
 
+test("Settings: a page opened during the engine update follows it, past a failed read", async ({ page }) => {
+  let reads = 0;
+  await page.route("**/api/update/engine", async (route) => {
+    reads += 1;
+    if (reads === 2) {
+      await route.abort();
+      return;
+    }
+    const last = { outcome: "up_to_date", before: "2.1.0", after: "2.1.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: reads === 1 ? { phase: "waiting_for_idle", last: null } : { phase: "idle", last } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Claude Code: the update starts when the running chats end")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeDisabled();
+  await expect(page.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeEnabled();
+});
+
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
   await openList(page);

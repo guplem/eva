@@ -38,8 +38,6 @@ const updateChoices: readonly { value: PublicSettings["config"]["updates"]["freq
 
 const restartPollMs = 3_000;
 const restartPollLimit = 60;
-/** The engine update can wait for a long turn, then download for minutes. */
-const engineUpdatePollLimit = 200;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
@@ -50,8 +48,11 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [notice, setNotice] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
-  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null>(null);
+  /** Null when no claude program was found. */
+  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
   const [engineUpdateNote, setEngineUpdateNote] = useState<string | null>(null);
+  /** Counts the failed status reads, so a failed read asks again. */
+  const [engineReadFailures, setEngineReadFailures] = useState(0);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
@@ -67,6 +68,20 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       setProjectRoots(loaded.config.projectRoots.join("\n"));
     });
   }, []);
+
+  // The engine update can wait for a long turn, then download for minutes. The page asks
+  // until it ends, also after a reload or a failed read on a weak phone connection.
+  useEffect(() => {
+    if (engineUpdate === "loading" || engineUpdate === null || engineUpdate.phase === "idle") return;
+    const timer = setTimeout(() => {
+      api.engineUpdateStatus().then(setEngineUpdate, () => {
+        setEngineReadFailures((count) => count + 1);
+      });
+    }, restartPollMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [engineUpdate, engineReadFailures]);
 
   const remote = status?.remoteAccess ?? null;
   if (settings === null) return <div className="empty">Loading the settings…</div>;
@@ -107,17 +122,11 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     }
   };
 
-  /** Starts `claude update`, then asks for its status until it ends. */
+  /** Starts `claude update`; an effect asks for its status until it ends. */
   const updateEngine = async (): Promise<void> => {
     setEngineUpdateNote(null);
     try {
-      let status = await api.updateEngine();
-      setEngineUpdate(status);
-      for (let attempt = 0; attempt < engineUpdatePollLimit && status.phase !== "idle"; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, restartPollMs));
-        status = (await api.engineUpdateStatus()) ?? status;
-        setEngineUpdate(status);
-      }
+      setEngineUpdate(await api.updateEngine());
     } catch (error) {
       setEngineUpdateNote(error instanceof Error ? error.message : String(error));
     }
@@ -306,9 +315,16 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           {updateNote !== null && <div role="status">{updateNote}</div>}
           <div className="check-row">
             <span style={{ flex: 1 }} role="status">
-              {engineUpdate === null ? "No claude program was found." : describeEngineUpdate(engineUpdate)}
+              {engineUpdate === "loading"
+                ? "Claude Code: reading the update status…"
+                : engineUpdate === null
+                  ? "No claude program was found."
+                  : describeEngineUpdate(engineUpdate)}
             </span>
-            <button disabled={engineUpdate?.phase !== "idle"} onClick={() => void updateEngine()}>
+            <button
+              disabled={engineUpdate === "loading" || engineUpdate?.phase !== "idle"}
+              onClick={() => void updateEngine()}
+            >
               Update Claude Code
             </button>
           </div>

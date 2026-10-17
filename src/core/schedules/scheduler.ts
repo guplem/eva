@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 import type { ModelAlias } from "../../shared/engine-port.ts";
+import type { Logger } from "../../shared/logger.ts";
 import {
   announcedFields,
   changedFields,
@@ -57,6 +58,7 @@ export interface SchedulerOptions {
   readonly isHub: () => boolean;
   readonly now: () => Date;
   readonly chats: ScheduledChatStarter;
+  readonly logger?: Logger;
 }
 
 export interface ScheduleView {
@@ -131,33 +133,45 @@ export class Scheduler {
       if (problems.length > 0) await this.emit({ kind: "schedule_problems", problems: definitions.problems });
     }
     for (const schedule of definitions.schedules) {
-      const state = this.state.see(schedule.id, now);
-      const fields = announcedFields(schedule);
-      const slot = dueSlot(schedule, state, now);
-      if (state.announced === null || changedFields(state.announced, fields).length > 0) {
-        await this.emit({
-          kind: "schedule_card",
+      // One schedule that fails must never stop the others.
+      try {
+        await this.check(schedule, now);
+      } catch (error) {
+        this.options.logger?.log("error", "A schedule failed to fire.", {
           scheduleId: schedule.id,
-          name: schedule.name,
-          fields,
-          changed: state.announced === null ? [] : changedFields(state.announced, fields),
-          nextRun: nextSlot(schedule, now),
-          timeZone: this.options.timeZone,
+          reason: errorText(error),
         });
-        // The card is the check against a schedule that someone pushed (lessons 66, 67): a slot
-        // that is already due is skipped, so the person sees the card before anything runs.
-        this.state.update(schedule.id, { announced: fields, ...(slot === null ? {} : { lastFired: slot }) });
-        continue;
       }
-      if (slot === null) continue;
-      this.state.update(schedule.id, { lastFired: slot });
-      await this.fire(schedule);
     }
   }
 
-  private async fire(schedule: Schedule): Promise<void> {
+  private async check(schedule: Schedule, now: string): Promise<void> {
+    const state = this.state.see(schedule.id, now);
+    const fields = announcedFields(schedule);
+    const slot = dueSlot(schedule, state, now);
+    if (state.announced === null || changedFields(state.announced, fields).length > 0) {
+      await this.emit({
+        kind: "schedule_card",
+        scheduleId: schedule.id,
+        name: schedule.name,
+        fields,
+        changed: state.announced === null ? [] : changedFields(state.announced, fields),
+        nextRun: nextSlot(schedule, now),
+        timeZone: this.options.timeZone,
+      });
+      // The card is the check against a schedule that someone pushed (lessons 66, 67): a slot
+      // that is already due is skipped, so the person sees the card before anything runs.
+      this.state.update(schedule.id, { announced: fields, ...(slot === null ? {} : { lastFired: slot }) });
+      return;
+    }
+    if (slot !== null) await this.fire(schedule, slot);
+  }
+
+  private async fire(schedule: Schedule, slot: string): Promise<void> {
     const model = modelAliases.find((alias) => alias === schedule.model) ?? "default";
+    // The chat comes first: when it cannot start, the slot does not count as fired, and the next check tries again.
     const sessionId = schedule.prompt === null ? null : this.options.chats.createChat(schedule.name, model);
+    this.state.update(schedule.id, { lastFired: slot });
     await this.emit({
       kind: "schedule_fired",
       scheduleId: schedule.id,
@@ -166,10 +180,22 @@ export class Scheduler {
       file: schedule.file,
       sessionId,
     });
-    if (sessionId !== null && schedule.prompt !== null) void this.options.chats.send(sessionId, schedule.prompt);
+    if (sessionId !== null && schedule.prompt !== null) {
+      // Nobody awaits the turn, so its failure goes to the log here (lesson 50).
+      this.options.chats.send(sessionId, schedule.prompt).catch((error: unknown) => {
+        this.options.logger?.log("error", "A scheduled prompt failed.", {
+          scheduleId: schedule.id,
+          reason: errorText(error),
+        });
+      });
+    }
   }
 
   private async emit(event: ScheduleEvent): Promise<void> {
     await Promise.allSettled([...this.listeners].map(async (listener) => listener(event)));
   }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -90,13 +90,13 @@ async function collect(messages: SDKMessage[]): Promise<EngineEventPayload[]> {
 }
 
 describe("buildQueryOptions", () => {
-  test("Assistant mode: the Claude Code prompt plus Eva's text, no hooks, the vault plugin", () => {
+  test("Assistant mode: Eva's text replaces the Claude Code prompt, no hooks, the vault plugin", () => {
     const options = buildQueryOptions(request(), "/bin/claude");
     expect(options).toMatchObject({
       cwd: "/demo-vault",
       pathToClaudeCodeExecutable: "/bin/claude",
       sessionId: "session-1",
-      systemPrompt: { type: "preset", preset: "claude_code", append: "You are Eva.", excludeDynamicSections: true },
+      systemPrompt: "You are Eva.",
       settingSources: ["user", "project"],
       settings: { disableAllHooks: true },
       plugins: [{ type: "local", path: "/demo-vault/.eva" }],

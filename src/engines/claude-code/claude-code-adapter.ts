@@ -111,12 +111,9 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
   }
 
   if (request.mode === "assistant") {
-    options.systemPrompt = {
-      type: "preset",
-      preset: "claude_code",
-      ...(request.appendSystemPrompt === null ? {} : { append: request.appendSystemPrompt }),
-      excludeDynamicSections: true,
-    };
+    // Spike S4 (#55): the coding prompt made the assistant save facts to Claude Code's own memory
+    // folder, not the vault, and miss notes. Eva's text alone did better. `claude` still adds its identity line.
+    options.systemPrompt = request.appendSystemPrompt ?? { type: "preset", preset: "claude_code" };
     options.settingSources = ["user", "project"];
     options.settings = { disableAllHooks: true };
   } else {

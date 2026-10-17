@@ -200,6 +200,32 @@ describe("Eva", () => {
     expect(engine.requests[1]?.prompt).toContain("It failed: no login");
   });
 
+  test("Eva's own git commands get the GitHub token, and an agent never does (lesson 96)", async () => {
+    const environments: Record<string, string>[] = [];
+    const engine = new FakeEngine();
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: { githubToken: "github-token-for-tests" },
+      engines: [engine],
+      runner: {
+        run: (command, options) => {
+          environments.push({ ...options.environment });
+          return systemProcessRunner.run(command, options);
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+    });
+    await eva.sweep();
+    expect(environments.some((environment) => environment["EVA_GITHUB_TOKEN"] === "github-token-for-tests")).toBe(true);
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    expect(engine.requests[0]?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
+  });
+
   test("an agent finds an `eva` command for this instance, and the chat id of its turn", async () => {
     const engine = new FakeEngine();
     eva = new Eva({

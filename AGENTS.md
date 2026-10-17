@@ -111,6 +111,7 @@ The layers of plan §4.2. `bun run arch` (dependency-cruiser) fails on any impor
 - **Never put content in a `CLAUDE.md`.** Each one is a one-line `@AGENTS.md` shim. Write the content in the `AGENTS.md` next to it.
 - **CI runs on Windows too.** Read lessons 76 to 83 before you write code that spawns a process, builds a path, or orders events by time.
 - **The release key has two halves that must match.** The private key is the `EVA_RELEASE_SIGNING_KEY` repository secret; the public key is `releasePublicKey` in `src/core/updates/release-verification.ts`. Change both together, or every `eva update` refuses the release. A `v*` tag runs `.github/workflows/release.yml`; the tag must equal the `package.json` version.
+- **Bun 1.4 ignores `timeout` in `bunfig.toml`.** The test scripts pass `--timeout 30000`; a bare `bun test <file>` gives each test 5 seconds.
 - **Bun gives each `beforeEach` and `afterEach` hook 5 seconds, apart from the test timeout.** A hook that runs git passes `gitHookTimeoutMs` from `test/support/git-sandbox.ts`, or it times out on a Windows CI runner.
 - **Git tests must clear the `GIT_*` variables** that a git hook exports, or they write the real index (lesson 104).
 

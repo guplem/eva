@@ -14,7 +14,14 @@ Download the executable for your machine from [GitHub Releases](https://github.c
 eva setup
 ```
 
-`eva setup` asks for each setting. Give it an empty folder as the vault, and it creates a new vault there from Eva's template, with a private GitHub repository when you name one. `eva update` replaces the executable with the latest release, after a check of its signature.
+`eva setup` asks for each setting. You install only Eva:
+
+- **An existing vault:** give its repository (for example `https://github.com/you/vault`) and a GitHub token that can read and write it. Eva clones the vault into her home folder and keeps it in sync. The token stays in Eva's `secrets.json`; it is in no git file.
+- **A new vault:** give no repository. Eva creates a vault from her template, with a private GitHub repository when you name one.
+
+For a script, such as a server install, run `eva setup --non-interactive` and give each answer in an `EVA_*` variable, for example `EVA_VAULT_REPOSITORY`, `EVA_GITHUB_TOKEN`, `EVA_CLAUDE_TOKEN`, `EVA_TELEGRAM_BOT_TOKEN` and `EVA_TELEGRAM_CHAT_ID`. `src/frontends/cli/setup.ts` lists every name.
+
+`eva update` replaces the executable with the latest release, after a check of its signature.
 
 ## Run from source
 

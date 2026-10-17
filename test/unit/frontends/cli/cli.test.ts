@@ -10,6 +10,7 @@ import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
 import {
   describeProjects,
+  describeRemoteAccess,
   describeRole,
   describeStatus,
   describeSync,
@@ -614,5 +615,16 @@ describe("describeRole", () => {
       "satellite: the hub is server; this machine is pc",
     );
     expect(describeRole({ role: "satellite", machine: "pc", hub: null })).toContain("the hub is unknown");
+  });
+});
+
+describe("describeRemoteAccess", () => {
+  test("shows the phone address, the reason there is none, or nothing without Tailscale", () => {
+    expect(describeRemoteAccess(null)).toEqual([]);
+    expect(describeRemoteAccess({ url: "https://server.example-tailnet.ts.net", problem: null })).toEqual([
+      "Phone access: https://server.example-tailnet.ts.net",
+    ]);
+    expect(describeRemoteAccess({ url: null, problem: "Turn on HTTPS" })).toEqual(["Phone access: Turn on HTTPS"]);
+    expect(describeRemoteAccess({ url: null, problem: null })).toEqual(["Phone access: not available"]);
   });
 });

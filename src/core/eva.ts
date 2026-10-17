@@ -18,6 +18,7 @@ import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./instance/home.ts";
 import { applySettingsChange, saveSettings } from "./instance/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
+import type { RemoteAccess } from "./instance/machine-defaults.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
@@ -63,6 +64,8 @@ export interface EvaOptions {
   readonly updateChannel?: UpdateChannel | null;
   /** Stops Eva after an update, so that the new version starts. */
   readonly restartForUpdate?: () => void;
+  /** The web UI's address for the phone through Tailscale. Null: Tailscale does not run here. */
+  readonly remoteAccess?: RemoteAccess | null;
 }
 
 export interface ProjectWorkInput {
@@ -91,6 +94,7 @@ export interface EvaStatus {
   readonly busySessionIds: readonly string[];
   readonly lastTurn: LastTurnStatus | null;
   readonly update: UpdateStatus | null;
+  readonly remoteAccess: RemoteAccess | null;
 }
 
 export interface PublicSettings {
@@ -378,6 +382,7 @@ export class Eva {
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,
       update: this.updateStatus(),
+      remoteAccess: this.options.remoteAccess ?? null,
     };
   }
 

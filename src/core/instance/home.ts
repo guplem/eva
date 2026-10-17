@@ -152,9 +152,12 @@ const configSchema = z.object({
     .object({
       /** Host names that reach this instance through `tailscale serve`, such as eva.example-tailnet.ts.net. */
       hostNames: z.array(z.string().min(1)).default([]),
+      /** Empty: only the Tailscale account that owns this machine. */
       allowedTailscaleIdentities: z.array(z.string().min(1)).default([]),
+      /** Publish the web UI in the tailnet with `tailscale serve` at start, when Tailscale runs. */
+      tailscaleServe: z.boolean().default(true),
     })
-    .default({ hostNames: [], allowedTailscaleIdentities: [] }),
+    .default({ hostNames: [], allowedTailscaleIdentities: [], tailscaleServe: true }),
 });
 
 export type EvaConfig = z.infer<typeof configSchema>;

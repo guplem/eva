@@ -6,7 +6,14 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Eva } from "../../core/eva.ts";
-import { describeLastTurn, describeRole, describeSync, describeUpdate, heldBackLines } from "../cli/client.ts";
+import {
+  describeLastTurn,
+  describeRemoteAccess,
+  describeRole,
+  describeSync,
+  describeUpdate,
+  heldBackLines,
+} from "../cli/client.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -708,6 +715,7 @@ export class TelegramBot {
       `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
       describeLastTurn(status.lastTurn),
       ...(status.update === null ? [] : [describeUpdate(status.update)]),
+      ...describeRemoteAccess(status.remoteAccess),
     ].join("\n");
   }
 

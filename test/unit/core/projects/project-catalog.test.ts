@@ -124,4 +124,17 @@ describe("searchProjects", () => {
       "2026-05-01-0900-photo-booth",
     ]);
   });
+
+  test("the words also match the tags, and the tag filter ignores case", () => {
+    addProject("2025-02-01-0900-tax-report", "created: 2025-02-01T09:00\nstatus: active\ntags: [Life]", "\n# Taxes\n");
+    addProject("2026-05-01-0900-photo-booth", "created: 2026-05-01T09:00\nstatus: active\ntags: [hobby]");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+
+    expect(searchProjects(projects, { text: "life" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-tax-report",
+    ]);
+    expect(searchProjects(projects, { tag: "LIFE" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-tax-report",
+    ]);
+  });
 });

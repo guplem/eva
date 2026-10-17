@@ -102,12 +102,14 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
     .toLowerCase()
     .split(/\s+/)
     .filter((word) => word.length > 0);
+  const tag = query.tag?.toLowerCase();
   return projects
     .filter((project) => {
-      const haystack = `${project.id} ${project.title}`.toLowerCase();
+      const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
+      const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
       if (query.status !== undefined && project.frontMatter.status !== query.status) return false;
-      if (query.tag !== undefined && !project.frontMatter.tags.includes(query.tag)) return false;
+      if (tag !== undefined && !tags.includes(tag)) return false;
       return true;
     })
     .sort((first, second) => second.id.localeCompare(first.id));

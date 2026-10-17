@@ -8,6 +8,5 @@
     "src/frontends/web/client/main.tsx"
   ],
   "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.ts"],
-  "ignoreDependencies": ["@stryker-mutator/command-runner"],
   "ignoreExportsUsedInFile": true
 }

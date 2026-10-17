@@ -64,11 +64,28 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // A failed load must reach the person, because every problem must reach the phone.
+  const loadSettings = (): void => {
+    setLoadError(null);
+    api
+      .settings()
+      .then((loaded) => {
+        setSettings(loaded);
+        setTimeZone(loaded.config.timeZone ?? "");
+        setSweepSeconds(String(loaded.config.sync.sweepSeconds));
+        setProjectRoots(loaded.config.projectRoots.join("\n"));
+        setPiModel(loaded.config.engines.pi.models.default ?? "");
+      })
+      .catch((error: unknown) => {
+        setLoadError(errorText(error));
+      });
+  };
 
   useEffect(() => {
-    // A failed load must reach the person: every problem must reach the phone.
     const showProblem = (error: unknown): void => {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(errorText(error));
     };
     api
       .status()
@@ -79,36 +96,35 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       .catch(showProblem);
     api.updateStatus().then(setUpdate).catch(showProblem);
     api.setupState().then(setSetup).catch(showProblem);
-    api
-      .settings()
-      .then((loaded) => {
-        setSettings(loaded);
-        setTimeZone(loaded.config.timeZone ?? "");
-        setSweepSeconds(String(loaded.config.sync.sweepSeconds));
-        setProjectRoots(loaded.config.projectRoots.join("\n"));
-        setPiModel(loaded.config.engines.pi.models.default ?? "");
-      })
-      .catch(showProblem);
+    loadSettings();
   }, []);
 
   const remote = status?.remoteAccess ?? null;
   if (settings === null)
-    return (
+    return loadError === null ? (
+      <div className="empty">Loading the settings…</div>
+    ) : (
       <div className="empty" role="status">
-        {notice === null ? "Loading the settings…" : `The settings did not load: ${notice}`}
+        The settings did not load: {loadError} <button onClick={loadSettings}>Try again</button>
       </div>
     );
   const config = settings.config;
 
   /** A dropdown saves its own value at once. */
   const saveNow = async (change: Record<string, unknown>): Promise<void> => {
+    let result: { restartNeeded: boolean };
     try {
-      const result = await api.saveSettings(change);
+      result = await api.saveSettings(change);
+    } catch (error) {
+      setNotice(errorText(error));
+      return;
+    }
+    setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
+    try {
       setSettings(await api.settings());
       setUpdate(await api.updateStatus());
-      setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(`Saved, but the page did not reload the settings: ${errorText(error)}`);
     }
   };
 
@@ -402,10 +418,10 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           </div>
           {restartNote !== null && <div role="status">{restartNote}</div>}
           <div className="chip">
-            Eva installs an update only when no chat is running, then restarts. The time zone, updates, vault fetch,
-            engines, the Google account and the voice language live in your vault, so every machine uses them. The
-            tokens and the security settings (allowed Tailscale accounts, trusted repository owners, Google access) stay
-            on each machine.
+            Eva installs an update only when no chat is running, then restarts. These settings live in your vault, so
+            every machine uses them: the time zone, updates, vault fetch, engines, Google account and voice language.
+            These stay on each machine: the tokens, the allowed Tailscale accounts, the trusted repository owners and
+            Google access.
           </div>
         </fieldset>
         <fieldset>
@@ -441,7 +457,15 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           </label>
         </fieldset>
         <SchedulesPanel />
-        {notice !== null && <div role="status">{notice}</div>}
+        {notice !== null && (
+          // Sticky, so a phone shows the result of a control near the top of the page.
+          <div className="settings-notice" role="status">
+            <span>{notice}</span>
+            <button aria-label="Close the notice" onClick={() => setNotice(null)}>
+              ✕
+            </button>
+          </div>
+        )}
         <div className="message-actions">
           <button className="primary" onClick={() => void save()}>
             Save
@@ -452,4 +476,8 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       </div>
     </div>
   );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

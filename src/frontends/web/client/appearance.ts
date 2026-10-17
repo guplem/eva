@@ -1,6 +1,6 @@
 /**
- * The theme and the density of this browser. They depend on the screen (a phone and a desktop
- * want different density), so each browser keeps its own, in `localStorage`, and the vault keeps none.
+ * Each browser keeps its own theme and density in `localStorage`. A phone and a desktop need
+ * different density, so the vault keeps neither.
  */
 export type Theme = "system" | "light" | "dark";
 export type Density = "comfortable" | "compact";

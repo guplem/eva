@@ -400,6 +400,8 @@ textarea {
 }
 
 .settings {
+  /* A long Windows path or URL has no break points. */
+  overflow-wrap: anywhere;
   padding: 20px;
   max-width: 720px;
   display: flex;
@@ -428,6 +430,23 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.settings-notice {
+  position: sticky;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+.settings-notice span {
+  flex: 1;
 }
 
 .settings h3 {

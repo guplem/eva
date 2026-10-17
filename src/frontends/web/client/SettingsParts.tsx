@@ -4,7 +4,7 @@ import { api, type CheckResult, type PageSecretName, type VaultSyncState } from 
 
 /**
  * One Test button and its result. The check runs on the server, with the saved settings. The
- * label also names the button, because a page with five buttons called "Test" is no help to a screen reader.
+ * label also names the button: a screen reader cannot tell five buttons called "Test" apart.
  */
 export function CheckRow({ name, label }: { name: string; label: string }): ReactElement {
   const [result, setResult] = useState<CheckResult | "running" | null>(null);

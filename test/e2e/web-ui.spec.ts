@@ -136,6 +136,7 @@ test("Settings: each engine has a Test that runs a tiny real prompt", async ({ p
   await expect(claudeRow).toContainText("✓ Claude Code answered:");
   const piRow = page.locator(".check-row", { hasText: "Test pi" });
   await piRow.getByRole("button", { name: "Test" }).click();
+  // The demo server has only the scripted Claude Code engine.
   await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
   await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
   await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
@@ -143,14 +144,17 @@ test("Settings: each engine has a Test that runs a tiny real prompt", async ({ p
 
 test("Settings: the default model saves at once", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByLabel("Claude Code model").selectOption("sonnet");
-  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
-  // Later tests share the demo vault.
-  await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
+  try {
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByLabel("Claude Code model").selectOption("sonnet");
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
+  } finally {
+    // Later tests share the demo vault.
+    await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
+  }
 });
 
 test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {

@@ -38,7 +38,7 @@ Change a setting on the web Settings page, or with `eva settings set`. The updat
 
 - **Tokens:** paste the GitHub, Telegram and Claude Code tokens on the Settings page. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
-- **A device that logged in through Telegram** can change only your notebook settings, the sync and the project folders. To change a token or a security setting, log in with the token, or run `eva setup` or `eva settings set` on that computer. So a lost phone cannot let a stranger in.
+- **A device that logged in through Telegram** can change only your notebook settings, the sync and the project folders. It cannot change a token or a security setting, so a lost phone cannot let a stranger in. To change them, log in with the token. You can also run `eva setup` or `eva settings set` on that computer.
 - **Theme and density** stay in each browser, so a phone and a computer can differ.
 
 ## Several computers

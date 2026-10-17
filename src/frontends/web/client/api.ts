@@ -85,10 +85,11 @@ export const api = {
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
-  projects: (text: string, status: string): Promise<Project[]> => {
+  projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
     const query = new URLSearchParams();
     if (text.trim() !== "") query.set("text", text.trim());
     if (status !== "") query.set("status", status);
+    if (tag !== "") query.set("tag", tag);
     return request("GET", `/api/projects?${query.toString()}`);
   },
   clones: (projectId: string): Promise<CloneDetails[]> =>

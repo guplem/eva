@@ -23,9 +23,13 @@ sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${appRemote.remote}\n---\n# Example app\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n---\n# Example app\n`,
 );
-sandbox.write(vault, "Projects/2019-03-old-tool/AGENTS.md", "---\ncreated: 2019-03\nstatus: closed\n---\n# Old tool\n");
+sandbox.write(
+  vault,
+  "Projects/2019-03-old-tool/AGENTS.md",
+  "---\ncreated: 2019-03\nstatus: closed\ntags: [legacy]\n---\n# Old tool\n",
+);
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");

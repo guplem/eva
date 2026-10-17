@@ -88,6 +88,19 @@ test("the status filter hides a closed project until Any status", async ({ page 
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
 });
 
+test("the tag filter shows only the projects with that tag", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await page.getByLabel("Tag").selectOption("web");
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await page.getByLabel("Tag").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+});
+
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

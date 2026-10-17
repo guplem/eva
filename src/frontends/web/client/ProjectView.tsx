@@ -24,6 +24,8 @@ interface Selection {
 export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
+  const [tag, setTag] = useState("");
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [openProject, setOpenProject] = useState<string | null>(null);
   const [clones, setClones] = useState<CloneDetails[]>([]);
@@ -33,10 +35,15 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      api.projects(search, status).then(setProjects, showError);
+      api.projects(search, status, tag).then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, status, showError]);
+  }, [search, status, tag, showError]);
+
+  // The tags come from every project, so a tag of a closed project is offered too.
+  useEffect(() => {
+    api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
+  }, [showError]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);
@@ -92,6 +99,16 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           <option value="paused">Paused</option>
           <option value="closed">Closed</option>
         </select>
+        {allTags.length > 0 && (
+          <select aria-label="Tag" value={tag} onChange={(event) => setTag(event.target.value)}>
+            <option value="">Any tag</option>
+            {allTags.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate}
+              </option>
+            ))}
+          </select>
+        )}
         {error !== null && (
           <span className="chip" role="alert">
             {error}
@@ -155,5 +172,12 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
         )}
       </main>
     </div>
+  );
+}
+
+/** Every tag of these projects once, in alphabetical order. */
+function tagsOf(projects: readonly Project[]): string[] {
+  return [...new Set(projects.flatMap((project) => project.frontMatter.tags))].sort((first, second) =>
+    first.localeCompare(second),
   );
 }

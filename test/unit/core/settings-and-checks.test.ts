@@ -18,6 +18,7 @@ let sandbox: GitSandbox;
 let vault: string;
 let home: string;
 let eva: Eva;
+let engine: FakeEngine;
 
 beforeEach(() => {
   sandbox = createGitSandbox();
@@ -28,11 +29,12 @@ beforeEach(() => {
     `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
   );
   home = mkdtempSync(join(tmpdir(), "eva-settings-"));
+  engine = new FakeEngine();
   eva = new Eva({
     paths: homePaths(home),
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
     secrets: { telegramBotToken: "123:abc-telegram-token-value" },
-    engines: [new FakeEngine()],
+    engines: [engine],
     runner: systemProcessRunner,
     processEnvironment: gitEnvironment,
     now: () => new Date(),
@@ -76,6 +78,25 @@ describe("settings", () => {
       sync: { sweepSeconds: 120 },
       vaultPath: vault,
     });
+  });
+
+  test("a saved secret is redacted, kept apart from the others, and used by the next check", async () => {
+    writeFileSync(homePaths(home).secrets, JSON.stringify({ localApiToken: "local-token-value" }));
+    expect(eva.saveSecret("claudeOauthToken", "  sk-ant-oat-new-token-value  ")).toEqual({
+      saved: true,
+      restartNeeded: true,
+    });
+    const saved = JSON.parse(readFileSync(homePaths(home).secrets, "utf-8")) as Record<string, string>;
+    expect(saved).toEqual({ localApiToken: "local-token-value", claudeOauthToken: "sk-ant-oat-new-token-value" });
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(true);
+    expect(JSON.stringify(eva.publicSettings())).not.toContain("new-token-value");
+    expect(eva.redact("token sk-ant-oat-new-token-value")).not.toContain("new-token-value");
+    await eva.runCheck("claude-code");
+    expect(engine.requests.at(-1)?.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("sk-ant-oat-new-token-value");
+    eva.saveSecret("claudeOauthToken", null);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
+    expect(JSON.parse(readFileSync(homePaths(home).secrets, "utf-8"))).toEqual({ localApiToken: "local-token-value" });
+    expect(() => eva.saveSecret("githubToken", "   ")).toThrow("empty");
   });
 
   test("an invalid update is refused and nothing is saved", () => {

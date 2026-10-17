@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { checkNames } from "../../core/checks.ts";
-import type { Eva } from "../../core/eva.ts";
+import { pageSecretNames, type Eva } from "../../core/eva.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -53,6 +53,7 @@ const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
+const secretSchema = z.object({ value: z.string() });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
 const logsQuerySchema = z.object({
@@ -285,6 +286,12 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "PUT" && url.pathname === "/api/settings") {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json()), { pageOnly: !tokenLogin }));
+  }
+  if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
+    const name = pageSecretNames.find((candidate) => candidate === parts[2]);
+    if (name === undefined) return json({ error: "The page cannot change this secret." }, 404);
+    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value));
+    if (method === "DELETE") return json(eva.saveSecret(name, null));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());

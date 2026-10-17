@@ -496,6 +496,19 @@ describe("web routes", () => {
     expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
   });
 
+  test("secrets: write-only, only the three that the page may change", async () => {
+    const saved = await call("/api/secrets/githubToken", { method: "PUT", body: { value: "ghp_example-token-value" } });
+    expect(await saved.text()).not.toContain("example-token-value");
+    expect(saved.status).toBe(200);
+    const settings = await json<{ secretsSet: Record<string, boolean> }>(await call("/api/settings"));
+    expect(settings.secretsSet["githubToken"]).toBe(true);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE" })).status).toBe(200);
+    expect(eva.publicSettings().secretsSet.githubToken).toBe(false);
+    expect((await call("/api/secrets/localApiToken", { method: "PUT", body: { value: "x" } })).status).toBe(404);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: {} })).status).toBe(400);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: { value: " " } })).status).toBe(400);
+  });
+
   test("a check runs by name, and an unknown check is a 404", async () => {
     const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
     expect(result.ok).toBe(true);

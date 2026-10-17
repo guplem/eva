@@ -18,7 +18,7 @@ import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-cente
 import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
+import { loadSecrets, saveSecrets, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
 import { applySettingsChange, isPageSettingKey, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
@@ -117,6 +117,10 @@ export interface PublicSettings {
   >;
 }
 
+/** The secrets that the settings page may save. The local token and the Google keys stay with `eva setup`. */
+export const pageSecretNames = ["githubToken", "telegramBotToken", "claudeOauthToken"] as const;
+export type PageSecretName = (typeof pageSecretNames)[number];
+
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
@@ -170,6 +174,8 @@ export class Eva {
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
   private lastPullAt: Date | null = null;
   private settings: EvaConfig;
+  /** The saved secrets. A new value reaches the checks at once, and the rest at a restart. */
+  private secrets: EvaSecrets;
   private readonly updater: Updater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
@@ -196,13 +202,8 @@ export class Eva {
     this.settings = options.config;
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
-    // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
-    const githubToken = options.secrets.githubToken;
-    this.gitEnvironment = buildChildEnvironment(
-      options.processEnvironment,
-      baseEnvironmentAllowlist,
-      githubToken === undefined ? {} : { [githubTokenVariable]: githubToken },
-    );
+    this.secrets = options.secrets;
+    this.gitEnvironment = gitEnvironmentOf(options.processEnvironment, options.secrets);
     this.vaultSync =
       vaultPath === null
         ? null
@@ -597,7 +598,7 @@ export class Eva {
   }
 
   publicSettings(): PublicSettings {
-    const secrets = this.options.secrets;
+    const secrets = this.secrets;
     return {
       config: this.settings,
       secretsSet: {
@@ -634,16 +635,34 @@ export class Eva {
     return { saved: true, restartNeeded };
   }
 
+  /**
+   * Saves one secret that the settings page may change, or removes it with null. The value never
+   * comes back. The git, engine and Telegram processes read the secrets at start, so a restart follows.
+   */
+  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
+    const trimmed = value?.trim() ?? null;
+    if (trimmed === "") throw new EvaError("config_invalid", "A secret cannot be empty. Remove it instead.");
+    // Before anything else, so the value never reaches a log or an error unredacted.
+    if (trimmed !== null) this.redactor.addSecret(trimmed);
+    // From the file, so a secret that `eva setup` saved meanwhile stays.
+    const secrets: EvaSecrets = { ...loadSecrets(this.options.paths) };
+    if (trimmed === null) Reflect.deleteProperty(secrets, name);
+    else secrets[name] = trimmed;
+    saveSecrets(this.options.paths, secrets);
+    this.secrets = secrets;
+    return { saved: true, restartNeeded: true };
+  }
+
   runCheck(name: CheckName): Promise<CheckResult> {
     return runCheck(name, {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
-      environment: this.gitEnvironment,
+      environment: gitEnvironmentOf(this.options.processEnvironment, this.secrets),
       engines: this.options.engines,
       engineEnvironment: this.engineEnvironment(),
       redact: (text) => this.redactor.redact(text),
-      telegramToken: this.options.secrets.telegramBotToken ?? null,
-      githubToken: this.options.secrets.githubToken ?? null,
+      telegramToken: this.secrets.telegramBotToken ?? null,
+      githubToken: this.secrets.githubToken ?? null,
     });
   }
 
@@ -790,7 +809,7 @@ export class Eva {
   private assistantMcpServers(): Record<string, McpServerSpec> {
     const google = googleMcpServer({
       config: this.options.config.google,
-      secrets: this.options.secrets,
+      secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
       environment: this.gitEnvironment,
     });
@@ -817,7 +836,7 @@ export class Eva {
       const path = this.options.processEnvironment["PATH"] ?? this.options.processEnvironment["Path"] ?? "";
       extra["PATH"] = `${scripts}${delimiter}${path}`;
     }
-    const token = this.options.secrets.claudeOauthToken;
+    const token = this.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
     if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
       extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
@@ -826,6 +845,16 @@ export class Eva {
     if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
+}
+
+/** Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96). */
+function gitEnvironmentOf(processEnvironment: EnvironmentMap, secrets: EvaSecrets): Record<string, string> {
+  const token = secrets.githubToken;
+  return buildChildEnvironment(
+    processEnvironment,
+    baseEnvironmentAllowlist,
+    token === undefined ? {} : { [githubTokenVariable]: token },
+  );
 }
 
 /** Writes `eva` (for a POSIX shell and Git Bash) and `eva.cmd` into `<home>/bin`. */

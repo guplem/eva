@@ -93,10 +93,16 @@ test("Project mode: the repository setup shows each item's light and copies its 
   const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
   await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
   await skill.getByRole("button", { name: "Copy the fix for Skill write-commit" }).click();
-  await expect(skill.getByRole("button", { name: "Copy the fix for Skill write-commit" })).toHaveText("Copied");
+  await expect(skill.getByRole("button", { name: "Copied" })).toHaveText("Copied");
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain("In example-owner/example-app, add the skill `write-commit`");
-  await expect(report.getByRole("button", { name: /Copy all fixes/ })).toBeVisible();
+  await report.getByRole("button", { name: /Copy all fixes/ }).click();
+  const all = await page.evaluate(() => navigator.clipboard.readText());
+  expect(all).toContain("Then open one pull request for all of them.");
+  expect(all).toContain("allow_auto_merge=true");
+  await expect(
+    report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
+  ).toBeVisible();
 });
 
 test("the status filter hides a closed project until Any status", async ({ page }) => {

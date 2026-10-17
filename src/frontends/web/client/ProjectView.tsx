@@ -117,7 +117,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                   <button
                     key={clone.name}
                     className="list-item"
-                    aria-current={selection?.clone.path === clone.path}
+                    aria-current={setupProject === null && selection?.clone.path === clone.path}
                     onClick={() => {
                       setSelection({ project, clone });
                       setSetupProject(null);

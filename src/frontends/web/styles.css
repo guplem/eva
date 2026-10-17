@@ -404,6 +404,15 @@ textarea {
   font-size: 13px;
 }
 
+.copy-all {
+  align-self: flex-start;
+}
+
+.copy-text {
+  width: 100%;
+  min-height: 120px;
+}
+
 .setup-section h2 {
   display: flex;
   align-items: center;

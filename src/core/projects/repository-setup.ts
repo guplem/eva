@@ -93,6 +93,7 @@ const hookFilePattern = /^(?:\.?lefthook\.(?:ya?ml|json|jsonc|toml)|\.pre-commit
 const stackNeutralPrograms = new Set(["ls", "cat", "head", "tail", "wc", "grep", "git", "gh"]);
 
 const needsAdmin = "Eva needs admin rights on this repository to read this.";
+const notRead = "Eva could not read this from GitHub.";
 const filesUnknown = "Eva could not read the files from GitHub.";
 /** The last step of each fix request. "Copy all fixes" asks for one pull request instead. */
 const pullRequestStep = " Then open a pull request.";
@@ -129,7 +130,7 @@ function joinFixes(slug: string, sections: readonly SetupSection[]): string | nu
     ),
   );
   if (fixes.length === 0) return null;
-  return `In ${slug}, make each change below. Then open one pull request for all of them.\n\n${fixes.map((fix) => `- ${fix}`).join("\n")}`;
+  return `In ${slug}, make each change below. Open one pull request for all the file changes. A command that changes a GitHub setting needs no pull request.\n\n${fixes.map((fix) => `- ${fix}`).join("\n")}`;
 }
 
 class Context {
@@ -148,8 +149,8 @@ class Context {
 
   /** Why a fact that needs admin rights or a public repository is unknown. */
   unknownReason(publicOnly: boolean): string {
-    if (publicOnly && this.target.isPrivate) return "GitHub gives this free to public repositories only.";
-    return this.target.isAdmin ? "Eva could not read this from GitHub." : needsAdmin;
+    if (publicOnly && this.target.isPrivate) return "GitHub does not offer this free on a private repository.";
+    return this.target.isAdmin ? notRead : needsAdmin;
   }
 
   /** A command that needs admin rights, as a fix request. */
@@ -203,7 +204,7 @@ function labelItem(context: Context): SetupItem {
   const label = "Labels";
   const wanted = context.reference.labels ?? [];
   const present = context.target.labels;
-  if (present === null) return grey(label, context.unknownReason(false));
+  if (present === null) return grey(label, notRead);
   const have = new Set(present.map((name) => name.toLowerCase()));
   const missing = wanted.filter((name) => !have.has(name.toLowerCase()));
   if (missing.length === 0) return green(label, "Has every standard label.");
@@ -281,7 +282,7 @@ function requiredChecksItem(context: Context): SetupItem {
   const label = "Required checks before merge";
   const required = context.target.requiredChecks;
   if (required === true) return green(label, "GitHub blocks a merge until the checks pass.");
-  if (required === null) return grey(label, context.unknownReason(false));
+  if (required === null) return grey(label, notRead);
   if (context.target.isPrivate) {
     return grey(label, "GitHub enforces rulesets on private repositories only on a paid plan.");
   }

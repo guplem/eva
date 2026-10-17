@@ -98,7 +98,7 @@ test("Project mode: the repository setup shows each item's light and copies its 
   expect(copied).toContain("In example-owner/example-app, add the skill `write-commit`");
   await report.getByRole("button", { name: /Copy all fixes/ }).click();
   const all = await page.evaluate(() => navigator.clipboard.readText());
-  expect(all).toContain("Then open one pull request for all of them.");
+  expect(all).toContain("Open one pull request for all the file changes.");
   expect(all).toContain("allow_auto_merge=true");
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),

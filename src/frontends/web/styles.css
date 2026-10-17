@@ -409,6 +409,7 @@ textarea {
 }
 
 .copy-text {
+  flex-basis: 100%;
   width: 100%;
   min-height: 120px;
 }
@@ -423,6 +424,7 @@ textarea {
 
 .setup-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 4px 0;

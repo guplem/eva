@@ -618,7 +618,10 @@ export class Eva {
     };
     let reference = await read(evaRepository);
     // A gap in the reference would turn into false greens, such as "has every standard label".
-    if (typeof reference !== "string" && [reference.files, reference.labels, reference.allowRules].includes(null)) {
+    if (
+      typeof reference !== "string" &&
+      (reference.files === null || reference.labels === null || !Array.isArray(reference.allowRules))
+    ) {
       reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
     }
     const readReference = reference;

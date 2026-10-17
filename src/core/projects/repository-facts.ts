@@ -150,8 +150,9 @@ async function readWorkflows(
   const texts = await Promise.all(workflowPaths.map(readFile));
   const workflows: WorkflowFacts[] = [];
   for (const [index, text] of texts.entries()) {
-    if (text === null) return null;
-    const content = text === "absent" ? "" : text.text;
+    // The tree lists the file, so a 404 means that GitHub did not serve it.
+    if (text === null || text === "absent") return null;
+    const content = text.text;
     workflows.push({
       path: workflowPaths[index] ?? "",
       runsOnPullRequest: runsOnPullRequest(content),

@@ -147,7 +147,7 @@ describe("evaluateSetup", () => {
       target({ isPrivate: true, privateVulnerabilityReporting: null, secretScanning: null, requiredChecks: false }),
     );
     expect(item(report, "Private vulnerability reporting").light).toBe("grey");
-    expect(item(report, "Secret scanning").detail).toContain("public repositories only");
+    expect(item(report, "Secret scanning").detail).toContain("free on a private repository");
     expect(item(report, "Required checks before merge").light).toBe("grey");
   });
 
@@ -281,7 +281,7 @@ describe("evaluateSetup, edge cases", () => {
 
   test("all fixes join into one request with one pull request; grey items stay out", () => {
     const report = evaluateSetup(reference, target({ allowAutoMerge: false, labels: ["bug"] }));
-    expect(report.allFixes).toStartWith("In owner/example-app, make each change below. Then open one pull request");
+    expect(report.allFixes).toStartWith("In owner/example-app, make each change below. Open one pull request for all");
     expect(report.allFixes).toContain(
       "- In owner/example-app, turn on the setting so that a pull request merges itself",
     );

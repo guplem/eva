@@ -66,7 +66,11 @@ const eva = new Eva({
   githubGet: fakeGithub({
     [evaRepository]: {
       repository: { allow_auto_merge: true },
-      files: { "AGENTS.md": "# Rules\n", ".agents/skills/write-commit/SKILL.md": "# Commits\n" },
+      files: {
+        "AGENTS.md": "# Rules\n",
+        ".agents/skills/write-commit/SKILL.md": "# Commits\n",
+        ".claude/settings.json": '{"permissions":{"allow":["Read"]}}',
+      },
       labels: ["bug"],
     },
     "example-owner/example-app": {

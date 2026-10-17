@@ -46,7 +46,7 @@ A change to one of these goals needs the owner.
 
 ## Renames
 
-- **Stored and sent names are a schema:** config keys, session record fields, event `kind` values and `EvaErrorCode` values. Rename the stored string only with a tolerant read of the old one (lesson 54), and say so in the PR.
+- **Stored and sent names are a schema:** config keys, session record fields, event `kind` values and `EvaErrorCode` values. Rename a stored string only on purpose: read the old one tolerantly, or drop the old format (lesson 54). Say so in the PR.
 - **Change the registration points together:** `.dependency-cruiser.cjs`, `knip.json`, `bunfig.toml`, `package.json`, and the command lists in `src/frontends/cli/arguments.ts` and `src/frontends/telegram/telegram-bot.ts`.
 - Rename a CLI command, a Telegram command or a setting key only with the owner.
 

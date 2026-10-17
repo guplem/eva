@@ -93,6 +93,7 @@ export const api = {
     request("PUT", "/api/settings", patch),
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),

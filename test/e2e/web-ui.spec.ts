@@ -210,6 +210,49 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
 });
 
+test("open problems show in a banner at the top", async ({ page }) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, problems: ["The vault sync failed: disk full."] } });
+  });
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await expect(banner).toContainText("1 problem");
+  await expect(banner).toContainText("The vault sync failed: disk full.");
+});
+
+test("no banner shows while all is good", async ({ page }) => {
+  const statusRead = page.waitForResponse("**/api/status");
+  await logIn(page);
+  await statusRead;
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+});
+
+test("Settings: Restart Eva asks first, then restarts and waits for Eva", async ({ page }) => {
+  const restarts: string[] = [];
+  await page.route("**/api/restart", async (route) => {
+    restarts.push(route.request().method());
+    await route.fulfill({ status: 202, json: { restarting: true } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const questions: string[] = [];
+  page.once("dialog", (dialog) => {
+    questions.push(dialog.message());
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await expect.poll(() => questions).toEqual(["Restart Eva now?"]);
+  expect(restarts).toEqual([]);
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Restart Eva" }).click();
+  await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
+  expect(restarts).toEqual(["POST"]);
+});
+
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
   await openList(page);

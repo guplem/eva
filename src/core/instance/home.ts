@@ -35,6 +35,8 @@ export interface HomePaths {
   readonly trust: string;
   readonly schedulesState: string;
   readonly telegramState: string;
+  /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
+  readonly runningMarker: string;
   readonly logsFolder: string;
   readonly enginesFolder: string;
 }
@@ -51,6 +53,7 @@ export function homePaths(root: string): HomePaths {
     trust: join(stateFolder, "trust.json"),
     schedulesState: join(stateFolder, "schedules-state.json"),
     telegramState: join(stateFolder, "telegram.json"),
+    runningMarker: join(stateFolder, "running"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
   };

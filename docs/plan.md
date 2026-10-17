@@ -130,6 +130,7 @@ The inventory is done: 155 projects, confirmed by the owner on 2026-10-14 (rules
 | **Schedules**  | Fire scheduled messages, on the hub instance only (§9)                                          |
 | **Front ends** | Local API, CLI, Telegram, web UI                                                                |
 | **Settings**   | Config and secrets in the instance home, with a test for each one                               |
+| **Alerts**     | Tell the owner about each problem without a `/status` (§4.7)                                    |
 
 ### 4.2 Layers
 
@@ -162,6 +163,7 @@ src/
   - The person's settings live in the vault, in `.eva/settings.json` (D14): the time zone, updates, the vault fetch and save intervals, the default engine and model, pi's models, trust, Google, the voice language, the allowed Tailscale identities. The vault file wins over `config.json`. At start, Eva pulls the vault, then moves these keys out of an older `config.json`; when the vault already has the file, the vault wins. A broken vault file never stops Eva: she logs it and keeps `config.json`.
   - `secrets.json`: tokens, readable by the OS user only
   - `state/sessions.json`, `state/trust.json`, `state/schedules-state.json`, `state/telegram.json`
+  - `state/running`: present while Eva runs; a clean stop removes it, so a start that finds it reports an unclean exit (§4.7)
   - `logs/eva-YYYY-MM-DD.jsonl`, kept for 14 days
   - `engines/claude/`, `engines/pi/`, `engines/gh/` (used only by extra instances, see below)
 - **Writes are atomic** (a temporary file, then a rename). A bad file never crashes Eva (lesson 54).
@@ -199,6 +201,16 @@ One TypeScript union crosses the engine port. Every event has `kind`, `sessionId
 | `turn_failed`     | `reason`                                                                                                                                   |
 
 Every turn stream ends with exactly one `turn_finished` or `turn_failed` (lesson 47).
+
+### 4.7 Problem alerts
+
+The owner runs Eva unattended and may have only a phone. A failure must reach the owner without a `/status`.
+
+- **An alert** has a stable key, a level, a one-line message that says what happened and what to do, and a time. The core keeps them in `src/core/alerts/`; a front end listens with `eva.onAlert`.
+- **Deduplication by key:** Eva sends an alert when the problem starts, again at most once in 24 hours while it lasts, and one "resolved" alert when it clears. A listener that fails never reaches the sync or scheduler code.
+- **Triggers:** a vault sync in `conflict` or `error`, or `offline` for more than 30 minutes; a failed update check or install (the alert names the step); a failed schedule firing; a start after an unclean exit (the `state/running` marker); a Telegram poll in `conflict`, or `failing` for more than 15 minutes.
+- **Delivery:** the Telegram bot sends each alert to the main chat. `EvaStatus.problems` lists the open problems, and the web UI shows them as a banner at the top, because a Telegram problem cannot travel over Telegram. Eva's log records each alert.
+- **Status verdict:** `eva status` and Telegram `/status` start with "All good" or "N problems", then one line for each problem.
 
 ## 5. Modes
 
@@ -332,7 +344,10 @@ In this order, after P8: the engine-neutral background task system for more engi
 Assistant mode front end, ported from v1 with lessons 56 to 63 and 123 to 127:
 
 - Topics as conversations, with the model picker first in a new topic. A topic is a chat in the web UI too.
-- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/link`, `/sync`, `/update`, `/help`.
+- Commands: `/new`, `/delete`, `/stop`, `/status`, `/projects`, `/schedules`, `/link`, `/sync`, `/update`, `/logs [n]`, `/restart`, `/help`.
+- `/logs [n]` shows the last `n` warnings and errors of the newest log files (20 by default, 100 at most), one line each; `GET /api/logs?level=warn&limit=n` serves the same entries.
+- `/restart` asks first with a button, and says when chats are running. It restarts through the update path (exit code 4 under systemd, a new copy elsewhere); `POST /api/restart` does the same.
+- Each alert (§4.7) goes to the main chat.
 - Voice notes transcribed on the machine. Files sent from allowed folders, with offer buttons.
 - One allowed chat id, set by a pairing code that the person sends to the bot.
 - A request for project work opens a Project session and posts a link to it.
@@ -345,7 +360,8 @@ Built from the mockups in `mockups/`:
 - **Project mode:** projects with their clones in the sidebar, with search and filters, and a "New clone" button. The conversation of the selected clone as a tree, with one input for each branch, and retry and fork on each answer. The branch name and pull request number at the top.
 - **Assistant mode:** schedules (with "Add schedule") and chats in the sidebar. A message that a schedule fired shows a clock icon. Retry and fork work here too.
 - **Activity chips** under an answer ("3 commands, 2 turns", "2 background tasks") and a **background tasks panel**, in both modes, from the engine's own events (Claude Code subagents and background commands).
-- **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart.
+- **Settings:** sections Setup, Updates, Appearance (theme, density), Projects. GitHub, vault repository, the vault fetch dropdown with "Sync now", the update dropdown (never, hourly, daily, weekly) with "Update now", Telegram, engines with login and Test, time zone, project roots, Tailscale identities. The two dropdowns save at once and apply without a restart. A "Restart Eva" button restarts after a confirm that names the running chats.
+- **Problem banner** at the top of every screen while `EvaStatus.problems` is not empty (§4.7). The page reads the status every minute and after each reconnect.
 - **Made for a phone first:** a web manifest and icons, so the person can add Eva to the home screen. After a dropped connection or a return to the page, the UI reads the sessions and the waiting approvals (`GET /api/approvals`) again, and shows "Reconnecting…" while the socket is down. A failed action shows an error and keeps the typed text.
 - **Served by the core on `localhost`, and exposed with `tailscale serve`** (§12).
 

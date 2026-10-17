@@ -145,6 +145,35 @@ Eva works on several machines with one vault, with no role to set. One machine i
 - **Files that Eva keeps out of the vault:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB. `eva status` names them. GitHub refuses files over 100 MB.
 - **A sync conflict:** Eva stops the pushes and names the files in `eva status`. Fix the conflict markers (`<<<<<<<`) in each file, then run `git add` on it. Eva never drops a stash, so `git stash list` can still hold a copy of your edits.
 
+## Problems and alerts
+
+Eva tells you when something goes wrong, so you never need to ask. Each alert says what happened and what to do. Eva sends it to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. Eva also writes each alert in her log.
+
+| Alert                                       | When                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| The vault sync stopped on a conflict        | A pull found a conflict. Fix it, then send `/sync`.                    |
+| The vault sync failed                       | A git step failed, for example a full disk or a refused push.          |
+| The vault cannot reach its remote           | The vault was offline for more than 30 minutes.                        |
+| The update check or the update install fail | The alert names the step. A failed install keeps the old version.      |
+| A schedule failed to fire                   | The alert names the schedule.                                          |
+| Eva started after an unclean exit           | A crash, a kill or a power loss stopped the last run. Send `/logs`.    |
+| Eva cannot read Telegram                    | Another program polls the bot, or Telegram failed for over 15 minutes. |
+
+Telegram cannot carry the last alert, so the open problems also show as a banner at the top of the web page. `eva status` and Telegram `/status` start with "All good" or the number of problems, then one line for each problem.
+
+**Telegram commands for a phone:**
+
+| Command     | What it does                                                                |
+| ----------- | --------------------------------------------------------------------------- |
+| `/status`   | The verdict, the open problems, then the details.                           |
+| `/logs [n]` | The last `n` warnings and errors of Eva's log (20 by default, 100 at most). |
+| `/restart`  | Restarts Eva, after a button press. It says first when chats are running.   |
+| `/sync`     | Syncs the vault now.                                                        |
+| `/update`   | Installs the latest version.                                                |
+| `/help`     | Lists every command.                                                        |
+
+The web page has a **Restart Eva** button on the Settings page, and the local API serves `GET /api/logs?level=warn&limit=20` and `POST /api/restart`.
+
 ## Install on a Linux server
 
 These steps install Eva for one user, with no `sudo`. Run them as that user, for example over SSH. They need `git`, `curl` and `python3`.

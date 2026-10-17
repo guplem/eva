@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileLogger } from "../../../src/shared/logger.ts";
+import { FileLogger, readRecentLogEntries } from "../../../src/shared/logger.ts";
 import { Redactor } from "../../../src/shared/redaction.ts";
 
 let folder: string;
@@ -51,5 +51,63 @@ describe("FileLogger", () => {
     });
     writeFileSync(join(folder, "file-not-folder"), "x");
     expect(() => logger.log("info", "hello")).not.toThrow();
+  });
+});
+
+describe("readRecentLogEntries", () => {
+  function writeDay(day: string, records: readonly unknown[]): void {
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, `eva-${day}.jsonl`),
+      records.map((record) => (typeof record === "string" ? record : JSON.stringify(record))).join("\n") + "\n",
+    );
+  }
+
+  test("returns the newest warn and error records across the newest files, oldest first", () => {
+    writeDay("2026-10-13", [
+      { at: "2026-10-13T09:00:00.000Z", level: "error", message: "Old error." },
+      { at: "2026-10-13T10:00:00.000Z", level: "warn", message: "Old warning." },
+    ]);
+    writeDay("2026-10-14", [
+      { at: "2026-10-14T09:00:00.000Z", level: "info", message: "Eva started." },
+      { at: "2026-10-14T10:00:00.000Z", level: "error", message: "New error." },
+    ]);
+    const entries = readRecentLogEntries(folder, { minimumLevel: "warn", limit: 2 });
+    expect(entries.map((entry) => entry.message)).toEqual(["Old warning.", "New error."]);
+  });
+
+  test("the error level leaves the warnings out", () => {
+    writeDay("2026-10-14", [
+      { at: "2026-10-14T09:00:00.000Z", level: "warn", message: "A warning." },
+      { at: "2026-10-14T10:00:00.000Z", level: "error", message: "An error." },
+    ]);
+    const entries = readRecentLogEntries(folder, { minimumLevel: "error", limit: 20 });
+    expect(entries.map((entry) => entry.message)).toEqual(["An error."]);
+  });
+
+  test("skips a broken line and a file with another name (lesson 69)", () => {
+    writeDay("2026-10-14", ["{not json", { at: "2026-10-14T10:00:00.000Z", level: "warn", message: "Kept." }]);
+    writeFileSync(join(folder, "notes.jsonl"), JSON.stringify({ at: "x", level: "error", message: "Other." }));
+    expect(readRecentLogEntries(folder, { minimumLevel: "warn", limit: 20 }).map((entry) => entry.message)).toEqual([
+      "Kept.",
+    ]);
+  });
+
+  test("sums up the details on one short line: the first line of each value", () => {
+    writeDay("2026-10-14", [
+      {
+        at: "2026-10-14T10:00:00.000Z",
+        level: "error",
+        message: "A turn failed.",
+        details: { reason: "Error: boom\n    at stack line", attempt: 2, long: "x".repeat(300) },
+      },
+    ]);
+    const [entry] = readRecentLogEntries(folder, { minimumLevel: "warn", limit: 20 });
+    expect(entry?.summary).toStartWith("reason: Error: boom, attempt: 2, long: xxx");
+    expect(entry?.summary.length ?? 0).toBeLessThanOrEqual(160);
+  });
+
+  test("a missing folder gives no entries", () => {
+    expect(readRecentLogEntries(join(folder, "missing"), { minimumLevel: "warn", limit: 20 })).toEqual([]);
   });
 });

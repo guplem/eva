@@ -79,6 +79,7 @@ describe("Updater (plan §10)", () => {
       available: false,
       lastCheckAt: null,
       lastError: null,
+      failedStep: null,
     });
   });
 
@@ -96,9 +97,9 @@ describe("Updater (plan §10)", () => {
   test("a failed check keeps its reason, and the next good check clears it", async () => {
     const run = harness();
     run.setFound(new Error("offline"));
-    expect((await run.updater.check()).lastError).toBe("offline");
+    expect(await run.updater.check()).toMatchObject({ lastError: "offline", failedStep: "check" });
     run.setFound({ current: "aaa1111", latest: "aaa1111", available: false });
-    expect((await run.updater.check()).lastError).toBeNull();
+    expect(await run.updater.check()).toMatchObject({ lastError: null, failedStep: null });
   });
 
   test("update now installs and restarts when no chat runs", async () => {
@@ -132,7 +133,11 @@ describe("Updater (plan §10)", () => {
   test("a failed install keeps Eva running and names the reason", async () => {
     const run = harness();
     run.setApplyError(new Error("bun install failed"));
-    expect(await run.updater.updateNow()).toMatchObject({ phase: "idle", lastError: "bun install failed" });
+    expect(await run.updater.updateNow()).toMatchObject({
+      phase: "idle",
+      lastError: "bun install failed",
+      failedStep: "install",
+    });
     expect(run.calls).toEqual(["check", "apply"]);
     expect(run.logs).toEqual(["warn: The update failed."]);
   });

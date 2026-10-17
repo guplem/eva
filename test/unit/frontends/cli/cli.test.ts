@@ -2,17 +2,19 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Eva } from "../../../../src/core/eva.ts";
+import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/instance/home.ts";
 import { loadSettings } from "../../../../src/core/instance/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
 import {
+  describeLogEntries,
   describeProjects,
   describeRemoteAccess,
   describeRole,
   describeStatus,
+  describeStatusLines,
   describeSync,
   describeUpdate,
   requestHub,
@@ -671,7 +673,7 @@ repos:
   test("status and projects print short text", async () => {
     const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
     expect(before).toContain("Vault sync: ok");
-    expect(before).toMatch(/^Eva \d+\.\d+\.\d+, hub: this machine \(\S+\)/);
+    expect(before).toMatch(/^All good\nEva \d+\.\d+\.\d+, hub: this machine \(\S+\)/);
     expect(before).toContain("Last turn: none since start");
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
@@ -758,7 +760,14 @@ describe("describeUpdate and describeSync", () => {
     available: false,
     lastCheckAt: "2026-10-17T10:00:00.000Z",
     lastError: null,
+    failedStep: null,
   };
+
+  test("a failed install never reads as a failed check", () => {
+    expect(describeUpdate({ ...base, lastError: "bun install failed", failedStep: "install" })).toBe(
+      "Updates: checks daily; the last install failed: bun install failed",
+    );
+  });
 
   test("each state of the updates reads as one line", () => {
     expect(describeUpdate(base)).toBe("Updates: aaa1111 is the latest; checks daily");
@@ -766,7 +775,7 @@ describe("describeUpdate and describeSync", () => {
       "Updates: bbb2222 is available (this is aaa1111); automatic updates off",
     );
     expect(describeUpdate({ ...base, current: null, latest: null })).toBe("Updates: checks daily; not checked yet");
-    expect(describeUpdate({ ...base, lastError: "offline" })).toBe(
+    expect(describeUpdate({ ...base, lastError: "offline", failedStep: "check" })).toBe(
       "Updates: checks daily; the last check failed: offline",
     );
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
@@ -783,6 +792,49 @@ describe("describeUpdate and describeSync", () => {
     expect(describeSync({ ...state, status: "offline", lastError: "Could not reach the remote." })).toBe(
       "Vault sync: offline (Could not reach the remote.)",
     );
+  });
+});
+
+describe("describeStatusLines", () => {
+  const status: EvaStatus = {
+    version: "1.2.3",
+    vaultPath: "/vault",
+    role: "hub",
+    machine: "server",
+    hub: "server",
+    vaultSync: { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] },
+    sessionCount: 2,
+    busySessionIds: [],
+    lastTurn: null,
+    update: null,
+    remoteAccess: null,
+    localUrl: "http://127.0.0.1:7420",
+    problems: [],
+  };
+
+  test("starts with All good when nothing is wrong", () => {
+    expect(describeStatusLines(status).slice(0, 2)).toEqual(["All good", "Eva 1.2.3, hub: this machine (server)"]);
+  });
+
+  test("starts with the number of problems, then one line for each problem", () => {
+    const lines = describeStatusLines({ ...status, problems: ["The vault sync failed.", "The update failed."] });
+    expect(lines.slice(0, 3)).toEqual(["2 problems", "• The vault sync failed.", "• The update failed."]);
+    expect(describeStatusLines({ ...status, problems: ["The vault sync failed."] })[0]).toBe("1 problem");
+  });
+});
+
+describe("describeLogEntries", () => {
+  test("puts each entry on one line: time, level, message and the details", () => {
+    expect(
+      describeLogEntries([
+        { at: "2026-10-14T10:00:00.000Z", level: "warn", message: "Telegram poll failed.", summary: "reason: 502" },
+        { at: "2026-10-14T10:05:00.000Z", level: "error", message: "A turn failed.", summary: "" },
+      ]),
+    ).toBe("2026-10-14 10:00 warn Telegram poll failed. (reason: 502)\n2026-10-14 10:05 error A turn failed.");
+  });
+
+  test("says so when the log has no warning or error", () => {
+    expect(describeLogEntries([])).toBe("No warnings or errors in the log.");
   });
 });
 

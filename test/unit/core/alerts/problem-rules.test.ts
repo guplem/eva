@@ -1,0 +1,73 @@
+import { describe, expect, test } from "bun:test";
+import {
+  scheduleFiringProblem,
+  updateProblem,
+  vaultOfflineAlertMs,
+  vaultSyncProblem,
+} from "../../../../src/core/alerts/problem-rules.ts";
+import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
+import type { VaultSyncState } from "../../../../src/core/vault/vault-sync.ts";
+
+function syncState(status: VaultSyncState["status"], lastError: string | null = null): VaultSyncState {
+  return { status, lastCommitAt: null, lastPushAt: null, lastError, withheldFiles: [] };
+}
+
+const idleUpdate: UpdateStatus = {
+  kind: "source",
+  frequency: "daily",
+  phase: "idle",
+  current: "aaa1111",
+  latest: "aaa1111",
+  available: false,
+  lastCheckAt: "2026-10-17T10:00:00.000Z",
+  lastError: null,
+  failedStep: null,
+};
+
+describe("vaultSyncProblem", () => {
+  test("a conflict is an error that names the files and says what to do", () => {
+    const problem = vaultSyncProblem(syncState("conflict", "Conflict in Notes/a.md"), 0);
+    expect(problem).toMatchObject({ level: "error" });
+    expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("Conflict in Notes/a.md");
+    expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("/sync");
+  });
+
+  test("a sync error is an error with git's reason", () => {
+    const problem = vaultSyncProblem(syncState("error", "git commit failed: disk full"), 0);
+    expect(problem).toMatchObject({ level: "error" });
+    expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("disk full");
+  });
+
+  test("offline is a problem only after 30 minutes", () => {
+    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs)).toBe("keep");
+    expect(vaultSyncProblem(syncState("offline"), vaultOfflineAlertMs + 1)).toMatchObject({ level: "warn" });
+  });
+
+  test("ok clears the problem, and skipped keeps whatever was there", () => {
+    expect(vaultSyncProblem(syncState("ok"), 0)).toBeNull();
+    expect(vaultSyncProblem(syncState("skipped", "busy"), 0)).toBe("keep");
+  });
+});
+
+describe("updateProblem", () => {
+  test("no error is no problem", () => {
+    expect(updateProblem(idleUpdate)).toBeNull();
+  });
+
+  test("a failed check and a failed install each say which step failed", () => {
+    const check = updateProblem({ ...idleUpdate, lastError: "offline", failedStep: "check" });
+    const install = updateProblem({ ...idleUpdate, lastError: "bun install failed", failedStep: "install" });
+    expect(check?.message).toStartWith("The update check failed: offline.");
+    expect(install?.message).toStartWith("The update install failed: bun install failed.");
+    expect(install?.level).toBe("error");
+  });
+});
+
+describe("scheduleFiringProblem", () => {
+  test("names the schedule and the reason", () => {
+    const problem = scheduleFiringProblem("Lunch", "no engine");
+    expect(problem.message).toContain("Lunch");
+    expect(problem.message).toContain("no engine");
+    expect(problem.resolvedMessage).toContain("Lunch");
+  });
+});

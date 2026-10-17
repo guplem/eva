@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Eva } from "../../../../src/core/eva.ts";
+import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/instance/home.ts";
 import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
@@ -23,9 +23,14 @@ let clock: Date;
 let sleeps: number[];
 let logs: { level: LogLevel; message: string }[];
 
-function createEva(script?: FakeTurnScript, runner: ProcessRunner = systemProcessRunner): void {
+function createEva(
+  script?: FakeTurnScript,
+  runner: ProcessRunner = systemProcessRunner,
+  extra: Partial<EvaOptions> = {},
+): void {
   engine = new FakeEngine(script);
   eva = new Eva({
+    ...extra,
     paths: homePaths(home),
     config: { ...defaultConfig, vaultPath: sandbox.root + "/vault", timeZone: "UTC" },
     secrets: {},
@@ -450,6 +455,147 @@ describe("stop and approvals from elsewhere (plan §4.1, §5.5)", () => {
     telegram.pressButton(owner, `a:${requestId}:allow`);
     await settle(bot, () => eva.sessions.get(webChat.id).turns.length === 1);
     expect(eva.sessions.get(webChat.id).turns[0]?.answerText).toBe("allow");
+  });
+});
+
+describe("alerts, logs and restart", () => {
+  const problem = {
+    level: "error" as const,
+    message: "The vault sync failed: disk full. Send /sync to try again.",
+    resolvedMessage: "The vault sync works again.",
+  };
+
+  test("each alert goes to the main chat of the allowed chat, and its end too", async () => {
+    const bot = createBot();
+    eva.reportProblem("vault_sync", problem);
+    eva.reportProblem("vault_sync", null);
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()).toEqual([`Problem: ${problem.message}`, `Resolved: ${problem.resolvedMessage}`]);
+    expect(telegram.callsTo("sendMessage")[0]?.params["message_thread_id"]).toBeUndefined();
+    await bot.stop();
+  });
+
+  test("before pairing, an alert goes nowhere; after a stop, the bot sends no more alerts", async () => {
+    const unpaired = createBot(null);
+    eva.reportProblem("vault_sync", problem);
+    await unpaired.stop();
+    const stopped = createBot();
+    await stopped.stop();
+    eva.reportProblem("vault_sync", null);
+    await Bun.sleep(20);
+    expect(telegram.sentTexts()).toEqual([]);
+  });
+
+  test("/status starts with the verdict and the problem lines", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/status");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toStartWith("All good\nEva ");
+    eva.reportProblem("vault_sync", problem);
+    telegram.sendText(owner, "/status");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("1 problem\n")));
+    expect(telegram.sentTexts().find((text) => text.startsWith("1 problem\n"))).toContain(`• ${problem.message}`);
+  });
+
+  test("/logs shows the last warnings and errors, 20 by default, and /logs 2 only two", async () => {
+    const folder = homePaths(home).logsFolder;
+    mkdirSync(folder, { recursive: true });
+    const records = Array.from({ length: 30 }, (_, index) =>
+      JSON.stringify({ at: "2026-10-14T10:00:00.000Z", level: "error", message: `Error ${String(index)}.` }),
+    );
+    writeFileSync(join(folder, "eva-2026-10-14.jsonl"), records.join("\n") + "\n");
+    const bot = createBot();
+    telegram.sendText(owner, "/logs");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]?.split("\n")).toHaveLength(20);
+    expect(telegram.sentTexts()[0]).toEndWith("2026-10-14 10:00 error Error 29.");
+    telegram.sendText(owner, "/logs 2");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()[1]).toBe("2026-10-14 10:00 error Error 28.\n2026-10-14 10:00 error Error 29.");
+  });
+
+  test("/logs splits a long answer under Telegram's limit", async () => {
+    const folder = homePaths(home).logsFolder;
+    mkdirSync(folder, { recursive: true });
+    const records = Array.from({ length: 100 }, (_, index) =>
+      JSON.stringify({ at: "2026-10-14T10:00:00.000Z", level: "warn", message: `${"x".repeat(80)} ${String(index)}` }),
+    );
+    writeFileSync(join(folder, "eva-2026-10-14.jsonl"), records.join("\n") + "\n");
+    const bot = createBot();
+    telegram.sendText(owner, "/logs 100");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts().every((text) => text.length < 4_096)).toBe(true);
+    expect(telegram.sentTexts().join("\n").split("\n")).toHaveLength(100);
+  });
+
+  test("/restart asks first, names the running chats, and the button restarts Eva", async () => {
+    const restarts: string[] = [];
+    createEva(
+      async function* (request) {
+        await new Promise<void>((resolve) => {
+          request.signal.addEventListener("abort", () => {
+            resolve();
+          });
+        });
+        yield { kind: "turn_failed", reason: "The turn was stopped." };
+      },
+      systemProcessRunner,
+      { restartForUpdate: () => restarts.push("restart") },
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "work for a long time");
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.sendText(owner, "/restart");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Restart Eva now?")));
+    const question = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Restart"));
+    expect(String(question?.params["text"])).toContain("1 chat is running");
+    expect(JSON.stringify(question?.params["reply_markup"])).toContain('"r:now"');
+    expect(restarts).toEqual([]);
+    telegram.pressButton(owner, "r:now");
+    await settle(bot, () => restarts.length === 1);
+    expect(telegram.sentTexts()).toContain("Restarting… Eva answers again in a moment.");
+    for (const session of eva.sessions.list()) eva.sessions.stop(session.id);
+  });
+
+  test("with no chat running, /restart only asks", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/restart");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toBe("Restart Eva now?");
+  });
+
+  test("a poll conflict is a problem at once; it clears at the next good poll", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 409, "Conflict", 3);
+    await bot.pollOnce();
+    await bot.pollOnce();
+    expect(eva.status().problems).toEqual([]);
+    await bot.pollOnce();
+    expect(eva.status().problems[0]).toContain("Another program polls this Telegram bot");
+    await bot.pollOnce();
+    expect(eva.status().problems).toEqual([]);
+  });
+
+  test("a poll that fails for more than 15 minutes is a problem, and a stop clears it", async () => {
+    const bot = createBot();
+    telegram.failNext("getUpdates", 502, "Bad Gateway", 3);
+    await bot.pollOnce();
+    clock = new Date(clock.getTime() + 15 * 60_000);
+    await bot.pollOnce();
+    expect(eva.status().problems).toEqual([]);
+    clock = new Date(clock.getTime() + 1_000);
+    await bot.pollOnce();
+    expect(eva.status().problems[0]).toContain("Bad Gateway");
+    await bot.stop();
+    expect(eva.status().problems).toEqual([]);
+  });
+
+  test("/help names /logs and /restart", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/help");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toContain("/logs");
+    expect(telegram.sentTexts()[0]).toContain("/restart");
   });
 });
 

@@ -12,7 +12,8 @@ export interface ClientOptions {
 interface ProjectBody {
   readonly id: string;
   readonly title: string;
-  readonly frontMatter: { readonly status: string | null };
+  readonly frontMatter: { readonly status: string | null; readonly tags: readonly string[] };
+  readonly warnings: readonly string[];
 }
 
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
@@ -162,7 +163,16 @@ export async function describeProjects(options: ClientOptions, query: string): P
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);
   if (projects.length === 0) return "No project matches.";
-  return projects.map((project) => `${project.id}  ${project.frontMatter.status ?? "?"}  ${project.title}`).join("\n");
+  return projects
+    .flatMap((project) => [
+      [project.id, project.frontMatter.status ?? "?", project.title, ...hashTags(project.frontMatter.tags)].join("  "),
+      ...project.warnings.map((warning) => `  ⚠ ${warning}`),
+    ])
+    .join("\n");
+}
+
+function hashTags(tags: readonly string[]): string[] {
+  return tags.length === 0 ? [] : [tags.map((tag) => `#${tag}`).join(" ")];
 }
 
 async function postJson<Body>(options: ClientOptions, path: string, body: unknown): Promise<Body> {

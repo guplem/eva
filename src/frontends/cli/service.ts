@@ -43,11 +43,14 @@ export function servicePath(path: string, separator = ":"): string {
  * How Eva starts again after an update. systemd and Eva's own supervisor restart her on exit
  * code 4; anywhere else, such as a terminal, she starts a new copy of herself first.
  */
-export function restartMethod(environment: Readonly<Record<string, string | undefined>>): "supervisor" | "new-copy" {
+export function restartMethod(
+  environment: Readonly<Record<string, string | undefined>>,
+  isProcessAlive: (pid: number) => boolean,
+): "supervisor" | "new-copy" {
   // systemd sets INVOCATION_ID for each run of a unit.
-  return environment["INVOCATION_ID"] === undefined && environment[supervisedVariable] === undefined
-    ? "new-copy"
-    : "supervisor";
+  if (environment["INVOCATION_ID"] !== undefined) return "supervisor";
+  const supervisor = Number(environment[supervisedVariable]);
+  return Number.isSafeInteger(supervisor) && supervisor > 0 && isProcessAlive(supervisor) ? "supervisor" : "new-copy";
 }
 
 export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {

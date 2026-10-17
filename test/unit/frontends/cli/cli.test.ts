@@ -559,9 +559,16 @@ describe("service", () => {
   });
 
   test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
-    expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
-    expect(restartMethod({ EVA_SUPERVISED: "1" })).toBe("supervisor");
-    expect(restartMethod({})).toBe("new-copy");
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ INVOCATION_ID: "abc" }, alive)).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive)).toBe("supervisor");
+    expect(restartMethod({}, alive)).toBe("new-copy");
+  });
+
+  test("an Eva whose supervisor has ended starts a new copy, so an update never leaves her stopped", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive)).toBe("new-copy");
   });
 
   test("a second instance on the same machine gets its own service name", () => {

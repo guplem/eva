@@ -393,7 +393,7 @@ async function serve(paths: HomePaths): Promise<number> {
           clearRunMarker(paths.runningMarker);
           lock.release();
           logger.log("info", "Eva stopped.", { exitCode });
-          if (exitCode === exitCodes.update && restartMethod(process.env) === "new-copy") {
+          if (exitCode === exitCodes.update && restartMethod(process.env, isProcessAlive) === "new-copy") {
             startNewCopy();
             resolve(exitCodes.clean);
           } else {
@@ -536,6 +536,7 @@ async function supervise(paths: HomePaths): Promise<number> {
       logger.log("warn", message);
     },
     stopTimeoutMs: shutdownDeadlineMs + hardExitGraceMs,
+    pid: process.pid,
   });
   process.once("SIGINT", () => {
     supervisor.stop();

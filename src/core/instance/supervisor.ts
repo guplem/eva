@@ -6,8 +6,9 @@ import { exitCodes } from "../../shared/exit-codes.ts";
 import type { LongProcess, LongProcessStarter } from "../../shared/long-process.ts";
 
 /**
- * Set for a supervised Eva, as systemd sets INVOCATION_ID: an update then exits 4 for the
- * supervisor, instead of starting a copy of Eva that nobody supervises.
+ * The supervisor's pid, set for a supervised Eva, as systemd sets INVOCATION_ID: an update then
+ * exits 4 for the supervisor, instead of starting a copy of Eva that nobody supervises. A pid,
+ * not a flag, so an Eva whose supervisor has ended knows that nobody would restart her.
  */
 export const supervisedVariable = "EVA_SUPERVISED";
 
@@ -44,6 +45,8 @@ export interface SupervisorOptions {
   readonly log: (message: string) => void;
   /** How long Eva gets to stop by herself before a hard stop. */
   readonly stopTimeoutMs: number;
+  /** The supervisor's own pid. */
+  readonly pid: number;
 }
 
 export interface Supervisor {
@@ -62,7 +65,7 @@ export function superviseEva(options: SupervisorOptions): Supervisor {
   // A function, so the loop reads a stop that happens while it awaits.
   const isStopping = (): boolean => state.stopping;
   const stopped = Promise.withResolvers<undefined>();
-  const environment = { ...options.environment, [supervisedVariable]: "1" };
+  const environment = { ...options.environment, [supervisedVariable]: String(options.pid) };
 
   const done = (async () => {
     let crashes = 0;

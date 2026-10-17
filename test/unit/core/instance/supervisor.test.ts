@@ -93,6 +93,7 @@ function fakeSupervisor(runs: readonly FakeRun[]): Fake {
     },
     log: (message) => logs.push(message),
     stopTimeoutMs: 25_000,
+    pid: 4242,
   });
   return { supervisor, delays, environments, stopTimeouts, logs, starts: () => index };
 }
@@ -123,10 +124,10 @@ describe("superviseEva", () => {
     expect(fake.delays).toEqual([5_000, 10_000, 5_000]);
   });
 
-  test("marks the child as supervised, so an update exits 4 instead of starting a copy", async () => {
+  test("marks the child with the supervisor's pid, so an update exits 4 instead of starting a copy", async () => {
     const fake = fakeSupervisor([{ exit: 0 }]);
     await fake.supervisor.done;
-    expect(fake.environments[0]).toEqual({ PATH: "/bin", [supervisedVariable]: "1" });
+    expect(fake.environments[0]).toEqual({ PATH: "/bin", [supervisedVariable]: "4242" });
   });
 
   test("a child that cannot start counts as a crash", async () => {

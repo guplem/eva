@@ -6,7 +6,7 @@ import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
-import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -537,6 +537,102 @@ describe("Eva", () => {
     await turn;
     await eva.backgroundTick();
     expect(restarts).toEqual(["restart"]);
+  });
+
+  test("the engine update runs `claude update` with the engine's config folder and no token (lesson 96)", async () => {
+    const claudeRuns: { command: string; environment: Readonly<Record<string, string>> }[] = [];
+    let version = "2.1.0";
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        claudeRuns.push({ command: command.join(" "), environment: options.environment });
+        if (command[1] === "update") version = "2.2.0";
+        return Promise.resolve({ exitCode: 0, stdout: `${version} (Claude Code)\n`, stderr: "" });
+      },
+    };
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({
+        engines: {
+          ...defaultConfig.engines,
+          claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true },
+        },
+      }),
+      secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value-for-tests" },
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    expect(eva.engineUpdateStatus()).toEqual({ phase: "idle", last: null });
+    expect((await eva.updateEngine())?.last).toMatchObject({ outcome: "updated", after: "2.2.0 (Claude Code)" });
+    expect(claudeRuns.map((run) => run.command)).toEqual([
+      "/opt/claude --version",
+      "/opt/claude update",
+      "/opt/claude --version",
+    ]);
+    for (const run of claudeRuns) {
+      expect(run.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+      expect(Object.values(run.environment)).not.toContain("github-token-value-for-tests");
+      expect(Object.values(run.environment)).not.toContain("oauth-token-value-for-tests");
+    }
+  });
+
+  test("the engine update waits for a running turn, and Eva's own update waits for the engine update", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    let finishUpdate: () => void = () => undefined;
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        if (command[1] === "update") await new Promise<void>((resolve) => (finishUpdate = resolve));
+        return { exitCode: 0, stdout: "2.1.0 (Claude Code)\n", stderr: "" };
+      },
+    };
+    const restarts: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [engine],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+      claudeExecutable: "/opt/claude",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    eva = instance;
+    const turn = instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    expect((await instance.updateEngine())?.phase).toBe("waiting_for_idle");
+    release();
+    await turn;
+    const tick = instance.backgroundTick();
+    await waitFor(() => instance.engineUpdateStatus()?.phase === "updating");
+    expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+    finishUpdate();
+    await tick;
+    expect(instance.engineUpdateStatus()?.last?.outcome).toBe("up_to_date");
+    await instance.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+  });
+
+  test("an Eva with no claude program has no engine update", async () => {
+    const instance = start(new FakeEngine());
+    expect(instance.engineUpdateStatus()).toBeNull();
+    expect(await instance.updateEngine()).toBeNull();
   });
 
   test("voice notes stay off until a whisper model is configured", () => {

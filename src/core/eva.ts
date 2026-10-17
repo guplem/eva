@@ -41,6 +41,7 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -173,6 +174,8 @@ export class Eva {
   private lastPullAt: Date | null = null;
   private settings: EvaConfig;
   private readonly updater: Updater | null;
+  /** Null when no claude program was found. */
+  private readonly engineUpdater: EngineUpdater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
   private readonly roleListeners = new Set<(role: MachineRole) => void>();
@@ -321,6 +324,18 @@ export class Eva {
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
+    const claudeExecutable = options.claudeExecutable ?? null;
+    this.engineUpdater =
+      claudeExecutable === null
+        ? null
+        : new EngineUpdater({
+            executable: claudeExecutable,
+            runner: options.runner,
+            environment: this.engineToolEnvironment(),
+            isIdle: () => !this.workRuns(),
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
   }
 
   /** Starts the idle sweep and the schedule checks. */
@@ -352,6 +367,8 @@ export class Eva {
       await this.pullIfDue();
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      // The engine update goes first: Eva's own update restarts her.
+      await this.engineUpdater?.tick();
       await this.updater?.tick();
       this.noticeUpdateProblem();
     } finally {
@@ -415,6 +432,15 @@ export class Eva {
     return status;
   }
 
+  engineUpdateStatus(): EngineUpdateStatus | null {
+    return this.engineUpdater?.status() ?? null;
+  }
+
+  /** Runs `claude update` as soon as no chat runs a turn. Null when no claude program was found. */
+  async updateEngine(): Promise<EngineUpdateStatus | null> {
+    return (await this.engineUpdater?.updateNow()) ?? null;
+  }
+
   /**
    * Restarts Eva at once, through the same path as an update (exit code 4 under systemd, a new
    * copy elsewhere). A running turn stops; the front end asks the person to confirm first.
@@ -463,7 +489,9 @@ export class Eva {
    */
   private workRuns(): boolean {
     return (
-      this.schedules?.isFiring() === true || this.sessions.list().some((session) => this.sessions.isActive(session.id))
+      this.engineUpdater?.status().phase === "updating" ||
+      this.schedules?.isFiring() === true ||
+      this.sessions.list().some((session) => this.sessions.isActive(session.id))
     );
   }
 
@@ -805,9 +833,34 @@ export class Eva {
   }
 
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
-  private engineEnvironment(): Record<string, string> {
+  /**
+   * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
+   * folder, so the run acts on the same install, and no token, which such a run never needs.
+   */
+  private engineToolEnvironment(): Record<string, string> {
+    const claudeFolder = this.claudeConfigFolder();
+    return buildChildEnvironment(
+      this.options.processEnvironment,
+      baseEnvironmentAllowlist,
+      claudeFolder === null ? {} : { CLAUDE_CONFIG_DIR: claudeFolder },
+    );
+  }
+
+  /** The instance's own Claude config folder, or null for the OS user's own one. */
+  private claudeConfigFolder(): string | null {
+    return this.isExtraInstance() || this.options.config.engines.claudeCode.ownConfigFolder
+      ? join(this.options.paths.enginesFolder, "claude")
+      : null;
+  }
+
+  /** An instance whose home is not the platform default (lesson 111). */
+  private isExtraInstance(): boolean {
     const defaultHome = this.options.defaultHome;
-    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
+    return defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
+  }
+
+  private engineEnvironment(): Record<string, string> {
+    const isExtraInstance = this.isExtraInstance();
     const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
@@ -817,9 +870,8 @@ export class Eva {
     }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
-      extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
-    }
+    const claudeFolder = this.claudeConfigFolder();
+    if (claudeFolder !== null) extra["CLAUDE_CONFIG_DIR"] = claudeFolder;
     // pi's folder is left out on purpose: pi has no documented variable for it yet.
     if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);

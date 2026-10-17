@@ -456,6 +456,38 @@ describe("approvals and commands", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("/update installs a newer Eva and restarts her, after the running chat ends (lesson 92)", async () => {
+    let release: () => void = () => undefined;
+    const restarts: string[] = [];
+    createEva(
+      async function* (request) {
+        await new Promise<void>((resolve) => (release = resolve));
+        yield* FakeEngine.answer(request, "done");
+      },
+      systemProcessRunner,
+      {
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        },
+        restartForUpdate: () => restarts.push("restart"),
+      },
+    );
+    const bot = createBot();
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    const turn = eva.sessions.send(session.id, "work");
+    while (engine.requests.length === 0) await Bun.sleep(5);
+    telegram.sendText(owner, "/update");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("installs when")));
+    expect(restarts).toEqual([]);
+    release();
+    await turn;
+    await eva.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+    expect(eva.updateStatus()?.phase).toBe("restarting");
+  });
+
   test("a slow /sync runs apart from the poll loop, so other commands still answer", async () => {
     let releaseSync: () => void = () => undefined;
     const syncGate = new Promise<void>((resolve) => {

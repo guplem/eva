@@ -187,7 +187,7 @@ function labelItem(context: Context): SetupItem {
   if (present === null) return grey(label, context.unknownReason(false));
   const have = new Set(present.map((name) => name.toLowerCase()));
   const missing = wanted.filter((name) => !have.has(name.toLowerCase()));
-  if (missing.length === 0) return green(label, `All ${String(wanted.length)} standard labels.`);
+  if (missing.length === 0) return green(label, "Has every standard label.");
   return {
     label,
     light: missing.length === wanted.length ? "red" : "yellow",

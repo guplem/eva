@@ -484,7 +484,9 @@ async function installService(paths: HomePaths): Promise<number> {
 
 /** The home folder that Eva uses when no `--home` or `EVA_HOME` names one. */
 function defaultHomeFolder(): string {
-  return resolveHomeFolder({ environment: {}, platform: process.platform, userHome: homedir() });
+  // Only EVA_HOME is left out: APPDATA and XDG_CONFIG_HOME still move the default folder.
+  const environment = { APPDATA: process.env["APPDATA"], XDG_CONFIG_HOME: process.env["XDG_CONFIG_HOME"] };
+  return resolveHomeFolder({ environment, platform: process.platform, userHome: homedir() });
 }
 
 async function withPrompt(work: (ask: (question: string) => Promise<string>) => Promise<void>): Promise<void> {

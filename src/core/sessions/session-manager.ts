@@ -223,11 +223,15 @@ export class SessionManager {
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
+    this.resolveApproval(requestId, answer, false);
+  }
+
+  private resolveApproval(requestId: string, answer: ApprovalAnswer, timedOut: boolean): void {
     const pending = this.approvals.get(requestId);
     if (pending === undefined) return;
     this.approvals.delete(requestId);
     pending.resolve(answer);
-    this.emit(pending.sessionId, { kind: "approval_resolved", requestId, answer });
+    this.emit(pending.sessionId, { kind: "approval_resolved", requestId, answer, timedOut });
   }
 
   private retryFromStart(session: SessionRecord): SessionRecord {
@@ -429,7 +433,7 @@ ${prompt}`,
     const requestId = this.options.newId();
     return new Promise<ApprovalAnswer>((resolve) => {
       const timer = setTimeout(() => {
-        this.answerApproval(requestId, "deny");
+        this.resolveApproval(requestId, "deny", true);
       }, this.options.approvalTimeoutMs);
       this.approvals.set(requestId, {
         sessionId,

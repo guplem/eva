@@ -360,9 +360,7 @@ async function serve(paths: HomePaths): Promise<number> {
     // Only the hub runs Telegram; the bot starts or stops when the hub moves (plan §4.4).
     const followRole = async (role: MachineRole): Promise<void> => {
       if (role === "hub" && bot === null) {
-        bot = startTelegram(paths, eva, logger, (exitCode) => {
-          stop(exitCode);
-        });
+        bot = startTelegram(paths, eva, logger);
       } else if (role === "satellite" && bot !== null) {
         const stopping = bot;
         bot = null;
@@ -383,12 +381,7 @@ async function serve(paths: HomePaths): Promise<number> {
 }
 
 /** Telegram runs on the hub instance only (plan §4.4, lesson 56), whenever it has a bot token. */
-function startTelegram(
-  paths: HomePaths,
-  eva: Eva,
-  logger: FileLogger,
-  onFatal: (exitCode: number) => void,
-): TelegramBot | null {
+function startTelegram(paths: HomePaths, eva: Eva, logger: FileLogger): TelegramBot | null {
   const config = loadSettings(paths).config;
   const token = loadSecrets(paths).telegramBotToken;
   if (token === undefined) return null;
@@ -410,7 +403,6 @@ function startTelegram(
       rmSync(pairingCodePath(paths), { force: true });
       logger.log("info", "Telegram paired.");
     },
-    onFatal,
     logger,
     ...(eva.transcribe === null ? {} : { transcribe: eva.transcribe }),
   });

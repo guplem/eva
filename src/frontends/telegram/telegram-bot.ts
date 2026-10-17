@@ -19,7 +19,7 @@ import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile }
 import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
-import { exitCodes } from "../../shared/exit-codes.ts";
+import { type Clock, systemClock } from "../../shared/clock.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { TelegramError, type TelegramApi } from "./telegram-api.ts";
@@ -38,14 +38,23 @@ export interface TelegramBotOptions {
   /** With no chat allowed yet, the chat that sends this code becomes the allowed one. */
   readonly pairingCode: string;
   readonly onPaired: (chatId: number, userId: number | null) => void;
-  /** Called when Eva must stop, with the exit code (lesson 89). */
-  readonly onFatal: (exitCode: number) => void;
   readonly logger?: Logger;
   readonly pollTimeoutSeconds?: number;
   readonly typingIntervalMs?: number;
   /** Turns a voice note into text (plan §9). Without it, a voice note gets a sentence that says so. */
   readonly transcribe?: (audio: Uint8Array) => Promise<string>;
+  /** Gives the time of each 409 conflict, for the conflict window. */
+  readonly clock?: Clock;
+  /** Waits before a retry. It must return early when the signal aborts, so a stop never waits. */
+  readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
+
+/** What the poll loop does now, for a status line. */
+export type TelegramPollState =
+  | { readonly kind: "polling" }
+  | { readonly kind: "failing"; readonly since: string; readonly reason: string }
+  /** Another program polls this bot; Eva pauses the poll loop, and the core runs on. */
+  | { readonly kind: "conflict"; readonly since: string };
 
 interface TopicEntry {
   readonly sessionId: string;
@@ -67,8 +76,14 @@ interface TelegramChat {
 
 interface TelegramFile {
   readonly file_id: string;
+  readonly file_unique_id?: string;
   readonly file_size?: number;
   readonly file_name?: string;
+}
+
+interface TelegramPhotoSize extends TelegramFile {
+  readonly width: number;
+  readonly height: number;
 }
 
 interface TelegramMessage {
@@ -78,6 +93,9 @@ interface TelegramMessage {
   readonly caption?: string;
   readonly document?: TelegramFile;
   readonly voice?: TelegramFile;
+  readonly audio?: TelegramFile;
+  /** One photo in several sizes. */
+  readonly photo?: readonly TelegramPhotoSize[];
   readonly message_thread_id?: number;
   readonly is_topic_message?: boolean;
 }
@@ -95,9 +113,33 @@ interface TelegramUpdate {
 
 /** Telegram refuses a message past 4096 characters; the split leaves room for the HTML tags. */
 const messageLimit = 3_500;
-/** Lesson 56: count conflicts, and never let a success reset the count. */
+/**
+ * Lesson 56: count 409 conflicts in a window, and never let a success reset the count. Past
+ * the limit, only the poll loop pauses: the owner reaches Eva from a phone, so Eva never exits.
+ */
 const conflictLimit = 3;
+const conflictWindowMs = 2 * 60_000;
+const conflictPauseMs = 10 * 60_000;
+const firstRetryMs = 1_000;
+const maxPollRetryMs = 60_000;
+const sendRetries = 3;
+const maxSendRetryMs = 30_000;
 const confirmAttempts = 3;
+/**
+ * Message contents that Eva cannot read yet: the Telegram field, then its name in the reply.
+ * A venue also carries a location, so it comes first. A service message (a new topic, a pin) gets no reply.
+ */
+const unreadableContents: readonly (readonly [string, string])[] = [
+  ["sticker", "stickers"],
+  ["video", "videos"],
+  ["video_note", "video notes"],
+  ["animation", "GIFs"],
+  ["venue", "places"],
+  ["location", "locations"],
+  ["contact", "contacts"],
+  ["poll", "polls"],
+  ["dice", "dice"],
+];
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 /** Telegram lets a bot download at most 20 MB. */
 const maxDownloadBytes = 20 * 1024 * 1024;
@@ -122,18 +164,35 @@ export class TelegramBot {
   private readonly state: BotState;
   private allowedChatId: number | null;
   private allowedUserId: number | null;
-  private conflicts = 0;
   private readonly pendingText = new Map<string, string[]>();
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
   private readonly offers: OfferStore;
   private running = false;
+  private readonly clock: Clock;
+  /** The times (ms) of the recent 409 conflicts, inside the conflict window. */
+  private conflictTimes: number[];
+  private nextPollRetryMs: number;
+  private currentPollState: TelegramPollState;
+  /** Aborts at stop(), so a wait in the loop ends at once. */
+  private stopping: AbortController;
+  /** The approval questions in the chat, by request id, so the answer can replace their buttons. */
+  private readonly approvalMessages: Map<string, { chatId: number; messageId: number; text: string }>;
+  /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
+  private readonly stoppedSessions: Set<string>;
 
   constructor(options: TelegramBotOptions) {
     this.options = options;
     this.allowedChatId = options.allowedChatId;
     this.allowedUserId = options.allowedUserId;
+    this.clock = options.clock ?? systemClock;
+    this.conflictTimes = [];
+    this.nextPollRetryMs = firstRetryMs;
+    this.currentPollState = { kind: "polling" };
+    this.stopping = new AbortController();
+    this.approvalMessages = new Map();
+    this.stoppedSessions = new Set();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -147,19 +206,34 @@ export class TelegramBot {
     await this.quietCall("setMyCommands", { commands });
   }
 
-  /** Polls until stop() is called. */
+  /** Polls until stop() is called. Telegram is the owner's only way in, so no error ends the loop. */
   async run(): Promise<void> {
     this.running = true;
+    this.stopping = new AbortController();
     await this.registerCommands();
-    while (this.isRunning()) await this.pollOnce();
+    while (this.isRunning()) {
+      let waitMs: number;
+      try {
+        waitMs = await this.pollOnce();
+      } catch (error) {
+        // For example a full disk in saveState(): log it and poll again after a wait.
+        this.options.logger?.log("error", "The Telegram poll loop failed; it continues.", { reason: String(error) });
+        waitMs = this.takePollRetryMs();
+      }
+      if (waitMs > 0 && this.isRunning()) await this.sleep(waitMs);
+    }
   }
 
   isRunning(): boolean {
     return this.running;
   }
 
-  /** One long poll and the handling of its updates. */
-  async pollOnce(): Promise<void> {
+  pollState(): TelegramPollState {
+    return this.currentPollState;
+  }
+
+  /** One long poll and the handling of its updates. Returns how long to wait before the next poll. */
+  async pollOnce(): Promise<number> {
     let updates: TelegramUpdate[];
     try {
       updates = await this.options.api.call<TelegramUpdate[]>("getUpdates", {
@@ -168,18 +242,10 @@ export class TelegramBot {
         allowed_updates: ["message", "callback_query"],
       });
     } catch (error) {
-      if (error instanceof TelegramError && error.code === 409) {
-        this.conflicts += 1;
-        if (this.conflicts >= conflictLimit) {
-          this.options.logger?.log("error", "Another program polls this Telegram bot; Eva stops.");
-          this.running = false;
-          this.options.onFatal(exitCodes.secondInstance);
-        }
-      } else {
-        this.options.logger?.log("warn", "Telegram poll failed.", { reason: String(error) });
-      }
-      return;
+      return this.onPollFailed(error);
     }
+    this.nextPollRetryMs = firstRetryMs;
+    this.currentPollState = { kind: "polling" };
     for (const update of updates) {
       this.state.offset = update.update_id + 1;
       this.saveState();
@@ -189,11 +255,49 @@ export class TelegramBot {
         this.options.logger?.log("error", "A Telegram update failed.", { reason: String(error) });
       }
     }
+    return 0;
+  }
+
+  /** Records a failed poll and returns the wait before the next one. */
+  private onPollFailed(error: unknown): number {
+    const now = this.clock.now();
+    if (error instanceof TelegramError && error.code === 409) {
+      this.conflictTimes = [
+        ...this.conflictTimes.filter((time) => now.getTime() - time < conflictWindowMs),
+        now.getTime(),
+      ];
+      if (this.conflictTimes.length >= conflictLimit) {
+        this.conflictTimes = [];
+        this.currentPollState = { kind: "conflict", since: now.toISOString() };
+        this.options.logger?.log(
+          "error",
+          "Another program polls this Telegram bot. Eva pauses Telegram for 10 minutes.",
+        );
+        return conflictPauseMs;
+      }
+    }
+    this.options.logger?.log("warn", "Telegram poll failed.", { reason: String(error) });
+    if (this.currentPollState.kind !== "failing")
+      this.currentPollState = { kind: "failing", since: now.toISOString(), reason: errorText(error) };
+    if (error instanceof TelegramError && error.retryAfterSeconds !== null) return error.retryAfterSeconds * 1_000;
+    return this.takePollRetryMs();
+  }
+
+  /** The exponential backoff of the poll loop: 1 second, doubled after each failure, up to 60 seconds. */
+  private takePollRetryMs(): number {
+    const waitMs = this.nextPollRetryMs;
+    this.nextPollRetryMs = Math.min(waitMs * 2, maxPollRetryMs);
+    return waitMs;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return (this.options.sleep ?? sleepUntilAborted)(ms, this.stopping.signal);
   }
 
   /** Stops polling and confirms the offset, so no update replays at the next start (lesson 57). */
   async stop(): Promise<void> {
     this.running = false;
+    this.stopping.abort();
     this.unsubscribe();
     this.unsubscribeSchedules();
     for (const timer of this.typingTimers.values()) clearInterval(timer);
@@ -218,7 +322,9 @@ export class TelegramBot {
     const chatId = message.chat.id;
     const topicId = message.is_topic_message === true ? (message.message_thread_id ?? null) : null;
     const text = (message.text ?? message.caption ?? "").trim();
-    if (text.length === 0 && message.document === undefined && message.voice === undefined) return;
+    const file = receivedFileOf(message);
+    const unreadable = unreadableContentOf(message);
+    if (text.length === 0 && file === null && message.voice === undefined && unreadable === null) return;
 
     if (this.allowedChatId === null) {
       if (text === this.options.pairingCode) {
@@ -243,8 +349,13 @@ export class TelegramBot {
       await this.forwardVoice(chatId, topicId, message.voice);
       return;
     }
-    if (message.document !== undefined) {
-      await this.forwardFile(chatId, topicId, message.document, text);
+    // Before the text: a sticker or a video can carry a caption, and the person must learn that Eva missed the rest.
+    if (unreadable !== null) {
+      await this.send(chatId, topicId, `Eva cannot read ${unreadable} yet.`);
+      return;
+    }
+    if (file !== null) {
+      await this.forwardFile(chatId, topicId, file, text);
       return;
     }
     if (text.startsWith("/")) {
@@ -336,6 +447,7 @@ export class TelegramBot {
       case "stop": {
         const entry = this.state.topics[keyOf(chatId, topicId)];
         const stopped = entry !== undefined && this.options.eva.sessions.stop(entry.sessionId);
+        if (stopped) this.stoppedSessions.add(entry.sessionId);
         await this.send(chatId, topicId, stopped ? "Stopping." : "Eva is not working in this chat.");
         return;
       }
@@ -346,16 +458,17 @@ export class TelegramBot {
         await this.listSchedules(chatId, topicId);
         return;
       case "sync":
-        await this.send(chatId, topicId, describeSync(await this.options.eva.syncVault()));
+        this.runApart(chatId, topicId, "Syncing…", async () => describeSync(await this.options.eva.syncVault()));
         return;
       case "link":
         await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
-      case "update": {
-        const update = await this.options.eva.updateNow();
-        await this.send(chatId, topicId, update === null ? "This Eva cannot update herself." : describeUpdate(update));
+      case "update":
+        this.runApart(chatId, topicId, "Updating…", async () => {
+          const update = await this.options.eva.updateNow();
+          return update === null ? "This Eva cannot update herself." : describeUpdate(update);
+        });
         return;
-      }
       case "projects": {
         const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
         await this.send(
@@ -372,6 +485,21 @@ export class TelegramBot {
           commands.map((command) => `/${command.command}: ${command.description}`).join("\n"),
         );
     }
+  }
+
+  /**
+   * Runs a slow command (a git sync, an update) outside the poll loop, so /stop and the buttons
+   * still answer while it runs. It sends a first line at once, then the result.
+   */
+  private runApart(chatId: number, topicId: number | null, firstLine: string, work: () => Promise<string>): void {
+    void (async (): Promise<void> => {
+      try {
+        await this.send(chatId, topicId, firstLine);
+        await this.send(chatId, topicId, await work());
+      } catch (error) {
+        await this.send(chatId, topicId, `The command failed: ${errorText(error)}`);
+      }
+    })();
   }
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
@@ -436,10 +564,15 @@ export class TelegramBot {
 
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
     const chatId = query.message?.chat.id;
-    await this.quietCall("answerCallbackQuery", { callback_query_id: query.id });
-    if (chatId === undefined || chatId !== this.allowedChatId || !this.isAllowedSender(query.from?.id)) return;
+    const isAllowed = chatId !== undefined && chatId === this.allowedChatId && this.isAllowedSender(query.from?.id);
     const [kind, first, second] = (query.data ?? "").split(":");
-    if (kind === "a" && first !== undefined && (second === "allow" || second === "deny")) {
+    const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");
+    await this.quietCall("answerCallbackQuery", {
+      callback_query_id: query.id,
+      ...(isAllowed && isApproval ? { text: second === "allow" ? "Allowed" : "Denied" } : {}),
+    });
+    if (!isAllowed) return;
+    if (isApproval) {
       this.options.eva.sessions.answerApproval(first, second);
     } else if (kind === "m" && first !== undefined && models.includes(second as ModelAlias)) {
       try {
@@ -604,6 +737,10 @@ export class TelegramBot {
   }
 
   private async onEvent(event: SessionEvent): Promise<void> {
+    if (event.kind === "approval_resolved") {
+      await this.closeApproval(event);
+      return;
+    }
     const target = this.targetOf(event.sessionId);
     if (target === null) {
       // Every attached front end shows an approval (plan §5.5), also for a chat that lives elsewhere.
@@ -633,8 +770,9 @@ export class TelegramBot {
         if (markers.text.length > 0) await this.sendAnswer(target.chatId, target.topicId, markers.text);
         for (const path of markers.attach) await this.sendVaultFile(target.chatId, target.topicId, path);
         if (markers.offer.length > 0) await this.offerFiles(target.chatId, target.topicId, markers.offer);
+        const stopped = this.stoppedSessions.delete(event.sessionId);
         if (event.kind === "turn_failed")
-          await this.send(target.chatId, target.topicId, `The turn failed: ${event.reason}`);
+          await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
         return;
       }
       default:
@@ -649,7 +787,8 @@ export class TelegramBot {
     chatTitle: string | null,
   ): Promise<void> {
     const where = chatTitle === null ? "" : ` (in “${chatTitle}”)`;
-    await this.send(chatId, topicId, `Eva wants to run ${event.toolName}${where}: ${event.summary}`, {
+    const text = `Eva wants to run ${event.toolName}${where}: ${event.summary}`;
+    const messageId = await this.send(chatId, topicId, text, {
       inline_keyboard: [
         [
           { text: "Allow", callback_data: `a:${event.requestId}:allow` },
@@ -657,31 +796,70 @@ export class TelegramBot {
         ],
       ],
     });
+    if (messageId !== null) this.approvalMessages.set(event.requestId, { chatId, messageId, text });
   }
 
-  /** Sends Markdown as Telegram HTML, split under the limit; a refused part goes again as plain text (lesson 58). */
+  /** Shows the answer in the approval message; an edit with no keyboard removes the buttons. */
+  private async closeApproval(event: Extract<SessionEvent, { kind: "approval_resolved" }>): Promise<void> {
+    const question = this.approvalMessages.get(event.requestId);
+    if (question === undefined) return;
+    this.approvalMessages.delete(event.requestId);
+    await this.quietCall("editMessageText", {
+      chat_id: question.chatId,
+      message_id: question.messageId,
+      text: `${question.text}\n\n${approvalAnswerText(event)}`.slice(0, 4_096),
+    });
+  }
+
+  /** Sends Markdown as Telegram HTML, split under the limit; a part with refused HTML goes again as plain text (lesson 58). */
   private async sendAnswer(chatId: number, topicId: number | null, markdown: string): Promise<void> {
     for (const chunk of keepFencesWhole(splitForTelegram(markdown, messageLimit))) {
       try {
-        await this.options.api.call("sendMessage", {
+        await this.callWithRetry("sendMessage", {
           chat_id: chatId,
           text: toTelegramHtml(chunk),
           parse_mode: "HTML",
           ...threadOf(topicId),
         });
-      } catch {
-        await this.send(chatId, topicId, chunk);
+      } catch (error) {
+        if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk);
+        else this.logFailedCall("sendMessage", error);
       }
     }
   }
 
-  private async send(chatId: number, topicId: number | null, text: string, replyMarkup?: unknown): Promise<void> {
-    await this.quietCall("sendMessage", {
-      chat_id: chatId,
-      text: text.slice(0, 4_096),
-      ...threadOf(topicId),
-      ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }),
-    });
+  /** Sends plain text. Returns the id of the message, or null when Telegram did not take it. */
+  private async send(
+    chatId: number,
+    topicId: number | null,
+    text: string,
+    replyMarkup?: unknown,
+  ): Promise<number | null> {
+    try {
+      const sent = await this.callWithRetry<{ message_id: number }>("sendMessage", {
+        chat_id: chatId,
+        text: text.slice(0, 4_096),
+        ...threadOf(topicId),
+        ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }),
+      });
+      return sent.message_id;
+    } catch (error) {
+      this.logFailedCall("sendMessage", error);
+      return null;
+    }
+  }
+
+  /** A call that goes again after a 429 or a network error, at most three times. Any other error throws at once. */
+  private async callWithRetry<Result>(method: string, params: Record<string, unknown>): Promise<Result> {
+    for (let retry = 0; ; retry += 1) {
+      try {
+        return await this.options.api.call<Result>(method, params);
+      } catch (error) {
+        const waitMs = sendRetryMs(error, retry);
+        if (waitMs === null || retry >= sendRetries) throw error;
+        await this.sleep(waitMs);
+      }
+    }
   }
 
   private startTyping(chatId: number, topicId: number | null, sessionId: string): void {
@@ -734,10 +912,14 @@ export class TelegramBot {
 
   private async quietCall(method: string, params: Record<string, unknown>): Promise<void> {
     try {
-      await this.options.api.call(method, params);
+      await this.callWithRetry(method, params);
     } catch (error) {
-      this.options.logger?.log("warn", "A Telegram call failed.", { method, reason: String(error) });
+      this.logFailedCall(method, error);
     }
+  }
+
+  private logFailedCall(method: string, error: unknown): void {
+    this.options.logger?.log("warn", "A Telegram call failed.", { method, reason: String(error) });
   }
 
   private saveState(): void {
@@ -770,6 +952,64 @@ function titleOf(text: string): string {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** The file that a message holds and Eva saves: a document, an audio file, or the largest size of a photo. */
+function receivedFileOf(message: TelegramMessage): TelegramFile | null {
+  if (message.document !== undefined) return message.document;
+  if (message.audio !== undefined) return message.audio;
+  const largest = (message.photo ?? []).reduce<TelegramPhotoSize | null>(
+    (best, size) => (best === null || size.width * size.height > best.width * best.height ? size : best),
+    null,
+  );
+  if (largest === null) return null;
+  // A photo has no file name; Telegram always sends it as a JPEG.
+  return { ...largest, file_name: `photo-${largest.file_unique_id ?? largest.file_id}.jpg` };
+}
+
+/** The name of the content that Eva cannot read yet, or null. */
+function unreadableContentOf(message: TelegramMessage): string | null {
+  return unreadableContents.find(([field]) => field in message)?.[1] ?? null;
+}
+
+/**
+ * The wait before a retry of a sending call, or null when a retry cannot help. A 429 waits what
+ * Telegram asks for, up to 30 seconds; a network error (code 0) waits 1, 2, then 4 seconds.
+ */
+function sendRetryMs(error: unknown, retry: number): number | null {
+  if (!(error instanceof TelegramError)) return null;
+  if (error.code === 429) return Math.min((error.retryAfterSeconds ?? 1) * 1_000, maxSendRetryMs);
+  if (error.code === 0) return firstRetryMs * 2 ** retry;
+  return null;
+}
+
+/**
+ * True when Telegram refused the HTML of a message (lesson 58). Telegram gives no structured
+ * field for this case, so its description is the only signal (lesson 36 allows no better one).
+ */
+function isHtmlRefused(error: unknown): boolean {
+  return error instanceof TelegramError && error.code === 400 && /can't parse entities/i.test(error.description);
+}
+
+function approvalAnswerText(event: Extract<SessionEvent, { kind: "approval_resolved" }>): string {
+  if (event.answer === "allow") return "Allowed";
+  return event.timedOut ? "Denied (timed out)" : "Denied";
+}
+
+function sleepUntilAborted(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(finish, ms);
+    function finish(): void {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal.addEventListener("abort", finish);
+  });
 }
 
 function cardText(event: Extract<ScheduleEvent, { kind: "schedule_card" }>): string {

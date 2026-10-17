@@ -72,7 +72,7 @@ describe("describeEvent", () => {
       { ...base, kind: "history_lost" },
       { ...base, kind: "turn_failed", reason: "boom" },
       { ...base, kind: "tool_finished", toolUseId: "t", isError: false },
-      { ...base, kind: "approval_resolved", requestId: "r", answer: "allow" },
+      { ...base, kind: "approval_resolved", requestId: "r", answer: "allow", timedOut: false },
       {
         ...base,
         kind: "turn_finished",

@@ -150,7 +150,7 @@ src/
 - **One core process for each instance.** It holds `<home>/eva.lock`. A second start exits with code 3.
 - **The core serves a local API** on its port: HTTP for commands, WebSocket for events. `eva chat`, `eva status`, the web UI and other tools are clients of this API. Telegram runs inside the core.
 - **The API checks `Host` and `Origin`** on every request and every WebSocket upgrade, and requires a token (§12).
-- **Exit codes** (lesson 89): `0` clean stop, `1` crash, `2` bad config, `3` second instance (never retried), `4` restart for an update. The systemd unit sets `RestartPreventExitStatus=2 3`.
+- **Exit codes** (lesson 89): `0` clean stop, `1` crash, `2` bad config, `3` second instance (never retried), `4` restart for an update. The systemd unit sets `RestartPreventExitStatus=2 3`. Only the instance lock gives code 3: a Telegram 409 conflict pauses the bot and never stops the core (lesson 56).
 
 ### 4.4 Instances and the home folder
 

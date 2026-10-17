@@ -5,13 +5,19 @@
 
 export class TelegramError extends Error {
   readonly method: string;
+  /** Telegram's error code, or 0 when no answer came (a network error). */
   readonly code: number;
+  readonly description: string;
+  /** With a 429: the seconds that Telegram asks the bot to wait. */
+  readonly retryAfterSeconds: number | null;
 
-  constructor(method: string, code: number, description: string) {
+  constructor(method: string, code: number, description: string, retryAfterSeconds: number | null = null) {
     super(`Telegram ${method} failed (${String(code)}): ${description}`);
     this.name = "TelegramError";
     this.method = method;
     this.code = code;
+    this.description = description;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -46,6 +52,7 @@ interface TelegramResponse<Result> {
   readonly result?: Result;
   readonly error_code?: number;
   readonly description?: string;
+  readonly parameters?: { readonly retry_after?: number };
 }
 
 export class HttpTelegramApi implements TelegramApi {
@@ -116,7 +123,12 @@ export class HttpTelegramApi implements TelegramApi {
       throw new TelegramError(method, response.status, "the answer was not JSON");
     }
     if (!body.ok || body.result === undefined) {
-      throw new TelegramError(method, body.error_code ?? response.status, body.description ?? "no description");
+      throw new TelegramError(
+        method,
+        body.error_code ?? response.status,
+        body.description ?? "no description",
+        body.parameters?.retry_after ?? null,
+      );
     }
     return body.result;
   }

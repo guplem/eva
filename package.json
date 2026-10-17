@@ -25,7 +25,9 @@
   "scripts": {
     "prepare": "lefthook install",
     "eva": "bun run src/main.ts",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
+    "agents:sync": "bun run scripts/sync-agent-skills.ts",
+    "agents:check": "bun run scripts/sync-agent-skills.ts --check",
+    "check": "bun run format:check && bun run agents:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

@@ -44,8 +44,8 @@ Before structuring the issue:
 
 1. **Identify affected areas** and search the codebase for the relevant code paths.
 2. **For bugs, verify the bug actually exists in the current code.** If the code looks correct, report: "I checked the code and this appears to already be handled in `<file>:<line>`. Are you sure you want to create this issue?" Stop if the user agrees it is not a bug.
-3. **For features/improvements**, identify the existing code that would change and the patterns already in place. Run the **pattern-scout** agent if a new pattern is being introduced.
-4. **Check relevant ADRs**: run the **adr-checker** agent in consult mode.
+3. **For features/improvements**, identify the existing code that would change and the patterns already in place. Run the **scout-patterns** skill if a new pattern is being introduced.
+4. **Check relevant ADRs**: run the **check-adrs** skill in consult mode.
 
 Store findings as `CODE_CONTEXT`. This context feeds the issue's Context section and the label detection; it is **not** a proposed solution (see Step 7).
 

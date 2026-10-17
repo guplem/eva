@@ -31,4 +31,4 @@ Create a **new** ADR only when a genuinely new pattern appears that no existing 
 
 ## Creating or updating an ADR
 
-Use the **adr-checker** agent. It enforces the full rules (one decision per ADR, <= 2 pages, alternatives with rejection rationale, update-in-place, source-of-truth-is-the-code) and writes the file. Index every ADR as a one-line row in the root `AGENTS.md`.
+Use the **check-adrs** skill (`.agents/skills/check-adrs/`). It enforces the full rules (one decision per ADR, <= 2 pages, alternatives with rejection rationale, update-in-place, source-of-truth-is-the-code) and writes the file. Index every ADR as a one-line row in the root `AGENTS.md`.

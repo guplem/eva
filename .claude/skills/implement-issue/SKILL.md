@@ -47,7 +47,7 @@ Then set the working branch up **with the upstream set at once** (the `create-br
 ## 5. Check the starting state
 
 1. `git checkout $WORK_BRANCH && git pull origin $WORK_BRANCH`
-2. Spawn the **validate** agent to confirm the repo's checks pass before you start. Do not build on a broken baseline; report it to the user instead.
+2. Spawn the **run-checks** skill to confirm the repo's checks pass before you start. Do not build on a broken baseline; report it to the user instead.
 
 ## 6. Do the work
 
@@ -56,8 +56,8 @@ For each step (or the single unit):
 1. **Create the step branch** (multi-step mode only; in single-issue mode you work directly on `$WORK_BRANCH`). Use the `create-branch` skill: `git checkout -b <issue-number>-<short-slug> $WORK_BRANCH && git push -u origin <issue-number>-<short-slug>`.
 
 2. **Explore first (preparation).** As the orchestrator, launch the explore agents now and keep their reports for the next sub-step (the implementation agent below cannot spawn its own subagents, so this must happen here):
-   - **pattern-scout** (always): how are similar things built in this codebase?
-   - **adr-checker** in consult mode (only when the work touches an ADR-relevant area): which recorded decisions must the work follow?
+   - **scout-patterns** (always): how are similar things built in this codebase?
+   - **check-adrs** in consult mode (only when the work touches an ADR-relevant area): which recorded decisions must the work follow?
 
 3. **Spawn the implementation agent** (Agent tool, `isolation: "worktree"`), pasting the explore reports into its prompt:
 
@@ -73,7 +73,7 @@ For each step (or the single unit):
    >
    > ## Findings from the explore agents (follow these)
    >
-   > <paste the pattern-scout report, and the adr-checker report when there is one>
+   > <paste the scout-patterns report, and the check-adrs report when there is one>
    >
    > ## Instructions
    >
@@ -83,7 +83,7 @@ For each step (or the single unit):
    > 4. **Red-green TDD, as `AGENTS.md` mandates:** write the failing test that pins each behavior before the code that makes it pass. A bug fix starts with a test that reproduces the bug.
    > 5. Implement, following the explore findings and the issue.
    > 6. If a step needs the owner (a login, a token, a real machine), add one line to `docs/owner-todo.md`, build and test with fakes, and continue. Write no personal data into any file, commit, or PR: the repository is public.
-   > 7. Run the repo's checks yourself (the commands in `AGENTS.md`, in order; you cannot spawn the validate agent from inside here) and fix every failure you introduced before finishing.
+   > 7. Run the repo's checks yourself (the commands in `AGENTS.md`, in order; you cannot spawn the run-checks skill from inside here) and fix every failure you introduced before finishing.
    > 8. Make atomic conventional commits (the `write-commit` skill shape).
    > 9. Push your branch: `git push origin HEAD`.
    >
@@ -190,7 +190,7 @@ Report which steps are done and which remain. If steps remain: "Run `/implement-
 - **Never merge on red.** Merge your own PR only when every CI check is green on Ubuntu and Windows.
 - **Take ownership.** Self-assign the issue when you start it and self-assign every PR you open.
 - **Scope discipline.** Each agent works only on its assigned step; no cross-step changes.
-- **Verification is mandatory.** The implementation agent runs the repo's checks before pushing, and the orchestrator confirms a clean state with the **validate** agent.
+- **Verification is mandatory.** The implementation agent runs the repo's checks before pushing, and the orchestrator confirms a clean state with the **run-checks** skill.
 - **Fresh reviewers.** The review agent has no context from the implementation (the `review-pr` skill already spawns fresh agents).
 - **Bounded iteration.** At most 3 review rounds; then report to the user instead of looping.
 - **Judgement on every comment.** Act on any comment worth acting on, not just the Required ones; reply and resolve each thread with the reason.

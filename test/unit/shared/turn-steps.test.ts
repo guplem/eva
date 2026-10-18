@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineEventPayload } from "../../../src/shared/events.ts";
-import { addStep, storedSteps, type TurnStep } from "../../../src/shared/turn-steps.ts";
+import { addStep, splitSteps, storedSteps, type TurnStep } from "../../../src/shared/turn-steps.ts";
 
 function stepsOf(payloads: readonly EngineEventPayload[]): readonly TurnStep[] {
   return payloads.reduce<readonly TurnStep[]>(addStep, []);
@@ -53,7 +53,72 @@ describe("addStep", () => {
   });
 });
 
+describe("addStep limits", () => {
+  test("a long tool summary is cut at once, so a running turn keeps no huge text", () => {
+    const steps = stepsOf([
+      { kind: "tool_started", toolUseId: "t1", name: "mcp", category: "tool", summary: "z".repeat(50_000) },
+    ]);
+    expect(steps[0]?.text.length).toBe(200);
+  });
+
+  test("a cut never splits an emoji", () => {
+    const summary = `${"a".repeat(198)}😀😀😀`;
+    const steps = stepsOf([{ kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary }]);
+    expect(steps[0]?.text).toBe(`${"a".repeat(198)}😀…`);
+  });
+
+  test("an error marks only a step of the matching kind, and no match keeps the same list", () => {
+    const steps = stepsOf([
+      { kind: "tool_started", toolUseId: "same", name: "Read", category: "tool", summary: "Read a" },
+      { kind: "task_changed", taskId: "same", description: "look", state: "running" },
+    ]);
+    const marked = addStep(steps, { kind: "tool_finished", toolUseId: "same", isError: true });
+    expect(marked.map((step) => step.isError)).toEqual([true, false]);
+    expect(addStep(steps, { kind: "tool_finished", toolUseId: "other", isError: true })).toBe(steps);
+  });
+});
+
+describe("splitSteps", () => {
+  test("the last message parts the steps into those before it and those after it", () => {
+    const { before, lastMessage, after } = splitSteps(
+      stepsOf([
+        { kind: "text", text: "first", messageId: "m1" },
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls" },
+        { kind: "text", text: "second", messageId: "m2" },
+        { kind: "tool_started", toolUseId: "t2", name: "Bash", category: "command", summary: "npm test" },
+      ]),
+    );
+    expect(before.map((step) => step.text)).toEqual(["first", "ls"]);
+    expect(lastMessage?.text).toBe("second");
+    expect(after.map((step) => step.text)).toEqual(["npm test"]);
+  });
+
+  test("a turn with no message has all its steps before", () => {
+    const { before, lastMessage, after } = splitSteps(
+      stepsOf([{ kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls" }]),
+    );
+    expect([before.length, lastMessage, after.length]).toEqual([1, undefined, 0]);
+  });
+});
+
 describe("storedSteps", () => {
+  test("the last message stays, even when more than 100 steps follow it", () => {
+    const payloads: EngineEventPayload[] = [
+      { kind: "text", text: "the answer", messageId: "m1" },
+      ...Array.from({ length: 120 }, (_, index): EngineEventPayload => ({
+        kind: "tool_started",
+        toolUseId: `t${String(index)}`,
+        name: "Read",
+        category: "tool",
+        summary: `Read ${String(index)}`,
+      })),
+    ];
+    const { steps, omittedSteps } = storedSteps(stepsOf(payloads));
+    expect(steps[0]?.text).toBe("the answer");
+    expect(steps).toHaveLength(101);
+    expect(omittedSteps).toBe(20);
+  });
+
   test("the last message keeps its full text, and every other step is cut", () => {
     const long = "x".repeat(500);
     const { steps, omittedSteps } = storedSteps(

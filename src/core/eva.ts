@@ -478,7 +478,7 @@ export class Eva {
     return { ...report, state: this.logSyncState(report.state) };
   }
 
-  /** A pick for one conflicted note. It waits while an Assistant turn runs, as a sync does. */
+  /** A pick for one conflicted note. Eva refuses it while an Assistant turn runs, as she refuses a sync: the turn can write the same note. */
   async resolveVaultConflict(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
     if (this.vaultSync === null) return { state: noVaultState, conflicts: [], found: false };
     if (this.assistantBusy())

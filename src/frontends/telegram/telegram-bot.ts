@@ -613,7 +613,7 @@ export class TelegramBot {
       const what =
         conflict.kind === "committed"
           ? "changed here and on the remote."
-          : "has an edit here that clashes with the remote.";
+          : "has an edit here that clashes with the remote. Keep theirs leaves this machine's edit in git's stash.";
       const picked = conflict.picked === null ? "" : ` Picked: ${pickLabels[conflict.picked].toLowerCase()}.`;
       await this.send(chatId, topicId, `${conflict.path} ${what}${picked}`, {
         inline_keyboard: [

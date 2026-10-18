@@ -1,9 +1,9 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 
@@ -15,6 +15,9 @@ interface AssistantViewProps {
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  /** The chat that the address names; it opens once it is in the list. */
+  readonly linkedChat: SessionRecord | null;
+  readonly onLinkedChatOpened: () => void;
   readonly onOpenSchedules: () => void;
 }
 
@@ -24,6 +27,8 @@ export function AssistantView({
   sidebarOpen,
   onChanged,
   onNavigate,
+  linkedChat,
+  onLinkedChatOpened,
   onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -41,6 +46,13 @@ export function AssistantView({
     ),
   };
   const listRef = useRef<HTMLDivElement>(null);
+  const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
+
+  useEffect(() => {
+    if (linkedId === null) return;
+    setSelectedId(linkedId);
+    onLinkedChatOpened();
+  }, [linkedId, onLinkedChatOpened]);
 
   const newChat = async (): Promise<void> => {
     try {
@@ -120,6 +132,7 @@ export function AssistantView({
               <ChatTitle key={selected.id} chat={selected} onChanged={onChanged} />
               <span className="badge">{selected.modelAlias}</span>
               <ChatInfoButton {...chat} />
+              <DeleteChatButton chat={selected} onChanged={onChanged} />
             </div>
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
           </>

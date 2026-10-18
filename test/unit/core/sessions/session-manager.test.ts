@@ -166,10 +166,56 @@ describe("a conversation", () => {
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "one");
     expect(events.map((event) => [event.kind, event.sessionId])).toEqual([
+      ["message_received", sessionId],
       ["text", sessionId],
       ["turn_finished", sessionId],
     ]);
-    expect(events[1]!.seq).toBeGreaterThan(events[0]!.seq);
+    expect(events[2]!.seq).toBeGreaterThan(events[1]!.seq);
+  });
+
+  test("each message of a turn tells the front ends where it came from, redacted (lesson 95)", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "from the phone", "telegram");
+    const second = manager.send(sessionId, "the key is the-secret-value-123");
+    await Promise.all([first, second]);
+    expect(events.map((event) => event.kind)).toEqual([
+      "message_received",
+      "message_received",
+      "text",
+      "turn_finished",
+    ]);
+    expect(events.slice(0, 2)).toMatchObject([
+      { sessionId, text: "from the phone", origin: "telegram" },
+      { sessionId, text: "the key is [redacted]", origin: "eva" },
+    ]);
+  });
+
+  test("a message sent during a turn is told when its own turn starts, after the turn before (lesson 114)", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const manager = createManager(
+      new FakeEngine(async function* (request, turnNumber) {
+        if (turnNumber === 1) await held;
+        yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "one", "telegram");
+    for (let attempt = 0; attempt < 200 && !manager.isBusy(sessionId); attempt += 1) await Bun.sleep(5);
+    const second = manager.send(sessionId, "two", "api");
+    release();
+    await Promise.all([first, second]);
+    expect(events.map((event) => (event.kind === "message_received" ? `message ${event.text}` : event.kind))).toEqual([
+      "message one",
+      "text",
+      "turn_finished",
+      "message two",
+      "text",
+      "turn_finished",
+    ]);
   });
 
   test("messages sent close together share one turn (lesson 51)", async () => {
@@ -352,7 +398,7 @@ describe("exactly one end event (lesson 47)", () => {
     const manager = createManager(new FakeEngine(() => crashing));
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(events.map((event) => event.kind)).toEqual(["turn_failed"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_failed"]);
     expect(manager.isBusy(sessionId)).toBe(false);
   });
 
@@ -365,7 +411,7 @@ describe("exactly one end event (lesson 47)", () => {
       ]),
     );
     await manager.send(newAssistantSession(manager), "go");
-    expect(events.map((event) => event.kind)).toEqual(["text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
   });
 });
 
@@ -429,6 +475,63 @@ describe("forks and retries", () => {
     const sessionId = newAssistantSession(manager);
     const error: unknown = await manager.retry(sessionId, 3).catch((caught: unknown) => caught);
     expect((error as Error).message).toContain("no turn 3");
+  });
+});
+
+describe("delete", () => {
+  test("a delete removes the chat and its forks, and tells the front ends of each one", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    const otherId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]!.lastMessageId!);
+    const forkOfFork = manager.fork(fork.id, "message-1");
+    events = [];
+
+    expect(manager.delete(rootId).sort()).toEqual([rootId, fork.id, forkOfFork.id].sort());
+    expect(manager.list().map((session) => session.id)).toEqual([otherId]);
+    expect(events.map((event) => [event.kind, event.sessionId]).sort()).toEqual(
+      [rootId, fork.id, forkOfFork.id].map((id) => ["session_deleted", id]).sort(),
+    );
+  });
+
+  test("a delete of a chat that works, or of one of its forks that works, is refused", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const rootId = newAssistantSession(manager);
+    const fork = manager.fork(rootId, "message-1");
+    const turn = manager.send(fork.id, "long work");
+
+    let refused: unknown = null;
+    try {
+      manager.delete(rootId);
+    } catch (error) {
+      refused = error;
+    }
+    expect(isEvaError(refused, "session_busy")).toBe(true);
+    expect(manager.list()).toHaveLength(2);
+    for (let attempt = 0; attempt < 200 && !manager.stop(fork.id); attempt += 1) await Bun.sleep(5);
+    await turn;
+  });
+
+  test("a delete removes the whole tree before any front end hears of it", () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    manager.fork(rootId, "message-1");
+    const seen: number[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "session_deleted") seen.push(manager.list().length);
+    });
+    manager.delete(rootId);
+    expect(seen).toEqual([0, 0]);
+  });
+
+  test("a delete of an unknown chat is an EvaError", () => {
+    const manager = createManager(new FakeEngine());
+    expect(() => manager.delete("nothing")).toThrow("No session nothing.");
   });
 });
 
@@ -587,7 +690,7 @@ describe("persistence and redaction", () => {
       { redactor },
     );
     await manager.send(newAssistantSession(manager), "show it");
-    expect(events[0]).toMatchObject({ kind: "text", text: "token: [redacted]" });
+    expect(events[1]).toMatchObject({ kind: "text", text: "token: [redacted]" });
   });
 });
 

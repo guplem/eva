@@ -57,8 +57,28 @@ export type EngineEventPayload =
     }
   | { readonly kind: "turn_failed"; readonly reason: string };
 
+/**
+ * Who sent a message to a chat: Telegram, a client of the local API (the web app or `eva chat`),
+ * a schedule's prompt, or Eva herself (project work and its report).
+ */
+export type MessageOrigin = "telegram" | "api" | "schedule" | "eva";
+
+/** What the core itself says about a chat. No engine sends these, so they stay off the engine port. */
+export type CoreEventPayload =
+  /** A message, when its turn starts, so a front end can show a message that another one sent. */
+  | { readonly kind: "message_received"; readonly text: string; readonly origin: MessageOrigin }
+  /** The chat is gone from the list; each front end drops its own view of it. */
+  | { readonly kind: "session_deleted" }
+  /** The chat gave work to a project: the Project chat that runs it. */
+  | {
+      readonly kind: "project_work_started";
+      readonly projectId: string;
+      readonly projectSessionId: string;
+      readonly request: string;
+    };
+
 /** A payload as a front end receives it. */
-export type SessionEvent = EngineEventPayload & {
+export type SessionEvent = (EngineEventPayload | CoreEventPayload) & {
   readonly sessionId: string;
   readonly seq: number;
   readonly at: string;

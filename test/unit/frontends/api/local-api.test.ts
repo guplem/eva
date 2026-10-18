@@ -370,7 +370,7 @@ describe("routes", () => {
     while (!events.some((event) => event.kind === "turn_finished")) await Bun.sleep(10);
     socket.close();
 
-    expect(events.map((event) => event.kind)).toEqual(["text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
     const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
   });
@@ -397,6 +397,19 @@ describe("routes", () => {
     expect(fork.parentId).toBe(session.id);
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
+  });
+
+  test("a delete removes the chat and its forks, and an unknown chat is a 404", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "one");
+    const fork = eva.sessions.fork(session.id, eva.sessions.get(session.id).turns[0]?.lastMessageId ?? "");
+    const deleted = await call(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect((await json<{ deleted: string[] }>(deleted)).deleted.sort()).toEqual([session.id, fork.id].sort());
+    expect(eva.sessions.list()).toEqual([]);
+    expect((await call(`/api/sessions/${session.id}`, { method: "DELETE" })).status).toBe(404);
   });
 
   test("renames a chat, and refuses an empty title or an unknown chat", async () => {

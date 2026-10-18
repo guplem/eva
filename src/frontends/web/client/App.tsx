@@ -23,6 +23,12 @@ type Screen = "assistant" | "project" | "settings" | "schedules";
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
 
+/** The chat that the address names, as `#/chat/<id>`: Telegram links to a chat this way. */
+function linkedChatIdOf(hash: string): string | null {
+  const match = /^#\/chat\/([^/]+)$/.exec(hash);
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+}
+
 export function App(): ReactElement {
   return (
     <ErrorToastProvider>
@@ -41,7 +47,31 @@ function EvaApp(): ReactElement {
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
+  const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
+  const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
+
+  useEffect(() => {
+    const onHashChange = (): void => setLinkedChatId(linkedChatIdOf(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // The linked chat's mode opens when the chat is first in the list.
+  const linkedMode = linkedChat?.mode ?? null;
+  useEffect(() => {
+    if (linkedMode !== null) setScreen(linkedMode);
+  }, [linkedChatId, linkedMode]);
+
+  /**
+   * A view opened the linked chat: the link is used up. A view mounts again at each screen
+   * change, so a kept link would undo the person's own choice. A clear address also lets the
+   * same link open again.
+   */
+  const onLinkedChatOpened = useCallback((): void => {
+    setLinkedChatId(null);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
 
   // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
@@ -69,6 +99,24 @@ function EvaApp(): ReactElement {
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  // Telegram can link to a chat that is newer than this page's list: read the list once more.
+  // A chat that is not in it either was deleted, and the link says so.
+  const linkIsMissing = authenticated === true && linkedChatId !== null && linkedChat === null;
+  useEffect(() => {
+    if (!linkIsMissing) return;
+    void (async (): Promise<void> => {
+      try {
+        const fresh = await api.sessions();
+        setSessions(fresh);
+        if (fresh.some((session) => session.id === linkedChatId)) return;
+        showError(new Error("That chat no longer exists."));
+      } catch (caught) {
+        showError(caught);
+      }
+      onLinkedChatOpened();
+    })();
+  }, [linkIsMissing, linkedChatId, showError, onLinkedChatOpened]);
 
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
@@ -126,6 +174,9 @@ function EvaApp(): ReactElement {
           ...current.filter((approval) => approval.requestId !== event.requestId),
           { requestId: event.requestId, sessionId: event.sessionId, toolName: event.toolName, summary: event.summary },
         ]);
+      } else if (event.kind === "session_deleted") {
+        // Another front end deleted a chat: the list drops it.
+        void refreshSessions();
       } else if (event.kind === "session_renamed") {
         // A rename can come from Telegram or the terminal.
         void refreshSessions();
@@ -214,6 +265,8 @@ function EvaApp(): ReactElement {
           sidebarOpen={sidebarOpen}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          linkedChat={linkedChat}
+          onLinkedChatOpened={onLinkedChatOpened}
           onOpenSchedules={() => setScreen("schedules")}
         />
       )}
@@ -222,6 +275,8 @@ function EvaApp(): ReactElement {
           sessions={sessions}
           live={live}
           sidebarOpen={sidebarOpen}
+          linkedChat={linkedChat}
+          onLinkedChatOpened={onLinkedChatOpened}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
         />

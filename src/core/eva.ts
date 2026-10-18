@@ -274,6 +274,7 @@ export class Eva {
         this.inBackground(what, task);
       },
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
 
     const voice = options.config.voice;
@@ -307,7 +308,7 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
+              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(

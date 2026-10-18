@@ -13,6 +13,16 @@ function run(payloads: readonly EngineEventPayload[], sessionId = "s1"): LiveSta
 }
 
 describe("applyEvent", () => {
+  test("the core's own events change nothing of a running turn", () => {
+    const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
+    const core: SessionEvent[] = [
+      { ...stamp, kind: "message_received", text: "Hi", origin: "api" },
+      { ...stamp, kind: "project_work_started", projectId: "p", projectSessionId: "q", request: "r" },
+      { ...stamp, kind: "session_deleted" },
+    ];
+    expect(core.reduce(applyEvent, emptyLiveState)).toBe(emptyLiveState);
+  });
+
   test("a running turn collects its steps, before any message too", () => {
     const state = run([
       { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls" },

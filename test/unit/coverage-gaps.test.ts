@@ -83,6 +83,9 @@ describe("describeEvent", () => {
         costUsd: null,
         contextTokens: null,
       },
+      { ...base, kind: "message_received", text: "Hi", origin: "api" },
+      { ...base, kind: "session_deleted" },
+      { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q", request: "r" },
     ];
     expect(events.map(describeEvent)).toEqual([
       "Hi\n",
@@ -95,6 +98,9 @@ describe("describeEvent", () => {
       null,
       null,
       null,
+      null,
+      null,
+      "  (This chat was deleted elsewhere.)\n",
       null,
     ]);
   });

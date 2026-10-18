@@ -264,7 +264,9 @@ function hookItem(context: Context): SetupItem {
     };
   }
   const hooks = context.target.hooks;
-  if (hooks === null) return grey(label, notRead);
+  if (hooks === null) {
+    return grey(label, "Eva could not read the hook config. She reads Lefthook YAML or JSON, Husky and pre-commit.");
+  }
   const scripts = context.target.scripts ?? {};
   const stages = [
     { name: "commit", checks: checksOf(hooks.commit, scripts) },

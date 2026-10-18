@@ -266,6 +266,7 @@ describe("readRepositoryFacts, scripts and git hooks", () => {
       "      run: npx eslint {staged_files}",
       "  jobs:",
       "    - run: npx prettier --check {staged_files}",
+      "    - script: lint.sh",
       "pre-push:",
       "  commands:",
       "    check:",
@@ -299,7 +300,7 @@ describe("readRepositoryFacts, scripts and git hooks", () => {
     );
     expect(facts.scripts).toEqual({ check: "eslint ." });
     expect(facts.hooks).toEqual({
-      commit: ["ruff", "npx eslint {staged_files}", "npx prettier --check {staged_files}"],
+      commit: ["ruff", "npx eslint {staged_files}", "npx prettier --check {staged_files}", "lint.sh"],
       push: ["#!/bin/sh\nnpm test\n", "pytest", "npm run check"],
     });
   });
@@ -311,6 +312,8 @@ describe("readRepositoryFacts, scripts and git hooks", () => {
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
     expect(facts.hooks).toBeNull();
     expect(facts.scripts).toBeNull();
+    answers.set(`raw:repos/${slug}/contents/package.json?ref=main`, { status: 404, body: "" });
+    expect((await readRepositoryFacts(slug, fakeGet(answers))).scripts).toBeNull();
   });
 
   test("a broken package.json has no scripts; a hook config that Eva cannot parse is unknown", async () => {

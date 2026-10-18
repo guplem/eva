@@ -220,8 +220,8 @@ function withLocalWorkflows(workflows: readonly WorkflowFacts[]): WorkflowFacts[
 
 /** The string scripts of a `package.json`; none when it is not JSON, as the package manager would fail. */
 function readScripts(text: FileRead): Record<string, string> | null {
-  if (text === null) return null;
-  if (text === "absent") return {};
+  // The tree lists the file, so a 404 means that GitHub did not serve it.
+  if (text === null || text === "absent") return null;
   const scripts = asRecord(asRecord(parseJson(text.text))?.["scripts"]) ?? {};
   return Object.fromEntries(
     Object.entries(scripts).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -262,7 +262,8 @@ async function readHooks(
 /** The commands of one Lefthook hook: its `commands`, its `jobs`, and the names of its `scripts`. */
 function lefthookCommands(hook: Record<string, unknown> | null): string[] {
   const runs = [...Object.values(asRecord(hook?.["commands"]) ?? {}), ...listOf(hook?.["jobs"])];
-  return [...runs.flatMap((entry) => textField(entry, "run") ?? []), ...Object.keys(asRecord(hook?.["scripts"]) ?? {})];
+  const commands = runs.flatMap((entry) => textField(entry, "run") ?? textField(entry, "script") ?? []);
+  return [...commands, ...Object.keys(asRecord(hook?.["scripts"]) ?? {})];
 }
 
 /** The pre-commit framework runs a hook at its `stages`, or at the default stages: before a commit. */

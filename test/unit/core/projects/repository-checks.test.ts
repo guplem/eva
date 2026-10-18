@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import { checksOf } from "../../../../src/core/projects/repository-checks.ts";
+
+const root = fileURLToPath(new URL("../../../..", import.meta.url));
 
 function kinds(commands: readonly string[], scripts: Readonly<Record<string, string>> = {}): string[] {
   return [...checksOf(commands, scripts)].sort();
@@ -73,5 +78,28 @@ describe("checksOf", () => {
   test("a script that does not exist counts by its name, and a cycle ends", () => {
     expect(kinds(["npm run lint", "yarn test:unit"])).toEqual(["lint", "test"]);
     expect(kinds(["npm run check"], { check: "npm run check" })).toEqual([]);
+  });
+});
+
+describe("checksOf on Eva's own repository, the reference of the setup report", () => {
+  interface Steps {
+    jobs: Record<string, { steps?: { run?: string }[] }>;
+  }
+  type Hooks = Record<string, { commands: Record<string, { run: string }> }>;
+  const read = (path: string): string => readFileSync(`${root}/${path}`, "utf8");
+  const scripts = (JSON.parse(read("package.json")) as { scripts: Record<string, string> }).scripts;
+
+  test("the pull-request CI runs the format check, the lint and the tests", () => {
+    const workflow = parseYaml(read(".github/workflows/pull-request-checks.yml")) as Steps;
+    const commands = Object.values(workflow.jobs).flatMap((job) => (job.steps ?? []).flatMap((step) => step.run ?? []));
+    expect([...checksOf(commands, scripts)].sort()).toEqual(["format", "lint", "test"]);
+  });
+
+  test("the git hooks run the format check and the lint before each commit and each push", () => {
+    const hooks = parseYaml(read("lefthook.yml")) as Hooks;
+    for (const hook of ["pre-commit", "pre-push"]) {
+      const commands = Object.values(hooks[hook]?.commands ?? {}).map((command) => command.run);
+      expect([...checksOf(commands, scripts)].sort()).toEqual(["format", "lint"]);
+    }
   });
 });

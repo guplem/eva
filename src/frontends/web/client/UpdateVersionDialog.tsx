@@ -4,7 +4,7 @@
  */
 import { useState, type ReactElement } from "react";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
-import { majorUpdateWarning } from "../../cli/client.ts";
+import { majorUpdateWarning, policyMovesOn } from "../../cli/client.ts";
 
 export function UpdateVersionDialog(props: {
   update: UpdateStatus;
@@ -16,6 +16,7 @@ export function UpdateVersionDialog(props: {
   // The list can change while the dialog is open: a pick that left it falls back to the newest.
   const version = releases.some((release) => release.version === picked) ? picked : (releases[0]?.version ?? "");
   const chosen = releases.find((release) => release.version === version);
+  const moveOn = chosen === undefined ? null : policyMovesOn(props.update, chosen.version);
   return (
     <div className="dialog-backdrop">
       <div
@@ -48,6 +49,7 @@ export function UpdateVersionDialog(props: {
               </div>
             )}
             <div className="release-summary">{chosen.summary}</div>
+            {moveOn !== null && <div className="hint">{moveOn}</div>}
           </>
         )}
         <div className="message-actions">

@@ -156,7 +156,20 @@ export function describeRelease(update: UpdateStatus, version: string): string |
   const release = update.releases.find((each) => each.version === version);
   if (release === undefined) return null;
   const warning = release.level === "major" ? `\n\n${majorUpdateWarning}` : "";
-  return `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}`;
+  const moveOn = policyMovesOn(update, version);
+  return `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}${moveOn === null ? "" : `\n\n${moveOn}`}`;
+}
+
+/**
+ * A version below the policy's pick does not last: the first check after the restart installs
+ * the pick. Null when the chosen version is at or above it.
+ */
+export function policyMovesOn(update: UpdateStatus, version: string): string | null {
+  // The releases come newest first, so a target before the chosen one is newer.
+  const index = update.releases.findIndex((each) => each.version === version);
+  const targetIndex = update.releases.findIndex((each) => each.version === update.target);
+  if (index === -1 || targetIndex === -1 || targetIndex >= index) return null;
+  return `The update policy (${update.install}) installs ${update.target ?? "?"} after the restart. To stay on ${version}, change the policy first.`;
 }
 
 /** One line about the engine update of the settings page. */

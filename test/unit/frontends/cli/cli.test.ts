@@ -965,6 +965,10 @@ describe("describeUpdate and describeSync", () => {
     );
     expect(describeRelease(release, "1.3.0")).toBe("Eva 1.2.0 → 1.3.0\n\nNew features:\n• feat: y (1.3.0)");
     expect(describeRelease(release, "0.9.0")).toBeNull();
+    // Below the policy pick, the next check after the restart moves Eva on again.
+    expect(describeRelease({ ...release, install: "major", target: "2.0.0" }, "1.3.0")).toEndWith(
+      "The update policy (major) installs 2.0.0 after the restart. To stay on 1.3.0, change the policy first.",
+    );
   });
 
   test("in a terminal, a held-back version comes with the command that installs it", () => {

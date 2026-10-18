@@ -919,6 +919,55 @@ describe("runSetup", () => {
       await setup({ claudeToken: "a-new-token-value" }, { interactive: false });
       expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-new-token-value");
     });
+
+    test("a ready vault still lets a rerun give the GitHub token, and a half Google client is asked again", async () => {
+      await setup({ vault: existingVault, googleEmail: "person@example.com", googleClientId: "client-id" });
+      const asked: SetupQuestion[] = [];
+      await setup({ githubToken: "ghp_a-token-for-projects" }, { asked });
+      expect(asked).not.toContain("vaultRepository");
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("ghp_a-token-for-projects");
+      expect(asked).toContain("googleClientSecret");
+    });
+
+    test("an existing vault keeps its own shared settings", async () => {
+      mkdirSync(join(existingVault, ".eva"), { recursive: true });
+      writeFileSync(join(existingVault, ".eva", "settings.json"), JSON.stringify({ updates: { frequency: "weekly" } }));
+      await setup({ vault: existingVault }, { interactive: false });
+      expect(loadSettings(homePaths(home)).config.updates.frequency).toBe("weekly");
+    });
+
+    test("a script's engine answer wins over the engine that a vault brings", async () => {
+      mkdirSync(join(existingVault, ".eva"), { recursive: true });
+      writeFileSync(
+        join(existingVault, ".eva", "settings.json"),
+        JSON.stringify({ engines: { default: "claude-code" } }),
+      );
+      await setup({ vault: existingVault, engine: "pi" }, { interactive: false });
+      expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
+    });
+
+    test("setup reports whether it changed anything after Eva started", async () => {
+      const run = (answers: Partial<Record<SetupQuestion, string>>): Promise<{ changedAfterStart: boolean }> =>
+        runSetup({
+          paths: homePaths(home),
+          ask: (key) => Promise.resolve(answers[key] ?? ""),
+          write: () => undefined,
+          newToken: () => "generated-token",
+          interactive: true,
+          runner: okRunner,
+          environment: gitEnvironment,
+          defaultHome: home,
+          githubLogin: null,
+          platform: "linux",
+          userHome: home,
+          installEnvironment: gitEnvironment,
+          arch: "x64",
+          afterEssentials: () => Promise.resolve(),
+        });
+      expect(await run({ claudeToken: "a-claude-setup-token-value" })).toEqual({ changedAfterStart: true });
+      // Every step is done now, so a rerun saves nothing.
+      expect(await run({})).toEqual({ changedAfterStart: false });
+    });
   });
 
   test("a Telegram chat id skips the pairing code; a wrong one is refused", async () => {

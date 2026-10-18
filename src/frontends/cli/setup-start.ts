@@ -4,6 +4,8 @@
  * person can finish the setup on the page, in the terminal, or in both at once.
  */
 
+import { EvaError } from "../../shared/errors.ts";
+
 export interface StartOptions {
   readonly interactive: boolean;
   readonly ask: (key: "startService" | "deviceCode", question: string) => Promise<string>;
@@ -29,6 +31,8 @@ export async function startAndLetIn(options: StartOptions): Promise<void> {
   const address = (await options.network()) ?? options.localUrl;
   if (!(await options.isRunning())) {
     const answer = await options.ask("startService", "Start Eva now, and each time this computer starts? [Y/n]: ");
+    if (!options.interactive && answer !== "" && !/^(y(es)?|no?)$/i.test(answer))
+      throw new EvaError("config_invalid", "The answer to start Eva must be yes or no.");
     // A script starts nothing it did not ask for, such as in a test.
     const start = options.interactive ? !/^no?$/i.test(answer) : /^y(es)?$/i.test(answer);
     if (!start) {

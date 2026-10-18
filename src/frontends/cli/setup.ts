@@ -8,6 +8,8 @@ import { join } from "node:path";
 import {
   homePaths,
   isExtraInstance,
+  loadConfig,
+  saveConfig,
   engineFolders as engineFoldersOf,
   type EngineFolders,
   loadSecrets,
@@ -116,14 +118,17 @@ export interface SetupOptions {
 
 const ghTimeoutMs = 120_000;
 
-export async function runSetup(options: SetupOptions): Promise<void> {
+/** Returns whether setup saved anything after `afterEssentials`, when a running Eva would need a restart. */
+export async function runSetup(options: SetupOptions): Promise<{ changedAfterStart: boolean }> {
   const paths = homePaths(options.paths.root);
   // Each answer is saved at once, on top of the files as they are now: Ctrl+C loses nothing, and
   // a change from the web page, which writes the same files, is never undone.
   const config = (): EvaConfig => loadSettings(paths).config;
   const secrets = (): EvaSecrets => loadSecrets(paths);
   const refusal: { error: EvaError | null } = { error: null };
+  const progress = { started: false, changedAfterStart: false };
   const saveSetting = (change: Readonly<Record<string, unknown>>): void => {
+    progress.changedAfterStart ||= progress.started;
     try {
       changeSettings(paths, change);
     } catch (error) {
@@ -133,7 +138,13 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     }
   };
   const saveSecret = (name: keyof EvaSecrets, value: string): void => {
+    progress.changedAfterStart ||= progress.started;
     saveSecrets(paths, { ...secrets(), [name]: value });
+  };
+  // Only the machine's file: a merge with defaults would write over the vault's own settings.
+  const saveVaultPath = (folder: string): void => {
+    progress.changedAfterStart ||= progress.started;
+    saveConfig(paths, { ...loadConfig(paths), vaultPath: folder });
   };
   const ask = async (key: SetupQuestion, question: string): Promise<string> =>
     (await options.ask(key, question)).trim();
@@ -177,6 +188,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   // Before Eva can start: her page and the `eva` commands need this token.
   if (secrets().localApiToken === undefined) saveSecret("localApiToken", options.newToken());
   await options.afterEssentials?.();
+  progress.started = true;
 
   const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZone = done(config().timeZone !== null)
@@ -188,7 +200,14 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     const folder = config().vaultPath;
     return folder !== null && !isEmptyFolder(folder);
   };
-  if (!done(vaultReady())) await askVault(options, ask, saveSetting, saveSecret, engineFolders);
+  if (!done(vaultReady())) await askVault(options, ask, saveVaultPath, saveSecret, engineFolders);
+  else if (!done(secrets().githubToken !== undefined)) {
+    // Private projects need the token too, so a ready vault still gets the question.
+    const githubToken = await ask("githubToken", "GitHub token, for private projects (Enter to skip): ");
+    if (githubToken !== "") saveSecret("githubToken", githubToken);
+  }
+  // A vault brings the person's settings from another machine; a script's engine answer still wins.
+  if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
   // A cloned vault brings the person's settings from another machine; an answer above still wins.
   if (timeZone !== "") saveSetting({ timeZone });
   else if (config().timeZone === null) saveSetting({ timeZone: detectedTimeZone });
@@ -256,7 +275,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     );
     if (googleEmail !== "") saveSetting({ google: { email: googleEmail } });
   }
-  if (config().google.email !== null && !done(secrets().googleOauthClientId !== undefined)) {
+  const googleClient = (): boolean =>
+    secrets().googleOauthClientId !== undefined && secrets().googleOauthClientSecret !== undefined;
+  if (config().google.email !== null && !done(googleClient())) {
     const clientId = await ask("googleClientId", "Google OAuth client id (Enter to keep): ");
     if (clientId !== "") saveSecret("googleOauthClientId", clientId);
     const clientSecret = await ask("googleClientSecret", "Google OAuth client secret (Enter to keep): ");
@@ -288,13 +309,14 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     ...(vaultPath !== null && existsSync(vaultPath) ? [vaultSettingsPath(vaultPath)] : []),
   ];
   options.write(`Saved ${files.join(", ")}.`);
+  return { changedAfterStart: progress.changedAfterStart };
 }
 
 /** The vault questions: its repository, the GitHub login, and its folder. A new vault starts from the template. */
 async function askVault(
   options: SetupOptions,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
-  saveSetting: (change: Readonly<Record<string, unknown>>) => void,
+  saveVaultPath: (folder: string) => void,
   saveSecret: (name: keyof EvaSecrets, value: string) => void,
   engineFolders: EngineFolders | null,
 ): Promise<void> {
@@ -369,7 +391,7 @@ async function askVault(
     repository === "" || !options.interactive ? await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `) : "";
   const folder = answer === "" ? defaultFolder : answer;
   if (folder === null) return;
-  saveSetting({ vaultPath: folder });
+  saveVaultPath(folder);
   if (!isEmptyFolder(folder)) return;
   const gitEnvironment = (): Record<string, string> => {
     const token = githubToken();

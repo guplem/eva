@@ -14,7 +14,7 @@ import {
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
-import { loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
+import { loadSettings } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
 import { isEvaError } from "../../shared/errors.ts";
@@ -184,8 +184,6 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     installEnvironment: installEnvironment(host),
     arch: host.arch,
   };
-  // The files as the running Eva read them, so the end of setup knows whether she must restart.
-  const snapshot: { readByEva: string | null } = { readByEva: null };
   const start =
     (interactive: boolean, ask: (question: string) => Promise<string>, script: (key: SetupQuestion) => string) =>
     async (): Promise<void> => {
@@ -217,11 +215,11 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
         },
         sleep: host.sleep,
       });
-      snapshot.readByEva = setupFiles(paths);
     };
+  let result = { changedAfterStart: false };
   if (nonInteractive) {
     const script = (key: SetupQuestion): string => host.environment[setupEnvironmentNames[key]] ?? "";
-    await runSetup({
+    result = await runSetup({
       ...setupOptions,
       interactive: false,
       ask: (key) => Promise.resolve(script(key)),
@@ -229,7 +227,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     });
   } else {
     await host.withPrompt(async (ask) => {
-      await runSetup({
+      result = await runSetup({
         ...setupOptions,
         interactive: true,
         ask: (_key, question) => ask(question),
@@ -239,20 +237,13 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
   }
   const client = runningClient(host, paths);
   if (client !== null) for (const line of await describeSetupProgress(client)) write(line);
-  if (client !== null && snapshot.readByEva !== null && snapshot.readByEva !== setupFiles(paths)) {
+  // Only setup's own answers count: a save on the page meanwhile has its own Restart button.
+  if (client !== null && result.changedAfterStart) {
     write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");
     await requestRestart(client);
   } else if (client === null) {
     write("Run `eva doctor` to check the tools, then start Eva with `eva service install` or `eva`.");
   }
-}
-
-/** The files that hold the setup's answers, as one text, to tell whether any changed. */
-function setupFiles(paths: HomePaths): string {
-  const vaultPath = loadSettings(paths).config.vaultPath;
-  return [paths.config, paths.secrets, ...(vaultPath === null ? [] : [vaultSettingsPath(vaultPath)])]
-    .map((path) => readTextTolerant(path) ?? "")
-    .join("\n");
 }
 
 /** `status`, `projects`, `chat` and `work`: these need the running Eva. */

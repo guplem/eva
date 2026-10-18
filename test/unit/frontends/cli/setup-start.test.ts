@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { startAndLetIn, type StartOptions } from "../../../../src/frontends/cli/setup-start.ts";
+import { isEvaError } from "../../../../src/shared/errors.ts";
 
 interface Fake {
   readonly options: StartOptions;
@@ -99,4 +100,14 @@ describe("startAndLetIn", () => {
     expect(starting.started.count).toBe(1);
     expect(starting.asked).not.toContain("deviceCode");
   });
+});
+
+test("a script answers yes or no to the start, and nothing else", async () => {
+  const setup = fake({ interactive: false, answers: { startService: ["true"] } });
+  const error = await startAndLetIn(setup.options).then(
+    () => null,
+    (caught: unknown) => caught,
+  );
+  expect(isEvaError(error, "config_invalid")).toBe(true);
+  expect(setup.started.count).toBe(0);
 });

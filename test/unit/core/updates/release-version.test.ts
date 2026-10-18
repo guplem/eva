@@ -128,6 +128,7 @@ describe("release notes", () => {
       { ...commit("feat: record a voice note"), hash: "ccccccc", pullRequest: voice },
       { ...commit("test: cover voice notes"), hash: "eeeeeee", pullRequest: voice },
       { ...commit("refactor!: drop Node"), hash: "fffffff", pullRequest: pullRequest(6, "refactor!: drop Node") },
+      { ...commit("fix: a Bun path"), hash: "0000000", pullRequest: pullRequest(6, "refactor!: drop Node") },
     ]);
     expect(notes).toBe(
       [
@@ -150,6 +151,7 @@ describe("release notes", () => {
         "- fix: trim the silence (ddddddd)",
         "- feat: record a voice note (ccccccc)",
         "- refactor!: drop Node (fffffff)",
+        "- fix: a Bun path (0000000)",
         "",
         "</details>",
         "",
@@ -165,7 +167,7 @@ describe("release notes", () => {
       commit("feat: voice notes"),
       commit("Update README.md"),
     ]);
-    expect(notes.split("<details>")[0]).toBe(
+    expect(notes).toBe(
       [
         "## Breaking changes",
         "",
@@ -180,6 +182,15 @@ describe("release notes", () => {
         "- fix: a bug",
         "- Update README.md",
         "",
+        "<details>",
+        "<summary>Commits</summary>",
+        "",
+        "- fix: a bug",
+        "- feat!: rename the settings keys",
+        "- feat: voice notes",
+        "- Update README.md",
+        "",
+        "</details>",
         "",
       ].join("\n"),
     );

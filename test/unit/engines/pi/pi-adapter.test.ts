@@ -3,7 +3,7 @@
  * server (test/fixtures/pi/). A live run with a real login is issue #59.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
@@ -122,8 +122,14 @@ describe("buildPiArguments", () => {
 
   test("A model call: the caller's prompt alone, with no tools, skills, templates or context files", () => {
     const call = request({ mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [], trusted: false });
+    // No session file: a model call is never continued, and its text must not stay on disk.
     expect(buildPiArguments(call, inputs)).toEqual([
-      ...base,
+      "--mode",
+      "rpc",
+      "--no-session",
+      "--offline",
+      "-e",
+      "/eva/pi/eva-approval-extension.ts",
       "--no-extensions",
       "--no-tools",
       "--no-skills",
@@ -262,6 +268,15 @@ describe("PiEngine", () => {
     );
     expect(asked).toEqual([]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
+  });
+
+  test("Model calls share one prompt file per prompt text, so each call leaves no file behind", async () => {
+    const call = { mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [] } as const;
+    const first = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(engine(first).runTurn(request({ ...call, history: { kind: "new", engineSessionId: "call-1" } })));
+    const second = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(engine(second).runTurn(request({ ...call, history: { kind: "new", engineSessionId: "call-2" } })));
+    expect(readdirSync(join(folder, "pi", "prompts"))).toHaveLength(1);
   });
 
   test("A model call refuses every tool without a question", async () => {

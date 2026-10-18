@@ -121,9 +121,10 @@ function EvaApp(): ReactElement {
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
    * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
+   * A note goes too: a lost event can hide the turn start that clears it.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...state, steps: {} }));
+    setLive((state) => ({ ...state, steps: {}, notes: {} }));
     await refreshSessions();
     await refreshProblems();
     try {

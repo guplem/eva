@@ -47,6 +47,14 @@ describe("applyEvent", () => {
     expect(state.notes["s1"]).toEqual([notice]);
   });
 
+  test("the same notice of a follow-up turn shows once", () => {
+    const state = run([
+      { kind: "notice", text: "one" },
+      { kind: "notice", text: "one" },
+    ]);
+    expect(state.notes["s1"]).toEqual(["one"]);
+  });
+
   test("a notice outlives its turn, until the chat's next turn starts or the chat goes", () => {
     const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
     const ended = run([

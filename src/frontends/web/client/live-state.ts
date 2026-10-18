@@ -32,8 +32,12 @@ export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
 /** A notice is no step: the answer must stay the last message, and the whole answer must not hold it. */
 function applyToNotes(state: LiveState, event: SessionEvent): LiveState {
   const id = event.sessionId;
-  if (event.kind === "notice")
-    return { ...state, notes: { ...state.notes, [id]: [...(state.notes[id] ?? []), event.text] } };
+  if (event.kind === "notice") {
+    const current = state.notes[id] ?? [];
+    // A follow-up turn starts with no message_received, so it can send the same notice again.
+    if (current.includes(event.text)) return state;
+    return { ...state, notes: { ...state.notes, [id]: [...current, event.text] } };
+  }
   // A new turn brings its own notices.
   if ((event.kind === "message_received" || event.kind === "session_deleted") && id in state.notes) {
     const notes = { ...state.notes };

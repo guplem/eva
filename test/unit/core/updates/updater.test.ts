@@ -224,6 +224,7 @@ describe("Updater policy", () => {
   function policyHarness(
     policy: UpdatePolicy,
     newer = releases,
+    requiredVersion?: () => string | undefined,
   ): { updater: Updater; applied: (string | undefined)[] } {
     const applied: (string | undefined)[] = [];
     const updater = new Updater({
@@ -241,6 +242,7 @@ describe("Updater policy", () => {
       isIdle: () => true,
       restart: () => undefined,
       now: () => new Date("2026-10-17T10:00:00Z"),
+      ...(requiredVersion === undefined ? {} : { requiredVersion }),
     });
     return { updater, applied };
   }
@@ -276,6 +278,17 @@ describe("Updater policy", () => {
       heldBack: "2.0.0",
     });
     expect(run.applied).toEqual([]);
+  });
+
+  test("a vault that needs a newer Eva gets at least that version, whatever the policy says (#119)", async () => {
+    let required: string | undefined = "1.5.0";
+    const run = policyHarness("patch", releases, () => required);
+    expect(await run.updater.check()).toMatchObject({ target: "1.5.0", heldBack: "2.0.0" });
+    required = undefined;
+    expect(run.updater.status()).toMatchObject({ target: "1.4.3" });
+    required = "1.5.0";
+    await run.updater.updateNow();
+    expect(run.applied).toEqual(["1.5.0"]);
   });
 
   test("an update by hand installs the chosen version, past the policy", async () => {

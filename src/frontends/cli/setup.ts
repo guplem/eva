@@ -284,8 +284,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (voiceModel !== "") config = { ...config, voice: { ...config.voice, modelPath: voiceModel } };
 
   secrets.localApiToken ??= options.newToken();
-  saveSettings(paths, config);
+  // The secrets first: a vault that a newer Eva migrated can refuse the settings, and the tokens stay saved.
   saveSecrets(paths, secrets);
+  saveSettings(paths, config);
   if (engineFolders !== null) {
     const state = await loginState(engineFolders);
     const claudeTokenHint = options.interactive

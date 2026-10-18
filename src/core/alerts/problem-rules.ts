@@ -6,6 +6,7 @@ import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
 import type { AlertProblem } from "./alert-center.ts";
+import type { VaultAhead } from "../migrations/migrations.ts";
 
 /** A short network loss is normal for a laptop; only a long one needs the owner. */
 export const vaultOfflineAlertMs = 30 * 60_000;
@@ -90,6 +91,31 @@ export function scheduleCardProblem(name: string): AlertProblem {
 
 export const uncleanExitMessage =
   "Eva started after an unclean exit: a crash, a kill or a power loss. Send /logs to see the last errors.";
+
+/** The vault's record lists a migration that this Eva does not know: a newer Eva wrote it. */
+export function vaultAheadProblem(ahead: VaultAhead | null, machine: string, version: string): AlertProblem | null {
+  if (ahead === null) return null;
+  const problem = ahead.readable
+    ? `${machine} runs Eva ${version}, but the vault needs ${ahead.version === null ? "a newer Eva" : `Eva ${ahead.version}`}. Update Eva on ${machine}.`
+    : `Eva on ${machine} cannot read .eva/migrations.json in the vault. Ask the Assistant to repair it, or update Eva on ${machine}.`;
+  return {
+    level: "warn",
+    message: `${problem} Until then, Eva on ${machine} does not change the vault's settings, schedules or hub. Chats and the vault sync go on.`,
+    resolvedMessage: `${machine} runs an Eva that knows the vault's format again.`,
+  };
+}
+
+/** A migration at start failed, or its record is broken. Eva keeps the files and tries again at the next start. */
+export function migrationFailedMessage(store: "machine" | "vault", id: string | null, reason: string): string {
+  if (id === null)
+    return `Eva cannot read the record of the ${store} migrations. ${reason} Repair or delete the file: each migration is safe to run again.`;
+  return `The ${store} migration ${id} failed. ${reason} The files stay as they were. Eva tries again at the next start. Send /logs to see more.`;
+}
+
+/** The machine's record lists a migration that this Eva does not know, such as after a person installed an older Eva. */
+export function machineAheadMessage(version: string): string {
+  return `A newer Eva migrated the files of this computer, so Eva ${version} runs no migration on them. Install the newer Eva again.`;
+}
 
 /** The news of a release that the update policy holds back, or null when none waits. */
 export function heldBackNews(status: UpdateStatus): string | null {

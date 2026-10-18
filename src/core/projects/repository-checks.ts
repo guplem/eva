@@ -11,10 +11,25 @@ const quietPrograms = new Set([
   ...["echo", "printf", "cd", "mkdir", "cp", "mv", "rm", "cat", "ls"],
   ...["export", "git", "curl", "wget", "tee", "touch", "chmod"],
 ]);
+/** Package manager flags that take the next word, as in `pnpm --filter web test`. */
+const valueFlags = new Set(["--filter", "-F", "--prefix", "-C", "--dir", "--cwd", "--workspace", "-w", "workspace"]);
 /** Words that install a tool, as in `npm install -D eslint` or `pip install pytest`. */
 const installWords = new Set(["install", "add"]);
 /** Shell words before a command. `test` after one of them is the shell's condition command. */
 const shellKeywords = new Set(["if", "elif", "while", "until", "then", "do", "else", "!"]);
+/**
+ * Programs and words that run another program, or a subcommand that names the work: `xargs
+ * eslint`, `go test`, `python -m pytest`. The first word after them is the tool. Any other
+ * program is the tool itself, so `helm upgrade --namespace test` runs no tests.
+ */
+const runners = new Set([
+  ...shellKeywords,
+  ...["sudo", "env", "cross-env", "time", "timeout", "nice", "xargs", "xvfb-run", "exec", "run", "task"],
+  ...["npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "bun", "deno", "turbo", "nx", "run-many", "playwright"],
+  ...["uv", "uvx", "poetry", "pipenv", "pdm", "hatch", "python", "python3", "py", "manage.py"],
+  ...["go", "cargo", "dotnet", "mix", "mvn", "mvnw", "gradle", "gradlew", "make", "just", "swift", "flutter"],
+  ...["dart", "bundle", "rake", "rails", "composer", "php", "artisan"],
+]);
 const testTools = new Set([
   "test",
   "tests",
@@ -95,16 +110,14 @@ function scriptBody(scripts: Readonly<Record<string, string>>, name: string): st
 }
 
 /**
- * The checks of the first word that names a tool. A wrapper, such as `xargs`, `timeout 60` or
- * `go`, names no tool, so the scan passes it. The scan stops at the first tool, so in
- * `eslint src test` the folder `test` is not a test run.
+ * The checks of the tool: the first word after the runners, flags and numbers, as in `timeout 60
+ * pytest`. Its arguments never count, so in `eslint src test` the folder `test` is not a test run.
  */
 function firstToolChecks(tokens: readonly string[]): readonly CheckKind[] {
   for (const [index, token] of tokens.entries()) {
-    if (token.startsWith("-") || token.startsWith("$") || token.includes("=")) continue;
+    if (/^(?:-|\$)|=|^\d+$/.test(token)) continue;
     if ((token === "test" || token === "[") && (index === 0 || shellKeywords.has(tokens[index - 1] ?? ""))) return [];
-    const kinds = toolChecks(token, tokens.slice(index + 1));
-    if (kinds.length > 0) return kinds;
+    if (!runners.has(baseName(token))) return toolChecks(token, tokens.slice(index + 1));
   }
   return [];
 }
@@ -130,7 +143,9 @@ function simpleCommands(text: string): string[][] {
 /** The script that a package manager runs: `npm run lint`, `npm test`, `pnpm lint`. Null: no script call. */
 function scriptCall(tokens: readonly string[], scripts: Readonly<Record<string, string>>): string | null {
   const [manager = "", ...rest] = tokens;
-  const words = rest.filter((token) => !token.startsWith("-"));
+  const words = rest.filter(
+    (token, index) => !token.startsWith("-") && !valueFlags.has(rest[index - 1] ?? "") && token !== "workspace",
+  );
   const [first = ""] = words;
   if (first === "run" || first === "run-script") return words[1] ?? null;
   // `bun test` is Bun's own test runner, not the `test` script.

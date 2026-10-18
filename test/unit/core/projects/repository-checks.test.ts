@@ -34,7 +34,18 @@ describe("checksOf", () => {
     expect(kinds(["if [ -f a ]; then npm test; fi"])).toEqual(["test"]);
     expect(kinds(["timeout 60 pytest", "cross-env NODE_ENV=production jest"])).toEqual(["test"]);
     expect(kinds(["turbo run lint", "pnpm --filter web test"])).toEqual(["lint", "test"]);
-    expect(kinds(["bundle exec rake test", "./mvnw test"])).toEqual(["test"]);
+    expect(kinds(["bundle exec rake test", "./mvnw test", "yarn workspace web test"])).toEqual(["test"]);
+  });
+
+  test("an argument of another program is not a check", () => {
+    const deploys = [
+      "helm upgrade app . --namespace test",
+      "gh workflow run test.yml",
+      "grep -r lint .",
+      "tar czf lint.tgz out",
+    ];
+    expect(kinds(deploys)).toEqual([]);
+    expect(kinds(["bun run build"], { build: "vite build --mode test" })).toEqual([]);
   });
 
   test("an install, a message or a comment runs no check", () => {

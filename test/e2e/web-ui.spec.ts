@@ -433,6 +433,65 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await expect(page.getByRole("button", { name: "Open schedules" })).toBeVisible();
 });
 
+test("the model menu and the New chat button sit at the bottom of the chat list, apart", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  await newChat(page);
+  await newChat(page);
+  // A short window makes the chat list longer than the screen.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
+  await openList(page);
+  const sidebar = await page.getByRole("navigation", { name: "Chats" }).boundingBox();
+  const model = page.getByLabel("Model for a new chat");
+  const button = page.getByRole("button", { name: "New chat", exact: true });
+  await expect(model).toBeInViewport();
+  await expect(button).toBeInViewport();
+  const modelBox = await model.boundingBox();
+  const buttonBox = await button.boundingBox();
+  const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
+  if (sidebar === null || modelBox === null || buttonBox === null || firstChatBox === null) {
+    throw new Error("A sidebar part is not on the screen.");
+  }
+  expect(sidebar.y + sidebar.height - (buttonBox.y + buttonBox.height)).toBeLessThanOrEqual(24);
+  // The footer gap is 16 px. The margin of 1 px allows for a rounded layout.
+  expect(buttonBox.y - (modelBox.y + modelBox.height)).toBeGreaterThanOrEqual(15);
+  expect(firstChatBox.y).toBeLessThan(modelBox.y);
+  // A long list scrolls. It never squeezes a chat until its text is cut.
+  const cut = await page
+    .locator(".sidebar .list-item")
+    .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
+  expect(cut).toBe(0);
+});
+
+test("a new chat shows at the top of a scrolled chat list", async ({ page }) => {
+  await logIn(page);
+  for (let count = 0; count < 8; count++) await newChat(page);
+  // A short window makes the chat list longer than the screen.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
+  await openList(page);
+  await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
+  const chats = page.locator(".sidebar .list-item");
+  const before = await chats.count();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  // Every chat is called "New chat", so the heading shows before the new chat exists.
+  // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
+  await expect(chats).toHaveCount(before + 1);
+  await expect(chats.first()).toHaveAttribute("aria-current", "true");
+  await openList(page);
+  // The list clips its items, so the check compares with the list, not with the window.
+  // A short list can cut the bottom of the chat. Its top shows that the list is not scrolled away.
+  const shown = await page.locator(".sidebar-list").evaluate((list) => {
+    const item = list.querySelector('.list-item[aria-current="true"]');
+    if (item === null) return false;
+    const listBox = list.getBoundingClientRect();
+    const itemBox = item.getBoundingClientRect();
+    return itemBox.top >= listBox.top && itemBox.top < listBox.bottom;
+  });
+  expect(shown).toBe(true);
+});
+
 /** Starts a new Assistant chat and returns its session id. */
 async function newChat(page: Page): Promise<string> {
   await openList(page);

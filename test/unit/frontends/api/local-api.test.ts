@@ -389,6 +389,19 @@ describe("routes", () => {
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
   });
 
+  test("reads the filter words in the search text, and a status parameter wins", async () => {
+    const closed = await json<unknown[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}`),
+    );
+    expect(closed).toEqual([]);
+    const active = await json<{ id: string }[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}&status=active`),
+    );
+    expect(active.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+    const tagged = await json<unknown[]>(await call(`/api/projects?text=${encodeURIComponent("#web")}&tag=missing`));
+    expect(tagged).toEqual([]);
+  });
+
   test("an unknown session is a 404, and a bad body is a 400", async () => {
     expect((await call("/api/sessions/missing/messages", { method: "POST", body: { text: "x" } })).status).toBe(404);
     expect((await call("/api/sessions", { method: "POST", body: { mode: "dreaming" } })).status).toBe(400);
@@ -562,6 +575,69 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(204);
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(404);
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
+  });
+
+  test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
+    await call("/api/schedules", { method: "POST", body: entry });
+    await eva.schedules?.tick();
+    const cards = await json<{ scheduleId: string; fields: Record<string, string> }[]>(
+      await call("/api/schedule-cards"),
+    );
+    expect(cards.map((card) => card.scheduleId)).toEqual(["morning"]);
+    const fields = cards[0]?.fields ?? {};
+    const stale = await call("/api/schedule-cards/morning", {
+      method: "POST",
+      body: { fields: { ...fields, at: "06:00" } },
+    });
+    expect(stale.status).toBe(409);
+    expect((await call("/api/schedule-cards/morning", { method: "POST", body: { fields } })).status).toBe(204);
+    expect(await json(await call("/api/schedule-cards"))).toEqual([]);
+    expect((await call("/api/schedule-cards/morning", { method: "POST", body: {} })).status).toBe(400);
+  });
+
+  test("the WebSocket carries setup cards, and a card that only reached a socket still waits", async () => {
+    const events: { kind: string }[] = [];
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "07:30", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    await Bun.sleep(50);
+    expect(events).toEqual([]);
+    // Only a card that already waits goes out, so the second check pushes it.
+    await eva.schedules?.tick();
+    while (!events.some((event) => event.kind === "schedule_card")) await Bun.sleep(10);
+    socket.close();
+    expect(eva.schedules?.waitingCards()).toHaveLength(1);
+  });
+
+  test("the WebSocket holds back a changed card until it waits, so a tap never meets an older card", async () => {
+    const events: { kind: string; fields?: { at?: string } }[] = [];
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "07:30", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "08:00", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    while (events.length === 0) await Bun.sleep(10);
+    socket.close();
+    expect(events.map((event) => event.fields?.at)).toEqual(["08:00"]);
   });
 });
 

@@ -5,8 +5,9 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { Conversation, rootChats } from "./Conversation.tsx";
+import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
+import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 
 interface ProjectViewProps {
@@ -17,6 +18,13 @@ interface ProjectViewProps {
   readonly onNavigate: () => void;
 }
 
+/**
+ * The filter words that parseProjectQuery reads in the search text. A typed word wins over its
+ * select. Keep these patterns in step with the parser in `core/projects/project-catalog.ts`.
+ */
+const statusWordPattern = /(^|\s)status:(idea|active|paused|closed|any)(\s|$)/i;
+const tagWordPattern = /(^|\s)(tag:|#)\S/i;
+
 interface Selection {
   readonly project: Project;
   readonly clone: CloneDetails;
@@ -25,20 +33,30 @@ interface Selection {
 export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
+  const [tag, setTag] = useState("");
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [openProject, setOpenProject] = useState<string | null>(null);
   const [clones, setClones] = useState<CloneDetails[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [setupProject, setSetupProject] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
   const showError = useShowError();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      api.projects(search, status).then(setProjects, showError);
+      api
+        .projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag)
+        .then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, status, showError]);
+  }, [search, status, tag, showError]);
+
+  // The tags come from every project, so a tag of a closed project is offered too.
+  useEffect(() => {
+    api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
+  }, [showError]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);
@@ -49,10 +67,20 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
     }
   };
 
+  const selectClone = (next: Selection): void => {
+    setSelection(next);
+    setSelectedChatId(null);
+    setSetupProject(null);
+    onNavigate();
+  };
+
   const startChat = async (current: Selection): Promise<void> => {
     try {
-      await api.newProjectChat(current.project.id, current.clone.name, "default");
+      const chat = await api.newProjectChat(current.project.id, current.clone.name, "default");
       await onChanged();
+      setSelectedChatId(chat.id);
+      setSetupProject(null);
+      onNavigate();
     } catch (caught) {
       showError(caught);
     }
@@ -65,11 +93,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
       const details = await api.clones(project.id);
       setClones(details);
       const clone = details.find((candidate) => candidate.name === created.name);
-      if (clone !== undefined) {
-        setSelection({ project, clone });
-        setSetupProject(null);
-        onNavigate();
-      }
+      if (clone !== undefined) selectClone({ project, clone });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -77,7 +101,8 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
 
   const cloneChats =
     selection === null ? [] : rootChats(sessions.filter((session) => session.startFolder === selection.clone.path));
-  const chat = cloneChats[0];
+  // The newest chat opens first, as in Assistant mode.
+  const chat = cloneChats.find((candidate) => candidate.id === selectedChatId) ?? cloneChats[0];
 
   return (
     <div className="layout">
@@ -95,6 +120,16 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           <option value="paused">Paused</option>
           <option value="closed">Closed</option>
         </select>
+        {allTags.length > 0 && (
+          <select aria-label="Tag" value={tag} onChange={(event) => setTag(event.target.value)}>
+            <option value="">Any tag</option>
+            {allTags.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate}
+              </option>
+            ))}
+          </select>
+        )}
         {error !== null && (
           <span className="chip" role="alert">
             {error}
@@ -109,23 +144,53 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
               onClick={() => void openClones(project)}
             >
               {project.title}
+              {project.warnings.length > 0 && (
+                <span className="badge warning">
+                  {project.warnings.length} {project.warnings.length === 1 ? "warning" : "warnings"}
+                </span>
+              )}
               <div className="muted">{project.id}</div>
             </button>
             {openProject === project.id && (
               <div style={{ paddingLeft: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+                {/* The text shows in the list, not in a tooltip: a phone has no hover. */}
+                {project.warnings.length > 0 && (
+                  <ul className="warnings" aria-label={`Warnings of ${project.title}`}>
+                    {project.warnings.map((warning, index) => (
+                      <li key={`${String(index)}-${warning}`}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
                 {clones.map((clone) => (
-                  <button
-                    key={clone.name}
-                    className="list-item"
-                    aria-current={setupProject === null && selection?.clone.path === clone.path}
-                    onClick={() => {
-                      setSelection({ project, clone });
-                      setSetupProject(null);
-                      onNavigate();
-                    }}
-                  >
-                    {clone.name}
-                  </button>
+                  <div key={clone.name} style={{ display: "contents" }}>
+                    <button
+                      className="list-item"
+                      aria-current={setupProject === null && selection?.clone.path === clone.path}
+                      onClick={() => selectClone({ project, clone })}
+                    >
+                      {clone.name}
+                    </button>
+                    {selection?.clone.path === clone.path && (
+                      <div role="group" aria-label="Chats in this clone" className="clone-chats">
+                        {cloneChats.map((candidate) => (
+                          <button
+                            key={candidate.id}
+                            className="list-item"
+                            aria-current={candidate.id === chat?.id}
+                            onClick={() => {
+                              setSelectedChatId(candidate.id);
+                              setSetupProject(null);
+                              onNavigate();
+                            }}
+                          >
+                            {candidate.title}
+                            <div className="muted">{candidate.source}</div>
+                          </button>
+                        ))}
+                        <button onClick={() => void startChat(selection)}>New chat</button>
+                      </div>
+                    )}
+                  </div>
                 ))}
                 <button onClick={() => void newClone(project)}>New clone</button>
                 <button
@@ -169,6 +234,14 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           </>
         )}
       </main>
+      <TasksPanel tasks={tasksOf(live.tasks, chat === undefined ? [] : chatTreeIds(chat, sessions))} />
     </div>
+  );
+}
+
+/** Every tag of these projects once, in alphabetical order. The filter ignores case, so the list does too. */
+function tagsOf(projects: readonly Project[]): string[] {
+  return [...new Set(projects.flatMap((project) => project.frontMatter.tags.map((tag) => tag.toLowerCase())))].sort(
+    (first, second) => first.localeCompare(second),
   );
 }

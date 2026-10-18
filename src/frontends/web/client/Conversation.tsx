@@ -2,10 +2,11 @@
  * A conversation as a tree: the chat and each of its forks in a
  * column of its own, each with its own input, and retry and fork on every answer.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
+import { runningCount, TasksDialog, tasksOf } from "./TasksPanel.tsx";
 import { toWebHtml } from "./web-format.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
@@ -69,6 +70,11 @@ function Branch({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [showTasks, setShowTasks] = useState(false);
+  const closeTasks = useCallback(() => setShowTasks(false), []);
+  const tasks = tasksOf(live.tasks, [session.id]);
+  // The side panel hides on a phone, so a running task also shows here.
+  const running = runningCount(tasks);
   const showError = useShowError();
   const turnCount = session.turns.length;
 
@@ -120,7 +126,10 @@ function Branch({
             <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(turn.answerText) }} />
             {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
-              {turn.toolCount > 0 && <span className="chip">{turn.toolCount} tools</span>}
+              {activityOf(turn) !== "" && <span className="chip">{activityOf(turn)}</span>}
+              {turn.taskCount > 0 && (
+                <button onClick={() => setShowTasks(true)}>{counted(turn.taskCount, "background task")}</button>
+              )}
               <button onClick={() => runAction(() => api.retry(session.id, index))}>Retry</button>
               {turn.lastMessageId !== null && turn.failure === null && (
                 <button onClick={() => runAction(() => api.fork(session.id, turn.lastMessageId ?? ""))}>Fork</button>
@@ -135,6 +144,12 @@ function Branch({
           <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(streaming) }} />
         </div>
       )}
+      {running > 0 && (
+        <button className="running-tasks" onClick={() => setShowTasks(true)}>
+          {counted(running, "background task")} running
+        </button>
+      )}
+      {showTasks && <TasksDialog tasks={tasks} onClose={closeTasks} />}
       <div className="composer">
         <textarea
           aria-label="Message"
@@ -162,6 +177,24 @@ function Branch({
 
 function isTouchScreen(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
+}
+
+/** "3 commands, 1 tool": what a turn did, with each zero part left out. */
+function activityOf(turn: SessionRecord["turns"][number]): string {
+  const tools = turn.toolCount - turn.commandCount;
+  return [
+    ...(turn.commandCount > 0 ? [counted(turn.commandCount, "command")] : []),
+    ...(tools > 0 ? [counted(tools, "tool")] : []),
+  ].join(", ");
+}
+
+function counted(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** The ids of a chat and of each of its forks. */
+export function chatTreeIds(root: SessionRecord, sessions: readonly SessionRecord[]): string[] {
+  return [root, ...descendantsOf(root.id, sessions)].map((session) => session.id);
 }
 
 function descendantsOf(sessionId: string, sessions: readonly SessionRecord[]): SessionRecord[] {

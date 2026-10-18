@@ -28,7 +28,7 @@ export function SchedulesPanel(): ReactElement {
     try {
       await api.saveSchedule(entry);
       setForm(emptyForm);
-      setNotice("Saved. Eva posts its setup card within a minute.");
+      setNotice("Saved. Within a minute Eva shows its setup card. The schedule runs only after you see the card.");
       reload();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -53,7 +53,7 @@ export function SchedulesPanel(): ReactElement {
 
   return (
     <fieldset>
-      <legend>Schedules</legend>
+      <legend>Your schedules</legend>
       {list?.schedules.length === 0 && <div className="chip">No schedules yet.</div>}
       {list?.schedules.map(({ schedule, nextRun }) => (
         <div key={schedule.id} className="check-row">

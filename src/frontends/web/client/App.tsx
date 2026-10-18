@@ -1,10 +1,11 @@
-/** The web UI: a mode switch, the two views, settings, and approvals. */
+/** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import {
   api,
   ApiError,
   subscribeToEvents,
   type PendingApproval,
+  type ScheduleCard,
   type SessionEvent,
   type SessionRecord,
 } from "./api.ts";
@@ -13,11 +14,13 @@ import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
+import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
+import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 
-type Screen = "assistant" | "project" | "settings";
+type Screen = "assistant" | "project" | "settings" | "schedules";
 
-/** Problems come with the status, not over the socket, so the page asks for them again this often. */
+/** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
 
 export function App(): ReactElement {
@@ -37,11 +40,18 @@ function EvaApp(): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
+  const [cards, setCards] = useState<ScheduleCard[]>([]);
   const showError = useShowError();
 
+  // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       setProblems((await api.status()).problems);
+    } catch {
+      // The next poll or the next reconnect tries again.
+    }
+    try {
+      setCards(await api.scheduleCards());
     } catch {
       // The next poll or the next reconnect tries again.
     }
@@ -97,8 +107,16 @@ function EvaApp(): ReactElement {
       setIsConnected(connected);
       if (connected) void recover();
     };
-    return subscribeToEvents((event: SessionEvent) => {
-      if (event.kind === "text") {
+    return subscribeToEvents((event: SessionEvent | ScheduleCard) => {
+      if (event.kind === "schedule_card") {
+        // The core sends a waiting card again at each check. It replaces the old one in place, so
+        // the dialog never jumps to another card while the person reads.
+        setCards((current) =>
+          current.some((card) => card.scheduleId === event.scheduleId)
+            ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
+            : [...current, event],
+        );
+      } else if (event.kind === "text") {
         setLive((state) => ({
           ...state,
           streaming: {
@@ -152,15 +170,40 @@ function EvaApp(): ReactElement {
     }
   };
   const approval = approvals[0];
+  const hasSidebar = screen === "assistant" || screen === "project";
+
+  const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
+    try {
+      if (answer === "confirm") await api.confirmScheduleCard(card);
+      else if (window.confirm(`Remove the schedule ${card.name}?`)) await api.removeSchedule(card.scheduleId);
+      else return;
+      setCards((current) => current.filter((entry) => entry.scheduleId !== card.scheduleId));
+    } catch (caught) {
+      showError(caught);
+    }
+    // A card that changed meanwhile comes back with its new fields; the problem banner follows.
+    await refreshProblems();
+  };
+  const card = cards[0];
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="menu-button" aria-label="Show the list" onClick={() => setSidebarOpen((open) => !open)}>
+        {/* Hidden, not removed, so the mode switch does not move on a phone. */}
+        <button
+          className="menu-button"
+          aria-label="Show the list"
+          style={hasSidebar ? undefined : { visibility: "hidden" }}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
           ☰
         </button>
         <div className="mode-switch" role="group" aria-label="Mode">
-          <button aria-pressed={screen === "assistant"} onClick={() => setScreen("assistant")}>
+          {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}
+          <button
+            aria-pressed={screen === "assistant" || screen === "schedules"}
+            onClick={() => setScreen("assistant")}
+          >
             Assistant
           </button>
           <button aria-pressed={screen === "project"} onClick={() => setScreen("project")}>
@@ -194,6 +237,7 @@ function EvaApp(): ReactElement {
           sidebarOpen={sidebarOpen}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          onOpenSchedules={() => setScreen("schedules")}
         />
       )}
       {screen === "project" && (
@@ -206,6 +250,7 @@ function EvaApp(): ReactElement {
         />
       )}
       {screen === "settings" && <SettingsView onLoggedOut={() => setAuthenticated(false)} />}
+      {screen === "schedules" && <SchedulesView />}
       {approval !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="Approval">
@@ -219,6 +264,14 @@ function EvaApp(): ReactElement {
             </div>
           </div>
         </div>
+      )}
+      {/* An approval holds a running turn, so it comes first. */}
+      {approval === undefined && card !== undefined && (
+        <ScheduleCardDialog
+          card={card}
+          onConfirm={() => void answerCard(card, "confirm")}
+          onRemove={() => void answerCard(card, "remove")}
+        />
       )}
     </div>
   );

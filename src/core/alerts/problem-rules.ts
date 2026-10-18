@@ -79,5 +79,14 @@ export function scheduleFiringProblem(name: string, reason: string): AlertProble
   };
 }
 
+/** A new or changed schedule waits until a front end shows its setup card (lesson 66). */
+export function scheduleCardProblem(name: string): AlertProblem {
+  return {
+    level: "warn",
+    message: `The schedule ${name} waits: no front end showed its setup card, so it does not run. Open the web app and check the card, or pair Telegram.`,
+    resolvedMessage: `The schedule ${name} no longer waits for its setup card.`,
+  };
+}
+
 export const uncleanExitMessage =
   "Eva started after an unclean exit: a crash, a kill or a power loss. Send /logs to see the last errors.";

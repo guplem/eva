@@ -9,7 +9,7 @@ import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/
 import type { LogLevel } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
-import { FakeTailscale, needsLoginStatus } from "../../../support/fake-tailscale.ts";
+import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -627,7 +627,7 @@ describe("approvals and commands", () => {
     // The install takes a while: the bot waits apart, and a second tap starts no second wait.
     telegram.pressButton(owner, "t:install");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Installing Tailscale")));
-    while (installs === 0) await Bun.sleep(1);
+    await settle(bot, () => installs > 0);
     telegram.pressButton(owner, "t:install");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("on it already")));
     expect(waits).toContain(3_000);
@@ -646,6 +646,25 @@ describe("approvals and commands", () => {
     telegram.pressButton(owner + 1, "t:sign_in");
     await settle(bot, () => telegram.callsTo("answerCallbackQuery").length >= 4);
     expect(tailscale.commands.filter((verb) => verb === "up")).toHaveLength(upCalls);
+  });
+
+  test("an old install button on a ready machine shows the address and installs nothing", async () => {
+    const tailscale = new FakeTailscale();
+    tailscale.status = runningStatus(true);
+    let installs = 0;
+    const watcher = tailscale.watcher({
+      install: () => {
+        installs += 1;
+        return Promise.resolve();
+      },
+    });
+    await watcher.refresh();
+    createEva(undefined, systemProcessRunner, { remoteAccess: watcher });
+    const bot = createBot();
+    telegram.pressButton(owner, "t:install");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toStartWith("Open Eva: https://server.example-tailnet.ts.net");
+    expect(installs).toBe(0);
   });
 
   test("an install button does nothing when phone access is off", async () => {

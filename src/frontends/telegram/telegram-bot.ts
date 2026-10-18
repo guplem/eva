@@ -15,7 +15,7 @@ import {
   describeUpdate,
 } from "../cli/client.ts";
 import type { RemoteAccess } from "../../core/remote-access/remote-access.ts";
-import { actionLabel, describeAccess, setupSteps } from "../../core/remote-access/steps.ts";
+import { actionLabel, describeAccess, remoteAccessStep, setupSteps } from "../../core/remote-access/steps.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -722,20 +722,29 @@ export class TelegramBot {
   ): Promise<void> {
     const eva = this.options.eva;
     try {
-      // A second tap must not start a second wait, which would post a second answer.
-      if ((eva.status().remoteAccess?.busy ?? null) !== null) {
-        await this.send(chatId, topicId, "Eva is on it already. She answers here when it ends.");
-        return;
-      }
-      if (action === "sign_in") {
-        await this.send(chatId, topicId, "Asking Tailscale for a sign-in link…");
-        await this.sendAccess(chatId, topicId, await eva.signInToTailscale());
-        return;
-      }
-      if (eva.installTailscale() === null) {
+      const before = eva.status().remoteAccess;
+      if (before === null) {
         await this.send(chatId, topicId, "Phone access is off on this machine.");
         return;
       }
+      // A second tap must not start a second wait, which would post a second answer.
+      if ((before.busy ?? null) !== null) {
+        await this.send(chatId, topicId, "Eva is on it already. Send /link in a moment to see the result.");
+        return;
+      }
+      if (action === "sign_in") {
+        // The sign-in starts before the first message, so a second tap during the send finds it busy.
+        const signedIn = eva.signInToTailscale();
+        await this.send(chatId, topicId, "Asking Tailscale for a sign-in link…");
+        await this.sendAccess(chatId, topicId, await signedIn);
+        return;
+      }
+      // A tap on an old message: the install step may be over, or Eva may not install here.
+      if (before.canInstall !== true || remoteAccessStep(before) !== "install") {
+        await this.sendAccess(chatId, topicId, before);
+        return;
+      }
+      eva.installTailscale();
       await this.send(chatId, topicId, "Installing Tailscale… Eva answers here when it ends.");
       await this.sendAccess(chatId, topicId, await this.waitForInstall());
     } catch (error) {

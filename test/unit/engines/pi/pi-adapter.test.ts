@@ -8,7 +8,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
 import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
-import { mcpExtensionSource, mcpServersFileVariable } from "../../../../src/engines/pi/pi-mcp-extension.ts";
+import {
+  mcpExtensionSource,
+  mcpNoticePrefix,
+  mcpServersFileVariable,
+} from "../../../../src/engines/pi/pi-mcp-extension.ts";
 import type { ApprovalAnswer, ApprovalRequest, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { FakePi, loadPiFixture, type PiRecord } from "../../../support/fake-pi.ts";
@@ -372,9 +376,28 @@ describe("PiEngine", () => {
     );
     records.splice(1, 0, { type: "extension_ui_request", id: "n1", method: "notify", message: "hi" });
     const fake = new FakePi([{ records }]);
-    await drain(engine(fake).runTurn(request()));
+    const events = await drain(engine(fake).runTurn(request()));
     const answers = fake.runs[0]?.sent.filter((record) => record["type"] === "extension_ui_response");
     expect(answers).toEqual([{ type: "extension_ui_response", id: expect.any(String) as string, cancelled: true }]);
+    // Only the MCP bridge's own lines reach the person.
+    expect(events.map((event) => event.kind)).not.toContain("notice");
+  });
+
+  test("a problem line of the MCP bridge becomes a notice, and the turn goes on", async () => {
+    const records = loadPiFixture("plain");
+    const line = 'Eva could not start the MCP server "google": spawn uvx ENOENT';
+    records.splice(1, 0, {
+      type: "extension_ui_request",
+      id: "n1",
+      method: "notify",
+      message: `${mcpNoticePrefix}${line}`,
+      notifyType: "error",
+    });
+    const fake = new FakePi([{ records }]);
+    const events = await drain(engine(fake).runTurn(request()));
+    expect(events[0]).toEqual({ kind: "notice", text: line });
+    expect(events.at(-1)?.kind).toBe("turn_finished");
+    expect(fake.runs[0]?.sent.filter((record) => record["type"] === "extension_ui_response")).toEqual([]);
   });
 
   test("a broken approval message is read as an unknown local tool", async () => {

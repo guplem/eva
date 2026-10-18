@@ -752,6 +752,13 @@ export class TelegramBot {
           await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
         });
         return;
+      case "notice":
+        // Plain text: a reason from the system, such as a path, is no Markdown. Quiet, because
+        // only the block that ends the turn rings the phone (issue #40).
+        await this.inOrder(event.sessionId, async () => {
+          await this.sender.sendPlain(target.chatId, target.topicId, event.text, true);
+        });
+        return;
       case "session_renamed":
         await this.renameTopic(target.chatId, target.topicId, event.title, event.automatic === true);
         return;

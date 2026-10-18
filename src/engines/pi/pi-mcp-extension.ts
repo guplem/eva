@@ -12,3 +12,6 @@ export const mcpExtensionSource = bridgeSource as unknown as string;
  * imported both as code and as text only one of the two forms. A test keeps them equal.
  */
 export const mcpServersFileVariable = "EVA_MCP_SERVERS_FILE";
+
+/** The bridge's prefix of each problem line that it sends with `notify`. A test keeps the two equal. */
+export const mcpNoticePrefix = "eva-mcp-notice:";

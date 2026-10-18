@@ -45,6 +45,11 @@ describe("applyEvent", () => {
     expect(state.tasks["k1"]).toBeDefined();
   });
 
+  test("the end of a turn with no live steps leaves the state as it was", () => {
+    const state = run([{ kind: "text", text: "hi", messageId: "m1" }], "s2");
+    expect(applyEvent(state, event({ kind: "turn_failed", reason: "boom" }))).toBe(state);
+  });
+
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(applyEvent(state, event({ kind: "notice", text: "x" }))).toBe(state);

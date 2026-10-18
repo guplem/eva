@@ -94,7 +94,7 @@ describe("containsSecretPattern", () => {
     for (const token of [
       "GOCSPX-" + "a".repeat(28),
       "ya29." + "d".repeat(40),
-      "1//" + "e".repeat(40),
+      "1//0" + "e".repeat(40),
       "sk-proj-" + "b".repeat(40),
       "xoxb-" + "1".repeat(12),
       "npm_" + "c".repeat(36),
@@ -103,6 +103,8 @@ describe("containsSecretPattern", () => {
       expect(containsSecretPattern(`text ${token} more`)).toBe(true);
     }
     expect(new Redactor().redact(`key: ${keyHeader}\nMIIE`)).toBe("key: [redacted]");
+    // A path with a double slash in a note is no Google token.
+    expect(containsSecretPattern("see https://example.com/page/1//0" + "f".repeat(40))).toBe(false);
   });
 
   test("gives the same answer when asked twice", () => {

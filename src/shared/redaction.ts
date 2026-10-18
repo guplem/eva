@@ -14,7 +14,7 @@ const secretPatterns: readonly RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key id
   /\bGOCSPX-[A-Za-z0-9_-]{20,}/g, // Google OAuth client secret
   /\bya29\.[A-Za-z0-9_-]{30,}/g, // Google access token
-  /\b1\/\/[A-Za-z0-9_-]{30,}/g, // Google refresh token
+  /(?<![\w/])1\/\/0[A-Za-z0-9_-]{40,}/g, // Google refresh token, never inside a path
   /\bsk-(proj-)?[A-Za-z0-9_-]{32,}\b/g, // OpenAI key
   /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, // Slack token
   /\bnpm_[A-Za-z0-9]{30,}\b/g, // npm token

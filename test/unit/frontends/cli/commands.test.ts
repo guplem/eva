@@ -231,7 +231,8 @@ describe("with a running Eva", () => {
     expect(printed(answering)).toContain("Restarting Eva, so she uses the new answers.");
     // The same list as on the page, before the restart takes the page away.
     expect(printed(answering)).toContain("Setup progress:");
-    expect(printed(answering)).toContain("✗ Your devices: Open Eva's page on your phone.");
+    // Phone access is off in this test, so a device is optional.
+    expect(printed(answering)).toContain("○ Your devices: Open Eva's page on your phone.");
   });
 
   test("devices allow lets in the browser that shows the code, and never prints its token", async () => {

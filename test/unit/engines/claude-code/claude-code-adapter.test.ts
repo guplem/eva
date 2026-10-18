@@ -520,6 +520,49 @@ describe("the start of Eva's MCP servers", () => {
     expect(startedLater.map((event) => event.kind)).toEqual(["turn_finished"]);
   });
 
+  /**
+   * The SDK closes the CLI's stdin at the result of a one-message turn, so a status request after
+   * it never gets an answer. This fake answers only before the result.
+   */
+  function closingAtResult(answer: McpServerStatus[]): Promise<EngineEventPayload[]> {
+    let ended = false;
+    const answerLine = loadCapture("new-turn-with-tool").find(
+      (line): line is SDKMessage => line.type === "assistant" && line.parent_tool_use_id === null,
+    )!;
+    const messages = (async function* () {
+      await Promise.resolve();
+      yield initLine([{ name: "google", status: "pending" }]);
+      yield answerLine;
+      ended = true;
+      yield resultOf("new-turn-with-tool");
+    })();
+    return drain(
+      mapSdkMessages(messages, {
+        servers: ["google"],
+        status: () => (ended ? new Promise(() => undefined) : Promise.resolve(answer)),
+        waitMs: 50,
+      }),
+    );
+  }
+
+  test("a server still starting at init is asked about while the turn runs, before the SDK closes stdin", async () => {
+    const failed = await closingAtResult([{ name: "google", status: "failed", error: "uvx timed out" }]);
+    const started = await closingAtResult([{ name: "google", status: "connected" }]);
+    const starting = await closingAtResult([{ name: "google", status: "pending" }]);
+    const notices = (events: EngineEventPayload[]): EngineEventPayload[] =>
+      events.filter((event) => event.kind === "notice");
+    expect(notices(failed)).toEqual([
+      { kind: "notice", text: 'Eva could not start the MCP server "google": uvx timed out' },
+    ]);
+    expect(notices(started)).toEqual([]);
+    expect(notices(starting)).toEqual([
+      {
+        kind: "notice",
+        text: 'Eva could not start the MCP server "google": it was still starting when the model answered.',
+      },
+    ]);
+  });
+
   test("a query with no status request still gives the notice, with no reason", async () => {
     const engine = new ClaudeCodeEngine({
       executable: "/bin/claude",

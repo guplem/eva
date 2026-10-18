@@ -201,12 +201,16 @@ async function* mapEachTurn(
   let mcpChecked = false;
   // A server that `uvx` downloads on its first start can still connect at init, and fail later.
   let stillStarting: string[] = [];
+  // The SDK closes the CLI's stdin at the result of a one-message turn, and a request after that gets
+  // no answer. So the second check goes out at the first answer, and the result waits for it.
+  let laterStatus: Promise<McpServerStatus[]> | null = null;
   let lastMessageId: string | null = null;
   let contextTokens: number | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
+        if (mcp !== null && stillStarting.length > 0 && laterStatus === null) laterStatus = boundedStatus(mcp);
         if (message.parent_tool_use_id !== null) break;
         // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
         contextTokens = contextOf(message.message.usage) ?? contextTokens;
@@ -254,10 +258,16 @@ async function* mapEachTurn(
       }
       case "result": {
         if (mcp !== null && stillStarting.length > 0) {
-          const statuses = await boundedStatus(mcp);
-          const failed = statuses.filter((status) => stillStarting.includes(status.name) && isStartFailure(status));
+          const statuses = await (laterStatus ?? boundedStatus(mcp));
+          const late = statuses.filter((status) => stillStarting.includes(status.name));
           stillStarting = [];
-          yield* startNotices(failed, statuses);
+          yield* startNotices(late.filter(isStartFailure), statuses);
+          for (const server of late.filter((status) => status.status === "pending")) {
+            yield {
+              kind: "notice",
+              text: `Eva could not start the MCP server "${server.name}": it was still starting when the model answered.`,
+            };
+          }
         }
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.

@@ -39,6 +39,8 @@ export interface HomePaths {
   readonly cloneOrigins: string;
   readonly schedulesState: string;
   readonly telegramState: string;
+  /** The newest held-back release that Eva already announced. */
+  readonly updatesState: string;
   /** The code that pairs the first Telegram chat; present only while no chat is paired. */
   readonly telegramPairingCode: string;
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
@@ -62,6 +64,7 @@ export function homePaths(root: string): HomePaths {
     cloneOrigins: join(stateFolder, "clone-origins.json"),
     schedulesState: join(stateFolder, "schedules-state.json"),
     telegramState: join(stateFolder, "telegram.json"),
+    updatesState: join(stateFolder, "updates.json"),
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
@@ -168,8 +171,12 @@ const configSchema = z.object({
     })
     .default({ enabled: true, sweepSeconds: 60, pullIntervalMinutes: 5 }),
   updates: z
-    .object({ frequency: z.enum(["off", "hourly", "daily", "weekly"]).default("daily") })
-    .default({ frequency: "daily" }),
+    .object({
+      frequency: z.enum(["off", "hourly", "daily", "weekly"]).default("daily"),
+      /** The largest step that Eva installs by herself: a fix, a feature, or a breaking change. */
+      install: z.enum(["patch", "minor", "major"]).default("minor"),
+    })
+    .default({ frequency: "daily", install: "minor" }),
   engines: z
     .object({
       default: z.enum(["claude-code", "pi"]).default("claude-code"),

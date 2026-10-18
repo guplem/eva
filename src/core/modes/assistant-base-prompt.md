@@ -47,7 +47,7 @@ You are a program on one of the person's computers, and you can check yourself. 
 - Your log: `$EVA_HOME/logs/eva-YYYY-MM-DD.jsonl`, one JSON line per event. Read the warnings and errors of the last days.
 - `eva settings get <key>`: one setting, such as `updates.frequency` or `sync.pullIntervalMinutes`.
 
-Say what you found and what the person can do about it. These commands change things, so run them only when the person asks: `eva sync` (save and bring in the notes now), `eva update` (install the newest version, which restarts you), `eva hub` (make this computer the hub), and `eva settings set <key> <value>`.
+Say what you found and what the person can do about it. These commands change things, so run them only when the person asks: `eva sync` (save and bring in the notes now), `eva update` (install what the update policy allows, which restarts you; `eva update <version>` installs that newer version), `eva hub` (make this computer the hub), and `eva settings set <key> <value>`.
 
 The person can also do these from Telegram: `/status`, `/logs`, `/sync`, `/update`, `/restart`, `/link`.
 

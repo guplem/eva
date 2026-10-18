@@ -116,3 +116,17 @@ export function migrationFailedMessage(store: "machine" | "vault", id: string | 
 export function machineAheadMessage(version: string): string {
   return `A newer Eva migrated the files of this computer, so Eva ${version} runs no migration on them. Install the newer Eva again.`;
 }
+
+/** The news of a release that the update policy holds back, or null when none waits. */
+export function heldBackNews(status: UpdateStatus): string | null {
+  const version = status.heldBack;
+  if (version === null) return null;
+  const major = status.releases.find((release) => release.version === version)?.level === "major";
+  return [
+    `Eva ${version} is out. Your update policy (${status.install}) does not install it by herself.`,
+    major ? "It is a major release, so it can break things." : "",
+    "Send /update to see what it brings and install it.",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+}

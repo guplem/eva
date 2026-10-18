@@ -173,6 +173,17 @@ describe("a conversation", () => {
     expect(engine.requests.map((request) => request.prompt)).toEqual(["first", "second\n\nthird"]);
   });
 
+  test("a chat with a gathered message is active before its turn starts, so an update waits (lesson 92)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.isActive(sessionId)).toBe(false);
+    const turn = manager.send(sessionId, "hello");
+    expect(manager.isBusy(sessionId)).toBe(false);
+    expect(manager.isActive(sessionId)).toBe(true);
+    await turn;
+    expect(manager.isActive(sessionId)).toBe(false);
+  });
+
   test("an unknown session is an EvaError", () => {
     const manager = createManager(new FakeEngine());
     expect(() => manager.get("missing")).toThrow();

@@ -4,21 +4,34 @@
  */
 import { chmodSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, join } from "node:path";
 import { writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
-import { EvaError } from "../shared/errors.ts";
+import { EvaError, isEvaError } from "../shared/errors.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
-import { evaVersion } from "../shared/version.ts";
+import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
-import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
+import {
+  engineUpdateProblem,
+  scheduleFiringProblem,
+  uncleanExitMessage,
+  updateProblem,
+  vaultSyncProblem,
+} from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
+import {
+  engineFolders,
+  engineFolderVariables,
+  isExtraInstance,
+  type EvaConfig,
+  type EvaSecrets,
+  type HomePaths,
+} from "./settings/home.ts";
 import { applySettingsChange, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
@@ -27,6 +40,7 @@ import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
   createClone,
   describeClone,
+  githubSlug,
   listClones,
   TrustStore,
   type Clone,
@@ -38,9 +52,17 @@ import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
+import { ghApiGet, readRepositoryFacts, type GithubGet } from "./projects/repository-facts.ts";
+import {
+  evaluateSetup,
+  unreadableReport,
+  type RepositoryFacts,
+  type SetupReport,
+} from "./projects/repository-setup.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -76,6 +98,8 @@ export interface EvaOptions {
    * the same OS user, so its engines get their own config folders (lesson 111).
    */
   readonly defaultHome?: string;
+  /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
+  readonly githubGet?: GithubGet;
 }
 
 export interface ProjectWorkInput {
@@ -173,6 +197,8 @@ export class Eva {
   private lastPullAt: Date | null = null;
   private settings: EvaConfig;
   private readonly updater: Updater | null;
+  /** Null when no claude program was found. */
+  private readonly engineUpdater: EngineUpdater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
   private readonly roleListeners = new Set<(role: MachineRole) => void>();
@@ -200,11 +226,13 @@ export class Eva {
     const vaultPath = options.config.vaultPath;
     // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
     const githubToken = options.secrets.githubToken;
-    this.gitEnvironment = buildChildEnvironment(
-      options.processEnvironment,
-      baseEnvironmentAllowlist,
-      githubToken === undefined ? {} : { [githubTokenVariable]: githubToken },
-    );
+    this.gitEnvironment = buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist, {
+      // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
+      ...(isExtraInstance(options.paths, options.defaultHome)
+        ? { GH_CONFIG_DIR: engineFolders(options.paths).gh }
+        : {}),
+      ...(githubToken === undefined ? {} : { [githubTokenVariable]: githubToken }),
+    });
     this.vaultSync =
       vaultPath === null
         ? null
@@ -316,8 +344,23 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
-            isIdle: () => !this.sessions.list().some((session) => this.sessions.isBusy(session.id)),
+            // A waiting engine update runs first: the restart would lose it, as it lives in memory.
+            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    const claudeExecutable = options.claudeExecutable ?? null;
+    this.engineUpdater =
+      claudeExecutable === null
+        ? null
+        : new EngineUpdater({
+            executable: claudeExecutable,
+            runner: options.runner,
+            environment: this.engineToolEnvironment(),
+            // A restart would cut `claude update` off, so it waits for Eva's own download. Once the
+            // new version is in place, her restart waits for this update instead.
+            isIdle: () => !this.workRuns() && !this.downloadsOwnUpdate(),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -352,6 +395,10 @@ export class Eva {
       await this.pullIfDue();
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
+      // its download can take minutes, and the next ticks must still fetch the vault.
+      const engineUpdater = this.engineUpdater;
+      if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateProblem();
     } finally {
@@ -415,6 +462,26 @@ export class Eva {
     return status;
   }
 
+  engineUpdateStatus(): EngineUpdateStatus | null {
+    if (this.engineUpdater === null) return null;
+    const status = this.engineUpdater.status();
+    if (status.last === null) return status;
+    // The detail is the output of `claude update`, which a page shows.
+    const detail = status.last.detail === null ? null : this.redact(status.last.detail);
+    return { ...status, last: { ...status.last, detail } };
+  }
+
+  /**
+   * Starts `claude update` as soon as no chat runs a turn, and answers at once: the update can
+   * outlast an HTTP request. Null when no claude program was found.
+   */
+  updateEngine(): EngineUpdateStatus | null {
+    const updater = this.engineUpdater;
+    if (updater === null) return null;
+    this.runEngineUpdate(() => updater.updateNow());
+    return this.engineUpdateStatus();
+  }
+
   /**
    * Restarts Eva at once, through the same path as an update (exit code 4 under systemd, a new
    * copy elsewhere). A running turn stops; the front end asks the person to confirm first.
@@ -448,13 +515,26 @@ export class Eva {
     return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
-  /** Resolves when no chat runs a turn, including its save after the turn. */
+  /** Resolves when no work runs (see `workRuns`), or after the timeout. */
   async idle(timeoutMs = 60_000): Promise<void> {
     const started = Date.now();
-    while (this.sessions.list().some((session) => this.sessions.isBusy(session.id))) {
+    while (this.workRuns()) {
       if (Date.now() - started > timeoutMs) return;
       await Bun.sleep(20);
     }
+  }
+
+  /**
+   * True while a chat runs a turn or holds a gathered message, a schedule fires, or `claude
+   * update` runs. A firing schedule has a moment between its new chat and its first message
+   * (lesson 92). Eva's own update must not restart her during `claude update`.
+   */
+  private workRuns(): boolean {
+    return (
+      this.engineUpdater?.status().phase === "updating" ||
+      this.schedules?.isFiring() === true ||
+      this.sessions.list().some((session) => this.sessions.isActive(session.id))
+    );
   }
 
   stop(): void {
@@ -589,6 +669,46 @@ export class Eva {
     return session;
   }
 
+  /**
+   * The setup report of each repository of a project, judged against Eva's own repository.
+   * A repository that Eva cannot read gets a report with only the reason.
+   */
+  async repositorySetup(projectId: string): Promise<SetupReport[]> {
+    const project = this.projects().find((candidate) => candidate.id === projectId);
+    if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    if (project.frontMatter.repos.length === 0) return [];
+    const get = this.options.githubGet ?? ghApiGet(this.options.runner, this.gitEnvironment);
+    const read = async (slug: string): Promise<RepositoryFacts | string> => {
+      try {
+        return await readRepositoryFacts(slug, get);
+      } catch (error) {
+        if (isEvaError(error, "github_failed")) return error.message;
+        throw error;
+      }
+    };
+    let reference = await read(evaRepository);
+    // A gap in the reference would turn into false greens, such as "has every standard label".
+    if (
+      typeof reference !== "string" &&
+      (reference.files === null || reference.labels === null || !Array.isArray(reference.allowRules))
+    ) {
+      reference = `Eva could not read all of her reference repository, ${evaRepository}. Try again later.`;
+    }
+    const readReference = reference;
+    return Promise.all(
+      project.frontMatter.repos.map(async (url) => {
+        const slug = githubSlug(url);
+        if (slug === null) return unreadableReport(url, null, "Only a repository on GitHub has a setup report.");
+        if (typeof readReference === "string") return unreadableReport(url, slug, readReference);
+        const target = await read(slug);
+        if (typeof target === "string") return unreadableReport(url, slug, target);
+        if (target.isArchived)
+          return unreadableReport(url, slug, "This repository is archived, so it takes no changes.");
+        return evaluateSetup(readReference, target);
+      }),
+    );
+  }
+
   /** The clones of a project, with their branch and pull request. */
   async clones(projectId: string): Promise<CloneDetails[]> {
     const project = this.projects().find((candidate) => candidate.id === projectId);
@@ -630,6 +750,7 @@ export class Eva {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
       environment: this.gitEnvironment,
+      engineEnvironment: this.engineToolEnvironment(),
       claudeExecutable: this.options.claudeExecutable ?? null,
       telegramToken: this.options.secrets.telegramBotToken ?? null,
     });
@@ -744,6 +865,24 @@ export class Eva {
     });
   }
 
+  private downloadsOwnUpdate(): boolean {
+    return this.updater?.status().phase === "updating";
+  }
+
+  /**
+   * Runs one step of the engine update apart, then reports its result, so a failure reaches the
+   * phone also when the page has stopped asking.
+   */
+  private runEngineUpdate(step: () => Promise<unknown>): void {
+    const previous = this.engineUpdater?.status().last ?? null;
+    this.inBackground("The engine update", async () => {
+      await step();
+      // A step that ran nothing keeps the old result; reporting it again would repeat its alert.
+      const last = this.engineUpdater?.status().last ?? null;
+      if (last !== null && last !== previous) this.alerts.report("engine_update", engineUpdateProblem(last));
+    });
+  }
+
   private noticeUpdateProblem(): void {
     const status = this.updater?.status();
     if (status !== undefined) this.alerts.report("update", updateProblem(status));
@@ -794,11 +933,37 @@ export class Eva {
     return folder;
   }
 
+  /**
+   * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
+   * folder, so the run acts on the same install, and no token, which such a run never needs.
+   */
+  private engineToolEnvironment(): Record<string, string> {
+    const claudeFolder = this.claudeConfigFolder();
+    return buildChildEnvironment(
+      this.options.processEnvironment,
+      baseEnvironmentAllowlist,
+      claudeFolder === null ? {} : { CLAUDE_CONFIG_DIR: claudeFolder },
+    );
+  }
+
+  /** The instance's own Claude config folder, or null for the OS user's own one. */
+  private claudeConfigFolder(): string | null {
+    return this.isExtraInstance() || this.options.config.engines.claudeCode.ownConfigFolder
+      ? engineFolders(this.options.paths).claude
+      : null;
+  }
+
+  /** An instance whose home is not the platform default (lesson 111). */
+  private isExtraInstance(): boolean {
+    return isExtraInstance(this.options.paths, this.options.defaultHome);
+  }
+
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
-    const defaultHome = this.options.defaultHome;
-    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
-    const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
+    const extra: Record<string, string> = {
+      ...(this.isExtraInstance() ? engineFolderVariables(engineFolders(this.options.paths)) : {}),
+      EVA_HOME: this.options.paths.root,
+    };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
       // The agent finds `eva` first, so `eva work` reaches this instance.
@@ -807,11 +972,8 @@ export class Eva {
     }
     const token = this.options.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
-      extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
-    }
-    // pi's folder is left out on purpose: pi has no documented variable for it yet.
-    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
+    const claudeFolder = this.claudeConfigFolder();
+    if (claudeFolder !== null) extra["CLAUDE_CONFIG_DIR"] = claudeFolder;
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
 }

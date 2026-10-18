@@ -5,7 +5,10 @@ import { join } from "node:path";
 import {
   createHomeFolders,
   defaultConfig,
+  engineFolders,
+  engineFolderVariables,
   homePaths,
+  isExtraInstance,
   loadConfig,
   loadSecrets,
   resolveHomeFolder,
@@ -20,6 +23,38 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(home, { recursive: true, force: true });
+});
+
+describe("engine folders of an extra instance (lesson 111)", () => {
+  test("each engine has its own folder in the engines folder of the home", () => {
+    const folders = engineFolders(homePaths(join(home, "eva-partner")));
+    expect(folders).toEqual({
+      claude: join(home, "eva-partner", "engines", "claude"),
+      piAgent: join(home, "eva-partner", "engines", "pi-agent"),
+      gh: join(home, "eva-partner", "engines", "gh"),
+    });
+    expect(engineFolderVariables(folders)).toEqual({
+      CLAUDE_CONFIG_DIR: folders.claude,
+      PI_CODING_AGENT_DIR: folders.piAgent,
+      GH_CONFIG_DIR: folders.gh,
+    });
+  });
+
+  test("a home that is not the default one is an extra instance", () => {
+    expect(isExtraInstance(homePaths(join(home, "eva-partner")), join(home, "eva"), "linux")).toBe(true);
+  });
+
+  test("the default home is the first instance, even with a trailing separator", () => {
+    expect(isExtraInstance(homePaths(join(home, "eva")), join(home, "eva") + "/", "linux")).toBe(false);
+  });
+
+  test("on Windows, a home that differs only in letter case is the default home", () => {
+    expect(isExtraInstance(homePaths("D:\\Eva-Homes\\Eva"), "d:\\eva-homes\\EVA\\", "win32")).toBe(false);
+  });
+
+  test("without a known default home, the instance counts as the first one", () => {
+    expect(isExtraInstance(homePaths(join(home, "eva")), undefined, "linux")).toBe(false);
+  });
 });
 
 describe("resolveHomeFolder", () => {

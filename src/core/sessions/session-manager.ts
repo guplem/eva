@@ -185,6 +185,12 @@ export class SessionManager {
     return this.runtimes.get(sessionId)?.busy ?? false;
   }
 
+  /** Busy, or holding a gathered message whose turn has not started yet. */
+  isActive(sessionId: string): boolean {
+    const runtime = this.runtimes.get(sessionId);
+    return runtime !== undefined && (runtime.busy || runtime.pending !== null);
+  }
+
   /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;

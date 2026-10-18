@@ -6,7 +6,7 @@ import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
-import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -127,12 +127,37 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
   });
 
-  test("an extra instance on the same OS user gets its own Claude and gh config folders (lesson 111)", async () => {
+  test("an extra instance on the same OS user gets its own Claude, pi and gh config folders (lesson 111)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBe(join(home, "engines", "pi-agent"));
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+  });
+
+  test("Eva's own gh calls in an extra instance use its gh folder, not the first person's login", async () => {
+    const ghEnvironments: Record<string, string>[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command, options) => {
+          if (command[0] === "gh") ghEnvironments.push({ ...options.environment });
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      defaultHome: join(home, "..", "default-eva-home"),
+    });
+    await eva.runCheck("github");
+    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+    // Only gh needs its folder; git and the Google tools get no engine folder.
+    expect(ghEnvironments[0]?.["CLAUDE_CONFIG_DIR"]).toBeUndefined();
   });
 
   test("the instance in the default home uses the OS user's own engine config folders", async () => {
@@ -140,6 +165,7 @@ describe("Eva", () => {
     const instance = start(engine, {}, { defaultHome: join(home, ".") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBeUndefined();
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBeUndefined();
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBeUndefined();
   });
 
@@ -512,6 +538,215 @@ describe("Eva", () => {
     expect(checks).toBe(1);
   });
 
+  test("an update waits for a message that is still gathering, then installs (lesson 92)", async () => {
+    const restarts: string[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 50,
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    const session = eva.createAssistantSession({ source: "schedule", model: "default" });
+    const turn = eva.sessions.send(session.id, "Plan my day.");
+    expect((await eva.updateNow())?.phase).toBe("waiting_for_idle");
+    await turn;
+    await eva.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+  });
+
+  test("the engine update runs `claude update` with the engine's config folder and no token (lesson 96)", async () => {
+    const claudeRuns: { command: string; environment: Readonly<Record<string, string>> }[] = [];
+    let version = "2.1.0";
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        claudeRuns.push({ command: command.join(" "), environment: options.environment });
+        if (command[1] === "update") version = "2.2.0";
+        return Promise.resolve({ exitCode: 0, stdout: `${version} (Claude Code)\n`, stderr: "" });
+      },
+    };
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({
+        engines: {
+          ...defaultConfig.engines,
+          claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true },
+        },
+      }),
+      secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value-for-tests" },
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    expect(eva.engineUpdateStatus()).toEqual({ phase: "idle", last: null });
+    expect(eva.updateEngine()?.phase).toBe("updating");
+    const instance = eva;
+    await waitFor(() => instance.engineUpdateStatus()?.phase === "idle");
+    expect(instance.engineUpdateStatus()?.last).toMatchObject({ outcome: "updated", after: "2.2.0" });
+    expect(claudeRuns.map((run) => run.command)).toEqual([
+      "/opt/claude --version",
+      "/opt/claude update",
+      "/opt/claude --version",
+    ]);
+    for (const run of claudeRuns) {
+      expect(run.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+      expect(Object.values(run.environment)).not.toContain("github-token-value-for-tests");
+      expect(Object.values(run.environment)).not.toContain("oauth-token-value-for-tests");
+    }
+  });
+
+  test("the engine update waits for a running turn, and Eva's own update waits for the engine update", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const finishUpdateGate: { open: (() => void) | null } = { open: null };
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        if (command[1] === "update") await new Promise<void>((resolve) => (finishUpdateGate.open = resolve));
+        return { exitCode: 0, stdout: "2.1.0 (Claude Code)\n", stderr: "" };
+      },
+    };
+    const restarts: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [engine],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+      claudeExecutable: "/opt/claude",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    eva = instance;
+    const turn = instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
+    release();
+    await turn;
+    // The engine update runs apart, so the tick never waits for its download.
+    await instance.backgroundTick();
+    expect(instance.engineUpdateStatus()?.phase).toBe("updating");
+    expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+    await waitFor(() => finishUpdateGate.open !== null);
+    finishUpdateGate.open?.();
+    await waitFor(() => instance.engineUpdateStatus()?.phase === "idle");
+    expect(instance.engineUpdateStatus()?.last?.outcome).toBe("up_to_date");
+    await instance.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+  });
+
+  test("an engine update pressed during Eva's own install runs before her restart", async () => {
+    const finishInstallGate: { open: (() => void) | null } = { open: null };
+    const claudeRuns: string[] = [];
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] !== "/opt/claude") return systemProcessRunner.run(command, options);
+        claudeRuns.push(command.join(" "));
+        return Promise.resolve({ exitCode: 0, stdout: "2.1.0\n", stderr: "" });
+      },
+    };
+    const restarts: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+      claudeExecutable: "/opt/claude",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: async () => {
+          await new Promise<void>((resolve) => (finishInstallGate.open = resolve));
+          return { current: "0.1.0", latest: "0.2.0", available: false };
+        },
+      },
+      restartForUpdate: () => restarts.push("restart"),
+    });
+    eva = instance;
+    const installing = instance.updateNow();
+    await waitFor(() => finishInstallGate.open !== null);
+    expect(instance.updateEngine()?.phase).toBe("waiting_for_idle");
+    finishInstallGate.open?.();
+    await installing;
+    expect(claudeRuns).toEqual([]);
+    // The waiting engine update holds the restart, or the restart would lose it.
+    expect(restarts).toEqual([]);
+    await instance.backgroundTick();
+    await waitFor(() => instance.engineUpdateStatus()?.last !== null);
+    expect(claudeRuns).toEqual(["/opt/claude --version", "/opt/claude update", "/opt/claude --version"]);
+    await instance.backgroundTick();
+    expect(restarts).toEqual(["restart"]);
+  });
+
+  test("an update waits while a schedule fires, before its chat gets the prompt (lesson 92)", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(
+      new FakeEngine(),
+      {},
+      {
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        },
+      },
+    );
+    const releaseGate: { open: (() => void) | null } = { open: null };
+    // The first check sends the setup card; a slow card send keeps the check running.
+    const unsubscribe = instance.schedules?.subscribe(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseGate.open = resolve;
+        }),
+    );
+    const check = instance.schedules?.tick();
+    await waitFor(() => releaseGate.open !== null);
+    expect((await instance.updateNow())?.phase).toBe("waiting_for_idle");
+    unsubscribe?.();
+    releaseGate.open?.();
+    await check;
+  });
+
+  test("an Eva with no claude program has no engine update", () => {
+    const instance = start(new FakeEngine());
+    expect(instance.engineUpdateStatus()).toBeNull();
+    expect(instance.updateEngine()).toBeNull();
+  });
+
   test("voice notes stay off until a whisper model is configured", () => {
     expect(start(new FakeEngine()).transcribe).toBeNull();
     const voice = { ...defaultConfig.voice, modelPath: "/models/ggml-base.bin" };
@@ -613,6 +848,46 @@ describe("Eva alerts", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
     expect(instance.status().problems[0]).toStartWith("The update install failed");
+  });
+
+  test("a failed engine update reaches the phone as an alert, and a good one clears it", async () => {
+    let refuse = true;
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: { githubToken: "secret-value-for-tests" },
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) =>
+          Promise.resolve(
+            command[1] === "update" && refuse
+              ? { exitCode: 1, stdout: "", stderr: "Installed with npm. Token secret-value-for-tests.\n" }
+              : { exitCode: 0, stdout: "2.1.0\n", stderr: "" },
+          ),
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    eva = instance;
+    const alerts = collectAlerts(instance);
+    instance.updateEngine();
+    await waitFor(() => alerts.length >= 1);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["engine_update", "warn"]]);
+    expect(alerts[0]?.message).toStartWith("The Claude Code update failed: Installed with npm.");
+    expect(alerts[0]?.message).not.toContain("secret-value-for-tests");
+    expect(instance.engineUpdateStatus()?.last?.detail).not.toContain("secret-value-for-tests");
+    // A tick with no waiting update never reports the old failure again, not even a day later.
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    await instance.backgroundTick();
+    await Bun.sleep(20);
+    expect(alerts).toHaveLength(1);
+    refuse = false;
+    // The answer to a press still carries the old result while the new run starts.
+    expect(instance.updateEngine()?.last?.detail).not.toContain("secret-value-for-tests");
+    await waitFor(() => alerts.length >= 2);
+    expect(alerts[1]?.level).toBe("resolved");
   });
 
   test("a schedule that fails to fire raises an alert named after the schedule", async () => {

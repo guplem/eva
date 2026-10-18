@@ -85,6 +85,9 @@ Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 
    Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator** and run the command again.
 
+   If Eva crashes, she starts again within a minute. On the hub, she then tells you in Telegram. She does not start again after you stop her, or when her settings are wrong.
+   On Windows, if you installed the service before this behavior existed, run the command again once. The change takes effect at your next logon.
+
 5. Pair your Telegram chat, so that Eva answers only you. Run `bun run eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
 
 ## What setup asks
@@ -207,4 +210,18 @@ bun run eva --home ~/eva-partner setup
 bun run eva --home ~/eva-partner service install
 ```
 
-Setup picks a free port for her. Her Claude and GitHub logins stay in her home folder, so two people never share a login.
+Setup picks a free port for her. Her pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Her Claude token stays in her `secrets.json`.
+
+| Engine      | Folder             | Variable              | What it holds                 |
+| ----------- | ------------------ | --------------------- | ----------------------------- |
+| Claude Code | `engines/claude`   | `CLAUDE_CONFIG_DIR`   | Claude's settings and history |
+| pi          | `engines/pi-agent` | `PI_CODING_AGENT_DIR` | pi's login and settings       |
+| GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       | gh's login                    |
+
+Setup gives one login step for each login that is missing, with her folder in the command. Run each step in another terminal while setup goes on. On Windows, use PowerShell. At the end, setup shows which logins are in place. Run `bun run eva --home ~/eva-partner setup` again to check them later.
+
+The GitHub step uses `gh auth login --insecure-storage`. gh otherwise keeps its token in the system keyring under one name for all folders, and her login would replace yours. With the flag, gh keeps her token as plain text in her own folder. When gh asks to authenticate git, answer No: that changes the git settings that both Evas share.
+
+Her agent's own `git push` still uses the git login of your computer user, such as Git Credential Manager. To keep it apart, give her a separate computer user.
+
+The first Eva on a computer uses the computer user's own logins, the same as when the person runs Claude Code, pi or `gh` by hand.

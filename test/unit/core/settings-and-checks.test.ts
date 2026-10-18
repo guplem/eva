@@ -10,6 +10,9 @@ import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
+import { fakeGithub } from "../../support/fake-github.ts";
+import type { GithubGet } from "../../../src/core/projects/repository-facts.ts";
+import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -51,6 +54,107 @@ describe("clones of a project", () => {
     const clones = await eva.clones("2025-03-02-1015-example-app");
     expect(clones).toHaveLength(1);
     expect(clones[0]).toMatchObject({ name: "remote-0", branch: "main", pullRequest: null });
+  });
+});
+
+describe("repository setup", () => {
+  const referenceFiles = { "AGENTS.md": "rules", ".claude/settings.json": '{"permissions":{"allow":["Read"]}}' };
+
+  test("each repository of a project gets a report; one that is not on GitHub gets a reason", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-04-01-0900-other-app/AGENTS.md",
+      `---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app.git\n  - ${sandbox.remote}\n---\n`,
+    );
+    const asked: string[] = [];
+    const github = fakeGithub({
+      "guplem/eva": { files: referenceFiles, labels: ["bug"] },
+      "owner/other-app": { files: {}, labels: [] },
+    });
+    const withGithub = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubGet: (path, raw) => {
+        asked.push(path);
+        return github(path, raw);
+      },
+    });
+    const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
+    withGithub.stop();
+    expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
+    expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
+    expect(reports[1]?.problem).toBe("Only a repository on GitHub has a setup report.");
+    expect(asked).toContain("repos/guplem/eva");
+    expect(String(await withGithub.repositorySetup("missing").catch((error: unknown) => error))).toContain(
+      "No project",
+    );
+  });
+
+  test("a reference with an unreadable part, or an archived repository, gives a reason, never false lights", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-04-01-0900-other-app/AGENTS.md",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+    );
+    const reportFor = async (github: GithubGet): Promise<SetupReport | undefined> => {
+      const instance = new Eva({
+        paths: homePaths(home),
+        config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+        secrets: {},
+        engines: [new FakeEngine()],
+        runner: systemProcessRunner,
+        processEnvironment: gitEnvironment,
+        now: () => new Date(),
+        basePrompt: "Base.",
+        githubGet: github,
+      });
+      const reports = await instance.repositorySetup("2025-04-01-0900-other-app");
+      instance.stop();
+      return reports[0];
+    };
+    const target = { files: {}, labels: [] };
+    const complete = fakeGithub({
+      "guplem/eva": { files: referenceFiles, labels: ["bug"] },
+      "owner/other-app": target,
+    });
+    const noLabels: GithubGet = (path, raw) =>
+      path.startsWith("repos/guplem/eva/labels") ? Promise.resolve({ status: 500, body: "" }) : complete(path, raw);
+    expect((await reportFor(noLabels))?.problem).toContain("could not read all of her reference repository");
+
+    const archived = fakeGithub({
+      "guplem/eva": { files: referenceFiles, labels: ["bug"] },
+      "owner/other-app": { ...target, repository: { archived: true } },
+    });
+    expect((await reportFor(archived))?.problem).toBe("This repository is archived, so it takes no changes.");
+  });
+
+  test("when GitHub cannot be read, each report says why", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-04-01-0900-other-app/AGENTS.md",
+      "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
+    );
+    const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
+    const withoutGh = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: failing,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    const reports = await withoutGh.repositorySetup("2025-04-01-0900-other-app");
+    withoutGh.stop();
+    expect(reports[0]?.problem).toContain("gh auth login");
+    expect(reports[0]?.sections).toEqual([]);
   });
 });
 
@@ -96,6 +200,7 @@ describe("runCheck", () => {
         vaultPath: vault,
         runner: systemProcessRunner,
         environment: gitEnvironment,
+        engineEnvironment: {},
         claudeExecutable: null,
         telegramToken: null,
       }),
@@ -106,6 +211,7 @@ describe("runCheck", () => {
         vaultPath: null,
         runner: okRunner,
         environment: {},
+        engineEnvironment: {},
         claudeExecutable: null,
         telegramToken: null,
       }),
@@ -113,7 +219,13 @@ describe("runCheck", () => {
   });
 
   test("the engine and GitHub checks run their programs", async () => {
-    const inputs = { vaultPath: vault, environment: {}, claudeExecutable: "/bin/claude", telegramToken: null };
+    const inputs = {
+      vaultPath: vault,
+      environment: {},
+      engineEnvironment: {},
+      claudeExecutable: "/bin/claude",
+      telegramToken: null,
+    };
     expect(await runCheck("engine", { ...inputs, runner: okRunner })).toEqual({
       ok: true,
       detail: "2.1.286 (Claude Code)",
@@ -127,9 +239,34 @@ describe("runCheck", () => {
     });
   });
 
+  test("the engine check runs claude with the engine environment, never the git one (lesson 96)", async () => {
+    const seen: Readonly<Record<string, string>>[] = [];
+    const recordingRunner: ProcessRunner = {
+      run: (_command, options) => {
+        seen.push(options.environment);
+        return Promise.resolve({ exitCode: 0, stdout: "2.1.286 (Claude Code)\n", stderr: "" });
+      },
+    };
+    await runCheck("engine", {
+      vaultPath: vault,
+      runner: recordingRunner,
+      environment: { GITHUB_TOKEN: "github-token-value" },
+      engineEnvironment: { CLAUDE_CONFIG_DIR: "/engines/claude" },
+      claudeExecutable: "/bin/claude",
+      telegramToken: null,
+    });
+    expect(seen).toEqual([{ CLAUDE_CONFIG_DIR: "/engines/claude", GIT_TERMINAL_PROMPT: "0" }]);
+  });
+
   test("the Telegram check asks Telegram who the bot is, and never shows the token", async () => {
     const telegram = new FakeTelegram();
-    const inputs = { vaultPath: null, runner: okRunner, environment: {}, claudeExecutable: null };
+    const inputs = {
+      vaultPath: null,
+      runner: okRunner,
+      environment: {},
+      engineEnvironment: {},
+      claudeExecutable: null,
+    };
     try {
       const result = await runCheck("telegram", {
         ...inputs,

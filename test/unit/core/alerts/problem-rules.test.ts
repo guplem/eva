@@ -31,11 +31,14 @@ const idleUpdate: UpdateStatus = {
 };
 
 describe("vaultSyncProblem", () => {
-  test("a conflict is an error that names the files and says what to do", () => {
+  test("a conflict is an error that names the files and the fix from a phone", () => {
     const problem = vaultSyncProblem(syncState("conflict", "Conflict in Notes/a.md"), 0);
     expect(problem).toMatchObject({ level: "error" });
-    expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("Conflict in Notes/a.md");
-    expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("/sync");
+    const message = problem === "keep" ? "" : (problem?.message ?? "");
+    expect(message).toContain("Conflict in Notes/a.md");
+    expect(message).toContain("/conflicts");
+    expect(message).toContain("web page");
+    expect(message).not.toContain("git add");
   });
 
   test("a sync error is an error with git's reason", () => {

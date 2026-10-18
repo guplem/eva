@@ -81,6 +81,7 @@ Write to your bot as you write to a person. Eva answers in the same chat. Each n
 | `/restart`   | Restart Eva (she asks you to confirm first)   |
 | `/link`      | Show the address of Eva's web page            |
 | `/sync`      | Save the notebook now                         |
+| `/conflicts` | Pick a version of each note in a conflict     |
 | `/update`    | Check for updates, or pick a version of Eva   |
 | `/projects`  | Search your projects: `status:active`, `#tag` |
 | `/schedules` | List your reminders and repeated tasks        |

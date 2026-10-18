@@ -97,7 +97,7 @@ describe("describeEvent", () => {
       null,
       null,
       null,
-      "  (This chat was deleted in another front end.)\n",
+      "  (This chat was deleted elsewhere.)\n",
       null,
     ]);
   });

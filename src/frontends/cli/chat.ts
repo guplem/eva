@@ -124,7 +124,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
     case "session_deleted":
-      return "  (This chat was deleted in another front end.)\n";
+      return "  (This chat was deleted elsewhere.)\n";
     // The person typed the message in this terminal, and `eva work` prints the Project chat it started.
     case "message_received":
     case "project_work_started":

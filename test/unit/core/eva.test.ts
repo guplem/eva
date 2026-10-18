@@ -292,6 +292,36 @@ describe("Eva", () => {
     expect(String(missing)).toContain("No project missing");
   });
 
+  test("a project work whose asking chat was deleted keeps its result in the Project chat only", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    let finishWork: () => void = () => undefined;
+    const workMayEnd = new Promise<void>((resolve) => (finishWork = resolve));
+    const engine = new FakeEngine(async function* (request) {
+      if (request.mode === "project") await workMayEnd;
+      yield* FakeEngine.answer(request, "Fixed it.");
+    });
+    const lines: string[] = [];
+    const instance = start(engine, {}, { logger: { log: (level, message) => lines.push(`${level} ${message}`) } });
+    instance.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") instance.sessions.answerApproval(event.requestId, "deny");
+    });
+    const asking = instance.createAssistantSession({ source: "web", model: "default" });
+    const work = await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix it.",
+      reportToSessionId: asking.id,
+    });
+    instance.sessions.delete(asking.id);
+    finishWork();
+    await waitFor(() => lines.some((line) => line.includes("asking chat is gone")), 20_000);
+    expect(lines.filter((line) => line.startsWith("error"))).toEqual([]);
+    expect(instance.sessions.list().map((session) => session.id)).toEqual([work.id]);
+  });
+
   test("two project works at once get two different clones", async () => {
     sandbox.write(
       vault,

@@ -680,16 +680,25 @@ export class Eva {
         this.reservedClones.delete(clone.path);
       }
       if (input.reportToSessionId === null) return;
-      const last = this.sessions.get(session.id).turns.at(-1);
+      const reportTo = input.reportToSessionId;
+      // The person may delete either chat while the work runs: the Project chat then keeps the result.
+      const exists = (id: string): boolean => this.sessions.list().some((candidate) => candidate.id === id);
+      const last = exists(session.id) ? this.sessions.get(session.id).turns.at(-1) : undefined;
       const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
       const details = await describeClone(clone, this.options.runner, this.gitEnvironment);
+      if (!exists(reportTo)) {
+        this.options.logger?.log("info", "The project work ended, but its asking chat is gone.", {
+          projectChat: session.id,
+        });
+        return;
+      }
       const place = [
         `clone ${clone.name}`,
         ...(details.branch === null ? [] : [`branch ${details.branch}`]),
         ...(details.pullRequest === null ? [] : [`pull request #${String(details.pullRequest)}`]),
       ].join(", ");
       await this.sessions.send(
-        input.reportToSessionId,
+        reportTo,
         `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
       );
     });

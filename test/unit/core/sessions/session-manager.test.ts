@@ -387,6 +387,18 @@ describe("delete", () => {
     await turn;
   });
 
+  test("a delete removes the whole tree before any front end hears of it", () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    manager.fork(rootId, "message-1");
+    const seen: number[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "session_deleted") seen.push(manager.list().length);
+    });
+    manager.delete(rootId);
+    expect(seen).toEqual([0, 0]);
+  });
+
   test("a delete of an unknown chat is an EvaError", () => {
     const manager = createManager(new FakeEngine());
     expect(() => manager.delete("nothing")).toThrow("No session nothing.");

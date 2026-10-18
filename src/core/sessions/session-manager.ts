@@ -208,11 +208,12 @@ export class SessionManager {
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
     this.get(sessionId);
-    this.emit(sessionId, { kind: "message_received", text, origin });
     const runtime = this.runtimeOf(sessionId);
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
     batch.texts.push(text);
+    // After the queue, so the message counts as gathered for any front end that checks.
+    this.emit(sessionId, { kind: "message_received", text, origin });
     if (!runtime.busy && runtime.timer === null) {
       runtime.timer = setTimeout(() => {
         runtime.timer = null;
@@ -240,8 +241,9 @@ export class SessionManager {
       this.options.store.delete(id);
       this.runtimes.delete(id);
       this.lastFailure.delete(id);
-      this.emit(id, { kind: "session_deleted" });
     }
+    // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
+    for (const id of ids) this.emit(id, { kind: "session_deleted" });
     return ids;
   }
 

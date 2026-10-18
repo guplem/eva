@@ -17,6 +17,8 @@ export type EvaErrorCode =
   | "setting_forbidden"
   | "github_failed"
   | "tailscale_install_failed"
+  | "project_invalid"
+  | "project_changed"
   | "title_invalid";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */

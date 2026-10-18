@@ -38,6 +38,14 @@ sandbox.write(
   "Projects/2024-06-01-0900-broken-notes/AGENTS.md",
   "---\ncreated: 2024-06-01T09:00\nstatus: active\nrepos: nope\n---\n# Broken notes\n",
 );
+// The details test changes a project, so each browser run gets its own.
+for (const run of ["desktop", "phone"]) {
+  sandbox.write(
+    vault,
+    `Projects/2025-05-01-0800-${run}-draft/AGENTS.md`,
+    `---\ncreated: 2025-05-01T08:00\nstatus: idea # idea, active, paused or closed\n---\n# Draft ${run}\n\nFirst thoughts.\n`,
+  );
+}
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");

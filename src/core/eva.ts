@@ -332,6 +332,7 @@ export class Eva {
             channel,
             frequency: () => this.settings.config.updates.frequency,
             policy: () => this.settings.config.updates.install,
+            requiredVersion: () => this.vaultNeeds(),
             // A waiting engine update runs first: the restart would lose it, as it lives in memory.
             isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
@@ -739,6 +740,14 @@ export class Eva {
     }
     // noticeVaultAhead raises the alert of a vault that is ahead, and keeps it open until this Eva updates.
     if (store === "machine") this.alerts.notify("machine_ahead", "warn", machineAheadMessage(evaVersion));
+  }
+
+  /** The version that a vault from a newer Eva needs, "newest" when its record does not say, or undefined. */
+  private vaultNeeds(): string | undefined {
+    const vaultPath = this.options.config.vaultPath;
+    const ahead = vaultPath === null ? null : vaultAhead(vaultPath);
+    if (ahead === null) return undefined;
+    return ahead.version ?? "newest";
   }
 
   private noticeVaultAhead(): void {

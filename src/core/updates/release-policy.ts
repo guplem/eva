@@ -48,16 +48,38 @@ export function releaseLevel(from: string, to: string): ReleaseLevel {
   return toMinor === fromMinor ? "patch" : "minor";
 }
 
-export function pickUpdate(current: string, releases: readonly ReleaseInfo[], policy: UpdatePolicy): UpdatePick {
+/**
+ * The release to install. `required` is the version that a vault from a newer Eva needs, or
+ * "newest" when its record does not say: Eva installs at least that, whatever the policy says,
+ * because she writes no vault file until she knows the vault's format (#119).
+ */
+export function pickUpdate(
+  current: string,
+  releases: readonly ReleaseInfo[],
+  policy: UpdatePolicy,
+  required?: string,
+): UpdatePick {
   const sorted = releases
     .filter((release) => isNewerVersion(release.version, current))
     .map((release) => ({ ...release, level: releaseLevel(current, release.version) }))
     .sort((left, right) => (isNewerVersion(left.version, right.version) ? -1 : 1));
   // Sorted newest first, so the releases up to one are that one and all after it.
   const newer = sorted.map((release, index) => ({ ...release, summary: releaseSummary(sorted.slice(index)) }));
-  const install = newer.find((release) => levelRank[release.level] <= levelRank[policy])?.version ?? null;
+  const allowed = newer.find((release) => levelRank[release.level] <= levelRank[policy])?.version ?? null;
   const newest = newer[0]?.version ?? null;
+  const install = required === undefined ? allowed : atLeast(newer, allowed, required);
   return { newer, install, heldBack: newest === install ? null : newest };
+}
+
+/** The oldest release at the required version or later, unless the policy already picks a newer one. */
+function atLeast(newer: readonly NewerRelease[], allowed: string | null, required: string): string | null {
+  const oldestFirst = [...newer].reverse();
+  const fits =
+    required === "newest"
+      ? newer[0]
+      : (oldestFirst.find((release) => !isNewerVersion(required, release.version)) ?? newer[0]);
+  if (fits === undefined) return allowed;
+  return allowed !== null && !isNewerVersion(fits.version, allowed) ? allowed : fits.version;
 }
 
 const otherTitle = releaseNoteSections.at(-1)?.title ?? "";

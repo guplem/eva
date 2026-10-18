@@ -1215,6 +1215,31 @@ describe("migrations (#119)", () => {
   }
   const futureRecord = JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] });
 
+  test("a vault that needs a newer Eva makes the update install at least that version, past the policy", async () => {
+    sandbox.write(
+      vault,
+      ".eva/migrations.json",
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "0.3.0" }] }),
+    );
+    const releases = [
+      { version: "1.0.0", notes: "" },
+      { version: "0.3.0", notes: "" },
+      { version: "0.2.1", notes: "" },
+    ];
+    const instance = start(
+      new FakeEngine(),
+      { updates: { ...defaultConfig.updates, install: "patch" } },
+      {
+        updateChannel: {
+          kind: "executable",
+          check: () => Promise.resolve({ current: "0.2.0", latest: "1.0.0", available: true, releases }),
+          apply: () => Promise.resolve({ current: "0.2.0", latest: "0.3.0", available: false, releases: [] }),
+        },
+      },
+    );
+    expect(await instance.checkForUpdate()).toMatchObject({ target: "0.3.0", heldBack: "1.0.0" });
+  });
+
   test("a failed migration at start sends an alert with its id and the error", () => {
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
     const alerts = collectAlerts(instance);

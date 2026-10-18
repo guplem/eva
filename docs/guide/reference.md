@@ -64,7 +64,7 @@ Each version has three numbers, `MAJOR.MINOR.PATCH`. A fix raises the last numbe
 | `minor` (default) | Fixes and new features. She holds back a major version.    |
 | `major`           | Every release. A major version can break things that work. |
 
-The policy lives in the notebook, so every computer follows the same one. When the policy holds back a newer version, Eva sends one Telegram message for it, and the status names it.
+The policy lives in the notebook, so every computer follows the same one. When the policy holds back a newer version, Eva sends one Telegram message for it, and the status names it. When the notebook needs a newer Eva than this computer runs, Eva installs at least that version, whatever the policy says.
 
 - **Installed as one executable** (a GitHub release): Eva takes the newest signed release that the policy allows.
 - **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. The policy does not apply. She never touches a copy with your own changes, your own commits, or another branch.

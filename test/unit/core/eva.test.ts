@@ -1406,7 +1406,7 @@ describe("machine reports (#126)", () => {
     const alerts = collectAlerts(instance);
     await instance.syncVault();
     expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine:laptop:vault_ahead", "warn"]]);
-    expect(alerts[0]?.message.startsWith("Update Eva on laptop. ")).toBe(true);
+    expect(alerts[0]?.message.startsWith("On laptop: Update Eva on laptop. ")).toBe(true);
     expect(alerts[0]?.message).toContain(".eva/machines/laptop.json");
     expect(instance.status().problems).toHaveLength(1);
     // The hub's own report never carries the problems that it relays.
@@ -1418,6 +1418,30 @@ describe("machine reports (#126)", () => {
       ["machine:laptop:vault_ahead", "resolved"],
     ]);
     expect(alerts[1]?.message).toBe("On laptop: Fixed.");
+  });
+
+  test("a deleted report, such as from a computer that is gone, resolves its alerts", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    rmSync(join(vault, ".eva", "machines", "laptop.json"));
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("a satellite drops the schedule problems of its time as hub, because no firing clears them now", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportProblem("schedule:daily", {
+      level: "error",
+      message: "The schedule failed.",
+      resolvedMessage: "Ok.",
+    });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({ problems: [] });
+    expect(instance.status().problems).toEqual([]);
   });
 
   test("a broken report keeps its alerts until it reads again", async () => {

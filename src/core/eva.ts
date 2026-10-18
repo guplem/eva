@@ -219,7 +219,14 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
-        this.exchangeMachineReports();
+        // A full disk or a reserved file name must not stop the sync step.
+        try {
+          this.exchangeMachineReports();
+        } catch (error) {
+          options.logger?.log("warn", "The machine report failed.", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
       },
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -798,6 +805,16 @@ export class Eva {
   private exchangeMachineReports(): void {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
+    // The role reads hub.json now, because this hook runs before the tick notices a role change.
+    const isHub = this.role() === "hub";
+    if (!isHub) {
+      // The new hub sends these problems, so a "resolved" line from here would be false.
+      for (const keys of this.relayed.values()) for (const key of keys) this.alerts.dismiss(key);
+      this.relayed = new Map();
+      // A satellite fires no schedule, so nothing would clear the firing problems of its time as hub.
+      for (const alert of this.alerts.openAlerts())
+        if (alert.key.startsWith("schedule:")) this.alerts.dismiss(alert.key);
+    }
     const problems = this.alerts
       .openAlerts()
       // A sync problem would travel through the sync that it breaks, so it arrives only after it clears.
@@ -806,13 +823,7 @@ export class Eva {
     if (written === "no_vault") return;
     this.noticeReportName(written === "name_taken");
 
-    // The role reads hub.json now, because this hook runs before the tick notices a role change.
-    if (this.role() !== "hub") {
-      // The new hub sends these problems, so a "resolved" line from here would be false.
-      for (const keys of this.relayed.values()) for (const key of keys) this.alerts.dismiss(key);
-      this.relayed = new Map();
-      return;
-    }
+    if (!isHub) return;
     const relayed = new Map<string, ReadonlySet<string>>();
     for (const { file, report } of readMachineReports(vaultPath)) {
       if (report === null) {

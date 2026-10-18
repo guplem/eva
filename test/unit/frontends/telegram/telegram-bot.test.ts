@@ -990,6 +990,32 @@ describe("usage limits (issue #67)", () => {
     );
   });
 
+  test("a warning in a chat outside Telegram leaves the warning free for the phone", async () => {
+    createEva(engineWith(() => warning));
+    const bot = createBot();
+    const web = eva.createAssistantSession({ source: "web", model: "default" });
+    await eva.sessions.send(web.id, "from the web");
+    telegram.sendText(owner, "first");
+    await settle(bot, () =>
+      telegram.sentTexts().includes("You used 86% of your 5-hour usage limit. It resets at 12:00."),
+    );
+  });
+
+  test("two windows in one turn give two lines", async () => {
+    createEva(async function* (request) {
+      await Promise.resolve();
+      const [text, end] = FakeEngine.answer(request, "ok");
+      yield text!;
+      yield warning;
+      yield { ...warning, window: "seven_day" };
+      yield end!;
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "first");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("weekly usage limit")));
+    expect(telegram.sentTexts()).toContain("You used 86% of your 5-hour usage limit. It resets at 12:00.");
+  });
+
   test("a warning shows once for each 10% step, and a refusal always shows before the failure", async () => {
     createEva(
       engineWith((prompt) =>

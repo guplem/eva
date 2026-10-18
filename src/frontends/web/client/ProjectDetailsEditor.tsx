@@ -14,8 +14,10 @@ const statusChoices = [
   { value: "closed", label: "Closed" },
 ] as const;
 
+const emptyDetails: ProjectDetails = { title: "", status: null, tags: [], repos: [] };
+
 type Loading = { readonly state: "loading" } | { readonly state: "failed"; readonly reason: string };
-type Note = { readonly kind: "saved" | "failed" | "changed"; readonly text: string } | null;
+type Problem = { readonly kind: "failed" | "changed"; readonly text: string } | null;
 
 interface ProjectDetailsEditorProps {
   readonly projectId: string;
@@ -25,26 +27,32 @@ interface ProjectDetailsEditorProps {
 
 export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEditorProps): ReactElement {
   const [file, setFile] = useState<ProjectFile | Loading>({ state: "loading" });
-  const [details, setDetails] = useState<ProjectDetails>({ title: "", status: null, tags: [], repos: [] });
+  const [details, setDetails] = useState<ProjectDetails>(emptyDetails);
   const [tagDraft, setTagDraft] = useState("");
   const [repoDraft, setRepoDraft] = useState("");
   const [text, setText] = useState("");
-  const [note, setNote] = useState<Note>(null);
+  const [saved, setSaved] = useState("");
+  const [problem, setProblem] = useState<Problem>(null);
+  const [busy, setBusy] = useState(false);
 
   const show = useCallback((next: ProjectFile): void => {
     setFile(next);
     setText(next.text);
     setTagDraft("");
     setRepoDraft("");
-    if (next.details !== null) setDetails(next.details);
+    setDetails(next.details ?? emptyDetails);
   }, []);
 
   const load = useCallback(async (): Promise<void> => {
-    setNote(null);
+    setProblem(null);
+    setSaved("");
     try {
       show(await api.projectFile(projectId));
     } catch (caught) {
-      setFile({ state: "failed", reason: caught instanceof Error ? caught.message : String(caught) });
+      const reason = caught instanceof Error ? caught.message : String(caught);
+      // A failed reload keeps the page and its edits; only a failed first load has nothing to show.
+      setFile((current) => ("version" in current ? current : { state: "failed", reason }));
+      setProblem({ kind: "failed", text: `Eva could not read the project: ${reason}` });
     }
   }, [projectId, show]);
 
@@ -52,22 +60,44 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
     void load();
   }, [load]);
 
+  if (!("version" in file)) {
+    return (
+      <div className="settings">
+        <div className="muted" role="status">
+          {file.state === "loading" ? "Reading the project…" : `Eva could not read the project: ${file.reason}`}
+        </div>
+        {file.state === "failed" && (
+          <div>
+            <button onClick={() => void load()}>Try again</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const formChanged =
+    file.details !== null && (!sameDetails(details, file.details) || tagDraft.trim() !== "" || repoDraft.trim() !== "");
+  const textChanged = text !== file.text;
+
   const save = async (write: (version: string) => Promise<ProjectFile>): Promise<void> => {
-    if (!("version" in file)) return;
-    setNote(null);
+    setProblem(null);
+    setSaved("");
+    setBusy(true);
     try {
       show(await write(file.version));
-      setNote({ kind: "saved", text: "Saved." });
+      setSaved("Saved.");
       onSaved();
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
-        setNote({
+      if (caught instanceof ApiError && caught.code === "project_changed") {
+        setProblem({
           kind: "changed",
           text: "The file changed since you opened it. Load it again, then redo your change.",
         });
       } else {
-        setNote({ kind: "failed", text: caught instanceof Error ? caught.message : String(caught) });
+        setProblem({ kind: "failed", text: caught instanceof Error ? caught.message : String(caught) });
       }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -81,26 +111,28 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
       }),
     );
 
-  if (!("version" in file)) {
-    return (
-      <div className="settings">
-        <div className="muted" role="status">
-          {file.state === "loading" ? "Reading the project…" : `Eva could not read the project: ${file.reason}`}
-        </div>
-      </div>
-    );
-  }
+  /** Each edit makes an old "Saved." untrue. */
+  const edit = (change: () => void): void => {
+    setSaved("");
+    change();
+  };
 
   return (
     <>
       <div className="main-header">
         <h1>{titleOf(file, projectId)} · Details</h1>
+        <button onClick={() => void load()} disabled={busy}>
+          Load again
+        </button>
       </div>
       <div className="settings">
-        {note !== null && (
-          <div className="settings-notice" role={note.kind === "saved" ? "status" : "alert"}>
-            <span style={{ flex: 1 }}>{note.text}</span>
-            {note.kind === "changed" && <button onClick={() => void load()}>Load again</button>}
+        {/* Always present, so a screen reader announces the new text. */}
+        <div role="status" className="muted">
+          {saved}
+        </div>
+        {problem !== null && (
+          <div className="settings-notice" role="alert">
+            <span style={{ flex: 1 }}>{problem.text}</span>
           </div>
         )}
         {file.details === null ? (
@@ -116,16 +148,14 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
               <input
                 value={details.title}
                 placeholder={projectId}
-                onChange={(event) => setDetails({ ...details, title: event.target.value })}
+                onChange={(event) => edit(() => setDetails({ ...details, title: event.target.value }))}
               />
             </label>
             <label>
               Project status
               <select
                 value={details.status ?? ""}
-                onChange={(event) =>
-                  setDetails({ ...details, status: event.target.value === "" ? null : statusOf(event.target.value) })
-                }
+                onChange={(event) => edit(() => setDetails({ ...details, status: statusOf(event.target.value) }))}
               >
                 {statusChoices.map((choice) => (
                   <option key={choice.value} value={choice.value}>
@@ -139,20 +169,22 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
               heading="Tags"
               values={details.tags}
               draft={tagDraft}
-              onDraft={setTagDraft}
-              onChange={(tags) => setDetails({ ...details, tags })}
+              onDraft={(draft) => edit(() => setTagDraft(draft))}
+              onChange={(tags) => edit(() => setDetails({ ...details, tags }))}
             />
             <ListField
               name="repository"
               heading="Repositories"
               values={details.repos}
               draft={repoDraft}
-              onDraft={setRepoDraft}
-              onChange={(repos) => setDetails({ ...details, repos })}
+              onDraft={(draft) => edit(() => setRepoDraft(draft))}
+              onChange={(repos) => edit(() => setDetails({ ...details, repos }))}
             />
             <div className="muted">Removing a repository keeps its clones.</div>
+            {/* A save loads the new file into both parts, so the other part's edits would be lost. */}
+            {textChanged && <div className="muted">Save or load again the whole file first.</div>}
             <div>
-              <button className="primary" onClick={() => void saveDetails()}>
+              <button className="primary" disabled={busy || textChanged} onClick={() => void saveDetails()}>
                 Save details
               </button>
             </div>
@@ -167,11 +199,15 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
               value={text}
               rows={16}
               spellCheck={false}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => edit(() => setText(event.target.value))}
             />
           </label>
+          {formChanged && <div className="muted">Save or load again the details first.</div>}
           <div>
-            <button onClick={() => void save((version) => api.saveProjectFile(projectId, version, text))}>
+            <button
+              disabled={busy || formChanged}
+              onClick={() => void save((version) => api.saveProjectFile(projectId, version, text))}
+            >
               Save the file
             </button>
           </div>
@@ -220,7 +256,8 @@ function ListField({ name, heading, values, draft, onDraft, onChange }: ListFiel
           value={draft}
           onChange={(event) => onDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") add();
+            // Enter also ends a word on an Android or CJK keyboard; that Enter is not an Add.
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) add();
           }}
         />
         <button aria-label={`Add the ${name}`} onClick={add}>
@@ -238,6 +275,17 @@ function splitWords(text: string): string[] {
 
 function statusOf(value: string): ProjectDetails["status"] {
   return value === "idea" || value === "active" || value === "paused" || value === "closed" ? value : null;
+}
+
+function sameDetails(first: ProjectDetails, second: ProjectDetails): boolean {
+  const sameList = (one: readonly string[], two: readonly string[]): boolean =>
+    one.length === two.length && one.every((value, index) => value === two[index]);
+  return (
+    first.title === second.title &&
+    first.status === second.status &&
+    sameList(first.tags, second.tags) &&
+    sameList(first.repos, second.repos)
+  );
 }
 
 function titleOf(file: ProjectFile, projectId: string): string {

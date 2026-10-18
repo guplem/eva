@@ -833,6 +833,20 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
   await expect(file).toHaveValue(/# Renamed/);
 
+  if (run === "phone") {
+    const heights = await page
+      .locator("main button:visible, main select:visible, main input:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
+
+  // The whole file waits while the form has a change, so a save cannot drop that change.
+  await page.getByLabel("Title").fill(`Renamed ${run} again`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeDisabled();
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeEnabled();
+
   await page.getByRole("button", { name: "Remove the tag ideas" }).click();
   await page.getByRole("button", { name: "Save details" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved.");

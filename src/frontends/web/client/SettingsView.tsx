@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
 import {
   api,
+  ApiError,
   type EngineUpdateStatus,
   type EvaStatus,
   type PublicSettings,
@@ -63,6 +64,8 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [timeZone, setTimeZone] = useState("");
   const [sweepSeconds, setSweepSeconds] = useState("");
   const [projectRoots, setProjectRoots] = useState("");
+  /** Null until loaded, and when no vault holds the rules. */
+  const [chatNameRules, setChatNameRules] = useState<string | null>(null);
   const [piModel, setPiModel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
@@ -110,6 +113,15 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       .catch(showProblem);
     api.updateStatus().then(setUpdate).catch(showProblem);
     api.setupState().then(setSetup).catch(showProblem);
+    api
+      .chatNameRules()
+      .then((loaded) => {
+        setChatNameRules(loaded.rules);
+      })
+      .catch((error: unknown) => {
+        // Without a vault, the page shows no field for the rules.
+        if (!(error instanceof ApiError && error.status === 409)) showProblem(error);
+      });
     api.engineUpdateStatus().then(setEngineUpdate, () => {
       setEngineReadFailures((count) => count + 1);
     });
@@ -292,6 +304,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       return;
     }
     try {
+      if (chatNameRules !== null) setChatNameRules((await api.saveChatNameRules(chatNameRules)).rules);
       const result = await api.saveSettings({
         timeZone: timeZone.trim() === "" ? null : timeZone.trim(),
         sync: { sweepSeconds: seconds },
@@ -571,6 +584,23 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
           </label>
         </fieldset>
+        {chatNameRules !== null && (
+          <fieldset>
+            <legend>Chat names</legend>
+            <label>
+              Rules for chat names
+              <textarea
+                value={chatNameRules}
+                placeholder={"Lead every name with an emoji.\nName an issue chat “Implementing #N”."}
+                onChange={(event) => setChatNameRules(event.target.value)}
+              />
+            </label>
+            <div className="hint">
+              After the first answer in a chat, a small model call names the chat by these rules. Leave the rules empty
+              to name each chat by its first line. The rules live in your vault, in .eva/chat-names.md.
+            </div>
+          </fieldset>
+        )}
         {notice !== null && (
           // Sticky, so a phone shows the result of a control near the top of the page.
           <div className="settings-notice" role="status">

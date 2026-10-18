@@ -144,6 +144,9 @@ export const api = {
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
   setupState: (): Promise<SetupState> => request("GET", "/api/settings/setup"),
+  /** Answers 409 when no vault is configured. */
+  chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
+  saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),
   /** The value goes one way: the answer never holds it. */
   saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>
     request("PUT", `/api/secrets/${name}`, { value }),

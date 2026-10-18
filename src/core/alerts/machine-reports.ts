@@ -26,22 +26,34 @@ export function machineReportFile(machine: string): string {
   return [...reportsFolder, `${safeFileName(machine)}.json`].join("/");
 }
 
+export type ReportWrite = "written" | "unchanged" | "no_vault" | "name_taken";
+
 /**
- * Writes the report only when its content changes. The file has no time stamp, because the
- * sync commits every change, and a report runs after each sync step. Returns true when it wrote.
+ * Writes the report only when its content changes. The file has no time stamp. The sync commits
+ * every change, and a report runs after each sync step.
  */
-export function writeMachineReport(vaultPath: string, report: MachineReport): boolean {
-  // A vault folder that is not cloned yet must stay empty, or the clone fails.
-  if (!existsSync(vaultPath)) return false;
+export function writeMachineReport(vaultPath: string, report: MachineReport): ReportWrite {
+  // A vault folder that waits for its clone must stay empty, or the clone fails.
+  if (!existsSync(join(vaultPath, ".git"))) return "no_vault";
   const path = machineReportPath(vaultPath, report.machine);
+  const current = readTextTolerant(path);
   const content = JSON.stringify(report, null, 2) + "\n";
-  if (readTextTolerant(path) === content) return false;
+  if (current === content) return "unchanged";
+  // Two machines that share a file would rewrite it at each sync, and make a commit each time.
+  const owner = current === null ? null : readOwner(current);
+  if (owner !== null && owner !== report.machine) return "name_taken";
   writeFileAtomic(path, content);
-  return true;
+  return "written";
 }
 
-/** The reports in the vault. A broken file, or a file under another machine's name, is skipped. */
-export function readMachineReports(vaultPath: string): MachineReport[] {
+export interface ReadReport {
+  readonly file: string;
+  /** Null when the file is broken, such as in the middle of a sync conflict. */
+  readonly report: MachineReport | null;
+}
+
+/** The reports in the vault, by file. A file under another machine's name is skipped. */
+export function readMachineReports(vaultPath: string): ReadReport[] {
   const folder = join(vaultPath, ...reportsFolder);
   let names: string[];
   try {
@@ -49,18 +61,26 @@ export function readMachineReports(vaultPath: string): MachineReport[] {
   } catch {
     return [];
   }
-  const reports: MachineReport[] = [];
-  for (const name of names.sort()) {
-    const read = readJsonTolerant(join(folder, name));
+  const reports: ReadReport[] = [];
+  for (const file of names.sort()) {
+    const read = readJsonTolerant(join(folder, file));
     const report = read.ok ? parseReport(read.value) : null;
-    // Two names can share one safe file name; only the owner of the name counts.
-    if (report !== null && `${safeFileName(report.machine)}.json` === name) reports.push(report);
+    if (report === null || `${safeFileName(report.machine)}.json` === file) reports.push({ file, report });
   }
   return reports;
 }
 
+/** Lower case, because Windows sees "Laptop" and "laptop" as one file. */
 function safeFileName(machine: string): string {
-  return machine.replace(/[^A-Za-z0-9._-]/g, "-");
+  return machine.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+}
+
+function readOwner(content: string): string | null {
+  try {
+    return parseReport(JSON.parse(content) as unknown)?.machine ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function parseReport(value: unknown): MachineReport | null {

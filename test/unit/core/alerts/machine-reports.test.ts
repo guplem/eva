@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +13,7 @@ let vault: string;
 
 beforeEach(() => {
   vault = mkdtempSync(join(tmpdir(), "eva-reports-"));
+  mkdirSync(join(vault, ".git"));
 });
 afterEach(() => {
   rmSync(vault, { recursive: true, force: true });
@@ -26,32 +27,35 @@ const report: MachineReport = {
 
 describe("the machine reports", () => {
   test("a report round-trips through the vault", () => {
-    expect(writeMachineReport(vault, report)).toBe(true);
-    expect(readMachineReports(vault)).toEqual([report]);
+    expect(writeMachineReport(vault, report)).toBe("written");
+    expect(readMachineReports(vault)).toEqual([{ file: "laptop.json", report }]);
   });
 
   test("an unchanged report is not written again, so it makes no commit", () => {
     writeMachineReport(vault, report);
     const before = statSync(machineReportPath(vault, "laptop")).mtimeMs;
-    expect(writeMachineReport(vault, { ...report, problems: [...report.problems] })).toBe(false);
+    expect(writeMachineReport(vault, { ...report, problems: [...report.problems] })).toBe("unchanged");
     expect(statSync(machineReportPath(vault, "laptop")).mtimeMs).toBe(before);
-    expect(writeMachineReport(vault, { ...report, problems: [] })).toBe(true);
-    expect(readMachineReports(vault)[0]?.problems).toEqual([]);
+    expect(writeMachineReport(vault, { ...report, problems: [] })).toBe("written");
+    expect(readMachineReports(vault)[0]?.report?.problems).toEqual([]);
   });
 
-  test("a vault folder that is not cloned yet gets no report", () => {
+  test("a vault folder that waits for its clone gets no report, so the clone still works", () => {
+    rmSync(join(vault, ".git"), { recursive: true });
+    expect(writeMachineReport(vault, report)).toBe("no_vault");
+    expect(readdirSync(vault)).toEqual([]);
     rmSync(vault, { recursive: true, force: true });
-    expect(writeMachineReport(vault, report)).toBe(false);
+    expect(writeMachineReport(vault, report)).toBe("no_vault");
     expect(readMachineReports(vault)).toEqual([]);
   });
 
   test("the file name keeps only safe characters", () => {
     expect(machineReportPath(vault, "my laptop/../x")).toBe(join(vault, ".eva", "machines", "my-laptop-..-x.json"));
     writeMachineReport(vault, { ...report, machine: "my laptop/../x" });
-    expect(readMachineReports(vault).map((read) => read.machine)).toEqual(["my laptop/../x"]);
+    expect(readMachineReports(vault).map((read) => read.report?.machine)).toEqual(["my laptop/../x"]);
   });
 
-  test("a broken file, a broken problem, or a file under another machine's name is skipped", () => {
+  test("a broken file reads as null, and a file under another machine's name or a broken problem is skipped", () => {
     const folder = join(vault, ".eva", "machines");
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, "broken.json"), "{ not json");
@@ -60,15 +64,27 @@ describe("the machine reports", () => {
     writeFileSync(join(folder, "notes.txt"), "not a report");
     writeFileSync(
       join(folder, "pc.json"),
-      JSON.stringify({ machine: "pc", problems: [{ key: "x" }, { key: "y", level: "error", message: "Broken." }] }),
+      JSON.stringify({ machine: "PC", problems: [{ key: "x" }, { key: "y", level: "error", message: "Broken." }] }),
     );
     expect(readMachineReports(vault)).toEqual([
+      { file: "broken.json", report: null },
+      { file: "nameless.json", report: null },
       {
-        machine: "pc",
-        version: "",
-        problems: [{ key: "y", level: "error", message: "Broken.", resolvedMessage: "" }],
+        file: "pc.json",
+        report: {
+          machine: "PC",
+          version: "",
+          problems: [{ key: "y", level: "error", message: "Broken.", resolvedMessage: "" }],
+        },
       },
     ]);
+  });
+
+  test("a machine never takes over the file of another machine whose name shares it", () => {
+    writeMachineReport(vault, report);
+    expect(writeMachineReport(vault, { ...report, machine: "Laptop", problems: [] })).toBe("name_taken");
+    expect(readMachineReports(vault)).toEqual([{ file: "laptop.json", report }]);
+    expect(writeMachineReport(vault, { ...report, problems: [] })).toBe("written");
   });
 
   test("the file ends with a new line, as the other vault files do", () => {

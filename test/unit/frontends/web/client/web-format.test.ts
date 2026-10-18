@@ -134,4 +134,20 @@ describe("toWebHtml", () => {
     );
     expect(toWebHtml("- a\n\t- b")).toBe("<ul><li>a<ul><li>b</li></ul></li></ul>");
   });
+
+  test("a paragraph indented deeper than the item's text still makes its own paragraph", () => {
+    expect(toWebHtml("1. Step one\n\n    More detail.\n2. Step two")).toBe(
+      "<ol><li><p>Step one</p><p>More detail.</p></li><li><p>Step two</p></li></ol>",
+    );
+  });
+
+  test("triple backticks with code on one line are inline code, not a fence", () => {
+    expect(toWebHtml("```npm install``` first\nmore text")).toBe("<p><code>npm install</code> first<br>more text</p>");
+  });
+
+  test("a fence that opens on a list item keeps the tabs in its code", () => {
+    expect(toWebHtml("- ```make\n  all:\n  \tbun test\n  ```")).toBe(
+      '<ul><li><pre><code class="language-make">all:\n\tbun test</code></pre></li></ul>',
+    );
+  });
 });

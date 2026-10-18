@@ -7,7 +7,8 @@
  */
 import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
 
-const fencePattern = /^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)/;
+/** As in CommonMark, a backtick fence has no backtick after it, so "```npm i```" on one line is inline code. */
+const fencePattern = /^(\s*)(`{3,}(?!.*`)|~{3,})\s*([\w+#.-]*)/;
 const bareFencePattern = /^\s*(`{3,}|~{3,})\s*$/;
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
@@ -36,7 +37,8 @@ function expandIndentTabs(lines: readonly string[]): string[] {
   let openFence: string | null = null;
   return lines.map((line) => {
     const inCode = openFence !== null;
-    openFence = fenceAfter(line, openFence);
+    // A fence can open on a list item's own line.
+    openFence = fenceAfter(inCode ? line : (itemOf(line)?.text ?? line), openFence);
     if (inCode) return line;
     return line.replace(/^[ \t]+/, (indent) => indent.replaceAll("\t", "    "));
   });
@@ -148,9 +150,9 @@ function list(lines: readonly string[], start: number, first: ListItem): { html:
         const following = nextFilled(lines, index);
         const next = lines[following] ?? "";
         if (following < lines.length && indentOf(next) > first.indent) {
-          // Only a blank line between the item's own blocks spaces the list out; one inside code
-          // or inside a nested list belongs to that block.
-          if (openFence === null && itemOf(next) === null && indentOf(next) <= item.contentIndent) loose = true;
+          // A blank line before more text spaces the list out; one inside code or before a nested
+          // item belongs to that block.
+          if (openFence === null && itemOf(next) === null) loose = true;
           body.push("");
           index += 1;
           continue;

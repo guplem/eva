@@ -109,13 +109,11 @@ function run(
   inputs: EngineInstallInputs,
   timeoutMs: number,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  // npm and pi are .cmd files on Windows, and a spawn cannot start a .cmd file by itself.
-  const program = command[0] ?? "";
-  const wrapped =
-    inputs.platform === "win32" && (program === "npm" || program === "pi" || program.toLowerCase().endsWith(".cmd"))
-      ? ["cmd", "/d", "/c", ...command]
-      : command;
-  return inputs.runner.run(wrapped, { cwd: inputs.homeFolder, environment: inputs.environment, timeoutMs });
+  return inputs.runner.run(runnableCommand(command, inputs.platform), {
+    cwd: inputs.homeFolder,
+    environment: inputs.environment,
+    timeoutMs,
+  });
 }
 
 function messageOf(error: unknown): string {
@@ -132,4 +130,11 @@ function lastLine(result: { stdout: string; stderr: string }): string {
 
 function failure(message: string): EvaError {
   return new EvaError("engine_install_failed", message);
+}
+
+/** The command as a spawn can start it: npm and pi are .cmd files on Windows, which only cmd runs. */
+export function runnableCommand(command: readonly string[], platform: NodeJS.Platform): readonly string[] {
+  const program = command[0] ?? "";
+  const isCmd = program === "npm" || program === "pi" || program.toLowerCase().endsWith(".cmd");
+  return platform === "win32" && isCmd ? ["cmd", "/d", "/c", ...command] : command;
 }

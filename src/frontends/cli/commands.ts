@@ -127,6 +127,7 @@ function doctor(host: CliHost, paths: HomePaths): Promise<boolean> {
     standalone: host.standalone,
     platform: host.platform,
     userName: host.userName,
+    userHome: host.userHome,
     defaultEngine: config.engines.default,
     google: () => googleState(paths, config.google),
   });

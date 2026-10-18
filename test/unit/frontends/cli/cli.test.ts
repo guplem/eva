@@ -149,6 +149,7 @@ describe("runDoctor", () => {
     standalone: false,
     platform: "win32",
     userName: "person",
+    userHome: "/home/person",
     defaultEngine: "claude-code",
     google: () => Promise.resolve(null),
   } as const satisfies Partial<DoctorOptions>;
@@ -231,21 +232,22 @@ describe("runDoctor", () => {
     expect(asked).toContain("git");
   });
 
+  /** On Windows, cmd runs pi, so the program is the fourth word. */
   function finding(programs: readonly string[]): ProcessRunner {
     return {
       run: (command) =>
-        programs.includes(command[0] ?? "")
+        programs.includes((command[0] === "cmd" ? command[3] : command[0]) ?? "")
           ? Promise.resolve({ exitCode: 0, stdout: "v1\n", stderr: "" })
           : Promise.reject(new Error("not found")),
     };
   }
 
-  test("the default engine's program is required, and the Linux hint gives the install command", async () => {
+  test("the default engine's program is required, and setup installs it", async () => {
     const lines: string[] = [];
     const runner = finding(["git", "bun"]);
     const write = (line: string): number => lines.push(line);
     expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(false);
-    expect(lines.join("\n")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    expect(lines.join("\n")).toContain("missing claude (for the Claude Code engine): run `eva setup`");
     // Eva installs Tailscale herself, with no root.
     expect(lines.join("\n")).toContain(
       "missing tailscale (for opening Eva on your phone and other computers): run `eva setup`",
@@ -256,6 +258,14 @@ describe("runDoctor", () => {
     expect(await runDoctor({ ...doctorBasics, runner: withPi, environment: {}, write, defaultEngine: "pi" })).toBe(
       true,
     );
+  });
+
+  test("finds an engine in its installer's folder when the PATH lacks it", async () => {
+    const lines: string[] = [];
+    const runner = finding(["git", "bun", "/home/person/.local/bin/claude"]);
+    const write = (line: string): number => lines.push(line);
+    expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(true);
+    expect(lines.join("\n")).toContain("ok      claude: v1");
   });
 
   test("on Linux, it reports whether the user's services run while the user is logged out", async () => {

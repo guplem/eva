@@ -474,6 +474,31 @@ describe("Scheduler", () => {
       expect(cardReports.at(-1)?.waiting).toBe(false);
     });
 
+    test("a schedule removed while its card goes out stays removed, so a new push gets a new card", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      let release = (): void => undefined;
+      const unsubscribe = scheduler.subscribe(
+        () =>
+          new Promise<boolean>((resolve) => {
+            release = () => resolve(true);
+          }),
+      );
+      const slowTick = scheduler.tick();
+      await Bun.sleep(0);
+      scheduler.remove("morning");
+      release();
+      await slowTick;
+      unsubscribe();
+      expect(scheduler.waitingCards()).toEqual([]);
+      events = [];
+      writeSchedules([morning]);
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
+      expect(chats).toEqual([]);
+    });
+
     test("a second confirm of a card already seen succeeds and changes nothing", async () => {
       writeSchedules([morning]);
       const scheduler = createScheduler();

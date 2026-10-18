@@ -142,7 +142,7 @@ export class Scheduler {
     if (schedule === undefined || changedFields(announcedFields(schedule), fields).length > 0) return false;
     const now = wallClockOf(this.options.now(), this.options.timeZone);
     // Another front end showed this card first: the tap only agrees, and must not skip a due slot again.
-    if (this.isAnnounced(schedule, now)) return true;
+    if (this.isAnnounced(schedule)) return true;
     const card = this.waiting.get(scheduleId);
     if (card === undefined || changedFields(card.fields, fields).length > 0) return false;
     this.recordCard(schedule, now);
@@ -194,7 +194,7 @@ export class Scheduler {
   private async check(schedule: Schedule, now: string): Promise<void> {
     const state = this.state.see(schedule.id, now);
     const fields = announcedFields(schedule);
-    if (!this.isAnnounced(schedule, now)) {
+    if (!this.isAnnounced(schedule)) {
       const card: ScheduleCard = {
         kind: "schedule_card",
         scheduleId: schedule.id,
@@ -207,8 +207,8 @@ export class Scheduler {
       // The card is the check against a schedule that someone pushed (lessons 66, 67). Until a
       // front end shows it, the schedule writes no state and never fires.
       const shown = await this.emit(card);
-      // A confirm can come in while a front end still sends the card.
-      if (this.isAnnounced(schedule, now)) return;
+      // A remove or a confirm can come in while a front end still sends the card.
+      if (this.state.peek(schedule.id) === undefined || this.isAnnounced(schedule)) return;
       if (shown) this.recordCard(schedule, now);
       else {
         this.waiting.set(schedule.id, card);
@@ -223,14 +223,17 @@ export class Scheduler {
   }
 
   /** True when a front end showed a card with the schedule's current fields. */
-  private isAnnounced(schedule: Schedule, now: string): boolean {
-    const announced = this.state.see(schedule.id, now).announced;
+  private isAnnounced(schedule: Schedule): boolean {
+    const announced = this.state.peek(schedule.id)?.announced ?? null;
     return announced !== null && changedFields(announced, announcedFields(schedule)).length === 0;
   }
 
   /** The person saw the card: a slot that is already due is skipped, so nothing runs before the card. */
   private recordCard(schedule: Schedule, now: string): void {
-    const slot = dueSlot(schedule, this.state.see(schedule.id, now), now);
+    const state = this.state.peek(schedule.id);
+    // A removed schedule stays removed (lesson 67): a later push of it needs a new card.
+    if (state === undefined) return;
+    const slot = dueSlot(schedule, state, now);
     this.state.update(schedule.id, {
       announced: announcedFields(schedule),
       ...(slot === null ? {} : { lastFired: slot }),

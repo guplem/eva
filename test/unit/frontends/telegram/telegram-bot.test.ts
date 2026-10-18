@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
+import type { RemoteAccess } from "../../../../src/core/remote-access/remote-access.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
@@ -516,6 +517,49 @@ describe("approvals and commands", () => {
     expect(texts).toContain("This Eva cannot update herself.");
     expect(texts).toContain("On this machine only (advanced): http://127.0.0.1:");
     expect(engine.requests).toEqual([]);
+  });
+
+  test("/link shows the setup steps, and its buttons install Tailscale and sign the machine in", async () => {
+    const actions: string[] = [];
+    let access: RemoteAccess = {
+      url: null,
+      problem: null,
+      step: "install",
+      link: null,
+      account: null,
+      canInstall: true,
+      busy: null,
+    };
+    createEva(undefined, systemProcessRunner, {
+      remoteAccess: {
+        current: () => access,
+        install: () => {
+          actions.push("install");
+          access = { ...access, step: "sign_in" };
+          return Promise.resolve(access);
+        },
+        signIn: () => {
+          actions.push("sign_in");
+          access = { ...access, link: "https://login.tailscale.com/a/x" };
+          return Promise.resolve(access);
+        },
+      },
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/link");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toContain("Install Tailscale on this machine");
+    expect(JSON.stringify(telegram.callsTo("sendMessage")[0]?.params["reply_markup"])).toContain("t:install");
+    telegram.pressButton(owner, "t:install");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Sign in to Tailscale on this machine")));
+    const signInMessage = telegram.callsTo("sendMessage").at(-1);
+    expect(JSON.stringify(signInMessage?.params["reply_markup"])).toContain("t:sign_in");
+    telegram.pressButton(owner, "t:sign_in");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://login.tailscale.com/a/x")));
+    expect(actions).toEqual(["install", "sign_in"]);
+    telegram.pressButton(owner + 1, "t:install");
+    await settle(bot, () => telegram.callsTo("answerCallbackQuery").length >= 3);
+    expect(actions).toEqual(["install", "sign_in"]);
   });
 
   test("/update installs a newer Eva and restarts her, after the running chat ends (lesson 92)", async () => {

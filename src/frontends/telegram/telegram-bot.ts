@@ -14,7 +14,8 @@ import {
   describeSync,
   describeUpdate,
 } from "../cli/client.ts";
-import { describeAccess } from "../cli/network-setup.ts";
+import type { RemoteAccess } from "../../core/remote-access/remote-access.ts";
+import { describeAccess, setupSteps } from "../../core/remote-access/steps.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -156,6 +157,9 @@ const buttonsPerMessage = 50;
 const pollFailingAlertMs = 15 * 60_000;
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
+const installPollMs = 3_000;
+/** The Windows installer can wait for a person at the machine; the watcher's own run ends at 15 minutes. */
+const installWaitLimitMs = 16 * 60_000;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
@@ -512,7 +516,7 @@ export class TelegramBot {
         this.runApart(chatId, topicId, "Syncing…", async () => describeSync(await this.options.eva.syncVault()));
         return;
       case "link":
-        await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
+        await this.sendAccess(chatId, topicId, this.options.eva.status().remoteAccess);
         return;
       case "update":
         this.runApart(chatId, topicId, "Updating…", async () => {
@@ -664,11 +668,52 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    } else if (kind === "t" && (first === "install" || first === "sign_in")) {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      const eva = this.options.eva;
+      if (first === "install") {
+        await this.send(chatId, topicId, "Installing Tailscale… Eva answers here when it ends.");
+        eva.installTailscale();
+        // An install can take minutes; the bot keeps answering other messages meanwhile.
+        void this.waitForInstall().then((access) => this.sendAccess(chatId, topicId, access));
+      } else {
+        await this.sendAccess(chatId, topicId, await eva.signInToTailscale());
+      }
     } else if (kind === "r" && first === "now") {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
       await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();
     }
+  }
+
+  /**
+   * /link: the address, or the setup steps with a button for each step Eva can do. Before
+   * Tailscale works, this chat is the only way from the phone to Eva.
+   */
+  private async sendAccess(chatId: number, topicId: number | null, access: RemoteAccess | null): Promise<void> {
+    const localUrl = this.options.eva.status().localUrl;
+    const actions =
+      access === null ? [] : setupSteps(access).flatMap((step) => (step.action === null ? [] : [step.action]));
+    const buttons = actions.map((action) => ({
+      text: action === "install" ? "Install Tailscale" : "Sign in to Tailscale",
+      callback_data: `t:${action}`,
+    }));
+    await this.send(
+      chatId,
+      topicId,
+      describeAccess({ remoteAccess: access, localUrl }).join("\n"),
+      buttons.length === 0 ? undefined : { inline_keyboard: [buttons] },
+    );
+  }
+
+  /** Waits until the install ends, reading the status as the web page does. */
+  private async waitForInstall(): Promise<RemoteAccess | null> {
+    for (let waited = 0; waited < installWaitLimitMs && this.isRunning(); waited += installPollMs) {
+      const access = this.options.eva.status().remoteAccess;
+      if (access?.busy !== "installing") return access;
+      await this.sleep(installPollMs);
+    }
+    return this.options.eva.status().remoteAccess;
   }
 
   /** /schedules: every schedule with its next run, a remove button each, and the file's problems. */

@@ -668,6 +668,9 @@ test("Settings: Update to a version shows each newer release, warns on a major o
   await expect(page.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
   await page.getByRole("button", { name: "Update to a version…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await dialog.getByRole("combobox").press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Update to a version…" }).click();
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
   await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
   await dialog.getByRole("combobox").selectOption("0.3.0");

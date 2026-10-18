@@ -12,11 +12,21 @@ export function UpdateVersionDialog(props: {
   onClose: () => void;
 }): ReactElement {
   const { releases } = props.update;
-  const [version, setVersion] = useState(releases[0]?.version ?? "");
+  const [picked, setVersion] = useState(releases[0]?.version ?? "");
+  // The list can change while the dialog is open: a pick that left it falls back to the newest.
+  const version = releases.some((release) => release.version === picked) ? picked : (releases[0]?.version ?? "");
   const chosen = releases.find((release) => release.version === version);
   return (
     <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="Update to a version">
+      <div
+        className="dialog update-version"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Update to a version"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") props.onClose();
+        }}
+      >
         <strong>Update to a version</strong>
         {chosen === undefined ? (
           <div>Eva {props.update.current ?? "?"} is the newest version. No newer release exists.</div>

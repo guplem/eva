@@ -481,13 +481,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               Eva installs by herself
               <select
                 value={config.updates.install}
-                onChange={(event) =>
-                  void saveNow({ updates: { install: event.target.value } })
-                    // The target and the held-back version follow the policy.
-                    .then(async () => setUpdate(await api.updateStatus()))
-                    // A failed read keeps the old line; the next page load reads it again.
-                    .catch(() => undefined)
-                }
+                onChange={(event) => void saveNow({ updates: { install: event.target.value } })}
               >
                 {installChoices.map((choice) => (
                   <option key={choice.value} value={choice.value}>

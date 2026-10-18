@@ -13,8 +13,15 @@ export interface GithubAnswer {
   readonly body: string;
 }
 
-/** One GET of the GitHub REST API. `raw`: the file content of a `contents` address, not JSON. */
-export type GithubGet = (path: string, raw?: boolean) => Promise<GithubAnswer>;
+/**
+ * One request to the GitHub API. `raw`: the file content of a `contents` address, not JSON.
+ * `fields` make it a POST, as `gh api -f` does; GraphQL needs them.
+ */
+export type GithubRequest = (
+  path: string,
+  raw?: boolean,
+  fields?: Readonly<Record<string, string>>,
+) => Promise<GithubAnswer>;
 
 const ghTimeoutMs = 30_000;
 const workflowPattern = /^\.github\/workflows\/[^/]+\.ya?ml$/;
@@ -22,14 +29,18 @@ const settingsPath = ".claude/settings.json";
 const labelsPerPage = 100;
 /** A limit for the label pages, so a broken answer never loops for ever. */
 const labelPageLimit = 10;
+/** The two security facts that GraphQL gives to any reader; REST gives the alerts to admins only. */
+const securityQuery =
+  "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { hasVulnerabilityAlertsEnabled isSecurityPolicyEnabled } }";
 
-/** A GithubGet over `gh api --include`, which prints the status line before the body. */
-export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubGet {
-  return async (path, raw = false) => {
+/** A GithubRequest over `gh api --include`, which prints the status line before the body. */
+export function ghApiRequest(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubRequest {
+  return async (path, raw = false, fields = {}) => {
     const accept = raw ? ["-H", "Accept: application/vnd.github.raw"] : [];
+    const fieldArguments = Object.entries(fields).flatMap(([key, value]) => ["-f", `${key}=${value}`]);
     let output: { stdout: string; stderr: string };
     try {
-      output = await runner.run(["gh", "api", "--include", ...accept, path], {
+      output = await runner.run(["gh", "api", "--include", ...accept, path, ...fieldArguments], {
         cwd: process.cwd(),
         environment: { ...environment, GH_PROMPT_DISABLED: "1" },
         timeoutMs: ghTimeoutMs,
@@ -51,8 +62,8 @@ export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<str
   };
 }
 
-export async function readRepositoryFacts(slug: string, get: GithubGet): Promise<RepositoryFacts> {
-  const repository = await get(`repos/${slug}`);
+export async function readRepositoryFacts(slug: string, request: GithubRequest): Promise<RepositoryFacts> {
+  const repository = await request(`repos/${slug}`);
   const info = repository.status === 200 ? asRecord(parseJson(repository.body)) : null;
   if (info === null) {
     const message =
@@ -63,23 +74,26 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
   }
   const branch = typeof info["default_branch"] === "string" ? info["default_branch"] : "main";
   const isAdmin = asRecord(info["permissions"])?.["admin"] === true;
-  const security = asRecord(info["security_and_analysis"]);
+  const securityAndAnalysis = asRecord(info["security_and_analysis"]);
   const address = `repos/${slug}`;
   const encodedBranch = encodeURIComponent(branch);
 
-  const [files, labels, rules, branchInfo, reporting, alerts, fixes, codeScanning, workflowToken] = await Promise.all([
-    readFiles(get, `${address}/git/trees/${encodedBranch}?recursive=1`),
-    readLabels(get, `${address}/labels`),
-    readJson(get, `${address}/rules/branches/${encodedBranch}`),
-    readJson(get, `${address}/branches/${encodedBranch}`),
-    readJson(get, `${address}/private-vulnerability-reporting`),
-    get(`${address}/vulnerability-alerts`),
-    readJson(get, `${address}/automated-security-fixes`),
-    readJson(get, `${address}/code-scanning/default-setup`),
-    readJson(get, `${address}/actions/permissions/workflow`),
-  ]);
+  const [owner = "", name = ""] = slug.split("/");
+  const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken] = await Promise.all(
+    [
+      readFiles(request, `${address}/git/trees/${encodedBranch}?recursive=1`),
+      readLabels(request, `${address}/labels`),
+      readJson(request, `${address}/rules/branches/${encodedBranch}`),
+      readJson(request, `${address}/branches/${encodedBranch}`),
+      readJson(request, `${address}/private-vulnerability-reporting`),
+      readGraphql(request, securityQuery, { owner, name }),
+      readJson(request, `${address}/automated-security-fixes`),
+      readJson(request, `${address}/code-scanning/default-setup`),
+      readJson(request, `${address}/actions/permissions/workflow`),
+    ],
+  );
   const readFile = (path: string): Promise<FileRead> =>
-    get(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
+    request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
   const [workflows, allowRules] = await Promise.all([
@@ -102,11 +116,11 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
     allowRules,
     requiredChecks: readRequiredChecks(rules, branchInfo),
     privateVulnerabilityReporting: booleanOrNull(asRecord(reporting)?.["enabled"]),
-    // 404 means "off" to an admin, and "you may not look" to anyone else.
-    dependabotAlerts: alerts.status === 204 ? true : alerts.status === 404 && isAdmin ? false : null,
+    dependabotAlerts: booleanOrNull(security?.["hasVulnerabilityAlertsEnabled"]),
+    securityPolicy: booleanOrNull(security?.["isSecurityPolicyEnabled"]),
     dependabotSecurityUpdates: booleanOrNull(asRecord(fixes)?.["enabled"]),
-    secretScanning: featureStatus(security, "secret_scanning"),
-    pushProtection: featureStatus(security, "secret_scanning_push_protection"),
+    secretScanning: featureStatus(securityAndAnalysis, "secret_scanning"),
+    pushProtection: featureStatus(securityAndAnalysis, "secret_scanning_push_protection"),
     codeScanningDefaultSetup: codeScanning === null ? null : textField(codeScanning, "state") === "configured",
     readOnlyWorkflowToken:
       workflowToken === null ? null : textField(workflowToken, "default_workflow_permissions") === "read",
@@ -116,8 +130,8 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
 /** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */
 type FileRead = { readonly text: string } | "absent" | null;
 
-async function readFiles(get: GithubGet, path: string): Promise<Record<string, string> | null> {
-  const tree = asRecord(await readJson(get, path));
+async function readFiles(request: GithubRequest, path: string): Promise<Record<string, string> | null> {
+  const tree = asRecord(await readJson(request, path));
   // A truncated tree would make present files look missing.
   if (tree?.["truncated"] !== false || !Array.isArray(tree["tree"])) return null;
   const files: Record<string, string> = {};
@@ -130,10 +144,10 @@ async function readFiles(get: GithubGet, path: string): Promise<Record<string, s
 }
 
 /** Every label name, page by page. Null when a page does not answer. */
-async function readLabels(get: GithubGet, path: string): Promise<string[] | null> {
+async function readLabels(request: GithubRequest, path: string): Promise<string[] | null> {
   const names: string[] = [];
   for (let page = 1; page <= labelPageLimit; page += 1) {
-    const labels = await readJson(get, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
+    const labels = await readJson(request, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
     if (!Array.isArray(labels)) return null;
     names.push(...labels.flatMap((label) => textField(label, "name") ?? []));
     if (labels.length < labelsPerPage) return names;
@@ -203,8 +217,23 @@ function featureStatus(security: Record<string, unknown> | null, name: string): 
   return status === null ? null : status === "enabled";
 }
 
-async function readJson(get: GithubGet, path: string): Promise<unknown> {
-  const answer = await get(path);
+/** The `repository` object of a GraphQL answer, or null when GitHub answered with errors. */
+async function readGraphql(
+  request: GithubRequest,
+  query: string,
+  variables: Readonly<Record<string, string>>,
+): Promise<Record<string, unknown> | null> {
+  const answer = asRecord(await readJson(request, "graphql", { query, ...variables }));
+  if (answer === null || answer["errors"] !== undefined) return null;
+  return asRecord(asRecord(answer["data"])?.["repository"]);
+}
+
+async function readJson(
+  request: GithubRequest,
+  path: string,
+  fields?: Readonly<Record<string, string>>,
+): Promise<unknown> {
+  const answer = await request(path, false, fields);
   return answer.status === 200 ? parseJson(answer.body) : null;
 }
 

@@ -3,8 +3,6 @@
  * compared with Eva's own repository, the reference. This part is pure: it judges facts
  * that `repository-facts.ts` reads from GitHub.
  */
-import { createHash } from "node:crypto";
-
 /** Green: done. Yellow: partly done. Red: missing. Grey: Eva cannot read it, or it does not apply. */
 export type SetupLight = "green" | "yellow" | "red" | "grey";
 
@@ -66,16 +64,6 @@ export interface RepositoryFacts {
   readonly codeScanningDefaultSetup: boolean | null;
   readonly readOnlyWorkflowToken: boolean | null;
 }
-
-/** The blob SHA that git gives a file with this text. */
-export function gitBlobSha(text: string): string {
-  const body = Buffer.from(text, "utf-8");
-  return createHash("sha1")
-    .update(Buffer.concat([Buffer.from(`blob ${String(body.length)}\0`), body]))
-    .digest("hex");
-}
-
-const shimShas = new Set(["@AGENTS.md\n", "@AGENTS.md", "@AGENTS.md\r\n"].map(gitBlobSha));
 
 const harnessOnlyRuleFiles = [
   ".cursorrules",
@@ -312,12 +300,7 @@ function settingItem(context: Context, label: string, isOn: boolean | null, fiel
 
 function harnessItems(context: Context): SetupItem[] {
   const files = context.target.files;
-  const labels = [
-    "AGENTS.md at the root",
-    "CLAUDE.md points to AGENTS.md",
-    "No harness-only rule files",
-    "Skills in the open folder",
-  ];
+  const labels = ["AGENTS.md at the root", "No CLAUDE.md", "No harness-only rule files", "Skills in the open folder"];
   if (files === null) return labels.map((label) => grey(label, filesUnknown));
   const slug = context.target.slug;
   const paths = Object.keys(files);
@@ -332,29 +315,17 @@ function harnessItems(context: Context): SetupItem[] {
         fixRequest: `In ${slug}, write the agent rules in a short root \`AGENTS.md\`, as ${agentsExample} does. Move any rules from harness files into it.${pullRequestStep}`,
       };
 
-  const ruleShims = paths.filter(
-    (path) => (path === "CLAUDE.md" || path.endsWith("/CLAUDE.md")) && !shimShas.has(files[path] ?? ""),
-  );
-  let shim: SetupItem;
-  if (ruleShims.length > 0) {
-    shim = {
-      label: labels[1] ?? "",
-      light: "red",
-      detail: `These hold rules: ${ruleShims.join(", ")}.`,
-      fixRequest: `In ${slug}, move the rules of ${ruleShims.join(", ")} into an \`AGENTS.md\` in the same folder. Leave only the line \`@AGENTS.md\` in each \`CLAUDE.md\`.${pullRequestStep}`,
-    };
-  } else if (!paths.includes("AGENTS.md")) {
-    shim = grey(labels[1] ?? "", "No AGENTS.md to point to yet.");
-  } else if (!paths.includes("CLAUDE.md")) {
-    shim = {
-      label: labels[1] ?? "",
-      light: "yellow",
-      detail: "No root CLAUDE.md, and Claude Code reads only CLAUDE.md.",
-      fixRequest: `In ${slug}, add a root \`CLAUDE.md\` with the single line \`@AGENTS.md\`.${pullRequestStep}`,
-    };
-  } else {
-    shim = green(labels[1] ?? "", "Yes.");
-  }
+  // Claude Code reads AGENTS.md only when no CLAUDE.md exists in the folder or above it.
+  const claudeFiles = paths.filter((path) => path === "CLAUDE.md" || path.endsWith("/CLAUDE.md"));
+  const claudeMd: SetupItem =
+    claudeFiles.length === 0
+      ? green(labels[1] ?? "", "None, so Claude Code reads AGENTS.md.")
+      : {
+          label: labels[1] ?? "",
+          light: "red",
+          detail: `Found ${claudeFiles.join(", ")}.`,
+          fixRequest: `In ${slug}, move any rules of ${claudeFiles.join(", ")} into an \`AGENTS.md\` in the same folder, then delete each \`CLAUDE.md\`. Claude Code reads \`AGENTS.md\` only when no \`CLAUDE.md\` exists. Add a pre-commit hook that refuses a \`CLAUDE.md\`, as ${context.referenceLink("blob", "lefthook.yml")} does.${pullRequestStep}`,
+        };
 
   const ruleFiles = paths.filter(
     (path) => harnessOnlyRuleFiles.includes(path) || harnessOnlyRuleFolders.some((folder) => path.startsWith(folder)),
@@ -380,7 +351,7 @@ function harnessItems(context: Context): SetupItem[] {
           fixRequest: `In ${slug}, turn each file in ${claudeFolders.join(", ")} into a skill in \`.agents/skills/<name>/SKILL.md\`, the open skill format. Add a line to \`AGENTS.md\` for each skill that tells agents when to use it.${pullRequestStep}`,
         };
 
-  return [agents, shim, ruleItem, skills];
+  return [agents, claudeMd, ruleItem, skills];
 }
 
 function permissionItem(context: Context): SetupItem {

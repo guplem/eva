@@ -55,7 +55,8 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
 
   /** The old login holds the old access, so a change needs a new login. */
   const changeAccess = async (readOnly: boolean): Promise<void> => {
-    if (await saveNow({ google: { readOnly } }))
+    // Before the first login, the login itself asks for the new access.
+    if ((await saveNow({ google: { readOnly } })) && google.email !== null)
       onChanged("Saved. Log in to Google again below, then press Restart Eva.");
   };
 
@@ -110,24 +111,23 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
           </a>
         )}
       </div>
-      {loginUrl !== null && (
-        <div className="check-row">
-          <input
-            aria-label="The address after the Google login"
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            inputMode="url"
-            placeholder="http://127.0.0.1/eva-google-login?state=…"
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-          />
-          <button disabled={busy || address.trim() === ""} onClick={() => void finishLogin()}>
-            Finish
-          </button>
-        </div>
-      )}
+      {/* Always here: a phone may reload the page while the person is on Google's page. */}
+      <div className="check-row">
+        <input
+          aria-label="The address after the Google login"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="url"
+          placeholder="http://127.0.0.1/eva-google-login?state=…"
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+        />
+        <button disabled={busy || address.trim() === ""} onClick={() => void finishLogin()}>
+          Finish
+        </button>
+      </div>
       <CheckRow name="google" label="Test Google" />
     </>
   );

@@ -53,7 +53,7 @@ export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep
     },
     {
       title: `${String(googleStep.login)}. Log in to Google`,
-      text: "Press Start the Google login, and open Google's page. If Google says that it did not verify the app, press Advanced, then go to the app. Press Allow. Your browser then opens an address that does not load. Copy that whole address, paste it below, and press Finish.",
+      text: "Press Start the Google login, and open Google's page. If Google says that it did not verify the app, press Advanced, then go to the app. Press Allow. Your browser then opens an address that does not load. Copy the whole address from the address bar, paste it below, and press Finish. The code from that address works alone too.",
       links: [],
     },
   ];

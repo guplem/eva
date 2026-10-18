@@ -78,6 +78,7 @@ describe("Eva", () => {
     const instance = start(engine);
     instance.startBackgroundWork();
     instance.startBackgroundWork();
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     clock = new Date("2026-10-14T10:45:00Z");
     await instance.schedules?.tick();
@@ -387,6 +388,31 @@ describe("Eva", () => {
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
     expect(engine.requests[0]?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
+  });
+
+  test("the Google MCP server never gets the GitHub token (lesson 96)", async () => {
+    const engine = new FakeEngine();
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({ google: { ...defaultConfig.google, email: "person@example.com", services: ["calendar"] } }),
+      secrets: {
+        githubToken: "github-token-for-tests",
+        googleOauthClientId: "google-client-id-for-tests",
+        googleOauthClientSecret: "google-client-secret-for-tests",
+      },
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+    });
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    const google = engine.requests[0]?.mcpServers["google"];
+    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("google-client-id-for-tests");
+    expect(google?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
+    expect(Object.values(google?.environment ?? {})).not.toContain("github-token-for-tests");
   });
 
   test("an agent finds an `eva` command for this instance, and the chat id of its turn", async () => {
@@ -773,8 +799,8 @@ describe("Eva", () => {
     // The first check sends the setup card; a slow card send keeps the check running.
     const unsubscribe = instance.schedules?.subscribe(
       () =>
-        new Promise<void>((resolve) => {
-          releaseGate.open = resolve;
+        new Promise<boolean>((resolve) => {
+          releaseGate.open = () => resolve(true);
         }),
     );
     const check = instance.schedules?.tick();
@@ -942,6 +968,7 @@ describe("Eva alerts", () => {
     );
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     // The chat list cannot be saved, so the firing's chat cannot start.
     mkdirSync(join(home, "state", "sessions.json"), { recursive: true });
@@ -949,6 +976,22 @@ describe("Eva alerts", () => {
     await instance.schedules?.tick();
     expect(alerts.map((alert) => alert.key)).toEqual(["schedule:lunch"]);
     expect(alerts[0]?.message).toContain("Lunch");
+  });
+
+  test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([expect.stringContaining("Lunch")]);
+    expect(alerts.map((alert) => alert.key)).toEqual(["schedule_card:lunch"]);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([]);
   });
 
   test("a front end reports its own problem, and the status carries it", () => {

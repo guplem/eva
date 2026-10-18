@@ -7,11 +7,18 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Alert, AlertProblem } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
-import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
+import {
+  describeLogEntries,
+  describeProjectLines,
+  describeStatusLines,
+  describeSync,
+  describeUpdate,
+} from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
-import type { ScheduleEvent } from "../../core/schedules/scheduler.ts";
+import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
@@ -108,6 +115,10 @@ interface TelegramUpdate {
 
 /** Telegram refuses a message past 4096 characters; the split leaves room for the HTML tags. */
 const messageLimit = 3_500;
+/** The longest message that Telegram takes; `send` cuts a longer one. */
+const telegramMessageLimit = 4_096;
+/** At most this many projects in one /projects answer: a longer list is hard to read on a phone. */
+const projectListLimit = 20;
 /**
  * Lesson 56: count 409 conflicts in a window, and never let a success reset the count. Past
  * the limit, only the poll loop pauses: the owner reaches Eva from a phone, so Eva never exits.
@@ -151,7 +162,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "delete", description: "Delete this topic and forget its chat" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
-  { command: "projects", description: "Search the projects" },
+  { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
@@ -184,6 +195,8 @@ export class TelegramBot {
   private readonly approvalMessages: Map<string, { chatId: number; messageId: number; text: string }>;
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
+  /** The card text of each schedule that was too long for Telegram, so the notice goes out once per card. */
+  private readonly tooLongCards: Map<string, string>;
   private readonly detachDeviceApprover: () => void;
 
   constructor(options: TelegramBotOptions) {
@@ -197,6 +210,7 @@ export class TelegramBot {
     this.stopping = new AbortController();
     this.approvalMessages = new Map();
     this.stoppedSessions = new Set();
+    this.tooLongCards = new Map();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -528,12 +542,8 @@ export class TelegramBot {
         return;
       }
       case "projects": {
-        const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
-        await this.send(
-          chatId,
-          topicId,
-          projects.length === 0 ? "No project matches." : projects.map((project) => `• ${project.id}`).join("\n"),
-        );
+        const projects = this.options.eva.projects(parseProjectQuery(rest.join(" ")));
+        await this.send(chatId, topicId, fitProjects(projects));
         return;
       }
       default:
@@ -687,23 +697,19 @@ export class TelegramBot {
     );
   }
 
-  /** Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). */
-  private async onScheduleEvent(event: ScheduleEvent): Promise<void> {
+  /**
+   * Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). True when the
+   * paired chat got the event: a card that failed to go out waits for the next check.
+   */
+  private async onScheduleEvent(event: ScheduleEvent): Promise<boolean> {
     const chatId = this.allowedChatId;
-    if (chatId === null) return;
+    if (chatId === null) return false;
     if (event.kind === "schedule_problems") {
-      await this.send(
-        chatId,
-        null,
-        ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n"),
-      );
-      return;
+      const text = ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n");
+      return (await this.send(chatId, null, text)) !== null;
     }
     const topicId = await this.scheduleTopic(chatId, event.scheduleId, event.name);
-    if (event.kind === "schedule_card") {
-      await this.send(chatId, topicId, cardText(event));
-      return;
-    }
+    if (event.kind === "schedule_card") return this.sendCard(chatId, topicId, event);
     const current = this.state.topics[keyOf(chatId, topicId)];
     const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
     // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
@@ -715,6 +721,24 @@ export class TelegramBot {
     }
     if (event.text !== null) await this.send(chatId, topicId, event.text);
     if (event.file !== null) await this.sendVaultFile(chatId, topicId, event.file);
+    return true;
+  }
+
+  /**
+   * A cut card would hide its last fields, the prompt among them (lesson 67). So a card too long
+   * for one message never counts as shown: a short notice sends the person to the web app.
+   */
+  private async sendCard(chatId: number, topicId: number | null, card: ScheduleCard): Promise<boolean> {
+    const text = cardText(card);
+    if (text.length <= telegramMessageLimit) {
+      this.tooLongCards.delete(card.scheduleId);
+      return (await this.send(chatId, topicId, text)) !== null;
+    }
+    if (this.tooLongCards.get(card.scheduleId) === text) return false;
+    const notice = `The setup card of ${card.name} is too long for Telegram. Open the web app to check it: the schedule runs only after that.`;
+    // A notice that failed to go out goes out again at the next check.
+    if ((await this.send(chatId, topicId, notice)) !== null) this.tooLongCards.set(card.scheduleId, text);
+    return false;
   }
 
   /** The schedule's topic. A topic deleted in the app answers a typing action with 400, so a new one opens (lesson 70). */
@@ -922,7 +946,7 @@ export class TelegramBot {
     try {
       const sent = await this.callWithRetry<{ message_id: number }>("sendMessage", {
         chat_id: chatId,
-        text: text.slice(0, 4_096),
+        text: text.slice(0, telegramMessageLimit),
         ...threadOf(topicId),
         ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }),
       });
@@ -1112,7 +1136,7 @@ function sleepUntilAborted(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-function cardText(event: Extract<ScheduleEvent, { kind: "schedule_card" }>): string {
+function cardText(event: ScheduleCard): string {
   const heading =
     event.changed.length === 0
       ? `New schedule: ${event.name}`
@@ -1121,4 +1145,20 @@ function cardText(event: Extract<ScheduleEvent, { kind: "schedule_card" }>): str
   const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
   // The card is the check against a schedule that someone else pushed to the vault (lesson 67).
   return [heading, "", ...fields, "", next].join("\n");
+}
+
+/** The /projects answer: whole projects only, within one message, and a note on what was left out. */
+function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): string {
+  const lines: string[] = [];
+  let shown = 0;
+  for (const project of projects.slice(0, projectListLimit)) {
+    const block = describeProjectLines([project]);
+    // The first project always shows; send() cuts it if it alone passes Telegram's size.
+    if (shown > 0 && [...lines, ...block].join("\n").length > messageLimit) break;
+    lines.push(...block);
+    shown += 1;
+  }
+  if (projects.length === 0) return describeProjectLines([]).join("\n");
+  const left = projects.length - shown;
+  return [...lines, ...(left > 0 ? [`…and ${String(left)} more. Add words to narrow the search.`] : [])].join("\n");
 }

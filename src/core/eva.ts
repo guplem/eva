@@ -16,6 +16,7 @@ import { Redactor } from "../shared/redaction.ts";
 import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import {
+  scheduleCardProblem,
   engineUpdateProblem,
   scheduleFiringProblem,
   uncleanExitMessage,
@@ -345,6 +346,10 @@ export class Eva {
                 `schedule:${schedule.id}`,
                 failure === null ? null : scheduleFiringProblem(schedule.name, failure),
               );
+            },
+            reportCard: (scheduleId, name, waiting) => {
+              // Its own key: a good firing clears `schedule:<id>`, but must not clear this one.
+              this.alerts.report(`schedule_card:${scheduleId}`, waiting ? scheduleCardProblem(name) : null);
             },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -1010,7 +1015,8 @@ export class Eva {
       config: this.options.config.google,
       secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
-      environment: this.gitEnvironment,
+      // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
+      environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
     return google === null ? {} : { google };
   }

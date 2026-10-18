@@ -37,8 +37,22 @@ An agent session in "Accept edits" mode implements an issue end to end with no p
 6. Deny force-push, history rewrites, discarded changes and hook skips (`--no-verify`).
 7. Replace the secret rules with absolute patterns (`//**/`). The old `Read(**/secrets.json)` was relative to the clone, so it missed Eva's own `secrets.json`. Mirror the secret file names in `src/core/files/vault-files.ts`.
 8. Test the file in `test/unit/agent-settings.test.ts`. The test checks the deny rules, the empty `ask` list and a set of banned allow rules. It has no `src/` twin, like `coverage-gaps.test.ts`.
+9. Add no rule for `find`, `sort`, `uniq` or `sed`. Claude Code already runs their read-only forms. A `*` rule would also allow `find -delete`, `sort -o`, and the GNU sed `e` command, which runs a shell command.
+10. Add no rule for `cp` or `mv`. A rule such as `cp * /tmp/claude-*` also allows `cp .env /tmp/claude-0/x`, which copies a secret where no deny rule reads it.
+11. Deny the grouped short flags that agents could use by mistake: `-qf`, `-vf`, `-rf`, `-Af`, `-qd` and `-SW`. Deny `--upload-pack`, `--receive-pack` and `--exec`, which run a command.
+12. Deny the engine logins in Eva's instance home: `.credentials.json`, `auth.json`, `gh/hosts.yml` and `engines/google/`.
+13. Write each commit message with a heredoc. A deny rule matches text in `-m "..."`, so a message that names `--amend` fails. A heredoc body is not checked (tested).
+
+## Tested answers to the issue's questions
+
+- Line breaks inside a quoted `-m` message do not stop a rule from matching.
+- `git commit -q -F - <<'EOF'` runs with no prompt once `git commit *` is allowed. The old prompts came from `git add` and `git commit`, which had no rule.
 
 ## Known limits
 
+- `rm -rf <scratchpad>/test-results` still prompts. A `*` in the rule also spans extra arguments: a test showed that such a rule deleted a folder in the clone.
+- `sed -i` still prompts. Use the Edit tool.
+- Deny rules list known flag groups only. A rare group, such as `git commit -anm`, gets past them.
+- The GitHub write tools take any repository. An agent could merge a PR in a vault repository. The owner allowed these tools.
 - `grep -r` and any `bun run` script can still read a secret. Only the sandbox closes that.
 - Deny rules do not see `git -c x=y push` or `sh -c`. They catch mistakes, not a hostile agent. The GitHub ruleset on `main` is the real guard against a force-push.

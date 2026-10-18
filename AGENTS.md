@@ -83,6 +83,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Write literal paths. Do not put a `$VAR` in a path or a redirect target.
 - Run git in the clone root. Do not use `cd <folder> && git` or `git -C`.
 - Use the Write and Edit tools to write files. Do not use `python3`.
+- Write each commit message with `git commit -q -F - <<'EOF'`. A deny rule also reads the text of `-m "..."`, so a message that names `--amend` fails.
 
 ## Agent files
 

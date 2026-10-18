@@ -303,6 +303,24 @@ describe("Project mode", () => {
     expect(asking.questions[0]).not.toContain("other/x");
   });
 
+  test("a clone made again in place asks about the URL Eva cloned, never the one the new folder claims", async () => {
+    // Code in the clone wipes its git folder and starts a new one with a trusted owner's URL.
+    rmSync(join(clone, ".git"), { recursive: true });
+    sandbox.git(clone, "init", "-q");
+    sandbox.git(clone, "remote", "add", "origin", "https://github.com/owner/other.git");
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    store.remember(originalUrl, "trusted");
+    const cloneSession = session({ mode: "project", startFolder: clone });
+    const asking = recording("deny");
+    expect((await project(["owner"], store).prepare(cloneSession, asking)).trusted).toBe(false);
+    expect(asking.questions).toHaveLength(1);
+    expect(asking.questions[0]).toContain("is not the folder that Eva cloned from " + originalUrl);
+    expect(asking.questions[0]).not.toContain("other.git");
+    // The deny holds for this folder; the next turn asks nothing.
+    expect((await project(["owner"], store).prepare(cloneSession, asking)).trusted).toBe(false);
+    expect(asking.questions).toHaveLength(1);
+  });
+
   describe("a folder that Eva did not clone", () => {
     let handMade: string;
 
@@ -331,7 +349,7 @@ describe("Project mode", () => {
       const handMadeSession = session({ mode: "project", startFolder: handMade });
       expect((await project([], store).prepare(handMadeSession, allow)).trusted).toBe(true);
       expect(store.decision(originalUrl)).toBe("unknown");
-      expect(origins.origin(handMade)).toEqual({ url: originalUrl, decision: "trusted" });
+      expect(origins.origin(handMade)).toEqual({ kind: "answered", url: originalUrl, decision: "trusted" });
       sandbox.git(handMade, "remote", "set-url", "origin", "https://github.com/other/x.git");
       const asking = recording("deny");
       expect((await project([], store).prepare(handMadeSession, asking)).trusted).toBe(true);

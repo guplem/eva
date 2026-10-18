@@ -4,7 +4,8 @@
  * run.
  */
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -159,19 +160,26 @@ function isDecisionMap(value: unknown): value is Record<string, "trusted" | "unt
 }
 
 /**
- * Where a clone came from. Without a decision, Eva cloned the URL, and the answers by URL apply.
- * With one, Eva has no record of cloning the folder: the URL is only what its `origin` showed when
- * the person answered, and the answer holds for that folder only.
+ * What Eva knows about where a clone came from.
+ * - `cloned`: Eva cloned the URL, and the answers by URL apply.
+ * - `answered`: the person judged this folder, and the answer holds for it only. The URL is what
+ *   the question showed.
+ * - `replaced`: Eva cloned the URL, but the folder is not the one she cloned, so it can hold anything.
  */
-export interface CloneOrigin {
+export type CloneOrigin =
+  | { readonly kind: "cloned"; readonly url: string }
+  | { readonly kind: "answered"; readonly url: string; readonly decision: "trusted" | "untrusted" }
+  | { readonly kind: "replaced"; readonly url: string };
+
+interface StoredOrigin {
   readonly url: string;
+  /** The random text in the clone's marker file. A folder made again at the same path lacks it. */
+  readonly marker: string;
   readonly decision?: "trusted" | "untrusted";
 }
 
-interface StoredOrigin extends CloneOrigin {
-  /** The folder's identity when Eva recorded it. A folder made again at the same path does not match. */
-  readonly folder: string;
-}
+/** The marker file in the clone's git folder. Git ignores it, and the harness never reads it. */
+const markerFileName = "eva-clone-id";
 
 /**
  * The origin of each clone, by folder, in `state/clone-origins.json`. Trust reads it, not the live
@@ -188,26 +196,30 @@ export class CloneOriginStore {
     this.origins = read.ok && isOriginMap(read.value) ? read.value : {};
   }
 
+  /** Null when Eva has no record of the folder. */
   origin(cloneFolder: string): CloneOrigin | null {
     const stored = this.origins[cloneKey(cloneFolder)];
-    const identity = folderIdentity(cloneFolder);
-    if (stored === undefined || identity === null || stored.folder !== identity) return null;
-    return stored.decision === undefined ? { url: stored.url } : { url: stored.url, decision: stored.decision };
+    if (stored === undefined) return null;
+    // A marker that is gone or changed fails safe: the folder counts as replaced, never as trusted.
+    if (readMarker(cloneFolder) !== stored.marker) return { kind: "replaced", url: stored.url };
+    return stored.decision === undefined
+      ? { kind: "cloned", url: stored.url }
+      : { kind: "answered", url: stored.url, decision: stored.decision };
   }
 
   recordClone(cloneFolder: string, repositoryUrl: string): void {
-    this.write(cloneFolder, { url: repositoryUrl });
+    this.write(cloneFolder, repositoryUrl, undefined);
   }
 
   recordAnswer(cloneFolder: string, repositoryUrl: string, decision: "trusted" | "untrusted"): void {
-    this.write(cloneFolder, { url: repositoryUrl, decision });
+    this.write(cloneFolder, repositoryUrl, decision);
   }
 
-  private write(cloneFolder: string, origin: CloneOrigin): void {
-    const identity = folderIdentity(cloneFolder);
-    // A folder that is gone has nothing to pin, and a record with no identity would never match.
-    if (identity === null) return;
-    this.origins[cloneKey(cloneFolder)] = { ...origin, folder: identity };
+  private write(cloneFolder: string, url: string, decision: "trusted" | "untrusted" | undefined): void {
+    const marker = writeMarker(cloneFolder);
+    // With no git folder there is nothing to mark, and an unmarked record would never match.
+    if (marker === null) return;
+    this.origins[cloneKey(cloneFolder)] = decision === undefined ? { url, marker } : { url, marker, decision };
     writeFileAtomic(this.path, JSON.stringify(this.origins, null, 2) + "\n");
   }
 }
@@ -219,26 +231,48 @@ function cloneKey(cloneFolder: string): string {
 }
 
 /**
- * The inode and the birth time of a folder, or null when it is gone. A file system can
- * give a new folder the inode of a deleted one at once, so the inode alone is not enough.
+ * The clone's git folder: `.git`, or the folder that a `.git` file names, as in a worktree.
+ * A marker file, not the folder's inode and birth time: a file system can give both to a folder
+ * made again at the same path, and some file systems keep no birth time at all.
  */
-function folderIdentity(cloneFolder: string): string | null {
+function gitFolder(cloneFolder: string): string | null {
+  const dotGit = join(cloneFolder, ".git");
   try {
-    const stats = statSync(cloneFolder);
-    return `${String(stats.ino)}:${String(stats.birthtimeMs)}`;
+    if (statSync(dotGit).isDirectory()) return dotGit;
+    const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"));
+    return pointer?.[1] === undefined ? null : resolve(cloneFolder, pointer[1]);
   } catch {
     return null;
   }
+}
+
+function readMarker(cloneFolder: string): string | null {
+  const folder = gitFolder(cloneFolder);
+  if (folder === null) return null;
+  try {
+    return readFileSync(join(folder, markerFileName), "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** A new marker on each record, so an old copy of a marker never matches a later record. */
+function writeMarker(cloneFolder: string): string | null {
+  const folder = gitFolder(cloneFolder);
+  if (folder === null) return null;
+  const marker = randomUUID();
+  writeFileAtomic(join(folder, markerFileName), marker + "\n");
+  return marker;
 }
 
 function isOriginMap(value: unknown): value is Record<string, StoredOrigin> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.values(value).every((entry: unknown) => {
     if (entry === null || typeof entry !== "object") return false;
-    const { url, folder, decision } = entry as { url?: unknown; folder?: unknown; decision?: unknown };
+    const { url, marker, decision } = entry as { url?: unknown; marker?: unknown; decision?: unknown };
     return (
       typeof url === "string" &&
-      typeof folder === "string" &&
+      typeof marker === "string" &&
       (decision === undefined || decision === "trusted" || decision === "untrusted")
     );
   });

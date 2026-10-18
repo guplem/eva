@@ -4,7 +4,8 @@
  * its hooks, project settings and project MCP servers off. Trust follows the URL that Eva
  * cloned from, never the clone's live `origin`. The first time a clone of an unknown
  * repository opens, Eva asks the person, as Claude Code itself does. A folder that Eva has
- * no record of cloning is asked about too, and the answer holds for that folder only.
+ * no record of cloning, or that is not the folder she cloned, is asked about too, and the
+ * answer holds for that folder only.
  */
 import { basename } from "node:path";
 import { isTrustedByDefault, type CloneOriginStore, type TrustStore } from "../projects/clones.ts";
@@ -46,8 +47,18 @@ export class ProjectPreparer implements TurnPreparer {
 
   private async isTrusted(cloneFolder: string, context: PrepareContext): Promise<boolean> {
     const origin = this.options.cloneOrigins.origin(cloneFolder);
-    if (origin === null) return this.isFolderTrusted(cloneFolder, context);
-    if (origin.decision !== undefined) return origin.decision === "trusted";
+    if (origin === null) return this.isUnknownFolderTrusted(cloneFolder, context);
+    if (origin.kind === "answered") return origin.decision === "trusted";
+    if (origin.kind === "replaced") {
+      // The question shows the URL that Eva recorded, never one that the new folder claims.
+      return this.askAboutFolder(
+        cloneFolder,
+        origin.url,
+        context,
+        `${basename(cloneFolder)} is not the folder that Eva cloned from ${shownUrl(origin.url)}. ` +
+          "Eva cannot check what it holds now.",
+      );
+    }
     const remote = origin.url;
     const decision = this.options.trustStore.decision(remote);
     if (decision !== "unknown") return decision === "trusted";
@@ -64,9 +75,9 @@ export class ProjectPreparer implements TurnPreparer {
   /**
    * A folder with no record: made by hand, or by Eva before she kept records. Its live `origin` is
    * only a claim, since code in the folder can change it, so neither the answers by URL nor the owner
-   * allowlist apply. The person's answer holds for this folder only.
+   * allowlist apply.
    */
-  private async isFolderTrusted(cloneFolder: string, context: PrepareContext): Promise<boolean> {
+  private async isUnknownFolderTrusted(cloneFolder: string, context: PrepareContext): Promise<boolean> {
     let remote: string | null;
     try {
       remote = await this.options.readRemote(cloneFolder);
@@ -74,13 +85,28 @@ export class ProjectPreparer implements TurnPreparer {
       remote = null;
     }
     if (remote === null) return false;
+    return this.askAboutFolder(
+      cloneFolder,
+      remote,
+      context,
+      `Eva has no record of cloning ${basename(cloneFolder)}. It says it comes from ${shownUrl(remote)}, ` +
+        "but Eva cannot check that.",
+    );
+  }
+
+  /** Asks about one folder. The answer holds for that folder only, not for every clone of the URL. */
+  private async askAboutFolder(
+    cloneFolder: string,
+    url: string,
+    context: PrepareContext,
+    reason: string,
+  ): Promise<boolean> {
     const answer = await askTrust(
       context,
       "Trust this clone",
-      `Eva has no record of cloning ${basename(cloneFolder)}. It says it comes from ${shownUrl(remote)}, ` +
-        "but Eva cannot check that. Allow its hooks, settings and MCP servers to run? Deny keeps them off.",
+      `${reason} Allow its hooks, settings and MCP servers to run? Deny keeps them off.`,
     );
-    if (answer !== null) this.options.cloneOrigins.recordAnswer(cloneFolder, remote, answer);
+    if (answer !== null) this.options.cloneOrigins.recordAnswer(cloneFolder, url, answer);
     return answer === "trusted";
   }
 }

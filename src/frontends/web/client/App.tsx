@@ -11,7 +11,7 @@ import {
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
-import { applyEvent, emptyLiveState, type LiveState } from "./live-state.ts";
+import { applyEvent, emptyLiveState, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -128,6 +128,12 @@ function EvaApp(): ReactElement {
     await refreshProblems();
     try {
       setApprovals(await api.pendingApprovals());
+    } catch {
+      // The next reconnect or the next visit tries again.
+    }
+    try {
+      const tasks = await api.backgroundTasks();
+      setLive((state) => withTasks(state, tasks));
     } catch {
       // The next reconnect or the next visit tries again.
     }

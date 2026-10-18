@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { applyEvent, emptyLiveState, type LiveState } from "../../../../../src/frontends/web/client/live-state.ts";
+import {
+  applyEvent,
+  emptyLiveState,
+  withTasks,
+  type LiveState,
+} from "../../../../../src/frontends/web/client/live-state.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../../src/shared/events.ts";
+
+const finished = {
+  engineSessionId: "e1",
+  lastMessageId: null,
+  usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  costUsd: null,
+  contextTokens: null,
+} as const;
 
 let seq = 0;
 function event(payload: EngineEventPayload, sessionId = "s1"): SessionEvent {
@@ -65,13 +78,28 @@ describe("applyEvent", () => {
     expect(state.steps["s1"]).toHaveLength(1);
   });
 
-  test("the end of a turn drops its steps and keeps the tasks and the other sessions", () => {
+  test("the end of a turn drops its steps and its tasks, which end with it, and keeps the other sessions", () => {
     let state = run([{ kind: "task_changed", taskId: "k1", description: "look", state: "running" }]);
-    state = applyEvent(state, event({ kind: "text", text: "other", messageId: "m2" }, "s2"));
+    state = applyEvent(
+      state,
+      event({ kind: "task_changed", taskId: "k2", description: "other", state: "running" }, "s2"),
+    );
     state = applyEvent(state, event({ kind: "turn_failed", reason: "boom" }));
     expect(state.steps["s1"]).toBeUndefined();
     expect(state.steps["s2"]).toHaveLength(1);
-    expect(state.tasks["k1"]).toBeDefined();
+    expect(Object.keys(state.tasks)).toEqual(["k2"]);
+  });
+
+  test("a turn that ends after a reload drops the tasks that the core sent", () => {
+    let state = withTasks(emptyLiveState, [{ taskId: "k1", sessionId: "s1", description: "look", state: "running" }]);
+    expect(state.tasks).toEqual({ k1: { description: "look", state: "running", sessionId: "s1" } });
+    state = applyEvent(state, event({ kind: "turn_finished", ...finished }));
+    expect(state.tasks).toEqual({});
+  });
+
+  test("the tasks from the core replace the ones this page knew", () => {
+    const state = run([{ kind: "task_changed", taskId: "k1", description: "look", state: "running" }]);
+    expect(withTasks(state, []).tasks).toEqual({});
   });
 
   test("the end of a turn with no live steps leaves the state as it was", () => {

@@ -11,9 +11,9 @@
  *   arrives first means that no retry follows.
  * - **Approvals:** the extension in pi-approval-extension.ts asks before each tool call; the
  *   shared outward-action rule decides.
- * - **MCP servers:** pi has none, so the bridge in pi-mcp-bridge.ts runs Eva's servers and gives
- *   their tools Claude Code's names. Their specs hold secrets, so they go in a file that the
- *   bridge deletes at start, never in pi's environment, which a shell command can read.
+ * - **MCP servers:** pi has no MCP support, so the bridge in pi-mcp-bridge.ts runs Eva's
+ *   servers and gives their tools Claude Code's names. The specs hold secrets. They go in a file
+ *   that the bridge deletes at start. A shell command can read pi's environment, so never there.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
  *   ran, with the session file complete.
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
@@ -103,8 +103,11 @@ export class PiEngine implements EnginePort {
         : this.writeIfChanged(join("prompts", `${engineSessionId}.md`), request.appendSystemPrompt);
     const hasMcpServers = Object.keys(request.mcpServers).length > 0;
     const mcpExtensionFile = hasMcpServers ? this.writeIfChanged("eva-mcp-extension.ts", mcpExtensionSource) : null;
-    const specsFile = join(this.options.workFolder, "mcp-servers", `${engineSessionId}.json`);
-    if (hasMcpServers) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
+    // One file per turn: a stopped turn that still closes must not delete the file of the next one.
+    const specsFile = hasMcpServers
+      ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
+      : null;
+    if (specsFile !== null) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
     const args = buildPiArguments(request, {
       sessionFile: sessionFile(engineSessionId),
       sessionsFolder,
@@ -117,12 +120,11 @@ export class PiEngine implements EnginePort {
     try {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
-        environment: hasMcpServers
-          ? { ...request.environment, [mcpServersFileVariable]: specsFile }
-          : request.environment,
+        environment:
+          specsFile !== null ? { ...request.environment, [mcpServersFileVariable]: specsFile } : request.environment,
       });
     } catch (error) {
-      rmSync(specsFile, { force: true });
+      removeSpecs(specsFile);
       yield {
         kind: "turn_failed",
         reason: `pi could not start: ${error instanceof Error ? error.message : String(error)}`,
@@ -138,8 +140,8 @@ export class PiEngine implements EnginePort {
       yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
       request.signal.removeEventListener("abort", onAbort);
-      // The bridge deletes the file at start; this covers a pi that stopped before it.
-      rmSync(specsFile, { force: true });
+      // The bridge deletes the file at start. This covers a pi that stopped before it.
+      removeSpecs(specsFile);
     }
   }
 
@@ -270,6 +272,16 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     args.push("--no-extensions");
   }
   return args;
+}
+
+/** Never throws: the turn has already ended with one event, and a stuck file never breaks Eva. */
+function removeSpecs(file: string | null): void {
+  if (file === null) return;
+  try {
+    rmSync(file, { force: true });
+  } catch {
+    // Windows can hold a file for a moment. The next turn of the session writes it again.
+  }
 }
 
 /** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */

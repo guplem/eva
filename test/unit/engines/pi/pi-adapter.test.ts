@@ -3,7 +3,7 @@
  * server (test/fixtures/pi/). A live run with a real login is issue #59.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
@@ -195,12 +195,13 @@ describe("PiEngine", () => {
 
   test("the MCP servers reach the bridge in a file that outlives no turn, and a turn without them has neither", async () => {
     const google = { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: { PATH: "/bin", SECRET: "s" } };
-    const specs = join(folder, "pi", "mcp-servers", "session-1.json");
+    let specs = "";
     let written: unknown = null;
     const fake = new FakePi([
       {
         records: loadPiFixture("plain"),
-        onClose: () => {
+        onClose: (run) => {
+          specs = run.environment[mcpServersFileVariable] ?? "";
           written = JSON.parse(readFileSync(specs, "utf8")) as unknown;
         },
       },
@@ -211,6 +212,7 @@ describe("PiEngine", () => {
     const bridge = join(folder, "pi", "eva-mcp-extension.ts");
     expect(fake.runs[0]?.command).toContain(bridge);
     expect(fake.runs[0]?.environment).toEqual({ PATH: "/bin", [mcpServersFileVariable]: specs });
+    expect(specs.startsWith(join(folder, "pi", "mcp-servers", "session-1-"))).toBe(true);
     expect(written).toEqual({ google });
     expect(existsSync(specs)).toBe(false);
     expect(readFileSync(bridge, "utf8")).toBe(mcpExtensionSource);
@@ -385,6 +387,9 @@ describe("PiEngine", () => {
     expect(await drain(missing.runTurn(request()))).toEqual([
       { kind: "turn_failed", reason: "pi could not start: pi is not installed" },
     ]);
+    const google = { command: "uvx", args: [], environment: { SECRET: "s" } };
+    await drain(missing.runTurn(request({ mcpServers: { google } })));
+    expect(readdirSync(join(folder, "pi", "mcp-servers"))).toEqual([]);
   });
 
   test("continue runs on the same session file; a lost file says so first (lesson 46)", async () => {

@@ -86,6 +86,8 @@ No pick loses a version. Git history keeps both versions of a note that was comm
 
 Only the hub runs Telegram, so `/conflicts` shows the hub's conflicts. For a conflict on another computer, open that computer's web page.
 
+This needs git 2.38 or newer on the computer with the conflict. With an older git, the alert says so.
+
 ## Problems and alerts
 
 Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show at the top of the web page, because Telegram itself can be the problem.

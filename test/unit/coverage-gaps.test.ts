@@ -73,6 +73,7 @@ describe("describeEvent", () => {
       { ...base, kind: "turn_failed", reason: "boom" },
       { ...base, kind: "tool_finished", toolUseId: "t", isError: false },
       { ...base, kind: "approval_resolved", requestId: "r", answer: "allow", timedOut: false },
+      { ...base, kind: "session_renamed", title: "Trip plans" },
       {
         ...base,
         kind: "turn_finished",
@@ -90,6 +91,7 @@ describe("describeEvent", () => {
       "  (saved)\n",
       "  (The earlier history of this chat is lost.)\n",
       "  The turn failed: boom\n",
+      null,
       null,
       null,
       null,

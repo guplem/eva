@@ -74,6 +74,7 @@ Write to your bot as you write to a person. Eva answers in the same chat. Each n
 | Command      | What it does                                  |
 | ------------ | --------------------------------------------- |
 | `/new`       | Start a new conversation                      |
+| `/rename`    | Give this conversation a new name             |
 | `/stop`      | Stop what Eva is doing in this conversation   |
 | `/status`    | Show whether everything is all right          |
 | `/logs`      | Show Eva's last warnings and errors           |

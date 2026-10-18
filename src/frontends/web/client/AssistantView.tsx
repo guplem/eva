@@ -109,7 +109,7 @@ export function AssistantView({
         ) : (
           <>
             <div className="main-header">
-              <h1>{selected.title}</h1>
+              <ChatTitle key={selected.id} chat={selected} onChanged={onChanged} />
               <span className="badge">{selected.modelAlias}</span>
             </div>
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
@@ -118,5 +118,75 @@ export function AssistantView({
       </main>
       <TasksPanel tasks={tasksOf(live.tasks, selected === undefined ? [] : chatTreeIds(selected, sessions))} />
     </div>
+  );
+}
+
+/** The chat's title, and a pencil that turns it into a field. Enter saves; Escape keeps the old title. */
+function ChatTitle({
+  chat,
+  onChanged,
+}: {
+  readonly chat: SessionRecord;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
+  const [draft, setDraft] = useState<string | null>(null);
+  // A second Enter while the request runs must not send it again.
+  const [saving, setSaving] = useState(false);
+  const showError = useShowError();
+
+  const save = async (title: string): Promise<void> => {
+    setSaving(true);
+    try {
+      await api.rename(chat.id, title);
+      await onChanged();
+      setDraft(null);
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (draft === null) {
+    return (
+      <>
+        <h1>{chat.title}</h1>
+        <button
+          className="icon-button"
+          aria-label="Rename this chat"
+          title="Rename this chat"
+          onClick={() => setDraft(chat.title)}
+        >
+          ✏️
+        </button>
+      </>
+    );
+  }
+  return (
+    <form
+      className="rename-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!saving) void save(draft);
+      }}
+    >
+      <input
+        aria-label="Chat title"
+        value={draft}
+        autoFocus
+        // Selected, so the person can type a new title at once.
+        onFocus={(event) => event.target.select()}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setDraft(null);
+        }}
+      />
+      <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
+        Save
+      </button>
+      <button type="button" onClick={() => setDraft(null)}>
+        Cancel
+      </button>
+    </form>
   );
 }

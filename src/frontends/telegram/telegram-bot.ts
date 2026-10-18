@@ -160,6 +160,7 @@ const defaultLogCount = 20;
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this topic and forget its chat" },
+  { command: "rename", description: "Rename this chat and its topic: /rename <title>" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
@@ -500,6 +501,21 @@ export class TelegramBot {
         const stopped = entry !== undefined && this.options.eva.sessions.stop(entry.sessionId);
         if (stopped) this.stoppedSessions.add(entry.sessionId);
         await this.send(chatId, topicId, stopped ? "Stopping." : "Eva is not working in this chat.");
+        return;
+      }
+      case "rename": {
+        const entry = this.state.topics[keyOf(chatId, topicId)];
+        if (rest.join("").length === 0) {
+          await this.send(chatId, topicId, "Use: /rename <title>");
+          return;
+        }
+        if (entry === undefined || !this.sessionExists(entry.sessionId)) {
+          await this.send(chatId, topicId, "There is no chat here to rename yet. Send a message first.");
+          return;
+        }
+        // The topic follows through the session_renamed event, as it does for a rename on the web.
+        const { title } = this.options.eva.sessions.rename(entry.sessionId, rest.join(" "));
+        await this.send(chatId, topicId, `The chat is now called ${title}.`);
         return;
       }
       case "status":
@@ -848,6 +864,9 @@ export class TelegramBot {
       case "history_lost":
         await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
         return;
+      case "session_renamed":
+        await this.renameTopic(target.chatId, target.topicId, event.title);
+        return;
       case "turn_finished":
       case "turn_failed": {
         this.stopTyping(event.sessionId);
@@ -865,6 +884,30 @@ export class TelegramBot {
       }
       default:
         return;
+    }
+  }
+
+  /**
+   * Gives the chat's topic the person's title. Lesson 125 limits only the automatic rename to the topics
+   * that Eva opened: this name is the person's choice, so any chat topic takes it. A schedule's topic
+   * holds every run of the schedule, so a rename of one run keeps the schedule's name.
+   */
+  private async renameTopic(chatId: number, topicId: number | null, title: string): Promise<void> {
+    if (topicId === null || Object.values(this.state.scheduleTopics).includes(topicId)) return;
+    const entry = this.state.topics[keyOf(chatId, topicId)];
+    // The first message must not replace the name that the person chose.
+    if (entry !== undefined && !entry.renamed) {
+      entry.renamed = true;
+      this.saveState();
+    }
+    try {
+      await this.callWithRetry("editForumTopic", { chat_id: chatId, message_thread_id: topicId, name: title });
+    } catch (error) {
+      // The same title again is how the person retries a refused rename, so a topic with that name is fine.
+      if (isTopicNotModified(error)) return;
+      // The chat already says that the rename worked, so a topic that keeps its old name must say why.
+      this.logFailedCall("editForumTopic", error);
+      await this.send(chatId, topicId, `Telegram did not rename this topic: ${this.describeError(error)}`);
     }
   }
 
@@ -1092,6 +1135,11 @@ function sendRetryMs(error: unknown, retry: number): number | null {
  */
 function isHtmlRefused(error: unknown): boolean {
   return error instanceof TelegramError && error.code === 400 && /can't parse entities/i.test(error.description);
+}
+
+/** True when the topic already has the name. As above, the description is Telegram's only signal. */
+function isTopicNotModified(error: unknown): boolean {
+  return error instanceof TelegramError && error.code === 400 && error.description.includes("TOPIC_NOT_MODIFIED");
 }
 
 /** A conflict is a problem at once; a failing poll only after 15 minutes. */

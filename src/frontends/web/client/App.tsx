@@ -147,6 +147,9 @@ function EvaApp(): ReactElement {
           ...current.filter((approval) => approval.requestId !== event.requestId),
           { requestId: event.requestId, sessionId: event.sessionId, toolName: event.toolName, summary: event.summary },
         ]);
+      } else if (event.kind === "session_renamed") {
+        // A rename can come from Telegram or the terminal.
+        void refreshSessions();
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         setLive((state) => {
           const streaming = { ...state.streaming };

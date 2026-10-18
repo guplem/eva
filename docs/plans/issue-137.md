@@ -49,6 +49,9 @@ Over SSH, a person runs `eva setup`, answers only what the terminal truly needs,
 
 ## The owner's answers
 
-- **G4, device rights:** a new machine setting in `config.json`, never in the vault, since AGENTS.md keeps every security setting on the machine. Values: full (the default, the rights of a token login), fill empty tokens only, and restricted (today's page-only rights). It applies to every device login. Settings on the page change it, with a warning, and so does `eva settings`. A device login may make it stricter, never looser.
+- **G4, device rights:** an allowed device has the same control as the console: the rights of a token login, tokens, Google and Tailscale included. There is no setting to restrict it. This drops the page-only limits of #13 for device logins.
+- **Every new browser needs an approval,** even one of the owner's own Tailscale account.
+- **Localhost too:** the page on Eva's own computer asks for a code, and the terminal approves it. Today localhost offers only the long token, because the code login needs the Tailscale account. The long token stays as the last fallback.
 - **G1:** the terminal asks the person to type the code that the page shows. No [y/N] question.
+- **Out of scope, in a new issue:** approve a device from the page of a device already allowed, and a list of devices with a way to remove one. Today the page can only log out every device at once.
 - **G8:** one pull request, #145, with small commits.

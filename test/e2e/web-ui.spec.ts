@@ -547,11 +547,18 @@ test("an answer shows its steps as badges with a hover text, and a tap lists the
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   const answer = page.locator(".message.answer").first();
+  // The live answer has the same badges until the turn ends, so wait for the stored one and its Retry button.
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(answer.locator(".answer-body")).toContainText(/Echo \d+: Hello Eva/);
   // The demo turn runs a task, a tool and a command before its one message.
   const toggle = answer.getByRole("button", { name: "Show 3 steps" });
   await expect(answer.locator(".step-badge")).toHaveCount(3);
   await expect(answer.locator('.step-badge[title="Command: ls"]')).toBeVisible();
+  if (test.info().project.name === "phone") {
+    // A finger needs a target of 44 px or more, also for a row of one small badge.
+    const box = await toggle.boundingBox();
+    expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  }
   await toggle.click();
   const steps = answer.getByRole("list", { name: "Steps" });
   await expect(steps.getByRole("listitem")).toHaveText([
@@ -574,6 +581,8 @@ test("the chat panel shows the model, engine and context, and a phone opens it f
     const panel = page.getByRole("complementary", { name: "This chat" });
     await expect(panel).toContainText("claude-code");
     await expect(panel).toContainText("15 tokens");
+    // getByRole skips hidden elements, so count the button by its class.
+    await expect(page.locator(".chat-info-button")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
     return;
   }

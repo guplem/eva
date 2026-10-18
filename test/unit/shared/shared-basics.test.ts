@@ -93,6 +93,8 @@ describe("containsSecretPattern", () => {
     // Built from parts, so the secret scanner of this repository finds no real-looking token.
     for (const token of [
       "GOCSPX-" + "a".repeat(28),
+      "ya29." + "d".repeat(40),
+      "1//" + "e".repeat(40),
       "sk-proj-" + "b".repeat(40),
       "xoxb-" + "1".repeat(12),
       "npm_" + "c".repeat(36),

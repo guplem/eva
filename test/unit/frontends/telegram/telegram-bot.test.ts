@@ -383,8 +383,49 @@ describe("topics", () => {
     );
     telegram.pressButton(owner, "d:500", 500);
     await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    // The chat is gone from every front end, not only from Telegram (#9).
+    expect(eva.sessions.list()).toEqual([]);
     telegram.sendText(owner, "/delete");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("only inside a topic")));
+  });
+
+  test("/delete of a chat that works deletes nothing", async () => {
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "long work", 500);
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.pressButton(owner, "d:500", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+    expect(eva.sessions.list()).toHaveLength(1);
+    eva.sessions.stop(eva.sessions.list()[0]!.id);
+  });
+
+  test("a chat deleted in another front end loses its topic, and the main chat starts a new chat", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "hello from the main chat");
+    await settle(bot, () => engine.requests.length === 1);
+    await eva.idle();
+    const topicChat = eva.sessions.list().find((session) => session.telegramTopicId === 500)!;
+    const mainChat = eva.sessions.list().find((session) => session.telegramTopicId === null)!;
+
+    eva.sessions.delete(topicChat.id);
+    await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    expect(telegram.callsTo("deleteForumTopic")[0]?.params["message_thread_id"]).toBe(500);
+
+    eva.sessions.delete(mainChat.id);
+    telegram.sendText(owner, "a new start");
+    await settle(bot, () => engine.requests.length === 2);
+    expect(eva.sessions.list().map((session) => session.id)).not.toContain(mainChat.id);
+    expect(eva.sessions.list()).toHaveLength(1);
+    expect(telegram.callsTo("deleteForumTopic")).toHaveLength(1);
   });
 });
 

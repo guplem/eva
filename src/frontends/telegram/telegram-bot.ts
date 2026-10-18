@@ -23,6 +23,7 @@ import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { isEvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { keepFencesWhole, splitForTelegram, toTelegramHtml } from "./telegram-format.ts";
@@ -159,7 +160,7 @@ const defaultLogCount = 20;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
-  { command: "delete", description: "Delete this topic and forget its chat" },
+  { command: "delete", description: "Delete this chat in every front end, with its topic" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
@@ -489,7 +490,7 @@ export class TelegramBot {
         await this.send(
           chatId,
           topicId,
-          "Delete this topic and every message in it? The engine keeps its own transcript of the chat.",
+          "Delete this chat in every front end, and this topic with every message in it? The engine keeps its own transcript of the chat.",
           {
             inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
           },
@@ -807,26 +808,60 @@ export class TelegramBot {
     }
   }
 
+  /** Deletes the chat in every front end first, so a busy chat keeps its topic. */
   private async deleteTopic(chatId: number, topicId: number): Promise<void> {
     const key = keyOf(chatId, topicId);
     const entry = this.state.topics[key];
-    if (entry !== undefined && this.options.eva.sessions.isBusy(entry.sessionId)) {
-      await this.send(chatId, topicId, "Eva is still working in this topic. Try again when she finishes.");
-      return;
+    if (entry !== undefined) {
+      // Forget the topic first: the delete event of this chat then finds nothing to do here.
+      Reflect.deleteProperty(this.state.topics, key);
+      try {
+        if (this.sessionExists(entry.sessionId)) this.options.eva.sessions.delete(entry.sessionId);
+      } catch (error) {
+        this.state.topics[key] = entry;
+        if (!isEvaError(error, "session_busy")) throw error;
+        await this.send(chatId, topicId, "Eva is still working in this topic. Try again when she finishes.");
+        return;
+      }
+      this.saveState();
     }
     try {
       await this.options.api.call("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
     } catch (error) {
       await this.send(chatId, topicId, `Telegram did not delete the topic: ${this.describeError(error)}`);
-      return;
     }
-    Reflect.deleteProperty(this.state.topics, key);
-    this.saveState();
+  }
+
+  /**
+   * A chat deleted in another front end. Eva deletes a topic that she opened. A topic that the
+   * person opened keeps its messages, and its next message starts a new chat.
+   */
+  private async forgetDeletedChat(sessionId: string): Promise<void> {
+    this.stopTyping(sessionId);
+    this.pendingText.delete(sessionId);
+    for (const [key, entry] of Object.entries(this.state.topics)) {
+      if (entry.sessionId !== sessionId) continue;
+      Reflect.deleteProperty(this.state.topics, key);
+      this.saveState();
+      const { chatId, topicId } = placeOf(key);
+      if (topicId !== null && entry.openedByEva)
+        await this.quietCall("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
+      else
+        await this.send(
+          chatId,
+          topicId,
+          "This chat was deleted in another front end. A new message starts a new chat.",
+        );
+    }
   }
 
   private async onEvent(event: SessionEvent): Promise<void> {
     if (event.kind === "approval_resolved") {
       await this.closeApproval(event);
+      return;
+    }
+    if (event.kind === "session_deleted") {
+      await this.forgetDeletedChat(event.sessionId);
       return;
     }
     const target = this.targetOf(event.sessionId);
@@ -989,9 +1024,7 @@ export class TelegramBot {
 
   private targetOf(sessionId: string): { chatId: number; topicId: number | null } | null {
     for (const [key, entry] of Object.entries(this.state.topics)) {
-      if (entry.sessionId !== sessionId) continue;
-      const [chat, topic] = key.split(":");
-      return { chatId: Number(chat), topicId: topic === "main" ? null : Number(topic) };
+      if (entry.sessionId === sessionId) return placeOf(key);
     }
     return null;
   }
@@ -1042,6 +1075,12 @@ function loadState(path: string): BotState {
 
 function keyOf(chatId: number, topicId: number | null): string {
   return `${String(chatId)}:${topicId === null ? "main" : String(topicId)}`;
+}
+
+/** The chat and the topic that a key of the topic map names. */
+function placeOf(key: string): { chatId: number; topicId: number | null } {
+  const [chat, topic] = key.split(":");
+  return { chatId: Number(chat), topicId: topic === "main" ? null : Number(topic) };
 }
 
 function threadOf(topicId: number | null): Record<string, number> {

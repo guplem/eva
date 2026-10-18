@@ -4,7 +4,7 @@
  */
 import { chmodSync, existsSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, join } from "node:path";
 import { readTextTolerant, writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
@@ -24,7 +24,16 @@ import {
 } from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import { loadSecrets, saveSecrets, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
+import {
+  engineFolders,
+  engineFolderVariables,
+  isExtraInstance,
+  loadSecrets,
+  saveSecrets,
+  type EvaConfig,
+  type EvaSecrets,
+  type HomePaths,
+} from "./settings/home.ts";
 import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
@@ -233,7 +242,7 @@ export class Eva {
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
     this.secrets = options.secrets;
-    this.gitEnvironment = gitEnvironmentOf(options.processEnvironment, options.secrets);
+    this.gitEnvironment = gitEnvironmentOf(options, options.secrets);
     this.vaultSync =
       vaultPath === null
         ? null
@@ -817,7 +826,7 @@ export class Eva {
     return runCheck(name, {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
-      environment: gitEnvironmentOf(this.options.processEnvironment, this.secrets),
+      environment: gitEnvironmentOf(this.options, this.secrets),
       engines: this.options.engines,
       // A real turn needs the engine's login, as a chat has it; never the GitHub token (lesson 96).
       engineEnvironment: this.engineEnvironment(),
@@ -1020,20 +1029,21 @@ export class Eva {
   /** The instance's own Claude config folder, or null for the OS user's own one. */
   private claudeConfigFolder(): string | null {
     return this.isExtraInstance() || this.options.config.engines.claudeCode.ownConfigFolder
-      ? join(this.options.paths.enginesFolder, "claude")
+      ? engineFolders(this.options.paths).claude
       : null;
   }
 
   /** An instance whose home is not the platform default (lesson 111). */
   private isExtraInstance(): boolean {
-    const defaultHome = this.options.defaultHome;
-    return defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
+    return isExtraInstance(this.options.paths, this.options.defaultHome);
   }
 
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
-    const isExtraInstance = this.isExtraInstance();
-    const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
+    const extra: Record<string, string> = {
+      ...(this.isExtraInstance() ? engineFolderVariables(engineFolders(this.options.paths)) : {}),
+      EVA_HOME: this.options.paths.root,
+    };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
       // The agent finds `eva` first, so `eva work` reaches this instance.
@@ -1044,20 +1054,18 @@ export class Eva {
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
     const claudeFolder = this.claudeConfigFolder();
     if (claudeFolder !== null) extra["CLAUDE_CONFIG_DIR"] = claudeFolder;
-    // pi's folder is left out on purpose: pi has no documented variable for it yet.
-    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
 }
 
 /** Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96). */
-function gitEnvironmentOf(processEnvironment: EnvironmentMap, secrets: EvaSecrets): Record<string, string> {
+function gitEnvironmentOf(options: EvaOptions, secrets: EvaSecrets): Record<string, string> {
   const token = secrets.githubToken;
-  return buildChildEnvironment(
-    processEnvironment,
-    baseEnvironmentAllowlist,
-    token === undefined ? {} : { [githubTokenVariable]: token },
-  );
+  return buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist, {
+    // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
+    ...(isExtraInstance(options.paths, options.defaultHome) ? { GH_CONFIG_DIR: engineFolders(options.paths).gh } : {}),
+    ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+  });
 }
 
 /** Writes `eva` (for a POSIX shell and Git Bash) and `eva.cmd` into `<home>/bin`. */

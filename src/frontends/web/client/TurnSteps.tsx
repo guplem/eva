@@ -29,7 +29,7 @@ function stepLabel(step: TurnStep): string {
 function Badge({ step }: { readonly step: TurnStep }): ReactElement {
   return (
     <span
-      className={`step-badge ${step.kind}${step.isError ? " failed" : ""}`}
+      className={`step-badge step-${step.kind}${step.isError ? " failed" : ""}`}
       role="img"
       aria-label={stepLabel(step)}
       title={stepLabel(step)}

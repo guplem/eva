@@ -502,17 +502,17 @@ textarea {
   background: var(--accent);
 }
 
-.step-badge.command {
+.step-badge.step-command {
   border-radius: 2px;
   background: var(--text);
 }
 
-.step-badge.tool {
+.step-badge.step-tool {
   background: transparent;
   border: 2px solid var(--text-muted);
 }
 
-.step-badge.task {
+.step-badge.step-task {
   border-radius: 1px;
   transform: rotate(45deg) scale(0.85);
   background: var(--success);

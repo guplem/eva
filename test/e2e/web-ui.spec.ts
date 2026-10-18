@@ -59,6 +59,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   await logIn(page);
   await openList(page);
   await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("A chat to delete");
   await composer.press("Enter");

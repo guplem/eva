@@ -41,7 +41,8 @@ A change to one of these goals needs the owner.
 
 ## Checks
 
-- `bun run check` is exactly what the pre-push hook and the Ubuntu CI job run. The Windows CI job runs only `bun run test`. `bun install` installs the hooks.
+- `bun run check` is exactly what the Ubuntu CI job runs. The Windows CI job runs only `bun run test`.
+- The pre-push hook runs `bun run check:static`: every check but the tests. `bun install` installs the hooks.
 - The public-content check reads tracked files only (`git add` a new file first). The private denylist lives outside the repository: never copy an entry from it.
 - After `bun run build:executable`, run `bash scripts/smoke-executable.sh dist/eva`.
 
@@ -76,7 +77,7 @@ A commit that changes `src/` with no test change says why in its message.
 
 ## Shell commands
 
-Follow these rules. `.claude/settings.json` cannot allow the other forms, so they stop for a prompt or a refusal:
+Follow these rules in Claude Code. `.claude/settings.json` cannot allow the other forms, so they stop for a prompt or a refusal:
 
 - Do not put `&&` before a heredoc, or text after `<<'EOF'` on its line. Join the next command after `EOF` with a new line.
 - Quote each heredoc delimiter: `<<'EOF'`, never `<<EOF`.
@@ -87,7 +88,9 @@ Follow these rules. `.claude/settings.json` cannot allow the other forms, so the
 
 ## Agent files
 
-- Rules live only in `AGENTS.md` files. The nearest folder's file applies first. Each `CLAUDE.md` holds only `@AGENTS.md`.
+- Eva follows `docs/vibe-coded-standard.md`, and her setup report checks other repositories against it. Keep Eva, the document and the report aligned.
+- Rules live only in `AGENTS.md` files. The nearest folder's file applies first.
+- Skills live in `.agents/skills/`. The git hooks copy them to the git-ignored `.claude/skills/`, where Claude Code finds them.
 - Never write a rule that a check enforces, or a fact that the code shows.
 - When you learn a hard-won trap, add one line to the nearest `AGENTS.md`.
 - Keep each instruction short, with one home per fact. Delete a contradiction when you find one.

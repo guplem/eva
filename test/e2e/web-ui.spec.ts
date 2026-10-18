@@ -17,7 +17,7 @@ async function openList(page: Page): Promise<void> {
 /** The task chip under the answer opens the chat's background tasks, also on a phone. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("Search the notes");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
@@ -181,7 +181,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await openList(page);
   await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
       "Nothing runs in the background.",
     );
   }
@@ -587,6 +587,77 @@ test("back on the page, a stale answer from before the sleep is cleared", async 
   await expect(page.getByText("an answer from before the sleep")).toBeVisible();
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByText("an answer from before the sleep")).toHaveCount(0);
+});
+
+test("an answer shows its steps as badges with a hover text, and a tap lists them", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  // The live answer has the same badges until the turn ends, so wait for the stored one and its Retry button.
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(answer.locator(".answer-body")).toContainText(/Echo \d+: Hello Eva/);
+  // The demo turn runs a task, a tool and a command before its one message.
+  const toggle = answer.getByRole("button", { name: "Show 3 steps" });
+  await expect(answer.locator(".step-badge")).toHaveCount(3);
+  await expect(answer.locator('.step-badge[title="Command: ls"]')).toBeVisible();
+  if (test.info().project.name === "phone") {
+    // A finger needs a target of 44 px or more, also for a row of one small badge.
+    const box = await toggle.boundingBox();
+    expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  }
+  await toggle.click();
+  const steps = answer.getByRole("list", { name: "Steps" });
+  await expect(steps.getByRole("listitem")).toHaveText([
+    /Task\s+Search the notes/,
+    /Tool\s+Grep notes/,
+    /Command\s+ls/,
+  ]);
+  await answer.getByRole("button", { name: "Hide 3 steps" }).click();
+  await expect(steps).toHaveCount(0);
+});
+
+test("the chat panel shows the model, engine and context, and a phone opens it from Chat info", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  if (test.info().project.name === "desktop") {
+    const panel = page.getByRole("complementary", { name: "This chat" });
+    await expect(panel).toContainText("claude-code");
+    await expect(panel).toContainText("15 tokens");
+    // getByRole skips hidden elements, so count the button by its class.
+    await expect(page.locator(".chat-info-button")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    return;
+  }
+  await page.getByRole("button", { name: "Chat info" }).click();
+  const dialog = page.getByRole("dialog", { name: "This chat" });
+  await expect(dialog).toContainText("assistant");
+  await expect(dialog).toContainText("15 tokens");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("a new message of a running turn replaces the shown one, and the older one becomes a badge", async ({ page }) => {
+  const sockets = await routeEvents(page);
+  await logIn(page);
+  const sessionId = await newChat(page);
+  sockets.at(-1)?.send(textEvent(sessionId, "first thought"));
+  await expect(page.getByText("first thought")).toBeVisible();
+  sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
+  await expect(page.getByText("second thought")).toBeVisible();
+  await expect(page.getByText("first thought")).toHaveCount(0);
+  await expect(page.locator('.step-badge[title="Message: first thought"]')).toHaveCount(1);
+  // A badge keeps a short text, so the whole answer is one tap away.
+  await page.getByRole("button", { name: "Show the whole answer" }).click();
+  await expect(page.getByText("first thought")).toBeVisible();
+  await expect(page.getByText("second thought")).toBeVisible();
 });
 
 test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {

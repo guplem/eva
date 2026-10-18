@@ -44,3 +44,16 @@ Other decisions:
 - The third shape (older git keeps the edits only in the stash) gets one `git stash apply` right where Eva notices it, so it applies the newest stash entry, which is that autostash. A conflict turns it into kind 2.
 - Only the hub runs Telegram. A satellite's conflict is resolved on that satellite's web page. The alert names both ways.
 - Resolution is refused while an Assistant turn runs, like `syncVault`.
+
+## First review round
+
+Five agents reviewed the work. Fixed: glob characters in note names, a stale pick after a new remote edit, a rebase that stops while the merge is clean, a failed `ls-files` that deleted the note, a read that raised an error alert on a clean vault, a pull that a merge could block, a kept stash with nothing to pick, the Telegram list past ten notes, and the web list (stale, emptied on a refusal, double taps, screen reader names, long paths).
+
+Not fixed, with the reason:
+
+1. **A file on one side and a folder on the other** shows merge-tree's `x~HEAD` path. It is rare, nothing is lost, and the merge parents keep both sides.
+2. **An edit that is not committed shows only after the last pick,** when the commit before the merge meets the remote. Nothing is lost, and the next list shows it.
+3. **Case-insensitive copy names** on Windows: `freeCopyPath` checks the worktree (case-insensitive there) and the tree. A clash needs the remote to add a file whose name differs only in case, in the same push. It is rare, and the fast-forward refuses instead of losing a file.
+4. **`rmSync` can throw on Windows** when a program holds the file. The throw reaches the front end as a failed command. Nothing is lost.
+5. **The idle timeout off for all `/api/vault/` routes.** Each git step keeps its own timeout, so no request hangs forever.
+6. **Older git (before 2.38)** stays an error with a clear reason. A fallback merge in the worktree would add risk for a short-lived case. The guide names the minimum.

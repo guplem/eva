@@ -364,6 +364,7 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
+            policy: () => this.settings.updates.install,
             // A waiting engine update runs first: the restart would lose it, as it lives in memory.
             isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),

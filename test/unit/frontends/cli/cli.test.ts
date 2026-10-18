@@ -883,6 +883,10 @@ describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
     frequency: "daily",
+    install: "minor",
+    target: null,
+    heldBack: null,
+    releases: [],
     phase: "idle",
     current: "aaa1111",
     latest: "aaa1111",

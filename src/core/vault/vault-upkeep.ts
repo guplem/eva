@@ -6,7 +6,13 @@ import type { Logger } from "../../shared/logger.ts";
 import type { AlertProblem } from "../alerts/alert-center.ts";
 import { vaultSyncProblem } from "../alerts/problem-rules.ts";
 import type { EvaConfig } from "../settings/home.ts";
-import type { VaultSync, VaultSyncState } from "./vault-sync.ts";
+import type {
+  ConflictChoice,
+  ConflictResolution,
+  VaultConflictReport,
+  VaultSync,
+  VaultSyncState,
+} from "./vault-sync.ts";
 
 export const noVaultState: VaultSyncState = {
   status: "skipped",
@@ -75,6 +81,32 @@ export class VaultUpkeep {
     return this.logSyncState(await vaultSync.save());
   }
 
+  /** The vault notes that conflict now, so a phone can pick a version of each. */
+  async conflicts(): Promise<VaultConflictReport> {
+    const vaultSync = this.options.vaultSync;
+    if (vaultSync === null) return { state: noVaultState, conflicts: [] };
+    const report = await vaultSync.conflicts();
+    return { ...report, state: this.logSyncState(report.state) };
+  }
+
+  /** A pick for one conflicted note. It waits for the end of an Assistant turn, as a sync does: the turn can write the same note. */
+  async resolve(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
+    const vaultSync = this.options.vaultSync;
+    if (vaultSync === null) return { state: noVaultState, conflicts: [], found: false };
+    if (this.options.assistantBusy())
+      return {
+        state: {
+          ...vaultSync.currentState,
+          status: "skipped",
+          lastError: "Eva is working in an Assistant chat. Pick again when it ends.",
+        },
+        conflicts: [],
+        found: false,
+      };
+    const result = await vaultSync.resolve(path, choice);
+    this.options.logger?.log("info", "A vault conflict got a pick.", { path, choice, found: result.found });
+    return { ...result, state: this.logSyncState(result.state) };
+  }
   /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   async sweep(): Promise<VaultSyncState["status"]> {
     const vaultSync = this.options.vaultSync;

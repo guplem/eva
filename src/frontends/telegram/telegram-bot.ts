@@ -32,6 +32,7 @@ import {
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
 import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
 import { loadBotState, saveBotState, type BotState } from "./telegram-state.ts";
+import { TelegramConflicts } from "./telegram-conflicts.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { approvalAnswerText, fitProjects } from "./telegram-texts.ts";
 
@@ -75,6 +76,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
+  { command: "conflicts", description: "Pick a version of each vault note that conflicts" },
   { command: "update", description: "Install the latest version of Eva" },
   { command: "logs", description: "Show the last warnings and errors: /logs [count]" },
   { command: "restart", description: "Restart Eva" },
@@ -93,6 +95,7 @@ export class TelegramBot {
   private readonly unsubscribeAlerts: () => void;
   private readonly files: TelegramFiles;
   private readonly schedules: TelegramSchedules;
+  private readonly conflicts: TelegramConflicts;
   private running = false;
   private readonly sender: TelegramSender;
   private readonly poll: PollHealth;
@@ -131,6 +134,11 @@ export class TelegramBot {
       vaultPath: () => options.eva.status().vaultPath,
       describeError: (error) => this.describeError(error),
       offersPath: join(dirname(options.statePath), "telegram-offers.json"),
+    });
+    this.conflicts = new TelegramConflicts({
+      eva: options.eva,
+      sender: this.sender,
+      offersPath: join(dirname(options.statePath), "telegram-conflicts.json"),
     });
     this.schedules = new TelegramSchedules({
       api: options.api,
@@ -398,6 +406,9 @@ export class TelegramBot {
       case "sync":
         this.runApart(chatId, topicId, "Syncing…", async () => describeSync(await this.options.eva.syncVault()));
         return;
+      case "conflicts":
+        this.inBackground(chatId, topicId, () => this.conflicts.list(chatId, topicId));
+        return;
       case "link":
         await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
@@ -447,10 +458,16 @@ export class TelegramBot {
    * still answer while it runs. It sends a first line at once, then the result.
    */
   private runApart(chatId: number, topicId: number | null, firstLine: string, work: () => Promise<string>): void {
+    this.inBackground(chatId, topicId, async () => {
+      await this.send(chatId, topicId, firstLine);
+      await this.send(chatId, topicId, await work());
+    });
+  }
+
+  private inBackground(chatId: number, topicId: number | null, work: () => Promise<void>): void {
     void (async (): Promise<void> => {
       try {
-        await this.send(chatId, topicId, firstLine);
-        await this.send(chatId, topicId, await work());
+        await work();
       } catch (error) {
         await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
       }
@@ -552,6 +569,9 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    } else if (kind === "c" && first !== undefined && second !== undefined) {
+      const topicId = topicOf(query.message);
+      this.inBackground(chatId, topicId, () => this.conflicts.pick(chatId, topicId, first, second));
     } else if (kind === "r" && first === "now") {
       await this.send(chatId, topicOf(query.message), "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();

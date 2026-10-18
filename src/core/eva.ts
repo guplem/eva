@@ -51,7 +51,13 @@ import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
-import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import {
+  type ConflictChoice,
+  type ConflictResolution,
+  VaultSync,
+  type VaultConflictReport,
+  type VaultSyncState,
+} from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
@@ -403,6 +409,16 @@ export class Eva {
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
   syncVault(): Promise<VaultSyncState> {
     return this.vault.syncNow();
+  }
+
+  /** The vault notes that conflict now, so a phone can pick a version of each. */
+  vaultConflicts(): Promise<VaultConflictReport> {
+    return this.vault.conflicts();
+  }
+
+  /** A pick for one conflicted note; see `VaultUpkeep.resolve`. */
+  resolveVaultConflict(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
+    return this.vault.resolve(path, choice);
   }
 
   updateStatus(): UpdateStatus | null {

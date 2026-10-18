@@ -278,6 +278,19 @@ describe("device login", () => {
     expect((await call("/api/status", { headers: { cookie } })).status).toBe(401);
   });
 
+  test("a device login may save a project's details: they are vault content, not a machine setting", async () => {
+    attachApprover();
+    const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const { version } = await json<{ version: string }>(await call(`${path}/file`, { headers: device }));
+    const saved = await call(`${path}/details`, {
+      method: "PUT",
+      headers: device,
+      body: { version, title: "From the phone", status: "active", tags: [], repos: [] },
+    });
+    expect(saved.status).toBe(200);
+  });
+
   test("a device login changes the page's settings, but never a machine trust setting", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());
@@ -516,6 +529,39 @@ describe("web routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const read = await json<{ text: string; version: string }>(await call(`${path}/file`));
+    expect(read.text).toBe("---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Example app\n");
+
+    const details = await call(`${path}/details`, {
+      method: "PUT",
+      body: { version: read.version, title: "Better app", status: null, tags: ["work"], repos: [] },
+    });
+    expect(details.status).toBe(200);
+    const saved = await json<{ text: string; version: string }>(details);
+    expect(saved.text).toBe("---\ncreated: 2025-03-02T10:15\ntags:\n  - work\n---\n# Better app\n");
+
+    const whole = await call(`${path}/file`, {
+      method: "PUT",
+      body: { version: saved.version, text: "---\nstatus: idea\n---\n# Whole\n" },
+    });
+    expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: idea\n---\n# Whole\n" });
+  });
+
+  test("a project save: a stale version is a 409, a bad file or value a 400, an unknown project a 404", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const stale = await call(`${path}/file`, { method: "PUT", body: { version: "old", text: "---\n---\n" } });
+    expect(stale.status).toBe(409);
+    const { version } = await json<{ version: string }>(await call(`${path}/file`));
+    const bad = await call(`${path}/file`, { method: "PUT", body: { version, text: "no front matter\n" } });
+    expect(bad.status).toBe(400);
+    expect((await json<{ error: string }>(bad)).error).toContain("front matter");
+    const body = { version, title: "x", status: "active", tags: ["two words"], repos: [] };
+    expect((await call(`${path}/details`, { method: "PUT", body })).status).toBe(400);
+    expect((await call(`${path}/details`, { method: "PUT", body: { ...body, status: "dreaming" } })).status).toBe(400);
+    expect((await call("/api/projects/missing/file")).status).toBe(404);
+  });
   test("settings: read without secret values, write with a restart notice", async () => {
     const settings = await json<{ config: { timeZone: string }; secretsSet: Record<string, boolean> }>(
       await call("/api/settings"),

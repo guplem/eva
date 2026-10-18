@@ -268,7 +268,7 @@ describe("Eva", () => {
     });
     expect(work).toMatchObject({ mode: "project", clone: "remote-0" });
     // The asking chat learns of the Project chat before its first message, so a front end can show both.
-    expect(events.slice(0, 2)).toMatchObject([
+    expect(events).toMatchObject([
       {
         kind: "project_work_started",
         sessionId: assistantChat.id,
@@ -276,7 +276,6 @@ describe("Eva", () => {
         projectSessionId: work.id,
         request: "Fix the login bug.",
       },
-      { kind: "message_received", sessionId: work.id, origin: "eva" },
     ]);
     await waitFor(() => instance.sessions.get(assistantChat.id).turns.length === 1, 20_000);
     await instance.idle();

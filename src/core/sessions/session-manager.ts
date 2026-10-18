@@ -97,6 +97,8 @@ type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
   readonly texts: string[];
+  /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
+  readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
   readonly done: Promise<void>;
   readonly resolve: () => void;
 }
@@ -212,8 +214,7 @@ export class SessionManager {
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
     batch.texts.push(text);
-    // After the queue, so the message counts as gathered for any front end that checks.
-    this.emit(sessionId, { kind: "message_received", text, origin });
+    batch.messages.push({ text, origin });
     if (!runtime.busy && runtime.timer === null) {
       runtime.timer = setTimeout(() => {
         runtime.timer = null;
@@ -349,6 +350,9 @@ export class SessionManager {
         const batch = runtime.pending;
         runtime.pending = null;
         handled.push(batch);
+        // When the turn starts, not at the send: a message sent during a turn joins the next one
+        // (lesson 114), so a front end shows each message just before its own answer.
+        for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
         if (followUp !== null && followUps < maxFollowUps) {
           followUps += 1;
@@ -584,7 +588,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], done, resolve };
+  return { texts: [], messages: [], done, resolve };
 }
 
 function titleOf(prompt: string): string {

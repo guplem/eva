@@ -148,18 +148,49 @@ describe("a conversation", () => {
     expect(events[2]!.seq).toBeGreaterThan(events[1]!.seq);
   });
 
-  test("each message tells the front ends at once where it came from, redacted (lesson 95)", async () => {
+  test("each message of a turn tells the front ends where it came from, redacted (lesson 95)", async () => {
     const redactor = new Redactor();
     redactor.addSecret("the-secret-value-123");
     const manager = createManager(new FakeEngine(), { redactor });
     const sessionId = newAssistantSession(manager);
     const first = manager.send(sessionId, "from the phone", "telegram");
     const second = manager.send(sessionId, "the key is the-secret-value-123");
-    expect(events).toMatchObject([
-      { kind: "message_received", sessionId, text: "from the phone", origin: "telegram" },
-      { kind: "message_received", sessionId, text: "the key is [redacted]", origin: "eva" },
-    ]);
     await Promise.all([first, second]);
+    expect(events.map((event) => event.kind)).toEqual([
+      "message_received",
+      "message_received",
+      "text",
+      "turn_finished",
+    ]);
+    expect(events.slice(0, 2)).toMatchObject([
+      { sessionId, text: "from the phone", origin: "telegram" },
+      { sessionId, text: "the key is [redacted]", origin: "eva" },
+    ]);
+  });
+
+  test("a message sent during a turn is told when its own turn starts, after the turn before (lesson 114)", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const manager = createManager(
+      new FakeEngine(async function* (request, turnNumber) {
+        if (turnNumber === 1) await held;
+        yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "one", "telegram");
+    for (let attempt = 0; attempt < 200 && !manager.isBusy(sessionId); attempt += 1) await Bun.sleep(5);
+    const second = manager.send(sessionId, "two", "api");
+    release();
+    await Promise.all([first, second]);
+    expect(events.map((event) => (event.kind === "message_received" ? `message ${event.text}` : event.kind))).toEqual([
+      "message one",
+      "text",
+      "turn_finished",
+      "message two",
+      "text",
+      "turn_finished",
+    ]);
   });
 
   test("messages sent close together share one turn (lesson 51)", async () => {

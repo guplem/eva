@@ -492,6 +492,11 @@ describe("web routes", () => {
     expect((await call("/api/projects/missing/work", { method: "POST", body: {} })).status).toBe(400);
   });
 
+  test("a project's repository setup; an unknown project is a 404", async () => {
+    expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/setup"))).toEqual([]);
+    expect((await call("/api/projects/missing/setup")).status).toBe(404);
+  });
+
   test("a project's clones, and a new clone", async () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });

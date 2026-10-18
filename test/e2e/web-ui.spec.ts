@@ -79,6 +79,32 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await expect(answer).toContainText("Fix the bug");
 });
 
+test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await page.getByRole("button", { name: "Repository setup" }).click();
+  await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
+  // The local remote is not on GitHub, so its report only says why.
+  await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
+  const report = page.getByRole("group", { name: "example-owner/example-app" });
+  const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
+  await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
+  await skill.getByRole("button", { name: "Copy the fix for Skill write-commit" }).click();
+  await expect(skill.getByRole("button", { name: "Copied" })).toHaveText("Copied");
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain("In example-owner/example-app, add the skill `write-commit`");
+  await report.getByRole("button", { name: /Copy all fixes/ }).click();
+  const all = await page.evaluate(() => navigator.clipboard.readText());
+  expect(all).toContain("Open one pull request for all the file changes.");
+  expect(all).toContain("allow_auto_merge=true");
+  await expect(
+    report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
+  ).toBeVisible();
+});
+
 test("the status filter hides a closed project until Any status", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Project" }).click();

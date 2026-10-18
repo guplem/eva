@@ -6,25 +6,26 @@ Every command and setting, for when the [README](../../README.md) is not enough.
 
 Run these on the computer where Eva runs. When Eva is already running, each command talks to her; otherwise it does the work itself.
 
-| Command                          | What it does                                                                      |
-| -------------------------------- | --------------------------------------------------------------------------------- |
-| `eva setup`                      | Asks each question again. Enter keeps the current answer.                         |
-| `eva setup --non-interactive`    | Reads each answer from an `EVA_*` variable, for scripts.                          |
-| `eva doctor`                     | Checks the tools that each feature needs, and says how to install each one.       |
-| `eva`                            | Runs Eva in this terminal (the service does this for you).                        |
-| `eva service install`            | Starts Eva now, and by herself each time you log in.                              |
-| `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address. |
-| `eva link`                       | Shows the address that opens Eva on your phone and other computers.               |
-| `eva chat`                       | Talks to Eva in this terminal.                                                    |
-| `eva projects [words]`           | Searches your projects.                                                           |
-| `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.       |
-| `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.    |
-| `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                 |
-| `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.               |
-| `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.     |
-| `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                   |
-| `eva settings set <key> <value>` | Changes one setting, such as `eva settings set updates.frequency weekly`.         |
-| `eva --home <folder> <command>`  | Runs the command for another Eva on the same computer.                            |
+| Command                          | What it does                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `eva setup`                      | Asks each question again. Enter keeps the current answer.                             |
+| `eva setup --non-interactive`    | Reads each answer from an `EVA_*` variable, for scripts.                              |
+| `eva doctor`                     | Checks the tools that each feature needs, and says how to install each one.           |
+| `eva`                            | Runs Eva in this terminal (the service does this for you).                            |
+| `eva service install`            | Starts Eva now, by herself each time you log in, and again after a crash.             |
+| `eva supervise`                  | Runs Eva, and starts her again after a crash (the Windows service does this for you). |
+| `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address.     |
+| `eva link`                       | Shows the address that opens Eva on your phone and other computers.                   |
+| `eva chat`                       | Talks to Eva in this terminal.                                                        |
+| `eva projects [words]`           | Searches your projects.                                                               |
+| `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.           |
+| `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.        |
+| `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                     |
+| `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.                   |
+| `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.         |
+| `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                       |
+| `eva settings set <key> <value>` | Changes one setting, such as `eva settings set updates.frequency weekly`.             |
+| `eva --home <folder> <command>`  | Runs the command for another Eva on the same computer.                                |
 
 ## Settings
 

@@ -31,6 +31,7 @@ A change to one of these goals needs the owner.
 
 - **Never write personal data** in a file, commit, issue or PR: no names of private people, employers, machine addresses, tokens or home paths. Use the neutral demo vault and `example-app` style names.
 - **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`), with an environment from `buildChildEnvironment` and a timeout.
+  Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
 - **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
@@ -43,6 +44,12 @@ A change to one of these goals needs the owner.
 - `bun run check` is exactly what CI and the pre-push hook run. `bun install` installs the hooks.
 - The public-content check reads tracked files only (`git add` a new file first). The private denylist lives outside the repository: never copy an entry from it.
 - After `bun run build:executable`, run `bash scripts/smoke-executable.sh dist/eva`.
+
+## Renames
+
+- **Stored and sent names are a schema:** config keys, session record fields, event `kind` values and `EvaErrorCode` values. Rename a stored string only on purpose: read the old one tolerantly, or drop the old format (lesson 54). Say so in the PR.
+- **Change the registration points together:** `.dependency-cruiser.cjs`, `knip.json`, `bunfig.toml`, `package.json`, and the command lists in `src/frontends/cli/arguments.ts` and `src/frontends/telegram/telegram-bot.ts`.
+- Rename a CLI command, a Telegram command or a setting key only with the owner.
 
 ## Architecture
 
@@ -61,7 +68,7 @@ A commit that changes `src/` with no test change says why in its message.
 ## Git and GitHub
 
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
-- Merge only when CI is green on Ubuntu and Windows and the branch contains the latest `main`. Merge with `gh pr merge --match-head-commit`.
+- Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. When the branch is behind `main`, run `gh pr update-branch`.
 - Never push to a person's vault.
 - One owner per branch. Agent worktrees live in `.claude/worktrees/`, which git ignores.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   CloneOriginStore,
@@ -130,7 +130,11 @@ describe("trust", () => {
 });
 
 describe("clone origins", () => {
-  const folder = (name: string): string => join(project, "repos", name);
+  const folder = (name: string): string => {
+    const path = join(project, "repos", name);
+    mkdirSync(path, { recursive: true });
+    return path;
+  };
 
   test("the store keeps the URL that Eva cloned from, by clone folder", () => {
     const path = join(sandbox.root, "clone-origins.json");
@@ -163,15 +167,29 @@ describe("clone origins", () => {
     expect(store.origin(join(project, "repos", ".", "app-0"))).toEqual({ url: "https://github.com/owner/app.git" });
   });
 
+  test("a folder that was deleted and made again at the same path has no record", async () => {
+    const store = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    rmSync(join(project, "repos", "app-0"), { recursive: true });
+    expect(store.origin(join(project, "repos", "app-0"))).toBeNull();
+    // Recording a folder that is gone pins nothing for a folder made there later.
+    store.recordClone(join(project, "repos", "app-0"), "https://github.com/owner/app.git");
+    // A new folder can get the old one's inode at once, so the birth time tells them apart.
+    await Bun.sleep(5);
+    expect(store.origin(folder("app-0"))).toBeNull();
+  });
+
   test("a broken or odd origins file means no records yet", () => {
+    const x = folder("x");
     for (const content of [
       "{broken",
       "[]",
-      JSON.stringify({ x: { url: 3 } }),
-      JSON.stringify({ x: { url: "u", decision: "maybe" } }),
+      JSON.stringify({ [x]: { url: 3, folder: "1:1" } }),
+      JSON.stringify({ [x]: { url: "u" } }),
+      JSON.stringify({ [x]: { url: "u", folder: "1:1", decision: "maybe" } }),
     ]) {
       sandbox.write(sandbox.root, "clone-origins.json", content);
-      expect(new CloneOriginStore(join(sandbox.root, "clone-origins.json")).origin("x")).toBeNull();
+      expect(new CloneOriginStore(join(sandbox.root, "clone-origins.json")).origin(x)).toBeNull();
     }
   });
 });

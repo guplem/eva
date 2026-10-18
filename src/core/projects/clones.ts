@@ -160,20 +160,27 @@ function isDecisionMap(value: unknown): value is Record<string, "trusted" | "unt
 
 /**
  * Where a clone came from. Without a decision, Eva cloned the URL, and the answers by URL apply.
- * With one, the person judged a folder that Eva did not clone, and the answer holds for that folder only.
+ * With one, Eva has no record of cloning the folder: the URL is only what its `origin` showed when
+ * the person answered, and the answer holds for that folder only.
  */
 export interface CloneOrigin {
   readonly url: string;
   readonly decision?: "trusted" | "untrusted";
 }
 
+interface StoredOrigin extends CloneOrigin {
+  /** The folder's identity when Eva recorded it. A folder made again at the same path does not match. */
+  readonly folder: string;
+}
+
 /**
  * The origin of each clone, by folder, in `state/clone-origins.json`. Trust reads it, not the live
- * `origin` remote: code in the clone can change its own remote, but it cannot reach this file.
+ * `origin` remote, which any edit of the clone's `.git/config` changes. Like `trust.json`, it stays
+ * out of the clone and the vault, the places an agent edits.
  */
 export class CloneOriginStore {
   private readonly path: string;
-  private readonly origins: Record<string, CloneOrigin>;
+  private readonly origins: Record<string, StoredOrigin>;
 
   constructor(path: string) {
     this.path = path;
@@ -182,7 +189,10 @@ export class CloneOriginStore {
   }
 
   origin(cloneFolder: string): CloneOrigin | null {
-    return this.origins[cloneKey(cloneFolder)] ?? null;
+    const stored = this.origins[cloneKey(cloneFolder)];
+    const identity = folderIdentity(cloneFolder);
+    if (stored === undefined || identity === null || stored.folder !== identity) return null;
+    return stored.decision === undefined ? { url: stored.url } : { url: stored.url, decision: stored.decision };
   }
 
   recordClone(cloneFolder: string, repositoryUrl: string): void {
@@ -194,7 +204,10 @@ export class CloneOriginStore {
   }
 
   private write(cloneFolder: string, origin: CloneOrigin): void {
-    this.origins[cloneKey(cloneFolder)] = origin;
+    const identity = folderIdentity(cloneFolder);
+    // A folder that is gone has nothing to pin, and a record with no identity would never match.
+    if (identity === null) return;
+    this.origins[cloneKey(cloneFolder)] = { ...origin, folder: identity };
     writeFileAtomic(this.path, JSON.stringify(this.origins, null, 2) + "\n");
   }
 }
@@ -205,11 +218,28 @@ function cloneKey(cloneFolder: string): string {
   return process.platform === "win32" ? absolute.toLowerCase() : absolute;
 }
 
-function isOriginMap(value: unknown): value is Record<string, CloneOrigin> {
+/**
+ * The inode and the birth time of a folder, or null when it is gone. A file system can
+ * give a new folder the inode of a deleted one at once, so the inode alone is not enough.
+ */
+function folderIdentity(cloneFolder: string): string | null {
+  try {
+    const stats = statSync(cloneFolder);
+    return `${String(stats.ino)}:${String(stats.birthtimeMs)}`;
+  } catch {
+    return null;
+  }
+}
+
+function isOriginMap(value: unknown): value is Record<string, StoredOrigin> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.values(value).every((entry: unknown) => {
     if (entry === null || typeof entry !== "object") return false;
-    const { url, decision } = entry as { url?: unknown; decision?: unknown };
-    return typeof url === "string" && (decision === undefined || decision === "trusted" || decision === "untrusted");
+    const { url, folder, decision } = entry as { url?: unknown; folder?: unknown; decision?: unknown };
+    return (
+      typeof url === "string" &&
+      typeof folder === "string" &&
+      (decision === undefined || decision === "trusted" || decision === "untrusted")
+    );
   });
 }

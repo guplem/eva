@@ -56,4 +56,18 @@ How does the bot learn that the work started from a Telegram chat? Proposal: `st
 
 ## Decisions
 
-To fill after the gap review.
+Three agents reviewed each gap. Each gap had a clear answer, so no question goes to the owner.
+
+- **Core events.** The core's own events (`session_deleted`, `project_work_started`) get their own union in `src/shared/events.ts`, beside `EngineEventPayload`. The engine port keeps only the engine vocabulary. Both kinds are new sent names: the PR says so.
+- **Gap 1: `/chats`, on demand.** Mirroring every chat would flood the phone, and topic creation can fail (lesson 61).
+  - The list shows the 10 newest root chats (no forks, no schedule chats), Assistant and Project, as buttons `c:<sessionId>`.
+  - A press in a group with topics opens a topic named after the chat (`openedByEva: true, renamed: true`, lesson 125) and binds it. A chat that has a topic already gets a pointer to that topic, not a second one.
+  - Without topics, a press binds the main chat to the chosen chat, after the busy check of `/new` (lesson 49).
+  - A press on a deleted chat says that the chat no longer exists.
+  - The binding stays in the bot state, not in the session record: no schema change.
+- **Gap 2: one history, read from the record.**
+  - On a bind, the bot posts a header ("Earlier turns: N. The web chat has all of them.") and the last 3 turns: the message, then the answer through `sendAnswer`.
+  - The bot keeps the texts that it forwarded, per chat. At `turn_finished` it takes the turn's `userText` from the record, removes each forwarded text from it, and posts what is left before the answer. So a message from the web, a project report and a follow-up of the mode all show in Telegram. A mixed batch (lesson 51) shows only the part that did not come from Telegram.
+  - A failed turn that did not start in Telegram shows only its failure: the record gets the turn after `turn_failed`. This is a known limit.
+- **Gap 3: delete the record and its forks.** `SessionStore.delete`, `SessionManager.delete(id)` refuses an active chat in the tree with `session_busy`, then emits one `session_deleted` per chat. `DELETE /api/sessions/:id` and a delete button in the web chat header (with a confirm). Telegram `/delete` deletes the chat in the core first (so a busy refusal comes before the topic delete), then the topic. On `session_deleted` from elsewhere, the bot deletes a topic that it opened, or forgets the mapping. `scheduleTopics` stays.
+- **Gap 4: a topic and a link.** `startProjectWork` emits `project_work_started` on the asking chat. When that chat is in Telegram, the bot opens a topic for the Project chat and binds it. It then posts one message in the asking chat: the `t.me/c/...` topic link when the chat is a supergroup, and the web link `<remote url>/#/chat/<id>` when Tailscale gives an address. The web app opens the chat that `#/chat/<id>` names.

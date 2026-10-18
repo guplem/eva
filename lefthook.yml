@@ -8,9 +8,27 @@ pre-commit:
     lint:
       glob: "*.{ts,js}"
       run: bunx eslint --no-warn-ignored {staged_files}
+    # Claude Code reads AGENTS.md only when no CLAUDE.md exists in the folder or above it.
+    no-claude-md:
+      glob: ["CLAUDE.md", "**/CLAUDE.md"]
+      # The staged files include deleted ones: a delete is allowed. Single quotes only: on Windows,
+      # Lefthook wraps the whole command in double quotes.
+      run: for file in {staged_files}; do if test -e $file; then echo 'Do not commit a CLAUDE.md. Write the rules in AGENTS.md.' >&2; exit 1; fi; done
 
-# The full check, the same one CI runs, plus the private denylist that only exists locally.
+# The fast checks, and the private denylist that only exists locally. CI runs the tests.
 pre-push:
   commands:
     check:
-      run: bun run check
+      run: bun run check:static
+
+# After a pull or a branch switch: install changed dependencies, and copy the skills for Claude Code.
+# A hook-level `files` command gets no `{1}`, so the script compares the commits itself.
+post-merge:
+  commands:
+    after-update:
+      run: bun run scripts/after-update.ts ORIG_HEAD HEAD
+
+post-checkout:
+  commands:
+    after-update:
+      run: bun run scripts/after-update.ts {1} {2}

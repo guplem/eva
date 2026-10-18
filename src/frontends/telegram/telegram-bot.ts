@@ -3,21 +3,21 @@
  * and 123 to 127. Each topic is one chat of the instance's single conversation list;
  * a message outside every topic belongs to the main chat.
  */
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Alert } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
 import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
-import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { extractFileMarkers, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
-import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
+
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
-import { TelegramError, type TelegramApi } from "./telegram-api.ts";
+import type { TelegramApi } from "./telegram-api.ts";
+import { TelegramFiles } from "./telegram-files.ts";
 import { splitForTelegram } from "./telegram-format.ts";
 import {
   keyOf,
@@ -32,7 +32,8 @@ import {
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
 import { messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
 import { loadBotState, saveBotState, type BotState } from "./telegram-state.ts";
-import { approvalAnswerText, cardText, fitProjects } from "./telegram-texts.ts";
+import { TelegramSchedules } from "./telegram-schedules.ts";
+import { approvalAnswerText, fitProjects } from "./telegram-texts.ts";
 
 export interface TelegramBotOptions {
   readonly api: TelegramApi;
@@ -61,10 +62,6 @@ export interface TelegramBotOptions {
 const confirmAttempts = 3;
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const deviceExpiredText = "This request expired.";
-/** Telegram lets a bot download at most 20 MB. */
-const maxDownloadBytes = 20 * 1024 * 1024;
-/** Telegram refuses a keyboard of more than 100 buttons. */
-const buttonsPerMessage = 50;
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
 
@@ -93,7 +90,8 @@ export class TelegramBot {
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
   private readonly unsubscribeAlerts: () => void;
-  private readonly offers: OfferStore;
+  private readonly files: TelegramFiles;
+  private readonly schedules: TelegramSchedules;
   private running = false;
   private readonly sender: TelegramSender;
   private readonly poll: PollHealth;
@@ -103,8 +101,6 @@ export class TelegramBot {
   private readonly approvalMessages: Map<string, { chatId: number; messageId: number; text: string }>;
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
-  /** The card text of each schedule that was too long for Telegram, so the notice goes out once per card. */
-  private readonly tooLongCards: Map<string, string>;
   private readonly detachDeviceApprover: () => void;
 
   constructor(options: TelegramBotOptions) {
@@ -127,14 +123,33 @@ export class TelegramBot {
     });
     this.approvalMessages = new Map();
     this.stoppedSessions = new Set();
-    this.tooLongCards = new Map();
     this.state = loadBotState(options.statePath);
-    this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
+    this.files = new TelegramFiles({
+      api: options.api,
+      sender: this.sender,
+      vaultPath: () => options.eva.status().vaultPath,
+      describeError: (error) => this.describeError(error),
+      offersPath: join(dirname(options.statePath), "telegram-offers.json"),
+    });
+    this.schedules = new TelegramSchedules({
+      api: options.api,
+      sender: this.sender,
+      files: this.files,
+      eva: options.eva,
+      state: this.state,
+      saveState: () => {
+        this.saveState();
+      },
+      pairedChat: () => this.allowedChatId,
+      startTyping: (chatId, topicId, sessionId) => {
+        this.startTyping(chatId, topicId, sessionId);
+      },
+    });
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
       void this.onEvent(event);
     });
     this.unsubscribeSchedules =
-      options.eva.schedules?.subscribe((event) => this.onScheduleEvent(event)) ?? ((): void => undefined);
+      options.eva.schedules?.subscribe((event) => this.schedules.onEvent(event)) ?? ((): void => undefined);
     this.unsubscribeAlerts = options.eva.onAlert((alert) => this.sendAlert(alert));
     // The paired chat confirms each new browser of the web UI.
     this.detachDeviceApprover = options.eva.deviceLogins.attachApprover({
@@ -301,7 +316,7 @@ export class TelegramBot {
       await this.send(chatId, topicId, "No vault is configured, so Eva cannot keep the file.");
       return;
     }
-    const bytes = await this.download(chatId, topicId, file);
+    const bytes = await this.files.download(chatId, topicId, file);
     if (bytes === null) return;
     const saved = saveReceivedFile(vaultPath, file.file_name ?? "file", bytes);
     await this.forward(chatId, topicId, `${caption}\n\n[The person sent a file, saved as ${saved}]`.trim());
@@ -314,7 +329,7 @@ export class TelegramBot {
       await this.send(chatId, topicId, "Voice notes are not set up on this machine. Run `eva doctor` to see why.");
       return;
     }
-    const audio = await this.download(chatId, topicId, voice);
+    const audio = await this.files.download(chatId, topicId, voice);
     if (audio === null) return;
     let heard: string;
     try {
@@ -330,23 +345,6 @@ export class TelegramBot {
     await this.send(chatId, topicId, `Heard: ${heard}`);
     await this.forward(chatId, topicId, heard);
   }
-
-  /** Downloads a file that a message holds. Returns null, after a sentence in the chat, when it fails. */
-  private async download(chatId: number, topicId: number | null, file: TelegramFile): Promise<Uint8Array | null> {
-    if ((file.file_size ?? 0) > maxDownloadBytes) {
-      await this.send(chatId, topicId, "Telegram lets Eva download files up to 20 MB only.");
-      return null;
-    }
-    try {
-      const described = await this.options.api.call<{ file_path?: string }>("getFile", { file_id: file.file_id });
-      if (described.file_path === undefined) throw new Error("Telegram gave no file path");
-      return await this.options.api.download(described.file_path);
-    } catch (error) {
-      await this.send(chatId, topicId, `The file could not be downloaded: ${this.describeError(error)}`);
-      return null;
-    }
-  }
-
   private async handleCommand(chatId: number, topicId: number | null, text: string): Promise<void> {
     const [rawName, ...rest] = text.slice(1).split(/\s+/);
     const name = (rawName ?? "").split("@")[0];
@@ -379,7 +377,7 @@ export class TelegramBot {
         await this.send(chatId, topicId, describeStatusLines(this.options.eva.status()).join("\n"));
         return;
       case "schedules":
-        await this.listSchedules(chatId, topicId);
+        await this.schedules.list(chatId, topicId);
         return;
       case "sync":
         this.runApart(chatId, topicId, "Syncing…", async () => describeSync(await this.options.eva.syncVault()));
@@ -534,152 +532,13 @@ export class TelegramBot {
     } else if (kind === "d" && first !== undefined) {
       await this.deleteTopic(chatId, Number(first));
     } else if (kind === "f" && first !== undefined) {
-      const topicId = topicOf(query.message);
-      const path = this.offers.pathFor(first);
-      if (path === null) await this.send(chatId, topicId, "That file is no longer available.");
-      else await this.sendVaultFile(chatId, topicId, path);
+      await this.files.sendOffered(chatId, topicOf(query.message), first);
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
     } else if (kind === "r" && first === "now") {
       await this.send(chatId, topicOf(query.message), "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();
-    }
-  }
-
-  /** /schedules: every schedule with its next run, a remove button each, and the file's problems. */
-  private async listSchedules(chatId: number, topicId: number | null): Promise<void> {
-    const scheduler = this.options.eva.schedules;
-    if (scheduler === null) {
-      await this.send(chatId, topicId, "No vault is configured, so there are no schedules.");
-      return;
-    }
-    const { schedules, problems } = scheduler.list();
-    const lines = schedules.map(
-      ({ schedule, nextRun }) => `• ${schedule.name} (${schedule.id}), next: ${nextRun?.replace("T", " ") ?? "never"}`,
-    );
-    if (problems.length > 0) lines.push("", "Schedules file problems:", ...problems.map((problem) => `• ${problem}`));
-    await this.send(
-      chatId,
-      topicId,
-      lines.length === 0 ? "No schedules. Ask Eva to create one." : lines.join("\n"),
-      schedules.length === 0
-        ? undefined
-        : {
-            inline_keyboard: schedules
-              .slice(0, buttonsPerMessage)
-              .map(({ schedule }) => [{ text: `Remove ${schedule.name}`, callback_data: `s:${schedule.id}` }]),
-          },
-    );
-  }
-
-  /**
-   * Setup cards, firings and file problems of the schedules (lessons 66, 70, 126). True when the
-   * paired chat got the event: a card that failed to go out waits for the next check.
-   */
-  private async onScheduleEvent(event: ScheduleEvent): Promise<boolean> {
-    const chatId = this.allowedChatId;
-    if (chatId === null) return false;
-    if (event.kind === "schedule_problems") {
-      const text = ["Schedules file problems:", ...event.problems.map((line) => `• ${line}`)].join("\n");
-      return (await this.send(chatId, null, text)) !== null;
-    }
-    const topicId = await this.scheduleTopic(chatId, event.scheduleId, event.name);
-    if (event.kind === "schedule_card") return this.sendCard(chatId, topicId, event);
-    const current = this.state.topics[keyOf(chatId, topicId)];
-    const busy = current !== undefined && this.options.eva.sessions.isBusy(current.sessionId);
-    // Never take a chat from a turn that runs (lesson 49): then the firing's answer shows on the web only.
-    if (event.sessionId !== null && !busy) {
-      // Each firing is a fresh chat in the schedule's topic (lesson 126).
-      this.state.topics[keyOf(chatId, topicId)] = { sessionId: event.sessionId, openedByEva: true, renamed: true };
-      this.saveState();
-      this.startTyping(chatId, topicId, event.sessionId);
-    }
-    if (event.text !== null) await this.send(chatId, topicId, event.text);
-    if (event.file !== null) await this.sendVaultFile(chatId, topicId, event.file);
-    return true;
-  }
-
-  /**
-   * A cut card would hide its last fields, the prompt among them (lesson 67). So a card too long
-   * for one message never counts as shown: a short notice sends the person to the web app.
-   */
-  private async sendCard(chatId: number, topicId: number | null, card: ScheduleCard): Promise<boolean> {
-    const text = cardText(card);
-    if (text.length <= telegramMessageLimit) {
-      this.tooLongCards.delete(card.scheduleId);
-      return (await this.send(chatId, topicId, text)) !== null;
-    }
-    if (this.tooLongCards.get(card.scheduleId) === text) return false;
-    const notice = `The setup card of ${card.name} is too long for Telegram. Open the web app to check it: the schedule runs only after that.`;
-    // A notice that failed to go out goes out again at the next check.
-    if ((await this.send(chatId, topicId, notice)) !== null) this.tooLongCards.set(card.scheduleId, text);
-    return false;
-  }
-
-  /** The schedule's topic. A topic deleted in the app answers a typing action with 400, so a new one opens (lesson 70). */
-  private async scheduleTopic(chatId: number, scheduleId: string, name: string): Promise<number | null> {
-    const existing = this.state.scheduleTopics[scheduleId];
-    if (existing !== undefined) {
-      try {
-        await this.options.api.call("sendChatAction", {
-          chat_id: chatId,
-          action: "typing",
-          message_thread_id: existing,
-        });
-        return existing;
-      } catch (error) {
-        if (!(error instanceof TelegramError && error.code === 400)) return existing;
-      }
-    }
-    try {
-      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
-        chat_id: chatId,
-        name,
-      });
-      this.state.scheduleTopics[scheduleId] = topic.message_thread_id;
-      this.saveState();
-      return topic.message_thread_id;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Uploads a vault file, after the path check; a refused or failed file gets a sentence (lesson 72). */
-  private async sendVaultFile(chatId: number, topicId: number | null, requested: string): Promise<void> {
-    const vaultPath = this.options.eva.status().vaultPath;
-    const file = vaultPath === null ? null : resolveSendableFile(vaultPath, requested);
-    if (file?.ok !== true) {
-      await this.send(chatId, topicId, file?.reason ?? "No vault is configured.");
-      return;
-    }
-    try {
-      await this.options.api.upload(
-        "sendDocument",
-        { chat_id: chatId, ...threadOf(topicId) },
-        { field: "document", name: file.name, bytes: new Uint8Array(readFileSync(file.path)) },
-      );
-    } catch (error) {
-      await this.send(chatId, topicId, `Telegram did not take ${file.relativePath}: ${this.describeError(error)}`);
-    }
-  }
-
-  /** Offered files become buttons; nothing uploads until a press (lesson 124). */
-  private async offerFiles(chatId: number, topicId: number | null, paths: readonly string[]): Promise<void> {
-    const vaultPath = this.options.eva.status().vaultPath;
-    const buttons: { text: string; callback_data: string }[] = [];
-    for (const requested of paths) {
-      const file = vaultPath === null ? null : resolveSendableFile(vaultPath, requested);
-      if (file?.ok !== true) {
-        await this.send(chatId, topicId, file?.reason ?? "No vault is configured.");
-        continue;
-      }
-      buttons.push({ text: file.name, callback_data: `f:${this.offers.idFor(file.relativePath)}` });
-    }
-    for (let start = 0; start < buttons.length; start += buttonsPerMessage) {
-      await this.send(chatId, topicId, "Files you can open:", {
-        inline_keyboard: buttons.slice(start, start + buttonsPerMessage).map((button) => [button]),
-      });
     }
   }
 
@@ -732,8 +591,8 @@ export class TelegramBot {
         // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).
         const markers = extractFileMarkers(answer);
         if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
-        for (const path of markers.attach) await this.sendVaultFile(target.chatId, target.topicId, path);
-        if (markers.offer.length > 0) await this.offerFiles(target.chatId, target.topicId, markers.offer);
+        for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
+        if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
         const stopped = this.stoppedSessions.delete(event.sessionId);
         if (event.kind === "turn_failed")
           await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);

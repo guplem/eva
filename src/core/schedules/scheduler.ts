@@ -1,7 +1,7 @@
 /**
  * Fires the schedules of `.eva/schedules.json`. Only the hub fires them,
- * because every machine runs an instance (lesson 118). A new or changed schedule fires only
- * after a front end showed its setup card to the person (lesson 66). Each firing with a prompt starts a fresh
+ * because every machine runs an instance (lesson 118). A new or changed schedule fires
+ * only after a front end showed its setup card (lesson 66). Each firing with a prompt starts a fresh
  * chat named after the schedule (lesson 126).
  */
 import { join } from "node:path";
@@ -137,11 +137,15 @@ export class Scheduler {
    * fields still match the waiting card and the file, so a change pushed meanwhile gets its own card.
    */
   confirmCard(scheduleId: string, fields: Readonly<Record<string, string>>): boolean {
-    const card = this.waiting.get(scheduleId);
-    if (card === undefined || changedFields(card.fields, fields).length > 0) return false;
+    if (!this.options.isHub()) return false;
     const schedule = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
     if (schedule === undefined || changedFields(announcedFields(schedule), fields).length > 0) return false;
-    this.recordCard(schedule, wallClockOf(this.options.now(), this.options.timeZone));
+    const now = wallClockOf(this.options.now(), this.options.timeZone);
+    // Another front end showed this card first: the tap only agrees, and must not skip a due slot again.
+    if (this.isAnnounced(schedule, now)) return true;
+    const card = this.waiting.get(scheduleId);
+    if (card === undefined || changedFields(card.fields, fields).length > 0) return false;
+    this.recordCard(schedule, now);
     return true;
   }
 
@@ -190,7 +194,7 @@ export class Scheduler {
   private async check(schedule: Schedule, now: string): Promise<void> {
     const state = this.state.see(schedule.id, now);
     const fields = announcedFields(schedule);
-    if (state.announced === null || changedFields(state.announced, fields).length > 0) {
+    if (!this.isAnnounced(schedule, now)) {
       const card: ScheduleCard = {
         kind: "schedule_card",
         scheduleId: schedule.id,
@@ -202,15 +206,26 @@ export class Scheduler {
       };
       // The card is the check against a schedule that someone pushed (lessons 66, 67). Until a
       // front end shows it, the schedule writes no state and never fires.
-      if (await this.emit(card)) this.recordCard(schedule, now);
+      const shown = await this.emit(card);
+      // A confirm can come in while a front end still sends the card.
+      if (this.isAnnounced(schedule, now)) return;
+      if (shown) this.recordCard(schedule, now);
       else {
         this.waiting.set(schedule.id, card);
         this.options.reportCard?.(schedule.id, schedule.name, true);
       }
       return;
     }
+    // The change was undone before anyone saw its card, so that card no longer waits.
+    this.stopWaiting(schedule.id);
     const slot = dueSlot(schedule, state, now);
     if (slot !== null) await this.fire(schedule, slot);
+  }
+
+  /** True when a front end showed a card with the schedule's current fields. */
+  private isAnnounced(schedule: Schedule, now: string): boolean {
+    const announced = this.state.see(schedule.id, now).announced;
+    return announced !== null && changedFields(announced, announcedFields(schedule)).length === 0;
   }
 
   /** The person saw the card: a slot that is already due is skipped, so nothing runs before the card. */

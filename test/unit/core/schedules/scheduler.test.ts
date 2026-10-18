@@ -438,6 +438,71 @@ describe("Scheduler", () => {
       expect(scheduler.waitingCards()).toEqual([]);
     });
 
+    test("the wait clears when the change is undone before anyone saw its card", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      shows = false;
+      writeSchedules([{ ...morning, at: "09:00" }]);
+      await scheduler.tick();
+      writeSchedules([morning]);
+      await scheduler.tick();
+      expect(scheduler.waitingCards()).toEqual([]);
+      expect(cardReports.at(-1)).toEqual({ scheduleId: "morning", name: "Morning", waiting: false });
+    });
+
+    test("a confirm while a front end still sends the card leaves nothing waiting", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      const [card] = scheduler.waitingCards();
+      let release = (): void => undefined;
+      const unsubscribe = scheduler.subscribe(
+        () =>
+          new Promise<boolean>((resolve) => {
+            release = () => resolve(false);
+          }),
+      );
+      const slowTick = scheduler.tick();
+      await Bun.sleep(0);
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
+      release();
+      await slowTick;
+      unsubscribe();
+      expect(scheduler.waitingCards()).toEqual([]);
+      expect(cardReports.at(-1)?.waiting).toBe(false);
+    });
+
+    test("a second confirm of a card already seen succeeds and changes nothing", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      const [card] = events.filter((event) => event.kind === "schedule_card");
+      clock = new Date("2026-07-01T05:30:00Z");
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(true);
+      await scheduler.tick();
+      expect(chats.map((chat) => chat.name)).toEqual(["Morning"]);
+    });
+
+    test("a satellite refuses a confirm", async () => {
+      writeSchedules([morning]);
+      shows = false;
+      let isHub = true;
+      const scheduler = new Scheduler({
+        vaultPath: vault,
+        statePath: join(folder, "state", "schedules-state.json"),
+        timeZone: "Europe/Madrid",
+        isHub: () => isHub,
+        now: () => clock,
+        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+      });
+      await scheduler.tick();
+      const [card] = scheduler.waitingCards();
+      isHub = false;
+      expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
+    });
+
     test("the wait clears when this machine stops being the hub", async () => {
       writeSchedules([morning]);
       shows = false;

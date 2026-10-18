@@ -19,11 +19,18 @@ Each change to a stored format comes with a dated migration. Eva records the ids
 5. Gate the vault writes of settings, schedules and the hub claim: when the vault is ahead, refuse with a new `EvaError` code, and report one alert.
 6. Add one line to the `write-commit` skill: a format change needs a migration, or a `!`. Update `AGENTS.md` ("Renames") to point at migrations.
 
-## Gaps
+## Gaps and decisions
 
-1. Both existing moves write both stores. How do they split into machine and vault migrations?
-2. A satellite runs no Telegram bot. How does its alert reach the phone?
-3. Where does the vault write gate live, without an import cycle (settings, hub and schedules on one side, the migration list on the other)?
-4. #97 (PR #115, open) and #119 interact (see the comment on #119). Which part lands here?
-5. Where do the `.bak` copies of vault files go: next to the file, in the vault, or in the machine's home?
-6. When does a running Eva notice that the vault moved ahead after a pull?
+1. **Both existing moves write both stores.** Split them into four migrations. Each one is frozen: it copies its key lists and works on raw JSON.
+   - Machine `move-shared-settings-to-vault`: when `.eva/settings.json` exists, drop the shared keys from `config.json` (the vault wins, as today). Without a vault, it is done. With a vault but no settings file, it waits ("later"), and the values in `config.json` still work.
+   - Vault `start-vault-settings`: when `.eva/settings.json` is missing, the hub starts it from its own `config.json`. A vault migration may read the machine files of the hub.
+   - Machine `copy-security-settings-from-vault`: copy each security key that `config.json` lacks. A bad value is dropped, so Eva still starts.
+   - Vault `drop-security-settings-from-vault`: the hub drops the security keys from the vault file. A satellite that copies after this falls back to the narrow defaults: it fails safe, as the original move accepted.
+   - On the hub, the machine store runs before the vault store.
+2. **A satellite runs no Telegram bot.** Report the problem through the alert center. On the hub it reaches Telegram. On a satellite it reaches the status, the web app and the log, as a vault sync problem does today. The PR says so. A relay through the vault is new design for a later issue.
+3. **The gate and the import cycle.** The migrations import only `src/shared/` and the runner, so the low-level writers can import the gate: `saveSettings` (only the vault part: a machine-only change still saves), the schedule file writes, and the hub claims. The gate reads `.eva/migrations.json` at each write and throws `EvaError("vault_ahead")`. An Assistant agent can still edit the files directly.
+4. **#97.** PR #115 is open. `migrationsAhead` returns the version that the vault needs. If #115 merges first, wire the rule into the updater here. Otherwise, comment on #115.
+5. **The `.bak` copies** go to `state/migration-backups/<id>/<store>/` in the machine's home. A copy in the vault would sync, with the security settings. Git history backs up the vault too.
+6. **Notice a vault that moved ahead** after each pull (in `logSyncState`) and at start, with one `vault_ahead` alert that resolves after the update. A machine that becomes the hub runs the vault migrations; a machine that is behind cannot claim the hub.
+7. **Start order.** Take the instance lock before the migrations, so a second start never migrates under a running Eva. Hold the results, and report them after the Telegram bot starts.
+8. Update `AGENTS.md` ("Renames"): a format change needs a migration, or a `!`. Lesson 54 stays as history.

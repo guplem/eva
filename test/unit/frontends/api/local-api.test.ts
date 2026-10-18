@@ -355,7 +355,7 @@ describe("routes", () => {
     while (!events.some((event) => event.kind === "turn_finished")) await Bun.sleep(10);
     socket.close();
 
-    expect(events.map((event) => event.kind)).toEqual(["text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
     const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
   });

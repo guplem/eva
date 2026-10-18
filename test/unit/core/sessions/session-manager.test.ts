@@ -141,10 +141,25 @@ describe("a conversation", () => {
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "one");
     expect(events.map((event) => [event.kind, event.sessionId])).toEqual([
+      ["message_received", sessionId],
       ["text", sessionId],
       ["turn_finished", sessionId],
     ]);
-    expect(events[1]!.seq).toBeGreaterThan(events[0]!.seq);
+    expect(events[2]!.seq).toBeGreaterThan(events[1]!.seq);
+  });
+
+  test("each message tells the front ends at once where it came from, redacted (lesson 95)", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    const first = manager.send(sessionId, "from the phone", "telegram");
+    const second = manager.send(sessionId, "the key is the-secret-value-123");
+    expect(events).toMatchObject([
+      { kind: "message_received", sessionId, text: "from the phone", origin: "telegram" },
+      { kind: "message_received", sessionId, text: "the key is [redacted]", origin: "eva" },
+    ]);
+    await Promise.all([first, second]);
   });
 
   test("messages sent close together share one turn (lesson 51)", async () => {
@@ -253,7 +268,7 @@ describe("exactly one end event (lesson 47)", () => {
     const manager = createManager(new FakeEngine(() => crashing));
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(events.map((event) => event.kind)).toEqual(["turn_failed"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_failed"]);
     expect(manager.isBusy(sessionId)).toBe(false);
   });
 
@@ -266,7 +281,7 @@ describe("exactly one end event (lesson 47)", () => {
       ]),
     );
     await manager.send(newAssistantSession(manager), "go");
-    expect(events.map((event) => event.kind)).toEqual(["text", "turn_finished"]);
+    expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
   });
 });
 
@@ -533,7 +548,7 @@ describe("persistence and redaction", () => {
       { redactor },
     );
     await manager.send(newAssistantSession(manager), "show it");
-    expect(events[0]).toMatchObject({ kind: "text", text: "token: [redacted]" });
+    expect(events[1]).toMatchObject({ kind: "text", text: "token: [redacted]" });
   });
 });
 

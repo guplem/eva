@@ -285,7 +285,7 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     if (action === "messages") {
       const { text } = messageSchema.parse(await request.json());
       eva.sessions.get(sessionId);
-      void eva.sessions.send(sessionId, text);
+      void eva.sessions.send(sessionId, text, "api");
       return json({ accepted: true }, 202);
     }
     if (action === "fork") {

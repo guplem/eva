@@ -81,6 +81,7 @@ describe("describeEvent", () => {
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
       },
+      { ...base, kind: "message_received", text: "Hi", origin: "api" },
       { ...base, kind: "session_deleted" },
       { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q" },
     ];
@@ -92,6 +93,7 @@ describe("describeEvent", () => {
       "  (saved)\n",
       "  (The earlier history of this chat is lost.)\n",
       "  The turn failed: boom\n",
+      null,
       null,
       null,
       null,

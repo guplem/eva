@@ -637,7 +637,7 @@ export class TelegramBot {
       await this.quietCall("editForumTopic", { chat_id: chatId, message_thread_id: topicId, name: titleOf(text) });
     }
     this.startTyping(chatId, topicId, entry.sessionId);
-    void this.options.eva.sessions.send(entry.sessionId, text);
+    void this.options.eva.sessions.send(entry.sessionId, text, "telegram");
   }
 
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
@@ -987,6 +987,10 @@ export class TelegramBot {
         return;
       case "approval_needed":
         await this.sendApproval(target.chatId, target.topicId, event, null);
+        return;
+      case "message_received":
+        // The web chat shows every message, so the topic shows the ones that Telegram did not send.
+        if (event.origin !== "telegram") await this.send(target.chatId, target.topicId, `Message: ${event.text}`);
         return;
       case "history_lost":
         await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");

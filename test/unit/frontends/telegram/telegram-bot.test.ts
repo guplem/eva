@@ -488,6 +488,20 @@ describe("/chats: every chat of the instance (#9)", () => {
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 
+  test("a message from another front end shows in the topic, and a Telegram message shows once", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    const before = telegram.sentTexts().length;
+
+    telegram.sendText(owner, "from the phone", 500);
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    void eva.sessions.send(sessionId, "from the web", "api");
+    await settle(bot, () => telegram.sentTexts().includes("answer 3"));
+    expect(telegram.sentTexts().slice(before)).toEqual(["answer 2", "Message: from the web", "answer 3"]);
+  });
+
   test("a press on a chat that has its topic opens no second topic", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();

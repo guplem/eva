@@ -13,7 +13,13 @@ import type {
   TurnHistory,
 } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
-import { isTurnEnd, type CoreEventPayload, type EngineEventPayload, type SessionEvent } from "../../shared/events.ts";
+import {
+  isTurnEnd,
+  type CoreEventPayload,
+  type EngineEventPayload,
+  type MessageOrigin,
+  type SessionEvent,
+} from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
@@ -200,8 +206,9 @@ export class SessionManager {
   }
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
-  send(sessionId: string, text: string): Promise<void> {
+  send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
     this.get(sessionId);
+    this.emit(sessionId, { kind: "message_received", text, origin });
     const runtime = this.runtimeOf(sessionId);
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
@@ -544,7 +551,7 @@ ${prompt}`,
   }
 
   private emit(sessionId: string, payload: EngineEventPayload | CoreEventPayload): void {
-    const event = isCorePayload(payload) ? payload : redactPayload(payload, this.options.redactor);
+    const event = redactPayload(payload, this.options.redactor);
     if (event.kind === "turn_failed") this.lastFailure.set(sessionId, event.reason);
     const stamped: SessionEvent = {
       ...event,
@@ -565,10 +572,6 @@ ${prompt}`,
   }
 }
 
-function isCorePayload(payload: EngineEventPayload | CoreEventPayload): payload is CoreEventPayload {
-  return payload.kind === "session_deleted" || payload.kind === "project_work_started";
-}
-
 function createBatch(): PendingBatch {
   let resolve: () => void = () => undefined;
   const done = new Promise<void>((settle) => {
@@ -582,11 +585,19 @@ function titleOf(prompt: string): string {
   return firstLine.length > titleLength ? `${firstLine.slice(0, titleLength - 1)}…` : firstLine || defaultTitle;
 }
 
-function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload {
+function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload;
+function redactPayload(
+  payload: EngineEventPayload | CoreEventPayload,
+  redactor: Redactor,
+): EngineEventPayload | CoreEventPayload;
+function redactPayload(
+  payload: EngineEventPayload | CoreEventPayload,
+  redactor: Redactor,
+): EngineEventPayload | CoreEventPayload {
   switch (payload.kind) {
     case "text":
-      return { ...payload, text: redactor.redact(payload.text) };
     case "notice":
+    case "message_received":
       return { ...payload, text: redactor.redact(payload.text) };
     case "turn_failed":
       return { ...payload, reason: redactor.redact(payload.reason) };
@@ -599,6 +610,8 @@ function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineE
     case "history_lost":
     case "approval_resolved":
     case "turn_finished":
+    case "session_deleted":
+    case "project_work_started":
       return payload;
   }
 }

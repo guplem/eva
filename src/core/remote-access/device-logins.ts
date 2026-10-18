@@ -242,7 +242,7 @@ export class DeviceLogins {
   }
 
   private notifyForget(): void {
-    for (const listener of this.forgetListeners) listener();
+    for (const listener of this.forgetListeners) callSafely(() => listener());
   }
 
   private saveDevices(): void {
@@ -259,7 +259,16 @@ function idOf(device: StoredDevice): string {
 }
 
 function settle(login: PendingLogin, answer: "allow" | "deny"): void {
-  for (const approver of login.asked) approver.settled?.(login.request.id, answer);
+  for (const approver of login.asked) callSafely(() => approver.settled?.(login.request.id, answer));
+}
+
+/** A broken front end must not undo an answer that is already saved, or keep the others from hearing of it. */
+function callSafely(work: () => void): void {
+  try {
+    work();
+  } catch {
+    // The other front ends still get the news.
+  }
 }
 
 function newCode(): string {

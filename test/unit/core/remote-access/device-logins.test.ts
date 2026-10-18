@@ -299,3 +299,31 @@ describe("DeviceLogins removal and answers by approver", () => {
     expect(logins.check(request.id, "owner@example.com")).toEqual({ state: "denied" });
   });
 });
+
+describe("DeviceLogins with a failing front end", () => {
+  test("a throwing approver or listener stops neither the answer nor the others", () => {
+    const logins = createLogins();
+    const told: string[] = [];
+    logins.attachApprover({
+      canApprove: () => true,
+      ask: () => undefined,
+      settled: () => {
+        throw new Error("broken front end");
+      },
+    });
+    logins.attachApprover({ canApprove: () => true, ask: () => undefined, settled: (id) => told.push(id) });
+    let forgotten = 0;
+    logins.onForget(() => {
+      throw new Error("broken front end");
+    });
+    logins.onForget(() => {
+      forgotten += 1;
+    });
+    const request = logins.request("owner@example.com", "x");
+    expect(logins.answer(request.id, "allow")).toBe(true);
+    expect(told).toEqual([request.id]);
+    expect(logins.check(request.id, "owner@example.com").state).toBe("allowed");
+    expect(logins.forgetAll()).toBe(1);
+    expect(forgotten).toBe(1);
+  });
+});

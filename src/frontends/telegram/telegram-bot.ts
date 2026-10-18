@@ -234,7 +234,7 @@ export class TelegramBot {
       ask: (request) => {
         void this.askDeviceLogin(request);
       },
-      // Another approver, such as the web page, may answer first: the buttons then go.
+      // Another approver, such as the web page, may answer first. Then the buttons must go.
       settled: (id, answer) => {
         void this.closeQuestion(id, answer === "allow" ? "Allowed" : "Denied");
       },

@@ -6,25 +6,26 @@ Every command and setting, for when the [README](../../README.md) is not enough.
 
 Run these on the computer where Eva runs. When Eva is already running, each command talks to her; otherwise it does the work itself.
 
-| Command                          | What it does                                                                      |
-| -------------------------------- | --------------------------------------------------------------------------------- |
-| `eva setup`                      | Asks each question again. Enter keeps the current answer.                         |
-| `eva setup --non-interactive`    | Reads each answer from an `EVA_*` variable, for scripts.                          |
-| `eva doctor`                     | Checks the tools that each feature needs, and says how to install each one.       |
-| `eva`                            | Runs Eva in this terminal (the service does this for you).                        |
-| `eva service install`            | Starts Eva now, and by herself each time you log in.                              |
-| `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address. |
-| `eva link`                       | Shows the address that opens Eva on your phone and other computers.               |
-| `eva chat`                       | Talks to Eva in this terminal.                                                    |
-| `eva projects [words]`           | Searches your projects.                                                           |
-| `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.       |
-| `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.    |
-| `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                 |
-| `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.               |
-| `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.     |
-| `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                   |
-| `eva settings set <key> <value>` | Changes one setting, such as `eva settings set updates.frequency weekly`.         |
-| `eva --home <folder> <command>`  | Runs the command for another Eva on the same computer.                            |
+| Command                          | What it does                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `eva setup`                      | Asks each question again. Enter keeps the current answer.                             |
+| `eva setup --non-interactive`    | Reads each answer from an `EVA_*` variable, for scripts.                              |
+| `eva doctor`                     | Checks the tools that each feature needs, and says how to install each one.           |
+| `eva`                            | Runs Eva in this terminal (the service does this for you).                            |
+| `eva service install`            | Starts Eva now, by herself each time you log in, and again after a crash.             |
+| `eva supervise`                  | Runs Eva, and starts her again after a crash (the Windows service does this for you). |
+| `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address.     |
+| `eva link`                       | Shows the address that opens Eva on your phone and other computers.                   |
+| `eva chat`                       | Talks to Eva in this terminal.                                                        |
+| `eva projects [words]`           | Searches your projects.                                                               |
+| `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.           |
+| `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.        |
+| `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                     |
+| `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.                   |
+| `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.         |
+| `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                       |
+| `eva settings set <key> <value>` | Changes one setting, such as `eva settings set updates.frequency weekly`.             |
+| `eva --home <folder> <command>`  | Runs the command for another Eva on the same computer.                                |
 
 ## Settings
 
@@ -35,6 +36,11 @@ Eva keeps two kinds of settings:
 - **Settings that decide who gets in, and what an agent may do, stay on each computer:** the trusted GitHub owners, the allowed Tailscale accounts, and Google's access (read-only, and which services). Eva's AI agent edits the notebook as part of its work, so these never live there.
 
 Change a setting on the web Settings page, or with `eva settings set`. The update frequency and the notebook fetch apply at once; any other change applies at the next restart.
+
+- **Tokens:** paste the GitHub, Telegram and Claude Code tokens on the Settings page. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
+- **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
+- **A device that logged in through Telegram** can change only your notebook settings, the sync and the project folders. It cannot change a token or a security setting, so a lost phone cannot let a stranger in. To change them, log in with the token. You can also run `eva setup` or `eva settings set` on that computer.
+- **Theme and density** stay in each browser, so a phone and a computer can differ.
 
 ## Several computers
 
@@ -52,6 +58,7 @@ Eva looks for a new version every day by default (`updates.frequency`: `off`, `h
 - **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. She never touches a copy with your own changes, your own commits, or another branch.
 - **Installed as one executable** (a GitHub release): Eva takes the newest signed release.
 - **Update now:** the **Update now** button in Settings, `/update` in Telegram, or `eva update`.
+- **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the result. The engine update waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
 
 ## Notebook sync
 
@@ -60,7 +67,7 @@ Eva saves the notebook to GitHub by herself:
 - She brings in other computers' notes before each conversation turn, and every 5 minutes (`sync.pullIntervalMinutes`; `null` means only before each turn).
 - She saves and pushes after each turn, and every minute when something changed.
 - **Sync now:** the **Sync now** button in Settings, `/sync` in Telegram, or `eva sync`.
-- **Files that Eva keeps out:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` names them.
+- **Files that Eva keeps out:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` and the Settings page name them.
 
 ### Notebook conflicts
 
@@ -82,6 +89,7 @@ Eva sends each alert to your Telegram chat when the problem starts, again once a
 | The notebook sync failed                | A git step failed, for example a full disk or a refused push.                       |
 | The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                  |
 | The update check or install failed      | The alert names the step. A failed install keeps the old version.                   |
+| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.              |
 | A reminder failed to run                | The alert names the reminder.                                                       |
 | Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                   |
 | Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.               |

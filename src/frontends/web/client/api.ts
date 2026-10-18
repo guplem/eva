@@ -1,6 +1,6 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaStatus, PublicSettings } from "../../../core/eva.ts";
+import type { EvaStatus, PageSecretName, PublicSettings, SetupState } from "../../../core/eva.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
@@ -8,6 +8,7 @@ import type { SetupItem, SetupReport } from "../../../core/projects/repository-s
 import type { ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
@@ -17,10 +18,13 @@ export type {
   CheckResult,
   CloneDetails,
   DeviceLoginRequest,
+  EngineUpdateStatus,
   EvaStatus,
+  PageSecretName,
   PendingApproval,
   Project,
   PublicSettings,
+  SetupState,
   SessionEvent,
   SessionRecord,
   SetupItem,
@@ -103,8 +107,16 @@ export const api = {
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
+  setupState: (): Promise<SetupState> => request("GET", "/api/settings/setup"),
+  /** The value goes one way: the answer never holds it. */
+  saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>
+    request("PUT", `/api/secrets/${name}`, { value }),
+  removeSecret: (name: PageSecretName): Promise<{ restartNeeded: boolean }> =>
+    request("DELETE", `/api/secrets/${name}`),
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
+  updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),

@@ -7,6 +7,9 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   homePaths,
+  isExtraInstance,
+  engineFolders as engineFoldersOf,
+  type EngineFolders,
   loadSecrets,
   saveSecrets,
   type EvaConfig,
@@ -19,6 +22,14 @@ import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../cor
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
+import {
+  engineLoginReport,
+  engineLoginState,
+  engineLoginSteps,
+  loginToGitHub,
+  quoteForShell,
+  type EngineLoginState,
+} from "./engine-logins.ts";
 
 export type SetupQuestion =
   | "timeZone"
@@ -71,6 +82,9 @@ export interface SetupOptions {
   readonly interactive: boolean;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
+  /** The platform's default home: a setup in any other home sets up an extra instance. */
+  readonly defaultHome: string;
+  readonly platform: NodeJS.Platform;
 }
 
 const ghTimeoutMs = 120_000;
@@ -82,6 +96,21 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const ask = async (key: SetupQuestion, question: string): Promise<string> =>
     (await options.ask(key, question)).trim();
   options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
+  // First, so the person can log in to gh before setup runs `gh repo create`.
+  const engineFolders = isExtraInstance(paths, options.defaultHome, options.platform) ? engineFoldersOf(paths) : null;
+  const loginState = (folders: EngineFolders): Promise<EngineLoginState> =>
+    engineLoginState({
+      folders,
+      claudeTokenSaved: secrets.claudeOauthToken !== undefined,
+      runner: options.runner,
+      environment: options.environment,
+    });
+  // A script gets no steps: setup ends at once, and the report at the end says what to run.
+  if (engineFolders !== null && options.interactive) {
+    for (const line of engineLoginSteps(await loginState(engineFolders), engineFolders, options.platform)) {
+      options.write(line);
+    }
+  }
 
   const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? detectedTimeZone}]: `);
@@ -127,7 +156,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       await cloneVault({ repository, folder: config.vaultPath, runner: options.runner, environment: gitEnvironment() });
       options.write(`Cloned the vault into ${config.vaultPath}.`);
     } else {
-      await offerNewVault(options, config.vaultPath, config.timeZone ?? detectedTimeZone, ask);
+      await offerNewVault(options, engineFolders, config.vaultPath, config.timeZone ?? detectedTimeZone, ask);
     }
   }
 
@@ -204,6 +233,15 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   secrets.localApiToken ??= options.newToken();
   saveSettings(paths, config);
   saveSecrets(paths, secrets);
+  if (engineFolders !== null) {
+    const state = await loginState(engineFolders);
+    const claudeTokenHint = options.interactive
+      ? `run \`eva --home ${quoteForShell(paths.root, options.platform)} setup\` again, and give it the token`
+      : `run setup again with the token in ${setupEnvironmentNames.claudeToken}`;
+    for (const line of engineLoginReport(state, engineFolders, claudeTokenHint, options.platform)) {
+      options.write(line);
+    }
+  }
   const files = [
     paths.config,
     paths.secrets,
@@ -215,6 +253,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 /** A missing or empty vault folder: Eva can start a vault there from her template. */
 async function offerNewVault(
   options: SetupOptions,
+  engineFolders: EngineFolders | null,
   folder: string,
   timeZone: string,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
@@ -237,12 +276,21 @@ async function offerNewVault(
   if (repository === "") return;
   const result = await options.runner.run(
     ["gh", "repo", "create", repository, "--private", "--source", folder, "--remote", "origin", "--push"],
-    { cwd: folder, environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: ghTimeoutMs },
+    {
+      cwd: folder,
+      environment: {
+        ...options.environment,
+        ...(engineFolders === null ? {} : { GH_CONFIG_DIR: engineFolders.gh }),
+        GIT_TERMINAL_PROMPT: "0",
+      },
+      timeoutMs: ghTimeoutMs,
+    },
   );
+  const login = engineFolders === null ? "gh auth login" : loginToGitHub(engineFolders.gh, options.platform);
   options.write(
     result.exitCode === 0
       ? `Created the private repository ${repository} and pushed the vault.`
-      : `gh could not create the repository: ${result.stderr.trim()}. Run \`gh auth login\`, then push the vault yourself.`,
+      : `gh could not create the repository: ${result.stderr.trim()}. Run \`${login}\`, then push the vault yourself.`,
   );
 }
 

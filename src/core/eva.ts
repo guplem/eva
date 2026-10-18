@@ -2,10 +2,10 @@
  * One Eva instance: the core that every front end talks to. It joins the
  * vault sync, the projects, the sessions and the two modes, and runs the idle sweep.
  */
-import { chmodSync } from "node:fs";
+import { chmodSync, existsSync } from "node:fs";
 import { hostname } from "node:os";
-import { delimiter, join, resolve } from "node:path";
-import { writeFileAtomic } from "../shared/files.ts";
+import { delimiter, join } from "node:path";
+import { readTextTolerant, writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError, isEvaError } from "../shared/errors.ts";
@@ -15,11 +15,26 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
-import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
+import {
+  engineUpdateProblem,
+  scheduleFiringProblem,
+  uncleanExitMessage,
+  updateProblem,
+  vaultSyncProblem,
+} from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
-import { applySettingsChange, saveSettings } from "./settings/settings.ts";
+import {
+  engineFolders,
+  engineFolderVariables,
+  isExtraInstance,
+  loadSecrets,
+  saveSecrets,
+  type EvaConfig,
+  type EvaSecrets,
+  type HomePaths,
+} from "./settings/home.ts";
+import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -49,6 +64,7 @@ import {
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -62,7 +78,7 @@ export interface EvaOptions {
   readonly now: () => Date;
   readonly basePrompt: string;
   readonly gatherMs?: number;
-  /** The claude program, for the engine check. */
+  /** The claude program, for the engine update. Null: no engine update. */
   readonly claudeExecutable?: string | null;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
@@ -129,6 +145,19 @@ export interface PublicSettings {
   >;
 }
 
+/** The secrets that the settings page may save. The local token and the Google keys stay with `eva setup`. */
+export const pageSecretNames = ["githubToken", "telegramBotToken", "claudeOauthToken"] as const;
+export type PageSecretName = (typeof pageSecretNames)[number];
+
+/** What the Setup section shows beside the settings. */
+export interface SetupState {
+  /** The vault's `origin`, without any credentials in it. */
+  readonly vaultRemote: string | null;
+  readonly telegram: { readonly paired: boolean; readonly pairingCode: string | null };
+  /** The engines whose program Eva found at start. */
+  readonly engines: readonly EngineName[];
+}
+
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
@@ -182,7 +211,11 @@ export class Eva {
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
   private lastPullAt: Date | null = null;
   private settings: EvaConfig;
+  /** The saved secrets. A new value reaches the checks at once, and the rest at a restart. */
+  private secrets: EvaSecrets;
   private readonly updater: Updater | null;
+  /** Null when no claude program was found. */
+  private readonly engineUpdater: EngineUpdater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
   private readonly roleListeners = new Set<(role: MachineRole) => void>();
@@ -208,13 +241,8 @@ export class Eva {
     this.settings = options.config;
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
-    // Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96).
-    const githubToken = options.secrets.githubToken;
-    this.gitEnvironment = buildChildEnvironment(
-      options.processEnvironment,
-      baseEnvironmentAllowlist,
-      githubToken === undefined ? {} : { [githubTokenVariable]: githubToken },
-    );
+    this.secrets = options.secrets;
+    this.gitEnvironment = gitEnvironmentOf(options, options.secrets);
     this.vaultSync =
       vaultPath === null
         ? null
@@ -326,8 +354,23 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
-            isIdle: () => !this.sessions.list().some((session) => this.sessions.isBusy(session.id)),
+            // A waiting engine update runs first: the restart would lose it, as it lives in memory.
+            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    const claudeExecutable = options.claudeExecutable ?? null;
+    this.engineUpdater =
+      claudeExecutable === null
+        ? null
+        : new EngineUpdater({
+            executable: claudeExecutable,
+            runner: options.runner,
+            environment: this.engineToolEnvironment(),
+            // A restart would cut `claude update` off, so it waits for Eva's own download. Once the
+            // new version is in place, her restart waits for this update instead.
+            isIdle: () => !this.workRuns() && !this.downloadsOwnUpdate(),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -362,6 +405,10 @@ export class Eva {
       await this.pullIfDue();
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
+      // its download can take minutes, and the next ticks must still fetch the vault.
+      const engineUpdater = this.engineUpdater;
+      if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateProblem();
     } finally {
@@ -425,6 +472,26 @@ export class Eva {
     return status;
   }
 
+  engineUpdateStatus(): EngineUpdateStatus | null {
+    if (this.engineUpdater === null) return null;
+    const status = this.engineUpdater.status();
+    if (status.last === null) return status;
+    // The detail is the output of `claude update`, which a page shows.
+    const detail = status.last.detail === null ? null : this.redact(status.last.detail);
+    return { ...status, last: { ...status.last, detail } };
+  }
+
+  /**
+   * Starts `claude update` as soon as no chat runs a turn, and answers at once: the update can
+   * outlast an HTTP request. Null when no claude program was found.
+   */
+  updateEngine(): EngineUpdateStatus | null {
+    const updater = this.engineUpdater;
+    if (updater === null) return null;
+    this.runEngineUpdate(() => updater.updateNow());
+    return this.engineUpdateStatus();
+  }
+
   /**
    * Restarts Eva at once, through the same path as an update (exit code 4 under systemd, a new
    * copy elsewhere). A running turn stops; the front end asks the person to confirm first.
@@ -458,13 +525,26 @@ export class Eva {
     return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
-  /** Resolves when no chat runs a turn, including its save after the turn. */
+  /** Resolves when no work runs (see `workRuns`), or after the timeout. */
   async idle(timeoutMs = 60_000): Promise<void> {
     const started = Date.now();
-    while (this.sessions.list().some((session) => this.sessions.isBusy(session.id))) {
+    while (this.workRuns()) {
       if (Date.now() - started > timeoutMs) return;
       await Bun.sleep(20);
     }
+  }
+
+  /**
+   * True while a chat runs a turn or holds a gathered message, a schedule fires, or `claude
+   * update` runs. A firing schedule has a moment between its new chat and its first message
+   * (lesson 92). Eva's own update must not restart her during `claude update`.
+   */
+  private workRuns(): boolean {
+    return (
+      this.engineUpdater?.status().phase === "updating" ||
+      this.schedules?.isFiring() === true ||
+      this.sessions.list().some((session) => this.sessions.isActive(session.id))
+    );
   }
 
   stop(): void {
@@ -649,7 +729,7 @@ export class Eva {
   }
 
   publicSettings(): PublicSettings {
-    const secrets = this.options.secrets;
+    const secrets = this.secrets;
     return {
       config: this.settings,
       secretsSet: {
@@ -664,24 +744,95 @@ export class Eva {
   /**
    * Checks and saves a settings change: the person's part in the vault, the machine's part in
    * `config.json`. The update frequency and the vault fetch apply at once; the rest at a restart.
+   * With `pageOnly`, for a device login, a machine or trust setting fails with `setting_forbidden`.
    */
-  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
-    const changed = applySettingsChange(this.settings, patch);
+  updateSettings(
+    patch: Readonly<Record<string, unknown>>,
+    options: { readonly pageOnly: boolean } = { pageOnly: false },
+  ): { saved: true; restartNeeded: boolean } {
+    const keys = changedKeys(patch, "");
+    const forbidden = options.pageOnly ? keys.find((key) => !isPageSettingKey(key)) : undefined;
+    if (forbidden !== undefined)
+      throw new EvaError(
+        "setting_forbidden",
+        `A device login cannot change ${forbidden}. Change it on the machine with \`eva settings set\`.`,
+      );
+    const changed = applySettingsChange(this.savedSettings(), patch);
     saveSettings(this.options.paths, changed);
     this.settings = changed;
-    const restartNeeded = changedKeys(patch, "").some(
+    const restartNeeded = keys.some(
       (key) => !liveSettingKeys.some((live) => key === live || key.startsWith(`${live}.`)),
     );
     return { saved: true, restartNeeded };
+  }
+
+  async setupState(): Promise<SetupState> {
+    const vaultPath = this.options.config.vaultPath;
+    const remote = vaultPath === null ? null : await readOriginUrl(vaultPath, this.options.runner, this.gitEnvironment);
+    const pairedChat = this.savedSettings().telegram.allowedChatId;
+    // Only a running bot reads the code, and it runs only with a token; an old file stays after a removal.
+    const code =
+      this.secrets.telegramBotToken === undefined
+        ? ""
+        : (readTextTolerant(this.options.paths.telegramPairingCode)?.trim() ?? "");
+    return {
+      vaultRemote: remote === null ? null : this.redactor.redact(remote.replace(/\/\/[^/@]*@/, "//")),
+      telegram: { paired: pairedChat !== null, pairingCode: pairedChat === null && code !== "" ? code : null },
+      engines: this.options.engines.map((engine) => engine.name),
+    };
+  }
+
+  /**
+   * Saves one secret that the settings page may change, or removes it with null. The value never
+   * comes back. The git, engine and Telegram processes read the secrets at start, so a restart follows.
+   */
+  saveSecret(
+    name: PageSecretName,
+    value: string | null,
+    options: { readonly pageOnly: boolean } = { pageOnly: false },
+  ): { saved: true; restartNeeded: true } {
+    // A token decides whose account Eva uses, so a lost phone with a device login must not swap it.
+    if (options.pageOnly)
+      throw new EvaError("setting_forbidden", "A device login cannot change a token. Log in with the token instead.");
+    const trimmed = value?.trim() ?? null;
+    if (trimmed === "") throw new EvaError("config_invalid", "A secret cannot be empty. Remove it instead.");
+    // Before anything else, so the value never reaches a log or an error unredacted.
+    if (trimmed !== null) this.redactor.addSecret(trimmed);
+    // From the file, so a secret that `eva setup` saved meanwhile stays.
+    const secrets: EvaSecrets = { ...loadSecrets(this.options.paths) };
+    if (trimmed === null) Reflect.deleteProperty(secrets, name);
+    else secrets[name] = trimmed;
+    saveSecrets(this.options.paths, secrets);
+    this.secrets = secrets;
+    return { saved: true, restartNeeded: true };
+  }
+
+  /**
+   * The settings as saved now. The Telegram bot saves a new pairing to `config.json` while Eva
+   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory:
+   * with a broken vault file, the loaded copy holds defaults, and a save would sync them everywhere.
+   */
+  private savedSettings(): EvaConfig {
+    if (!existsSync(this.options.paths.config)) return this.settings;
+    try {
+      const loaded = loadSettings(this.options.paths);
+      return loaded.problem === null ? loaded.config : this.settings;
+    } catch {
+      return this.settings;
+    }
   }
 
   runCheck(name: CheckName): Promise<CheckResult> {
     return runCheck(name, {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
-      environment: this.gitEnvironment,
-      claudeExecutable: this.options.claudeExecutable ?? null,
-      telegramToken: this.options.secrets.telegramBotToken ?? null,
+      environment: gitEnvironmentOf(this.options, this.secrets),
+      engines: this.options.engines,
+      // A real turn needs the engine's login, as a chat has it; never the GitHub token (lesson 96).
+      engineEnvironment: this.engineEnvironment(),
+      redact: (text) => this.redactor.redact(text),
+      telegramToken: this.secrets.telegramBotToken ?? null,
+      githubToken: this.secrets.githubToken ?? null,
     });
   }
 
@@ -794,6 +945,24 @@ export class Eva {
     });
   }
 
+  private downloadsOwnUpdate(): boolean {
+    return this.updater?.status().phase === "updating";
+  }
+
+  /**
+   * Runs one step of the engine update apart, then reports its result, so a failure reaches the
+   * phone also when the page has stopped asking.
+   */
+  private runEngineUpdate(step: () => Promise<unknown>): void {
+    const previous = this.engineUpdater?.status().last ?? null;
+    this.inBackground("The engine update", async () => {
+      await step();
+      // A step that ran nothing keeps the old result; reporting it again would repeat its alert.
+      const last = this.engineUpdater?.status().last ?? null;
+      if (last !== null && last !== previous) this.alerts.report("engine_update", engineUpdateProblem(last));
+    });
+  }
+
   private noticeUpdateProblem(): void {
     const status = this.updater?.status();
     if (status !== undefined) this.alerts.report("update", updateProblem(status));
@@ -828,7 +997,7 @@ export class Eva {
   private assistantMcpServers(): Record<string, McpServerSpec> {
     const google = googleMcpServer({
       config: this.options.config.google,
-      secrets: this.options.secrets,
+      secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
       environment: this.gitEnvironment,
     });
@@ -844,26 +1013,59 @@ export class Eva {
     return folder;
   }
 
+  /**
+   * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
+   * folder, so the run acts on the same install, and no token, which such a run never needs.
+   */
+  private engineToolEnvironment(): Record<string, string> {
+    const claudeFolder = this.claudeConfigFolder();
+    return buildChildEnvironment(
+      this.options.processEnvironment,
+      baseEnvironmentAllowlist,
+      claudeFolder === null ? {} : { CLAUDE_CONFIG_DIR: claudeFolder },
+    );
+  }
+
+  /** The instance's own Claude config folder, or null for the OS user's own one. */
+  private claudeConfigFolder(): string | null {
+    return this.isExtraInstance() || this.options.config.engines.claudeCode.ownConfigFolder
+      ? engineFolders(this.options.paths).claude
+      : null;
+  }
+
+  /** An instance whose home is not the platform default (lesson 111). */
+  private isExtraInstance(): boolean {
+    return isExtraInstance(this.options.paths, this.options.defaultHome);
+  }
+
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
-    const defaultHome = this.options.defaultHome;
-    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
-    const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
+    const extra: Record<string, string> = {
+      ...(this.isExtraInstance() ? engineFolderVariables(engineFolders(this.options.paths)) : {}),
+      EVA_HOME: this.options.paths.root,
+    };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
       // The agent finds `eva` first, so `eva work` reaches this instance.
       const path = this.options.processEnvironment["PATH"] ?? this.options.processEnvironment["Path"] ?? "";
       extra["PATH"] = `${scripts}${delimiter}${path}`;
     }
-    const token = this.options.secrets.claudeOauthToken;
+    const token = this.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
-      extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
-    }
-    // pi's folder is left out on purpose: pi has no documented variable for it yet.
-    if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
+    const claudeFolder = this.claudeConfigFolder();
+    if (claudeFolder !== null) extra["CLAUDE_CONFIG_DIR"] = claudeFolder;
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);
   }
+}
+
+/** Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96). */
+function gitEnvironmentOf(options: EvaOptions, secrets: EvaSecrets): Record<string, string> {
+  const token = secrets.githubToken;
+  return buildChildEnvironment(options.processEnvironment, baseEnvironmentAllowlist, {
+    // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
+    ...(isExtraInstance(options.paths, options.defaultHome) ? { GH_CONFIG_DIR: engineFolders(options.paths).gh } : {}),
+    ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+  });
 }
 
 /** Writes `eva` (for a POSIX shell and Git Bash) and `eva.cmd` into `<home>/bin`. */

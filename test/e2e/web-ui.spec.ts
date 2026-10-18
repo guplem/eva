@@ -131,6 +131,93 @@ test("Settings: Log out every device ends this login too", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
+test("Settings: a token saves write-only, shows as saved, and can be removed", async ({ page }) => {
+  await logIn(page);
+  // A failed earlier run must not leave a token for this one.
+  await page.request.delete("/api/secrets/githubToken");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const field = page.getByLabel("GitHub token", { exact: true });
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+  await field.fill("ghp_e2e-example-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  await expect(field).toHaveValue("");
+  await expect(page.getByRole("status").filter({ hasText: "Restart Eva" })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  expect(await page.content()).not.toContain("e2e-example-token");
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Remove the GitHub token" }).click();
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+});
+
+test("Settings: each engine has a Test that runs a tiny real prompt", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const claudeRow = page.locator(".check-row", { hasText: "Test the Claude Code token" });
+  await claudeRow.getByRole("button", { name: "Test" }).click();
+  await expect(claudeRow).toContainText("✓ Claude Code answered:");
+  const piRow = page.locator(".check-row", { hasText: "Test pi" });
+  await piRow.getByRole("button", { name: "Test" }).click();
+  // The demo server has only the scripted Claude Code engine.
+  await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
+  await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
+  await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
+});
+
+test("Settings: the default model saves at once", async ({ page }) => {
+  await logIn(page);
+  try {
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByLabel("Claude Code model").selectOption("sonnet");
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
+  } finally {
+    // Later tests share the demo vault.
+    await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
+  }
+});
+
+test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as { vaultSync: Record<string, unknown> };
+    status.vaultSync = {
+      ...status.vaultSync,
+      status: "conflict",
+      lastError: "Notes/plan.md has a conflict.",
+      withheldFiles: [
+        { path: "Notes/keys.md", reason: "secret" },
+        { path: "Media/film.mov", reason: "too_large" },
+      ],
+    };
+    await route.fulfill({ response, json: status });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
+  await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
+});
+
+test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByLabel("Theme").selectOption("dark");
+  await page.getByLabel("Density").selectOption("compact");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+});
+
 test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
   page,
   context,
@@ -390,6 +477,82 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
+test("Settings: Update now waits until the new Eva answers, not the old one", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    current: "0.1.0",
+    latest: "0.2.0",
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  let restarting = false;
+  let readsWhileRestarting = 0;
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      restarting = true;
+      await route.fulfill({ json: { ...base, phase: "restarting" } });
+      return;
+    }
+    if (restarting) readsWhileRestarting += 1;
+    // The old Eva answers twice more while a chat ends, then the new one answers.
+    const old = restarting && readsWhileRestarting <= 2;
+    await route.fulfill({ json: { ...base, phase: old ? "restarting" : "idle", available: !restarting } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Update now" }).click();
+  await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
+  await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
+  expect(readsWhileRestarting).toBe(3);
+});
+
+test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
+  const posts: string[] = [];
+  let finished = false;
+  await page.route("**/api/update/engine", async (route) => {
+    if (route.request().method() === "POST") {
+      posts.push("POST");
+      await route.fulfill({ json: { phase: "updating", last: null } });
+      return;
+    }
+    const last = { outcome: "updated", before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: finished ? { phase: "idle", last } : { phase: "idle", last: null } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Claude Code: no update has run yet")).toBeVisible();
+  finished = true;
+  await page.getByRole("button", { name: "Update Claude Code" }).click();
+  await expect(page.getByText("Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it")).toBeVisible({
+    timeout: 10_000,
+  });
+  expect(posts).toEqual(["POST"]);
+});
+
+test("Settings: a page opened during the engine update follows it, past a failed read", async ({ page }) => {
+  let reads = 0;
+  await page.route("**/api/update/engine", async (route) => {
+    reads += 1;
+    if (reads === 2) {
+      await route.abort();
+      return;
+    }
+    const last = { outcome: "up_to_date", before: "2.1.0", after: "2.1.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: reads === 1 ? { phase: "waiting_for_idle", last: null } : { phase: "idle", last } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    page.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeDisabled();
+  await expect(page.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeEnabled();
+});
+
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
   await openList(page);
@@ -439,6 +602,19 @@ test.describe("on a phone", () => {
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
+  });
+
+  test("on Settings too, every button is at least 44 px tall and nothing is wider than the screen", async ({
+    page,
+  }) => {
+    await logIn(page);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("GitHub token", { exact: true })).toBeVisible();
+    const heights = await page
+      .locator("button:visible, select:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 
   test("the composer sits at the bottom of the screen", async ({ page }) => {

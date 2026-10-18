@@ -14,6 +14,7 @@ import {
   describeRemoteAccess,
   describeRole,
   describeStatus,
+  describeEngineUpdate,
   describeStatusLines,
   describeSync,
   describeUpdate,
@@ -33,6 +34,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -77,6 +79,7 @@ describe("parseArguments", () => {
       query: "photo booth",
     });
     expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
+    expect(parseArguments(["supervise", "--home", "/h"])).toEqual({ command: "supervise", home: "/h" });
     expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
     expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
       command: "setup",
@@ -254,7 +257,13 @@ describe("runSetup", () => {
 
   async function setup(
     answers: Partial<Record<SetupQuestion, string | string[]>>,
-    extra: { interactive?: boolean; runner?: ProcessRunner; lines?: string[]; asked?: SetupQuestion[] } = {},
+    extra: {
+      interactive?: boolean;
+      runner?: ProcessRunner;
+      lines?: string[];
+      asked?: SetupQuestion[];
+      defaultHome?: string;
+    } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
       Object.entries(answers).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]),
@@ -270,6 +279,8 @@ describe("runSetup", () => {
       interactive: extra.interactive ?? true,
       runner: extra.runner ?? okRunner,
       environment: gitEnvironment,
+      defaultHome: extra.defaultHome ?? home,
+      platform: "linux",
     });
   }
 
@@ -520,15 +531,64 @@ describe("runSetup", () => {
     const emptyFolder = join(home, "empty");
     await setup({ vault: emptyFolder, createVault: "no" });
     expect(existsSync(join(emptyFolder, "AGENTS.md"))).toBe(false);
+    const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const ghFails: ProcessRunner = {
-      run: (command, options) =>
-        command[0] === "gh"
-          ? Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" })
-          : systemProcessRunner.run(command, options),
+      run: (command, options) => {
+        if (command[0] !== "gh") return systemProcessRunner.run(command, options);
+        ghEnvironments.push(options.environment);
+        return Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" });
+      },
     };
     const lines: string[] = [];
     await setup({ vault: emptyFolder, createVault: "y", githubRepository: "my-vault" }, { runner: ghFails, lines });
-    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in");
+    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in. Run `gh auth login`");
+    // The first instance uses the OS user's own gh login.
+    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBeUndefined();
+  });
+
+  test("an extra instance hears about its own engine logins first, and gets a login report at the end", async () => {
+    const lines: string[] = [];
+    const ghEnvironments: Readonly<Record<string, string>>[] = [];
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] === "gh") ghEnvironments.push(options.environment);
+        return Promise.resolve({ exitCode: command[0] === "gh" ? 1 : 0, stdout: "", stderr: "not logged in" });
+      },
+    };
+    const emptyFolder = join(home, "empty");
+    await setup(
+      { vault: emptyFolder, createVault: "y", githubRepository: "my-vault", claudeToken: "a-claude-token" },
+      { lines, runner, defaultHome: join(home, "..", "default-eva-home") },
+    );
+    const ghFolder = join(home, "engines", "gh");
+    const firstStep = lines.findIndex((line) => line.includes("second Eva on this computer"));
+    expect(firstStep).toBeGreaterThan(-1);
+    expect(firstStep).toBeLessThan(lines.findIndex((line) => line.startsWith("Created a new vault")));
+    expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
+    expect(lines.join("\n")).toContain(`gh could not create the repository: not logged in. Run \`GH_CONFIG_DIR=`);
+    // gh repo create and the login check both use this instance's gh folder.
+    expect(ghEnvironments.length).toBeGreaterThan(0);
+    expect(ghEnvironments.every((environment) => environment["GH_CONFIG_DIR"] === ghFolder)).toBe(true);
+    expect(lines.join("\n")).toContain("- Claude: token saved.");
+    expect(lines.join("\n")).toContain("- GitHub: not logged in.");
+  });
+
+  test("a missing Claude token names how to run setup again: this home for a person, the variable for a script", async () => {
+    const extraHome = { defaultHome: join(home, "..", "default-eva-home") };
+    const lines: string[] = [];
+    await setup({}, { lines, ...extraHome });
+    expect(lines.join("\n")).toContain(`run \`eva --home '${home}' setup\` again`);
+    const scriptLines: string[] = [];
+    await setup({}, { lines: scriptLines, interactive: false, ...extraHome });
+    expect(scriptLines.join("\n")).not.toContain("Setup keeps going");
+    expect(scriptLines.join("\n")).toContain("run setup again with the token in EVA_CLAUDE_TOKEN");
+  });
+
+  test("the instance in the default home hears nothing about engine logins", async () => {
+    const lines: string[] = [];
+    await setup({}, { lines });
+    expect(lines.join("\n")).not.toContain("second Eva");
+    expect(lines.join("\n")).not.toContain("Engine logins");
   });
 
   test("each question has its own environment variable for --non-interactive", () => {
@@ -557,9 +617,19 @@ describe("service", () => {
     ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
-  test("after an update, systemd restarts Eva; anywhere else she starts a new copy", () => {
-    expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
-    expect(restartMethod({})).toBe("new-copy");
+  test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ INVOCATION_ID: "abc" }, alive, 1)).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 42)).toBe("supervisor");
+    expect(restartMethod({}, alive, 42)).toBe("new-copy");
+  });
+
+  test("an Eva whose supervisor has ended starts a new copy, so an update never leaves her stopped", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive, 7)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive, 42)).toBe("new-copy");
+    // An orphan gets a new parent; another process may now hold the supervisor's old pid.
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 1)).toBe("new-copy");
   });
 
   test("a second instance on the same machine gets its own service name", () => {
@@ -567,10 +637,12 @@ describe("service", () => {
     expect(serviceName("/u/.config/eva-partner", "/u/.config/eva")).toBe("eva-eva-partner");
     expect(serviceName("/srv/Partner Home", "/u/.config/eva")).toBe("eva-partner-home");
     expect(serviceName("/srv/__", "/u/.config/eva")).toBe("eva-instance");
+    // The same default-home test as the engine logins: Windows ignores letter case.
+    expect(serviceName("D:\\Eva-Homes\\EVA", "d:\\eva-homes\\eva\\", "win32")).toBe("eva");
     expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
   });
 
-  test("the Windows task starts Eva at logon", () => {
+  test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
     expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
       "schtasks",
       "/Create",
@@ -580,8 +652,21 @@ describe("service", () => {
       "/TN",
       "Eva",
       "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" --home "C:/home/eva"',
+      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
     ]);
+  });
+
+  test("the Windows task runs with no time limit, and on battery too, so Windows never stops the supervisor", () => {
+    const command = windowsTaskSettingsCommand("eva-partner");
+    expect(command.slice(0, 4)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]);
+    const script = command[4] ?? "";
+    expect(script).toContain("Set-ScheduledTask -TaskName 'Eva-partner'");
+    expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
+    expect(script).toContain("-AllowStartIfOnBatteries");
+    expect(script).toContain("-DontStopIfGoingOnBatteries");
+    // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
+    expect(script).toContain("-ErrorAction Stop");
+    expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 
   test("after the install, the Windows task starts at once, under the same name", () => {
@@ -750,6 +835,33 @@ describe("heldBackLines (lesson 26)", () => {
   });
 });
 
+describe("describeEngineUpdate", () => {
+  const result = { before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+
+  test("each state of the engine update reads as one line", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: null })).toBe("Claude Code: no update has run yet");
+    expect(describeEngineUpdate({ phase: "waiting_for_idle", last: null })).toBe(
+      "Claude Code: the update starts when the running chats and Eva's own update end",
+    );
+    expect(describeEngineUpdate({ phase: "updating", last: null })).toBe("Claude Code: updating…");
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "updated" } })).toBe(
+      "Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it",
+    );
+    expect(
+      describeEngineUpdate({ phase: "idle", last: { ...result, after: result.before, outcome: "up_to_date" } }),
+    ).toBe("Claude Code: 2.1.0 is the latest");
+  });
+
+  test("a failed update says why", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed", detail: "No network." } })).toBe(
+      "Claude Code: the update failed: No network.",
+    );
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed" } })).toBe(
+      "Claude Code: the update failed: unknown reason.",
+    );
+  });
+});
+
 describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
@@ -781,8 +893,9 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
       "Updates: bbb2222 installs when the running chats end",
     );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
-      "Updates: installing bbb2222; Eva restarts in a moment",
+      "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
   });
 

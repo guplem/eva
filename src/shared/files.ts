@@ -21,3 +21,12 @@ export function readJsonTolerant(path: string): TolerantJsonResult {
     return { ok: false, reason: "invalid" };
   }
 }
+
+/** Reads a text file. A missing or unreadable file is null, never an exception. */
+export function readTextTolerant(path: string): string | null {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch {
+    return null;
+  }
+}

@@ -7,8 +7,8 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
-import type { CheckName } from "../../core/checks.ts";
-import type { Eva } from "../../core/eva.ts";
+import { checkNames } from "../../core/checks.ts";
+import { pageSecretNames, type Eva } from "../../core/eva.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -53,13 +53,13 @@ const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
+const secretSchema = z.object({ value: z.string() });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
-const checkNames: readonly CheckName[] = ["vault", "engine", "github", "telegram"];
 /** The login cookies live a year; the person logs out to end them. */
 const cookieMaxAgeSeconds = 365 * 24 * 60 * 60;
 const tokenCookie = "eva_token";
@@ -100,8 +100,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
+      // Bun closes a request after 10 idle seconds, and an engine check waits for a whole real
+      // turn. The check ends itself at its own deadline.
+      if (url.pathname.startsWith("/api/checks/")) bunServer.timeout(request, 0);
       try {
-        return await route(request, url, options.eva);
+        return await route(request, url, options.eva, hasValidToken(request, options.token));
       } catch (error) {
         return errorResponse(error, options.eva);
       }
@@ -205,7 +208,8 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   return json({ error: "Not found." }, 404);
 }
 
-async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
+/** `tokenLogin` is false for a device login, which may change only the page's settings. */
+async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean): Promise<Response> {
   const parts = url.pathname.split("/").filter((part) => part.length > 0);
   const method = request.method;
 
@@ -295,12 +299,27 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     }
   }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
+  if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
-    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
+    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json()), { pageOnly: !tokenLogin }));
+  }
+  if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
+    const name = pageSecretNames.find((candidate) => candidate === parts[2]);
+    if (name === undefined) return json({ error: "The page cannot change this secret." }, 404);
+    const options = { pageOnly: !tokenLogin };
+    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value, options));
+    if (method === "DELETE") return json(eva.saveSecret(name, null, options));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
+  if (url.pathname === "/api/update/engine") {
+    if (method === "GET") return json(eva.engineUpdateStatus());
+    if (method === "POST") {
+      const status = eva.updateEngine();
+      return status === null ? json({ error: "No claude program was found." }, 409) : json(status);
+    }
+  }
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
     if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
     if (method === "POST") {
@@ -363,6 +382,7 @@ function errorResponse(error: unknown, eva: Eva): Response {
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
   if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid")) return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);
+  if (isEvaError(error, "setting_forbidden")) return json(body, 403);
   return json(body, 409);
 }
 

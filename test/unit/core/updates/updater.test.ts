@@ -175,3 +175,33 @@ describe("Updater", () => {
     expect(calls).toEqual(["check"]);
   });
 });
+
+describe("Updater restart", () => {
+  test("a chat that starts during the install delays the restart until it ends (lesson 92)", async () => {
+    const calls: string[] = [];
+    let idle = true;
+    const updater = new Updater({
+      channel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        apply: () => {
+          // A schedule fires while the new version downloads.
+          idle = false;
+          return Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false });
+        },
+      },
+      frequency: () => "off",
+      isIdle: () => idle,
+      restart: () => calls.push("restart"),
+      now: () => new Date("2026-10-17T10:00:00Z"),
+    });
+    expect((await updater.updateNow()).phase).toBe("restarting");
+    expect(calls).toEqual([]);
+    await updater.tick();
+    expect(calls).toEqual([]);
+    idle = true;
+    await updater.tick();
+    await updater.tick();
+    expect(calls).toEqual(["restart"]);
+  });
+});

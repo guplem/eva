@@ -29,6 +29,21 @@ describe("checksOf", () => {
     expect(kinds(["for file in a b; do test -e $file && exit 1; done"])).toEqual([]);
   });
 
+  test("a wrapper, a shell word or a monorepo runner does not hide the tool", () => {
+    expect(kinds(["git diff --name-only | xargs eslint"])).toEqual(["lint"]);
+    expect(kinds(["if [ -f a ]; then npm test; fi"])).toEqual(["test"]);
+    expect(kinds(["timeout 60 pytest", "cross-env NODE_ENV=production jest"])).toEqual(["test"]);
+    expect(kinds(["turbo run lint", "pnpm --filter web test"])).toEqual(["lint", "test"]);
+    expect(kinds(["bundle exec rake test", "./mvnw test"])).toEqual(["test"]);
+  });
+
+  test("an install, a message or a comment runs no check", () => {
+    expect(kinds(["npm install -D eslint", "pip install pytest", "go install golang.org/x/lint"])).toEqual([]);
+    expect(kinds(["echo Running the tests", "cd test"])).toEqual([]);
+    expect(kinds(["# run the linter; ruff is fast\nnpm ci"])).toEqual([]);
+    expect(kinds(["npx commitlint --from HEAD~1"])).toEqual([]);
+  });
+
   test("follows a package script into the commands that it runs", () => {
     const scripts = {
       check: "bun run check:static && bun run test:coverage",
@@ -41,6 +56,7 @@ describe("checksOf", () => {
     expect(kinds(["bun run check"], scripts)).toEqual(["format", "lint", "test"]);
     expect(kinds(["npm test"], { test: "vitest run" })).toEqual(["test"]);
     expect(kinds(["pnpm verify"], { verify: "eslint ." })).toEqual(["lint"]);
+    expect(kinds(["npm test"], { pretest: "eslint .", test: "node run.js" })).toEqual(["lint"]);
   });
 
   test("a script that does not exist counts by its name, and a cycle ends", () => {

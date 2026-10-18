@@ -5,48 +5,16 @@
  */
 export type CheckKind = "format" | "lint" | "test";
 
-/**
- * Programs that run another program, or a subcommand that names the work: `npx eslint`,
- * `go test`, `python -m pytest`. Eva skips them to find the tool.
- */
-const runners = new Set([
-  "npx",
-  "bunx",
-  "pnpx",
-  "npm",
-  "pnpm",
-  "yarn",
-  "bun",
-  "deno",
-  "exec",
-  "run",
-  "uv",
-  "uvx",
-  "poetry",
-  "pipenv",
-  "pdm",
-  "hatch",
-  "python",
-  "python3",
-  "py",
-  "go",
-  "cargo",
-  "dotnet",
-  "mix",
-  "mvn",
-  "gradle",
-  "gradlew",
-  "make",
-  "just",
-  "bundle",
-  "composer",
-  "php",
-  "env",
-  "cross-env",
-  "time",
-  "playwright",
-]);
 const packageManagers = new Set(["npm", "pnpm", "yarn", "bun"]);
+/** Programs that print, move files or call a server. A tool name in their arguments runs nothing. */
+const quietPrograms = new Set([
+  ...["echo", "printf", "cd", "mkdir", "cp", "mv", "rm", "cat", "ls"],
+  ...["export", "git", "curl", "wget", "tee", "touch", "chmod"],
+]);
+/** Words that install a tool, as in `npm install -D eslint` or `pip install pytest`. */
+const installWords = new Set(["install", "add"]);
+/** Shell words before a command. `test` after one of them is the shell's condition command. */
+const shellKeywords = new Set(["if", "elif", "while", "until", "then", "do", "else", "!"]);
 const testTools = new Set([
   "test",
   "tests",
@@ -66,6 +34,8 @@ const testTools = new Set([
   "unittest",
 ]);
 const lintTools = new Set(["linter", "ruff", "flake8", "clippy", "rubocop", "shellcheck", "vet", "mypy", "phpstan"]);
+/** Names that end in `lint` but check no code. */
+const notLintTools = new Set(["commitlint"]);
 const formatTools = new Set(["format", "prettier", "black", "isort", "dprint", "csharpier", "stylua"]);
 /** Tools whose subcommand picks the check, such as `ruff format` and `ruff check`. */
 const toolsWithSubcommands: Readonly<Record<string, readonly CheckKind[]>> = {
@@ -89,28 +59,64 @@ function collect(
   found: Set<CheckKind>,
 ): void {
   for (const tokens of simpleCommands(text)) {
-    const script = scriptCall(tokens, scripts);
+    const first = baseName(tokens[0] ?? "");
+    if (quietPrograms.has(first) || tokens.some((token) => installWords.has(token))) continue;
+    const manager = tokens.findIndex((token) => packageManagers.has(token));
+    const script = manager === -1 ? null : scriptCall(tokens.slice(manager), scripts);
     if (script !== null) {
-      const body = Object.hasOwn(scripts, script) ? scripts[script] : undefined;
-      if (body === undefined) {
-        for (const kind of toolChecks(script, [])) found.add(kind);
-      } else if (!visited.has(script) && visited.size < scriptDepthLimit) {
-        collect(body, scripts, new Set([...visited, script]), found);
-      }
+      collectScript(script, scripts, visited, found);
       continue;
     }
-    const start = tokens.findIndex((token) => !runners.has(baseName(token)) && !token.startsWith("-"));
-    // A bare `test` is the shell's condition command, as in `if test -e file`; `go test` is not.
-    if (start === -1 || (start === 0 && tokens[0] === "test")) continue;
-    for (const kind of toolChecks(tokens[start] ?? "", tokens.slice(start + 1))) found.add(kind);
+    for (const kind of firstToolChecks(tokens)) found.add(kind);
   }
 }
 
-/** Each simple command of a shell text, as its words, without leading variable assignments. */
+/** A script runs with its `pre` and `post` scripts, as npm runs them. A missing script counts by its name. */
+function collectScript(
+  script: string,
+  scripts: Readonly<Record<string, string>>,
+  visited: ReadonlySet<string>,
+  found: Set<CheckKind>,
+): void {
+  const body = scriptBody(scripts, script);
+  if (body === undefined) {
+    for (const kind of nameChecks(script)) found.add(kind);
+    return;
+  }
+  if (visited.has(script) || visited.size >= scriptDepthLimit) return;
+  const inside = new Set([...visited, script]);
+  for (const part of [scriptBody(scripts, `pre${script}`), body, scriptBody(scripts, `post${script}`)]) {
+    if (part !== undefined) collect(part, scripts, inside, found);
+  }
+}
+
+function scriptBody(scripts: Readonly<Record<string, string>>, name: string): string | undefined {
+  return Object.hasOwn(scripts, name) ? scripts[name] : undefined;
+}
+
+/**
+ * The checks of the first word that names a tool. A wrapper, such as `xargs`, `timeout 60` or
+ * `go`, names no tool, so the scan passes it. The scan stops at the first tool, so in
+ * `eslint src test` the folder `test` is not a test run.
+ */
+function firstToolChecks(tokens: readonly string[]): readonly CheckKind[] {
+  for (const [index, token] of tokens.entries()) {
+    if (token.startsWith("-") || token.startsWith("$") || token.includes("=")) continue;
+    if ((token === "test" || token === "[") && (index === 0 || shellKeywords.has(tokens[index - 1] ?? ""))) return [];
+    const kinds = toolChecks(token, tokens.slice(index + 1));
+    if (kinds.length > 0) return kinds;
+  }
+  return [];
+}
+
+/** Each simple command of a shell text, as its words, without comments. */
 function simpleCommands(text: string): string[][] {
   return text
     .replace(/\\\r?\n/g, " ")
-    .split(/&&|\|\||[;|\r\n]/)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/(?:^|\s)#.*$/, ""))
+    .join("\n")
+    .split(/&&|\|\||[;|\n]/)
     .map((part) =>
       part
         .replace(/[()"']/g, " ")
@@ -118,21 +124,12 @@ function simpleCommands(text: string): string[][] {
         .split(/\s+/)
         .filter((token) => token !== ""),
     )
-    .map((tokens) =>
-      tokens.slice(
-        Math.max(
-          0,
-          tokens.findIndex((token) => !/^\w+=/.test(token)),
-        ),
-      ),
-    )
-    .filter((tokens) => tokens.length > 0 && !(tokens[0] ?? "").startsWith("#"));
+    .filter((tokens) => tokens.length > 0);
 }
 
 /** The script that a package manager runs: `npm run lint`, `npm test`, `pnpm lint`. Null: no script call. */
 function scriptCall(tokens: readonly string[], scripts: Readonly<Record<string, string>>): string | null {
   const [manager = "", ...rest] = tokens;
-  if (!packageManagers.has(manager)) return null;
   const words = rest.filter((token) => !token.startsWith("-"));
   const [first = ""] = words;
   if (first === "run" || first === "run-script") return words[1] ?? null;
@@ -157,7 +154,9 @@ function nameChecks(name: string): CheckKind[] {
   const parts = name.toLowerCase().split(/[-_:.@]/);
   const kinds: CheckKind[] = [];
   if (parts.some((part) => formatTools.has(part) || part.endsWith("fmt"))) kinds.push("format");
-  if (parts.some((part) => lintTools.has(part) || part.endsWith("lint"))) kinds.push("lint");
+  if (parts.some((part) => lintTools.has(part) || (part.endsWith("lint") && !notLintTools.has(part)))) {
+    kinds.push("lint");
+  }
   if (parts.some((part) => testTools.has(part))) kinds.push("test");
   return kinds;
 }

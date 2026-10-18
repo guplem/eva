@@ -23,7 +23,8 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("Search the notes");
   await expect(dialog).toContainText("done");
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 }
 
@@ -52,6 +53,16 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.locator(".branch")).toHaveCount(2);
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
+
+  // Another chat's tasks stay out of view.
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+      "Nothing runs in the background.",
+    );
+  }
 });
 
 test("an approval opens a dialog, and Allow answers the turn", async ({ page }) => {
@@ -64,6 +75,8 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await composer.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Approval" });
   await expect(dialog).toContainText("gh issue create");
+  // While the turn waits, its running task shows under the conversation, also on a phone.
+  await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
 });

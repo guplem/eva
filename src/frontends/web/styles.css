@@ -226,6 +226,11 @@ textarea {
   border-color: var(--danger);
 }
 
+.running-tasks {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
 .clone-chats {
   display: flex;
   flex-direction: column;

@@ -2,12 +2,12 @@
  * A conversation as a tree: the chat and each of its forks in a
  * column of its own, each with its own input, and retry and fork on every answer.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { toTelegramHtml } from "../../telegram/telegram-format.ts";
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
-import { TasksDialog, tasksOf } from "./TasksPanel.tsx";
+import { runningCount, TasksDialog, tasksOf } from "./TasksPanel.tsx";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -71,6 +71,10 @@ function Branch({
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(false);
+  const closeTasks = useCallback(() => setShowTasks(false), []);
+  const tasks = tasksOf(live.tasks, [session.id]);
+  // The side panel hides on a phone, so a running task also shows here.
+  const running = runningCount(tasks);
   const showError = useShowError();
   const turnCount = session.turns.length;
 
@@ -140,7 +144,12 @@ function Branch({
           <div dangerouslySetInnerHTML={{ __html: toTelegramHtml(streaming) }} />
         </div>
       )}
-      {showTasks && <TasksDialog tasks={tasksOf(live.tasks, [session.id])} onClose={() => setShowTasks(false)} />}
+      {running > 0 && (
+        <button className="running-tasks" onClick={() => setShowTasks(true)}>
+          {counted(running, "background task")} running
+        </button>
+      )}
+      {showTasks && <TasksDialog tasks={tasks} onClose={closeTasks} />}
       <div className="composer">
         <textarea
           aria-label="Message"

@@ -146,8 +146,8 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                 {/* The text shows in the list, not in a tooltip: a phone has no hover. */}
                 {project.warnings.length > 0 && (
                   <ul className="warnings" aria-label={`Warnings of ${project.title}`}>
-                    {project.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
+                    {project.warnings.map((warning, index) => (
+                      <li key={`${String(index)}-${warning}`}>{warning}</li>
                     ))}
                   </ul>
                 )}

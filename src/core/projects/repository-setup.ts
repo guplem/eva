@@ -58,6 +58,8 @@ export interface RepositoryFacts {
   readonly requiredChecks: boolean | null;
   readonly privateVulnerabilityReporting: boolean | null;
   readonly dependabotAlerts: boolean | null;
+  /** A `SECURITY.md` in the repository, or in the owner's `.github` repository. */
+  readonly securityPolicy: boolean | null;
   readonly dependabotSecurityUpdates: boolean | null;
   readonly secretScanning: boolean | null;
   readonly pushProtection: boolean | null;
@@ -428,6 +430,18 @@ function securityItems(context: Context): SetupItem[] {
         "let people report a vulnerability in private",
       ),
     ),
+    {
+      ...featureItem(
+        context,
+        "Security policy",
+        target.securityPolicy,
+        false,
+        `In ${slug}, add a \`SECURITY.md\` that tells people to report a vulnerability in private at https://github.com/${slug}/security/advisories/new, not in a public issue.${pullRequestStep}`,
+      ),
+      ...(target.securityPolicy === null
+        ? {}
+        : { detail: target.securityPolicy ? "Has a SECURITY.md." : "No SECURITY.md." }),
+    },
     featureItem(
       context,
       "Dependabot alerts",

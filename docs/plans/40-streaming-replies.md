@@ -26,3 +26,21 @@ The person starts to read an answer while the agent still works. This holds in e
 2. In Telegram, how does Eva show a block while it grows? Options: edit one message, or Telegram's draft message, or send each finished block only. Telegram limits edits per chat.
 3. Can a file marker span two text blocks? If yes, a per-block read could show half a marker.
 4. Does the session record or the turn record change? Today `answerText` joins the blocks with a blank line.
+
+## Decisions
+
+Three review agents read the code for each gap. They agree on the points below.
+
+1. **Word by word: needs the owner.** Finished blocks meet most of the issue. A long final answer with no tool call still arrives at once. Word by word costs:
+   - A new event kind (a schema change).
+   - A hold-back buffer in the core. The `Redactor` reads one string at a time, so a secret cut across two pieces would pass unredacted.
+   - New code in every front end. Telegram must edit a growing message, which hits the edit limits and half-written Markdown.
+2. **Telegram: send each finished block as its own message,** through `sendAnswer`. Run the sends of one chat in order, because `onEvent` runs unawaited.
+3. **Markers: read them per block.** A marker is one whole line, and a block holds whole lines. Attach each file with its block. Keep the offers until the turn end, so that attach still wins over offer. Send each file once per answer.
+4. **Record: no change.** Blocks still arrive whole and in order.
+5. **Claude Code adapter:** a lost history fails with the first and only message (`test/fixtures/claude-code/missing-session.jsonl`). Check only the first event for the retry.
+6. **Guide: no change.** `docs/guide/` says nothing about how answers arrive.
+
+## Found on the way
+
+- The web app clears the streamed text when the page becomes visible again (`recover` in `App.tsx`). On a phone, the blocks already shown vanish until the turn ends.

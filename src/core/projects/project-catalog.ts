@@ -179,12 +179,21 @@ export interface TitleHeading {
 
 /** The first `# ` line of a body outside a code fence, where a `#` line is a comment, not a title. */
 export function titleHeading(body: string): TitleHeading | null {
-  let inFence = false;
+  // The marker that opened the current fence, such as "```". Markdown closes a fence only with
+  // the same character, at least as many times; four spaces of indent make code, not a fence.
+  let fence: string | null = null;
   let index = 0;
   for (const line of body.split("\n")) {
     const content = line.replace(/\r$/, "");
-    if (/^\s*(```|~~~)/.test(content)) inFence = !inFence;
-    else if (!inFence && content.startsWith("# ") && content.trim().length > 1) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(content)?.[1];
+    if (marker !== undefined && fence === null) fence = marker;
+    else if (
+      marker?.[0] === fence?.[0] &&
+      (marker?.length ?? 0) >= (fence?.length ?? 0) &&
+      /^ {0,3}[`~]+\s*$/.test(content)
+    ) {
+      fence = null;
+    } else if (fence === null && content.startsWith("# ") && content.trim().length > 1) {
       return { index, length: content.length, title: content.slice(2).trim() };
     }
     index += line.length + 1;

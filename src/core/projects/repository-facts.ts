@@ -62,8 +62,8 @@ export function ghApiRequest(runner: ProcessRunner, environment: Readonly<Record
   };
 }
 
-export async function readRepositoryFacts(slug: string, get: GithubRequest): Promise<RepositoryFacts> {
-  const repository = await get(`repos/${slug}`);
+export async function readRepositoryFacts(slug: string, request: GithubRequest): Promise<RepositoryFacts> {
+  const repository = await request(`repos/${slug}`);
   const info = repository.status === 200 ? asRecord(parseJson(repository.body)) : null;
   if (info === null) {
     const message =
@@ -81,19 +81,19 @@ export async function readRepositoryFacts(slug: string, get: GithubRequest): Pro
   const [owner = "", name = ""] = slug.split("/");
   const [files, labels, rules, branchInfo, reporting, security, fixes, codeScanning, workflowToken] = await Promise.all(
     [
-      readFiles(get, `${address}/git/trees/${encodedBranch}?recursive=1`),
-      readLabels(get, `${address}/labels`),
-      readJson(get, `${address}/rules/branches/${encodedBranch}`),
-      readJson(get, `${address}/branches/${encodedBranch}`),
-      readJson(get, `${address}/private-vulnerability-reporting`),
-      readGraphql(get, securityQuery, { owner, name }),
-      readJson(get, `${address}/automated-security-fixes`),
-      readJson(get, `${address}/code-scanning/default-setup`),
-      readJson(get, `${address}/actions/permissions/workflow`),
+      readFiles(request, `${address}/git/trees/${encodedBranch}?recursive=1`),
+      readLabels(request, `${address}/labels`),
+      readJson(request, `${address}/rules/branches/${encodedBranch}`),
+      readJson(request, `${address}/branches/${encodedBranch}`),
+      readJson(request, `${address}/private-vulnerability-reporting`),
+      readGraphql(request, securityQuery, { owner, name }),
+      readJson(request, `${address}/automated-security-fixes`),
+      readJson(request, `${address}/code-scanning/default-setup`),
+      readJson(request, `${address}/actions/permissions/workflow`),
     ],
   );
   const readFile = (path: string): Promise<FileRead> =>
-    get(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
+    request(`${address}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodedBranch}`, true).then(
       (answer) => (answer.status === 200 ? { text: answer.body } : answer.status === 404 ? "absent" : null),
     );
   const [workflows, allowRules] = await Promise.all([
@@ -130,8 +130,8 @@ export async function readRepositoryFacts(slug: string, get: GithubRequest): Pro
 /** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */
 type FileRead = { readonly text: string } | "absent" | null;
 
-async function readFiles(get: GithubRequest, path: string): Promise<Record<string, string> | null> {
-  const tree = asRecord(await readJson(get, path));
+async function readFiles(request: GithubRequest, path: string): Promise<Record<string, string> | null> {
+  const tree = asRecord(await readJson(request, path));
   // A truncated tree would make present files look missing.
   if (tree?.["truncated"] !== false || !Array.isArray(tree["tree"])) return null;
   const files: Record<string, string> = {};
@@ -144,10 +144,10 @@ async function readFiles(get: GithubRequest, path: string): Promise<Record<strin
 }
 
 /** Every label name, page by page. Null when a page does not answer. */
-async function readLabels(get: GithubRequest, path: string): Promise<string[] | null> {
+async function readLabels(request: GithubRequest, path: string): Promise<string[] | null> {
   const names: string[] = [];
   for (let page = 1; page <= labelPageLimit; page += 1) {
-    const labels = await readJson(get, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
+    const labels = await readJson(request, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
     if (!Array.isArray(labels)) return null;
     names.push(...labels.flatMap((label) => textField(label, "name") ?? []));
     if (labels.length < labelsPerPage) return names;
@@ -219,17 +219,21 @@ function featureStatus(security: Record<string, unknown> | null, name: string): 
 
 /** The `repository` object of a GraphQL answer, or null when GitHub answered with errors. */
 async function readGraphql(
-  get: GithubRequest,
+  request: GithubRequest,
   query: string,
   variables: Readonly<Record<string, string>>,
 ): Promise<Record<string, unknown> | null> {
-  const answer = asRecord(await readJson(get, "graphql", { query, ...variables }));
+  const answer = asRecord(await readJson(request, "graphql", { query, ...variables }));
   if (answer === null || answer["errors"] !== undefined) return null;
   return asRecord(asRecord(answer["data"])?.["repository"]);
 }
 
-async function readJson(get: GithubRequest, path: string, fields?: Readonly<Record<string, string>>): Promise<unknown> {
-  const answer = await get(path, false, fields);
+async function readJson(
+  request: GithubRequest,
+  path: string,
+  fields?: Readonly<Record<string, string>>,
+): Promise<unknown> {
+  const answer = await request(path, false, fields);
   return answer.status === 200 ? parseJson(answer.body) : null;
 }
 

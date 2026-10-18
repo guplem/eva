@@ -300,5 +300,12 @@ describe("evaluateSetup, security policy", () => {
     expect(policy.fixRequest).toContain("SECURITY.md");
     expect(policy.fixRequest).toContain("https://github.com/owner/example-app/security/advisories/new");
     expect(item(evaluateSetup(reference, target()), "Security policy").light).toBe("green");
+    // A private repository has no private vulnerability reporting, so the link would lead nowhere.
+    const privateFix = item(
+      evaluateSetup(reference, target({ isPrivate: true, securityPolicy: false })),
+      "Security policy",
+    );
+    expect(privateFix.fixRequest).not.toContain("advisories/new");
+    expect(privateFix.fixRequest).toContain("contact the maintainers in private");
   });
 });

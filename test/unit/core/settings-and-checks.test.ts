@@ -80,15 +80,17 @@ describe("repository setup", () => {
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
-      githubRequest: (path, raw) => {
+      githubRequest: (path, raw, fields) => {
         asked.push(path);
-        return github(path, raw);
+        return github(path, raw, fields);
       },
     });
     const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
     withGithub.stop();
     expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
     expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
+    const security = reports[0]?.sections.find((section) => section.title === "Security")?.items ?? [];
+    expect(security.find((entry) => entry.label === "Dependabot alerts")?.light).toBe("green");
     expect(reports[1]?.problem).toBe("Only a repository on GitHub has a setup report.");
     expect(asked).toContain("repos/guplem/eva");
     expect(String(await withGithub.repositorySetup("missing").catch((error: unknown) => error))).toContain(
@@ -123,8 +125,10 @@ describe("repository setup", () => {
       "guplem/eva": { files: referenceFiles, labels: ["bug"] },
       "owner/other-app": target,
     });
-    const noLabels: GithubRequest = (path, raw) =>
-      path.startsWith("repos/guplem/eva/labels") ? Promise.resolve({ status: 500, body: "" }) : complete(path, raw);
+    const noLabels: GithubRequest = (path, raw, fields) =>
+      path.startsWith("repos/guplem/eva/labels")
+        ? Promise.resolve({ status: 500, body: "" })
+        : complete(path, raw, fields);
     expect((await reportFor(noLabels))?.problem).toContain("could not read all of her reference repository");
 
     const archived = fakeGithub({

@@ -677,10 +677,10 @@ export class Eva {
     const project = this.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
     if (project.frontMatter.repos.length === 0) return [];
-    const get = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.gitEnvironment);
+    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.gitEnvironment);
     const read = async (slug: string): Promise<RepositoryFacts | string> => {
       try {
-        return await readRepositoryFacts(slug, get);
+        return await readRepositoryFacts(slug, request);
       } catch (error) {
         if (isEvaError(error, "github_failed")) return error.message;
         throw error;

@@ -141,7 +141,15 @@ export class Updater {
    */
   async updateNow(version?: string): Promise<UpdateStatus> {
     // One check or install at a time: a second download could replace the first one's file.
-    if (this.phase === "checking" || this.phase === "updating" || this.phase === "restarting") return this.status();
+    if (this.phase === "checking" || this.phase === "updating" || this.phase === "restarting") {
+      // A chosen version must never vanish without a word.
+      if (version !== undefined)
+        throw new EvaError(
+          "update_failed",
+          `Eva is busy with an update check or install. Try ${version} again in a moment.`,
+        );
+      return this.status();
+    }
     if (this.phase !== "waiting_for_idle") {
       await this.check();
       if (this.lastError !== null) return this.status();

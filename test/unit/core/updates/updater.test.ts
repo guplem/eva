@@ -313,11 +313,12 @@ describe("Updater policy", () => {
     });
     const first = updater.updateNow("2.0.0");
     for (let round = 0; round < 50 && applied.length === 0; round += 1) await Bun.sleep(1);
-    expect((await updater.updateNow("1.4.3")).phase).toBe("updating");
+    expect(String(await updater.updateNow("1.4.3").catch((caught: unknown) => caught))).toContain("busy");
     await updater.tick();
     finish();
     expect((await first).phase).toBe("restarting");
-    expect((await updater.updateNow("1.4.3")).phase).toBe("restarting");
+    expect(String(await updater.updateNow("1.4.3").catch((caught: unknown) => caught))).toContain("busy");
+    expect((await updater.updateNow()).phase).toBe("restarting");
     expect(applied).toEqual(["2.0.0"]);
   });
 
@@ -350,6 +351,31 @@ describe("Updater policy", () => {
     idle = true;
     await updater.tick();
     expect(applied).toEqual(["2.0.0"]);
+  });
+
+  test("a version chosen during a check says that Eva is busy, instead of being dropped", async () => {
+    let answer: () => void = () => undefined;
+    const updater = new Updater({
+      channel: {
+        kind: "executable",
+        check: async () => {
+          await new Promise<void>((resolve) => (answer = resolve));
+          return { current: "1.4.2", latest: "2.0.0", available: true, releases };
+        },
+        apply: () => Promise.reject(new Error("not in this test")),
+      },
+      frequency: () => "daily",
+      policy: () => "patch",
+      isIdle: () => true,
+      restart: () => undefined,
+      now: () => new Date("2026-10-17T10:00:00Z"),
+    });
+    const running = updater.check();
+    const error = await updater.updateNow("2.0.0").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "update_failed")).toBe(true);
+    expect(String(error)).toContain("busy");
+    answer();
+    await running;
   });
 
   test("a chosen version that is not newer says so", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -109,6 +109,17 @@ describe("GoogleLogin", () => {
     const { url } = login.start(client.clientId, scopes);
     expect(await failureOf(login.finish(returnAddress(url), client))).toContain("Allow every box");
     expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+  });
+
+  test("a login that Eva cannot save asks for a new login: Google used the code", async () => {
+    writeFileSync(join(folder, "blocked"), "a file, not a folder");
+    const blocked = new GoogleLogin({
+      credentialsFolder: join(folder, "blocked", "google"),
+      now: () => now,
+      baseUrl: google.url,
+    });
+    const { url } = blocked.start(client.clientId, scopes);
+    expect(await failureOf(blocked.finish(returnAddress(url), client))).toContain("Start the Google login again");
   });
 
   test("an answer that is not JSON says that Google has a problem", async () => {

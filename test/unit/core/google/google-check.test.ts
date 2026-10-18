@@ -77,7 +77,13 @@ describe("checkGoogle", () => {
     ).toContain("No Google login for other@example.com on this machine");
     saveLogin(googleScopes(defaultConfig.google), "old-client");
     expect((await checkGoogle(inputs)).detail).toContain("another OAuth client");
+    expect((await checkGoogle({ ...inputs, config: { ...inputs.config, services: [] } })).detail).toContain(
+      "No Google service is on",
+    );
     saveLogin(googleScopes(defaultConfig.google));
+    expect(
+      (await checkGoogle({ ...inputs, client: { ...client, clientSecret: "GOCSPX-new-secret-value" } })).detail,
+    ).toContain("older client secret");
     const writes = { ...inputs, config: { ...inputs.config, readOnly: false } };
     expect((await checkGoogle(writes)).detail).toContain("Log in to Google again");
     expect(google.tokenRequests).toEqual([]);

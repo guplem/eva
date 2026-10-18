@@ -64,6 +64,7 @@ const requestTimeoutMs = 30_000;
 
 export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleCheckResult> {
   const { config, client } = inputs;
+  if (config.services.length === 0) return failed("No Google service is on. Set google.services on the machine.");
   if (client === null)
     return failed(`No OAuth client is saved. Paste its client id and secret (step ${String(googleStep.client)}).`);
   if (config.email === null)
@@ -77,9 +78,12 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
     return failed(
       `The login belongs to another OAuth client. Log in to Google again (step ${String(googleStep.login)}).`,
     );
+  // The refresh uses the secret in the login file, as `workspace-mcp` does, so a new secret needs a new login.
+  if (credential.client_secret !== client.clientSecret)
+    return failed(`The login uses an older client secret. Log in to Google again (step ${String(googleStep.login)}).`);
   if (!coversScopes(credential.scopes, googleScopes(config)))
     return failed(
-      `The login gives less access than Eva needs now. This happens after a change to Read and change. Log in to Google again (step ${String(googleStep.login)}).`,
+      `The login gives less access than Eva needs now. This happens after a change of access or of the services. Log in to Google again (step ${String(googleStep.login)}).`,
     );
 
   const urls = googleUrls(inputs.baseUrl);

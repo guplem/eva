@@ -162,8 +162,9 @@ export class GoogleLogin {
       scopes: granted,
       expiry: null,
     };
+    // Google used the code, so a failed save needs a new login too.
+    if (this.pending === pending) this.pending = null;
     this.save(email, credential);
-    this.pending = null;
     return { email };
   }
 
@@ -178,7 +179,7 @@ export class GoogleLogin {
       );
     } catch (error) {
       // On Windows, `workspace-mcp` can hold the file open while it saves a fresh token.
-      throw new EvaError("google_failed", "Eva could not save the Google login. Press Finish again.", {
+      throw new EvaError("google_failed", "Eva could not save the Google login. Start the Google login again.", {
         cause: error,
       });
     }

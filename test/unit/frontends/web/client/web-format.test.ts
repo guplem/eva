@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toWebHtml } from "../../../../src/frontends/web/client/web-format.ts";
+import { toWebHtml } from "../../../../../src/frontends/web/client/web-format.ts";
 
 describe("toWebHtml", () => {
   test("a single line break shows as a line break, and a blank line starts a new paragraph", () => {
@@ -98,5 +98,40 @@ describe("toWebHtml", () => {
     expect(toWebHtml("[docs](https://example.com) [x](javascript:alert)")).toBe(
       '<p><a href="https://example.com">docs</a> [x](javascript:alert)</p>',
     );
+  });
+
+  test("a longer fence holds a shorter one, and only a bare fence closes it", () => {
+    expect(toWebHtml("````md\n```js\nx\n```\n````\nafter")).toBe(
+      '<pre><code class="language-md">```js\nx\n```</code></pre><p>after</p>',
+    );
+    expect(toWebHtml("```\n```js\n```")).toBe("<pre><code>```js</code></pre>");
+  });
+
+  test("only a list that starts at 1 breaks a paragraph, so a number in the text stays text", () => {
+    expect(toWebHtml("It costs\n100. Then more")).toBe("<p>It costs<br>100. Then more</p>");
+    expect(toWebHtml("Steps:\n1. one")).toBe("<p>Steps:</p><ol><li>one</li></ol>");
+    expect(toWebHtml("- one\n2024. was good")).toBe("<ul><li>one<br>2024. was good</li></ul>");
+  });
+
+  test("a table cell keeps an escaped pipe and a pipe in code", () => {
+    expect(toWebHtml("| a \\| b | `x|y` |\n|---|---|")).toBe(
+      "<table><thead><tr><th>a | b</th><th><code>x|y</code></th></tr></thead><tbody></tbody></table>",
+    );
+  });
+
+  test("a blank line inside a nested list or a code block keeps the outer list tight", () => {
+    expect(toWebHtml("- a\n  - b\n\n  - c\n- d")).toBe(
+      "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li><li>d</li></ul>",
+    );
+    expect(toWebHtml("- run:\n  ```\n  a\n\n  b\n  ```\n- next")).toBe(
+      "<ul><li>run:<pre><code>a\n\nb</code></pre></li><li>next</li></ul>",
+    );
+  });
+
+  test("a tab in a code block stays a tab, and a tab indent still nests a list", () => {
+    expect(toWebHtml("```make\nall:\n\tbun test\n```")).toBe(
+      '<pre><code class="language-make">all:\n\tbun test</code></pre>',
+    );
+    expect(toWebHtml("- a\n\t- b")).toBe("<ul><li>a<ul><li>b</li></ul></li></ul>");
   });
 });

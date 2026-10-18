@@ -8,6 +8,7 @@
 import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
 
 const fencePattern = /^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)/;
+const bareFencePattern = /^\s*(`{3,}|~{3,})\s*$/;
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
 const rulePattern = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
@@ -27,7 +28,30 @@ interface ListItem {
 }
 
 export function toWebHtml(markdown: string): string {
-  return blocks(markdown.replaceAll("\r\n", "\n").replaceAll("\t", "    ").split("\n"), false);
+  return blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
+}
+
+/** A tab in an indent counts as four spaces, so it nests a list; a tab in code stays, so copied code works. */
+function expandIndentTabs(lines: readonly string[]): string[] {
+  let openFence: string | null = null;
+  return lines.map((line) => {
+    const inCode = openFence !== null;
+    openFence = fenceAfter(line, openFence);
+    if (inCode) return line;
+    return line.replace(/^[ \t]+/, (indent) => indent.replaceAll("\t", "    "));
+  });
+}
+
+/** Only a bare fence of the same character, at least as long, closes a block, so a block can show a shorter fence. */
+function closesFence(line: string, opening: string): boolean {
+  const run = bareFencePattern.exec(line)?.[1] ?? "";
+  return run.length >= opening.length && run.startsWith(opening.charAt(0));
+}
+
+/** The fence still open after `line`, or null when the line leaves no code block open. */
+function fenceAfter(line: string, openFence: string | null): string | null {
+  if (openFence === null) return fencePattern.exec(line)?.[2] ?? null;
+  return closesFence(line, openFence) ? null : openFence;
 }
 
 /** In a tight list item, a paragraph is bare text, so the item does not gain extra space. */
@@ -42,10 +66,9 @@ function blocks(lines: readonly string[], tight: boolean): string {
     }
     const fence = fencePattern.exec(line);
     if (fence) {
-      const closing = (fence[2] ?? "```").charAt(0).repeat(3);
       const body: string[] = [];
       index += 1;
-      while (index < lines.length && !(lines[index] ?? "").trim().startsWith(closing)) {
+      while (index < lines.length && !closesFence(lines[index] ?? "", fence[2] ?? "```")) {
         body.push(dedent(lines[index] ?? "", (fence[1] ?? "").length));
         index += 1;
       }
@@ -116,6 +139,7 @@ function list(lines: readonly string[], start: number, first: ListItem): { html:
     const item = itemOf(lines[index] ?? "");
     if (item === null || !sameList(item, first)) break;
     const body = [item.text];
+    let openFence = fenceAfter(item.text, null);
     index += 1;
     while (index < lines.length) {
       const line = lines[index] ?? "";
@@ -124,7 +148,9 @@ function list(lines: readonly string[], start: number, first: ListItem): { html:
         const following = nextFilled(lines, index);
         const next = lines[following] ?? "";
         if (following < lines.length && indentOf(next) > first.indent) {
-          loose = true;
+          // Only a blank line between the item's own blocks spaces the list out; one inside code
+          // or inside a nested list belongs to that block.
+          if (openFence === null && itemOf(next) === null && indentOf(next) <= item.contentIndent) loose = true;
           body.push("");
           index += 1;
           continue;
@@ -134,10 +160,13 @@ function list(lines: readonly string[], start: number, first: ListItem): { html:
         break;
       }
       if (indentOf(line) > first.indent) {
-        body.push(dedent(line, item.contentIndent));
+        const dedented = dedent(line, item.contentIndent);
+        body.push(dedented);
+        openFence = fenceAfter(dedented, openFence);
         index += 1;
         continue;
       }
+      if (sameList(itemOf(line), first)) break;
       // A lazy line: text right under an item's text, with no indent, still belongs to the item.
       if (previous.trim() !== "" && !startsBlock(lines, index)) {
         body.push(line.trim());
@@ -181,9 +210,14 @@ function startsBlock(lines: readonly string[], index: number): boolean {
     headingPattern.test(line) ||
     quotePattern.test(line) ||
     rulePattern.test(line) ||
-    itemOf(line) !== null ||
+    breaksParagraph(itemOf(line)) ||
     startsTable(lines, index)
   );
+}
+
+/** As in CommonMark, a numbered list breaks a paragraph only from 1, so "100. Then" in a sentence stays text. */
+function breaksParagraph(item: ListItem | null): boolean {
+  return item !== null && (!item.ordered || item.number === 1);
 }
 
 function startsTable(lines: readonly string[], index: number): boolean {
@@ -206,19 +240,38 @@ function dedent(line: string, width: number): string {
 }
 
 function table(rows: readonly string[]): string {
-  const cells = rows.map((row) =>
-    row
-      .trim()
-      .replace(/^\||\|$/g, "")
-      .split("|")
-      .map((cell) => inlineHtml(cell.trim())),
-  );
+  const cells = rows.map((row) => cellsOf(row).map((cell) => inlineHtml(cell.trim())));
   const header = cells[0] ?? [];
   const body = cells
     .slice(1)
     .map((row) => `<tr>${header.map((_, column) => `<td>${row[column] ?? ""}</td>`).join("")}</tr>`)
     .join("");
   return `<table><thead><tr>${header.map((cell) => `<th>${cell}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+/** Splits a table row on its pipes, but not on an escaped pipe or a pipe in a code span. */
+function cellsOf(row: string): string[] {
+  const text = row.trim().replace(/^\||\|$/g, "");
+  const cells: string[] = [];
+  let cell = "";
+  let inCode = false;
+  for (let position = 0; position < text.length; position += 1) {
+    const character = text.charAt(position);
+    if (character === "\\" && text.charAt(position + 1) === "|") {
+      cell += "|";
+      position += 1;
+      continue;
+    }
+    if (character === "`") inCode = !inCode;
+    if (character === "|" && !inCode) {
+      cells.push(cell);
+      cell = "";
+      continue;
+    }
+    cell += character;
+  }
+  cells.push(cell);
+  return cells;
 }
 
 function code(text: string, language: string): string {

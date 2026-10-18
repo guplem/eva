@@ -57,3 +57,12 @@ Not fixed, with the reason:
 4. **`rmSync` can throw on Windows** when a program holds the file. The throw reaches the front end as a failed command. Nothing is lost.
 5. **The idle timeout off for all `/api/vault/` routes.** Each git step keeps its own timeout, so no request hangs forever.
 6. **Older git (before 2.38)** stays an error with a clear reason. A fallback merge in the worktree would add risk for a short-lived case. The guide names the minimum.
+
+## Second review round
+
+Three agents reviewed the work again. Fixed: a pick that staged a withheld file (a secret or a file over 50 MB) and the next commit pushed it, the git 2.38 hint on unrelated failures, a last pick that went stale on every new local edit, a pull that merged with an edit not committed, and the web list after a conflict ended elsewhere.
+
+Not fixed, with the reason:
+
+1. **A pick binds at pick time, not to the list the person saw.** A save between the list and the tap can bring a newer remote edit. Both versions stay in the merge parents, and a version token per button adds a schema to the API and the button data. The comments now say "at the time of the pick".
+2. **A staged rename makes every save fail** (`git add` gets the old path). The bug is older than this branch. It needs its own issue.

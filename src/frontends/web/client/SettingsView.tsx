@@ -491,8 +491,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             {identities.length === 0 ? "Only the Tailscale account that owns this machine." : identities.join(", ")}
           </div>
           <div className="hint">
-            A device login cannot change this list or the tokens. To change the list, run this on the machine, with
-            every account that may ask:{" "}
+            To change the list, run this on the machine, with every account that may ask:{" "}
             <code>
               eva settings set remoteAccess.allowedTailscaleIdentities &apos;[&quot;you@example.com&quot;]&apos;
             </code>

@@ -139,7 +139,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       )
         bunServer.timeout(request, 0);
       try {
-        return await route(request, url, options.eva, hasValidToken(request, options.token));
+        return await route(request, url, options.eva);
       } catch (error) {
         return errorResponse(error, options.eva);
       }
@@ -265,8 +265,8 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   return json({ error: "Not found." }, 404);
 }
 
-/** `tokenLogin` is false for a device login, which may change only the page's settings. */
-async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean): Promise<Response> {
+// A device login has the same control as the token: the owner chose this in #137.
+async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   const parts = url.pathname.split("/").filter((part) => part.length > 0);
   const method = request.method;
 
@@ -390,18 +390,15 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
-    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json()), { pageOnly: !tokenLogin }));
+    return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
   }
   if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
     const name = pageSecretNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "The page cannot change this secret." }, 404);
-    const options = { pageOnly: !tokenLogin };
-    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value, options));
-    if (method === "DELETE") return json(eva.saveSecret(name, null, options));
+    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value));
+    if (method === "DELETE") return json(eva.saveSecret(name, null));
   }
   if (method === "POST" && url.pathname.startsWith("/api/google/")) {
-    // The login decides whose Google account Eva uses, so a lost phone with a device login must not run it.
-    if (!tokenLogin) return json({ error: "Only a login with the token can log in to Google." }, 403);
     if (url.pathname === "/api/google/login") return json(eva.startGoogleLogin());
     if (url.pathname === "/api/google/login/finish")
       return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
@@ -417,8 +414,6 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   }
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
   if (method === "POST" && url.pathname.startsWith("/api/remote-access/")) {
-    // These run programs on the machine, so a device login, which may change only the page, cannot.
-    if (!tokenLogin) return json({ error: "Only a login with the token can set up Tailscale." }, 403);
     const action = url.pathname.slice("/api/remote-access/".length);
     const access =
       action === "install" ? eva.installTailscale() : action === "sign-in" ? await eva.signInToTailscale() : undefined;

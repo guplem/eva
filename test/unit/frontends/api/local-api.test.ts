@@ -293,44 +293,33 @@ describe("device login", () => {
     expect(saved.status).toBe(200);
   });
 
-  test("a device login changes the page's settings, but never a machine trust setting", async () => {
+  // The owner's choice in #137: an allowed device has the same control as the console.
+  test("a device login changes every setting, machine and trust settings included", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());
     const device = { cookie, "content-type": "application/json" };
-    const page = await call("/api/settings", {
-      method: "PUT",
-      headers: device,
-      body: { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
-    });
-    expect(page.status).toBe(200);
     for (const change of [
-      { remoteAccess: { allowedTailscaleIdentities: ["stranger@example.com"] } },
-      { telegram: { allowedChatId: 42 } },
-      { trust: { trustedRepositoryOwners: ["stranger"] } },
-      { engines: { claudeCode: { executable: "/tmp/other" } } },
-      { vaultPath: "/tmp/other-vault" },
+      { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
+      { remoteAccess: { allowedTailscaleIdentities: ["owner@example.com"] } },
+      { trust: { trustedRepositoryOwners: ["me"] } },
     ]) {
-      const refused = await call("/api/settings", { method: "PUT", headers: device, body: change });
-      expect(refused.status).toBe(403);
+      const saved = await call("/api/settings", { method: "PUT", headers: device, body: change });
+      expect(saved.status).toBe(200);
     }
-    expect(eva.publicSettings().config.remoteAccess.allowedTailscaleIdentities).toEqual([]);
-    const withToken = await call("/api/settings", {
-      method: "PUT",
-      body: { trust: { trustedRepositoryOwners: ["me"] } },
-    });
-    expect(withToken.status).toBe(200);
+    expect(eva.publicSettings().config.trust.trustedRepositoryOwners).toEqual(["me"]);
   });
 
-  test("a device login can neither replace nor remove a token", async () => {
+  test("a device login replaces and removes a token", async () => {
     attachApprover();
     const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
     const replaced = await call("/api/secrets/claudeOauthToken", {
       method: "PUT",
       headers: device,
-      body: { value: "sk-ant-oat-stranger-token" },
+      body: { value: "sk-ant-oat-new-token" },
     });
-    expect(replaced.status).toBe(403);
-    expect((await call("/api/secrets/githubToken", { method: "DELETE", headers: device })).status).toBe(403);
+    expect(replaced.status).toBe(200);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(true);
+    expect((await call("/api/secrets/claudeOauthToken", { method: "DELETE", headers: device })).status).toBe(200);
     expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
   });
 
@@ -628,7 +617,7 @@ describe("web routes", () => {
     expect((await finish({})).status).toBe(400);
   });
 
-  test("a device login cannot change the Google client or log in to Google", async () => {
+  test("a device login changes the Google client and reaches the Google login", async () => {
     eva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
     const request = eva.deviceLogins.request("owner@example.com", "a phone");
     eva.deviceLogins.answer(request.id, "allow");
@@ -640,9 +629,10 @@ describe("web routes", () => {
       body: { value: "other-client" },
       headers: deviceHeaders,
     });
-    expect(put.status).toBe(403);
-    for (const path of ["/api/google/login", "/api/google/login/finish"])
-      expect((await call(path, { method: "POST", body: { address: "x" }, headers: deviceHeaders })).status).toBe(403);
+    expect(put.status).toBe(200);
+    // Past the login check: the finish route answers about the request itself.
+    const finish = await call("/api/google/login/finish", { method: "POST", body: {}, headers: deviceHeaders });
+    expect(finish.status).not.toBe(403);
   });
 
   test("secrets: write-only, only the ones that the page may change", async () => {
@@ -1139,7 +1129,7 @@ describe("remote access", () => {
     expect((await remoteCall("/api/remote-access/other", { method: "POST" })).status).toBe(404);
   });
 
-  test("a device login cannot install programs on the machine", async () => {
+  test("a device login sets up Tailscale, as the console does", async () => {
     startRemote();
     remoteEva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
     const request = remoteEva.deviceLogins.request("owner@example.com", "a phone");
@@ -1147,11 +1137,8 @@ describe("remote access", () => {
     const answer = remoteEva.deviceLogins.check(request.id, "owner@example.com");
     const deviceToken = answer.state === "allowed" ? answer.token : "";
     const device = { cookie: `eva_device=${deviceToken}`, "content-type": "application/json" };
-    expect((await remoteCall("/api/status", { headers: device })).status).toBe(200);
     for (const path of ["/api/remote-access/install", "/api/remote-access/sign-in"])
-      expect((await remoteCall(path, { method: "POST", headers: device })).status).toBe(403);
-    expect(installs).toBe(0);
-    expect(tailscale.commands).not.toContain("up");
+      expect((await remoteCall(path, { method: "POST", headers: device })).status).not.toBe(403);
   });
 
   test("with tailscale serve off, the actions answer that phone access is off", async () => {

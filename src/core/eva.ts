@@ -725,11 +725,8 @@ export class Eva {
   }
 
   /** Checks and saves a settings change; see `LiveSettings.update`. */
-  updateSettings(
-    patch: Readonly<Record<string, unknown>>,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: boolean } {
-    return this.settings.update(patch, options);
+  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
+    return this.settings.update(patch);
   }
 
   setupState(): Promise<SetupState> {
@@ -737,12 +734,8 @@ export class Eva {
   }
 
   /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
-  saveSecret(
-    name: PageSecretName,
-    value: string | null,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: true } {
-    return this.settings.saveSecret(name, value, options);
+  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
+    return this.settings.saveSecret(name, value);
   }
 
   async runCheck(name: CheckName): Promise<CheckResult> {

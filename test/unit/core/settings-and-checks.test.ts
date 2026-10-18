@@ -15,6 +15,8 @@ import { fakeGithub } from "../../support/fake-github.ts";
 import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
+import { fakeGoogle } from "../../support/fake-google.ts";
+import { googleScopes } from "../../../src/core/google/google-scopes.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -261,9 +263,23 @@ describe("runCheck", () => {
       redact: (text) => text.replaceAll("secret-value", "[redacted]"),
       telegramToken: null,
       githubToken: null,
+      google: { config: defaultConfig.google, client: null, credentialsFolder: home, readServices: true },
       ...overrides,
     };
   }
+
+  test("the Google check names the missing step, redacted", async () => {
+    const google = {
+      config: { ...defaultConfig.google, email: "secret-value@example.com" },
+      client: { clientId: "id", clientSecret: "secret" },
+      credentialsFolder: home,
+      readServices: true,
+    };
+    expect(await runCheck("google", inputs({ google }))).toEqual({
+      ok: false,
+      detail: "No Google login for [redacted]@example.com on this machine. Log in to Google (step 4).",
+    });
+  });
 
   test("the vault check proves push access, and pushes nothing (lesson 98)", async () => {
     expect(
@@ -535,5 +551,43 @@ describe("the hub", () => {
     claimHub(vault, "another-machine", new Date());
     await eva.backgroundTick();
     expect(changes).toEqual([]);
+  });
+});
+
+describe("the Google setup", () => {
+  test("a pasted login sets the account, and the Test reads each service", async () => {
+    const google = fakeGoogle();
+    google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+    const withGoogle = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      googleBaseUrl: google.url,
+    });
+    try {
+      const { url } = withGoogle.startGoogleLogin();
+      const state = new URL(url).searchParams.get("state") ?? "";
+      expect(await withGoogle.finishGoogleLogin(`http://127.0.0.1/eva-google-login?state=${state}&code=c`)).toEqual({
+        email: "person@example.com",
+        restartNeeded: true,
+      });
+      expect(loadSettings(homePaths(home)).config.google.email).toBe("person@example.com");
+      expect(await withGoogle.runCheck("google")).toEqual({
+        ok: true,
+        detail: "Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.",
+      });
+    } finally {
+      withGoogle.stop();
+      google.stop();
+    }
+  });
+
+  test("the login waits for an OAuth client", () => {
+    expect(() => eva.startGoogleLogin()).toThrow("step 3");
   });
 });

@@ -10,9 +10,15 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import type { HomePaths } from "../settings/home.ts";
 
 /** A "Desktop app" client accepts any loopback address. Nothing listens here: the person copies it. */
 export const googleRedirectUri = "http://127.0.0.1/eva-google-login";
+
+/** Where Eva and `workspace-mcp` keep the Google login of an instance. */
+export function googleCredentialsFolder(paths: HomePaths): string {
+  return join(paths.enginesFolder, "google");
+}
 
 /** Google's addresses. A test points them all at one fake server. */
 export interface GoogleUrls {

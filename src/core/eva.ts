@@ -4,7 +4,6 @@
  */
 import { existsSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -52,6 +51,8 @@ import {
 import { Scheduler } from "./schedules/scheduler.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
+import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
+import { googleScopes } from "./google/google-scopes.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
@@ -106,6 +107,8 @@ export interface EvaOptions {
   readonly defaultHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** Google's address for the Google login and check; a test points it at a fake server. */
+  readonly googleBaseUrl?: string;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -152,6 +155,7 @@ export class Eva {
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
+  private readonly googleLogin: GoogleLogin;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   private readonly facts: InstanceFacts;
@@ -227,6 +231,11 @@ export class Eva {
       engines: options.engines.map((engine) => engine.name),
     });
     this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
+    this.googleLogin = new GoogleLogin({
+      credentialsFolder: googleCredentialsFolder(options.paths),
+      now: options.now,
+      ...(options.googleBaseUrl === undefined ? {} : { baseUrl: options.googleBaseUrl }),
+    });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
 
@@ -710,7 +719,44 @@ export class Eva {
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,
+      google: {
+        config: this.settings.config.google,
+        client: this.googleClient(),
+        credentialsFolder: googleCredentialsFolder(this.options.paths),
+        readServices: true,
+        ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
+      },
     });
+  }
+
+  /** The address of Google's consent page, for the scopes of the saved Google settings. */
+  startGoogleLogin(): { url: string } {
+    const client = this.googleClient();
+    if (client === null) throw new EvaError("google_failed", "Save the OAuth client id and secret first (step 3).");
+    return this.googleLogin.start(client.clientId, googleScopes(this.settings.config.google));
+  }
+
+  /**
+   * Finishes the Google login with the address that the person pasted. The login decides the
+   * account, so `google.email` follows it: `workspace-mcp` reads only the login of that email.
+   */
+  async finishGoogleLogin(pasted: string): Promise<{ email: string; restartNeeded: boolean }> {
+    const client = this.googleClient();
+    if (client === null) throw new EvaError("google_failed", "Save the OAuth client id and secret first (step 3).");
+    const { email } = await this.googleLogin.finish(pasted, client);
+    if (this.settings.config.google.email !== email) this.settings.update({ google: { email } });
+    // `workspace-mcp` reads the login at each call, but Eva builds its settings at start.
+    const started = this.options;
+    const restartNeeded =
+      started.config.google.email !== email || started.secrets.googleOauthClientId !== client.clientId;
+    return { email, restartNeeded };
+  }
+
+  private googleClient(): { clientId: string; clientSecret: string } | null {
+    const { googleOauthClientId, googleOauthClientSecret } = this.settings.secrets;
+    return googleOauthClientId === undefined || googleOauthClientSecret === undefined
+      ? null
+      : { clientId: googleOauthClientId, clientSecret: googleOauthClientSecret };
   }
 
   /**
@@ -845,7 +891,7 @@ export class Eva {
     const google = googleMcpServer({
       config: this.options.config.google,
       secrets: this.settings.secrets,
-      credentialsFolder: join(this.options.paths.enginesFolder, "google"),
+      credentialsFolder: googleCredentialsFolder(this.options.paths),
       // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
       environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });

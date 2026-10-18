@@ -9,10 +9,11 @@ import { join } from "node:path";
 import type { EngineName, EnginePort } from "../shared/engine-port.ts";
 import type { EngineEventPayload } from "../shared/events.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
+import { checkGoogle, type GoogleCheckInputs } from "./google/google-check.ts";
 
-export type CheckName = "vault" | EngineName | "github" | "telegram";
+export type CheckName = "vault" | EngineName | "github" | "telegram" | "google";
 
-export const checkNames: readonly CheckName[] = ["vault", "claude-code", "pi", "github", "telegram"];
+export const checkNames: readonly CheckName[] = ["vault", "claude-code", "pi", "github", "telegram", "google"];
 
 export interface CheckResult {
   readonly ok: boolean;
@@ -38,6 +39,7 @@ export interface CheckInputs {
   readonly githubBaseUrl?: string;
   /** A test makes it short. */
   readonly engineTimeoutMs?: number;
+  readonly google: GoogleCheckInputs;
 }
 
 const checkTimeoutMs = 30_000;
@@ -49,6 +51,7 @@ const replyPreviewLength = 80;
 
 export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<CheckResult> {
   if (name === "telegram") return checkTelegram(inputs);
+  if (name === "google") return checkGoogleSetup(inputs);
   if (name === "github") return checkGithub(inputs);
   if (name === "claude-code" || name === "pi") return checkEngine(name, inputs);
   if (inputs.vaultPath === null) return { ok: false, detail: "No vault is configured." };
@@ -186,4 +189,9 @@ async function checkTelegram(inputs: CheckInputs): Promise<CheckResult> {
   } catch {
     return { ok: false, detail: "Telegram could not be reached." };
   }
+}
+
+async function checkGoogleSetup(inputs: CheckInputs): Promise<CheckResult> {
+  const result = await checkGoogle(inputs.google);
+  return { ok: result.ok, detail: inputs.redact(result.detail) };
 }

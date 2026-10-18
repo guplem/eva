@@ -505,8 +505,11 @@ describe("approvals and commands", () => {
     gateOpen = false;
     telegram.sendText(owner, "/sync");
     telegram.sendText(owner, "/help");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("/new")));
-    expect(telegram.sentTexts()[0]).toBe("Syncing…");
+    // "Syncing…" goes out apart from the poll loop, so it can reach Telegram after the /help answer.
+    await settle(
+      bot,
+      () => telegram.sentTexts().includes("Syncing…") && telegram.sentTexts().some((text) => text.includes("/new")),
+    );
     expect(telegram.sentTexts().some((text) => text.startsWith("Vault sync:"))).toBe(false);
     releaseSync();
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Vault sync:")));

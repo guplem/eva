@@ -144,7 +144,7 @@ export function describeEvent(event: SessionEvent): string | null {
       return "  (The earlier history of this chat is lost.)\n";
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
-    // The terminal shows no title, and its own /rename answers from the request.
+    // A rename needs no line: the terminal shows no title, and its own /rename answers from the request.
     case "turn_finished":
     case "tool_finished":
     case "session_renamed":

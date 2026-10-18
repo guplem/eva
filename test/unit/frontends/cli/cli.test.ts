@@ -929,6 +929,20 @@ describe("runSetup", () => {
       expect(asked).toContain("googleClientSecret");
     });
 
+    test("a ready vault offers the GitHub browser login for private projects", async () => {
+      await setup({ vault: existingVault }, { interactive: false });
+      await setup(
+        { githubToken: "login" },
+        {
+          githubLogin: (show) => (
+            show("ABCD-1234", "https://github.com/login/device"),
+            Promise.resolve("gho_from_browser")
+          ),
+        },
+      );
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_from_browser");
+    });
+
     test("an existing vault keeps its own shared settings", async () => {
       mkdirSync(join(existingVault, ".eva"), { recursive: true });
       writeFileSync(join(existingVault, ".eva", "settings.json"), JSON.stringify({ updates: { frequency: "weekly" } }));

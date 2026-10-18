@@ -203,8 +203,12 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   if (!done(vaultReady())) await askVault(options, ask, saveVaultPath, saveSecret, engineFolders);
   else if (!done(secrets().githubToken !== undefined)) {
     // Private projects need the token too, so a ready vault still gets the question.
-    const githubToken = await ask("githubToken", "GitHub token, for private projects (Enter to skip): ");
-    if (githubToken !== "") saveSecret("githubToken", githubToken);
+    if (options.interactive && options.githubLogin !== null)
+      await askGithubLoginOf(options, ask, saveSecret, options.githubLogin, false);
+    else {
+      const githubToken = await ask("githubToken", "GitHub token, for private projects (Enter to skip): ");
+      if (githubToken !== "") saveSecret("githubToken", githubToken);
+    }
   }
   // A vault brings the person's settings from another machine; a script's engine answer still wins.
   if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
@@ -312,6 +316,52 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   return { changedAfterStart: progress.changedAfterStart };
 }
 
+/**
+ * The GitHub login: the browser login, or a pasted token. `enterLogsIn`: false keeps Enter as
+ * "skip" when the vault needs no token, as in a rerun, for a new vault or over SSH.
+ */
+async function askGithubLoginOf(
+  options: SetupOptions,
+  ask: (key: SetupQuestion, question: string) => Promise<string>,
+  saveSecret: (name: keyof EvaSecrets, value: string) => void,
+  githubLogin: NonNullable<SetupOptions["githubLogin"]>,
+  enterLogsIn: boolean,
+): Promise<void> {
+  const githubToken = (): string | undefined => loadSecrets(homePaths(options.paths.root)).githubToken;
+  options.write(githubLoginAccess);
+  for (;;) {
+    const answer = await ask(
+      "githubToken",
+      githubToken() !== undefined
+        ? "GitHub login, for a private vault and private projects: press Enter to keep the saved one, type login to log in again, or paste a token: "
+        : enterLogsIn
+          ? "GitHub login, for a private vault and private projects: press Enter to log in with your browser, paste a token, or type skip: "
+          : "GitHub login, for a private vault and private projects: type login to log in with your browser, paste a token, or press Enter to skip: ",
+    );
+    const keyword = answer.toLowerCase();
+    if (keyword === "skip" || (answer === "" && (githubToken() !== undefined || !enterLogsIn))) return;
+    if (answer !== "" && keyword !== "login") {
+      saveSecret("githubToken", answer);
+      return;
+    }
+    try {
+      saveSecret(
+        "githubToken",
+        await githubLogin((code, link) => {
+          options.write(
+            `Open ${link} and enter the code ${code}. Setup waits until you confirm. Press Ctrl+C to stop setup.`,
+          );
+        }),
+      );
+      options.write("Logged in to GitHub.");
+      return;
+    } catch (error) {
+      if (!isEvaError(error, "github_failed")) throw error;
+      options.write(error.message);
+    }
+  }
+}
+
 /** The vault questions: its repository, the GitHub login, and its folder. A new vault starts from the template. */
 async function askVault(
   options: SetupOptions,
@@ -330,44 +380,8 @@ async function askVault(
     // Saved now, so a failed clone never makes the person type the token again.
     if (answer !== "") saveSecret("githubToken", answer);
   };
-  /** `enterLogsIn`: false keeps Enter as "skip" when the vault needs no token, as in a rerun, for a new vault or over SSH. */
-  const askGithubLogin = async (
-    githubLogin: NonNullable<SetupOptions["githubLogin"]>,
-    enterLogsIn: boolean,
-  ): Promise<void> => {
-    options.write(githubLoginAccess);
-    for (;;) {
-      const answer = await ask(
-        "githubToken",
-        githubToken() !== undefined
-          ? "GitHub login, for a private vault and private projects: press Enter to keep the saved one, type login to log in again, or paste a token: "
-          : enterLogsIn
-            ? "GitHub login, for a private vault and private projects: press Enter to log in with your browser, paste a token, or type skip: "
-            : "GitHub login, for a private vault and private projects: type login to log in with your browser, paste a token, or press Enter to skip: ",
-      );
-      const keyword = answer.toLowerCase();
-      if (keyword === "skip" || (answer === "" && (githubToken() !== undefined || !enterLogsIn))) return;
-      if (answer !== "" && keyword !== "login") {
-        saveSecret("githubToken", answer);
-        return;
-      }
-      try {
-        saveSecret(
-          "githubToken",
-          await githubLogin((code, link) => {
-            options.write(
-              `Open ${link} and enter the code ${code}. Setup waits until you confirm. Press Ctrl+C to stop setup.`,
-            );
-          }),
-        );
-        options.write("Logged in to GitHub.");
-        return;
-      } catch (error) {
-        if (!isEvaError(error, "github_failed")) throw error;
-        options.write(error.message);
-      }
-    }
-  };
+  const askGithubLogin = (githubLogin: NonNullable<SetupOptions["githubLogin"]>, enterLogsIn: boolean): Promise<void> =>
+    askGithubLoginOf(options, ask, saveSecret, githubLogin, enterLogsIn);
   const askRepository = async (): Promise<string> => {
     const repository = await ask(
       "vaultRepository",

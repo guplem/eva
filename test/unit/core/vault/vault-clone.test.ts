@@ -6,6 +6,7 @@ import {
   cloneVault,
   githubCredentialArguments,
   githubTokenVariable,
+  pushNewVault,
 } from "../../../../src/core/vault/vault-clone.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -115,5 +116,56 @@ describe("checkVaultRepository", () => {
       "HEAD",
     ]);
     expect(reason).toBe("git ended with exit code 128.");
+  });
+});
+
+describe("pushNewVault", () => {
+  /** A new local vault with one commit on main, and an empty bare repository, as GitHub makes it. */
+  function newVault(): { folder: string; empty: string } {
+    const folder = join(sandbox.root, "new-vault");
+    mkdirSync(folder);
+    sandbox.git(folder, "init", "-q", "-b", "main");
+    writeFileSync(join(folder, "AGENTS.md"), "# Vault\n");
+    sandbox.git(folder, "add", "-A");
+    sandbox.git(folder, "commit", "-q", "-m", "Start the vault");
+    const empty = join(sandbox.root, "empty.git");
+    mkdirSync(empty);
+    sandbox.git(empty, "init", "-q", "--bare", "--initial-branch=main");
+    return { folder, empty };
+  }
+
+  test("pushes main to the new repository, and keeps Eva's credential helper in the vault", async () => {
+    const { folder, empty } = newVault();
+    await pushNewVault({ repository: empty, folder, runner: systemProcessRunner, environment: gitEnvironment });
+    expect(sandbox.git(empty, "log", "--format=%s", "main")).toContain("Start the vault");
+    expect(sandbox.git(folder, "remote", "get-url", "origin")).toContain("empty.git");
+    // Sync pulls and pushes main with no extra argument.
+    expect(sandbox.git(folder, "rev-parse", "--abbrev-ref", "main@{upstream}")).toContain("origin/main");
+    const helpers = sandbox.git(folder, "config", "--local", "--get-all", "credential.https://github.com.helper");
+    expect(helpers).toContain(githubTokenVariable);
+  });
+
+  test("a rerun after a failed push pushes again, with no second remote or helper", async () => {
+    const { folder, empty } = newVault();
+    const inputs = { repository: empty, folder, runner: systemProcessRunner, environment: gitEnvironment };
+    await pushNewVault(inputs);
+    await pushNewVault(inputs);
+    const helpers = sandbox.git(folder, "config", "--local", "--get-all", "credential.https://github.com.helper");
+    expect(helpers.split("\n").filter((line) => line.includes(githubTokenVariable))).toHaveLength(1);
+  });
+
+  test("a failed push names the repository and keeps the local vault", async () => {
+    const { folder } = newVault();
+    const failed = await failure(
+      pushNewVault({
+        repository: join(sandbox.root, "missing.git"),
+        folder,
+        runner: systemProcessRunner,
+        environment: gitEnvironment,
+      }),
+    );
+    expect(isEvaError(failed, "git_failed")).toBe(true);
+    expect(String(failed)).toContain("missing.git");
+    expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toBe("# Vault\n");
   });
 });

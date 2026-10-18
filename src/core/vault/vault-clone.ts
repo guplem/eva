@@ -59,12 +59,43 @@ export async function cloneVault(inputs: VaultCloneInputs): Promise<void> {
   if (clone.exitCode !== 0) {
     throw new EvaError("git_failed", `git could not clone ${inputs.repository}: ${clone.stderr.trim()}`);
   }
-  // Kept in the clone, so every later pull and push finds the token the same way.
-  for (const value of ["", credentialHelper]) {
-    await inputs.runner.run(["git", "config", "--local", "--add", credentialKey, value], {
-      cwd: inputs.folder,
-      environment,
-      timeoutMs: configTimeoutMs,
-    });
+  await keepCredentialHelper(inputs.folder, inputs.runner, environment);
+}
+
+/**
+ * Pushes a new local vault to an empty repository, such as one that setup just made on GitHub.
+ * A rerun after a failed push repeats each step safely: it never adds a second remote, and never forces.
+ */
+export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
+  const environment = { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" };
+  const run = (args: readonly string[], timeoutMs: number): ReturnType<ProcessRunner["run"]> =>
+    inputs.runner.run(["git", ...args], { cwd: inputs.folder, environment, timeoutMs });
+  const origin = await run(["remote", "get-url", "origin"], configTimeoutMs);
+  const remote = await run(
+    origin.exitCode === 0
+      ? ["remote", "set-url", "origin", inputs.repository]
+      : ["remote", "add", "origin", inputs.repository],
+    configTimeoutMs,
+  );
+  if (remote.exitCode !== 0) {
+    throw new EvaError("git_failed", `git could not add ${inputs.repository} as the remote: ${remote.stderr.trim()}`);
   }
+  await keepCredentialHelper(inputs.folder, inputs.runner, environment);
+  const push = await run([...githubCredentialArguments, "push", "-q", "-u", "origin", "main"], cloneTimeoutMs);
+  if (push.exitCode !== 0) {
+    throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
+  }
+}
+
+/** Kept in the clone, so every later pull and push finds the token the same way. */
+async function keepCredentialHelper(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<void> {
+  const config = (args: readonly string[]): ReturnType<ProcessRunner["run"]> =>
+    runner.run(["git", "config", "--local", ...args], { cwd: folder, environment, timeoutMs: configTimeoutMs });
+  // A rerun replaces the two lines instead of adding two more. git exits with 5 when there is none to remove.
+  await config(["--unset-all", credentialKey]);
+  for (const value of ["", credentialHelper]) await config(["--add", credentialKey, value]);
 }

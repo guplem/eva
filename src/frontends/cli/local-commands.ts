@@ -3,7 +3,12 @@
  * here when none runs: `update`, `sync`, `hub`, `link` and `settings`.
  */
 import { claimHub } from "../../core/instance/hub.ts";
-import { loadConfig, loadSecrets, type HomePaths } from "../../core/settings/home.ts";
+import { gitEnvironmentWithToken } from "../../core/instance/child-environments.ts";
+import { runningInstancePid } from "../../core/instance/instance-lock.ts";
+import { loadConfig, loadSecrets, type EvaSecrets, type HomePaths } from "../../core/settings/home.ts";
+import { executableUpdateChannel } from "../../core/updates/self-update.ts";
+import { sourceUpdateChannel } from "../../core/updates/source-update.ts";
+import type { UpdateChannel } from "../../core/updates/updater.ts";
 import {
   changeSettings,
   describeSettings,
@@ -13,6 +18,7 @@ import {
 } from "../../core/settings/settings.ts";
 import { VaultSync } from "../../core/vault/vault-sync.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
+import { evaVersion } from "../../shared/version.ts";
 import type { CliCommand } from "./arguments.ts";
 import {
   describeSync,
@@ -21,8 +27,9 @@ import {
   requestStatus,
   requestSync,
   requestUpdate,
+  type ClientOptions,
 } from "./client.ts";
-import { gitEnvironment, runningClient, updateChannel, writeLine, type CliHost } from "./host.ts";
+import { childEnvironment, writeLine, type CliHost } from "./host.ts";
 import { describeAccess } from "./network-setup.ts";
 
 /** `eva update`: the running Eva updates and restarts herself; a stopped Eva is updated here. */
@@ -60,7 +67,7 @@ export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
   const vaultSync = new VaultSync({
     vaultPath,
     runner: host.runner,
-    environment: gitEnvironment(host, loadSecrets(paths)),
+    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths)),
     now: () => new Date(),
   });
   await vaultSync.pull();
@@ -96,7 +103,7 @@ export async function hub(host: CliHost, paths: HomePaths): Promise<number> {
   const vaultSync = new VaultSync({
     vaultPath: config.vaultPath,
     runner: host.runner,
-    environment: gitEnvironment(host, loadSecrets(paths)),
+    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths)),
     now: () => new Date(),
   });
   await vaultSync.pull();
@@ -135,4 +142,33 @@ export async function settings(
     writeLine(host, `Saved ${key} ${place}.${restartNeeded ? " Restart Eva to use it." : " Eva uses it now."}`);
   }
   return exitCodes.clean;
+}
+
+/** The API of the Eva that runs with this home, or null when none runs. */
+function runningClient(host: CliHost, paths: HomePaths): ClientOptions | null {
+  const token = loadSecrets(paths).localApiToken;
+  const probe = { bootId: host.bootId, isProcessAlive: host.isProcessAlive };
+  if (token === undefined || runningInstancePid(paths.lock, probe) === null) return null;
+  return { baseUrl: `http://127.0.0.1:${String(loadConfig(paths).port)}`, token };
+}
+
+/** Signed releases for the single executable; git for a source checkout. */
+export function updateChannel(host: CliHost, secrets: EvaSecrets): UpdateChannel {
+  if (host.standalone) {
+    return executableUpdateChannel({
+      currentVersion: evaVersion,
+      executablePath: host.execPath,
+      platform: host.platform,
+      arch: host.arch,
+      runner: host.runner,
+      environment: childEnvironment(host),
+    });
+  }
+  return sourceUpdateChannel({
+    folder: host.sourceFolder,
+    runner: host.runner,
+    // Eva's own git commands, before or without a running core: the token, but not an extra instance's gh folder.
+    environment: gitEnvironmentWithToken(host.environment, secrets),
+    bunExecutable: host.execPath,
+  });
 }

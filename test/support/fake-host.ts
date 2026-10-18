@@ -39,7 +39,7 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
     userName: "example",
     hostName: "server",
     pid: process.pid,
-    parentPid: 1,
+    parentPid: () => 1,
     runner: scriptedRunner(commands),
     write: (text) => output.push(text),
     writeError: (text) => errors.push(text),

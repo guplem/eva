@@ -21,7 +21,7 @@ import { childEnvironment, defaultHomeFolder, evaCommand, writeLine, type CliHos
 const serviceStepTimeoutMs = 30_000;
 
 export interface ServiceTarget {
-  /** The command that runs Eva, from `serviceCommand`: [bun, src/main.ts] or [eva]. */
+  /** The command that runs Eva, from `evaCommand`: [bun, src/main.ts] or [eva]. */
   readonly executable: readonly string[];
   readonly home: string;
 }
@@ -85,18 +85,6 @@ RestartPreventExitStatus=2 3
 [Install]
 WantedBy=default.target
 `;
-}
-
-/**
- * The command that the service runs. The single executable runs itself: its code lives in Bun's
- * embedded file system, which only that executable can read.
- */
-export function serviceCommand(inputs: {
-  readonly standalone: boolean;
-  readonly execPath: string;
-  readonly mainScript: string;
-}): string[] {
-  return inputs.standalone ? [inputs.execPath] : [inputs.execPath, inputs.mainScript];
 }
 
 /** The logon task runs the supervisor, because Task Scheduler cannot restart Eva after a crash. */
@@ -222,4 +210,9 @@ export function supervise(host: CliHost, paths: HomePaths, start: LongProcessSta
     supervisor.stop();
   });
   return supervisor.done;
+}
+
+/** How Eva starts again after an update. It reads the parent at the restart: the supervisor may have died. */
+export function restartMethodNow(host: CliHost): "supervisor" | "new-copy" {
+  return restartMethod(host.environment, host.isProcessAlive, host.parentPid());
 }

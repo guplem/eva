@@ -21,15 +21,9 @@ import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
-import {
-  childEnvironment,
-  defaultHomeFolder,
-  evaCommand,
-  updateChannel,
-  writeLine,
-  type CliHost,
-} from "./frontends/cli/host.ts";
-import { restartMethod } from "./frontends/cli/service.ts";
+import { childEnvironment, defaultHomeFolder, evaCommand, writeLine, type CliHost } from "./frontends/cli/host.ts";
+import { updateChannel } from "./frontends/cli/local-commands.ts";
+import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
 import type { EnginePort } from "./shared/engine-port.ts";
 import { FileLogger, type Logger } from "./shared/logger.ts";
@@ -49,7 +43,7 @@ const host: CliHost = {
   userName: userInfo().username,
   hostName: hostname(),
   pid: process.pid,
-  parentPid: process.ppid,
+  parentPid: () => process.ppid,
   runner: systemProcessRunner,
   write: (text) => process.stdout.write(text),
   writeError: (text) => process.stderr.write(text),
@@ -234,7 +228,7 @@ async function serve(paths: HomePaths): Promise<number> {
       setTimeout(() => process.exit(exitCode), shutdownDeadlineMs + hardExitGraceMs).unref();
     },
     startNewCopy: () => {
-      if (restartMethod(host.environment, host.isProcessAlive, host.parentPid) !== "new-copy") return false;
+      if (restartMethodNow(host) !== "new-copy") return false;
       startNewCopy();
       return true;
     },

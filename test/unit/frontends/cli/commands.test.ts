@@ -18,7 +18,9 @@ import {
 import { loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
-import { defaultHomeFolder, updateChannel } from "../../../../src/frontends/cli/host.ts";
+import { defaultHomeFolder, evaCommand } from "../../../../src/frontends/cli/host.ts";
+import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
+import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { exitCodes } from "../../../../src/shared/exit-codes.ts";
 import type { LongProcessStarter } from "../../../../src/shared/long-process.ts";
@@ -192,7 +194,11 @@ describe("with a running Eva", () => {
     expect(printed(host)).toContain("server is now the hub.");
     expect(await run(host, "link")).toBe(exitCodes.clean);
     // The running Eva has no update channel here; main.ts turns the error into exit code 1.
-    expect(run(host, "update", "--check")).rejects.toThrow("no update channel");
+    const failure = await run(host, "update", "--check").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(String(failure)).toContain("no update channel");
   });
 
   test("a setting changes through the running Eva, which says whether it needs a restart", async () => {
@@ -270,6 +276,23 @@ describe("the host helpers", () => {
     expect(defaultHomeFolder(host)).toBe(join("/srv/config", "eva"));
   });
 
+  test("the single executable runs itself; a source checkout runs bun with main.ts", () => {
+    expect(evaCommand(fakeHost({ standalone: true, execPath: "C:/eva/eva.exe" }))).toEqual(["C:/eva/eva.exe"]);
+    expect(evaCommand(fakeHost())).toEqual(["/usr/bin/bun", "/opt/eva/src/main.ts"]);
+  });
+
+  test("the restart reads the parent at that moment, so an orphan of a dead supervisor starts a new copy", () => {
+    let parent = 4321;
+    const host = fakeHost({
+      environment: { EVA_SUPERVISED: "4321" },
+      isProcessAlive: () => true,
+      parentPid: () => parent,
+    });
+    expect(restartMethodNow(host)).toBe("supervisor");
+    // The supervisor died, and another process now has its pid; Eva's new parent is pid 1.
+    parent = 1;
+    expect(restartMethodNow(host)).toBe("new-copy");
+  });
   test("the single executable updates from signed releases, a checkout from git", () => {
     expect(updateChannel(fakeHost({ standalone: true }), {}).kind).toBe("executable");
     expect(updateChannel(fakeHost(), {}).kind).toBe("source");

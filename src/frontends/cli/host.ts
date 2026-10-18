@@ -2,17 +2,9 @@
  * The facts of the process that runs a CLI command. Only `src/main.ts` reads them from the
  * real process; a test passes its own, so each command runs in a test.
  */
-import type { EvaSecrets, HomePaths } from "../../core/settings/home.ts";
-import { loadConfig, loadSecrets, resolveHomeFolder } from "../../core/settings/home.ts";
-import { gitEnvironmentWithToken } from "../../core/instance/child-environments.ts";
-import { runningInstancePid } from "../../core/instance/instance-lock.ts";
-import { executableUpdateChannel } from "../../core/updates/self-update.ts";
-import { sourceUpdateChannel } from "../../core/updates/source-update.ts";
-import type { UpdateChannel } from "../../core/updates/updater.ts";
+import { resolveHomeFolder } from "../../core/settings/home.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
-import { evaVersion } from "../../shared/version.ts";
-import type { ClientOptions } from "./client.ts";
 
 export interface CliHost {
   /** The whole environment of this process. */
@@ -24,7 +16,8 @@ export interface CliHost {
   readonly userName: string;
   readonly hostName: string;
   readonly pid: number;
-  readonly parentPid: number;
+  /** The parent pid now. It changes while Eva runs: an orphan gets a new parent. */
+  readonly parentPid: () => number;
   readonly runner: ProcessRunner;
   readonly write: (text: string) => void;
   readonly writeError: (text: string) => void;
@@ -55,12 +48,10 @@ export function childEnvironment(host: CliHost): Record<string, string> {
   return buildChildEnvironment(host.environment, baseEnvironmentAllowlist);
 }
 
-/** The environment of Eva's own git commands, with the GitHub token. */
-export function gitEnvironment(host: CliHost, secrets: EvaSecrets): Record<string, string> {
-  return gitEnvironmentWithToken(host.environment, secrets);
-}
-
-/** The command that runs this Eva: `[eva]`, or `[bun, main.ts]` for a source checkout. */
+/**
+ * The command that runs this Eva: `[eva]`, or `[bun, main.ts]` for a source checkout. The single
+ * executable runs itself: its code lives in Bun's embedded file system, which only it can read.
+ */
 export function evaCommand(host: CliHost): string[] {
   return host.standalone ? [host.execPath] : [host.execPath, host.mainScript];
 }
@@ -70,32 +61,4 @@ export function defaultHomeFolder(host: CliHost): string {
   // Only EVA_HOME is left out: APPDATA and XDG_CONFIG_HOME still move the default folder.
   const environment = { APPDATA: host.environment["APPDATA"], XDG_CONFIG_HOME: host.environment["XDG_CONFIG_HOME"] };
   return resolveHomeFolder({ environment, platform: host.platform, userHome: host.userHome });
-}
-
-/** The API of the Eva that runs with this home, or null when none runs. */
-export function runningClient(host: CliHost, paths: HomePaths): ClientOptions | null {
-  const token = loadSecrets(paths).localApiToken;
-  const probe = { bootId: host.bootId, isProcessAlive: host.isProcessAlive };
-  if (token === undefined || runningInstancePid(paths.lock, probe) === null) return null;
-  return { baseUrl: `http://127.0.0.1:${String(loadConfig(paths).port)}`, token };
-}
-
-/** Signed releases for the single executable; git for a source checkout. */
-export function updateChannel(host: CliHost, secrets: EvaSecrets): UpdateChannel {
-  if (host.standalone) {
-    return executableUpdateChannel({
-      currentVersion: evaVersion,
-      executablePath: host.execPath,
-      platform: host.platform,
-      arch: host.arch,
-      runner: host.runner,
-      environment: childEnvironment(host),
-    });
-  }
-  return sourceUpdateChannel({
-    folder: host.sourceFolder,
-    runner: host.runner,
-    environment: gitEnvironment(host, secrets),
-    bunExecutable: host.execPath,
-  });
 }

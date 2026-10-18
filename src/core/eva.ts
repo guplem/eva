@@ -498,11 +498,19 @@ export class Eva {
   installTailscale(): RemoteAccess | null {
     const remoteAccess = this.options.remoteAccess ?? null;
     if (remoteAccess === null) return null;
-    const done = remoteAccess.install();
-    void done.then((access) => {
-      if (access.problem !== null)
-        this.options.logger?.log("warn", "Tailscale install failed.", { problem: access.problem });
-    });
+    // A promise that nobody awaits must never end Eva silently (lesson 50).
+    void remoteAccess
+      .install()
+      .then((access) => {
+        // Only the install and start steps carry an install failure; another step's problem is not one.
+        if (access.problem !== null && (access.step === "install" || access.step === "start"))
+          this.options.logger?.log("warn", "Tailscale install failed.", { problem: access.problem });
+      })
+      .catch((error: unknown) => {
+        this.options.logger?.log("error", "Tailscale install failed.", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
     return remoteAccess.current();
   }
 

@@ -307,6 +307,25 @@ describe("runSetup", () => {
     expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
   });
 
+  test("a vault that a newer Eva migrated can refuse the settings, but the typed tokens stay saved (#119)", async () => {
+    mkdirSync(join(existingVault, ".eva"));
+    writeFileSync(
+      join(existingVault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+    let caught: unknown = null;
+    try {
+      await setup(
+        { vault: existingVault, timeZone: "Europe/Madrid", telegramToken: "123456:telegram-token-value" },
+        { interactive: false },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "vault_ahead")).toBe(true);
+    expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");
+  });
+
   test("a Telegram token is stored as a secret", async () => {
     await setup({ telegramToken: "123456:telegram-token-value" });
     expect(loadSecrets(homePaths(home)).telegramBotToken).toBe("123456:telegram-token-value");

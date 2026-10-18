@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ModelCalls } from "../../../../src/core/model-calls/model-calls.ts";
@@ -68,9 +68,27 @@ describe("the chat namer", () => {
     expect(engine.requests[0]?.prompt.length).toBeLessThan(5_000);
   });
 
+  test.each([
+    ["**Rome trip**", "Rome trip"],
+    ["Name: Rome trip", "Rome trip"],
+    ["Chat title: *Rome trip*", "Rome trip"],
+    ["# Rome trip", "Rome trip"],
+    ["- Rome trip", "Rome trip"],
+    ["“Rome trip.”", "Rome trip"],
+    ["Implementing #50", "Implementing #50"],
+    ["v2.", "v2."],
+  ])("it cleans the model's habits from %p", async (answer, name) => {
+    writeRules("Lead with an emoji.");
+    const { namer: withRules } = namer((request) => FakeEngine.answer(request, answer));
+    expect(await withRules.name(turn)).toBe(name);
+  });
+
   test("the rules read back as saved, and a missing file reads as no rules", () => {
     const { namer: rulesNamer } = namer();
     expect(rulesNamer.rules()).toBe("");
+    // No rules to save: a vault without the file keeps having none, so the autosave has nothing to commit.
+    rulesNamer.saveRules("  ");
+    expect(existsSync(chatNameRulesPath(vault))).toBe(false);
     rulesNamer.saveRules("  Lead with an emoji.\r\n");
     expect(rulesNamer.rules()).toBe("Lead with an emoji.");
     rulesNamer.saveRules("");

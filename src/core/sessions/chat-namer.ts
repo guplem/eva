@@ -2,6 +2,7 @@
  * Names a chat after its first turn, by the person's rules in the vault's `.eva/chat-names.md`
  * (issue 50). Without rules, the chat keeps the first line of its first message, and no model runs.
  */
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
@@ -14,7 +15,9 @@ const sentTextLength = 2_000;
 
 const systemPrompt = [
   "You name chats. Answer with the name only: one line, at most 60 characters, with no quotes.",
-  "Follow the person's rules. Write the name in the language of the first message, unless a rule says otherwise.",
+  "Follow the person's rules. They win over every other line here.",
+  "Write the name in the language of the first message.",
+  "Example answer: Implementing #50",
 ].join("\n");
 
 export function chatNameRulesPath(vaultPath: string): string {
@@ -43,6 +46,8 @@ export class ChatNamer {
   saveRules(text: string): void {
     assertVaultWritable(this.options.vaultPath);
     const rules = text.trim();
+    // A vault without rules keeps no empty file, so the autosave has nothing to commit.
+    if (rules.length === 0 && !existsSync(chatNameRulesPath(this.options.vaultPath))) return;
     writeFileAtomic(chatNameRulesPath(this.options.vaultPath), rules.length === 0 ? "" : `${rules}\n`);
   }
 
@@ -74,12 +79,21 @@ function cut(text: string): string {
   return characters.length > sentTextLength ? `${characters.slice(0, sentTextLength).join("")}…` : text;
 }
 
-/** A model can add a reason on later lines, or wrap the name in quotes. */
+/**
+ * A model can add a reason on later lines, a label, Markdown marks, quotes or a final period.
+ * The steps run until nothing changes, because the habits nest, such as a label before bold text.
+ */
 function cleanName(text: string): string | null {
-  const line = text.split(/\r?\n/).find((candidate) => candidate.trim().length > 0) ?? "";
-  const name = line
-    .trim()
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .trim();
+  let name = text.split(/\r?\n/).find((candidate) => candidate.trim().length > 0) ?? "";
+  for (let previous = ""; previous !== name;) {
+    previous = name;
+    name = name
+      .trim()
+      .replace(/^(chat\s+)?(name|title)\s*:\s*/i, "")
+      .replace(/^(#+|[-*])\s+/, "")
+      .replace(/^["'`*_“”‘’]+|["'`*_“”‘’]+$/g, "");
+    // One word keeps its period, as in a version such as "v2.".
+    if (/\s/.test(name)) name = name.replace(/\.$/, "");
+  }
   return name.length > 0 ? name : null;
 }

@@ -77,15 +77,16 @@ export function saveSettings(paths: HomePaths, config: EvaConfig): void {
     saveConfig(paths, config);
     return;
   }
-  if (vaultAhead(vaultPath) !== null) {
-    // A newer Eva migrated the vault, so its file stays as it is; a change to the machine still saves.
+  const machine = omitKeys(config, sharedSettingKeys);
+  const ahead = vaultAhead(vaultPath) !== null;
+  if (ahead) {
+    // A newer Eva migrated the vault, so its file stays as it is. A save that would need a change to it fails.
     const shared = (settings: EvaConfig): string => JSON.stringify(pickKeys(settings, sharedSettingKeys));
-    if (shared(config) !== shared(loadSettings(paths).config)) assertVaultWritable(vaultPath);
-    writeFileAtomic(paths.config, toJson(omitKeys(config, sharedSettingKeys)));
-    return;
+    const after = withVaultSettings(parseConfig(machine, paths.config)).config;
+    if (shared(after) !== shared(config)) assertVaultWritable(vaultPath);
   }
-  writeFileAtomic(paths.config, toJson(omitKeys(config, sharedSettingKeys)));
-  writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
+  writeFileAtomic(paths.config, toJson(machine));
+  if (!ahead) writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */

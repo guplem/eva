@@ -215,6 +215,16 @@ describe("a vault that a newer Eva migrated (#119)", () => {
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
   });
 
+  test("eva setup can still join the vault: it saves the vault's own values, so the vault needs no change", () => {
+    writeNewerRecord();
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    saveConfig(paths, defaultConfig);
+    const joined = withVaultSettings({ ...defaultConfig, vaultPath: vault }).config;
+    saveSettings(paths, joined);
+    expect(loadSettings(paths).config).toMatchObject({ vaultPath: vault, timeZone: "Asia/Tokyo" });
+    expect(readJson(vaultSettingsPath(vault))).toEqual({ timeZone: "Asia/Tokyo" });
+  });
+
   test("a change to a vault setting is refused with vault_ahead, and nothing is saved", () => {
     saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     writeNewerRecord();

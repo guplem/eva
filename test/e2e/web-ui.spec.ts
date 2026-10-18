@@ -200,6 +200,36 @@ test("Settings: add a schedule, see its next run, and remove it", async ({ page 
   await expect(row).toHaveCount(0);
 });
 
+test("the model menu and the New chat button sit at the bottom of the chat list, apart", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  await newChat(page);
+  await newChat(page);
+  // A short window makes the chat list longer than the screen.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
+  await openList(page);
+  const sidebar = await page.getByRole("navigation", { name: "Chats" }).boundingBox();
+  const model = page.getByLabel("Model for a new chat");
+  const button = page.getByRole("button", { name: "New chat", exact: true });
+  await expect(model).toBeInViewport();
+  await expect(button).toBeInViewport();
+  const modelBox = await model.boundingBox();
+  const buttonBox = await button.boundingBox();
+  const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
+  if (sidebar === null || modelBox === null || buttonBox === null || firstChatBox === null) {
+    throw new Error("A sidebar part is not on the screen.");
+  }
+  expect(sidebar.y + sidebar.height - (buttonBox.y + buttonBox.height)).toBeLessThanOrEqual(24);
+  expect(buttonBox.y - (modelBox.y + modelBox.height)).toBeGreaterThanOrEqual(16);
+  expect(firstChatBox.y).toBeLessThan(modelBox.y);
+  // A long list scrolls. It never squeezes a chat until its text is cut.
+  const cut = await page
+    .locator(".sidebar .list-item")
+    .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
+  expect(cut).toBe(0);
+});
+
 /** Starts a new Assistant chat and returns its session id. */
 async function newChat(page: Page): Promise<string> {
   await openList(page);

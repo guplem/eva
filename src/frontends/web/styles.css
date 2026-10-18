@@ -169,6 +169,44 @@ textarea {
   margin: 12px 0 4px;
 }
 
+/* Only the list scrolls, so the controls in the footer stay on the screen. */
+.sidebar.has-footer {
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+}
+
+.sidebar-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* A flex child with hidden overflow can shrink to nothing, so a long list would cut each chat. */
+.sidebar-list > * {
+  flex-shrink: 0;
+}
+
+.sidebar-footer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-footer label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
 .list-item {
   text-align: left;
   width: 100%;

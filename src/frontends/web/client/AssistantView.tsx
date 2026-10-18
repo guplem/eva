@@ -44,40 +44,45 @@ export function AssistantView({
 
   return (
     <div className="layout">
-      <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Chats">
-        <label>
-          Model for a new chat
-          <select value={model} onChange={(event) => setModel(event.target.value as ModelAlias)}>
-            {models.map((alias) => (
-              <option key={alias} value={alias}>
-                {alias}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="primary" onClick={() => void newChat()}>
-          New chat
-        </button>
-        <h2>Schedules</h2>
-        {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-          <span className="chip">No schedule has run yet. Add one in Settings.</span>
-        )}
-        <h2>Chats</h2>
-        {chats.map((chat) => (
-          <button
-            key={chat.id}
-            className="list-item"
-            aria-current={chat.id === selected?.id}
-            onClick={() => {
-              setSelectedId(chat.id);
-              onNavigate();
-            }}
-          >
-            {chat.source === "schedule" ? "⏰ " : ""}
-            {chat.title}
-            <div className="muted">{chat.source}</div>
+      <nav className={`sidebar has-footer${sidebarOpen ? " open" : ""}`} aria-label="Chats">
+        <div className="sidebar-list">
+          <h2>Schedules</h2>
+          {chats.filter((chat) => chat.source === "schedule").length === 0 && (
+            <span className="chip">No schedule has run yet. Add one in Settings.</span>
+          )}
+          <h2>Chats</h2>
+          {chats.map((chat) => (
+            <button
+              key={chat.id}
+              className="list-item"
+              aria-current={chat.id === selected?.id}
+              onClick={() => {
+                setSelectedId(chat.id);
+                onNavigate();
+              }}
+            >
+              {chat.source === "schedule" ? "⏰ " : ""}
+              {chat.title}
+              <div className="muted">{chat.source}</div>
+            </button>
+          ))}
+        </div>
+        {/* The controls stay at the bottom, in reach of a thumb. The model comes first (lesson 41). */}
+        <div className="sidebar-footer">
+          <label>
+            Model for a new chat
+            <select value={model} onChange={(event) => setModel(event.target.value as ModelAlias)}>
+              {models.map((alias) => (
+                <option key={alias} value={alias}>
+                  {alias}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="primary" onClick={() => void newChat()}>
+            New chat
           </button>
-        ))}
+        </div>
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">

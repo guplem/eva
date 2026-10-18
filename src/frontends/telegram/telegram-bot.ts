@@ -571,30 +571,37 @@ export class TelegramBot {
   }
 
   /**
-   * /update: checks, and installs what the policy allows, as the automatic update does. Then it
-   * offers each other newer version as a button, so the person can go past the policy.
+   * /update: checks, then offers an Install button for what the policy allows, and one button
+   * for each newer version, so the person can go past the policy. It installs nothing by itself.
    */
   private offerUpdates(chatId: number, topicId: number | null): void {
     void (async (): Promise<void> => {
       try {
         await this.send(chatId, topicId, "Checking for updates…");
-        const update = await this.options.eva.updateNow();
+        const update = await this.options.eva.checkForUpdate();
         if (update === null) {
           await this.send(chatId, topicId, "This Eva cannot update herself.");
           return;
         }
-        const installing = update.phase === "idle" ? null : update.target;
-        const others = update.releases
-          .filter((release) => release.version !== installing)
-          .slice(0, buttonsPerMessage)
-          .map((release) => [{ text: `${release.version} (${release.level})`, callback_data: `u:${release.version}` }]);
+        // While an update runs, a button could only start a second one.
+        const buttons =
+          update.phase !== "idle"
+            ? []
+            : [
+                ...(update.target === null ? [] : [{ text: `Install ${update.target}`, callback_data: "u:next:go" }]),
+                ...update.releases.map((release) => ({
+                  text: `${release.version} (${release.level})`,
+                  callback_data: `u:${release.version}`,
+                })),
+              ];
+        const rows = buttons.slice(0, buttonsPerMessage).map((button) => [button]);
         await this.send(
           chatId,
           topicId,
-          others.length === 0
+          update.releases.length === 0 || rows.length === 0
             ? describeUpdate(update)
-            : `${describeUpdate(update)}\n\nOr pick a version to see what it brings:`,
-          others.length === 0 ? undefined : { inline_keyboard: others },
+            : `${describeUpdate(update)}\n\nPick a version to see what it brings:`,
+          rows.length === 0 ? undefined : { inline_keyboard: rows },
         );
       } catch (error) {
         await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
@@ -718,12 +725,14 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
-    } else if (kind === "u" && first !== undefined && /^\d+\.\d+\.\d+$/.test(first)) {
+    } else if (kind === "u" && (first === "next" || /^\d+\.\d+\.\d+$/.test(first ?? ""))) {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
-      if (second !== "go") await this.showRelease(chatId, topicId, first);
-      else
-        this.runApart(chatId, topicId, `Updating to ${first}…`, async () => {
-          const update = await this.options.eva.updateNow(first);
+      // "next" is what the policy allows: a version, or the newest commit of a source checkout.
+      const version = first === "next" ? undefined : first;
+      if (second !== "go" && version !== undefined) await this.showRelease(chatId, topicId, version);
+      else if (second === "go")
+        this.runApart(chatId, topicId, version === undefined ? "Updating…" : `Updating to ${version}…`, async () => {
+          const update = await this.options.eva.updateNow(version);
           return update === null ? "This Eva cannot update herself." : describeUpdate(update);
         });
     } else if (kind === "r" && first === "now") {

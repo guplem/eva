@@ -551,6 +551,9 @@ describe("approvals and commands", () => {
     await settle(bot, () => sent().some((message) => message.buttons.includes("u:1.0.0")));
     const offer = sent().find((message) => message.buttons.includes("u:1.0.0"));
     expect(offer?.text).toContain("1.0.0 is held back");
+    expect(offer?.buttons).not.toContain("u:next:go");
+    // The held-back news reaches the chat as news, not as a problem.
+    expect(telegram.sentTexts().some((text) => text.startsWith("Eva 1.0.0 is out."))).toBe(true);
     expect(offer?.buttons).toContain("u:0.3.0");
     expect(applied).toEqual([]);
     telegram.pressButton(owner, "u:1.0.0");
@@ -566,7 +569,7 @@ describe("approvals and commands", () => {
     expect(applied).toEqual(["1.0.0"]);
   });
 
-  test("/update installs a newer Eva and restarts her, after the running chat ends (lesson 92)", async () => {
+  test("/update offers the update, and its button installs after the running chat ends (lesson 92)", async () => {
     let release: () => void = () => undefined;
     const restarts: string[] = [];
     createEva(
@@ -589,6 +592,12 @@ describe("approvals and commands", () => {
     const turn = eva.sessions.send(session.id, "work");
     for (let round = 0; round < 400 && engine.requests.length === 0; round += 1) await Bun.sleep(5);
     telegram.sendText(owner, "/update");
+    await settle(bot, () =>
+      telegram.callsTo("sendMessage").some((call) => JSON.stringify(call.params).includes("u:next:go")),
+    );
+    // /update only looks; the button installs.
+    expect(eva.updateStatus()?.phase).toBe("idle");
+    telegram.pressButton(owner, "u:next:go");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("installs when")));
     expect(restarts).toEqual([]);
     release();

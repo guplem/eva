@@ -2,6 +2,10 @@
  * The facts of the process that runs a CLI command. `src/main.ts` reads them from the
  * real process; a test passes its own, so each command runs in a test.
  */
+import { existsSync } from "node:fs";
+import { RemoteAccessWatcher, type RemoteAccess } from "../../core/remote-access/remote-access.ts";
+import { findTailscale } from "../../core/remote-access/tailscale.ts";
+import { canInstallTailscale, installTailscale } from "../../core/remote-access/tailscale-install.ts";
 import { resolveHomeFolder } from "../../core/settings/home.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -54,6 +58,39 @@ export function childEnvironment(host: CliHost): Record<string, string> {
  */
 export function evaCommand(host: CliHost): string[] {
   return host.standalone ? [host.execPath] : [host.execPath, host.mainScript];
+}
+
+/** Phone access through Tailscale on this machine, for the running Eva and for `eva setup`. */
+export function remoteAccessWatcher(
+  host: CliHost,
+  port: number,
+  onChange?: (access: RemoteAccess) => void,
+): RemoteAccessWatcher {
+  const environment = childEnvironment(host);
+  return new RemoteAccessWatcher({
+    runner: host.runner,
+    environment,
+    port,
+    program: () =>
+      findTailscale({
+        platform: host.platform,
+        homeFolder: host.userHome,
+        environment,
+        exists: existsSync,
+        which: (name) => Bun.which(name),
+      }),
+    install: canInstallTailscale(host.platform)
+      ? () =>
+          installTailscale({
+            runner: host.runner,
+            environment,
+            platform: host.platform,
+            arch: host.arch,
+            homeFolder: host.userHome,
+          })
+      : null,
+    ...(onChange === undefined ? {} : { onChange }),
+  });
 }
 
 /** The home folder that Eva uses when no `--home` or `EVA_HOME` names one. */

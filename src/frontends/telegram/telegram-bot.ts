@@ -7,7 +7,6 @@ import { dirname, join } from "node:path";
 import type { Alert } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
 import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
-import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -33,6 +32,7 @@ import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegra
 import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
 import { loadBotState, saveBotState, type BotState } from "./telegram-state.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
+import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
 import { approvalAnswerText, fitProjects } from "./telegram-texts.ts";
@@ -97,6 +97,7 @@ export class TelegramBot {
   private readonly files: TelegramFiles;
   private readonly schedules: TelegramSchedules;
   private readonly conflicts: TelegramConflicts;
+  private readonly remoteAccess: TelegramRemoteAccess;
   private readonly updates: TelegramUpdates;
   private running = false;
   private readonly sender: TelegramSender;
@@ -141,6 +142,12 @@ export class TelegramBot {
       eva: options.eva,
       sender: this.sender,
       offersPath: join(dirname(options.statePath), "telegram-conflicts.json"),
+    });
+    this.remoteAccess = new TelegramRemoteAccess({
+      eva: options.eva,
+      sender: this.sender,
+      sleep: (ms) => this.sleep(ms),
+      stopped: () => this.stopping.signal.aborted,
     });
     this.updates = new TelegramUpdates({ eva: options.eva, sender: this.sender });
     this.schedules = new TelegramSchedules({
@@ -415,7 +422,7 @@ export class TelegramBot {
         this.inBackground(chatId, topicId, () => this.conflicts.list(chatId, topicId));
         return;
       case "link":
-        await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
+        await this.remoteAccess.show(chatId, topicId, this.options.eva.status().remoteAccess);
         return;
       case "update":
         this.inBackground(chatId, topicId, () => this.updates.offer(chatId, topicId));
@@ -574,6 +581,9 @@ export class TelegramBot {
     } else if (kind === "c" && first !== undefined && second !== undefined) {
       const topicId = topicOf(query.message);
       this.inBackground(chatId, topicId, () => this.conflicts.pick(chatId, topicId, first, second));
+    } else if (kind === "t" && (first === "install" || first === "sign_in")) {
+      const topicId = topicOf(query.message);
+      this.inBackground(chatId, topicId, () => this.remoteAccess.run(chatId, topicId, first));
     } else if (kind === "u" && (first === "next" || /^\d+\.\d+\.\d+$/.test(first ?? ""))) {
       const topicId = topicOf(query.message);
       // "next" is what the policy allows: a version, or the newest commit of a source checkout.

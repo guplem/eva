@@ -3,6 +3,7 @@ import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaStatus } from "../../../core/eva.ts";
 import type { PageSecretName, PublicSettings, SetupState } from "../../../core/settings/live-settings.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
+import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
@@ -37,6 +38,7 @@ export type {
   ProjectDetails,
   ProjectFile,
   PublicSettings,
+  RemoteAccess,
   ScheduleCard,
   SetupState,
   SessionEvent,
@@ -151,6 +153,8 @@ export const api = {
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
+  installTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/install", {}),
+  signInToTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/sign-in", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   vaultConflicts: (): Promise<VaultConflictReport> => request("GET", "/api/vault/conflicts"),

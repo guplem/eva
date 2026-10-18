@@ -1,128 +1,107 @@
 /**
- * The network step of `eva setup`: it brings the machine into the person's
- * tailnet, turns HTTPS on, and ends with the address that opens Eva on every other device.
- * Each step that needs the person shows a link and waits; nothing here needs root.
+ * The network step of `eva setup`: it installs Tailscale where Eva can, brings the machine into
+ * the person's tailnet, turns HTTPS on, and ends with the address that opens Eva on every other
+ * device. Each step that needs the person shows a link and waits; nothing here needs root.
  */
-import {
-  readTailscale,
-  tailnetPort,
-  type RemoteAccess,
-  type TailscaleFacts,
-} from "../../core/remote-access/tailscale.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { renderUnicodeCompact } from "uqr";
+import type { RemoteAccess, RemoteAccessControl, RemoteAccessStep } from "../../core/remote-access/remote-access.ts";
+import { describeAccess, remoteAccessStep, setupSteps, stepLine } from "../../core/remote-access/steps.ts";
 
 export interface NetworkSetupOptions {
-  readonly runner: ProcessRunner;
-  readonly environment: Readonly<Record<string, string>>;
+  readonly access: RemoteAccessControl;
+  readonly localUrl: string;
   readonly write: (line: string) => void;
   /** Answers a yes or no question; an empty answer means the default. */
   readonly ask: (question: string) => Promise<string>;
   /** False: no question and no wait, only the state and what to do. */
   readonly interactive: boolean;
-  readonly port: number;
   readonly sleep: (ms: number) => Promise<void>;
   /** How long a wait for the person lasts. */
   readonly waitLimitMs?: number;
 }
 
-const installPage = "https://tailscale.com/download";
-const enableHttpsPage = "https://login.tailscale.com/admin/dns";
 const pollMs = 5_000;
 const defaultWaitLimitMs = 10 * 60_000;
-const loginTimeoutMs = 30_000;
 
-/** The access lines: the address for every device, then the machine's own address (advanced). */
-export function describeAccess(access: { remoteAccess: RemoteAccess | null; localUrl: string }): string[] {
-  const remote = access.remoteAccess;
-  const lines =
-    remote === null
-      ? [
-          "Phone and other computers: not set up. Install Tailscale on this machine, then run `eva setup` again (docs/guide/setup.md, Open Eva on your phone).",
-        ]
-      : remote.url === null
-        ? [`Phone and other computers: ${remote.problem ?? "not available"}`]
-        : [
-            `Open Eva: ${remote.url}`,
-            "It works on any phone or computer that is signed in to Tailscale with your account. The first time, tap Allow in Telegram.",
-          ];
+/** The lines of `describeAccess`, and a QR code to scan once the address works. */
+export function accessLines(input: {
+  readonly remoteAccess: RemoteAccess | null;
+  readonly localUrl: string;
+  readonly actionHint?: string;
+}): string[] {
+  const lines = describeAccess(input);
+  const url = input.remoteAccess?.url ?? null;
+  if (url === null || input.remoteAccess === null || remoteAccessStep(input.remoteAccess) !== "ready") return lines;
+  // Some terminals cannot draw the blocks, so the plain address stays in the first line.
   return [
-    ...lines,
-    `On this machine only (advanced): ${access.localUrl}, with the token \`localApiToken\` from secrets.json.`,
+    ...lines.slice(0, 1),
+    "Scan this code on a phone that has Tailscale:",
+    renderUnicodeCompact(url, { border: 2 }),
+    ...lines.slice(1),
   ];
 }
 
 /** Walks the person through Tailscale. Returns the address that opens Eva, or null. */
 export async function runNetworkSetup(options: NetworkSetupOptions): Promise<string | null> {
   options.write("");
-  options.write("Network: Tailscale (a free private network of your own devices) opens Eva on your phone.");
-  let tailscale = await readTailscale(options.runner, options.environment);
-  tailscale ??= await logIn(options);
-  if (tailscale !== null && !tailscale.httpsEnabled) tailscale = await turnOnHttps(options, tailscale);
-  const url =
-    tailscale?.httpsEnabled === true
-      ? `https://${tailscale.hostName}${tailnetPort(options.port) === 443 ? "" : `:${String(options.port)}`}`
-      : null;
-  const remoteAccess: RemoteAccess | null =
-    tailscale === null
-      ? null
-      : { url, problem: url === null ? `turn on HTTPS once at ${enableHttpsPage}, then restart Eva.` : null };
-  for (const line of describeAccess({ remoteAccess, localUrl: `http://127.0.0.1:${String(options.port)}` }))
+  options.write(
+    "Use Eva from any device: Tailscale (a free private network of your own devices) opens Eva on your phone and other computers.",
+  );
+  let access = await options.access.refresh();
+  const handled = new Set<RemoteAccessStep>();
+  while (options.interactive) {
+    const step = remoteAccessStep(access);
+    if (step === "ready" || step === "failed" || handled.has(step)) break;
+    handled.add(step);
+    access = await handleStep(options, access, step);
+  }
+  for (const line of accessLines({
+    remoteAccess: access,
+    localUrl: options.localUrl,
+    // Inside setup, a hint to run setup points back to itself.
+    ...(options.interactive ? {} : { actionHint: "Run `eva setup` in a terminal to let Eva do these steps." }),
+  }))
     options.write(line);
-  if (url !== null) options.write("Eva publishes this address each time she starts. Ask her for it in any chat.");
-  return url;
+  return remoteAccessStep(access) === "ready" ? access.url : null;
 }
 
-/** Logs the machine in, when Tailscale is installed. Returns null when it is not, or when the person skips. */
-async function logIn(options: NetworkSetupOptions): Promise<TailscaleFacts | null> {
-  const version = await options.runner
-    .run(["tailscale", "version"], { cwd: ".", environment: options.environment, timeoutMs: loginTimeoutMs })
-    .catch(() => null);
-  if (version?.exitCode !== 0) {
-    options.write(
-      `Tailscale is not installed. Install it from ${installPage}; without admin rights, see docs/guide/setup.md (Tailscale without root).`,
-    );
-    return null;
-  }
-  if (!options.interactive) {
-    options.write("Tailscale is not logged in. Run `tailscale up`, open its link, then restart Eva.");
-    return null;
-  }
-  if (/^n/i.test((await options.ask("Log this machine in to Tailscale now? [Y/n]: ")).trim())) return null;
-  const up = await options.runner
-    .run(["tailscale", "up", "--timeout=10s"], {
-      cwd: ".",
-      environment: options.environment,
-      timeoutMs: loginTimeoutMs,
-    })
-    .catch(() => null);
-  const link = /https:\/\/login\.tailscale\.com\/\S+/.exec(`${up?.stdout ?? ""}\n${up?.stderr ?? ""}`)?.[0];
-  if (link === undefined) {
-    const reason = (up?.stderr ?? "").trim().split("\n")[0] ?? "";
-    options.write(`tailscale up gave no login link${reason === "" ? "" : `: ${reason}`}. Is tailscaled running?`);
-    return null;
-  }
-  options.write(`Open this link on any device and sign in: ${link}`);
-  options.write("Waiting for the sign-in…");
-  return waitFor(options, (facts) => facts !== null);
-}
-
-async function turnOnHttps(options: NetworkSetupOptions, tailscale: TailscaleFacts): Promise<TailscaleFacts> {
-  options.write(`Turn on HTTPS for your tailnet once: open ${enableHttpsPage} and enable HTTPS Certificates.`);
-  if (!options.interactive) return tailscale;
-  options.write("Waiting for HTTPS…");
-  return (await waitFor(options, (facts) => facts?.httpsEnabled === true)) ?? tailscale;
-}
-
-async function waitFor(
+/** Does one step with the person. Returns the state after it. */
+async function handleStep(
   options: NetworkSetupOptions,
-  done: (facts: TailscaleFacts | null) => boolean,
-): Promise<TailscaleFacts | null> {
+  access: RemoteAccess,
+  step: RemoteAccessStep,
+): Promise<RemoteAccess> {
+  if (step === "install" && access.canInstall === true) {
+    if (/^n/i.test((await options.ask("Install Tailscale on this machine now? [Y/n]: ")).trim())) return access;
+    options.write("Installing Tailscale… On Windows, accept the prompt that asks for administrator rights.");
+    const installed = await options.access.install();
+    if (remoteAccessStep(installed) === "install") writeSteps(options, installed);
+    return installed;
+  }
+  if (step === "sign_in") {
+    if (/^n/i.test((await options.ask("Sign this machine in to Tailscale now? [Y/n]: ")).trim())) return access;
+    const signedIn = await options.access.signIn();
+    if (remoteAccessStep(signedIn) !== "sign_in" || signedIn.problem !== null) return signedIn;
+    writeSteps(options, signedIn);
+    return waitForChange(options, step);
+  }
+  writeSteps(options, access);
+  return waitForChange(options, step);
+}
+
+function writeSteps(options: NetworkSetupOptions, access: RemoteAccess): void {
+  for (const step of setupSteps(access)) options.write(stepLine(step));
+}
+
+async function waitForChange(options: NetworkSetupOptions, step: RemoteAccessStep): Promise<RemoteAccess> {
+  options.write("Waiting…");
   const limit = options.waitLimitMs ?? defaultWaitLimitMs;
+  let access: RemoteAccess | null = null;
   for (let waited = 0; waited < limit; waited += pollMs) {
     await options.sleep(pollMs);
-    const facts = await readTailscale(options.runner, options.environment);
-    if (done(facts)) return facts;
+    access = await options.access.refresh();
+    if (remoteAccessStep(access) !== step) return access;
   }
-  options.write("Stopped waiting. Finish it later, then restart Eva.");
-  return readTailscale(options.runner, options.environment);
+  options.write("Stopped waiting. Finish the step later: the running Eva finds it by herself within a minute.");
+  return access ?? options.access.refresh();
 }

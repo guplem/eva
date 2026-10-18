@@ -34,7 +34,7 @@ Before you start, have these ready. Each one takes a few minutes.
 2. **A Claude subscription** (Pro or Max) from [claude.ai](https://claude.ai). Eva uses it for the thinking.
 3. **A GitHub account** from [github.com](https://github.com). Eva keeps a private copy of your notes there.
 4. **Telegram** on your phone, and a bot of your own. A bot is a Telegram account that a program controls. [Create your Telegram bot](docs/guide/setup.md#create-your-telegram-bot) explains the 2-minute steps.
-5. **Tailscale** (free) from [tailscale.com](https://tailscale.com), to open Eva's web page from your phone. You can add it later.
+5. **Tailscale** (free), to open Eva's web page from your phone. On Windows and Linux, `eva setup` installs it for you. You can add it later.
 
 ## Get started
 
@@ -91,10 +91,10 @@ You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it.
+Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it. Before Tailscale works, `/link` shows the setup steps, with buttons that install Tailscale and sign in.
 
 1. Install the Tailscale app on the phone or computer, and sign in with the same account that you used on Eva's computer.
-2. Open the address. The first time on each device, the page shows a short code, and Eva asks in Telegram whether to allow it. Tap **Allow** when the code matches. That device then stays logged in for a year.
+2. Open the address, or scan its QR code in Settings, under "Use Eva from any device". The first time on each device, the page shows a short code, and Eva asks in Telegram whether to allow it. Tap **Allow** when the code matches. That device then stays logged in for a year.
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.

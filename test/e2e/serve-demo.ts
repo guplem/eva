@@ -13,6 +13,8 @@ import { systemProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
+import { fakeGoogle } from "../support/fake-google.ts";
+import { googleScopes } from "../../src/core/google/google-scopes.ts";
 import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 
@@ -97,6 +99,10 @@ const demoRemoteAccess = tailscale.watcher({
 });
 await demoRemoteAccess.refresh();
 
+// Google allows every scope that Eva asks for, so the Test passes after the login.
+const google = fakeGoogle();
+google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+
 const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
 const eva = new Eva({
   remoteAccess: demoRemoteAccess,
@@ -109,6 +115,7 @@ const eva = new Eva({
   now: () => new Date(),
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
+  googleBaseUrl: google.url,
   // The reference has a skill that the project's repository lacks, and auto-merge is off there.
   githubRequest: fakeGithub({
     [evaRepository]: {

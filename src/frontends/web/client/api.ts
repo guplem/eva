@@ -163,6 +163,10 @@ export const api = {
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
+  startGoogleLogin: (): Promise<{ url: string }> => request("POST", "/api/google/login", {}),
+  /** Takes the address that Google sent the browser to, or its code alone. */
+  finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>
+    request("POST", "/api/google/login/finish", { address }),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),

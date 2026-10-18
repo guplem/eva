@@ -1208,3 +1208,32 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await openList(page);
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });
+
+test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
+  for (const [label, value] of [
+    ["Google client id", "client-id.apps.googleusercontent.com"],
+    ["Google client secret", "GOCSPX-e2e-client-secret-value"],
+  ] as const) {
+    await page.getByLabel(label, { exact: true }).fill(value);
+    await page.getByRole("button", { name: `Save the ${label}` }).click();
+    await expect(page.getByText(`A ${label} is saved.`)).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Start the Google login" }).click();
+  const consent = (await page.getByRole("link", { name: "Open Google's page" }).getAttribute("href")) ?? "";
+  // The fake Google allows at once: the browser lands on the address that does not load.
+  const state = new URL(consent).searchParams.get("state") ?? "";
+  await page
+    .getByLabel("The address after the Google login")
+    .fill(`http://127.0.0.1/eva-google-login?state=${state}&code=e2e-code&scope=openid`);
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Logged in to Google as person@example.com." }),
+  ).toBeVisible();
+  await expect(page.getByText("Account: person@example.com")).toBeVisible();
+  const googleRow = page.locator(".check-row", { hasText: "Test Google" });
+  await googleRow.getByRole("button", { name: "Test" }).click();
+  await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+});

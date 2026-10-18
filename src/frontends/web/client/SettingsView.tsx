@@ -14,6 +14,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
@@ -436,6 +437,20 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               : "Eva did not find the pi program on this machine."}
           </div>
           <CheckRow name="pi" label="Test pi" />
+
+          <GooglePanel
+            settings={settings}
+            saveNow={saveNow}
+            onChanged={setNotice}
+            reload={() => {
+              api
+                .settings()
+                .then(setSettings)
+                .catch((error: unknown) => {
+                  setNotice(errorText(error));
+                });
+            }}
+          />
 
           <h3>Time and remote access</h3>
           <label>

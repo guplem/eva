@@ -43,8 +43,8 @@ interface SecretFieldProps {
   readonly label: string;
   readonly saved: boolean;
   readonly help: ReactNode;
-  /** The check that tests the saved secret. */
-  readonly check: string;
+  /** The check that tests the saved secret. Absent: no Test row, as for a secret that needs a second one. */
+  readonly check?: string;
   readonly onChanged: (note: string) => void;
 }
 
@@ -102,7 +102,7 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
           </button>
         )}
       </div>
-      <CheckRow name={check} label={`Test the ${label}`} />
+      {check !== undefined && <CheckRow name={check} label={`Test the ${label}`} />}
     </>
   );
 }

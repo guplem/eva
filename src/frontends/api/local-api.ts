@@ -301,6 +301,13 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
+  if (url.pathname === "/api/update/engine") {
+    if (method === "GET") return json(eva.engineUpdateStatus());
+    if (method === "POST") {
+      const status = eva.updateEngine();
+      return status === null ? json({ error: "No claude program was found." }, 409) : json(status);
+    }
+  }
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
     if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
     if (method === "POST") {

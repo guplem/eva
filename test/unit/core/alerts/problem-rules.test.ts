@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   scheduleFiringProblem,
+  engineUpdateProblem,
   updateProblem,
   vaultOfflineAlertMs,
   vaultSyncProblem,
@@ -69,5 +70,19 @@ describe("scheduleFiringProblem", () => {
     expect(problem.message).toContain("Lunch");
     expect(problem.message).toContain("no engine");
     expect(problem.resolvedMessage).toContain("Lunch");
+  });
+});
+
+describe("engineUpdateProblem", () => {
+  const result = { before: "2.1.0", after: "2.1.0", detail: null, at: "2026-10-17T10:00:00.000Z" };
+
+  test("only a failed engine update is a problem, and it says what to do from the phone", () => {
+    expect(engineUpdateProblem({ ...result, outcome: "up_to_date" })).toBeNull();
+    expect(engineUpdateProblem({ ...result, outcome: "updated" })).toBeNull();
+    const problem = engineUpdateProblem({ ...result, outcome: "failed", detail: "No network." });
+    expect(problem?.level).toBe("warn");
+    expect(problem?.message).toBe(
+      "The Claude Code update failed: No network. Chats keep the old version; press Update Claude Code in the settings to try again.",
+    );
   });
 });

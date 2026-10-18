@@ -3,7 +3,7 @@
  * server (test/fixtures/pi/). A live run with a real login is issue #59.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
@@ -117,6 +117,26 @@ describe("buildPiArguments", () => {
     expect(buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null })).toEqual([
       ...base,
       "--no-extensions",
+    ]);
+  });
+
+  test("A model call: the caller's prompt alone, with no tools, skills, templates or context files", () => {
+    const call = request({ mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [], trusted: false });
+    // No session file: a model call is never continued, and its text must not stay on disk.
+    expect(buildPiArguments(call, inputs)).toEqual([
+      "--mode",
+      "rpc",
+      "--no-session",
+      "--offline",
+      "-e",
+      "/eva/pi/eva-approval-extension.ts",
+      "--no-extensions",
+      "--no-tools",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--system-prompt",
+      "/eva/pi/prompts/session-1.md",
     ]);
   });
 
@@ -248,6 +268,33 @@ describe("PiEngine", () => {
     );
     expect(asked).toEqual([]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
+  });
+
+  test("Model calls share one prompt file per prompt text, so each call leaves no file behind", async () => {
+    const call = { mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [] } as const;
+    const first = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(engine(first).runTurn(request({ ...call, history: { kind: "new", engineSessionId: "call-1" } })));
+    const second = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(engine(second).runTurn(request({ ...call, history: { kind: "new", engineSessionId: "call-2" } })));
+    expect(readdirSync(join(folder, "pi", "prompts"))).toHaveLength(1);
+  });
+
+  test("A model call refuses every tool without a question", async () => {
+    const asked: string[] = [];
+    const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(
+      engine(fake).runTurn(
+        request({
+          mode: "model-call",
+          requestApproval: (approval) => {
+            asked.push(approval.summary);
+            return Promise.resolve("allow");
+          },
+        }),
+      ),
+    );
+    expect(asked).toEqual([]);
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
   test("a dialog from another extension is cancelled, and a notice needs no answer", async () => {

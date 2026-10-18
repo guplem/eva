@@ -8,12 +8,12 @@ Everything stays plain text, so one search finds it and almost any device opens 
 
 ## What is where
 
-| Path        | What it holds                                                                                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Notes/`    | The notes, grouped by topic in subfolders                                                                                                                              |
-| `Projects/` | One folder for each project (_Projects_ below)                                                                                                                         |
-| `.eva/`     | Eva's files in the vault: `assistant.md` (her rules for this person), `schedules.json`, her skills in `skills/`, and the open problems of each computer in `machines/` |
-| `Scratch/`  | Files that are not knowledge: files made to send to a chat, and files received from it. Git ignores it                                                                 |
+| Path        | What it holds                                                                                                                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Notes/`    | The notes, grouped by topic in subfolders                                                                                                                                                                          |
+| `Projects/` | One folder for each project (_Projects_ below)                                                                                                                                                                     |
+| `.eva/`     | Eva's files in the vault: `assistant.md` (her rules for this person), `schedules.json`, `chat-names.md` (the rules for chat names), her skills in `skills/`, and the open problems of each computer in `machines/` |
+| `Scratch/`  | Files that are not knowledge: files made to send to a chat, and files received from it. Git ignores it                                                                                                             |
 
 **`.eva/schedules.json` is not a note.** Change it only through the `schedule` skill, because Eva reads it every minute and skips an entry that she cannot read.
 

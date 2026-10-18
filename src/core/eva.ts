@@ -59,7 +59,9 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
-import { SessionManager } from "./sessions/session-manager.ts";
+import { ChatNamer } from "./sessions/chat-namer.ts";
+import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
+import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import {
   type ConflictChoice,
@@ -140,6 +142,8 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
+/** A cold start of an engine and one short answer. */
+const modelCallTimeoutMs = 90_000;
 const backgroundTickMs = 60_000;
 const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** The front end that asked for a restart answers first, then Eva stops. */
@@ -150,6 +154,10 @@ export class Eva {
   readonly sessions: SessionManager;
   /** Null when no vault is configured. */
   readonly schedules: Scheduler | null;
+  /** The person's rules for chat names. Null when no vault is configured. */
+  readonly chatNames: ChatNamer | null;
+  /** One question to a model with one answer, for any feature that needs a short text. */
+  readonly modelCalls: ModelCalls;
   /** Null until a whisper model is configured. */
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
@@ -242,8 +250,24 @@ export class Eva {
     this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
+    this.modelCalls = new ModelCalls({
+      engines: options.engines,
+      environment: agentEnvironment,
+      redact: (text) => redactor.redact(text),
+      timeoutMs: modelCallTimeoutMs,
+    });
+    const chatNamer =
+      vaultPath === null
+        ? null
+        : new ChatNamer({
+            vaultPath,
+            modelCalls: this.modelCalls,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    this.chatNames = chatNamer;
 
     this.sessions = new SessionManager({
+      ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
       engines: options.engines,
       store: new SessionStore(options.paths.sessions, {
         now: options.now,

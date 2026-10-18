@@ -413,6 +413,28 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
+test("Settings: the rules for chat names save with Save and load again (issue 50)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  try {
+    await page.getByLabel("Rules for chat names").fill("Lead every name with an emoji.");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("Rules for chat names")).toHaveValue("Lead every name with an emoji.");
+  } finally {
+    // Rules would make every later first message start a model call, so later tests start without them.
+    await page.evaluate(() =>
+      fetch("/api/chat-names", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rules: "" }),
+      }),
+    );
+  }
+});
+
 test("Settings: Use Eva from any device installs Tailscale, then shares the address", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

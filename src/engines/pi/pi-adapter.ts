@@ -16,6 +16,7 @@
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
  *   the person's global pi settings, so Eva never sends them.
  */
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
@@ -93,10 +94,18 @@ export class PiEngine implements EnginePort {
     if (historyLost) yield { kind: "history_lost" };
 
     const extensionFile = this.writeIfChanged("eva-approval-extension.ts", approvalExtensionSource);
+    // A model call has no session to continue, so its prompt file is named by its text, and calls share it.
+    const promptName =
+      request.mode === "model-call"
+        ? `model-call-${createHash("sha256")
+            .update(request.appendSystemPrompt ?? "")
+            .digest("hex")
+            .slice(0, 16)}`
+        : engineSessionId;
     const promptFile =
       request.appendSystemPrompt === null
         ? null
-        : this.writeIfChanged(join("prompts", `${engineSessionId}.md`), request.appendSystemPrompt);
+        : this.writeIfChanged(join("prompts", `${promptName}.md`), request.appendSystemPrompt);
     const args = buildPiArguments(request, {
       sessionFile: sessionFile(engineSessionId),
       sessionsFolder,
@@ -232,18 +241,22 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   const args = [
     "--mode",
     "rpc",
-    // Always a path: a bare name makes pi search every project and ask y/N on stdin.
-    "--session",
-    inputs.sessionFile,
-    "--session-dir",
-    inputs.sessionsFolder,
+    // A model call is never continued, and its text must not stay on disk.
+    ...(request.mode === "model-call"
+      ? ["--no-session"]
+      : // Always a path: a bare name makes pi search every project and ask y/N on stdin.
+        ["--session", inputs.sessionFile, "--session-dir", inputs.sessionsFolder]),
     // No update check or telemetry at each start.
     "--offline",
     "-e",
     inputs.extensionFile,
   ];
   if (inputs.model !== null) args.push("--model", inputs.model);
-  if (request.mode === "assistant") {
+  if (request.mode === "model-call") {
+    // Eva's own extension still loads with `-e`, so a tool that still appears gets a refusal.
+    args.push("--no-extensions", "--no-tools", "--no-skills", "--no-prompt-templates", "--no-context-files");
+    if (inputs.promptFile !== null) args.push("--system-prompt", inputs.promptFile);
+  } else if (request.mode === "assistant") {
     // Assistant mode has no hooks; pi's hooks are extensions. Eva's own extension still loads.
     args.push("--no-extensions");
     if (inputs.promptFile !== null) args.push("--append-system-prompt", inputs.promptFile);
@@ -271,6 +284,8 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
 }
 
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
+  // A model call has no tools, and nobody waits for a question.
+  if (request.mode === "model-call") return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });

@@ -258,6 +258,8 @@ describe("Eva", () => {
       FakeEngine.answer(request, request.mode === "project" ? "Fixed the login bug." : "Noted."),
     );
     const instance = start(engine);
+    const events: SessionEvent[] = [];
+    instance.sessions.subscribe((event) => events.push(event));
     const assistantChat = instance.createAssistantSession({ source: "telegram", model: "default" });
     const work = await instance.startProjectWork({
       projectId: "2025-03-02-1015-example-app",
@@ -265,6 +267,17 @@ describe("Eva", () => {
       reportToSessionId: assistantChat.id,
     });
     expect(work).toMatchObject({ mode: "project", clone: "remote-0" });
+    // The asking chat learns of the Project chat before its first message, so a front end can show both.
+    expect(events.slice(0, 2)).toMatchObject([
+      {
+        kind: "project_work_started",
+        sessionId: assistantChat.id,
+        projectId: "2025-03-02-1015-example-app",
+        projectSessionId: work.id,
+        request: "Fix the login bug.",
+      },
+      { kind: "message_received", sessionId: work.id, origin: "eva" },
+    ]);
     await waitFor(() => instance.sessions.get(assistantChat.id).turns.length === 1, 20_000);
     await instance.idle();
     expect(engine.requests.map((request) => request.mode)).toEqual(["project", "assistant"]);

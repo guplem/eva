@@ -65,7 +65,12 @@ export type CoreEventPayload =
   /** The chat is gone from the list; each front end drops its own view of it. */
   | { readonly kind: "session_deleted" }
   /** The chat gave work to a project: the Project chat that runs it. */
-  | { readonly kind: "project_work_started"; readonly projectId: string; readonly projectSessionId: string };
+  | {
+      readonly kind: "project_work_started";
+      readonly projectId: string;
+      readonly projectSessionId: string;
+      readonly request: string;
+    };
 
 /** A payload as a front end receives it. */
 export type SessionEvent = (EngineEventPayload | CoreEventPayload) & {

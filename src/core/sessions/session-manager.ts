@@ -245,6 +245,11 @@ export class SessionManager {
     return ids;
   }
 
+  /** Tells the front ends that a chat gave work to a project, and which Project chat runs it. */
+  announceProjectWork(sessionId: string, work: { projectId: string; projectSessionId: string; request: string }): void {
+    this.emit(sessionId, { kind: "project_work_started", ...work });
+  }
+
   /** A new branch of a conversation, up to and including one message. Its first message starts it. */
   fork(sessionId: string, atMessageId: string): SessionRecord {
     const parent = this.get(sessionId);
@@ -611,7 +616,8 @@ function redactPayload(
     case "approval_resolved":
     case "turn_finished":
     case "session_deleted":
-    case "project_work_started":
       return payload;
+    case "project_work_started":
+      return { ...payload, request: redactor.redact(payload.request) };
   }
 }

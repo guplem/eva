@@ -83,7 +83,7 @@ describe("describeEvent", () => {
       },
       { ...base, kind: "message_received", text: "Hi", origin: "api" },
       { ...base, kind: "session_deleted" },
-      { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q" },
+      { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q", request: "r" },
     ];
     expect(events.map(describeEvent)).toEqual([
       "Hi\n",

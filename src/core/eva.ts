@@ -666,6 +666,13 @@ export class Eva {
       projectId: project.id,
       clone: clone.name,
     });
+    // Before the work starts, so a front end can show the Project chat with its first message.
+    if (input.reportToSessionId !== null)
+      this.sessions.announceProjectWork(input.reportToSessionId, {
+        projectId: project.id,
+        projectSessionId: session.id,
+        request: input.request,
+      });
     this.inBackground("Project work", async () => {
       try {
         await this.sessions.send(session.id, input.request);

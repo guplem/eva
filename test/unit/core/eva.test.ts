@@ -1052,3 +1052,84 @@ describe("Eva alerts", () => {
     expect(restarts).toEqual(["restart"]);
   });
 });
+
+describe("migrations (#119)", () => {
+  function collectAlerts(instance: Eva): Alert[] {
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    return alerts;
+  }
+  const futureRecord = JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] });
+
+  test("a failed migration at start sends an alert with its id and the error", () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "failed", applied: [], id: "2026-10-20-example", reason: "disk is full" },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["migration:machine", "error"]]);
+    expect(alerts[0]?.message).toContain("2026-10-20-example");
+    expect(alerts[0]?.message).toContain("disk is full");
+  });
+
+  test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "ahead", unknown: ["2099-01-01-from-the-future"] },
+      vault: null,
+    });
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["migration:machine", "warn"]]);
+  });
+
+  test("a vault that a newer Eva migrated raises one alert with the computer and the versions, until it clears", async () => {
+    sandbox.write(vault, ".eva/migrations.json", futureRecord);
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "ahead", unknown: ["2099-01-01-from-the-future"] },
+    });
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["vault_ahead", "warn"]]);
+    expect(alerts[0]?.message).toContain("example-pc");
+    expect(alerts[0]?.message).toContain("9.0.0");
+    expect(instance.status().problems).toEqual([alerts[0]?.message ?? ""]);
+    await instance.syncVault();
+    expect(alerts).toHaveLength(1);
+    rmSync(join(vault, ".eva", "migrations.json"));
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("a machine that becomes the hub runs the vault migrations", async () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    sandbox.write(
+      vault,
+      ".eva/settings.json",
+      JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }),
+    );
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    expect(instance.role()).toBe("satellite");
+    await instance.becomeHub();
+    expect(instance.role()).toBe("hub");
+    expect(JSON.parse(readFileSync(join(vault, ".eva", "settings.json"), "utf-8"))).toEqual({});
+    expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(true);
+  });
+
+  test("a machine that is behind the vault cannot become the hub", async () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    sandbox.write(vault, ".eva/migrations.json", futureRecord);
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    let caught: unknown = null;
+    try {
+      await instance.becomeHub();
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as Error).message).toContain("9.0.0");
+    expect(instance.role()).toBe("satellite");
+  });
+});

@@ -29,8 +29,6 @@ import {
   describeSettings,
   isSharedSettingKey,
   loadSettings,
-  moveSecuritySettingsFromVault,
-  moveSettingsToVault,
   settingChange,
 } from "./core/settings/settings.ts";
 import { executableUpdateChannel } from "./core/updates/self-update.ts";
@@ -69,7 +67,8 @@ import {
   windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "./frontends/cli/service.ts";
-import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
+import { claimHub, claimHubIfUnclaimed, machineRole, type MachineRole } from "./core/instance/hub.ts";
+import { runStartMigrations, type StartMigrations } from "./core/migrations/migrations.ts";
 import { publishWithTailscale, readTailscale } from "./core/remote-access/tailscale.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions } from "./frontends/cli/setup.ts";
 import { describeAccess, runNetworkSetup } from "./frontends/cli/network-setup.ts";
@@ -256,12 +255,16 @@ async function runClientCommand(
 async function serve(paths: HomePaths): Promise<number> {
   createHomeFolders(paths);
   await waitForOldCopy();
+  // Before the migrations, so a second start never changes the files under a running Eva.
+  const lock = acquireInstanceLock(paths.lock, {
+    pid: process.pid,
+    bootId: readBootId(process.platform),
+    isProcessAlive,
+  });
   const secrets = { ...loadSecrets(paths) };
-  const settingsMoved = await moveSettingsAfterPull(paths, secrets);
+  const migrated = await migrateAfterPull(paths, secrets);
   const loaded = loadSettings(paths);
   const config = loaded.config;
-  const hubClaimed =
-    config.vaultPath !== null && claimHubIfUnclaimed(config.vaultPath, config.machineName ?? hostname(), new Date());
   const tailscale = config.remoteAccess.tailscaleServe
     ? await readTailscale(systemProcessRunner, childEnvironment())
     : null;
@@ -274,21 +277,13 @@ async function serve(paths: HomePaths): Promise<number> {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
   }
-  const lock = acquireInstanceLock(paths.lock, {
-    pid: process.pid,
-    bootId: readBootId(process.platform),
-    isProcessAlive,
-  });
   const startedAfterUncleanExit = startRunMarker(paths.runningMarker, new Date());
 
   const redactor = new Redactor();
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
-  if (settingsMoved.toVault) logger.log("info", "Moved the shared settings from config.json to the vault.");
-  if (settingsMoved.toMachine)
-    logger.log("info", "Moved the security settings from the vault to config.json; the vault's copy is ignored now.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
-  if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
+  if (migrated.hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
   if (remoteAccess !== null)
     logger.log(remoteAccess.url === null ? "warn" : "info", "Tailscale access.", { ...remoteAccess });
 
@@ -425,6 +420,7 @@ async function serve(paths: HomePaths): Promise<number> {
     });
     // After the bot starts, so that the alert reaches Telegram too.
     if (startedAfterUncleanExit) eva.reportUncleanExit();
+    eva.reportStartMigrations(migrated.migrations);
     process.once("SIGINT", () => {
       stop(exitCodes.clean);
     });
@@ -714,23 +710,35 @@ function updateChannel(secrets: EvaSecrets): UpdateChannel {
 }
 
 /**
- * Pulls the vault before the settings move to it, so this machine never starts a settings file
- * that another machine already pushed (a conflict that would stop the vault's pushes). Then the
- * security settings move the other way, out of the vault.
+ * Pulls the vault, claims the hub when no machine has it, then runs the missing migrations: the
+ * machine's on every computer, the vault's on the hub only. The pull comes first, so the hub never
+ * starts a file that another machine already pushed (a conflict that would stop the vault's pushes).
  */
-async function moveSettingsAfterPull(
+async function migrateAfterPull(
   paths: HomePaths,
   secrets: EvaSecrets,
-): Promise<{ toVault: boolean; toMachine: boolean }> {
-  const vaultPath = loadConfig(paths).vaultPath;
-  if (vaultPath === null || !existsSync(vaultPath)) return { toVault: false, toMachine: false };
-  await new VaultSync({
+): Promise<{ migrations: StartMigrations; hubClaimed: boolean }> {
+  const machineConfig = loadConfig(paths);
+  const machine = machineConfig.machineName ?? hostname();
+  const vaultPath =
+    machineConfig.vaultPath !== null && existsSync(machineConfig.vaultPath) ? machineConfig.vaultPath : null;
+  if (vaultPath !== null) {
+    await new VaultSync({
+      vaultPath,
+      runner: systemProcessRunner,
+      environment: gitEnvironment(secrets),
+      now: () => new Date(),
+    }).pull();
+  }
+  const hubClaimed = vaultPath !== null && claimHubIfUnclaimed(vaultPath, machine, new Date());
+  const migrations = runStartMigrations({
+    paths,
     vaultPath,
-    runner: systemProcessRunner,
-    environment: gitEnvironment(secrets),
+    isHub: () => machineRole(vaultPath, machine, "satellite") === "hub",
+    version: evaVersion,
     now: () => new Date(),
-  }).pull();
-  return { toVault: moveSettingsToVault(paths), toMachine: moveSecuritySettingsFromVault(paths) };
+  });
+  return { migrations, hubClaimed };
 }
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";

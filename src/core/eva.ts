@@ -18,11 +18,16 @@ import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-cente
 import {
   scheduleCardProblem,
   engineUpdateProblem,
+  machineAheadMessage,
+  migrationFailedMessage,
   scheduleFiringProblem,
   uncleanExitMessage,
   updateProblem,
+  vaultAheadProblem,
   vaultSyncProblem,
 } from "./alerts/problem-rules.ts";
+import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
+import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import {
@@ -523,6 +528,16 @@ export class Eva {
     this.alerts.report(key, problem);
   }
 
+  /**
+   * Reports the migrations that ran at start. Call it after the front ends subscribe, so that the
+   * alerts reach the phone.
+   */
+  reportStartMigrations(result: StartMigrations): void {
+    this.reportMigrationRun("machine", result.machine);
+    if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
+    this.noticeVaultAhead();
+  }
+
   /** The start found the marker of a run that never stopped cleanly. */
   reportUncleanExit(): void {
     this.alerts.notify("unclean_exit", "warn", uncleanExitMessage);
@@ -947,7 +962,40 @@ export class Eva {
       "info",
       role === "hub" ? "This machine became the hub." : "Another machine is now the hub.",
     );
+    // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
+    if (role === "hub") this.runVaultMigrations();
     for (const listener of this.roleListeners) listener(role);
+  }
+
+  private runVaultMigrations(): void {
+    const run = runMigrations({
+      store: "vault",
+      migrations,
+      paths: this.options.paths,
+      vaultPath: this.options.config.vaultPath,
+      version: evaVersion,
+      now: this.options.now,
+    });
+    this.reportMigrationRun("vault", run);
+  }
+
+  private reportMigrationRun(store: MigrationStore, run: MigrationRun): void {
+    if (run.kind === "done") {
+      if (run.applied.length > 0) this.options.logger?.log("info", "Migrations ran.", { store, applied: run.applied });
+      return;
+    }
+    if (run.kind === "failed") {
+      this.alerts.notify(`migration:${store}`, "error", migrationFailedMessage(store, run.id, run.reason));
+      return;
+    }
+    // A vault that is ahead is an open problem (noticeVaultAhead); a machine that is ahead is rare.
+    if (store === "machine") this.alerts.notify("migration:machine", "warn", machineAheadMessage(evaVersion));
+  }
+
+  private noticeVaultAhead(): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return;
+    this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
   }
 
   private assistantBusy(): boolean {
@@ -997,6 +1045,8 @@ export class Eva {
   /** Logs a sync problem and the files that the sync held back (lessons 16, 26), and raises its alert. */
   private logSyncState(state: VaultSyncState): VaultSyncState {
     this.noticeSyncProblem(state);
+    // A pull can bring a record from a newer Eva at any time.
+    this.noticeVaultAhead();
     if (state.status === "conflict" || state.status === "error" || state.status === "offline") {
       this.options.logger?.log(state.status === "offline" ? "warn" : "error", "Vault sync failed.", {
         status: state.status,

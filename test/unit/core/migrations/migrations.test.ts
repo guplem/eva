@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertVaultWritable, migrations, vaultAhead } from "../../../../src/core/migrations/migrations.ts";
+import {
+  assertVaultWritable,
+  migrations,
+  runStartMigrations,
+  vaultAhead,
+  type StartMigrationsOptions,
+} from "../../../../src/core/migrations/migrations.ts";
+import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let vault: string;
@@ -54,5 +61,106 @@ describe("the vault gate", () => {
     }
     expect(isEvaError(caught, "vault_ahead")).toBe(true);
     expect((caught as Error).message).toContain("9.1.0");
+  });
+});
+
+describe("runStartMigrations", () => {
+  let paths: HomePaths;
+  const ids = (store: "machine" | "vault"): string[] =>
+    migrations
+      .filter((migration) => migration.store === store)
+      .map((migration) => migration.id)
+      .sort();
+  const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf-8"));
+  const start = (overrides: Partial<StartMigrationsOptions> = {}): ReturnType<typeof runStartMigrations> =>
+    runStartMigrations({
+      paths,
+      vaultPath: vault,
+      isHub: () => true,
+      version: "0.4.0",
+      now: () => new Date("2026-10-20T08:00:00.000Z"),
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    paths = homePaths(mkdtempSync(join(tmpdir(), "eva-start-home-")));
+    mkdirSync(paths.root, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(paths.root, { recursive: true, force: true });
+  });
+
+  test("a fresh install records every migration, and changes nothing", () => {
+    expect(start()).toEqual({
+      machine: { kind: "done", applied: ids("machine"), later: [] },
+      vault: { kind: "done", applied: ids("vault"), later: [] },
+    });
+    expect(existsSync(join(vault, ".eva", "settings.json"))).toBe(false);
+    expect(existsSync(paths.config)).toBe(false);
+  });
+
+  test("an install from before the migrations gets the new layout on the hub", () => {
+    writeFileSync(paths.config, JSON.stringify({ vaultPath: vault, port: 4000, timeZone: "Europe/Madrid" }));
+    writeFileSync(
+      join(vault, ".eva", "settings.json"),
+      JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] }, voice: { language: "es" } }),
+    );
+    const result = start();
+    expect(result.machine.kind).toBe("done");
+    expect(result.vault).toEqual({ kind: "done", applied: ids("vault"), later: [] });
+    expect(readJson(paths.config)).toEqual({
+      vaultPath: vault,
+      port: 4000,
+      trust: { trustedRepositoryOwners: ["example-owner"] },
+    });
+    expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({ voice: { language: "es" } });
+  });
+
+  test("on a hub without a vault settings file, the shared keys move at the next start", () => {
+    writeFileSync(paths.config, JSON.stringify({ vaultPath: vault, timeZone: "Europe/Madrid" }));
+    const first = start();
+    expect(first.machine).toMatchObject({ kind: "done", later: ["2026-10-18-move-shared-settings-to-vault"] });
+    expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({ timeZone: "Europe/Madrid" });
+    expect(start().machine).toEqual({
+      kind: "done",
+      applied: ["2026-10-18-move-shared-settings-to-vault"],
+      later: [],
+    });
+    expect(readJson(paths.config)).toEqual({ vaultPath: vault });
+  });
+
+  test("a satellite runs only the machine migrations", () => {
+    writeFileSync(
+      join(vault, ".eva", "settings.json"),
+      JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }),
+    );
+    writeFileSync(paths.config, JSON.stringify({ vaultPath: vault }));
+    const result = start({ isHub: () => false });
+    expect(result.vault).toBeNull();
+    expect(result.machine).toEqual({ kind: "done", applied: ids("machine"), later: [] });
+    expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({
+      trust: { trustedRepositoryOwners: ["example-owner"] },
+    });
+    expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(false);
+  });
+
+  test("an older Eva that sees a newer vault still runs the machine migrations, and leaves the vault", () => {
+    writeRecord(["2099-01-01-from-the-future"], "9.0.0");
+    const result = start();
+    expect(result.vault).toEqual({ kind: "ahead", unknown: ["2099-01-01-from-the-future"] });
+    expect(result.machine.kind).toBe("done");
+  });
+
+  test("a failed migration of one store leaves the other store running", () => {
+    const failing = {
+      id: "2026-10-19-fails",
+      store: "machine" as const,
+      run: (): never => {
+        throw new Error("broken");
+      },
+    };
+    const result = start({ list: [...migrations, failing] });
+    expect(result.machine).toMatchObject({ kind: "failed", id: "2026-10-19-fails", reason: "broken" });
+    expect(result.vault).toEqual({ kind: "done", applied: ids("vault"), later: [] });
   });
 });

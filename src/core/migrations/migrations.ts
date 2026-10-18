@@ -4,7 +4,14 @@
  * a newer Eva already migrated.
  */
 import { EvaError } from "../../shared/errors.ts";
-import { migrationsAhead, vaultMigrationRecordPath, type Migration } from "./migration-runner.ts";
+import type { HomePaths } from "../settings/home.ts";
+import {
+  migrationsAhead,
+  runMigrations,
+  vaultMigrationRecordPath,
+  type Migration,
+  type MigrationRun,
+} from "./migration-runner.ts";
 import {
   copySecuritySettingsFromVault,
   dropSecuritySettingsFromVault,
@@ -44,4 +51,31 @@ export function assertVaultWritable(vaultPath: string): void {
     "vault_ahead",
     `The vault needs Eva ${ahead.version ?? "of a newer version"} or later. Update Eva on this computer first.`,
   );
+}
+
+export interface StartMigrations {
+  readonly machine: MigrationRun;
+  /** Null on a satellite: only the hub runs the vault migrations, so two machines never race on them. */
+  readonly vault: MigrationRun | null;
+}
+
+export interface StartMigrationsOptions {
+  readonly paths: HomePaths;
+  readonly vaultPath: string | null;
+  /** Read after the machine migrations, which never change the role. */
+  readonly isHub: () => boolean;
+  readonly version: string;
+  readonly now: () => Date;
+  readonly list?: readonly Migration[];
+}
+
+/**
+ * Runs the missing migrations at start, after the vault pull and before anything reads the files.
+ * The machine store runs first, so each machine copies a vault value before the hub drops it.
+ */
+export function runStartMigrations(options: StartMigrationsOptions): StartMigrations {
+  const common = { ...options, migrations: options.list ?? migrations };
+  const machine = runMigrations({ ...common, store: "machine" });
+  const vault = options.isHub() ? runMigrations({ ...common, store: "vault" }) : null;
+  return { machine, vault };
 }

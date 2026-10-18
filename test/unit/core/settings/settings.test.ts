@@ -16,8 +16,6 @@ import {
   isSettingKey,
   isSharedSettingKey,
   loadSettings,
-  moveSecuritySettingsFromVault,
-  moveSettingsToVault,
   saveSettings,
   settingChange,
   vaultSettingsPath,
@@ -118,34 +116,6 @@ describe("changeSettings", () => {
   });
 });
 
-describe("moveSettingsToVault", () => {
-  test("an older config.json starts the vault's settings file", () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
-    expect(moveSettingsToVault(paths)).toBe(true);
-    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ timeZone: "Europe/Madrid" });
-    expect(readJson(paths.config)).not.toHaveProperty("timeZone");
-    expect(loadSettings(paths).config.timeZone).toBe("Europe/Madrid");
-    expect(moveSettingsToVault(paths)).toBe(false);
-  });
-
-  test("when the vault already has settings from another machine, the vault wins", () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "UTC" });
-    mkdirSync(join(vault, ".eva"));
-    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ timeZone: "Asia/Tokyo" }));
-    expect(moveSettingsToVault(paths)).toBe(true);
-    expect(readJson(vaultSettingsPath(vault))).toEqual({ timeZone: "Asia/Tokyo" });
-    expect(loadSettings(paths).config.timeZone).toBe("Asia/Tokyo");
-  });
-
-  test("nothing moves without a config file, a vault, or a vault folder", () => {
-    expect(moveSettingsToVault(paths)).toBe(false);
-    saveConfig(paths, defaultConfig);
-    expect(moveSettingsToVault(paths)).toBe(false);
-    saveConfig(paths, { ...defaultConfig, vaultPath: join(root, "missing") });
-    expect(moveSettingsToVault(paths)).toBe(false);
-  });
-});
-
 describe("security settings stay on the machine", () => {
   const vaultSecurity = {
     remoteAccess: { allowedTailscaleIdentities: ["intruder@example.com"] },
@@ -187,61 +157,6 @@ describe("security settings stay on the machine", () => {
     expect(isSharedSettingKey("trust.trustedRepositoryOwners")).toBe(false);
     expect(isSharedSettingKey("google.readOnly")).toBe(false);
     expect(isSharedSettingKey("google.email")).toBe(true);
-  });
-
-  test("migration: a key that config.json lacks moves once from the vault to config.json", () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    const machine = readJson(paths.config);
-    Reflect.deleteProperty(machine, "trust");
-    Reflect.deleteProperty(machine, "google");
-    Reflect.deleteProperty(machine, "remoteAccess");
-    writeFileSync(paths.config, JSON.stringify(machine));
-    writeVaultSettings({ ...vaultSecurity, timeZone: "Asia/Tokyo" });
-    expect(moveSecuritySettingsFromVault(paths)).toBe(true);
-    expect(readJson(paths.config)).toMatchObject({
-      remoteAccess: { allowedTailscaleIdentities: ["intruder@example.com"] },
-      trust: { trustedRepositoryOwners: ["intruder"] },
-      google: { readOnly: false, services: ["gmail"] },
-    });
-    expect(readJson(paths.config)).not.toHaveProperty("google.email");
-    expect(readJson(vaultSettingsPath(vault))).toEqual({
-      google: { email: "owner@example.com" },
-      timeZone: "Asia/Tokyo",
-    });
-    expect(loadSettings(paths).config.trust.trustedRepositoryOwners).toEqual(["intruder"]);
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
-  });
-
-  test("migration: a key that config.json has keeps its value, and the vault's copy goes", () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault, trust: { trustedRepositoryOwners: ["example-owner"] } });
-    writeVaultSettings({ trust: { trustedRepositoryOwners: ["intruder"] } });
-    expect(moveSecuritySettingsFromVault(paths)).toBe(true);
-    expect(readJson(paths.config)).toMatchObject({ trust: { trustedRepositoryOwners: ["example-owner"] } });
-    expect(readJson(vaultSettingsPath(vault))).toEqual({});
-  });
-
-  test("migration: an invalid vault value is dropped, never copied, so Eva still starts", () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    const machine = readJson(paths.config);
-    Reflect.deleteProperty(machine, "trust");
-    writeFileSync(paths.config, JSON.stringify(machine));
-    writeVaultSettings({ trust: { trustedRepositoryOwners: "not-a-list" } });
-    expect(moveSecuritySettingsFromVault(paths)).toBe(true);
-    expect(readJson(paths.config)).not.toHaveProperty("trust");
-    expect(readJson(vaultSettingsPath(vault))).toEqual({});
-    expect(loadSettings(paths).config.trust).toEqual(defaultConfig.trust);
-  });
-
-  test("migration: nothing moves without a config file, a vault file, or a security key in it", () => {
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
-    saveConfig(paths, defaultConfig);
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
-    writeVaultSettings("[1]");
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
-    writeVaultSettings({ timeZone: "UTC" });
-    expect(moveSecuritySettingsFromVault(paths)).toBe(false);
   });
 });
 

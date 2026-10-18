@@ -25,17 +25,6 @@ export const sharedSettingKeys: readonly string[] = [
 ];
 
 /**
- * Settings that decide who gets in and what an agent may do. The Assistant agent edits the vault
- * as normal work, and the vault syncs from other machines, so these stay in `config.json`.
- */
-const securitySettingKeys: readonly string[] = [
-  "remoteAccess.allowedTailscaleIdentities",
-  "trust",
-  "google.readOnly",
-  "google.services",
-];
-
-/**
  * The settings that a device login may change from the web page. A borrowed or lost phone keeps
  * its login, so every machine and trust setting needs the token (an allowlist protects new keys).
  */
@@ -109,45 +98,6 @@ export function changeSettings(paths: HomePaths, change: Readonly<SettingsObject
   const changed = applySettingsChange(loadSettings(paths).config, change);
   saveSettings(paths, changed);
   return changed;
-}
-
-/**
- * Moves the vault's settings out of an older `config.json`. When the vault has no settings file
- * yet, this machine's values start it; when it has one, the vault wins. Returns true on a change.
- */
-export function moveSettingsToVault(paths: HomePaths): boolean {
-  const read = readJsonTolerant(paths.config);
-  if (!read.ok || !isObject(read.value)) return false;
-  const config = parseConfig(read.value, paths.config);
-  if (config.vaultPath === null || !existsSync(config.vaultPath)) return false;
-  if (Object.keys(pickKeys(read.value, sharedSettingKeys)).length === 0) return false;
-  const file = vaultSettingsPath(config.vaultPath);
-  if (!existsSync(file)) writeFileAtomic(file, toJson(pickKeys(config, sharedSettingKeys)));
-  writeFileAtomic(paths.config, toJson(omitKeys(read.value, sharedSettingKeys)));
-  return true;
-}
-
-/**
- * Moves the security settings out of the vault file, once, for a vault from before they stayed on
- * the machine. The owner or an earlier migration wrote those values, so a key that `config.json`
- * lacks takes the vault's value. The vault file loses every security key. Returns true on a change.
- */
-export function moveSecuritySettingsFromVault(paths: HomePaths): boolean {
-  const machineRead = readJsonTolerant(paths.config);
-  if (!machineRead.ok || !isObject(machineRead.value)) return false;
-  const machine = machineRead.value;
-  const vaultPath = parseConfig(machine, paths.config).vaultPath;
-  if (vaultPath === null) return false;
-  const file = vaultSettingsPath(vaultPath);
-  const vaultRead = readJsonTolerant(file);
-  if (!vaultRead.ok || !isObject(vaultRead.value)) return false;
-  if (Object.keys(pickKeys(vaultRead.value, securitySettingKeys)).length === 0) return false;
-  const missingKeys = securitySettingKeys.filter((key) => Object.keys(pickKeys(machine, [key])).length === 0);
-  const moved = mergeSettings(pickKeys(vaultRead.value, missingKeys), machine);
-  // A bad value in config.json would stop Eva at every start, so a bad vault value is dropped instead.
-  if (isValidConfig(moved)) writeFileAtomic(paths.config, toJson(moved));
-  writeFileAtomic(file, toJson(omitKeys(vaultRead.value, securitySettingKeys)));
-  return true;
 }
 
 /** True for a dotted key that names a setting, such as `updates.frequency`. */
@@ -234,15 +184,6 @@ function removeKey(parent: unknown, parts: readonly string[]): void {
   removeKey(parent[first], rest);
   const child = parent[first];
   if (isObject(child) && Object.keys(child).length === 0) Reflect.deleteProperty(parent, first);
-}
-
-function isValidConfig(value: unknown): boolean {
-  try {
-    parseConfig(value, "config.json");
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isObject(value: unknown): value is SettingsObject {

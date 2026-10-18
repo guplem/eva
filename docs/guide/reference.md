@@ -104,6 +104,14 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 - **End every device login:** tap "Log out every device" on the Settings page.
 - **Keep Eva off Tailscale:** run `eva settings set remoteAccess.tailscaleServe false`.
 
+## Conversations
+
+- **One list.** Telegram, the web page and `eva chat` show the same conversations. A message from one shows in the others.
+- **Continue a conversation in Telegram:** send `/chats` and tap the conversation. It opens in a topic of its own, with its last 3 turns. Without topics, the main chat continues it.
+- **Project work:** when Eva gives work to a project from Telegram, its conversation opens in a topic. Eva sends the link to that topic, and to the conversation on the web page.
+- **Delete a conversation:** send `/delete` in its topic, or tap **Delete chat** on the web page. It goes from Telegram, the web page and the terminal, with its branches. The engine keeps its own transcript.
+- **Open one conversation on the web page:** add `#/chat/<id>` to the address.
+
 ## Optional features
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.

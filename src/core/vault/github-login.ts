@@ -13,7 +13,7 @@ export const githubClientId: string | null = null;
 
 /** The one sentence that setup says before the login. It must match `scope` below. */
 export const githubLoginAccess =
-  "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to copy and save your files on GitHub, and never gives it to the AI tools that she runs.";
+  "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to reach GitHub for you, and never gives it to the AI tools that she runs.";
 
 export interface GitHubLoginOptions {
   readonly clientId: string;
@@ -31,7 +31,7 @@ const requestTimeoutMs = 30_000;
 // GitHub asks for 5 more seconds after each slow_down.
 const slowDownStepSeconds = 5;
 const scope = "repo";
-// About 15 seconds without GitHub, at the usual interval.
+// Three failed polls in a row: from about 15 seconds when GitHub fails at once, to about 2 minutes when each request times out.
 const maxFailedPolls = 3;
 
 /** Waits until the person confirms the code, then returns the token. */
@@ -109,7 +109,8 @@ function seconds(value: unknown, fallback: number): number {
   return typeof value === "number" && value > 0 ? value : fallback;
 }
 
-/** GitHub's error code, never the whole reply, which can hold a device code. */
+/** GitHub's error code or message, never the whole reply, which can hold a device code. */
 function describe(reply: Record<string, unknown>): string {
-  return typeof reply["error"] === "string" ? reply["error"] : "no answer";
+  if (typeof reply["error"] === "string") return reply["error"];
+  return typeof reply["message"] === "string" ? reply["message"] : "no answer";
 }

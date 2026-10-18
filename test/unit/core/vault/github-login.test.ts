@@ -129,6 +129,12 @@ describe("the GitHub browser login", () => {
     );
     expect(isEvaError(noCode, "github_failed")).toBe(true);
     expect(String(noCode)).toContain("device_flow_disabled");
+    await server?.stop(true);
+    // A wrong client id gets a message, with no error code.
+    const wrongId = await failure(
+      login(fakeGitHub([], { error: undefined, message: "Not Found", user_code: null }).baseUrl).result,
+    );
+    expect(String(wrongId)).toContain("GitHub did not start the login: Not Found.");
   });
 
   test("a confirmation in the last seconds of the code still counts", async () => {
@@ -140,9 +146,15 @@ describe("the GitHub browser login", () => {
     const github = fakeGitHub([null, null, { access_token: "gho_after_a_gap" }]);
     expect(await login(github.baseUrl).result).toBe("gho_after_a_gap");
     await server?.stop(true);
-    const gone = await failure(login(fakeGitHub([null, null, null]).baseUrl).result);
+    const lastGitHub = fakeGitHub([null, null, null]);
+    const gone = await failure(login(lastGitHub.baseUrl).result);
     expect(isEvaError(gone, "github_failed")).toBe(true);
     expect(String(gone)).toContain("GitHub sent an answer that Eva cannot read (HTTP 502)");
+    expect(lastGitHub.requests).toHaveLength(4);
+    await server?.stop(true);
+    // Good polls in between start the count again.
+    const between = fakeGitHub([null, null, { error: "authorization_pending" }, null, null, { access_token: "gho_t" }]);
+    expect(await login(between.baseUrl).result).toBe("gho_t");
   });
 
   test("an error never shows the device code", async () => {

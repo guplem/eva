@@ -13,6 +13,7 @@ import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.
 
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
+import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { TelegramApi } from "./telegram-api.ts";
@@ -128,6 +129,8 @@ export class TelegramBot {
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
   private readonly detachDeviceApprover: () => void;
+  /** The usage warnings already sent, by window and reset time. The engine repeats a warning at each turn. */
+  private readonly shownUsageWarnings: Set<string>;
 
   constructor(options: TelegramBotOptions) {
     this.options = options;
@@ -154,6 +157,7 @@ export class TelegramBot {
     this.heldBlocks = new Map();
     this.lateTopics = new Set();
     this.pendingText = new Map();
+    this.shownUsageWarnings = new Set();
     this.state = loadBotState(options.statePath);
     this.files = new TelegramFiles({
       api: options.api,
@@ -728,6 +732,19 @@ export class TelegramBot {
           await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
         });
         return;
+      case "usage_limit": {
+        // A refusal always shows, because it explains the failed turn that follows.
+        const key = `${event.window} ${event.resetsAt ?? ""}`;
+        if (event.status === "warning" && this.shownUsageWarnings.has(key)) return;
+        if (event.status === "warning") this.shownUsageWarnings.add(key);
+        // A server clock is often UTC, so the reset time uses the person's time zone setting.
+        const timeZone = this.options.eva.publicSettings().config.timeZone ?? undefined;
+        const line = describeUsageLimit(event, (this.options.clock ?? systemClock).now(), timeZone);
+        await this.inOrder(event.sessionId, async () => {
+          await this.send(target.chatId, target.topicId, line);
+        });
+        return;
+      }
       case "session_renamed":
         await this.renameTopic(target.chatId, target.topicId, event.title);
         return;

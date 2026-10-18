@@ -941,6 +941,41 @@ describe("project work from a Telegram chat (#9)", () => {
   });
 });
 
+describe("usage limits (issue #67)", () => {
+  test("a warning shows once for each window, and a refusal always shows, with the reset time", async () => {
+    const warning = {
+      kind: "usage_limit",
+      status: "warning",
+      window: "five_hour",
+      usedPercent: 86,
+      resetsAt: "2026-10-14T12:00:00.000Z",
+    } as const;
+    createEva(async function* (request) {
+      await Promise.resolve();
+      if (request.prompt.endsWith("third")) {
+        yield { ...warning, status: "rejected", usedPercent: 100 };
+        yield { kind: "turn_failed", reason: "limit" };
+        return;
+      }
+      yield warning;
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const bot = createBot();
+    const line = "You used 86% of your 5-hour usage limit. It resets at 12:00.";
+    telegram.sendText(owner, "first");
+    await settle(bot, () => telegram.sentTexts().includes(line));
+    telegram.sendText(owner, "second");
+    await settle(bot, () => telegram.sentTexts().filter((text) => text === "ok").length === 2);
+    telegram.sendText(owner, "third");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The turn failed")));
+    const texts = telegram.sentTexts();
+    expect(texts.filter((text) => text === line)).toHaveLength(1);
+    expect(texts.indexOf("You reached your 5-hour usage limit. It resets at 12:00.")).toBeLessThan(
+      texts.findIndex((text) => text.startsWith("The turn failed")),
+    );
+  });
+});
+
 describe("approvals and commands", () => {
   test("an approval becomes buttons, and the press answers the turn", async () => {
     const answers: string[] = [];

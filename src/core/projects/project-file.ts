@@ -3,9 +3,15 @@
  * heading. It edits the YAML document in place, so comments, key order and unknown keys stay.
  */
 import { createHash } from "node:crypto";
-import { isMap, isNode, isScalar, isSeq, parseDocument } from "yaml";
+import { isMap, isNode, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { EvaError } from "../../shared/errors.ts";
-import { frontMatterPattern, parseFrontMatter, readTitle, type ProjectStatus } from "./project-catalog.ts";
+import {
+  frontMatterPattern,
+  parseFrontMatter,
+  readTitle,
+  titleHeading,
+  type ProjectStatus,
+} from "./project-catalog.ts";
 
 export interface ProjectDetails {
   /** An empty title removes the heading, so the list shows the folder name. */
@@ -21,25 +27,24 @@ export function applyProjectDetails(text: string, details: ProjectDetails): stri
   const bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
   const withoutBom = text.slice(bom.length);
   const match = frontMatterPattern.exec(withoutBom);
-  if (match === null) throw invalid("The file has no front matter to change. Fix it in the AGENTS.md editor.");
+  const current = parseFrontMatter(withoutBom).frontMatter;
+  if (match === null || current === null) {
+    throw invalid("Eva cannot read the front matter. Fix it in the AGENTS.md editor.");
+  }
   const eol = match[0].includes("\r\n") ? "\r\n" : "\n";
   const title = details.title.trim();
   if (/[\r\n]/.test(title)) throw invalid("The title must be one line.");
-  const tags = cleanList(
-    details.tags.map((tag) => tag.trim().replace(/^#/, "")),
-    "A tag",
-  );
-  const repos = cleanList(details.repos, "A repository");
-  if (repos.some((repo) => repo.startsWith("-"))) throw invalid("A repository cannot start with -.");
 
   const frontMatter = editFrontMatter((match[1] ?? "").replaceAll("\r\n", "\n"), {
-    status: details.status,
-    tags,
-    repos,
+    // The form shows "None" for a status it cannot read, so None there keeps the person's value.
+    ...(details.status === current.status ? {} : { status: details.status }),
+    ...changedList("tags", current.tags, details.tags, (tag) => tag.replace(/^#/, ""), "A tag"),
+    ...changedList("repos", current.repos, details.repos, (repo) => repo, "A repository"),
   });
-  const head = frontMatter === null ? match[0] : `---${eol}${frontMatter.replaceAll("\n", eol)}${eol}---${eol}`;
-  // A front matter that ends the file has no line break after `---`; an unchanged one keeps that.
   const body = withTitle(withoutBom.slice(match[0].length), title, eol);
+  let head = frontMatter === null ? match[0] : `---${eol}${frontMatter.replaceAll("\n", eol)}${eol}---${eol}`;
+  // A front matter that ends the file has no line break after `---`; a new heading needs one.
+  if (!head.endsWith("\n") && body !== "") head += eol;
   return bom + head + body;
 }
 
@@ -54,57 +59,81 @@ export function fileVersion(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
-interface FrontMatterFields {
-  readonly status: ProjectStatus | null;
-  readonly tags: readonly string[];
-  readonly repos: readonly string[];
+/** Only the fields that changed. A list that the person left alone is neither checked nor cleaned. */
+interface FrontMatterChanges {
+  readonly status?: ProjectStatus | null;
+  readonly tags?: readonly string[];
+  readonly repos?: readonly string[];
+}
+
+function changedList(
+  key: "tags" | "repos",
+  current: readonly string[],
+  next: readonly string[],
+  normalize: (value: string) => string,
+  label: string,
+): FrontMatterChanges {
+  if (sameList(current, next)) return {};
+  const cleaned = cleanList(
+    next.map((value) => normalize(value.trim())),
+    label,
+  );
+  if (key === "repos" && cleaned.some((repo) => repo.startsWith("-"))) {
+    throw invalid("A repository cannot start with -.");
+  }
+  return sameList(current, cleaned) ? {} : { [key]: cleaned };
 }
 
 /** The new front matter, or null when no field changes, so an untouched file keeps every byte. */
-function editFrontMatter(source: string, fields: FrontMatterFields): string | null {
+function editFrontMatter(source: string, changes: FrontMatterChanges): string | null {
   // Failsafe, as the catalog reads it: every value stays text, such as `created: 2026-01-31T09:15`.
   const document = parseDocument(source, { schema: "failsafe" });
   if (document.errors.length > 0 || !isMap(document.contents)) {
     throw invalid("Eva cannot read the front matter. Fix it in the AGENTS.md editor.");
   }
-  const current = parseFrontMatter(`---\n${source}\n---\n`).frontMatter;
-  const set = (key: string, value: string | readonly string[] | null, same: boolean): boolean => {
-    if (same) return false;
+  const entries = Object.entries(changes) as [string, string | readonly string[] | null][];
+  if (entries.length === 0) return null;
+  for (const [key, value] of entries) {
     if (value === null || (Array.isArray(value) && value.length === 0)) {
       document.delete(key);
-      return true;
+      continue;
     }
     const old = document.get(key, true);
     // A changed value keeps the comment after it, such as `status: active # idea, active, ...`.
     if (typeof value === "string" && isScalar(old)) {
       old.value = value;
-      return true;
+      continue;
     }
     const node = document.createNode(value);
+    if (isSeq(node)) {
+      for (const item of node.items)
+        if (isScalar(item) && readsAsOtherThanText(String(item.value))) item.type = "QUOTE_DOUBLE";
+      // A list written as `[a, b]` stays in that form.
+      if (isSeq(old)) node.flow = old.flow ?? false;
+    }
     if (isNode(old) && old.comment !== undefined && old.comment !== null) node.comment = old.comment;
-    // A list written as `[a, b]` stays in that form.
-    if (isSeq(node) && isSeq(old)) node.flow = old.flow ?? false;
     document.set(key, node);
-    return true;
-  };
-  const changes = [
-    set(
-      "status",
-      fields.status,
-      current?.status === fields.status && document.has("status") === (fields.status !== null),
-    ),
-    set("tags", fields.tags, sameList(current?.tags, fields.tags)),
-    set("repos", fields.repos, sameList(current?.repos, fields.repos)),
-  ];
-  if (!changes.includes(true)) return null;
+  }
   return document.toString({ lineWidth: 0, flowCollectionPadding: false }).replace(/\n$/, "");
 }
 
+/**
+ * True for a value such as `12`, `true` or `null`. Eva reads every value as text, but other tools,
+ * such as Obsidian, read YAML's usual types, so quotes keep the value text for them too.
+ */
+function readsAsOtherThanText(value: string): boolean {
+  try {
+    return parse(value) !== value;
+  } catch {
+    return true;
+  }
+}
+
 function withTitle(body: string, title: string, eol: string): string {
-  if (readTitle(body) === (title === "" ? null : title)) return body;
-  const heading = /^# .+$/m.exec(body);
+  const heading = titleHeading(body);
+  if ((heading?.title ?? "") === title) return body;
   if (heading !== null) {
-    const after = body.slice(heading.index + heading[0].length);
+    const after = body.slice(heading.index + heading.length);
     if (title !== "") return `${body.slice(0, heading.index)}# ${title}${after}`;
     // Drop the heading line and the blank line after it.
     return body.slice(0, heading.index) + after.replace(/^\r?\n(\r?\n)?/, "");

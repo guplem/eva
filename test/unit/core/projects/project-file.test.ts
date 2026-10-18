@@ -186,3 +186,40 @@ describe("projectFileOf", () => {
     });
   });
 });
+
+describe("applyProjectDetails keeps what the person did not change", () => {
+  test("a heading inside a code fence stays", () => {
+    const text = "---\nstatus: idea\n---\n```\n# code\n```\n\n# Old\n";
+    const result = applyProjectDetails(text, { title: "New", status: "idea", tags: [], repos: [] });
+    expect(result).toBe("---\nstatus: idea\n---\n```\n# code\n```\n\n# New\n");
+  });
+
+  test("a title on a file that ends right after the front matter goes on its own line", () => {
+    const result = applyProjectDetails("---\nstatus: active\n---", {
+      title: "New",
+      status: "active",
+      tags: [],
+      repos: [],
+    });
+    expect(result).toBe("---\nstatus: active\n---\n# New\n");
+  });
+
+  test("a status that the form cannot show stays when the form sends none", () => {
+    for (const text of ["---\nstatus: wip\n---\n# A\n", "---\nstatus:\n---\n# A\n"]) {
+      expect(applyProjectDetails(text, { title: "B", status: null, tags: [], repos: [] })).toBe(
+        text.replace("# A", "# B"),
+      );
+    }
+  });
+
+  test("an unchanged list is neither checked nor cleaned", () => {
+    const text = '---\nstatus: idea\ntags: [my tag, "#a"]\n---\n# A\n';
+    const details = { title: "B", status: "idea" as const, tags: ["my tag", "#a"], repos: [] };
+    expect(applyProjectDetails(text, details)).toBe(text.replace("# A", "# B"));
+  });
+
+  test("a value that other YAML readers would not read as text gets quotes", () => {
+    const result = applyProjectDetails(file, { ...unchanged, tags: ["null", "~", "true", "12", "work"] });
+    expect(result).toContain('tags: ["null", "~", "true", "12", work]');
+  });
+});

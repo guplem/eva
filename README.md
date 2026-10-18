@@ -85,6 +85,7 @@ Any conversation can continue in Telegram. Send `/chats` to pick one from the we
 | `/restart`   | Restart Eva (she asks you to confirm first)   |
 | `/link`      | Show the address of Eva's web page            |
 | `/sync`      | Save the notebook now                         |
+| `/conflicts` | Pick a version of each note in a conflict     |
 | `/update`    | Install the newest version of Eva             |
 | `/projects`  | Search your projects: `status:active`, `#tag` |
 | `/schedules` | List your reminders and repeated tasks        |

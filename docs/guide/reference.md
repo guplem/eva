@@ -71,13 +71,22 @@ Eva saves the notebook to GitHub by herself:
 
 ### Notebook conflicts
 
-A conflict happens when two computers change the same lines of a note before they sync. Eva never throws a change away. She stops pushing and names the files in `eva status`. To fix it, on Eva's computer:
+A conflict happens when two computers change the same lines of a note before they sync. Eva never throws a change away. She stops pushing, names the notes, and sends an alert.
 
-1. Open each named file. Find the blocks between `<<<<<<<` and `>>>>>>>`, keep the text that you want, and delete the markers.
-2. In the notebook folder, run `git add <file>` for each file.
-3. Run `eva sync`.
+To fix it from your phone:
 
-Eva never drops git's stash, so `git stash list` can still hold a copy of your edits.
+1. Send `/conflicts` in Telegram, or open **Settings** on the web page of the computer with the conflict.
+2. For each note, tap one button:
+   - **Keep mine:** keep this computer's version.
+   - **Keep theirs:** keep the version that the other computer pushed.
+   - **Keep both:** keep this computer's version, and put the other version in a copy beside the note, such as `Plan (conflict copy).md`.
+3. After the last note, Eva pushes again by herself.
+
+No pick loses a version. Git history keeps both versions of a note that was committed on both sides. An edit that was not committed yet stays in git's stash, which Eva never drops.
+
+Only the hub runs Telegram, so `/conflicts` shows the hub's conflicts. For a conflict on another computer, open that computer's web page.
+
+This needs git 2.38 or newer on the computer with the conflict. With an older git, the alert says so.
 
 ## Problems and alerts
 

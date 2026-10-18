@@ -766,6 +766,16 @@ describe("updates and the vault sync", () => {
     expect(response.status).toBe(200);
     expect(await json<{ status: string }>(response)).toMatchObject({ status: "ok" });
   });
+
+  test("the vault conflicts list, and a pick for a note with no conflict changes nothing", async () => {
+    const listed = await json<{ conflicts: unknown[] }>(await call("/api/vault/conflicts"));
+    expect(listed.conflicts).toEqual([]);
+    const picked = await call("/api/vault/conflicts", { method: "POST", body: { path: "a.md", choice: "mine" } });
+    expect(picked.status).toBe(200);
+    expect(await json<{ found: boolean }>(picked)).toMatchObject({ found: false });
+    const invalid = await call("/api/vault/conflicts", { method: "POST", body: { path: "a.md", choice: "all" } });
+    expect(invalid.status).toBe(400);
+  });
 });
 
 describe("an Eva with an update channel", () => {

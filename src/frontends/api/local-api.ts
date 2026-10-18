@@ -66,6 +66,7 @@ const projectDetailsSchema = z.object({
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
+const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
@@ -113,9 +114,10 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
-      // Bun closes a request after 10 idle seconds, and an engine check waits for a whole real
-      // turn. The check ends itself at its own deadline.
-      if (url.pathname.startsWith("/api/checks/")) bunServer.timeout(request, 0);
+      // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
+      // and a vault sync or pick waits for git's network steps. Each ends at its own timeout.
+      if (url.pathname.startsWith("/api/checks/") || url.pathname.startsWith("/api/vault/"))
+        bunServer.timeout(request, 0);
       try {
         return await route(request, url, options.eva, hasValidToken(request, options.token));
       } catch (error) {
@@ -379,6 +381,13 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
+  if (url.pathname === "/api/vault/conflicts") {
+    if (method === "GET") return json(await eva.vaultConflicts());
+    if (method === "POST") {
+      const { path, choice } = conflictPickSchema.parse(await request.json());
+      return json(await eva.resolveVaultConflict(path, choice));
+    }
+  }
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
   if (url.pathname === "/api/update/engine") {
     if (method === "GET") return json(eva.engineUpdateStatus());

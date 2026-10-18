@@ -530,8 +530,8 @@ describe("/chats: every chat of the instance (#9)", () => {
     telegram.sendText(owner, "/chats");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat")));
     expect(chatButtons()).toEqual([
-      { text: "Write the letter", callback_data: `c:${newer}` },
-      { text: "Plan the garden", callback_data: `c:${older}` },
+      { text: "Write the letter", callback_data: `o:${newer}` },
+      { text: "Plan the garden", callback_data: `o:${older}` },
     ]);
   });
 
@@ -539,7 +539,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     const sessionId = await webChat("one");
     for (const text of ["two", "three", "four"]) await eva.sessions.send(sessionId, text);
     const bot = createBot();
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("answer 4")));
     expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("one");
     const inTopic = telegram
@@ -567,7 +567,7 @@ describe("/chats: every chat of the instance (#9)", () => {
   test("a message from another front end shows in the topic, and a Telegram message shows once", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().includes("answer 1"));
     const before = telegram.sentTexts().length;
 
@@ -581,9 +581,9 @@ describe("/chats: every chat of the instance (#9)", () => {
   test("a press on a chat that has its topic opens no second topic", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already has its topic")));
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
   });
@@ -592,7 +592,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     const group = -1009876;
     const sessionId = await webChat("one");
     const bot = createBot(group);
-    telegram.pressButton(group, `c:${sessionId}`, undefined, owner);
+    telegram.pressButton(group, `o:${sessionId}`, undefined, owner);
     // The whole sentence, not a part of it: a test that looks for a URL inside a text reads as a weak URL check.
     await settle(bot, () =>
       telegram.sentTexts().includes("This chat continues in the topic “one” (https://t.me/c/9876/500)."),
@@ -603,7 +603,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     const sessionId = await webChat("one");
     const bot = createBot();
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
     telegram.sendText(owner, "two");
     await settle(bot, () => telegram.sentTexts().includes("answer 2"));
@@ -620,14 +620,14 @@ describe("/chats: every chat of the instance (#9)", () => {
     telegram.sendText(owner, "long work");
     await settle(bot, () => engine.requests.length === 1);
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
-    telegram.pressButton(owner, `c:${other.id}`);
+    telegram.pressButton(owner, `o:${other.id}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
     for (const session of eva.sessions.list()) eva.sessions.stop(session.id);
   });
 
   test("a press on a deleted chat says so", async () => {
     const bot = createBot();
-    telegram.pressButton(owner, "c:gone");
+    telegram.pressButton(owner, "o:gone");
     await settle(bot, () => telegram.sentTexts().includes("That chat no longer exists."));
   });
 
@@ -638,7 +638,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     await settle(bot, () => telegram.sentTexts().includes("answer 2"));
     await eva.idle();
     telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 1", 1, 4);
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
     telegram.sendText(owner, "still the main chat");
     await settle(bot, () => telegram.sentTexts().includes("answer 3"));
@@ -648,7 +648,7 @@ describe("/chats: every chat of the instance (#9)", () => {
   test("a long message from another front end arrives whole, in parts", async () => {
     const sessionId = await webChat("one");
     const bot = createBot();
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().includes("answer 1"));
     const long = `${"word ".repeat(1_500)}END`;
     void eva.sessions.send(sessionId, long, "api");
@@ -667,7 +667,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     });
     const sessionId = await webChat("one");
     const bot = createBot();
-    telegram.pressButton(owner, `c:${sessionId}`);
+    telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().includes("answer to one"));
     const before = telegram.sentTexts().length;
     telegram.sendText(owner, "slow", 500);
@@ -694,7 +694,7 @@ describe("/chats: every chat of the instance (#9)", () => {
     void eva.sessions.send(session.id, "long work", "api");
     const bot = createBot();
     await settle(bot, () => engine.requests.length === 1);
-    telegram.pressButton(owner, `c:${session.id}`);
+    telegram.pressButton(owner, `o:${session.id}`);
     await settle(bot, () =>
       telegram.sentTexts().some((text) => text.startsWith("Eva is working on a message from the web app")),
     );
@@ -718,7 +718,7 @@ describe("/chats while a turn runs (#9)", () => {
     const bot = createBot();
     await settle(bot, () => engine.requests.length === 1);
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
-    telegram.pressButton(owner, `c:${session.id}`);
+    telegram.pressButton(owner, `o:${session.id}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
     release();
     await settle(bot, () => telegram.sentTexts().includes("done at last"));
@@ -929,6 +929,66 @@ describe("approvals and commands", () => {
     telegram.sendText(owner, "/projects");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     expect(telegram.sentTexts()[0]).toStartWith("2025-02-10-0900-huge  active  Huge");
+  });
+
+  test("/conflicts shows each conflicted note with three buttons, and a pick after a restart resolves it", async () => {
+    const vault = join(sandbox.root, "vault");
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    expect(await eva.sweep()).toBe("conflict");
+
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Notes/plan.md")));
+    expect(telegram.sentTexts().join("\n")).toContain("Keep both");
+    const question = telegram
+      .callsTo("sendMessage")
+      .find((call) => String(call.params["text"]).includes("Notes/plan.md"));
+    const markup = JSON.stringify(question?.params["reply_markup"]);
+    expect(markup).toContain("Keep mine");
+    expect(markup).toContain("Keep theirs");
+    const data = /"(c:[0-9a-f]+:m)"/.exec(markup)?.[1] ?? "";
+    expect(data).not.toBe("");
+
+    // The button id lives on disk, so a new bot still knows the note (lesson 124).
+    const restarted = createBot();
+    telegram.pressButton(owner, data);
+    await settle(restarted, () => telegram.sentTexts().some((text) => text.includes("The vault syncs again.")));
+    expect(sandbox.git(sandbox.remote, "show", "main:Notes/plan.md")).toBe("mine");
+  });
+
+  test("/conflicts lists the notes without a pick first, so a long list reaches every note", async () => {
+    const vault = join(sandbox.root, "vault");
+    const other = sandbox.clone("other");
+    const names = Array.from({ length: 11 }, (_, index) => `Notes/n${String(index).padStart(2, "0")}.md`);
+    for (const name of names) sandbox.write(other, name, "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    for (const name of names) sandbox.write(vault, name, "mine\n");
+    expect(await eva.sweep()).toBe("conflict");
+    await eva.resolveVaultConflict("Notes/n00.md", "mine");
+
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick these first")));
+    const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("Notes/n10.md");
+    expect(texts).not.toContain("Notes/n00.md");
+  });
+
+  test("/conflicts says so when the vault has none, and a stale button says the note has no conflict", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toBe("The vault has no conflict.");
+    telegram.pressButton(owner, "c:000000000000:t");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()[1]).toContain("no conflict anymore");
   });
 
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {

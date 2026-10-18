@@ -17,7 +17,10 @@ interface ProjectViewProps {
   readonly onNavigate: () => void;
 }
 
-/** The filter words that the core reads in the search text. A typed word wins over its select. */
+/**
+ * The filter words that parseProjectQuery reads in the search text. A typed word wins over its
+ * select. Keep these patterns in step with the parser in `core/projects/project-catalog.ts`.
+ */
 const statusWordPattern = /(^|\s)status:(idea|active|paused|closed|any)(\s|$)/i;
 const tagWordPattern = /(^|\s)(tag:|#)\S/i;
 
@@ -220,9 +223,9 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   );
 }
 
-/** Every tag of these projects once, in alphabetical order. */
+/** Every tag of these projects once, in alphabetical order. The filter ignores case, so the list does too. */
 function tagsOf(projects: readonly Project[]): string[] {
-  return [...new Set(projects.flatMap((project) => project.frontMatter.tags))].sort((first, second) =>
-    first.localeCompare(second),
+  return [...new Set(projects.flatMap((project) => project.frontMatter.tags.map((tag) => tag.toLowerCase())))].sort(
+    (first, second) => first.localeCompare(second),
   );
 }

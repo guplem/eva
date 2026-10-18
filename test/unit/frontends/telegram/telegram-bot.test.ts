@@ -487,6 +487,18 @@ describe("approvals and commands", () => {
     ).toBe(true);
   });
 
+  test("/projects still shows the first project when it alone is too long for the limit", async () => {
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-02-10-0900-huge/AGENTS.md",
+      `---\ncreated: 2025-02-10T09:00\nstatus: active\n---\n# ${"Huge ".repeat(800)}\n`,
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "/projects");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toStartWith("2025-02-10-0900-huge  active  Huge");
+  });
+
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");

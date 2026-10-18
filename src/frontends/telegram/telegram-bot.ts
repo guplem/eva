@@ -1134,7 +1134,8 @@ function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): stri
   let shown = 0;
   for (const project of projects.slice(0, projectListLimit)) {
     const block = describeProjectLines([project]);
-    if ([...lines, ...block].join("\n").length > messageLimit) break;
+    // The first project always shows; send() cuts it if it alone passes Telegram's size.
+    if (shown > 0 && [...lines, ...block].join("\n").length > messageLimit) break;
     lines.push(...block);
     shown += 1;
   }

@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
 import {
   api,
+  ApiError,
   type EngineUpdateStatus,
   type EvaStatus,
   type PublicSettings,
@@ -14,6 +15,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
@@ -55,6 +57,8 @@ const modelChoices: readonly {
 ];
 
 const statusPollMs = 3_000;
+/** The server refuses longer rules, because they go to a model with each new chat. */
+const chatNameRulesLength = 4_000;
 const restartPollLimit = 60;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
@@ -63,6 +67,10 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [timeZone, setTimeZone] = useState("");
   const [sweepSeconds, setSweepSeconds] = useState("");
   const [projectRoots, setProjectRoots] = useState("");
+  /** Null until loaded, and when no vault holds the rules. */
+  const [chatNameRules, setChatNameRules] = useState<string | null>(null);
+  /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
+  const [savedChatNameRules, setSavedChatNameRules] = useState<string | null>(null);
   const [piModel, setPiModel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
@@ -110,6 +118,16 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       .catch(showProblem);
     api.updateStatus().then(setUpdate).catch(showProblem);
     api.setupState().then(setSetup).catch(showProblem);
+    api
+      .chatNameRules()
+      .then((loaded) => {
+        setChatNameRules(loaded.rules);
+        setSavedChatNameRules(loaded.rules);
+      })
+      .catch((error: unknown) => {
+        // Without a vault, the page shows no field for the rules.
+        if (!(error instanceof ApiError && error.status === 409)) showProblem(error);
+      });
     api.engineUpdateStatus().then(setEngineUpdate, () => {
       setEngineReadFailures((count) => count + 1);
     });
@@ -141,14 +159,14 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     );
   const config = settings.config;
 
-  /** A dropdown saves its own value at once. */
-  const saveNow = async (change: Record<string, unknown>): Promise<void> => {
+  /** A dropdown saves its own value at once. True when the save worked. */
+  const saveNow = async (change: Record<string, unknown>): Promise<boolean> => {
     let result: { restartNeeded: boolean };
     try {
       result = await api.saveSettings(change);
     } catch (error) {
       setNotice(errorText(error));
-      return;
+      return false;
     }
     setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
     try {
@@ -157,6 +175,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     } catch (error) {
       setNotice(`Saved, but the page did not reload the settings: ${errorText(error)}`);
     }
+    return true;
   };
 
   const changeAppearance = (change: Partial<Appearance>): void => {
@@ -291,6 +310,17 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       setNotice("The sync interval must be a whole number of seconds, 10 or more.");
       return;
     }
+    // The rules save on their own, so a vault that Eva cannot write still lets the other settings save.
+    let rulesProblem = "";
+    if (chatNameRules !== null && chatNameRules !== savedChatNameRules) {
+      try {
+        const saved = (await api.saveChatNameRules(chatNameRules)).rules;
+        setChatNameRules(saved);
+        setSavedChatNameRules(saved);
+      } catch (error) {
+        rulesProblem = ` The rules for chat names were not saved: ${errorText(error)}`;
+      }
+    }
     try {
       const result = await api.saveSettings({
         timeZone: timeZone.trim() === "" ? null : timeZone.trim(),
@@ -301,9 +331,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           .filter((root) => root.length > 0),
         engines: { pi: { models: { default: piModel.trim() === "" ? null : piModel.trim() } } },
       });
-      setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new settings." : "Saved.");
+      setNotice((result.restartNeeded ? "Saved. Press Restart Eva to use the new settings." : "Saved.") + rulesProblem);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(errorText(error) + rulesProblem);
     }
   };
 
@@ -436,6 +466,20 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               : "Eva did not find the pi program on this machine."}
           </div>
           <CheckRow name="pi" label="Test pi" />
+
+          <GooglePanel
+            settings={settings}
+            saveNow={saveNow}
+            onChanged={setNotice}
+            reload={() => {
+              api
+                .settings()
+                .then(setSettings)
+                .catch((error: unknown) => {
+                  setNotice(errorText(error));
+                });
+            }}
+          />
 
           <h3>Time and remote access</h3>
           <label>
@@ -571,6 +615,24 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
           </label>
         </fieldset>
+        {chatNameRules !== null && (
+          <fieldset>
+            <legend>Chat names</legend>
+            <label>
+              Rules for chat names
+              <textarea
+                value={chatNameRules}
+                maxLength={chatNameRulesLength}
+                placeholder={"Lead every name with an emoji.\nName an issue chat “Implementing #N”."}
+                onChange={(event) => setChatNameRules(event.target.value)}
+              />
+            </label>
+            <div className="hint">
+              After the first answer in a chat, a small model call names the chat by these rules. Leave the rules empty
+              to name each chat by its first line. The rules live in your vault, in .eva/chat-names.md.
+            </div>
+          </fieldset>
+        )}
         {notice !== null && (
           // Sticky, so a phone shows the result of a control near the top of the page.
           <div className="settings-notice" role="status">

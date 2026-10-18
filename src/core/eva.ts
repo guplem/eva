@@ -4,7 +4,6 @@
  */
 import { existsSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -54,12 +53,17 @@ import {
 import { Scheduler } from "./schedules/scheduler.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
+import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
+import { googleScopes } from "./google/google-scopes.ts";
+import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
-import { SessionManager } from "./sessions/session-manager.ts";
+import { ChatNamer } from "./sessions/chat-namer.ts";
+import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
+import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import {
   type ConflictChoice,
@@ -108,6 +112,8 @@ export interface EvaOptions {
   readonly defaultHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** Google's address for the Google login and check; a test points it at a fake server. */
+  readonly googleBaseUrl?: string;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -140,6 +146,8 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
+/** A cold start of an engine and one short answer. */
+const modelCallTimeoutMs = 90_000;
 const backgroundTickMs = 60_000;
 const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** The front end that asked for a restart answers first, then Eva stops. */
@@ -150,10 +158,15 @@ export class Eva {
   readonly sessions: SessionManager;
   /** Null when no vault is configured. */
   readonly schedules: Scheduler | null;
+  /** The person's rules for chat names. Null when no vault is configured. */
+  readonly chatNames: ChatNamer | null;
+  /** One question to a model with one answer, for any feature that needs a short text. */
+  readonly modelCalls: ModelCalls;
   /** Null until a whisper model is configured. */
   readonly transcribe: Transcribe | null;
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
+  private readonly googleLogin: GoogleLogin;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   private readonly facts: InstanceFacts;
@@ -240,10 +253,31 @@ export class Eva {
       engines: options.engines.map((engine) => engine.name),
     });
     this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
+    this.googleLogin = new GoogleLogin({
+      credentialsFolder: googleCredentialsFolder(options.paths),
+      now: options.now,
+      ...(options.googleBaseUrl === undefined ? {} : { baseUrl: options.googleBaseUrl }),
+    });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
+    this.modelCalls = new ModelCalls({
+      engines: options.engines,
+      environment: agentEnvironment,
+      redact: (text) => redactor.redact(text),
+      timeoutMs: modelCallTimeoutMs,
+    });
+    const chatNamer =
+      vaultPath === null
+        ? null
+        : new ChatNamer({
+            vaultPath,
+            modelCalls: this.modelCalls,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    this.chatNames = chatNamer;
 
     this.sessions = new SessionManager({
+      ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
       engines: options.engines,
       store: new SessionStore(options.paths.sessions, {
         now: options.now,
@@ -711,9 +745,9 @@ export class Eva {
     return this.settings.saveSecret(name, value, options);
   }
 
-  runCheck(name: CheckName): Promise<CheckResult> {
+  async runCheck(name: CheckName): Promise<CheckResult> {
     const secrets = this.settings.secrets;
-    return runCheck(name, {
+    const result = await runCheck(name, {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
       environment: gitEnvironment(this.facts, secrets),
@@ -723,7 +757,52 @@ export class Eva {
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,
+      google: {
+        config: this.settings.config.google,
+        client: this.googleClient(),
+        credentialsFolder: googleCredentialsFolder(this.options.paths),
+        readServices: true,
+        ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
+      },
     });
+    // The Test reads the saved settings, but chats keep the Google settings of the start.
+    return name === "google" && result.ok && this.googleRestartNeeded()
+      ? { ok: true, detail: `${result.detail} Press Restart Eva so that chats use these Google settings.` }
+      : result;
+  }
+
+  /** The address of Google's consent page, for the scopes of the saved Google settings. */
+  startGoogleLogin(): { url: string } {
+    const client = this.googleClient();
+    if (client === null)
+      throw new EvaError(
+        "google_failed",
+        `Save the OAuth client id and secret first (step ${String(googleStep.client)}).`,
+      );
+    return this.googleLogin.start(client.clientId, googleScopes(this.settings.config.google));
+  }
+
+  /**
+   * Finishes the Google login with the address that the person pasted. The login decides the
+   * account, so `google.email` follows it: `workspace-mcp` reads only the login of that email.
+   */
+  async finishGoogleLogin(pasted: string): Promise<{ email: string; restartNeeded: boolean }> {
+    const client = this.googleClient();
+    if (client === null)
+      throw new EvaError(
+        "google_failed",
+        `Save the OAuth client id and secret first (step ${String(googleStep.client)}).`,
+      );
+    const { email } = await this.googleLogin.finish(pasted, client);
+    if (this.settings.config.google.email !== email) this.settings.update({ google: { email } });
+    return { email, restartNeeded: this.googleRestartNeeded() };
+  }
+
+  private googleClient(): { clientId: string; clientSecret: string } | null {
+    const { googleOauthClientId, googleOauthClientSecret } = this.settings.secrets;
+    return googleOauthClientId === undefined || googleOauthClientSecret === undefined
+      ? null
+      : { clientId: googleOauthClientId, clientSecret: googleOauthClientSecret };
   }
 
   /**
@@ -911,14 +990,28 @@ export class Eva {
     this.alerts.notify("update_held_back", "news", news);
   }
 
+  /**
+   * True when the saved Google settings differ from the ones that chats got at start.
+   * `workspace-mcp` reads the login file at each call, but its flags and account come from the start.
+   */
+  private googleRestartNeeded(): boolean {
+    const started = this.googleServer(this.options.config.google, this.options.secrets);
+    const saved = this.googleServer(this.settings.config.google, this.settings.secrets);
+    return JSON.stringify(started) !== JSON.stringify(saved);
+  }
+
   private assistantMcpServers(): Record<string, McpServerSpec> {
-    const google = googleMcpServer({
-      config: this.options.config.google,
-      secrets: this.settings.secrets,
-      credentialsFolder: join(this.options.paths.enginesFolder, "google"),
+    const google = this.googleServer(this.options.config.google, this.options.secrets);
+    return google === null ? {} : { google };
+  }
+
+  private googleServer(config: EvaConfig["google"], secrets: EvaSecrets): McpServerSpec | null {
+    return googleMcpServer({
+      config,
+      secrets,
+      credentialsFolder: googleCredentialsFolder(this.options.paths),
       // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
       environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
-    return google === null ? {} : { google };
   }
 }

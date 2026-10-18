@@ -610,7 +610,42 @@ describe("web routes", () => {
     expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
   });
 
-  test("secrets: write-only, only the three that the page may change", async () => {
+  test("the Google login waits for a client, then gives Google's consent address", async () => {
+    const early = await call("/api/google/login", { method: "POST", body: {} });
+    expect(early.status).toBe(409);
+    expect(await json<{ code: string }>(early)).toMatchObject({ code: "google_failed" });
+    for (const [name, value] of [
+      ["googleOauthClientId", "client-id.apps.googleusercontent.com"],
+      ["googleOauthClientSecret", "GOCSPX-client-secret-value"],
+    ] as const)
+      expect((await call(`/api/secrets/${name}`, { method: "PUT", body: { value } })).status).toBe(200);
+    const started = await json<{ url: string }>(await call("/api/google/login", { method: "POST", body: {} }));
+    expect(started.url).toStartWith("https://accounts.google.com/o/oauth2/v2/auth?");
+    const finish = (body: unknown): Promise<Response> => call("/api/google/login/finish", { method: "POST", body });
+    const wrong = await finish({ address: "http://127.0.0.1/eva-google-login?state=other&code=x" });
+    expect(wrong.status).toBe(409);
+    expect((await json<{ error: string }>(wrong)).error).toContain("older login");
+    expect((await finish({})).status).toBe(400);
+  });
+
+  test("a device login cannot change the Google client or log in to Google", async () => {
+    eva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+    const request = eva.deviceLogins.request("owner@example.com", "a phone");
+    eva.deviceLogins.answer(request.id, "allow");
+    const answer = eva.deviceLogins.check(request.id, "owner@example.com");
+    const device = { cookie: `eva_device=${answer.state === "allowed" ? answer.token : ""}` };
+    const deviceHeaders = { ...device, "content-type": "application/json" };
+    const put = await call("/api/secrets/googleOauthClientId", {
+      method: "PUT",
+      body: { value: "other-client" },
+      headers: deviceHeaders,
+    });
+    expect(put.status).toBe(403);
+    for (const path of ["/api/google/login", "/api/google/login/finish"])
+      expect((await call(path, { method: "POST", body: { address: "x" }, headers: deviceHeaders })).status).toBe(403);
+  });
+
+  test("secrets: write-only, only the ones that the page may change", async () => {
     const saved = await call("/api/secrets/githubToken", { method: "PUT", body: { value: "ghp_example-token-value" } });
     expect(await saved.text()).not.toContain("example-token-value");
     expect(saved.status).toBe(200);
@@ -656,6 +691,16 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(204);
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(404);
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
+  });
+
+  test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {
+    expect(await json(await call("/api/chat-names"))).toEqual({ rules: "" });
+    const saved = await call("/api/chat-names", { method: "PUT", body: { rules: "Lead with an emoji." } });
+    expect(await json(saved)).toEqual({ rules: "Lead with an emoji." });
+    expect(await json(await call("/api/chat-names"))).toEqual({ rules: "Lead with an emoji." });
+    expect((await call("/api/chat-names", { method: "PUT", body: { rules: "x".repeat(5_000) } })).status).toBe(400);
+    expect((await call("/api/chat-names", { method: "PUT", body: {} })).status).toBe(400);
+    expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
@@ -738,6 +783,8 @@ describe("without a vault", () => {
     try {
       const response = await fetch(`${bareApi.url}/api/schedules`, { headers: headers() });
       expect(response.status).toBe(409);
+      const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
+      expect(chatNames.status).toBe(409);
     } finally {
       bareApi.stop();
     }

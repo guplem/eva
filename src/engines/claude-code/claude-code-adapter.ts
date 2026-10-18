@@ -114,7 +114,15 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
       break;
   }
 
-  if (request.mode === "assistant") {
+  if (request.mode === "model-call") {
+    // The call's text can come from other people, such as a chat message, so the model gets no tool to act with.
+    options.systemPrompt = request.appendSystemPrompt ?? "";
+    options.tools = [];
+    options.settingSources = [];
+    options.persistSession = false;
+    options.strictMcpConfig = true;
+    options.settings = { disableAllHooks: true, autoMemoryEnabled: false };
+  } else if (request.mode === "assistant") {
     // Spike S4 (#55): the coding prompt made the assistant save facts to Claude Code's own memory
     // folder, not the vault, and miss notes. Eva's text alone did better. `claude` still adds its identity line.
     options.systemPrompt = request.appendSystemPrompt ?? { type: "preset", preset: "claude_code" };
@@ -241,6 +249,8 @@ async function decidePermission(
   toolName: string,
   input: Record<string, unknown>,
 ): Promise<ApprovalAnswer> {
+  // A model call has no tools; a tool that still appears gets no question, because nobody waits for one.
+  if (request.mode === "model-call") return "deny";
   const summary = summarizeToolCall(toolName, input);
   if (request.mode === "project" || reachesOtherPeople(toolName, input)) {
     return request.requestApproval({ requestId: "", toolName, summary });

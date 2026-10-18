@@ -108,6 +108,16 @@ describe("doctor and setup", () => {
     expect(host.commands.some((command) => command[0] === "git")).toBe(true);
   });
 
+  test("doctor shows the Google state, offline when a part is missing", async () => {
+    const host = fakeHost();
+    expect(await run(host, "doctor")).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("off     Google: not set up.");
+    saveSecrets(paths, { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" });
+    const withClient = fakeHost();
+    expect(await run(withClient, "doctor")).toBe(exitCodes.clean);
+    expect(printed(withClient)).toContain("failed  Google: No Google account is logged in.");
+  });
+
   test("doctor fails when a required tool is missing", async () => {
     const host = fakeHost({ runner: scriptedRunner([], () => ({ exitCode: 1 })) });
     expect(await run(host, "doctor")).toBe(exitCodes.crash);

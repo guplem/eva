@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionManager, type TurnPreparer } from "../../../../src/core/sessions/session-manager.ts";
+import {
+  SessionManager,
+  type FirstTurn,
+  type SessionManagerOptions,
+  type TurnPreparer,
+} from "../../../../src/core/sessions/session-manager.ts";
 import { SessionStore } from "../../../../src/core/sessions/session-store.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -29,7 +34,12 @@ const preparer: TurnPreparer = {
 
 function createManager(
   engine: FakeEngine,
-  overrides: { approvalTimeoutMs?: number; redactor?: Redactor; turnTimeoutMs?: number } = {},
+  overrides: {
+    approvalTimeoutMs?: number;
+    redactor?: Redactor;
+    turnTimeoutMs?: number;
+    nameChat?: SessionManagerOptions["nameChat"];
+  } = {},
 ): SessionManager {
   let nextId = 0;
   const manager = new SessionManager({
@@ -45,6 +55,7 @@ function createManager(
     gatherMs: 5,
     approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
+    ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
   });
   manager.subscribe((event) => events.push(event));
   return manager;
@@ -279,6 +290,133 @@ describe("models (lesson 41)", () => {
     await manager.send(sessionId, "hi");
     expect(engine.requests[0]?.model).toBe("haiku");
     expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+  });
+});
+
+/** A namer that a test answers by hand, so it controls when the name arrives. */
+function handNamer(): {
+  readonly nameChat: (turn: FirstTurn) => Promise<string | null>;
+  readonly asked: FirstTurn[];
+  answer(name: string | null): Promise<void>;
+} {
+  const asked: FirstTurn[] = [];
+  const waiting: ((name: string | null) => void)[] = [];
+  return {
+    asked,
+    nameChat: (turn) => {
+      asked.push(turn);
+      return new Promise((resolve) => waiting.push(resolve));
+    },
+    async answer(name) {
+      waiting.shift()?.(name);
+      // The manager applies the name after the promise settles.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
+  };
+}
+
+describe("chat names from a model (issue 50)", () => {
+  test("the first turn asks for a name, and the name replaces the first-line title", async () => {
+    const namer = handNamer();
+    const manager = createManager(new FakeEngine(), { nameChat: namer.nameChat });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Plan a trip to Rome\nwith the kids");
+    // The turn never waits for the name.
+    expect(manager.get(sessionId).title).toBe("Plan a trip to Rome");
+    expect(namer.asked).toEqual([
+      {
+        engine: "claude-code",
+        model: "default",
+        userText: "Plan a trip to Rome\nwith the kids",
+        answerText: "answer 1",
+      },
+    ]);
+    await namer.answer("🇮🇹 Rome trip");
+    expect(manager.get(sessionId).title).toBe("🇮🇹 Rome trip");
+    expect(events.filter((event) => event.kind === "session_renamed")).toMatchObject([
+      { kind: "session_renamed", title: "🇮🇹 Rome trip", automatic: true },
+    ]);
+  });
+
+  test("a chat that the person renamed while the model thought keeps the person's title", async () => {
+    const namer = handNamer();
+    const manager = createManager(new FakeEngine(), { nameChat: namer.nameChat });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Plan a trip to Rome");
+    manager.rename(sessionId, "Holidays");
+    await namer.answer("Rome trip");
+    expect(manager.get(sessionId).title).toBe("Holidays");
+  });
+
+  test("a chat whose first turn failed keeps the default title and asks no model, as before", async () => {
+    const namer = handNamer();
+    const failing = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1 ? [{ kind: "turn_failed", reason: "no" }] : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(failing, { nameChat: namer.nameChat });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "first try");
+    // The failed turn stays in the record, so the later answer is no first turn and names nothing.
+    await manager.send(sessionId, "second try");
+    expect(manager.get(sessionId).title).toBe("New chat");
+    expect(namer.asked).toHaveLength(0);
+  });
+
+  test("a fixed title, an empty name, a later turn and a fork ask no model again", async () => {
+    const namer = handNamer();
+    const named = createManager(new FakeEngine(), { nameChat: namer.nameChat });
+    const scheduled = named.createSession({
+      mode: "assistant",
+      engine: "claude-code",
+      model: "default",
+      startFolder: "/vault",
+      source: "schedule",
+      title: "Morning",
+    }).id;
+    await named.send(scheduled, "Good morning");
+    expect(namer.asked).toHaveLength(0);
+
+    const chat = newAssistantSession(named);
+    await named.send(chat, "Hello there");
+    await namer.answer(null);
+    expect(named.get(chat).title).toBe("Hello there");
+    await named.send(chat, "And more");
+    const first = named.get(chat).turns[0]?.lastMessageId ?? "";
+    await named.send(named.fork(chat, first).id, "Another way");
+    expect(namer.asked).toHaveLength(1);
+  });
+
+  test("a namer that fails, or a name that cleans to nothing, keeps the first-line title and leaks no rejection", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const failing = createManager(new FakeEngine(), { nameChat: () => Promise.reject(new Error("boom")) });
+      const first = newAssistantSession(failing);
+      await failing.send(first, "Hello there");
+      // A blank name fails the title check inside the background step.
+      const blank = createManager(new FakeEngine(), { nameChat: () => Promise.resolve(" \n ") });
+      const second = newAssistantSession(blank);
+      await blank.send(second, "Good morning");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(failing.get(first).title).toBe("Hello there");
+      expect(blank.get(second).title).toBe("Good morning");
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
+
+  test("a chat deleted before its name arrives stays deleted", async () => {
+    const namer = handNamer();
+    const manager = createManager(new FakeEngine(), { nameChat: namer.nameChat });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Hello there");
+    manager.delete(sessionId);
+    await namer.answer("Greeting");
+    expect(manager.list()).toEqual([]);
   });
 });
 

@@ -42,8 +42,11 @@ export type EngineEventPayload =
       readonly timedOut: boolean;
     }
   | { readonly kind: "history_lost" }
-  /** The person renamed the chat; front ends show the new title, and Telegram renames the chat's topic. */
-  | { readonly kind: "session_renamed"; readonly title: string }
+  /**
+   * The chat has a new title; front ends show it, and Telegram renames the chat's topic.
+   * `automatic`: a model named the chat, not the person (issue 50). An older event has no field.
+   */
+  | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
   | { readonly kind: "notice"; readonly text: string }
   | {
       readonly kind: "turn_finished";

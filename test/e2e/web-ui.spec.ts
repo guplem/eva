@@ -413,6 +413,28 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
+test("Settings: the rules for chat names save with Save and load again (issue 50)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  try {
+    await page.getByLabel("Rules for chat names").fill("Lead every name with an emoji.");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("Rules for chat names")).toHaveValue("Lead every name with an emoji.");
+  } finally {
+    // Rules would make every later first message start a model call, so later tests start without them.
+    await page.evaluate(() =>
+      fetch("/api/chat-names", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rules: "" }),
+      }),
+    );
+  }
+});
+
 test("Settings: Use Eva from any device installs Tailscale, then shares the address", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
@@ -1100,7 +1122,7 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.getByLabel("GitHub token", { exact: true })).toBeVisible();
     const heights = await page
-      .locator("button:visible, select:visible")
+      .locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -1207,4 +1229,33 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("status")).toHaveText("Saved.");
   await openList(page);
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
+});
+
+test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
+  for (const [label, value] of [
+    ["Google client id", "client-id.apps.googleusercontent.com"],
+    ["Google client secret", "GOCSPX-e2e-client-secret-value"],
+  ] as const) {
+    await page.getByLabel(label, { exact: true }).fill(value);
+    await page.getByRole("button", { name: `Save the ${label}` }).click();
+    await expect(page.getByText(`A ${label} is saved.`)).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Start the Google login" }).click();
+  const consent = (await page.getByRole("link", { name: "Open Google's page" }).getAttribute("href")) ?? "";
+  // The fake Google allows at once: the browser lands on the address that does not load.
+  const state = new URL(consent).searchParams.get("state") ?? "";
+  await page
+    .getByLabel("The address after the Google login")
+    .fill(`http://127.0.0.1/eva-google-login?state=${state}&code=e2e-code&scope=openid`);
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Logged in to Google as person@example.com." }),
+  ).toBeVisible();
+  await expect(page.getByText("Account: person@example.com")).toBeVisible();
+  const googleRow = page.locator(".check-row", { hasText: "Test Google" });
+  await googleRow.getByRole("button", { name: "Test" }).click();
+  await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
 });

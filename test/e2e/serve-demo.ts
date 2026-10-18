@@ -9,10 +9,12 @@ import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
-import { systemProcessRunner } from "../../src/shared/process-runner.ts";
+import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
+import { fakeGoogle } from "../support/fake-google.ts";
+import { googleScopes } from "../../src/core/google/google-scopes.ts";
 import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 
@@ -97,6 +99,18 @@ const demoRemoteAccess = tailscale.watcher({
 });
 await demoRemoteAccess.refresh();
 
+// The Google Test runs `uvx --version`, and a CI machine has no uv.
+const demoRunner: ProcessRunner = {
+  run: (command, options) =>
+    command[0] === "uvx"
+      ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
+      : systemProcessRunner.run(command, options),
+};
+
+// Google allows every scope that Eva asks for, so the Test passes after the login.
+const google = fakeGoogle();
+google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+
 const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
 const eva = new Eva({
   remoteAccess: demoRemoteAccess,
@@ -104,11 +118,12 @@ const eva = new Eva({
   config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
   secrets: { localApiToken: demoToken },
   engines: [engine],
-  runner: systemProcessRunner,
+  runner: demoRunner,
   processEnvironment: gitEnvironment,
   now: () => new Date(),
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
+  googleBaseUrl: google.url,
   // The reference has a skill that the project's repository lacks, and auto-merge is off there.
   githubRequest: fakeGithub({
     [evaRepository]: {

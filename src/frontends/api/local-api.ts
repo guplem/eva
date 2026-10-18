@@ -79,9 +79,13 @@ const projectDetailsSchema = z.object({
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
+/** The address that Google sent the browser to, or its code alone. */
+const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
+/** The rules go to a model with each first turn, so they stay short. */
+const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
@@ -126,8 +130,13 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
-      // and a vault sync or pick waits for git's network steps. Each ends at its own timeout.
-      if (url.pathname.startsWith("/api/checks/") || url.pathname.startsWith("/api/vault/"))
+      // a vault sync or pick waits for git's network steps, and the Google login waits for Google.
+      // Each ends at its own timeout.
+      if (
+        url.pathname.startsWith("/api/checks/") ||
+        url.pathname.startsWith("/api/vault/") ||
+        url.pathname.startsWith("/api/google/")
+      )
         bunServer.timeout(request, 0);
       try {
         return await route(request, url, options.eva, hasValidToken(request, options.token));
@@ -390,6 +399,13 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value, options));
     if (method === "DELETE") return json(eva.saveSecret(name, null, options));
   }
+  if (method === "POST" && url.pathname.startsWith("/api/google/")) {
+    // The login decides whose Google account Eva uses, so a lost phone with a device login must not run it.
+    if (!tokenLogin) return json({ error: "Only a login with the token can log in to Google." }, 403);
+    if (url.pathname === "/api/google/login") return json(eva.startGoogleLogin());
+    if (url.pathname === "/api/google/login/finish")
+      return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
+  }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (url.pathname === "/api/vault/conflicts") {
@@ -442,12 +458,26 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     if (name === undefined) return json({ error: "No such check." }, 404);
     return json(await eva.runCheck(name));
   }
+  if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
     return new Response(null, { status: 204 });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The person's rules for chat names, in `.eva/chat-names.md`: read or replace (issue 50). */
+async function chatNamesRoute(request: Request, method: string, eva: Eva): Promise<Response> {
+  const chatNames = eva.chatNames;
+  if (chatNames === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET") return json({ rules: chatNames.rules() });
+  if (method === "PUT") {
+    const { rules } = chatNameRulesSchema.parse(await request.json());
+    chatNames.saveRules(rules);
+    return json({ rules: chatNames.rules() });
   }
   return json({ error: "Not found." }, 404);
 }

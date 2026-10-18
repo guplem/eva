@@ -81,6 +81,9 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
   }
   yield { kind: "task_changed", taskId: `task-${String(turnNumber)}`, description: "Search the notes", state: "done" };
   if (lastLine.includes("limit")) {
+    // The real engine sends the limit after the first answer text.
+    const [text, end] = FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);
+    if (text !== undefined) yield text;
     yield {
       kind: "usage_limit",
       status: "warning",
@@ -88,6 +91,8 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
       usedPercent: 86,
       resetsAt: new Date(Date.now() + 3_600_000).toISOString(),
     };
+    if (end !== undefined) yield end;
+    return;
   }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");

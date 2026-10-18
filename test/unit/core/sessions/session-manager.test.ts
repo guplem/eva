@@ -253,12 +253,12 @@ describe("renames (issue 46)", () => {
     expect(manager.rename(sessionId, `${"x".repeat(58)}🙂🙂🙂`).title).toBe(`${"x".repeat(58)}🙂…`);
   });
 
-  test("the same title again changes nothing and tells no front end", () => {
+  test("the same title again tells the front ends again, so Telegram can retry a refused topic rename", () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);
     manager.rename(sessionId, "Trip plans");
     expect(manager.rename(sessionId, " Trip plans ").title).toBe("Trip plans");
-    expect(events.filter((event) => event.kind === "session_renamed")).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "session_renamed")).toHaveLength(2);
   });
 
   test("an empty title is refused", () => {

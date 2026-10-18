@@ -399,6 +399,24 @@ describe("topics", () => {
     expect(String(notice?.params["text"])).toContain("not enough rights");
   });
 
+  test("the same /rename again retries a refused topic, and a topic that has the name already is fine", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.failNext("editForumTopic", 400, "Bad Request: not enough rights to manage topics");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("did not rename this topic")));
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 2);
+
+    telegram.failNext("editForumTopic", 400, "Bad Request: TOPIC_NOT_MODIFIED");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().filter((text) => text.includes("now called")).length === 3);
+    await bot.pollOnce();
+    expect(telegram.sentTexts().filter((text) => text.includes("did not rename this topic"))).toHaveLength(1);
+    expect(logs.filter((entry) => entry.message === "A Telegram call failed.")).toHaveLength(1);
+  });
+
   test("/rename with no title says how to use it, and with no chat says so", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/rename");

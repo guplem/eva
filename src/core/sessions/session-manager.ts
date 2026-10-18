@@ -185,8 +185,6 @@ export class SessionManager {
     const session = this.get(sessionId);
     const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
     if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
-    // Telegram refuses to give a topic the name it already has.
-    if (cleaned === session.title) return session;
     const updated = { ...session, title: cleaned };
     this.options.store.save(updated);
     this.emit(sessionId, { kind: "session_renamed", title: cleaned });

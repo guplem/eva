@@ -903,6 +903,8 @@ export class TelegramBot {
     try {
       await this.callWithRetry("editForumTopic", { chat_id: chatId, message_thread_id: topicId, name: title });
     } catch (error) {
+      // The same title again is how the person retries a refused rename, so a topic with that name is fine.
+      if (isTopicNotModified(error)) return;
       // The chat already says that the rename worked, so a topic that keeps its old name must say why.
       this.logFailedCall("editForumTopic", error);
       await this.send(chatId, topicId, `Telegram did not rename this topic: ${this.describeError(error)}`);
@@ -1133,6 +1135,11 @@ function sendRetryMs(error: unknown, retry: number): number | null {
  */
 function isHtmlRefused(error: unknown): boolean {
   return error instanceof TelegramError && error.code === 400 && /can't parse entities/i.test(error.description);
+}
+
+/** True when the topic already has the name. As above, the description is Telegram's only signal. */
+function isTopicNotModified(error: unknown): boolean {
+  return error instanceof TelegramError && error.code === 400 && error.description.includes("TOPIC_NOT_MODIFIED");
 }
 
 /** A conflict is a problem at once; a failing poll only after 15 minutes. */

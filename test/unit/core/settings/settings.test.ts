@@ -56,7 +56,7 @@ describe("where each setting lives", () => {
       vaultPath: vault,
       port: 7421,
       timeZone: "Europe/Madrid",
-      updates: { frequency: "weekly" as const },
+      updates: { frequency: "weekly" as const, install: "minor" as const },
     };
     saveSettings(paths, config);
     const machine = readJson(paths.config);
@@ -68,6 +68,14 @@ describe("where each setting lives", () => {
     expect(shared).not.toHaveProperty("port");
     expect(shared).not.toHaveProperty("vaultPath");
     expect(loadSettings(paths).config).toEqual(config);
+  });
+
+  test("the update policy lives in the vault, and an older vault file without it gets minor", () => {
+    expect(defaultConfig.updates.install).toBe("minor");
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, updates: { frequency: "daily", install: "patch" } });
+    expect(readJson(vaultSettingsPath(vault))).toMatchObject({ updates: { install: "patch" } });
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ updates: { frequency: "weekly" } }));
+    expect(loadSettings(paths).config.updates).toEqual({ frequency: "weekly", install: "minor" });
   });
 
   test("the vault wins over config.json, and a machine key in the vault file is ignored", () => {

@@ -266,7 +266,7 @@ describe("with no Eva running", () => {
     });
     const host = fakeHost({ runner });
     expect(await run(host, "update", "--check")).toBe(exitCodes.clean);
-    expect(printed(host)).toContain("Eva abc1234 is the latest version.");
+    expect(printed(host)).toContain("Updates: abc1234 is the latest; checks daily");
   });
 });
 

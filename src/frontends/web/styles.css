@@ -946,6 +946,25 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.update-warning {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.release-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+/* A long summary must never push the buttons off a phone screen. */
+.dialog.update-version {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
 .edit-list {
   display: flex;
   flex-direction: column;

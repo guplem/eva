@@ -16,6 +16,7 @@ import {
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
+import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
   { value: "null", label: "Only before each Assistant turn" },
@@ -30,6 +31,12 @@ const updateChoices: readonly { value: PublicSettings["config"]["updates"]["freq
   { value: "hourly", label: "Every hour" },
   { value: "daily", label: "Every day" },
   { value: "weekly", label: "Every week" },
+];
+
+const installChoices: readonly { value: PublicSettings["config"]["updates"]["install"]; label: string }[] = [
+  { value: "patch", label: "Fixes only" },
+  { value: "minor", label: "Fixes and new features" },
+  { value: "major", label: "Every release, even major ones" },
 ];
 
 const engineChoices: readonly { value: PublicSettings["config"]["engines"]["default"]; label: string }[] = [
@@ -60,6 +67,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [notice, setNotice] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [pickingVersion, setPickingVersion] = useState(false);
   const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
   const [syncing, setSyncing] = useState(false);
   /** Null when no claude program was found. */
@@ -157,10 +165,12 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     saveAppearance(next);
   };
 
-  const updateNow = async (): Promise<void> => {
-    setUpdateNote("Checking…");
+  /** Installs `version`, or what the update policy allows when it is undefined. */
+  const updateNow = async (version?: string): Promise<void> => {
+    setPickingVersion(false);
+    setUpdateNote(version === undefined ? "Checking…" : `Installing ${version}…`);
     try {
-      const status = await api.updateNow();
+      const status = await api.updateNow(version);
       setUpdate(status);
       setUpdateNote(null);
       if (status.phase === "restarting") {
@@ -175,6 +185,18 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               : "Eva did not answer after the update. Check her log.",
         );
       }
+    } catch (error) {
+      setUpdateNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** Checks first, so the dialog lists the releases of now. */
+  const pickVersion = async (): Promise<void> => {
+    setUpdateNote("Checking…");
+    try {
+      setUpdate(await api.checkForUpdate());
+      setUpdateNote(null);
+      setPickingVersion(true);
     } catch (error) {
       setUpdateNote(error instanceof Error ? error.message : String(error));
     }
@@ -449,11 +471,46 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
                 ))}
               </select>
             </label>
+          </div>
+          <div className="check-row">
+            <label style={{ flex: 1 }}>
+              Eva installs by herself
+              <select
+                value={config.updates.install}
+                onChange={(event) => void saveNow({ updates: { install: event.target.value } })}
+              >
+                {installChoices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {config.updates.install === "major" && (
+            <div className="update-warning">
+              A major update can break things that work today. With this choice, Eva installs it by herself.
+            </div>
+          )}
+          <div className="check-row">
             <button disabled={update === null} onClick={() => void updateNow()}>
-              Update now
+              Check and install
+            </button>
+            <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
+              Update to a version…
             </button>
           </div>
+          {update?.kind === "source" && (
+            <div className="hint">This Eva runs from a git checkout, so she follows the main branch.</div>
+          )}
           {updateNote !== null && <div role="status">{updateNote}</div>}
+          {pickingVersion && update !== null && (
+            <UpdateVersionDialog
+              update={update}
+              onInstall={(version) => void updateNow(version)}
+              onClose={() => setPickingVersion(false)}
+            />
+          )}
           <div className="check-row">
             <span style={{ flex: 1 }} role="status">
               {engineUpdate === "loading"

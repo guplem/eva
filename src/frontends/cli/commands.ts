@@ -71,7 +71,7 @@ export async function runCli(argv: readonly string[], host: CliHost, wiring: Cli
     case "supervise":
       return supervise(host, paths, wiring.startLongProcess);
     case "update":
-      return update(host, paths, command.checkOnly);
+      return update(host, paths, command.checkOnly, command.version);
     case "sync":
       return sync(host, paths);
     case "hub":

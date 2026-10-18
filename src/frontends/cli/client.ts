@@ -119,21 +119,60 @@ export async function requestHub(options: ClientOptions): Promise<string> {
   return `${status.machine} is now the hub. ${describeSync(status.vaultSync)}`;
 }
 
+/** The warning before an update across a major version, in every front end. */
+export const majorUpdateWarning =
+  "This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
+
 /** One line about Eva's version and her updates. */
 export function describeUpdate(update: UpdateStatus): string {
   const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
   if (update.lastError !== null)
     return `Updates: ${automatic}; the last ${update.failedStep ?? "check"} failed: ${update.lastError}`;
-  if (update.phase === "waiting_for_idle")
-    return `Updates: ${update.latest ?? "?"} installs when the running chats end`;
-  if (update.phase === "updating") return `Updates: installing ${update.latest ?? "?"}`;
+  const next = update.target ?? update.latest ?? "?";
+  if (update.phase === "waiting_for_idle") return `Updates: ${next} installs when the running chats end`;
+  if (update.phase === "updating") return `Updates: installing ${next}`;
   // The restart waits for the running chats, which can take hours (lesson 92).
   if (update.phase === "restarting")
     return `Updates: ${update.latest ?? "?"} is installed; Eva restarts when no chat runs`;
   if (update.current === null) return `Updates: ${automatic}; not checked yet`;
+  const heldBack =
+    update.heldBack === null ? "" : `; ${update.heldBack} is held back by the update policy (${update.install})`;
   return update.available
-    ? `Updates: ${update.latest ?? "?"} is available (this is ${update.current}); ${automatic}`
-    : `Updates: ${update.current} is the latest; ${automatic}`;
+    ? `Updates: ${next} is available (this is ${update.current})${heldBack}; ${automatic}`
+    : heldBack === ""
+      ? `Updates: ${update.current} is the latest; ${automatic}`
+      : `Updates: this is ${update.current}${heldBack}; ${automatic}`;
+}
+
+/** In a terminal, a held-back version comes with the command that installs it. */
+export function describeUpdateWithHint(update: UpdateStatus): string {
+  const line = describeUpdate(update);
+  if (update.heldBack === null || update.phase !== "idle") return line;
+  return `${line}\nRun \`eva update ${update.heldBack}\` to install it.`;
+}
+
+/**
+ * What the jump to a chosen version brings, with the major-update warning first. Null when the
+ * version is not a newer release.
+ */
+export function describeRelease(update: UpdateStatus, version: string): string | null {
+  const release = update.releases.find((each) => each.version === version);
+  if (release === undefined) return null;
+  const warning = release.level === "major" ? `\n\n${majorUpdateWarning}` : "";
+  const moveOn = policyMovesOn(update, version);
+  return `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}${moveOn === null ? "" : `\n\n${moveOn}`}`;
+}
+
+/**
+ * A version below the policy's pick does not last: the first check after the restart installs
+ * the pick. Null when the chosen version is at or above it.
+ */
+export function policyMovesOn(update: UpdateStatus, version: string): string | null {
+  // The releases come newest first, so a target before the chosen one is newer.
+  const index = update.releases.findIndex((each) => each.version === version);
+  const targetIndex = update.releases.findIndex((each) => each.version === update.target);
+  if (index === -1 || targetIndex === -1 || targetIndex >= index) return null;
+  return `The update policy (${update.install}) installs ${update.target ?? "?"} after the restart. To stay on ${version}, change the policy first.`;
 }
 
 /** One line about the engine update of the settings page. */
@@ -153,9 +192,21 @@ export function describeSync(state: VaultSyncState): string {
   return `Vault sync: ${state.status}${state.lastError === null ? "" : ` (${state.lastError})`}`;
 }
 
-/** `eva update` and `eva update --check` while Eva runs: the running Eva does the work. */
-export async function requestUpdate(options: ClientOptions, checkOnly: boolean): Promise<string> {
-  return describeUpdate(await postJson<UpdateStatus>(options, checkOnly ? "/api/update/check" : "/api/update", {}));
+/**
+ * `eva update [version]` and `eva update --check` while Eva runs: the running Eva does the work.
+ * Without a version, she installs what the update policy allows. With one, the text first says
+ * what the jump brings.
+ */
+export async function requestUpdate(
+  options: ClientOptions,
+  checkOnly: boolean,
+  version: string | null = null,
+): Promise<string> {
+  const checked = await postJson<UpdateStatus>(options, "/api/update/check", {});
+  if (checkOnly) return describeUpdateWithHint(checked);
+  const release = version === null ? null : describeRelease(checked, version);
+  const update = await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version });
+  return release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`;
 }
 
 /** `eva sync` while Eva runs. */

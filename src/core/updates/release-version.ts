@@ -63,25 +63,28 @@ export function nextReleaseVersion(inputs: NextReleaseInputs): string | null {
   if (lastVersion === null || isNewerVersion(packageVersion, lastVersion)) return packageVersion;
   const changes = inputs.commits.map(commitChange);
   const [major = 0, minor = 0, patch = 0] = lastVersion.split(".").map(Number);
-  // Before 1.0, semantic versioning lets a breaking change raise only the middle number.
-  if (changes.includes("breaking") && major > 0) return `${String(major + 1)}.0.0`;
-  if (changes.includes("breaking") || changes.includes("feature")) return `${String(major)}.${String(minor + 1)}.0`;
+  // Even before 1.0, a break raises the major number: the update policy reads only the numbers (issue 97).
+  if (changes.includes("breaking")) return `${String(major + 1)}.0.0`;
+  if (changes.includes("feature")) return `${String(major)}.${String(minor + 1)}.0`;
   if (changes.includes("fix")) return `${String(major)}.${String(minor)}.${String(patch + 1)}`;
   return null;
 }
 
-const sections: readonly { change: ReleaseChange; title: string }[] = [
+/** The sections of the release notes, in the order that a reader needs them. */
+export const releaseNoteSections: readonly { change: ReleaseChange; title: string }[] = [
   { change: "breaking", title: "Breaking changes" },
   { change: "feature", title: "New features" },
   { change: "fix", title: "Fixes and other changes" },
 ];
 
+export const noChangeNotes = "No change to the executable.";
+
 /** The release notes: each commit that changes the executable, under the size of its change. */
 export function releaseNotes(commits: readonly ReleaseCommit[]): string {
   const parts: string[] = [];
-  for (const { change, title } of sections) {
+  for (const { change, title } of releaseNoteSections) {
     const subjects = commits.filter((commit) => commitChange(commit) === change).map((commit) => commit.subject);
     if (subjects.length > 0) parts.push(`## ${title}\n\n${subjects.map((subject) => `- ${subject}`).join("\n")}\n`);
   }
-  return parts.length === 0 ? "No change to the executable.\n" : parts.join("\n");
+  return parts.length === 0 ? `${noChangeNotes}\n` : parts.join("\n");
 }

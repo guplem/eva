@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
+import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
-import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
-import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const token = "local-api-token-for-tests";
@@ -781,8 +781,8 @@ describe("an Eva with an update channel", () => {
       basePrompt: "Base.",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -917,6 +917,63 @@ describe("problems, logs and restart", () => {
     } finally {
       restartingApi.stop();
       restarting.stop();
+    }
+  });
+});
+
+describe("an Eva with releases to pick", () => {
+  test("the API installs a chosen newer version, and refuses an unknown one", async () => {
+    const applied: (string | undefined)[] = [];
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({
+            current: "0.2.0",
+            latest: "1.0.0",
+            available: true,
+            releases: [
+              { version: "1.0.0", notes: "" },
+              { version: "0.3.0", notes: "" },
+            ],
+          }),
+        apply: (version) => {
+          applied.push(version);
+          return Promise.resolve({ current: "0.2.0", latest: version ?? "?", available: false, releases: [] });
+        },
+      },
+      restartForUpdate: () => undefined,
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const post = (body: unknown): Promise<Response> =>
+        fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+      expect((await post({ version: "0.1.0" })).status).toBe(409);
+      // An older script posts no body at all: it still means "what the policy allows".
+      const empty = await fetch(`${updatingApi.url}/api/update/check`, { method: "POST", headers: headers() });
+      expect(empty.status).toBe(200);
+      expect((await post({ version: "not a version" })).status).toBe(400);
+      expect(await json<unknown>(await post({ version: "1.0.0" }))).toMatchObject({ phase: "restarting" });
+      // During the restart, an install with no body changes nothing.
+      expect((await fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers() })).status).toBe(200);
+      expect(applied).toEqual(["1.0.0"]);
+    } finally {
+      updatingApi.stop();
+      updating.stop();
     }
   });
 });

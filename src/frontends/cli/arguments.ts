@@ -8,7 +8,13 @@ export type CliCommand =
   | { readonly command: "status"; readonly home: string | undefined }
   | { readonly command: "help"; readonly home: string | undefined }
   | { readonly command: "version"; readonly home: string | undefined }
-  | { readonly command: "update"; readonly home: string | undefined; readonly checkOnly: boolean }
+  | {
+      readonly command: "update";
+      readonly home: string | undefined;
+      readonly checkOnly: boolean;
+      /** A newer version to install past the update policy, or null. */
+      readonly version: string | null;
+    }
   | { readonly command: "sync"; readonly home: string | undefined }
   | { readonly command: "hub"; readonly home: string | undefined }
   | { readonly command: "link"; readonly home: string | undefined }
@@ -56,7 +62,7 @@ Commands:
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
   service install   Start Eva by herself, and again after a crash (systemd on Linux, a logon task on Windows)
   supervise         Run Eva, and start her again after a crash (the Windows logon task runs this)
-  update            Install the latest version of Eva, then restart her
+  update [version]  Install what the update policy allows, or a newer version, then restart Eva
       --check                            only look for a newer version
   sync              Bring the vault's remote changes in, then save and push this machine's changes
   hub               Make this machine the hub, which runs Telegram and the schedules
@@ -108,7 +114,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "supervise":
       return { command: name, home };
     case "update":
-      return { command: "update", home, checkOnly: switchesSeen.has("--check") };
+      return updateCommand(home, switchesSeen.has("--check"), rest);
     case "settings":
       return settingsCommand(home, rest);
     case "projects":
@@ -153,4 +159,13 @@ function settingsCommand(home: string | undefined, rest: readonly string[]): Cli
 
 function usageError(message: string): CliCommand {
   return { command: "usage-error", message };
+}
+
+function updateCommand(home: string | undefined, checkOnly: boolean, rest: readonly string[]): CliCommand {
+  const [word, ...extra] = rest;
+  if (word === undefined) return { command: "update", home, checkOnly, version: null };
+  const version = word.replace(/^v/, "");
+  if (extra.length > 0 || !/^\d+\.\d+\.\d+$/.test(version))
+    return usageError("Use: eva update [version], such as 1.2.0");
+  return { command: "update", home, checkOnly, version };
 }

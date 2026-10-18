@@ -22,15 +22,13 @@ pre-push:
       run: bun run check:static
 
 # After a pull or a branch switch: install changed dependencies, and copy the skills for Claude Code.
+# A hook-level `files` command gets no `{1}`, so the script compares the commits itself.
 post-merge:
-  files: git diff --name-only ORIG_HEAD HEAD
-  commands: &after-update
-    install:
-      glob: "bun.lock"
-      run: bun install
-    skills:
-      run: bun run scripts/sync-skills.ts
+  commands:
+    after-update:
+      run: bun run scripts/after-update.ts ORIG_HEAD HEAD
 
 post-checkout:
-  files: git diff --name-only {1} {2}
-  commands: *after-update
+  commands:
+    after-update:
+      run: bun run scripts/after-update.ts {1} {2}

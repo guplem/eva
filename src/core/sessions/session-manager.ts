@@ -695,6 +695,7 @@ function redactPayload(
       return { ...payload, title: redactor.redact(payload.title) };
     case "tool_finished":
     case "history_lost":
+    case "usage_limit":
     case "approval_resolved":
     case "turn_finished":
     case "session_deleted":

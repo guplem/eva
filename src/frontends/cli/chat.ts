@@ -1,6 +1,7 @@
 /** `eva chat`: a conversation in the terminal, as a client of the local API. */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
+import { describeUsageLimit } from "../../shared/usage-limit.ts";
 
 export interface ChatOptions {
   readonly baseUrl: string;
@@ -142,6 +143,8 @@ export function describeEvent(event: SessionEvent): string | null {
       return `  (${event.text})\n`;
     case "history_lost":
       return "  (The earlier history of this chat is lost.)\n";
+    case "usage_limit":
+      return `  (${describeUsageLimit(event, new Date())})\n`;
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
     case "session_deleted":

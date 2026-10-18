@@ -141,3 +141,9 @@ export function matchFileStyle(edited: string, onDisk: string): string {
   const lines = edited.replace(/^\uFEFF/, "").replaceAll("\r\n", "\n");
   return bom + (onDisk.includes("\r\n") ? lines.replaceAll("\n", "\r\n") : lines);
 }
+
+/** A project's `AGENTS.md` as a front end edits it. */
+export interface ProjectFile {
+  readonly text: string;
+  readonly version: string;
+}

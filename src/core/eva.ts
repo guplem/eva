@@ -57,6 +57,14 @@ import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
+import {
+  applyProjectDetails,
+  checkProjectFile,
+  fileVersion,
+  matchFileStyle,
+  type ProjectDetails,
+  type ProjectFile,
+} from "./projects/project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./projects/repository-facts.ts";
 import {
   evaluateSetup,
@@ -736,6 +744,46 @@ export class Eva {
     return Promise.all(
       listClones(project.path).map((clone) => describeClone(clone, this.options.runner, this.gitEnvironment)),
     );
+  }
+
+  /** A project's `AGENTS.md` with its version, for the details editor. */
+  projectFile(projectId: string): ProjectFile {
+    const text = readTextTolerant(this.projectFilePath(projectId));
+    if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
+    return { text, version: fileVersion(text) };
+  }
+
+  /** Sets the status, tags, repositories and title. The idle sweep commits the change. */
+  saveProjectDetails(projectId: string, version: string, details: ProjectDetails): ProjectFile {
+    return this.changeProjectFile(projectId, version, (text) => applyProjectDetails(text, details));
+  }
+
+  /** Replaces the whole `AGENTS.md`, with the line endings of the file on disk. */
+  saveProjectFile(projectId: string, version: string, edited: string): ProjectFile {
+    return this.changeProjectFile(projectId, version, (text) => matchFileStyle(edited, text));
+  }
+
+  /**
+   * Reads, checks the version, changes and writes in one synchronous step, so no other save
+   * can come between the check and the write.
+   */
+  private changeProjectFile(projectId: string, version: string, change: (text: string) => string): ProjectFile {
+    const path = this.projectFilePath(projectId);
+    const current = this.projectFile(projectId);
+    if (current.version !== version) {
+      throw new EvaError("project_changed", "The project file changed since you opened it. Load it again.");
+    }
+    const text = change(current.text);
+    checkProjectFile(text);
+    if (text !== current.text) writeFileAtomic(path, text);
+    return { text, version: fileVersion(text) };
+  }
+
+  /** The path comes from the project list, never from the id, so an id cannot point outside it. */
+  private projectFilePath(projectId: string): string {
+    const project = this.projects().find((candidate) => candidate.id === projectId);
+    if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
+    return join(project.path, "AGENTS.md");
   }
 
   publicSettings(): PublicSettings {

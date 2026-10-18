@@ -540,6 +540,10 @@ textarea {
     min-height: 44px;
   }
 
+  .icon-button {
+    min-width: 44px;
+  }
+
   .tasks {
     display: none;
   }

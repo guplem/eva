@@ -197,6 +197,10 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await openList(page);
   await page.getByRole("button", { name: "Open schedules" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Schedules");
+  // The page belongs to Assistant mode, so the topbar shows the way back.
+  await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
+  // No sidebar shows here, so the list button would do nothing.
+  await expect(page.getByRole("button", { name: "Show the list" })).toHaveCount(0);
   await page.getByLabel(/^Id/).fill(id);
   await page.getByLabel("Name").fill(`Walk ${id}`);
   await page.getByLabel("Time (HH:MM)").fill("7:30");
@@ -209,6 +213,9 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await expect(row).toContainText("next:");
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
   await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "Assistant" }).click();
+  await openList(page);
+  await expect(page.getByRole("button", { name: "Open schedules" })).toBeVisible();
 });
 
 /** Starts a new Assistant chat and returns its session id. */
@@ -395,6 +402,9 @@ test.describe("on a phone", () => {
       .locator("button:visible, select:visible")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    // An icon button is narrow by nature, so its width needs a check too.
+    const iconBox = await page.getByRole("button", { name: "Open schedules" }).boundingBox();
+    expect(iconBox?.width ?? 0).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
   });

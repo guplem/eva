@@ -153,15 +153,22 @@ function EvaApp(): ReactElement {
     }
   };
   const approval = approvals[0];
+  const hasSidebar = screen === "assistant" || screen === "project";
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="menu-button" aria-label="Show the list" onClick={() => setSidebarOpen((open) => !open)}>
-          ☰
-        </button>
+        {hasSidebar && (
+          <button className="menu-button" aria-label="Show the list" onClick={() => setSidebarOpen((open) => !open)}>
+            ☰
+          </button>
+        )}
         <div className="mode-switch" role="group" aria-label="Mode">
-          <button aria-pressed={screen === "assistant"} onClick={() => setScreen("assistant")}>
+          {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}
+          <button
+            aria-pressed={screen === "assistant" || screen === "schedules"}
+            onClick={() => setScreen("assistant")}
+          >
             Assistant
           </button>
           <button aria-pressed={screen === "project"} onClick={() => setScreen("project")}>

@@ -1,4 +1,4 @@
-/** The Schedules page. It has its own page so that Settings keeps only the settings (issue #39). */
+/** The Schedules page. It has its own page so that Settings keeps only the settings. */
 import type { ReactElement } from "react";
 import { SchedulesPanel } from "./SchedulesPanel.tsx";
 

@@ -75,7 +75,7 @@ export function AssistantView({
           </button>
         </div>
         {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-          <span className="chip">No schedule has run yet. Add one with ⏰.</span>
+          <span className="chip">No schedule has run yet. Add one on the Schedules page (⏰).</span>
         )}
         <h2>Chats</h2>
         {chats.map((chat) => (

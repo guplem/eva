@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { googleSetupSteps } from "../../../../src/core/google/google-steps.ts";
 
 describe("googleSetupSteps", () => {
@@ -25,5 +27,18 @@ describe("googleSetupSteps", () => {
     const [, consent, client] = googleSetupSteps(["calendar"]);
     expect(consent?.text).toContain("In production");
     expect(client?.text).toContain("Desktop app");
+  });
+});
+
+describe("the Google steps in docs/guide/reference.md", () => {
+  test("give the same links as the Settings page, so a person can prepare Google before Eva runs", () => {
+    const reference = readFileSync(
+      fileURLToPath(new URL("../../../../docs/guide/reference.md", import.meta.url)),
+      "utf8",
+    );
+    const urls = googleSetupSteps(["calendar", "drive", "contacts", "tasks"]).flatMap((step) =>
+      step.links.map((link) => link.url),
+    );
+    expect(urls.filter((url) => !reference.includes(url))).toEqual([]);
   });
 });

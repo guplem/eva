@@ -219,7 +219,7 @@ Some features need one more program on Eva's computer. For example, the Google t
 eva doctor
 ```
 
-It lists each missing tool, the feature that needs it, and how to install it. [The optional features](reference.md#optional-features) tells how to turn on each feature.
+It lists each missing tool, the feature that needs it, and how to install it. [The optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
 
 ## A second person on the same computer
 

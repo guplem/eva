@@ -635,3 +635,29 @@ describe("VaultSync conflict picks and the secret scan", () => {
     expect(state.lastError).not.toContain("2.38");
   });
 });
+
+describe("VaultSync conflict second review fixes", () => {
+  test("the last pick holds when this machine edits the same note again before it", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    sandbox.write(vault, "AGENTS.md", "# Mine, edited again\n");
+    const result = await sync.resolve("AGENTS.md", "theirs");
+    expect(result.state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+    expect(sandbox.git(sandbox.remote, "log", "--format=%s", "main")).toContain("eva: autosave (1 file)");
+  });
+
+  test("a pull never merges with an edit that is not committed, so it raises no false error", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Undone\n");
+    sandbox.git(vault, "commit", "-q", "-am", "edit");
+    sandbox.write(vault, "AGENTS.md", "# Vault\n");
+    sandbox.git(vault, "commit", "-q", "-am", "undo");
+    sandbox.write(vault, "AGENTS.md", "# A draft here\n");
+    const sync = createSync(vault);
+    expect((await sync.pull()).status).not.toBe("error");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# A draft here\n");
+  });
+});

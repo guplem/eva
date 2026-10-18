@@ -108,7 +108,7 @@ export class VaultSync {
   private queue: Promise<unknown>;
   private state: VaultSyncState;
   /**
-   * The picks of a committed conflict, by path, with the versions that the person saw, until
+   * The picks of a committed conflict, by path, with the versions at the time of the pick, until
    * every note has one. Memory is enough: a restart loses only these picks, and git still holds
    * every version.
    */
@@ -137,7 +137,7 @@ export class VaultSync {
       if (await this.hasUnpushedMerge(branch)) return this.state;
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0) return this.update({ status: "offline", lastError: "Could not reach the remote." });
-      await this.rebaseOnto(branch);
+      await this.rebaseOnto(branch, { canMerge: false });
       return this.state;
     });
   }
@@ -206,14 +206,16 @@ export class VaultSync {
       if ((await this.resolveUncommitted(path, choice)) && unmerged.length === 1) await this.commitAndPush(branch);
       return true;
     }
+    // The edits go into a commit first: the pick then binds to the version that the merge uses,
+    // and the fast-forward never meets an edit.
+    if (!(await this.commitChanges(entries))) return false;
     const plan = await this.mergePlan(branch);
     const conflicted = plan?.paths.find((entry) => entry.path === path);
     if (plan === null || conflicted === undefined) return false;
     this.picks.set(path, { choice, versions: conflicted });
     this.dropStalePicks(plan);
     if (plan.paths.some((entry) => !this.picks.has(entry.path))) return true;
-    // A fast-forward refuses to overwrite an edit, so the edits go into a commit first.
-    if ((await this.commitChanges(entries)) && (await this.mergeRemote(branch))) await this.pushWithRetry(branch);
+    if (await this.mergeRemote(branch)) await this.pushWithRetry(branch);
     return true;
   }
 
@@ -374,7 +376,7 @@ export class VaultSync {
     return { tree: tree.trim(), paths: [...byPath].map(([path, sides]) => ({ path, ...sides })) };
   }
 
-  /** A pick holds only for the versions that the person saw: a newer edit on either side asks again. */
+  /** A pick holds only for the versions at the time of the pick: a newer edit on either side asks again. */
   private dropStalePicks(plan: MergePlan): void {
     for (const [path, { versions }] of this.picks) {
       const current = plan.paths.find((entry) => entry.path === path);
@@ -508,7 +510,7 @@ export class VaultSync {
    * the files, or keeps the edits only in the stash. Eva reports both as a conflict, and never
    * drops the stash.
    */
-  private async rebaseOnto(branch: string): Promise<boolean> {
+  private async rebaseOnto(branch: string, { canMerge } = { canMerge: true }): Promise<boolean> {
     // A rebase drops a merge commit and replays its parents, so a resolved conflict would come back.
     if (await this.hasUnpushedMerge(branch)) return this.mergeRemote(branch);
     const stashesBefore = await this.stashCount();
@@ -525,7 +527,8 @@ export class VaultSync {
       if (plan === null) return false;
       // A rebase replays each commit, so it can stop on a change that a later commit undid.
       // The merge of the two tips is then clean, and the phone would have no note to pick.
-      if (plan.paths.length === 0) return this.mergeRemote(branch);
+      // A pull can hold an edit that is not committed, and a merge has no autostash: the next save merges.
+      if (plan.paths.length === 0) return canMerge && (await this.mergeRemote(branch));
       this.reportCommittedConflict(plan);
       return false;
     }

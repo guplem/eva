@@ -183,6 +183,8 @@ describe("mapSdkMessages", () => {
         lastMessageId: "9b600d45-5cf5-4963-b739-36803a54eb85",
         usage: { inputTokens: 18, outputTokens: 267, cacheReadTokens: 46_966, cacheWriteTokens: 3453 },
         costUsd: 0.013937600000000001,
+        // The context of the last call (8 + 25,062 + 295), not the sum over the turn's two calls.
+        contextTokens: 25_365,
       },
     ]);
   });

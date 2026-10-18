@@ -137,6 +137,7 @@ export class PiEngine implements EnginePort {
   ): AsyncIterable<EngineEventPayload> {
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     let costUsd = 0;
+    let contextTokens: number | null = null;
     let answers = 0;
     let pendingError: string | null = null;
     let end: TurnEnd | null = null;
@@ -154,6 +155,7 @@ export class PiEngine implements EnginePort {
         if (message === undefined) continue;
         if (message.role !== "assistant") continue;
         addUsage(usage, message);
+        contextTokens = contextOf(message);
         costUsd += message.usage?.cost?.total ?? 0;
         const text = (message.content ?? [])
           .filter((part) => part.type === "text")
@@ -204,6 +206,7 @@ export class PiEngine implements EnginePort {
         lastMessageId: lastAnswerEntryId(file),
         usage,
         costUsd,
+        contextTokens,
       };
     }
   }
@@ -283,6 +286,10 @@ function parseToolCall(message: unknown): { toolName: string; input: Record<stri
   } catch {
     return { toolName: "unknown", input: {} };
   }
+}
+
+function contextOf(message: PiMessage): number {
+  return (message.usage?.input ?? 0) + (message.usage?.cacheRead ?? 0) + (message.usage?.cacheWrite ?? 0);
 }
 
 function addUsage(usage: { -readonly [Key in keyof TurnUsage]: number }, message: PiMessage): void {

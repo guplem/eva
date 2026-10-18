@@ -38,6 +38,7 @@ export class FakeEngine implements EnginePort {
         lastMessageId: messageId,
         usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
+        contextTokens: 15,
       },
     ];
   }

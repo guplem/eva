@@ -47,8 +47,11 @@ export type EngineEventPayload =
       readonly kind: "turn_finished";
       readonly engineSessionId: string;
       readonly lastMessageId: string | null;
+      /** The sum over every model call of the turn. */
       readonly usage: TurnUsage;
       readonly costUsd: number | null;
+      /** The input tokens of the turn's last top-level model call: how full the context is now. */
+      readonly contextTokens: number | null;
     }
   | { readonly kind: "turn_failed"; readonly reason: string };
 

@@ -820,3 +820,27 @@ textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.edit-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The whole AGENTS.md: monospace, so YAML indents line up. */
+.project-file {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}

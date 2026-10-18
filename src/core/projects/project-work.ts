@@ -1,9 +1,12 @@
 /**
  * The projects of a running Eva: Project chats, the clone that each one gets, project work that
- * reports to an Assistant chat, and the setup report of a project's repositories.
+ * reports to an Assistant chat, the setup report of a project's repositories, and the edits of
+ * its `AGENTS.md`.
  */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
+import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
+import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { evaRepository } from "../../shared/version.ts";
 import type { SessionManager } from "../sessions/session-manager.ts";
@@ -19,6 +22,15 @@ import {
   type CloneOriginStore,
 } from "./clones.ts";
 import type { Project } from "./project-catalog.ts";
+import {
+  applyProjectDetails,
+  checkProjectFile,
+  fileVersion,
+  matchFileStyle,
+  projectFileOf,
+  type ProjectDetails,
+  type ProjectFile,
+} from "./project-file.ts";
 import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./repository-facts.ts";
 import { evaluateSetup, unreadableReport, type RepositoryFacts, type SetupReport } from "./repository-setup.ts";
 
@@ -192,6 +204,42 @@ export class ProjectWork {
     return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project, repositoryUrl));
   }
 
+  /** A project's `AGENTS.md` with its version, for the details editor. */
+  projectFile(projectId: string): ProjectFile {
+    return projectFileOf(projectText(this.projectFilePath(projectId), projectId));
+  }
+
+  /** Sets the status, tags, repositories and title. The idle sweep commits the change. */
+  saveProjectDetails(projectId: string, version: string, details: ProjectDetails): ProjectFile {
+    return this.changeProjectFile(projectId, version, (text) => applyProjectDetails(text, details));
+  }
+
+  /** Replaces the whole `AGENTS.md`, with the line endings of the file on disk. */
+  saveProjectFile(projectId: string, version: string, edited: string): ProjectFile {
+    return this.changeProjectFile(projectId, version, (text) => matchFileStyle(edited, text));
+  }
+
+  /**
+   * Reads, checks the version, changes and writes in one synchronous step, so no other save
+   * can come between the check and the write.
+   */
+  private changeProjectFile(projectId: string, version: string, change: (text: string) => string): ProjectFile {
+    const path = this.projectFilePath(projectId);
+    const before = projectText(path, projectId);
+    if (fileVersion(before) !== version) {
+      throw new EvaError("project_changed", "The project file changed since you opened it. Load it again.");
+    }
+    const text = change(before);
+    checkProjectFile(text);
+    if (text !== before) writeFileAtomic(path, text);
+    return projectFileOf(text);
+  }
+
+  /** The path comes from the project list, never from the id, so an id cannot point outside it. */
+  private projectFilePath(projectId: string): string {
+    return join(this.project(projectId).path, "AGENTS.md");
+  }
+
   private project(projectId: string): Project {
     const project = this.options.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
@@ -248,4 +296,10 @@ export class ProjectWork {
 function capReportText(text: string): string {
   if (text.length <= reportTextLimit) return text;
   return `(The answer is longer. The full answer is in the project chat.)\n\n…${text.slice(-reportTextLimit)}`;
+}
+
+function projectText(path: string, projectId: string): string {
+  const text = readTextTolerant(path);
+  if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
+  return text;
 }

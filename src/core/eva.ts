@@ -48,6 +48,7 @@ import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
+import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
@@ -583,6 +584,21 @@ export class Eva {
   /** Clones a project's repository into its next free folder (the "New clone" button). */
   newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     return this.projectWork.newClone(projectId, repositoryUrl);
+  }
+
+  /** A project's `AGENTS.md` with its version, for the details editor. */
+  projectFile(projectId: string): ProjectFile {
+    return this.projectWork.projectFile(projectId);
+  }
+
+  /** Sets the status, tags, repositories and title. The idle sweep commits the change. */
+  saveProjectDetails(projectId: string, version: string, details: ProjectDetails): ProjectFile {
+    return this.projectWork.saveProjectDetails(projectId, version, details);
+  }
+
+  /** Replaces the whole `AGENTS.md`, with the line endings of the file on disk. */
+  saveProjectFile(projectId: string, version: string, edited: string): ProjectFile {
+    return this.projectWork.saveProjectFile(projectId, version, edited);
   }
 
   publicSettings(): PublicSettings {

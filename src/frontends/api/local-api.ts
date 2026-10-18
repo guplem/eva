@@ -56,6 +56,15 @@ const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
+/** A project file is a note: 1 MB is far more than one needs. */
+const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
+const projectDetailsSchema = z.object({
+  version: z.string().min(1),
+  title: z.string().max(500),
+  status: z.enum(["idea", "active", "paused", "closed"]).nullable(),
+  tags: z.array(z.string().max(200)).max(100),
+  repos: z.array(z.string().max(2_000)).max(100),
+});
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
 /** The schedule rules live in the core; the API only needs an object. */
@@ -322,6 +331,24 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   ) {
     return json(await eva.repositorySetup(decodeURIComponent(parts[2])));
   }
+  if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "file") {
+    const projectId = decodeURIComponent(parts[2]);
+    if (method === "GET") return json(eva.projectFile(projectId));
+    if (method === "PUT") {
+      const { version, text } = projectFileSchema.parse(await request.json());
+      return json(eva.saveProjectFile(projectId, version, text));
+    }
+  }
+  if (
+    method === "PUT" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "details"
+  ) {
+    const { version, ...details } = projectDetailsSchema.parse(await request.json());
+    return json(eva.saveProjectDetails(decodeURIComponent(parts[2]), version, details));
+  }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);
     if (method === "GET") return json(await eva.clones(projectId));
@@ -426,14 +453,18 @@ async function scheduleCardsRoute(
 
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
 function errorResponse(error: unknown, eva: Eva): Response {
+  // `decodeURIComponent` throws on a bad `%` escape in a path. That is the client's fault, not Eva's.
+  if (error instanceof URIError) return json({ error: "The address is invalid." }, 400);
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);
   if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
-  const body = { error: eva.redact(error.message) };
+  // The code lets a page tell one failure from another that shares its status.
+  const body = { error: eva.redact(error.message), code: error.code };
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
   if (
     isEvaError(error, "config_invalid") ||
     isEvaError(error, "schedule_invalid") ||
+    isEvaError(error, "project_invalid") ||
     isEvaError(error, "title_invalid")
   )
     return json(body, 400);

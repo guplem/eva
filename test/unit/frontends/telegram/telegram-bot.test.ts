@@ -999,6 +999,18 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
   });
 
+  test("a too-long notice that fails to go out goes out at the next check", async () => {
+    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
+    createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
+    const notices = (): number => telegram.sentTexts().filter((text) => text.includes("too long")).length;
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    // The fake records the failed call too: one failed try, then one notice that went out.
+    expect(notices()).toBe(2);
+  });
+
   test("before pairing, a card waits instead of counting as shown", async () => {
     writeSchedules([morning]);
     createBot(null);

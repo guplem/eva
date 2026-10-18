@@ -725,15 +725,14 @@ export class TelegramBot {
    */
   private async sendCard(chatId: number, topicId: number | null, card: ScheduleCard): Promise<boolean> {
     const text = cardText(card);
-    if (text.length <= telegramMessageLimit) return (await this.send(chatId, topicId, text)) !== null;
-    if (this.tooLongCards.get(card.scheduleId) !== text) {
-      this.tooLongCards.set(card.scheduleId, text);
-      await this.send(
-        chatId,
-        topicId,
-        `The setup card of ${card.name} is too long for Telegram. Open the web app to check it: the schedule runs only after that.`,
-      );
+    if (text.length <= telegramMessageLimit) {
+      this.tooLongCards.delete(card.scheduleId);
+      return (await this.send(chatId, topicId, text)) !== null;
     }
+    if (this.tooLongCards.get(card.scheduleId) === text) return false;
+    const notice = `The setup card of ${card.name} is too long for Telegram. Open the web app to check it: the schedule runs only after that.`;
+    // A notice that failed to go out goes out again at the next check.
+    if ((await this.send(chatId, topicId, notice)) !== null) this.tooLongCards.set(card.scheduleId, text);
     return false;
   }
 

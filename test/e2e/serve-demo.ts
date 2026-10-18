@@ -80,6 +80,15 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     return;
   }
   yield { kind: "task_changed", taskId: `task-${String(turnNumber)}`, description: "Search the notes", state: "done" };
+  if (lastLine.includes("limit")) {
+    yield {
+      kind: "usage_limit",
+      status: "warning",
+      window: "five_hour",
+      usedPercent: 86,
+      resetsAt: new Date(Date.now() + 3_600_000).toISOString(),
+    };
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

@@ -10,6 +10,7 @@ import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { StepRow } from "./TurnSteps.tsx";
 import { toWebHtml } from "./web-format.ts";
 import { splitSteps, storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
+import { describeUsageLimit } from "../../../shared/usage-limit.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -109,6 +110,7 @@ function Branch({
     setPending(null);
   }, [turnCount]);
   const liveSteps = live.steps[session.id];
+  const usageLimit = live.usageLimits[session.id];
   const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
   const send = async (): Promise<void> => {
@@ -176,6 +178,11 @@ function Branch({
         </button>
       )}
       {showTasks && <TasksDialog tasks={tasks} onClose={closeTasks} />}
+      {usageLimit !== undefined && (
+        <div className={`usage-limit ${usageLimit.status}`} role="status">
+          {describeUsageLimit(usageLimit, new Date())}
+        </div>
+      )}
       <div className="composer">
         <textarea
           aria-label="Message"

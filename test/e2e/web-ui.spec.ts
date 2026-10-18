@@ -231,6 +231,20 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
   await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
 });
 
+test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("near the limit");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("near the limit");
+  await expect(page.getByRole("status").filter({ hasText: "usage limit" })).toContainText(
+    /You used 86% of your 5-hour usage limit\. It resets (at|on) /,
+  );
+});
+
 test("an approval opens a dialog, and Allow answers the turn", async ({ page }) => {
   await logIn(page);
   await openList(page);

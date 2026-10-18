@@ -107,5 +107,8 @@ const eva = new Eva({
     },
   }),
 });
+// No front end confirms a card here, so each new schedule's card waits for the web UI. A short
+// check keeps the browser tests fast; Eva itself checks every 30 seconds.
+setInterval(() => void eva.schedules?.tick(), 300);
 startLocalApi({ eva, port: demoPort, token: demoToken, extraHosts: [], allowedTailscaleIdentities: [] });
 process.stdout.write(`Eva demo ready on http://127.0.0.1:${String(demoPort)}\n`);

@@ -44,6 +44,11 @@ export class ScheduleStateStore {
     return created;
   }
 
+  /** The schedule's state, or undefined. Unlike `see`, it never brings back a removed schedule. */
+  peek(scheduleId: string): ScheduleState | undefined {
+    return this.states.get(scheduleId);
+  }
+
   update(scheduleId: string, change: Partial<ScheduleState>): void {
     const current = this.states.get(scheduleId);
     // A schedule removed during its firing stays removed.

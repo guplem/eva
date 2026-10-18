@@ -173,18 +173,17 @@ async function installPi(inputs: EngineInstallInputs): Promise<void> {
     writeFileSync(archivePath, bytes);
     mkdirSync(extracted);
     // The Windows zip holds the files at its top; the tarball holds them in a `pi/` folder.
-    // Windows 10 and later bring a `tar` that reads a zip too.
+    // Windows 10 and later bring a `tar` that reads a zip too. Git's GNU tar reads neither a zip nor a `C:` path.
     await run(
       inputs.platform === "win32"
-        ? ["tar", "-xf", archivePath, "-C", extracted]
+        ? [windowsTar(inputs.environment), "-xf", archivePath, "-C", extracted]
         : ["tar", "-xzf", archivePath, "--strip-components=1", "-C", extracted],
       inputs,
       commandTimeoutMs,
     );
     const program = path.join(extracted, inputs.platform === "win32" ? "pi.exe" : "pi");
     if (!existsSync(program)) throw new Error(`The pi archive holds no ${path.basename(program)}.`);
-    rmSync(folder, { recursive: true, force: true });
-    renameSync(extracted, folder);
+    replaceFolder(folder, extracted, path.join(staging, "old"));
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -196,11 +195,34 @@ function linkForTerminal(program: string, homeFolder: string): void {
   const link = posix.join(homeFolder, ".local", "bin", "pi");
   if (existsSync(link)) return;
   try {
+    // existsSync follows a link, so a link whose target is gone reads as missing: replace it.
+    rmSync(link, { force: true });
     mkdirSync(posix.dirname(link), { recursive: true });
     symlinkSync(program, link);
   } catch {
     // Eva finds pi in its own folder, so a missing link costs only the person's shortcut.
   }
+}
+
+/**
+ * Puts the new folder in place of the old one. The old one moves aside first, and comes back when
+ * the move fails, such as when a virus scanner on Windows still holds the new program.
+ */
+function replaceFolder(folder: string, replacement: string, aside: string): void {
+  const hadOld = existsSync(folder);
+  if (hadOld) renameSync(folder, aside);
+  try {
+    renameSync(replacement, folder);
+  } catch (error) {
+    if (hadOld) renameSync(aside, folder);
+    throw error;
+  }
+}
+
+/** The tar of Windows itself, in System32. */
+function windowsTar(environment: Readonly<Record<string, string>>): string {
+  const systemRoot = environment["SystemRoot"] ?? environment["SYSTEMROOT"] ?? "C:\\Windows";
+  return win32.join(systemRoot, "System32", "tar.exe");
 }
 
 async function download(url: string): Promise<Response> {
@@ -246,7 +268,8 @@ function lastLine(result: { stdout: string; stderr: string }): string {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  return lines.at(-1) ?? "no output";
+  // The message adds its own period.
+  return (lines.at(-1) ?? "no output").replace(/\.+$/, "");
 }
 
 function failure(message: string): EvaError {

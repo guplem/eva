@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -205,6 +215,8 @@ describe("installEngine for pi", () => {
   });
 
   function serveRelease(hash = archiveHash): string {
+    // One server at a time: a test that serves again stops the first one.
+    void server?.stop(true);
     server = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
@@ -222,7 +234,7 @@ describe("installEngine for pi", () => {
   /** `tar` writes the program into its target folder; pi answers once it exists. */
   function piRunner(commands: string[][], program = "pi"): ProcessRunner {
     return fakeRunner(commands, (command) => {
-      if (command[0] === "tar") {
+      if (/tar(\.exe)?$/.test(command[0] ?? "")) {
         writeFileSync(join(command[command.indexOf("-C") + 1] ?? "", program), "pretend program");
         return {};
       }
@@ -255,10 +267,22 @@ describe("installEngine for pi", () => {
       const settings = { ...piInputs(piRunner(commands, "pi.exe"), "win32"), environment: { LOCALAPPDATA: home } };
       const program = await installEngine("pi", settings);
       expect(program.endsWith("pi.exe")).toBe(true);
-      expect(commands[0]?.slice(0, 2)).toEqual(["tar", "-xf"]);
+      expect(commands[0]?.slice(0, 2)).toEqual(["C:\\Windows\\System32\\tar.exe", "-xf"]);
       expect(commands[0]).not.toContain("--strip-components=1");
     },
   );
+
+  test("a new install replaces an old folder and a link whose target is gone", async () => {
+    mkdirSync(join(home, ".local", "lib", "pi"), { recursive: true });
+    writeFileSync(join(home, ".local", "lib", "pi", "old-file"), "old");
+    mkdirSync(join(home, ".local", "bin"), { recursive: true });
+    const link = join(home, ".local", "bin", "pi");
+    if (process.platform !== "win32") symlinkSync(join(home, "gone"), link);
+    await installEngine("pi", piInputs(piRunner([])));
+    expect(existsSync(join(home, ".local", "lib", "pi", "old-file"))).toBe(false);
+    expect(existsSync(join(home, ".local", "lib", "pi", "pi"))).toBe(true);
+    if (process.platform !== "win32") expect(readFileSync(link, "utf8")).toBe("pretend program");
+  });
 
   test("a download that does not match its checksum installs nothing", async () => {
     const settings = { ...piInputs(piRunner([])), piReleasesBaseUrl: serveRelease("0".repeat(64)) };

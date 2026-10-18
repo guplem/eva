@@ -14,6 +14,7 @@ import {
   describeRemoteAccess,
   describeRole,
   describeStatus,
+  describeEngineUpdate,
   describeStatusLines,
   describeSync,
   describeUpdate,
@@ -33,6 +34,7 @@ import {
   servicePath,
   systemdUnit,
   windowsRunTaskCommand,
+  windowsTaskSettingsCommand,
   windowsTaskCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
@@ -77,6 +79,7 @@ describe("parseArguments", () => {
       query: "photo booth",
     });
     expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
+    expect(parseArguments(["supervise", "--home", "/h"])).toEqual({ command: "supervise", home: "/h" });
     expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
     expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
       command: "setup",
@@ -557,9 +560,19 @@ describe("service", () => {
     ).toBe("/home/u/.bun/bin:/usr/bin");
   });
 
-  test("after an update, systemd restarts Eva; anywhere else she starts a new copy", () => {
-    expect(restartMethod({ INVOCATION_ID: "abc" })).toBe("supervisor");
-    expect(restartMethod({})).toBe("new-copy");
+  test("after an update, systemd or the Eva supervisor restarts Eva; anywhere else she starts a new copy", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ INVOCATION_ID: "abc" }, alive, 1)).toBe("supervisor");
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 42)).toBe("supervisor");
+    expect(restartMethod({}, alive, 42)).toBe("new-copy");
+  });
+
+  test("an Eva whose supervisor has ended starts a new copy, so an update never leaves her stopped", () => {
+    const alive = (pid: number): boolean => pid === 42;
+    expect(restartMethod({ EVA_SUPERVISED: "7" }, alive, 7)).toBe("new-copy");
+    expect(restartMethod({ EVA_SUPERVISED: "yes" }, alive, 42)).toBe("new-copy");
+    // An orphan gets a new parent; another process may now hold the supervisor's old pid.
+    expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 1)).toBe("new-copy");
   });
 
   test("a second instance on the same machine gets its own service name", () => {
@@ -570,7 +583,7 @@ describe("service", () => {
     expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
   });
 
-  test("the Windows task starts Eva at logon", () => {
+  test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
     expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
       "schtasks",
       "/Create",
@@ -580,8 +593,21 @@ describe("service", () => {
       "/TN",
       "Eva",
       "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" --home "C:/home/eva"',
+      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
     ]);
+  });
+
+  test("the Windows task runs with no time limit, and on battery too, so Windows never stops the supervisor", () => {
+    const command = windowsTaskSettingsCommand("eva-partner");
+    expect(command.slice(0, 4)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]);
+    const script = command[4] ?? "";
+    expect(script).toContain("Set-ScheduledTask -TaskName 'Eva-partner'");
+    expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
+    expect(script).toContain("-AllowStartIfOnBatteries");
+    expect(script).toContain("-DontStopIfGoingOnBatteries");
+    // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
+    expect(script).toContain("-ErrorAction Stop");
+    expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 
   test("after the install, the Windows task starts at once, under the same name", () => {
@@ -750,6 +776,33 @@ describe("heldBackLines (lesson 26)", () => {
   });
 });
 
+describe("describeEngineUpdate", () => {
+  const result = { before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+
+  test("each state of the engine update reads as one line", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: null })).toBe("Claude Code: no update has run yet");
+    expect(describeEngineUpdate({ phase: "waiting_for_idle", last: null })).toBe(
+      "Claude Code: the update starts when the running chats and Eva's own update end",
+    );
+    expect(describeEngineUpdate({ phase: "updating", last: null })).toBe("Claude Code: updating…");
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "updated" } })).toBe(
+      "Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it",
+    );
+    expect(
+      describeEngineUpdate({ phase: "idle", last: { ...result, after: result.before, outcome: "up_to_date" } }),
+    ).toBe("Claude Code: 2.1.0 is the latest");
+  });
+
+  test("a failed update says why", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed", detail: "No network." } })).toBe(
+      "Claude Code: the update failed: No network.",
+    );
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed" } })).toBe(
+      "Claude Code: the update failed: unknown reason.",
+    );
+  });
+});
+
 describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
@@ -781,8 +834,9 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
       "Updates: bbb2222 installs when the running chats end",
     );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
-      "Updates: installing bbb2222; Eva restarts in a moment",
+      "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
   });
 

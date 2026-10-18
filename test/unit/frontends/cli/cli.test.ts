@@ -395,7 +395,9 @@ describe("runSetup", () => {
   });
 
   test("without a Google account, the OAuth client is not asked", async () => {
-    await setup({ googleClientId: "client-id" });
+    const lines: string[] = [];
+    await setup({ googleClientId: "client-id" }, { lines });
+    expect(lines.join("\n")).toContain("open Settings in the web app");
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
 

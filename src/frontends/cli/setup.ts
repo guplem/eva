@@ -265,6 +265,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     }
   }
 
+  options.write(
+    "Google is optional. To set it up with each step and its links, press Enter here, then open Settings in the web app.",
+  );
   const googleEmail = await ask(
     "googleEmail",
     `Google account for Calendar, Drive, Contacts and Tasks [${config.google.email ?? "none"}]: `,

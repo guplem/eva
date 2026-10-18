@@ -18,6 +18,7 @@ export type EvaErrorCode =
   | "github_failed"
   | "google_failed"
   | "tailscale_install_failed"
+  | "engine_install_failed"
   | "project_invalid"
   | "project_changed"
   | "title_invalid"

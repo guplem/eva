@@ -22,10 +22,12 @@ export interface ModelCallRequest {
   readonly context?: Readonly<Record<string, string>>;
   /** A limit for this call in place of the default one. */
   readonly timeoutMs?: number;
+  /** Lets the caller stop a call that it no longer needs, such as a suggestion for a message that changed. */
+  readonly signal?: AbortSignal;
 }
 
-/** `missing`: the engine is not on this machine. `late`: no answer in time. */
-export type ModelCallFailure = "missing" | "late" | "failed";
+/** `missing`: the engine is not on this machine. `late`: no answer in time. `aborted`: the caller stopped it. */
+export type ModelCallFailure = "missing" | "late" | "aborted" | "failed";
 
 export type ModelCallResult =
   | { readonly ok: true; readonly text: string }
@@ -57,21 +59,26 @@ export class ModelCalls {
     const engine = this.options.engines.find((candidate) => candidate.name === request.engine);
     if (engine === undefined)
       return { ok: false, failure: "missing", reason: `Eva did not find ${label} on this machine.` };
-    // An empty folder gives the engine no file to read and no project settings to load.
-    const folder = mkdtempSync(join(tmpdir(), "eva-model-call-"));
+    const aborted: ModelCallResult = { ok: false, failure: "aborted", reason: "The call was stopped." };
+    if (request.signal?.aborted === true) return aborted;
     const controller = new AbortController();
+    const stop = (): void => {
+      controller.abort();
+    };
+    request.signal?.addEventListener("abort", stop);
     // The abort asks the engine to stop; the deadline ends the call even if the engine never does.
-    const deadline = new Promise<"late">((resolve) => {
+    const deadline = new Promise<"stopped">((resolve) => {
       controller.signal.addEventListener("abort", () => {
-        resolve("late");
+        resolve("stopped");
       });
     });
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, request.timeoutMs ?? this.options.timeoutMs);
+    const timer = setTimeout(stop, request.timeoutMs ?? this.options.timeoutMs);
     const late: ModelCallResult = { ok: false, failure: "late", reason: `${label} gave no answer in time.` };
     let events: AsyncIterator<EngineEventPayload> | null = null;
+    let folder: string | null = null;
     try {
+      // An empty folder gives the engine no file to read and no project settings to load.
+      folder = mkdtempSync(join(tmpdir(), "eva-model-call-"));
       const parts: string[] = [];
       const stream = engine.runTurn({
         mode: "model-call",
@@ -90,7 +97,7 @@ export class ModelCalls {
       events = stream[Symbol.asyncIterator]();
       for (;;) {
         const next = await Promise.race([events.next(), deadline]);
-        if (next === "late" || controller.signal.aborted) return late;
+        if (next === "stopped" || controller.signal.aborted) return stoppedByCaller(request) ? aborted : late;
         if (next.done === true) return { ok: false, failure: "failed", reason: `${label} stopped without an answer.` };
         const event = next.value;
         if (event.kind === "text") parts.push(event.text);
@@ -103,16 +110,20 @@ export class ModelCalls {
       return { ok: false, failure: "failed", reason: this.options.redact(reason) };
     } finally {
       clearTimeout(timer);
+      request.signal?.removeEventListener("abort", stop);
       controller.abort();
       // Not awaited: a stuck engine would hold the call again. It lets the adapter clean up.
       void events?.return?.().catch(() => undefined);
-      removeFolder(folder);
+      if (folder !== null) removeFolder(folder);
     }
   }
 }
 
+/** A fact's text can come from other people, so a `<` in it can never open or close a block. */
 function withContext(prompt: string, context: Readonly<Record<string, string>>): string {
-  const blocks = Object.entries(context).map(([name, text]) => `<${name}>\n${text}\n</${name}>`);
+  const blocks = Object.entries(context).map(
+    ([name, text]) => `<${name}>\n${text.replaceAll("<", "&lt;")}\n</${name}>`,
+  );
   return [prompt, ...blocks].join("\n\n");
 }
 
@@ -123,4 +134,9 @@ function removeFolder(folder: string): void {
   } catch {
     // The system cleans its temporary folder.
   }
+}
+
+/** A function, so the check reads the signal now: the caller can stop the call during any await. */
+function stoppedByCaller(request: ModelCallRequest): boolean {
+  return request.signal?.aborted === true;
 }

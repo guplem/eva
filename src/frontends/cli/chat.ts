@@ -121,6 +121,8 @@ export function describeEvent(event: SessionEvent): string | null {
       return `  (${event.text})\n`;
     case "history_lost":
       return "  (The earlier history of this chat is lost.)\n";
+    case "session_renamed":
+      return `  (The chat is now called ${event.title}.)\n`;
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
     case "turn_finished":

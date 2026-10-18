@@ -176,6 +176,20 @@ export class SessionManager {
     return updated;
   }
 
+  /**
+   * Gives a chat the person's title. A running turn keeps it, because its end reads the record
+   * again; a first message names only a chat whose title is still the default.
+   */
+  rename(sessionId: string, title: string): SessionRecord {
+    const session = this.get(sessionId);
+    const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
+    if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
+    const updated = { ...session, title: cleaned };
+    this.options.store.save(updated);
+    this.emit(sessionId, { kind: "session_renamed", title: cleaned });
+    return updated;
+  }
+
   subscribe(listener: EventListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -552,7 +566,11 @@ function createBatch(): PendingBatch {
 
 function titleOf(prompt: string): string {
   const firstLine = prompt.split("\n")[0]?.trim() ?? "";
-  return firstLine.length > titleLength ? `${firstLine.slice(0, titleLength - 1)}…` : firstLine || defaultTitle;
+  return cutTitle(firstLine) || defaultTitle;
+}
+
+function cutTitle(title: string): string {
+  return title.length > titleLength ? `${title.slice(0, titleLength - 1)}…` : title;
 }
 
 function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload {
@@ -568,6 +586,8 @@ function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineE
       return { ...payload, summary: redactor.redact(payload.summary) };
     case "task_changed":
       return { ...payload, description: redactor.redact(payload.description) };
+    case "session_renamed":
+      return { ...payload, title: redactor.redact(payload.title) };
     case "tool_finished":
     case "history_lost":
     case "approval_resolved":

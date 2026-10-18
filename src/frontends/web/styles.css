@@ -290,6 +290,8 @@ textarea {
 .main-header {
   display: flex;
   align-items: center;
+  /* A long branch name and the Chat info button must not push the page wider than a phone. */
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border);
@@ -496,6 +498,80 @@ textarea {
   color: var(--text-muted);
 }
 
+.steps {
+  margin-bottom: 8px;
+}
+
+.answer-body + .steps,
+.whole-answer + .steps,
+.whole-answer {
+  margin-top: 8px;
+}
+
+.whole-answer {
+  display: block;
+  padding: 2px 10px;
+  font-size: 13px;
+}
+
+.steps-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--surface-muted);
+}
+
+/* Each kind has its own shape, not only its own colour, so the badges read without colour too. */
+.step-badge {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.step-badge.step-command {
+  border-radius: 2px;
+  background: var(--text);
+}
+
+.step-badge.step-tool {
+  background: transparent;
+  border: 2px solid var(--text-muted);
+}
+
+.step-badge.step-task {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.85);
+  background: var(--success);
+}
+
+.step-badge.failed {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.step-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.step-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* The composer stays at the bottom of the conversation, also while the messages scroll. */
 .composer {
   display: flex;
@@ -519,6 +595,34 @@ textarea {
   padding: 12px;
   overflow-y: auto;
   background: var(--surface);
+}
+
+.tasks h2 {
+  font-size: 13px;
+  margin-top: 0;
+}
+
+.tasks h3,
+.dialog h3 {
+  font-size: 13px;
+  margin: 12px 0 8px;
+}
+
+.chat-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.chat-details dt {
+  color: var(--text-muted);
+}
+
+.chat-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .task {
@@ -742,7 +846,8 @@ textarea {
 }
 
 .menu-button,
-.sidebar-backdrop {
+.sidebar-backdrop,
+.chat-info-button {
   display: none;
 }
 
@@ -780,7 +885,8 @@ textarea {
     min-height: 44px;
   }
 
-  .icon-button {
+  .icon-button,
+  .steps-toggle {
     min-width: 44px;
   }
 
@@ -788,7 +894,8 @@ textarea {
     display: none;
   }
 
-  .menu-button {
+  .menu-button,
+  .chat-info-button {
     display: inline-block;
   }
 
@@ -819,4 +926,28 @@ textarea {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.edit-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The whole AGENTS.md: monospace, so YAML indents line up. */
+.project-file {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
 }

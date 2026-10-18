@@ -70,6 +70,25 @@ describe("source update channel", () => {
     expect(installs).toEqual([]);
   });
 
+  test("git runs with Lefthook off, so the checkout's own hooks never run inside an update", async () => {
+    const lefthook: (string | undefined)[] = [];
+    const watching: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] === "git") lefthook.push(options.environment["LEFTHOOK"]);
+        return runner.run(command, options);
+      },
+    };
+    pushFromOther("src/new.ts", "export {};\n");
+    await sourceUpdateChannel({
+      folder: checkout,
+      runner: watching,
+      environment: gitEnvironment,
+      bunExecutable: fakeBun,
+    }).apply();
+    expect(lefthook.length).toBeGreaterThan(0);
+    expect(lefthook.every((value) => value === "0")).toBe(true);
+  });
+
   test("changed dependencies run a production install when the checkout has no development tools", async () => {
     pushFromOther("package.json", '{ "name": "eva" }\n');
     await channel().apply();

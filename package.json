@@ -22,9 +22,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "prepare": "lefthook install",
+    "prepare": "lefthook install && bun run scripts/sync-skills.ts",
     "eva": "bun run src/main.ts",
-    "check": "bun run commits && bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
+    "check": "bun run check:static && bun run test:coverage",
+    "check:static": "bun run commits && bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

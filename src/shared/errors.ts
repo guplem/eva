@@ -16,6 +16,8 @@ export type EvaErrorCode =
   | "rate_limited"
   | "setting_forbidden"
   | "github_failed"
+  | "project_invalid"
+  | "project_changed"
   | "title_invalid";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */

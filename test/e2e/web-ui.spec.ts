@@ -231,6 +231,28 @@ test("the model menu and the New chat button sit at the bottom of the chat list,
   expect(cut).toBe(0);
 });
 
+test("a new chat shows at the top of a scrolled chat list", async ({ page }) => {
+  await logIn(page);
+  for (let count = 0; count < 8; count++) await newChat(page);
+  // A short window makes the chat list longer than the screen.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
+  await openList(page);
+  await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await openList(page);
+  // The list clips its items, so the check compares with the list, not with the window.
+  const shown = await page.locator(".sidebar-list").evaluate((list) => {
+    const item = list.querySelector('.list-item[aria-current="true"]');
+    if (item === null) return false;
+    const listBox = list.getBoundingClientRect();
+    const itemBox = item.getBoundingClientRect();
+    return itemBox.top >= listBox.top && itemBox.bottom <= listBox.bottom;
+  });
+  expect(shown).toBe(true);
+});
+
 /** Starts a new Assistant chat and returns its session id. */
 async function newChat(page: Page): Promise<string> {
   await openList(page);

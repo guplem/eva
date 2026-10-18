@@ -1,5 +1,5 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
@@ -30,12 +30,15 @@ export function AssistantView({
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const tasks = Object.entries(live.tasks);
   const showError = useShowError();
+  const listRef = useRef<HTMLDivElement>(null);
 
   const newChat = async (): Promise<void> => {
     try {
       const chat = await api.newAssistantChat(model);
       await onChanged();
       setSelectedId(chat.id);
+      // A new chat goes first in the list. Show it, because the list can be scrolled down.
+      listRef.current?.scrollTo({ top: 0 });
       onNavigate();
     } catch (caught) {
       showError(caught);
@@ -45,7 +48,7 @@ export function AssistantView({
   return (
     <div className="layout">
       <nav className={`sidebar has-footer${sidebarOpen ? " open" : ""}`} aria-label="Chats">
-        <div className="sidebar-list">
+        <div className="sidebar-list" ref={listRef}>
           <h2>Schedules</h2>
           {chats.filter((chat) => chat.source === "schedule").length === 0 && (
             <span className="chip">No schedule has run yet. Add one in Settings.</span>

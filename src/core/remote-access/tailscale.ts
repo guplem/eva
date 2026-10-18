@@ -104,3 +104,63 @@ export async function publishWithTailscale(
         : `Turn on HTTPS for your tailnet once at ${enableLink}. Eva then publishes her page by herself.`,
   };
 }
+
+export interface TailscalePublisherOptions {
+  /** The `remoteAccess.tailscaleServe` setting. */
+  readonly enabled: boolean;
+  readonly runner: ProcessRunner;
+  readonly environment: Readonly<Record<string, string>>;
+  readonly port: number;
+}
+
+/** Publishes the web UI at the start, and again until the tailnet turns HTTPS on, so the person never needs a restart. */
+export class TailscalePublisher {
+  private readonly options: TailscalePublisherOptions;
+  private readonly facts: TailscaleFacts | null;
+  private current: RemoteAccess | null;
+
+  private constructor(options: TailscalePublisherOptions, facts: TailscaleFacts | null, current: RemoteAccess | null) {
+    this.options = options;
+    this.facts = facts;
+    this.current = current;
+  }
+
+  static async start(options: TailscalePublisherOptions): Promise<TailscalePublisher> {
+    const facts = options.enabled ? await readTailscale(options.runner, options.environment) : null;
+    const access =
+      facts === null ? null : await publishWithTailscale(options.runner, options.environment, facts, options.port);
+    return new TailscalePublisher(options, facts, access);
+  }
+
+  /** The address for the phone now, or null when Tailscale does not run here. */
+  access(): RemoteAccess | null {
+    return this.current;
+  }
+
+  /** This machine's name in the tailnet, or null. */
+  hostName(): string | null {
+    return this.facts?.hostName ?? null;
+  }
+
+  /** The account that owns this machine in Tailscale, or null. */
+  ownerLogin(): string | null {
+    return this.facts?.ownerLogin ?? null;
+  }
+
+  /** Publishes again while there is no address yet. True when this call got the address. */
+  async retry(): Promise<boolean> {
+    if (this.facts === null || (this.current !== null && this.current.url !== null)) return false;
+    const fresh = await readTailscale(this.options.runner, this.options.environment);
+    if (fresh === null) return false;
+    this.current = await publishWithTailscale(this.options.runner, this.options.environment, fresh, this.options.port);
+    return this.current.url !== null;
+  }
+}
+
+/** Plug and play: with no list, only the account that owns this machine in Tailscale gets in. */
+export function allowedTailscaleIdentities(
+  configured: readonly string[],
+  ownerLogin: string | null,
+): readonly string[] {
+  return configured.length > 0 || ownerLogin === null ? configured : [ownerLogin];
+}

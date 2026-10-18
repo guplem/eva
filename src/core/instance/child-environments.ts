@@ -38,6 +38,22 @@ export function gitEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Recor
   });
 }
 
+/**
+ * The git environment of a step that runs before the core starts, or with no Eva running: the
+ * allowlist and the GitHub token, without the extra instance's `gh` folder.
+ */
+export function gitEnvironmentWithToken(
+  processEnvironment: EnvironmentMap,
+  secrets: EvaSecrets,
+): Record<string, string> {
+  const token = secrets.githubToken;
+  return buildChildEnvironment(
+    processEnvironment,
+    baseEnvironmentAllowlist,
+    token === undefined ? {} : { [githubTokenVariable]: token },
+  );
+}
+
 /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
 export function engineEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Record<string, string> {
   const extraInstance = isExtraInstance(facts.paths, facts.defaultHome);

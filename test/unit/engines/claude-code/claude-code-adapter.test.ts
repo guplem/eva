@@ -292,12 +292,56 @@ describe("mapSdkMessages", () => {
     expect(events[0]).toMatchObject({ kind: "turn_finished", lastMessageId: null });
   });
 
-  test("init, rate limit and thinking messages are ignored", async () => {
+  test("init, thinking and plain allowed rate limit messages are ignored", async () => {
     const other = loadCapture("new-turn-with-tool").filter(
       (line) => line.type === "system" || line.type === "rate_limit_event",
     );
     expect(other.map((line) => line.type)).toContain("rate_limit_event");
     expect(await collect([...other, resultOf("new-turn-with-tool")])).toHaveLength(1);
+  });
+
+  /** The captured rate limit message, with the state of a window near or past its limit. */
+  function rateLimitLine(info: Record<string, unknown>): SDKMessage {
+    const captured = loadCapture("new-turn-with-tool").find((line) => line.type === "rate_limit_event")!;
+    return { ...captured, rate_limit_info: { ...captured.rate_limit_info, ...info } };
+  }
+
+  test("a window near its limit becomes a usage warning with a whole percent and an ISO reset time", async () => {
+    const warning = rateLimitLine({ status: "allowed_warning", utilization: 0.856 });
+    expect(await collect([warning])).toEqual([
+      {
+        kind: "usage_limit",
+        status: "warning",
+        window: "five_hour",
+        usedPercent: 86,
+        resetsAt: "2026-10-18T00:50:00.000Z",
+      },
+    ]);
+  });
+
+  test("a refused turn becomes a usage refusal for its window", async () => {
+    const rejected = rateLimitLine({ status: "rejected", rateLimitType: "seven_day", utilization: 1 });
+    expect(await collect([rejected])).toEqual([
+      {
+        kind: "usage_limit",
+        status: "rejected",
+        window: "seven_day",
+        usedPercent: 100,
+        resetsAt: "2026-10-18T00:50:00.000Z",
+      },
+    ]);
+  });
+
+  test("a missing or unknown field gives null or other, never a crash", async () => {
+    const bare = rateLimitLine({
+      status: "rejected",
+      rateLimitType: "a_new_window",
+      utilization: undefined,
+      resetsAt: undefined,
+    });
+    expect(await collect([bare])).toEqual([
+      { kind: "usage_limit", status: "rejected", window: "other", usedPercent: null, resetsAt: null },
+    ]);
   });
 });
 

@@ -151,22 +151,18 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
 /**
  * Maps SDK messages to Eva's events, with one turn end. A background subagent makes the SDK send
  * a result, the subagent's work, and a second turn with its own result (issue #70). So a success
- * ends the turn only when the stream ends. An error result ends it at once.
+ * ends the turn only when the stream ends. An error result ends it at once. A throw, such as a
+ * stop while the subagent works, fails the turn, so the person sees that the rest is lost.
  */
 export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
   let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
-  try {
-    for await (const event of mapEachTurn(messages)) {
-      if (event.kind === "turn_finished") {
-        finished = event;
-        continue;
-      }
-      yield event;
-      if (event.kind === "turn_failed") return;
+  for await (const event of mapEachTurn(messages)) {
+    if (event.kind === "turn_finished") {
+      finished = event;
+      continue;
     }
-  } catch (error) {
-    // The person already saw the answer of a finished result, so a later throw does not fail the turn.
-    if (finished === null) throw error;
+    yield event;
+    if (event.kind === "turn_failed") return;
   }
   if (finished !== null) yield finished;
 }

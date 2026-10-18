@@ -307,13 +307,17 @@ describe("mapSdkMessages", () => {
     ]);
   });
 
-  test("a throw after a success result keeps the success as the one turn end", async () => {
-    const lines: CapturedLine[] = [
-      ...loadCapture("new-turn-with-tool"),
-      { type: "eva_capture_error", message: "Claude Code process exited with code 1" },
-    ];
-    const events = await collect(lines);
-    expect(events.filter(isTurnEnd).map((event) => event.kind)).toEqual(["turn_finished"]);
+  test("a stop while a background subagent works fails the turn, so the person sees it stopped", async () => {
+    // The abort makes the SDK throw after the first result. The engine turns the throw into turn_failed.
+    const lines = loadCapture("background-subagent");
+    const firstResult = lines.findIndex((line) => line.type === "result");
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () =>
+        replay([...lines.slice(0, firstResult + 1), { type: "eva_capture_error", message: "Operation aborted" }]),
+    });
+    const events = await drain(engine.runTurn(request()));
+    expect(events.filter(isTurnEnd)).toEqual([{ kind: "turn_failed", reason: "Operation aborted" }]);
   });
 
   test("an error result after a success result is the one turn end", async () => {

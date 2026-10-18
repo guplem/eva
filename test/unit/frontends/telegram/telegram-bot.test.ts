@@ -11,6 +11,7 @@ import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/
 import type { LogLevel } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
+import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -942,34 +943,73 @@ describe("project work from a Telegram chat (#9)", () => {
 });
 
 describe("usage limits (issue #67)", () => {
-  test("a warning shows once for each window, and a refusal always shows, with the reset time", async () => {
-    const warning = {
-      kind: "usage_limit",
-      status: "warning",
-      window: "five_hour",
-      usedPercent: 86,
-      resetsAt: "2026-10-14T12:00:00.000Z",
-    } as const;
-    createEva(async function* (request) {
+  const warning = {
+    kind: "usage_limit",
+    status: "warning",
+    window: "five_hour",
+    usedPercent: 86,
+    resetsAt: "2026-10-14T12:00:00.000Z",
+  } as const;
+
+  /** The engine sends the limit after the first answer text, as the captured fixtures show. */
+  function engineWith(limitOf: (prompt: string) => EngineEventPayload): FakeTurnScript {
+    return async function* (request) {
       await Promise.resolve();
-      if (request.prompt.endsWith("third")) {
-        yield { ...warning, status: "rejected", usedPercent: 100 };
+      const limit = limitOf(request.prompt);
+      if (limit.kind === "usage_limit" && limit.status === "rejected") {
+        yield limit;
         yield { kind: "turn_failed", reason: "limit" };
         return;
       }
-      yield warning;
-      yield* FakeEngine.answer(request, "ok");
-    });
+      const [text, end] = FakeEngine.answer(request, "ok");
+      yield text!;
+      yield limit;
+      yield end!;
+    };
+  }
+
+  function sentMessages(): { text: string; quiet: boolean }[] {
+    return telegram.callsTo("sendMessage").map((call) => ({
+      text: String(call.params["text"]),
+      quiet: call.params["disable_notification"] === true,
+    }));
+  }
+
+  test("a warning comes quietly after the answer, which still rings, in the time zone setting", async () => {
+    createEva(engineWith(() => warning));
+    eva.updateSettings({ timeZone: "Asia/Tokyo" });
     const bot = createBot();
-    const line = "You used 86% of your 5-hour usage limit. It resets at 12:00.";
+    const line = "You used 86% of your 5-hour usage limit. It resets at 21:00.";
     telegram.sendText(owner, "first");
     await settle(bot, () => telegram.sentTexts().includes(line));
-    telegram.sendText(owner, "second");
-    await settle(bot, () => telegram.sentTexts().filter((text) => text === "ok").length === 2);
-    telegram.sendText(owner, "third");
+    const sent = sentMessages();
+    expect(sent.find((message) => message.text === "ok")?.quiet).toBe(false);
+    expect(sent.find((message) => message.text === line)?.quiet).toBe(true);
+    expect(sent.findIndex((message) => message.text === "ok")).toBeLessThan(
+      sent.findIndex((message) => message.text === line),
+    );
+  });
+
+  test("a warning shows once for each 10% step, and a refusal always shows before the failure", async () => {
+    createEva(
+      engineWith((prompt) =>
+        prompt.endsWith("refuse")
+          ? { ...warning, status: "rejected", usedPercent: 100 }
+          : { ...warning, usedPercent: prompt.endsWith("more") ? 95 : 86 },
+      ),
+    );
+    const bot = createBot();
+    for (const [index, message] of ["first", "second", "more"].entries()) {
+      telegram.sendText(owner, message);
+      await settle(bot, () => telegram.sentTexts().filter((text) => text === "ok").length === index + 1);
+    }
+    telegram.sendText(owner, "refuse");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The turn failed")));
+    await settle(bot, () =>
+      telegram.sentTexts().includes("You used 95% of your 5-hour usage limit. It resets at 12:00."),
+    );
     const texts = telegram.sentTexts();
-    expect(texts.filter((text) => text === line)).toHaveLength(1);
+    expect(texts.filter((text) => text.startsWith("You used 86%"))).toHaveLength(1);
     expect(texts.indexOf("You reached your 5-hour usage limit. It resets at 12:00.")).toBeLessThan(
       texts.findIndex((text) => text.startsWith("The turn failed")),
     );

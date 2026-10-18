@@ -131,6 +131,8 @@ export class TelegramBot {
   private readonly detachDeviceApprover: () => void;
   /** The usage warnings already sent, by window and reset time. The engine repeats a warning at each turn. */
   private readonly shownUsageWarnings: Set<string>;
+  /** The usage limit line of each running turn, sent at its end. */
+  private readonly usageLines: Map<string, string>;
 
   constructor(options: TelegramBotOptions) {
     this.options = options;
@@ -158,6 +160,7 @@ export class TelegramBot {
     this.lateTopics = new Set();
     this.pendingText = new Map();
     this.shownUsageWarnings = new Set();
+    this.usageLines = new Map();
     this.state = loadBotState(options.statePath);
     this.files = new TelegramFiles({
       api: options.api,
@@ -684,11 +687,20 @@ export class TelegramBot {
 
   /** Shows one event of a chat where the chat lives. */
   private async dispatch(event: SessionEvent, waitedAnswer: string | null): Promise<void> {
+    // The engine sends the limit after the first answer text. The line waits for the turn end, so
+    // it never releases a held block early, and the answer still rings the phone (issue #40).
+    if (event.kind === "usage_limit") {
+      this.holdUsageLine(event);
+      return;
+    }
     const target = targetOf(this.state, event.sessionId);
     if (target === null) {
       // A topic that opens later in this turn missed these blocks, so it shows the whole answer at the turn end.
       if (event.kind === "text") this.lateTopics.add(event.sessionId);
-      if (event.kind === "turn_finished" || event.kind === "turn_failed") this.lateTopics.delete(event.sessionId);
+      if (event.kind === "turn_finished" || event.kind === "turn_failed") {
+        this.lateTopics.delete(event.sessionId);
+        this.usageLines.delete(event.sessionId);
+      }
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
       if (event.kind === "approval_needed" && this.allowedChatId !== null) {
         const chatId = this.allowedChatId;
@@ -732,19 +744,6 @@ export class TelegramBot {
           await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
         });
         return;
-      case "usage_limit": {
-        // A refusal always shows, because it explains the failed turn that follows.
-        const key = `${event.window} ${event.resetsAt ?? ""}`;
-        if (event.status === "warning" && this.shownUsageWarnings.has(key)) return;
-        if (event.status === "warning") this.shownUsageWarnings.add(key);
-        // A server clock is often UTC, so the reset time uses the person's time zone setting.
-        const timeZone = this.options.eva.publicSettings().config.timeZone ?? undefined;
-        const line = describeUsageLimit(event, (this.options.clock ?? systemClock).now(), timeZone);
-        await this.inOrder(event.sessionId, async () => {
-          await this.send(target.chatId, target.topicId, line);
-        });
-        return;
-      }
       case "session_renamed":
         await this.renameTopic(target.chatId, target.topicId, event.title);
         return;
@@ -763,6 +762,7 @@ export class TelegramBot {
             if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
             for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
             if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
+            await this.sendUsageLine(event.sessionId, target.chatId, target.topicId);
             if (event.kind === "turn_failed")
               await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
           });
@@ -774,6 +774,7 @@ export class TelegramBot {
           // A file named twice goes once, and attach wins over offer, also across blocks.
           const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
           if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
+          await this.sendUsageLine(event.sessionId, target.chatId, target.topicId);
           if (event.kind === "turn_failed")
             await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
         });
@@ -782,6 +783,30 @@ export class TelegramBot {
       default:
         return;
     }
+  }
+
+  /** Keeps the line of a usage limit for the turn end. A warning goes once for each window, reset and 10% step. */
+  private holdUsageLine(event: Extract<SessionEvent, { kind: "usage_limit" }>): void {
+    // A refusal always shows, because it explains the failed turn. With no reset time, the key could never change.
+    if (event.status === "warning" && event.resetsAt !== null) {
+      const key = `${event.window} ${event.resetsAt} ${String(Math.floor((event.usedPercent ?? 0) / 10))}`;
+      if (this.shownUsageWarnings.has(key)) return;
+      this.shownUsageWarnings.add(key);
+    }
+    // A server clock is often UTC, so the reset time uses the person's time zone setting.
+    const timeZone = this.options.eva.publicSettings().config.timeZone ?? undefined;
+    this.usageLines.set(
+      event.sessionId,
+      describeUsageLimit(event, (this.options.clock ?? systemClock).now(), timeZone),
+    );
+  }
+
+  /** Quiet, because the answer or the failure next to it rings the phone. */
+  private async sendUsageLine(sessionId: string, chatId: number, topicId: number | null): Promise<void> {
+    const line = this.usageLines.get(sessionId);
+    if (line === undefined) return;
+    this.usageLines.delete(sessionId);
+    await this.sender.send(chatId, topicId, line, undefined, true);
   }
 
   /** Runs a send after every earlier send of the same chat. A failed send never blocks the next one. */

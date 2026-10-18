@@ -204,7 +204,7 @@ These steps work over SSH too. They install Eva for your own user.
 
 5. Pair your Telegram chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default harness, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`.
+**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default harness, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive

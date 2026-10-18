@@ -21,6 +21,7 @@ The owner changed the scope after the first plan: both harnesses, no engine ques
    - Rejected: npm (the executable has no npm, and a system Node needs root), the pi.dev installer (it needs Node.js and asks questions on the terminal), and `BUN_BE_BUN=1` (pi's npm launcher still starts Node.js).
 5. **Setup installs both before the Claude token question,** with no question. A harness that is already there stays as it is.
 6. **A failed install never stops setup,** in a script too. Setup says what failed and the exact steps. `eva doctor` shows the missing program, with the hint "run `eva setup`".
+   - A script can answer `EVA_INSTALL_ENGINES=no` to install nothing, such as the smoke test of the executable. A person is never asked.
 7. **No "Default engine" question.** A script can still set `EVA_ENGINE`. Without it, setup changes the default only when the default harness has no login and the other one has one. So Claude Code stays the default when both have a login, and a choice that the person made on the web page stays.
    - A Claude login: a saved Claude token.
    - A pi login: a provider in pi's `auth.json` other than Anthropic.

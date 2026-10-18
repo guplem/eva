@@ -515,6 +515,16 @@ describe("runSetup", () => {
       expect(text).toContain("run `claude setup-token`");
     });
 
+    test("a script can skip the installs; a person is never asked", async () => {
+      const commands: string[][] = [];
+      const asked: SetupQuestion[] = [];
+      await setup({ installEngines: "no" }, { interactive: false, runner: installRunner(commands), asked });
+      expect(commands.some((command) => command[0] === "bash" || command[0] === "tar")).toBe(false);
+      asked.length = 0;
+      await setup({}, { runner: scriptedRunner([]), asked });
+      expect(asked).not.toContain("installEngines");
+    });
+
     test("an installed harness stays as it is", async () => {
       const commands: string[][] = [];
       await setup({}, { runner: scriptedRunner(commands) });

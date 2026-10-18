@@ -51,6 +51,7 @@ export type SetupQuestion =
   | "topics"
   | "githubRepository"
   | "engine"
+  | "installEngines"
   | "port"
   | "trustedOwners"
   | "claudeToken"
@@ -73,6 +74,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
+  installEngines: "EVA_INSTALL_ENGINES",
   port: "EVA_PORT",
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",
@@ -238,8 +240,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (engine === "claude-code" || engine === "pi")
     config = { ...config, engines: { ...config.engines, default: engine } };
   else if (engine !== "") throw new EvaError("config_invalid", "The engine must be claude-code or pi.");
+  // Only a script skips the installs, such as a test or a machine image that brings its own harnesses.
+  const install = options.interactive ? "" : await ask("installEngines", "Install the missing harnesses? [Y/n]: ");
   // Before the token question, so the person can run `claude setup-token` with the new program.
-  await installEngines(options, config);
+  if (!/^n(o)?$/i.test(install)) await installEngines(options, config);
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =

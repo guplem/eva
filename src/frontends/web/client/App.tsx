@@ -11,7 +11,7 @@ import {
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
-import type { LiveState } from "./live-state.ts";
+import { applyEvent, emptyLiveState, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -35,7 +35,7 @@ function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [screen, setScreen] = useState<Screen>("assistant");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [live, setLive] = useState<LiveState>({ streaming: {}, tasks: {} });
+  const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
@@ -72,10 +72,10 @@ function EvaApp(): ReactElement {
 
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
-   * waits, with no event here. Read the state again, and drop the text of turns that ran meanwhile.
+   * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...state, streaming: {} }));
+    setLive((state) => ({ ...state, steps: {} }));
     await refreshSessions();
     await refreshProblems();
     try {
@@ -116,43 +116,17 @@ function EvaApp(): ReactElement {
             ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
             : [...current, event],
         );
-      } else if (event.kind === "text") {
-        setLive((state) => ({
-          ...state,
-          streaming: {
-            ...state.streaming,
-            [event.sessionId]: `${state.streaming[event.sessionId] ?? ""}${event.text}\n\n`,
-          },
-        }));
-      } else if (event.kind === "task_changed") {
-        setLive((state) => ({
-          ...state,
-          tasks: {
-            ...state.tasks,
-            [event.taskId]: { description: event.description, state: event.state, sessionId: event.sessionId },
-          },
-        }));
-      } else if (event.kind === "approval_resolved") {
+        return;
+      }
+      setLive((state) => applyEvent(state, event));
+      if (event.kind === "approval_resolved") {
         setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
-      } else if (event.kind === "history_lost") {
-        setLive((state) => ({
-          ...state,
-          streaming: {
-            ...state.streaming,
-            [event.sessionId]: `${state.streaming[event.sessionId] ?? ""}*The earlier history of this chat is lost.*\n\n`,
-          },
-        }));
       } else if (event.kind === "approval_needed") {
         setApprovals((current) => [
           ...current.filter((approval) => approval.requestId !== event.requestId),
           { requestId: event.requestId, sessionId: event.sessionId, toolName: event.toolName, summary: event.summary },
         ]);
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
-        setLive((state) => {
-          const streaming = { ...state.streaming };
-          Reflect.deleteProperty(streaming, event.sessionId);
-          return { ...state, streaming };
-        });
         void refreshSessions();
       }
     }, onConnectionChange);

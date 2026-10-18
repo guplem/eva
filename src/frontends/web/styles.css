@@ -479,6 +479,68 @@ textarea {
   color: var(--text-muted);
 }
 
+.steps {
+  margin-bottom: 8px;
+}
+
+.steps-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--surface-muted);
+}
+
+/* Each kind has its own shape, not only its own colour, so the badges read without colour too. */
+.step-badge {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.step-badge.command {
+  border-radius: 2px;
+  background: var(--text);
+}
+
+.step-badge.tool {
+  background: transparent;
+  border: 2px solid var(--text-muted);
+}
+
+.step-badge.task {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.85);
+  background: var(--success);
+}
+
+.step-badge.failed {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.step-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.step-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* The composer stays at the bottom of the conversation, also while the messages scroll. */
 .composer {
   display: flex;

@@ -7,7 +7,9 @@ import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./TasksPanel.tsx";
+import { splitSteps, StepRow } from "./TurnSteps.tsx";
 import { toWebHtml } from "./web-format.ts";
+import type { TurnStep } from "../../../shared/turn-steps.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -81,7 +83,7 @@ function Branch({
   useEffect(() => {
     setPending(null);
   }, [turnCount]);
-  const streaming = live.streaming[session.id];
+  const liveSteps = live.steps[session.id];
   const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
   const send = async (): Promise<void> => {
@@ -122,8 +124,7 @@ function Branch({
         <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
           <div className="message user">{turn.userText}</div>
           <div className="message answer">
-            {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
-            <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(turn.answerText) }} />
+            <AnswerBody steps={turn.steps} omitted={turn.omittedSteps} fallback={turn.answerText} />
             {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
               {activityOf(turn) !== "" && <span className="chip">{activityOf(turn)}</span>}
@@ -139,9 +140,9 @@ function Branch({
         </div>
       ))}
       {pending !== null && <div className="message user">{pending}</div>}
-      {streaming !== undefined && (
-        <div className="message answer" aria-live="polite">
-          <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(streaming) }} />
+      {liveSteps !== undefined && (
+        <div className="message answer">
+          <AnswerBody steps={liveSteps} omitted={0} fallback="" live />
         </div>
       )}
       {running > 0 && (
@@ -164,7 +165,7 @@ function Branch({
             }
           }}
         />
-        {(streaming !== undefined || pending !== null) && (
+        {(liveSteps !== undefined || pending !== null) && (
           <button onClick={() => runAction(() => api.stop(session.id))}>Stop</button>
         )}
         <button className="primary" disabled={busy || text.trim() === ""} onClick={() => void send()}>
@@ -172,6 +173,36 @@ function Branch({
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * The badges of the earlier steps, then the last message in full. A new message in a running
+ * turn replaces the shown one, and the older one becomes a badge. A turn stored before steps
+ * existed has none, so it shows its whole answer text.
+ */
+function AnswerBody({
+  steps,
+  omitted,
+  fallback,
+  live = false,
+}: {
+  readonly steps: readonly TurnStep[];
+  readonly omitted: number;
+  readonly fallback: string;
+  readonly live?: boolean;
+}): ReactElement {
+  const { earlier, lastMessage } = splitSteps(steps);
+  return (
+    <>
+      <StepRow steps={earlier} omitted={omitted} />
+      {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
+      <div
+        className="answer-body"
+        aria-live={live ? "polite" : undefined}
+        dangerouslySetInnerHTML={{ __html: toWebHtml(lastMessage?.text ?? fallback) }}
+      />
+    </>
   );
 }
 

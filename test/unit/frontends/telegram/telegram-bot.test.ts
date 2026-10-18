@@ -960,18 +960,15 @@ describe("files (lessons 72, 74, 124)", () => {
 
   test("a file named in two blocks of one answer goes once", async () => {
     sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
-    createEva((request) => {
-      const [, end] = FakeEngine.answer(request, "done");
-      return [
-        { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m1" },
-        { kind: "text", text: "Again.\n[[offer: Methods/Plan.md]]\n[[attach: Methods/Plan.md]]", messageId: "m2" },
-        ...(end === undefined ? [] : [end]),
-      ];
-    });
+    // The turn ends with a failure: its message goes out after the turn's offers, so the checks see every send.
+    createEva(() => [
+      { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m1" },
+      { kind: "text", text: "Again.\n[[offer: Methods/Plan.md]]\n[[attach: Methods/Plan.md]]", messageId: "m2" },
+      { kind: "turn_failed", reason: "end" },
+    ]);
     const bot = createBot();
     telegram.sendText(owner, "send the plan");
-    await settle(bot, () => telegram.sentTexts().includes("Again."));
-    await eva.idle();
+    await settle(bot, () => telegram.sentTexts().includes("The turn failed: end"));
     expect(uploads()).toEqual(["Plan.md"]);
     expect(telegram.sentTexts()).not.toContain("Files you can open:");
   });

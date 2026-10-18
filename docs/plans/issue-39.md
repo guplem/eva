@@ -24,4 +24,11 @@ Open them on their own page, from an icon button next to the "Schedules" title i
 
 ## Decisions
 
-To be filled after the gap review.
+Three reviews found no rule in `AGENTS.md` or the docs for these gaps. They agreed on each answer from the existing patterns.
+
+- **Return:** the topbar buttons, as for Settings. No view has a back button (`App.tsx`).
+- **Icon:** "⏰", which already marks schedule chats. Its accessible name is "Open schedules", in the style of "☰" with "Show the list". A gear would suggest Settings.
+- **Layout:** the Settings layout (`.main` and `.settings`). `SchedulesPanel` is already a fieldset for it.
+- **Content:** only the schedules and the form. The sidebar already lists the chats that schedules started.
+- **Route:** none. No screen has a URL.
+- **Phone:** the button also closes the sidebar drawer, as "New chat" does.

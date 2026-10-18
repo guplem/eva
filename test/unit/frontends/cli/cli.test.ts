@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
-import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
-import { loadSettings } from "../../../../src/core/settings/settings.ts";
+import { defaultConfig, homePaths, loadSecrets, saveSecrets } from "../../../../src/core/settings/home.ts";
+import { changeSettings, loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { parseArguments } from "../../../../src/frontends/cli/arguments.ts";
 import { runChat } from "../../../../src/frontends/cli/chat.ts";
@@ -321,6 +321,11 @@ describe("runSetup", () => {
   }, gitHookTimeoutMs);
 
   const okRunner: ProcessRunner = { run: () => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }) };
+  /** Real git; every other program, such as an engine or its installer, answers at once and installs nothing. */
+  const gitRunner: ProcessRunner = {
+    run: (command, options) =>
+      command[0] === "git" ? systemProcessRunner.run(command, options) : okRunner.run(command, options),
+  };
 
   async function setup(
     answers: Partial<Record<SetupQuestion, string | string[]>>,
@@ -627,8 +632,9 @@ describe("runSetup", () => {
       const commands: { command: string[]; token: string | undefined }[] = [];
       const recording: ProcessRunner = {
         run: (command, options) => {
-          commands.push({ command: [...command], token: options.environment["EVA_GITHUB_TOKEN"] });
-          return systemProcessRunner.run(command, options);
+          if (command[0] === "git")
+            commands.push({ command: [...command], token: options.environment["EVA_GITHUB_TOKEN"] });
+          return gitRunner.run(command, options);
         },
       };
       const lines: string[] = [];
@@ -663,7 +669,7 @@ describe("runSetup", () => {
           vaultRepository: [missing, remote.remote],
           timeZone: "Europe/Madrid",
         },
-        { runner: systemProcessRunner, lines },
+        { runner: gitRunner, lines },
       );
       expect(lines.join("\n")).toContain(`git could not read ${missing}`);
       expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
@@ -677,7 +683,7 @@ describe("runSetup", () => {
     const missing = join(home, "no-such-repository");
     let caught: unknown;
     try {
-      await setup({ vaultRepository: missing }, { interactive: false, runner: systemProcessRunner });
+      await setup({ vaultRepository: missing }, { interactive: false, runner: gitRunner });
     } catch (error) {
       caught = error;
     }
@@ -839,12 +845,88 @@ describe("runSetup", () => {
     }
   });
 
+  describe("each answer is saved at once (#137)", () => {
+    test("a change from the web page during setup stays", async () => {
+      const paths = homePaths(home);
+      await runSetup({
+        paths,
+        ask: (key) => {
+          // The page saves a token and a setting while the terminal waits at this question.
+          if (key === "trustedOwners") {
+            saveSecrets(paths, { ...loadSecrets(paths), telegramBotToken: "123456:from-the-page" });
+            changeSettings(paths, { voice: { language: "es" } });
+            return Promise.resolve("owner");
+          }
+          return Promise.resolve(key === "claudeToken" ? "a-claude-setup-token-value" : "");
+        },
+        write: () => undefined,
+        newToken: () => "generated-token",
+        interactive: true,
+        runner: okRunner,
+        environment: gitEnvironment,
+        defaultHome: home,
+        githubLogin: null,
+        platform: "linux",
+        userHome: home,
+        installEnvironment: gitEnvironment,
+        arch: "x64",
+      });
+      expect(loadSecrets(paths)).toMatchObject({
+        telegramBotToken: "123456:from-the-page",
+        claudeOauthToken: "a-claude-setup-token-value",
+      });
+      expect(loadSettings(paths).config.voice.language).toBe("es");
+      expect(loadSettings(paths).config.trust.trustedRepositoryOwners).toEqual(["owner"]);
+    });
+
+    test("Ctrl+C at a question keeps every answer before it", async () => {
+      const failing = runSetup({
+        paths: homePaths(home),
+        ask: (key) =>
+          key === "telegramToken"
+            ? Promise.reject(new Error("Ctrl+C"))
+            : Promise.resolve(key === "claudeToken" ? "a-claude-setup-token-value" : ""),
+        write: () => undefined,
+        newToken: () => "generated-token",
+        interactive: true,
+        runner: okRunner,
+        environment: gitEnvironment,
+        defaultHome: home,
+        githubLogin: null,
+        platform: "linux",
+        userHome: home,
+        installEnvironment: gitEnvironment,
+        arch: "x64",
+      });
+      expect(
+        await failing.then(
+          () => null,
+          (error: unknown) => String(error),
+        ),
+      ).toContain("Ctrl+C");
+      expect(loadSecrets(homePaths(home))).toMatchObject({
+        claudeOauthToken: "a-claude-setup-token-value",
+        localApiToken: "generated-token",
+      });
+    });
+
+    test("a person is not asked again for a step done already; a script still sets it", async () => {
+      saveSecrets(homePaths(home), { claudeOauthToken: "a-saved-token-value" });
+      const asked: SetupQuestion[] = [];
+      await setup({}, { asked });
+      expect(asked).not.toContain("claudeToken");
+      expect(asked).toContain("telegramToken");
+      await setup({ claudeToken: "a-new-token-value" }, { interactive: false });
+      expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-new-token-value");
+    });
+  });
+
   test("a Telegram chat id skips the pairing code; a wrong one is refused", async () => {
-    await setup({ telegramToken: "123456:telegram-token-value", telegramChatId: "-100123" });
-    expect(loadSettings(homePaths(home)).config.telegram.allowedChatId).toBe(-100123);
     const lines: string[] = [];
-    await setup({ telegramChatId: "my chat" }, { lines });
+    await setup({ telegramToken: "123456:telegram-token-value", telegramChatId: "my chat" }, { lines });
     expect(lines.join("\n")).toContain("whole number");
+    await setup({ telegramChatId: "-100123" });
+    expect(loadSettings(homePaths(home)).config.telegram.allowedChatId).toBe(-100123);
     let caught: unknown;
     try {
       await setup({ telegramChatId: "my chat" }, { interactive: false });
@@ -876,7 +958,7 @@ describe("runSetup", () => {
     const recordingRunner: ProcessRunner = {
       run: (command, options) => {
         commands.push([...command]);
-        return systemProcessRunner.run(command[0] === "gh" ? ["git", "--version"] : command, options);
+        return gitRunner.run(command[0] === "gh" ? ["git", "--version"] : command, options);
       },
     };
     const lines: string[] = [];
@@ -910,7 +992,7 @@ describe("runSetup", () => {
     const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const ghFails: ProcessRunner = {
       run: (command, options) => {
-        if (command[0] !== "gh") return systemProcessRunner.run(command, options);
+        if (command[0] !== "gh") return gitRunner.run(command, options);
         ghEnvironments.push(options.environment);
         return Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" });
       },

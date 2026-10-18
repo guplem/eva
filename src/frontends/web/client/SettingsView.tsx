@@ -1,11 +1,10 @@
 /**
- * Settings: Setup, Updates, Projects, Schedules and Appearance, with a Test
+ * Settings: Setup, Updates, Projects and Appearance, with a Test
  * button for each part. The two dropdowns save at once; Eva uses them without a restart.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { describeSync, describeUpdate } from "../../cli/client.ts";
 import { api, type CheckResult, type EvaStatus, type PublicSettings, type UpdateStatus } from "./api.ts";
-import { SchedulesPanel } from "./SchedulesPanel.tsx";
 
 const checks: readonly { name: string; label: string }[] = [
   { name: "vault", label: "Vault repository" },
@@ -295,7 +294,6 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
           </label>
         </fieldset>
-        <SchedulesPanel />
         <fieldset>
           <legend>Appearance</legend>
           <div className="chip">Eva follows your system's light or dark theme.</div>

@@ -14,6 +14,7 @@ interface AssistantViewProps {
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  readonly onOpenSchedules: () => void;
 }
 
 export function AssistantView({
@@ -22,6 +23,7 @@ export function AssistantView({
   sidebarOpen,
   onChanged,
   onNavigate,
+  onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -58,9 +60,22 @@ export function AssistantView({
         <button className="primary" onClick={() => void newChat()}>
           New chat
         </button>
-        <h2>Schedules</h2>
+        <div className="sidebar-heading">
+          <h2>Schedules</h2>
+          <button
+            className="icon-button"
+            aria-label="Open schedules"
+            title="Open schedules"
+            onClick={() => {
+              onOpenSchedules();
+              onNavigate();
+            }}
+          >
+            ⏰
+          </button>
+        </div>
         {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-          <span className="chip">No schedule has run yet. Add one in Settings.</span>
+          <span className="chip">No schedule has run yet. Add one with ⏰.</span>
         )}
         <h2>Chats</h2>
         {chats.map((chat) => (

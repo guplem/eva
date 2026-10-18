@@ -182,10 +182,21 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
 });
 
-test("Settings: add a schedule, see its next run, and remove it", async ({ page }, testInfo) => {
-  const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("group", { name: "Setup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add schedule" })).toHaveCount(0);
+});
+
+test("Schedules page: open it from the sidebar, add a schedule, see its next run, and remove it", async ({
+  page,
+}, testInfo) => {
+  const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Schedules");
   await page.getByLabel(/^Id/).fill(id);
   await page.getByLabel("Name").fill(`Walk ${id}`);
   await page.getByLabel("Time (HH:MM)").fill("7:30");

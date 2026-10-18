@@ -1,4 +1,4 @@
-/** The web UI: a mode switch, the two views, settings, and approvals. */
+/** The web UI: a mode switch, the two views, settings, schedules, and approvals. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import {
   api,
@@ -13,9 +13,10 @@ import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
+import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 
-type Screen = "assistant" | "project" | "settings";
+type Screen = "assistant" | "project" | "settings" | "schedules";
 
 /** Problems come with the status, not over the socket, so the page asks for them again this often. */
 const problemPollMs = 60_000;
@@ -194,6 +195,7 @@ function EvaApp(): ReactElement {
           sidebarOpen={sidebarOpen}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          onOpenSchedules={() => setScreen("schedules")}
         />
       )}
       {screen === "project" && (
@@ -206,6 +208,7 @@ function EvaApp(): ReactElement {
         />
       )}
       {screen === "settings" && <SettingsView onLoggedOut={() => setAuthenticated(false)} />}
+      {screen === "schedules" && <SchedulesView />}
       {approval !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="Approval">

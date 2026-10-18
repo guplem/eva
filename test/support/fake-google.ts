@@ -16,6 +16,10 @@ export interface FakeGoogle {
   grantedScope: string;
   /** An OAuth error for every token request, such as `invalid_client`. */
   tokenError: string | null;
+  /** A status for every token request, with a body that is not JSON, such as 503. */
+  tokenOutage: number | null;
+  /** A status for every API read, such as 401. */
+  apiStatus: number | null;
   /** The services whose API is off, such as `calendar`. */
   readonly disabled: Set<string>;
   stop(): void;
@@ -36,6 +40,8 @@ export function fakeGoogle(): FakeGoogle {
     email: "person@example.com",
     grantedScope: "openid https://www.googleapis.com/auth/calendar.readonly",
     tokenError: null,
+    tokenOutage: null,
+    apiStatus: null,
     disabled: new Set(),
   };
   const server: Server<undefined> = Bun.serve({
@@ -46,6 +52,7 @@ export function fakeGoogle(): FakeGoogle {
       if (url.pathname === "/token") {
         const form = new URLSearchParams(await request.text());
         fake.tokenRequests.push(form);
+        if (fake.tokenOutage !== null) return new Response("<html>busy</html>", { status: fake.tokenOutage });
         if (fake.tokenError !== null) return Response.json({ error: fake.tokenError }, { status: 400 });
         const payload = Buffer.from(JSON.stringify({ email: fake.email })).toString("base64url");
         return Response.json({
@@ -62,6 +69,8 @@ export function fakeGoogle(): FakeGoogle {
       if (service === undefined) return Response.json({ error: { code: 404 } }, { status: 404 });
       if (request.headers.get("authorization") !== "Bearer the-access-token")
         return Response.json({ error: { code: 401 } }, { status: 401 });
+      if (fake.apiStatus !== null)
+        return Response.json({ error: { code: fake.apiStatus } }, { status: fake.apiStatus });
       if (fake.disabled.has(service))
         return Response.json(
           { error: { code: 403, status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] } },

@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { HomePaths } from "../settings/home.ts";
+import { coversScopes } from "./google-scopes.ts";
+import { googleStep } from "./google-steps.ts";
 
 /** A "Desktop app" client accepts any loopback address. Nothing listens here: the person copies it. */
 export const googleRedirectUri = "http://127.0.0.1/eva-google-login";
@@ -69,6 +71,8 @@ export interface GoogleLoginOptions {
 interface PendingLogin {
   readonly state: string;
   readonly verifier: string;
+  /** The scopes that Eva asked for. */
+  readonly scopes: readonly string[];
   readonly expiresAtMs: number;
 }
 
@@ -92,7 +96,7 @@ export class GoogleLogin {
   start(clientId: string, scopes: readonly string[]): { url: string } {
     const verifier = randomBytes(48).toString("base64url");
     const state = randomBytes(24).toString("base64url");
-    this.pending = { state, verifier, expiresAtMs: this.options.now().getTime() + pendingLifetimeMs };
+    this.pending = { state, verifier, scopes, expiresAtMs: this.options.now().getTime() + pendingLifetimeMs };
     const query = new URLSearchParams({
       client_id: clientId,
       redirect_uri: googleRedirectUri,
@@ -129,9 +133,8 @@ export class GoogleLogin {
       throw new EvaError("google_failed", "This address is from an older login. Use the address of the last login.");
     if (answer.code === null)
       throw new EvaError("google_failed", "The pasted text holds no code. Paste the whole address.");
-    this.pending = null;
-
-    const body = await postToken(this.urls.token, {
+    // The login stays until it succeeds: after a fix, such as a new secret, Finish works again.
+    const body = await postToken(this.urls.token, "code", {
       grant_type: "authorization_code",
       code: answer.code,
       redirect_uri: googleRedirectUri,
@@ -143,24 +146,42 @@ export class GoogleLogin {
       throw new EvaError("google_failed", "Google sent no lasting login. Start the Google login again.");
     const email = idTokenEmail(body.id_token);
     if (email === null) throw new EvaError("google_failed", "Google did not say which account logged in.");
+    // The scopes that the person allowed: Google lets them untick some.
+    const granted = typeof body.scope === "string" ? body.scope.split(" ").filter((scope) => scope !== "") : [];
+    if (!coversScopes(granted, pending.scopes))
+      throw new EvaError(
+        "google_failed",
+        `Eva needs each access that Google asked for. Start the Google login again, and Allow every box (step ${String(googleStep.login)}).`,
+      );
     const credential: GoogleCredential = {
       token: null,
       refresh_token: body.refresh_token,
       token_uri: "https://oauth2.googleapis.com/token",
       client_id: client.clientId,
       client_secret: client.clientSecret,
-      // The scopes that the person allowed: Google lets them untick some.
-      scopes: typeof body.scope === "string" ? body.scope.split(" ").filter((scope) => scope !== "") : [],
+      scopes: granted,
       expiry: null,
     };
-    mkdirSync(this.options.credentialsFolder, { recursive: true, mode: 0o700 });
-    // mkdirSync keeps the mode of a folder that exists, and `workspace-mcp` may have made it first.
-    chmodSync(this.options.credentialsFolder, 0o700);
-    writeFileAtomic(
-      join(this.options.credentialsFolder, credentialFileName(email)),
-      JSON.stringify(credential, null, 2) + "\n",
-    );
+    this.save(email, credential);
+    this.pending = null;
     return { email };
+  }
+
+  private save(email: string, credential: GoogleCredential): void {
+    try {
+      mkdirSync(this.options.credentialsFolder, { recursive: true, mode: 0o700 });
+      // mkdirSync keeps the mode of a folder that exists, and `workspace-mcp` may have made it first.
+      chmodSync(this.options.credentialsFolder, 0o700);
+      writeFileAtomic(
+        join(this.options.credentialsFolder, credentialFileName(email)),
+        JSON.stringify(credential, null, 2) + "\n",
+      );
+    } catch (error) {
+      // On Windows, `workspace-mcp` can hold the file open while it saves a fresh token.
+      throw new EvaError("google_failed", "Eva could not save the Google login. Press Finish again.", {
+        cause: error,
+      });
+    }
   }
 }
 
@@ -172,8 +193,15 @@ export interface TokenAnswer {
   readonly scope?: unknown;
 }
 
-/** Posts to Google's token endpoint. Each OAuth error names the step to fix. */
-export async function postToken(url: string, form: Readonly<Record<string, string>>): Promise<TokenAnswer> {
+/**
+ * Posts to Google's token endpoint, to trade a login `code` or to `refresh` an access token.
+ * Each OAuth error names the step to fix.
+ */
+export async function postToken(
+  url: string,
+  purpose: "code" | "refresh",
+  form: Readonly<Record<string, string>>,
+): Promise<TokenAnswer> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -185,22 +213,28 @@ export async function postToken(url: string, form: Readonly<Record<string, strin
   } catch {
     throw new EvaError("google_failed", "Eva could not reach Google. Check the machine's internet connection.");
   }
-  const body = (await response.json().catch(() => ({}))) as TokenAnswer & { error?: unknown };
+  const parsed = (await response.json().catch(() => null)) as unknown;
+  const body = (typeof parsed === "object" && parsed !== null ? parsed : {}) as TokenAnswer & { error?: unknown };
   if (response.ok) return body;
-  throw new EvaError("google_failed", tokenErrorText(typeof body.error === "string" ? body.error : "unknown"));
+  if (typeof body.error !== "string")
+    throw new EvaError("google_failed", `Google answered ${String(response.status)}. Try again later.`);
+  throw new EvaError("google_failed", tokenErrorText(body.error, purpose));
 }
 
-function tokenErrorText(error: string): string {
+function tokenErrorText(error: string, purpose: "code" | "refresh"): string {
   switch (error) {
     case "invalid_client":
     case "unauthorized_client":
-      return "Google refused the client id or secret. Copy both again from the OAuth client (step 3).";
+      return `Google refused the client id or secret. Copy both again from the OAuth client (step ${String(googleStep.client)}).`;
     case "redirect_uri_mismatch":
-      return 'Google refused the login address. The OAuth client must be of type "Desktop app" (step 3).';
+      return `Google refused the login address. The OAuth client must be of type "Desktop app" (step ${String(googleStep.client)}).`;
     case "invalid_grant":
-      return "Google refused the login: it expired or was taken back. With the consent screen in Testing, a login ends after 7 days: set it to In production (step 2), then log in again.";
+      // A code is used once and lives a few minutes. A refresh token ends when the person takes it back, or after 7 days in Testing.
+      return purpose === "code"
+        ? "Google refused the code: it is old, used, or copied in part. Start the Google login again."
+        : `Google refused the login: it expired or was taken back. In Testing, a login ends after 7 days. Set the consent screen to In production (step ${String(googleStep.consent)}), then log in again.`;
     default:
-      return `Google refused the login (${error}). Log in again.`;
+      return `Google refused the login (${error}). Start the Google login again.`;
   }
 }
 
@@ -237,9 +271,18 @@ interface PastedAnswer {
 /** The whole address, its query, or the code alone. */
 function parsePasted(pasted: string): PastedAnswer {
   const text = pasted.trim();
-  if (!text.includes("=")) return { code: text === "" ? null : text, state: null, error: null };
+  // The address bar shows the code with its `/` as `%2F`.
+  if (!text.includes("=")) return { code: text === "" ? null : safeDecode(text), state: null, error: null };
   const query = new URLSearchParams(text.includes("?") ? text.slice(text.indexOf("?") + 1) : text);
   return { code: query.get("code"), state: query.get("state"), error: query.get("error") };
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 /** The email of an ID token. It came straight from Google over HTTPS, so its signature needs no check. */

@@ -53,6 +53,7 @@ import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
 import { googleScopes } from "./google/google-scopes.ts";
+import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
@@ -732,7 +733,11 @@ export class Eva {
   /** The address of Google's consent page, for the scopes of the saved Google settings. */
   startGoogleLogin(): { url: string } {
     const client = this.googleClient();
-    if (client === null) throw new EvaError("google_failed", "Save the OAuth client id and secret first (step 3).");
+    if (client === null)
+      throw new EvaError(
+        "google_failed",
+        `Save the OAuth client id and secret first (step ${String(googleStep.client)}).`,
+      );
     return this.googleLogin.start(client.clientId, googleScopes(this.settings.config.google));
   }
 
@@ -742,7 +747,11 @@ export class Eva {
    */
   async finishGoogleLogin(pasted: string): Promise<{ email: string; restartNeeded: boolean }> {
     const client = this.googleClient();
-    if (client === null) throw new EvaError("google_failed", "Save the OAuth client id and secret first (step 3).");
+    if (client === null)
+      throw new EvaError(
+        "google_failed",
+        `Save the OAuth client id and secret first (step ${String(googleStep.client)}).`,
+      );
     const { email } = await this.googleLogin.finish(pasted, client);
     if (this.settings.config.google.email !== email) this.settings.update({ google: { email } });
     // `workspace-mcp` reads the login at each call, but Eva builds its settings at start.

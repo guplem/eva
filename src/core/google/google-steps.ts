@@ -1,6 +1,5 @@
 /**
- * The steps that turn on the Google tools. The Google check names these step numbers, so the
- * two change together. Pure, so the web page bundles it too.
+ * The steps that turn on the Google tools. Pure, so the web page bundles it too.
  */
 import type { EvaConfig } from "../settings/home.ts";
 
@@ -11,6 +10,9 @@ export interface GoogleStep {
   readonly text: string;
   readonly links: readonly { readonly label: string; readonly url: string }[];
 }
+
+/** The number of each step. The Google check and the login errors name a step by it. */
+export const googleStep = { apis: 1, consent: 2, client: 3, login: 4 } as const;
 
 const cloudConsole = "https://console.cloud.google.com";
 
@@ -26,7 +28,7 @@ const apiPages: Readonly<Record<GoogleService, { readonly label: string; readonl
 export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep[] {
   return [
     {
-      title: "1. Turn on the Google APIs",
+      title: `${String(googleStep.apis)}. Turn on the Google APIs`,
       text: "In Google Cloud, make a project, for example eva. Then open each API below and press Enable.",
       links: [
         { label: "Make a project", url: `${cloudConsole}/projectcreate` },
@@ -37,7 +39,7 @@ export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep
       ],
     },
     {
-      title: "2. Set up the consent screen",
+      title: `${String(googleStep.consent)}. Set up the consent screen`,
       text: "Open Branding, press Get started, and pick External. Then open Audience and press Publish app, so that the status is In production. In Testing, your login ends after 7 days.",
       links: [
         { label: "Branding", url: `${cloudConsole}/auth/branding` },
@@ -45,12 +47,12 @@ export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep
       ],
     },
     {
-      title: "3. Make an OAuth client",
+      title: `${String(googleStep.client)}. Make an OAuth client`,
       text: 'Make a client of type "Desktop app". Copy its client id and client secret into the fields below. Someone that you trust can share one client with you.',
       links: [{ label: "Make a client", url: `${cloudConsole}/auth/clients/create` }],
     },
     {
-      title: "4. Log in to Google",
+      title: `${String(googleStep.login)}. Log in to Google`,
       text: "Press Start the Google login, and open Google's page. If Google says that it did not verify the app, press Advanced, then go to the app. Press Allow. Your browser then opens an address that does not load. Copy that whole address, paste it below, and press Finish.",
       links: [],
     },

@@ -82,6 +82,41 @@ describe("GoogleLogin", () => {
     expect(await failureOf(login.finish("the-code", client))).toContain("Start the Google login");
   });
 
+  test("a code copied from the address bar is decoded", async () => {
+    login.start(client.clientId, scopes);
+    await login.finish("4%2F0Abc", client);
+    expect(google.tokenRequests[0]?.get("code")).toBe("4/0Abc");
+  });
+
+  test("a failed exchange keeps the login, so Finish works again after a fix", async () => {
+    const { url } = login.start(client.clientId, scopes);
+    google.tokenError = "invalid_client";
+    await failureOf(login.finish(returnAddress(url), client));
+    google.tokenError = null;
+    expect(await login.finish(returnAddress(url), client)).toEqual({ email: "person@example.com" });
+  });
+
+  test("a code that Google refuses asks for a new login, not for the consent screen", async () => {
+    google.tokenError = "invalid_grant";
+    const { url } = login.start(client.clientId, scopes);
+    const message = await failureOf(login.finish(returnAddress(url), client));
+    expect(message).toContain("Start the Google login again");
+    expect(message).not.toContain("7 days");
+  });
+
+  test("a login without every box ticked is refused, and saves nothing", async () => {
+    google.grantedScope = "openid";
+    const { url } = login.start(client.clientId, scopes);
+    expect(await failureOf(login.finish(returnAddress(url), client))).toContain("Allow every box");
+    expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+  });
+
+  test("an answer that is not JSON says that Google has a problem", async () => {
+    google.tokenOutage = 503;
+    const { url } = login.start(client.clientId, scopes);
+    expect(await failureOf(login.finish(returnAddress(url), client))).toContain("Google answered 503");
+  });
+
   test("an address of another login, a refusal and a late paste each say what to do", async () => {
     login.start(client.clientId, scopes);
     expect(await failureOf(login.finish(`${googleRedirectUri}?state=other&code=x`, client))).toContain("older login");

@@ -7,6 +7,7 @@ import { isEvaError } from "../../shared/errors.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { googleUrls, postToken, readGoogleCredential, type GoogleClient, type GoogleUrls } from "./google-login.ts";
 import { coversScopes, googleScopes } from "./google-scopes.ts";
+import { googleStep } from "./google-steps.ts";
 
 type GoogleService = EvaConfig["google"]["services"][number];
 
@@ -63,28 +64,35 @@ const requestTimeoutMs = 30_000;
 
 export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleCheckResult> {
   const { config, client } = inputs;
-  if (client === null) return failed("No OAuth client is saved. Paste its client id and secret (step 3).");
-  if (config.email === null) return failed("No Google account is logged in. Log in to Google (step 4).");
+  if (client === null)
+    return failed(`No OAuth client is saved. Paste its client id and secret (step ${String(googleStep.client)}).`);
+  if (config.email === null)
+    return failed(`No Google account is logged in. Log in to Google (step ${String(googleStep.login)}).`);
   const credential = readGoogleCredential(inputs.credentialsFolder, config.email);
   if (credential === null)
-    return failed(`No Google login for ${config.email} on this machine. Log in to Google (step 4).`);
+    return failed(
+      `No Google login for ${config.email} on this machine. Log in to Google (step ${String(googleStep.login)}).`,
+    );
   if (credential.client_id !== client.clientId)
-    return failed("The login belongs to another OAuth client. Log in to Google again (step 4).");
+    return failed(
+      `The login belongs to another OAuth client. Log in to Google again (step ${String(googleStep.login)}).`,
+    );
   if (!coversScopes(credential.scopes, googleScopes(config)))
     return failed(
-      "The login gives less access than Eva needs, for example after a change to read-only access. Log in to Google again (step 4).",
+      `The login gives less access than Eva needs now. This happens after a change to Read and change. Log in to Google again (step ${String(googleStep.login)}).`,
     );
 
   const urls = googleUrls(inputs.baseUrl);
   let accessToken: string;
   try {
-    const answer = await postToken(urls.token, {
+    const answer = await postToken(urls.token, "refresh", {
       grant_type: "refresh_token",
       refresh_token: credential.refresh_token,
       client_id: credential.client_id,
       client_secret: credential.client_secret,
     });
-    if (typeof answer.access_token !== "string") return failed("Google sent no access token. Log in again (step 4).");
+    if (typeof answer.access_token !== "string")
+      return failed(`Google sent no access token. Log in again (step ${String(googleStep.login)}).`);
     accessToken = answer.access_token;
   } catch (error) {
     if (isEvaError(error, "google_failed")) return failed(error.message);
@@ -113,9 +121,9 @@ async function readService(service: GoogleService, urls: GoogleUrls, accessToken
   }
   if (response.ok) return null;
   const body = (await response.json().catch(() => ({}))) as unknown;
-  if (isServiceDisabled(body)) return `Turn on the ${apiNames[service]} (step 1).`;
+  if (isServiceDisabled(body)) return `Turn on the ${apiNames[service]} (step ${String(googleStep.apis)}).`;
   if (response.status === 401 || response.status === 403)
-    return `Google refused to show ${serviceLabels[service]}. Log in to Google again (step 4).`;
+    return `Google refused to show ${serviceLabels[service]}. Log in to Google again (step ${String(googleStep.login)}).`;
   return `Google answered ${String(response.status)} for ${serviceLabels[service]}. Try again later.`;
 }
 

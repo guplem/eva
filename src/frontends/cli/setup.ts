@@ -17,7 +17,6 @@ import {
   type HomePaths,
 } from "../../core/settings/home.ts";
 import {
-  engineInstallSteps,
   engineProgramNames,
   findEngineProgram,
   installEngine,
@@ -28,6 +27,7 @@ import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
+import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import {
@@ -35,6 +35,7 @@ import {
   engineLoginState,
   engineLoginSteps,
   loginToGitHub,
+  piLoginState,
   quoteForShell,
   type EngineLoginState,
 } from "./engine-logins.ts";
@@ -50,7 +51,6 @@ export type SetupQuestion =
   | "topics"
   | "githubRepository"
   | "engine"
-  | "installEngine"
   | "port"
   | "trustedOwners"
   | "claudeToken"
@@ -73,7 +73,6 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
-  installEngine: "EVA_INSTALL_ENGINE",
   port: "EVA_PORT",
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",
@@ -103,6 +102,9 @@ export interface SetupOptions {
   readonly userHome: string;
   /** The environment of an engine installer: the child environment plus the person's proxy settings. */
   readonly installEnvironment: Readonly<Record<string, string>>;
+  readonly arch: string;
+  /** The pi release downloads; a test points it at a fake server. */
+  readonly piReleasesBaseUrl?: string;
 }
 
 const ghTimeoutMs = 120_000;
@@ -231,16 +233,13 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (timeZone !== "") config = { ...config, timeZone };
   else if (config.timeZone === null) config = { ...config, timeZone: detectedTimeZone };
 
-  const engine = await ask("engine", `Default engine, claude-code or pi [${config.engines.default}]: `);
+  // Only a script picks the default engine. For a person, the engine with a login wins (below).
+  const engine = options.interactive ? "" : await ask("engine", "Default engine, claude-code or pi: ");
   if (engine === "claude-code" || engine === "pi")
     config = { ...config, engines: { ...config.engines, default: engine } };
-  else if (engine !== "") {
-    const problem = "The engine must be claude-code or pi.";
-    if (!options.interactive) throw new EvaError("config_invalid", problem);
-    options.write(`${problem} The engine stays ${config.engines.default}.`);
-  }
+  else if (engine !== "") throw new EvaError("config_invalid", "The engine must be claude-code or pi.");
   // Before the token question, so the person can run `claude setup-token` with the new program.
-  await offerEngineInstall(options, config, ask);
+  await installEngines(options, config);
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
@@ -261,6 +260,11 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     `Claude token from \`claude setup-token\` (Enter to skip${secrets.claudeOauthToken === undefined ? "" : ", one is saved"}): `,
   );
   if (claudeToken !== "") secrets.claudeOauthToken = claudeToken;
+  if (engine === "") {
+    const piFolder = engineFolders?.piAgent ?? join(options.userHome, ".pi", "agent");
+    const logins = { "claude-code": secrets.claudeOauthToken !== undefined, pi: piLoginState(piFolder) === "ok" };
+    config = withLoggedInEngine(config, logins, options.write);
+  }
 
   const telegramToken = await ask(
     "telegramToken",
@@ -324,45 +328,59 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 }
 
 /**
- * Installs the default engine's program when it is missing. Enter means yes, so a script
- * installs too. A failed install stops a script, and gives a person the steps.
+ * Installs each engine's missing program, with no question: both are small, and one path is
+ * simpler than a choice. A failed install gives the steps, and setup goes on.
  */
-async function offerEngineInstall(
-  options: SetupOptions,
+async function installEngines(options: SetupOptions, config: EvaConfig): Promise<void> {
+  for (const engine of ["claude-code", "pi"] as const) {
+    const inputs: EngineInstallInputs = {
+      runner: options.runner,
+      environment: options.installEnvironment,
+      platform: options.platform,
+      arch: options.arch,
+      homeFolder: options.userHome,
+      configured: engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable,
+      ...(options.piReleasesBaseUrl === undefined ? {} : { piReleasesBaseUrl: options.piReleasesBaseUrl }),
+    };
+    if ((await findEngineProgram(engine, inputs)) !== null) continue;
+    const name = engineProgramNames[engine];
+    options.write(`Installing ${name}. This can take a few minutes.`);
+    let program: string;
+    try {
+      program = await installEngine(engine, inputs);
+    } catch (error) {
+      if (!isEvaError(error, "engine_install_failed")) throw error;
+      options.write(error.message);
+      continue;
+    }
+    options.write(`Installed ${name}: ${program}.`);
+    if (engine === "claude-code") {
+      const command = program === "claude" ? "claude" : quoteForShell(program, options.platform);
+      // PowerShell runs a quoted path only after its call operator.
+      const run = options.platform === "win32" && program !== "claude" ? `& ${command}` : command;
+      options.write(
+        `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`,
+      );
+    }
+  }
+}
+
+/**
+ * The default engine moves only when it has no login and the other engine has one. So Claude
+ * Code stays when both have a login, and a choice made on the web page stays too.
+ */
+function withLoggedInEngine(
   config: EvaConfig,
-  ask: (key: SetupQuestion, question: string) => Promise<string>,
-): Promise<void> {
-  const engine = config.engines.default;
-  const inputs: EngineInstallInputs = {
-    runner: options.runner,
-    environment: options.installEnvironment,
-    platform: options.platform,
-    homeFolder: options.userHome,
-    configured: engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable,
-  };
-  if ((await findEngineProgram(engine, inputs)) !== null) return;
-  const name = engineProgramNames[engine];
-  const answer = await ask("installEngine", `${name} is not installed. Install it now? [Y/n]: `);
-  if (/^n(o)?$/i.test(answer)) {
-    options.write(`Setup installs nothing. To install ${name} later: ${engineInstallSteps(engine, options.platform)}`);
-    return;
-  }
-  options.write(`Installing ${name}. This can take a few minutes.`);
-  let program: string;
-  try {
-    program = await installEngine(engine, inputs);
-  } catch (error) {
-    if (!options.interactive || !isEvaError(error, "engine_install_failed")) throw error;
-    options.write(error.message);
-    return;
-  }
-  options.write(`Installed ${name}: ${program}.`);
-  if (engine === "claude-code") {
-    const command = program === "claude" ? "claude" : quoteForShell(program, options.platform);
-    // PowerShell runs a quoted path only after its call operator.
-    const run = options.platform === "win32" && program !== "claude" ? `& ${command}` : command;
-    options.write(`To make the token for the next question, run \`${run} setup-token\` in another terminal.`);
-  }
+  logins: Readonly<Record<EngineName, boolean>>,
+  write: (line: string) => void,
+): EvaConfig {
+  const current = config.engines.default;
+  const other: EngineName = current === "claude-code" ? "pi" : "claude-code";
+  if (logins[current] || !logins[other]) return config;
+  write(
+    `Eva uses ${engineProgramNames[other]}: it has a login, and ${engineProgramNames[current]} has none. To change the default engine, open Settings in the web app.`,
+  );
+  return { ...config, engines: { ...config.engines, default: other } };
 }
 
 /** A missing or empty vault folder: Eva can start a vault there from her template. */

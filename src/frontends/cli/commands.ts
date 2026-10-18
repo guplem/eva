@@ -168,6 +168,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     githubLogin: githubBrowserLogin(host, githubClientId),
     userHome: host.userHome,
     installEnvironment: installEnvironment(host),
+    arch: host.arch,
   };
   const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
     // Setup publishes too, so the address that it prints works as soon as Eva runs.

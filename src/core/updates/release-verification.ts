@@ -7,7 +7,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 
 /** The public half of the release key, as base64 SPKI DER. Change it only with the secret. */
-export const releasePublicKey = "MCowBQYDK2VwAyEA1ad1tCv98teDT5kyWOZboQt0pyoSzJqSgXmyzy/nQMU=";
+export const releasePublicKey = "MCowBQYDK2VwAyEAMywBB+EdY2K5l02ZTbsNEinSKkVZmu1rlERcNGxBiGc=";
 
 export const checksumsFileName = "SHA256SUMS";
 export const signatureFileName = "SHA256SUMS.sig";

@@ -11,18 +11,23 @@
  *   arrives first means that no retry follows.
  * - **Approvals:** the extension in pi-approval-extension.ts asks before each tool call; the
  *   shared outward-action rule decides.
+ * - **MCP servers:** pi has none, so the bridge in pi-mcp-bridge.ts runs Eva's servers and gives
+ *   their tools Claude Code's names. Their specs hold secrets, so they go in a file that the
+ *   bridge deletes at start, never in pi's environment, which a shell command can read.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
  *   ran, with the session file complete.
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
  *   the person's global pi settings, so Eva never sends them.
  */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { mcpServersFileVariable } from "./pi-mcp-bridge.ts";
+import { mcpExtensionSource } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
 
@@ -97,10 +102,15 @@ export class PiEngine implements EnginePort {
       request.appendSystemPrompt === null
         ? null
         : this.writeIfChanged(join("prompts", `${engineSessionId}.md`), request.appendSystemPrompt);
+    const hasMcpServers = Object.keys(request.mcpServers).length > 0;
+    const mcpExtensionFile = hasMcpServers ? this.writeIfChanged("eva-mcp-extension.ts", mcpExtensionSource) : null;
+    const specsFile = join(this.options.workFolder, "mcp-servers", `${engineSessionId}.json`);
+    if (hasMcpServers) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
     const args = buildPiArguments(request, {
       sessionFile: sessionFile(engineSessionId),
       sessionsFolder,
       extensionFile,
+      mcpExtensionFile,
       promptFile,
       model: this.options.models[request.model] ?? this.options.models.default,
     });
@@ -108,9 +118,12 @@ export class PiEngine implements EnginePort {
     try {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
-        environment: request.environment,
+        environment: hasMcpServers
+          ? { ...request.environment, [mcpServersFileVariable]: specsFile }
+          : request.environment,
       });
     } catch (error) {
+      rmSync(specsFile, { force: true });
       yield {
         kind: "turn_failed",
         reason: `pi could not start: ${error instanceof Error ? error.message : String(error)}`,
@@ -126,6 +139,8 @@ export class PiEngine implements EnginePort {
       yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
       request.signal.removeEventListener("abort", onAbort);
+      // The bridge deletes the file at start; this covers a pi that stopped before it.
+      rmSync(specsFile, { force: true });
     }
   }
 
@@ -223,6 +238,8 @@ export interface PiArgumentInputs {
   readonly sessionFile: string;
   readonly sessionsFolder: string;
   readonly extensionFile: string;
+  /** Eva's MCP bridge, when the turn has MCP servers. */
+  readonly mcpExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -242,6 +259,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     "-e",
     inputs.extensionFile,
   ];
+  if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   if (request.mode === "assistant") {
     // Assistant mode has no hooks; pi's hooks are extensions. Eva's own extension still loads.

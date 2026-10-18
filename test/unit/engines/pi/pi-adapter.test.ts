@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { approvalTitle } from "../../../../src/engines/pi/pi-approval-extension.ts";
 import { buildPiArguments, PiEngine } from "../../../../src/engines/pi/pi-adapter.ts";
+import { mcpServersFileVariable } from "../../../../src/engines/pi/pi-mcp-bridge.ts";
+import { mcpExtensionSource } from "../../../../src/engines/pi/pi-mcp-extension.ts";
 import type { ApprovalAnswer, ApprovalRequest, TurnRequest } from "../../../../src/shared/engine-port.ts";
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { FakePi, loadPiFixture, type PiRecord } from "../../../support/fake-pi.ts";
@@ -85,6 +87,7 @@ describe("buildPiArguments", () => {
     sessionFile: "/eva/pi/sessions/session-1.jsonl",
     sessionsFolder: "/eva/pi/sessions",
     extensionFile: "/eva/pi/eva-approval-extension.ts",
+    mcpExtensionFile: null,
     promptFile: "/eva/pi/prompts/session-1.md",
     model: null,
   };
@@ -117,6 +120,19 @@ describe("buildPiArguments", () => {
     expect(buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null })).toEqual([
       ...base,
       "--no-extensions",
+    ]);
+  });
+
+  test("a turn with MCP servers also loads Eva's MCP bridge", () => {
+    expect(buildPiArguments(request(), { ...inputs, mcpExtensionFile: "/eva/pi/eva-mcp-extension.ts" })).toEqual([
+      ...base,
+      "-e",
+      "/eva/pi/eva-mcp-extension.ts",
+      "--no-extensions",
+      "--append-system-prompt",
+      "/eva/pi/prompts/session-1.md",
+      "--skill",
+      join("/demo-vault/.eva", "skills"),
     ]);
   });
 
@@ -176,6 +192,58 @@ describe("PiEngine", () => {
     await drain(engine(fake).runTurn(request()));
     expect(readFileSync(join(folder, "pi", "eva-approval-extension.ts"), "utf8")).toContain(approvalTitle);
     expect(readFileSync(join(folder, "pi", "prompts", "session-1.md"), "utf8")).toBe("You are Eva.");
+  });
+
+  test("the MCP servers reach the bridge in a file that outlives no turn, and a turn without them has neither", async () => {
+    const google = { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: { PATH: "/bin", SECRET: "s" } };
+    const specs = join(folder, "pi", "mcp-servers", "session-1.json");
+    let written: unknown = null;
+    const fake = new FakePi([
+      {
+        records: loadPiFixture("plain"),
+        onClose: () => {
+          written = JSON.parse(readFileSync(specs, "utf8")) as unknown;
+        },
+      },
+      { records: loadPiFixture("plain") },
+    ]);
+    await drain(engine(fake).runTurn(request({ mcpServers: { google } })));
+    await drain(engine(fake).runTurn(request()));
+    const bridge = join(folder, "pi", "eva-mcp-extension.ts");
+    expect(fake.runs[0]?.command).toContain(bridge);
+    expect(fake.runs[0]?.environment).toEqual({ PATH: "/bin", [mcpServersFileVariable]: specs });
+    expect(written).toEqual({ google });
+    expect(existsSync(specs)).toBe(false);
+    expect(readFileSync(bridge, "utf8")).toBe(mcpExtensionSource);
+    expect(fake.runs[1]?.command).not.toContain(bridge);
+    expect(fake.runs[1]?.environment).toEqual({ PATH: "/bin" });
+  });
+
+  test("a calendar event with a guest asks the person, and one without guests runs at once", async () => {
+    const asked: ApprovalRequest[] = [];
+    const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
+      asked.push(approval);
+      return Promise.resolve("deny");
+    };
+    const withTool = (input: object): PiRecord[] =>
+      loadPiFixture("approval-denied").map((record) =>
+        record["type"] === "extension_ui_request"
+          ? {
+              ...record,
+              message: JSON.stringify({ toolName: "mcp__google__manage_event", toolCallId: "c1", input }),
+            }
+          : record,
+      );
+    const invite = { action: "create", summary: "Lunch", attendees: ["friend@example.com"] };
+    const fake = new FakePi([
+      { records: withTool({ action: "create", summary: "Focus" }) },
+      { records: withTool(invite) },
+    ]);
+    await drain(engine(fake).runTurn(request({ requestApproval: ask })));
+    await drain(engine(fake).runTurn(request({ requestApproval: ask })));
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
+    expect(asked).toEqual([{ requestId: "", toolName: "mcp__google__manage_event", summary: JSON.stringify(invite) }]);
+    expect(fake.runs[1]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
   test("a tool call becomes tool events with a readable summary", async () => {

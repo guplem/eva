@@ -60,6 +60,7 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import {
   applyProjectDetails,
   checkProjectFile,
+  fileVersion,
   matchFileStyle,
   projectFileOf,
   type ProjectDetails,
@@ -748,9 +749,7 @@ export class Eva {
 
   /** A project's `AGENTS.md` with its version, for the details editor. */
   projectFile(projectId: string): ProjectFile {
-    const text = readTextTolerant(this.projectFilePath(projectId));
-    if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
-    return projectFileOf(text);
+    return projectFileOf(projectText(this.projectFilePath(projectId), projectId));
   }
 
   /** Sets the status, tags, repositories and title. The idle sweep commits the change. */
@@ -769,13 +768,13 @@ export class Eva {
    */
   private changeProjectFile(projectId: string, version: string, change: (text: string) => string): ProjectFile {
     const path = this.projectFilePath(projectId);
-    const current = this.projectFile(projectId);
-    if (current.version !== version) {
+    const before = projectText(path, projectId);
+    if (fileVersion(before) !== version) {
       throw new EvaError("project_changed", "The project file changed since you opened it. Load it again.");
     }
-    const text = change(current.text);
+    const text = change(before);
     checkProjectFile(text);
-    if (text !== current.text) writeFileAtomic(path, text);
+    if (text !== before) writeFileAtomic(path, text);
     return projectFileOf(text);
   }
 
@@ -1173,4 +1172,10 @@ function capReportText(text: string): string {
 function changedKeys(change: unknown, prefix: string): string[] {
   if (change === null || typeof change !== "object" || Array.isArray(change)) return [prefix];
   return Object.entries(change).flatMap(([key, value]) => changedKeys(value, prefix === "" ? key : `${prefix}.${key}`));
+}
+
+function projectText(path: string, projectId: string): string {
+  const text = readTextTolerant(path);
+  if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
+  return text;
 }

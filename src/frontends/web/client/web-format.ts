@@ -5,11 +5,11 @@
  * line break becomes `<br>`, chat style, so the answer keeps its lines as Telegram does.
  * All text is escaped and only these tags are added, so the HTML is safe to put in the page.
  */
+import { closesFence } from "../../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../../markdown-inline.ts";
 
 /** As in CommonMark, a backtick fence has no backtick after it, so "```npm i```" on one line is inline code. */
 const fencePattern = /^(\s*)(`{3,}(?!.*`)|~{3,})\s*([\w+#.-]*)/;
-const bareFencePattern = /^\s*(`{3,}|~{3,})\s*$/;
 const headingPattern = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const quotePattern = /^\s{0,3}>\s?(.*)$/;
 const rulePattern = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
@@ -42,12 +42,6 @@ function expandIndentTabs(lines: readonly string[]): string[] {
     if (inCode) return line;
     return line.replace(/^[ \t]+/, (indent) => indent.replaceAll("\t", "    "));
   });
-}
-
-/** Only a bare fence of the same character, at least as long, closes a block, so a block can show a shorter fence. */
-function closesFence(line: string, opening: string): boolean {
-  const run = bareFencePattern.exec(line)?.[1] ?? "";
-  return run.length >= opening.length && run.startsWith(opening.charAt(0));
 }
 
 /** The fence still open after `line`, or null when the line leaves no code block open. */

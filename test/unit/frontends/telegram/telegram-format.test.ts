@@ -57,6 +57,17 @@ describe("toTelegramHtml", () => {
     expect(toTelegramHtml("```\nline")).toBe("<pre>line</pre>");
   });
 
+  test("a longer fence shows a shorter fence inside it as code (issue #37)", () => {
+    expect(toTelegramHtml("````md\n```js\nx\n```\n````\nafter")).toBe(
+      '<pre><code class="language-md">```js\nx\n```</code></pre>\nafter',
+    );
+  });
+
+  test("only a bare fence of the same character, at least as long, closes a block", () => {
+    expect(toTelegramHtml("```\n```js\n~~~\n```")).toBe("<pre>```js\n~~~</pre>");
+    expect(toTelegramHtml("```\na\n`````\nafter")).toBe("<pre>a</pre>\nafter");
+  });
+
   test("a table becomes aligned columns in pre; a pipe line alone is no table", () => {
     expect(toTelegramHtml("| Name | Age |\n|---|---|\n| **Ann** | 30 |")).toBe(
       "<pre>Name  Age\n----  ---\nAnn   30</pre>",
@@ -79,6 +90,13 @@ describe("keepFencesWhole", () => {
 
   test("a block that spans three chunks is reopened in each", () => {
     expect(keepFencesWhole(["```\na", "b", "c\n```"])).toEqual(["```\na\n```", "```\nb\n```", "```\nc\n```"]);
+  });
+
+  test("a reopened block keeps its fence length, so a shorter inner fence stays code", () => {
+    expect(keepFencesWhole(["````md\n```js\nx", "```\n````\nafter"])).toEqual([
+      "````md\n```js\nx\n````",
+      "````md\n```\n````\nafter",
+    ]);
   });
 });
 

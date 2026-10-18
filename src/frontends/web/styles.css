@@ -207,6 +207,20 @@ textarea {
   margin: 12px 0 4px;
 }
 
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon-button {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 8px;
+  line-height: 1;
+}
+
 .list-item {
   text-align: left;
   width: 100%;
@@ -516,6 +530,11 @@ textarea {
   gap: 16px;
 }
 
+.settings h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
 .settings fieldset {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -704,6 +723,10 @@ textarea {
   select,
   input {
     min-height: 44px;
+  }
+
+  .icon-button {
+    min-width: 44px;
   }
 
   .tasks {

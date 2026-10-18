@@ -16,7 +16,8 @@ export type EvaErrorCode =
   | "rate_limited"
   | "setting_forbidden"
   | "github_failed"
-  | "title_invalid";
+  | "title_invalid"
+  | "vault_ahead";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

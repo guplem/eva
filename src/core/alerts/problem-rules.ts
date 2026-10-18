@@ -5,7 +5,7 @@
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
-import type { AlertProblem } from "./alert-center.ts";
+import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 
 /** A short network loss is normal for a laptop; only a long one needs the owner. */
@@ -129,4 +129,13 @@ export function heldBackNews(status: UpdateStatus): string | null {
   ]
     .filter((part) => part !== "")
     .join(" ");
+}
+
+/** A problem that another machine reports through the vault, for the hub to send. */
+export function relayedProblem(machine: string, reportFile: string, problem: OpenAlert): AlertProblem {
+  return {
+    level: problem.level,
+    message: `${machine}: ${problem.message} If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
+    resolvedMessage: `${machine}: ${problem.resolvedMessage === "" ? "The problem cleared." : problem.resolvedMessage}`,
+  };
 }

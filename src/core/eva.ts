@@ -24,8 +24,10 @@ import {
   scheduleFiringProblem,
   uncleanExitMessage,
   updateProblem,
+  relayedProblem,
   vaultAheadProblem,
 } from "./alerts/problem-rules.ts";
+import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
@@ -172,6 +174,8 @@ export class Eva {
   private backgroundTicking: boolean;
   private lastHousekeepingAt: Date | null;
   private readonly alerts: AlertCenter;
+  /** The keys of the other machines' problems that this hub relays now. */
+  private relayedKeys = new Set<string>();
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -214,6 +218,7 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        this.exchangeMachineReports();
       },
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -783,6 +788,34 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
     this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
+  }
+
+  /**
+   * Writes this machine's open problems to the vault, and on the hub raises those of the other
+   * machines, because only the hub runs Telegram (#126). The next save pushes the report.
+   */
+  private exchangeMachineReports(): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return;
+    const problems = this.alerts
+      .openAlerts()
+      // A sync problem cannot travel through the sync that it breaks: it would arrive only once it cleared.
+      .filter((alert) => alert.key !== "vault_sync" && !this.relayedKeys.has(alert.key));
+    writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
+
+    // The role reads hub.json now: this hook runs before the tick notices a role change.
+    const reports = this.role() === "hub" ? readMachineReports(vaultPath) : [];
+    const relayed = new Set<string>();
+    for (const report of reports) {
+      if (report.machine === this.machine) continue;
+      for (const problem of report.problems) {
+        const key = `machine:${report.machine}:${problem.key}`;
+        relayed.add(key);
+        this.alerts.report(key, relayedProblem(report.machine, machineReportFile(report.machine), problem));
+      }
+    }
+    for (const key of this.relayedKeys) if (!relayed.has(key)) this.alerts.report(key, null);
+    this.relayedKeys = relayed;
   }
 
   private assistantBusy(): boolean {

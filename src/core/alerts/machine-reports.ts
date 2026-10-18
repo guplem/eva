@@ -21,6 +21,11 @@ export function machineReportPath(vaultPath: string, machine: string): string {
   return join(vaultPath, ...reportsFolder, `${safeFileName(machine)}.json`);
 }
 
+/** The report's path inside the vault, with forward slashes, for a message to the owner. */
+export function machineReportFile(machine: string): string {
+  return [...reportsFolder, `${safeFileName(machine)}.json`].join("/");
+}
+
 /**
  * Writes the report only when its content changes. The file has no time stamp, because the
  * sync commits every change, and a report runs after each sync step. Returns true when it wrote.

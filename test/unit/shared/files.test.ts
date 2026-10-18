@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readJsonTolerant, writeFileAtomic } from "../../../src/shared/files.ts";
+import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../../../src/shared/files.ts";
 
 let folder: string;
 beforeEach(() => {
@@ -46,5 +46,15 @@ describe("readJsonTolerant", () => {
     const path = join(folder, "deep.json");
     writeFileSync(path, "[".repeat(200_000) + "]".repeat(200_000));
     expect(() => readJsonTolerant(path)).not.toThrow();
+  });
+});
+
+describe("readTextTolerant", () => {
+  test("returns the text, and null for a missing file or a folder", () => {
+    const path = join(folder, "code.txt");
+    writeFileSync(path, "EVA-1234");
+    expect(readTextTolerant(path)).toBe("EVA-1234");
+    expect(readTextTolerant(join(folder, "missing.txt"))).toBeNull();
+    expect(readTextTolerant(folder)).toBeNull();
   });
 });

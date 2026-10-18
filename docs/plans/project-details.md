@@ -24,7 +24,7 @@ The common fields are easy to fill and to clear. Every other part of the file is
    - `GET /api/projects/:id/file` gives `{ text, version }`.
    - `PUT /api/projects/:id/details` takes `{ version, title, status, tags, repos }`.
    - `PUT /api/projects/:id/file` takes `{ version, text }`.
-   Each save answers with the new `{ text, version }`.
+     Each save answers with the new `{ text, version }`.
 5. Web: a "Project details" button under each project opens `ProjectDetails.tsx` in the main area.
    - A form: title, status, tags, repositories. Each list row has a remove button, and an add field.
      `created` shows as read-only text, because the folder name holds it.
@@ -44,4 +44,19 @@ The common fields are easy to fill and to clear. Every other part of the file is
 
 ## Decisions
 
-(Filled after the gap review.)
+Three reviewers agreed on each gap.
+
+- G1. A device login may save. Project files are vault content, not a machine or security setting. The other project routes (work, clones) take no such limit either.
+- G2. No rename, and the form shows `created` as read-only text. The whole-file editor may still change `created`; the existing "does not match the folder name" warning covers it.
+- G3. Tags and repositories are trimmed, and empty entries and duplicates go. A tag loses a leading `#`, and tags compare without case. A tag or repository with a space is refused, because the search splits words on spaces. A repository that starts with `-` is refused, because `git clone` would read it as an option. Status is one of the four values, or none.
+- G4. Web only. The core methods stay front-end neutral, so a Telegram or CLI command can come later with the owner.
+- G5. `yaml`'s `parseDocument` with the failsafe schema. A save changes only the keys whose value changed, so an untouched file keeps every byte. A changed scalar keeps its comment, and a `[a, b]` list keeps that form.
+
+Other decisions from the review:
+
+- Keep the file's CRLF line endings and byte order mark, also for the whole-file save from a browser text area.
+- The version check, the change and the write run in one synchronous step, with no `await` between them.
+- Saves follow `.eva/schedules.json`: write the file, and let the idle sweep commit it. A project under a `projectRoots` folder outside the vault is written but not committed by Eva.
+- Removing a repository from `repos` never deletes a clone. The form says so.
+- `project_invalid` answers 400 and `project_changed` answers 409.
+- Out of scope: a project whose front matter Eva cannot read is not listed today, so the editor cannot reach it.

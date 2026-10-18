@@ -46,9 +46,13 @@ describe("the vault template", () => {
       ".eva/skills/schedule/SKILL.md",
       ".gitignore",
       "AGENTS.md",
-      "Notes/.gitkeep",
+      "Library/.gitkeep",
+      "Life/.gitkeep",
+      "Methods/.gitkeep",
+      "Principles/.gitkeep",
       "Projects/.gitkeep",
       "README.md",
+      "Toolbox/.gitkeep",
     ]);
     expect(files[".eva/assistant.md"]).toContain("- **Name:** Alex");
     expect(files[".eva/assistant.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
@@ -60,6 +64,23 @@ describe("the vault template", () => {
     expect(JSON.parse(files[".eva/schedules.json"] ?? "")).toEqual({ version: 1, schedules: [] });
     expect(files[".gitignore"]).toContain("Projects/*/repos/");
     expect(Object.keys(files).some((path) => path.endsWith("CLAUDE.md"))).toBe(false);
+  });
+
+  test("the agent map lists each top-level folder and tells the agent to grow the vault", () => {
+    const map = vaultTemplateFiles(answers)["AGENTS.md"] ?? "";
+    for (const folder of [
+      "Principles/",
+      "Methods/",
+      "Toolbox/",
+      "Library/",
+      "Life/",
+      "Projects/",
+      "Scratch/",
+      ".eva/",
+    ]) {
+      expect(map).toContain(`\`${folder}`);
+    }
+    expect(map).toContain("## Grow the vault");
   });
 
   test("a new vault is a git repository with one commit, even with no git identity", async () => {

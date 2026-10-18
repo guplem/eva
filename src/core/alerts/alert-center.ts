@@ -24,6 +24,10 @@ export interface AlertProblem {
   readonly resolvedMessage: string;
 }
 
+export interface OpenAlert extends AlertProblem {
+  readonly key: string;
+}
+
 type AlertListener = (alert: Alert) => Promise<void> | void;
 
 export interface AlertCenterOptions {
@@ -67,7 +71,11 @@ export class AlertCenter {
       this.emit(key, "resolved", current.problem.resolvedMessage);
       return;
     }
-    const problem = { ...reported, message: this.redact(reported.message) };
+    const problem = {
+      ...reported,
+      message: this.redact(reported.message),
+      resolvedMessage: this.redact(reported.resolvedMessage),
+    };
     const now = this.options.now().getTime();
     if (current !== undefined && now - current.lastSentAt < repeatAfterMs) {
       this.open.set(key, { problem, lastSentAt: current.lastSentAt });
@@ -85,6 +93,11 @@ export class AlertCenter {
   /** The message of each open problem, for the status. */
   openProblems(): string[] {
     return [...this.open.values()].map((entry) => entry.problem.message);
+  }
+
+  /** Each open problem with its key, for the report that the hub reads. */
+  openAlerts(): OpenAlert[] {
+    return [...this.open].map(([key, entry]) => ({ key, ...entry.problem }));
   }
 
   private emit(key: string, level: Alert["level"], message: string): void {

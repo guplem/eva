@@ -6,20 +6,13 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
-import type { AlertLevel } from "./alert-center.ts";
-
-export interface ReportedProblem {
-  readonly key: string;
-  readonly level: AlertLevel;
-  readonly message: string;
-  readonly resolvedMessage: string;
-}
+import type { OpenAlert } from "./alert-center.ts";
 
 export interface MachineReport {
   readonly machine: string;
   /** The Eva version of the machine. */
   readonly version: string;
-  readonly problems: readonly ReportedProblem[];
+  readonly problems: readonly OpenAlert[];
 }
 
 const reportsFolder = [".eva", "machines"] as const;
@@ -76,9 +69,9 @@ function parseReport(value: unknown): MachineReport | null {
   };
 }
 
-function parseProblem(value: unknown): ReportedProblem | null {
+function parseProblem(value: unknown): OpenAlert | null {
   if (value === null || typeof value !== "object") return null;
-  const { key, level, message, resolvedMessage } = value as Partial<Record<keyof ReportedProblem, unknown>>;
+  const { key, level, message, resolvedMessage } = value as Partial<Record<keyof OpenAlert, unknown>>;
   if (typeof key !== "string" || typeof message !== "string") return null;
   if (level !== "warn" && level !== "error") return null;
   return { key, level, message, resolvedMessage: typeof resolvedMessage === "string" ? resolvedMessage : "" };

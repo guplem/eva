@@ -112,6 +112,18 @@ describe("AlertCenter", () => {
     expect(run.center.openProblems()).toEqual(["git said [redacted]"]);
   });
 
+  test("lists each open problem with its key, both lines redacted, for the machine report", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("secret-value-for-tests");
+    const run = harness(redactor);
+    run.center.report("update", { ...offline, resolvedMessage: "secret-value-for-tests works" });
+    run.center.report("vault_ahead", { ...offline, level: "error" });
+    run.center.report("vault_ahead", null);
+    expect(run.center.openAlerts()).toEqual([
+      { key: "update", level: "warn", message: offline.message, resolvedMessage: "[redacted] works" },
+    ]);
+  });
+
   test("a listener that throws or rejects never stops the others or the caller", async () => {
     const run = harness();
     run.center.onAlert(() => {

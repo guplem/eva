@@ -1,7 +1,7 @@
 /**
  * Contract tests for the Claude Code adapter on SDK messages captured from Claude Agent SDK
  * 0.3.300 and claude 2.1.286 against the demo vault (test/fixtures/claude-code/, made by
- * scripts/capture-claude-fixtures.ts).
+ * scripts/capture-claude-fixtures.ts). The background-subagent capture comes from claude 2.1.302.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -14,7 +14,7 @@ import {
   mapSdkMessages,
 } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
 import type { ApprovalAnswer, TurnRequest } from "../../../../src/shared/engine-port.ts";
-import type { EngineEventPayload } from "../../../../src/shared/events.ts";
+import { isTurnEnd, type EngineEventPayload } from "../../../../src/shared/events.ts";
 
 function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
   return {
@@ -263,6 +263,63 @@ describe("mapSdkMessages", () => {
       kind: "turn_finished",
       engineSessionId: "2077aab6-56f1-451d-91b6-ad749aed93ec",
     });
+  });
+
+  test("a background subagent keeps the turn open until its follow-up answer, with one end (issue #70)", async () => {
+    // The engine sends a result, then the subagent's work, then a second turn with its own result.
+    const agentToolUseId = "toolu_01VWSzFjZEZ8CBgmiDqcysZk";
+    expect(await collect(loadCapture("background-subagent"))).toEqual([
+      {
+        kind: "tool_started",
+        toolUseId: agentToolUseId,
+        name: "Agent",
+        category: "tool",
+        summary: "Agent Read morning routine title",
+      },
+      {
+        kind: "task_changed",
+        taskId: "a28189aab45e77534",
+        description: "Read morning routine title",
+        state: "running",
+      },
+      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false },
+      {
+        kind: "text",
+        text: "I started a background subagent to read `Methods/Morning Routine.md` and report its title; I'll share the result when it arrives.",
+        messageId: "d8c9c165-1864-42c0-888d-100fc1f7e696",
+      },
+      { kind: "task_changed", taskId: "a28189aab45e77534", description: "Morning Routine", state: "done" },
+      {
+        kind: "text",
+        text: "The subagent reports the title of `Methods/Morning Routine.md` as **Morning Routine**.",
+        messageId: "dc39ab4d-cb27-4c7b-92a8-e549da7b8e4d",
+      },
+      {
+        kind: "turn_finished",
+        engineSessionId: "46a21574-ea52-4c3e-aef8-94fd72c6ca82",
+        lastMessageId: "dc39ab4d-cb27-4c7b-92a8-e549da7b8e4d",
+        // Each result counts only its own turn, so the end sums them.
+        usage: { inputTokens: 8, outputTokens: 321, cacheReadTokens: 47_693, cacheWriteTokens: 7141 },
+        // The cost is a running total, so the last result holds the whole turn.
+        costUsd: 0.003285575,
+        contextTokens: 18_853,
+      },
+    ]);
+  });
+
+  test("a throw after a success result keeps the success as the one turn end", async () => {
+    const lines: CapturedLine[] = [
+      ...loadCapture("new-turn-with-tool"),
+      { type: "eva_capture_error", message: "Claude Code process exited with code 1" },
+    ];
+    const events = await collect(lines);
+    expect(events.filter(isTurnEnd).map((event) => event.kind)).toEqual(["turn_finished"]);
+  });
+
+  test("an error result after a success result is the one turn end", async () => {
+    const lines = [...loadCapture("new-turn-with-tool"), ...loadCapture("missing-session")];
+    const events = await collect(lines);
+    expect(events.filter(isTurnEnd).map((event) => event.kind)).toEqual(["turn_failed"]);
   });
 
   test("a subagent that does not complete becomes a failed task", async () => {

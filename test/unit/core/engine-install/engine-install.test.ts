@@ -4,6 +4,7 @@ import {
   engineProgramCandidates,
   findEngineProgram,
   installEngine,
+  locateEngineProgram,
   type EngineInstallInputs,
 } from "../../../../src/core/engine-install/engine-install.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
@@ -211,5 +212,18 @@ describe("engineInstallSteps", () => {
       "npm install -g --prefix ~/.local @mariozechner/pi-coding-agent",
     );
     expect(engineInstallSteps("pi", "win32")).toContain("npm install -g @mariozechner/pi-coding-agent");
+  });
+});
+
+describe("locateEngineProgram", () => {
+  const places = { platform: "linux", homeFolder: "/home/example", environment: {} } as const;
+
+  test("finds the name on the PATH first, then the installer's folder", () => {
+    expect(locateEngineProgram("claude-code", { ...places, which: () => "/usr/bin/claude", exists: () => true })).toBe(
+      "/usr/bin/claude",
+    );
+    const onlyInstalled = { ...places, which: () => null, exists: (path: string) => path.endsWith("/.local/bin/pi") };
+    expect(locateEngineProgram("pi", onlyInstalled)).toBe("/home/example/.local/bin/pi");
+    expect(locateEngineProgram("claude-code", { ...places, which: () => null, exists: () => false })).toBeNull();
   });
 });

@@ -138,3 +138,21 @@ export function runnableCommand(command: readonly string[], platform: NodeJS.Pla
   const isCmd = program === "npm" || program === "pi" || program.toLowerCase().endsWith(".cmd");
   return platform === "win32" && isCmd ? ["cmd", "/d", "/c", ...command] : command;
 }
+
+export interface EngineProgramPlaces {
+  readonly platform: NodeJS.Platform;
+  readonly homeFolder: string;
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly which: (name: string) => string | null;
+  readonly exists: (path: string) => boolean;
+}
+
+/** The engine's program, found without a run: a name on the PATH, or a file in the installer's folder. */
+export function locateEngineProgram(engine: EngineName, places: EngineProgramPlaces): string | null {
+  for (const candidate of engineProgramCandidates(engine, places.platform, places.homeFolder, places.environment)) {
+    // A bare name lives on the PATH; a path names one file. The test reads both kinds of separator.
+    const found = /[\\/]/.test(candidate) ? (places.exists(candidate) ? candidate : null) : places.which(candidate);
+    if (found !== null) return found;
+  }
+  return null;
+}

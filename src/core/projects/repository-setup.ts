@@ -197,14 +197,43 @@ function labelItem(context: Context): SetupItem {
   if (present === null) return grey(label, notRead);
   const have = new Set(present.map((name) => name.toLowerCase()));
   const missing = wanted.filter((name) => !have.has(name.toLowerCase()));
-  if (missing.length === 0) return green(label, "Has every standard label.");
+  // Only names that equal a known default go into the command, so a label name never injects shell text.
+  const defaults = present.filter((name) => githubDefaultLabels.has(name.toLowerCase()));
+  if (missing.length === 0 && defaults.length === 0) return green(label, "Has every standard label.");
+  const slug = context.target.slug;
+  const add =
+    missing.length === 0
+      ? ""
+      : `Add the missing labels: ${missing.join(", ")}. Run \`gh label clone ${context.reference.slug} --repo ${slug}\`. It adds them and keeps the labels that exist. `;
+  const remove =
+    defaults.length === 0
+      ? ""
+      : `Delete the GitHub default labels, which agents do not use: ${defaults.map((name) => `\`gh label delete "${name}" --repo ${slug} --yes\``).join(", ")}.`;
   return {
     label,
-    light: missing.length === wanted.length ? "red" : "yellow",
-    detail: `Missing: ${missing.join(", ")}.`,
-    fixRequest: `In ${context.target.slug}, add the missing labels: ${missing.join(", ")}. Run \`gh label clone ${context.reference.slug} --repo ${context.target.slug}\`. It adds them and keeps the labels that exist.`,
+    light: missing.length > 0 && missing.length === wanted.length ? "red" : "yellow",
+    detail: [
+      missing.length === 0 ? "" : `Missing: ${missing.join(", ")}.`,
+      defaults.length === 0 ? "" : `GitHub default labels: ${defaults.join(", ")}.`,
+    ]
+      .filter((part) => part !== "")
+      .join(" "),
+    fixRequest: `In ${slug}: ${add}${remove}`.trim(),
   };
 }
+
+/** The labels that GitHub adds to each new repository. */
+const githubDefaultLabels = new Set([
+  "bug",
+  "documentation",
+  "duplicate",
+  "enhancement",
+  "good first issue",
+  "help wanted",
+  "invalid",
+  "question",
+  "wontfix",
+]);
 
 function hookItem(context: Context): SetupItem {
   const label = "Git hooks";

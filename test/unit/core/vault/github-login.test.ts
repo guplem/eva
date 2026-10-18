@@ -10,25 +10,38 @@ afterEach(async () => {
   server = null;
 });
 
-/** A fake GitHub: the code request gets `codeReply`, and each poll gets the next of `pollReplies`. */
-function fakeGitHub(pollReplies: Reply[], codeReply: Reply = {}): { baseUrl: string; requests: URLSearchParams[] } {
+/**
+ * A fake GitHub: the code request gets `codeReply`, and each poll gets the next of `pollReplies`.
+ * A null reply is an HTML error page. As on GitHub, a request without the JSON header gets form encoding.
+ */
+function fakeGitHub(
+  pollReplies: (Reply | null)[],
+  codeReply: Reply = {},
+): { baseUrl: string; requests: URLSearchParams[] } {
   const requests: URLSearchParams[] = [];
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch: async (request) => {
       requests.push(new URLSearchParams(await request.text()));
-      if (new URL(request.url).pathname === "/login/device/code") {
-        return Response.json({
-          device_code: "device-code",
-          user_code: "ABCD-1234",
-          verification_uri: "https://github.com/login/device",
-          expires_in: 900,
-          interval: 5,
-          ...codeReply,
-        });
+      const reply =
+        new URL(request.url).pathname === "/login/device/code"
+          ? {
+              device_code: "device-code",
+              user_code: "ABCD-1234",
+              verification_uri: "https://github.com/login/device",
+              expires_in: 900,
+              interval: 5,
+              ...codeReply,
+            }
+          : pollReplies.length > 0
+            ? pollReplies.shift()
+            : { error: "authorization_pending" };
+      if (reply === null) return new Response("<html>Bad gateway</html>", { status: 502 });
+      if (request.headers.get("accept") !== "application/json") {
+        return new Response(new URLSearchParams(reply as Record<string, string>).toString());
       }
-      return Response.json(pollReplies.shift() ?? { error: "authorization_pending" });
+      return Response.json(reply);
     },
   });
   return { baseUrl: `http://127.0.0.1:${String(server.port)}`, requests };
@@ -116,6 +129,27 @@ describe("the GitHub browser login", () => {
     );
     expect(isEvaError(noCode, "github_failed")).toBe(true);
     expect(String(noCode)).toContain("device_flow_disabled");
+  });
+
+  test("a confirmation in the last seconds of the code still counts", async () => {
+    const github = fakeGitHub([{ error: "authorization_pending" }, { access_token: "gho_late" }], { expires_in: 10 });
+    expect(await login(github.baseUrl).result).toBe("gho_late");
+  });
+
+  test("a short loss of GitHub while it waits is not the end of the login", async () => {
+    const github = fakeGitHub([null, null, { access_token: "gho_after_a_gap" }]);
+    expect(await login(github.baseUrl).result).toBe("gho_after_a_gap");
+    await server?.stop(true);
+    const gone = await failure(login(fakeGitHub([null, null, null]).baseUrl).result);
+    expect(isEvaError(gone, "github_failed")).toBe(true);
+    expect(String(gone)).toContain("GitHub sent an answer that Eva cannot read (HTTP 502)");
+  });
+
+  test("an error never shows the device code", async () => {
+    const github = fakeGitHub([{ error: "incorrect_device_code", device_code: "device-code" }]);
+    const error = await failure(login(github.baseUrl).result);
+    expect(String(error)).toContain("incorrect_device_code");
+    expect(String(error)).not.toContain("device-code");
   });
 
   test("GitHub out of reach, or too slow, is an error", async () => {

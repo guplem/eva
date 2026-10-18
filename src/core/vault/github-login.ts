@@ -13,7 +13,7 @@ export const githubClientId: string | null = null;
 
 /** The one sentence that setup says before the login. It must match `scope` below. */
 export const githubLoginAccess =
-  "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only for her own git commands, and never gives it to an agent.";
+  "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to copy and save your files on GitHub, and never gives it to the AI tools that she runs.";
 
 export interface GitHubLoginOptions {
   readonly clientId: string;
@@ -31,6 +31,8 @@ const requestTimeoutMs = 30_000;
 // GitHub asks for 5 more seconds after each slow_down.
 const slowDownStepSeconds = 5;
 const scope = "repo";
+// About 15 seconds without GitHub, at the usual interval.
+const maxFailedPolls = 3;
 
 /** Waits until the person confirms the code, then returns the token. */
 export async function githubDeviceLogin(options: GitHubLoginOptions): Promise<string> {
@@ -44,25 +46,34 @@ export async function githubDeviceLogin(options: GitHubLoginOptions): Promise<st
   options.show(code["user_code"], link);
   const deadline = options.clock.now().getTime() + seconds(code["expires_in"], 900) * 1000;
   let interval = seconds(code["interval"], slowDownStepSeconds);
+  let failedPolls = 0;
   for (;;) {
     await options.sleep(interval * 1000);
-    if (options.clock.now().getTime() >= deadline) break;
-    const reply = await post(options, "/login/oauth/access_token", {
-      client_id: options.clientId,
-      device_code: deviceCode,
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    });
-    if (typeof reply["access_token"] === "string") return reply["access_token"];
-    if (reply["error"] === "authorization_pending") continue;
-    if (reply["error"] === "slow_down") {
-      interval = seconds(reply["interval"], interval + slowDownStepSeconds);
-      continue;
+    let reply: Record<string, unknown>;
+    try {
+      reply = await post(options, "/login/oauth/access_token", {
+        client_id: options.clientId,
+        device_code: deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      });
+      failedPolls = 0;
+    } catch (error) {
+      // The person can confirm the code on another device while this one loses the network for a moment.
+      failedPolls += 1;
+      if (failedPolls >= maxFailedPolls) throw error;
+      reply = { error: "authorization_pending" };
     }
+    if (typeof reply["access_token"] === "string") return reply["access_token"];
     if (reply["error"] === "expired_token") break;
     if (reply["error"] === "access_denied") throw new EvaError("github_failed", "The GitHub login was refused.");
-    throw new EvaError("github_failed", `The GitHub login failed: ${describe(reply)}.`);
+    if (reply["error"] === "slow_down") interval = seconds(reply["interval"], interval + slowDownStepSeconds);
+    else if (reply["error"] !== "authorization_pending") {
+      throw new EvaError("github_failed", `The GitHub login failed: ${describe(reply)}.`);
+    }
+    // After the poll, so a confirmation in the last seconds still counts.
+    if (options.clock.now().getTime() >= deadline) break;
   }
-  throw new EvaError("github_failed", "The GitHub login code expired. Run setup again to get a new one.");
+  throw new EvaError("github_failed", "The GitHub login code expired.");
 }
 
 async function post(
@@ -70,20 +81,28 @@ async function post(
   path: string,
   fields: Record<string, string>,
 ): Promise<Record<string, unknown>> {
+  let response: Response;
   try {
-    const response = await fetch(`${options.baseUrl ?? "https://github.com"}${path}`, {
+    response = await fetch(`${options.baseUrl ?? "https://github.com"}${path}`, {
       method: "POST",
+      // Without this header, GitHub answers in form encoding.
       headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(fields).toString(),
       signal: AbortSignal.timeout(options.requestTimeoutMs ?? requestTimeoutMs),
     });
-    const body: unknown = await response.json();
-    return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   } catch (error) {
     throw new EvaError("github_failed", "Eva could not reach GitHub. Check the network, then try again.", {
       cause: error,
     });
   }
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body !== "object" || body === null) {
+    throw new EvaError(
+      "github_failed",
+      `GitHub sent an answer that Eva cannot read (HTTP ${String(response.status)}).`,
+    );
+  }
+  return body as Record<string, unknown>;
 }
 
 function seconds(value: unknown, fallback: number): number {

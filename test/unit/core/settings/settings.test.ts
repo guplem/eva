@@ -12,6 +12,7 @@ import {
 import {
   changeSettings,
   describeSettings,
+  isPageSettingKey,
   isSettingKey,
   isSharedSettingKey,
   loadSettings,
@@ -252,6 +253,17 @@ describe("settings by command", () => {
     expect(isSettingKey("port.number")).toBe(false);
     expect(isSharedSettingKey("updates.frequency")).toBe(true);
     expect(isSharedSettingKey("engines.claudeCode.executable")).toBe(false);
+  });
+
+  test("a device login may change the vault's keys, the sync and the project folders only", () => {
+    expect(isPageSettingKey("timeZone")).toBe(true);
+    expect(isPageSettingKey("engines.claudeCode.defaultModel")).toBe(true);
+    expect(isPageSettingKey("sync.sweepSeconds")).toBe(true);
+    expect(isPageSettingKey("projectRoots")).toBe(true);
+    expect(isPageSettingKey("remoteAccess.allowedTailscaleIdentities")).toBe(false);
+    expect(isPageSettingKey("telegram.allowedChatId")).toBe(false);
+    expect(isPageSettingKey("engines.claudeCode.executable")).toBe(false);
+    expect(isPageSettingKey("engines")).toBe(false);
   });
 
   test("a value is JSON when it parses, and text otherwise", () => {

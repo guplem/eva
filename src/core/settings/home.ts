@@ -37,6 +37,8 @@ export interface HomePaths {
   readonly cloneOrigins: string;
   readonly schedulesState: string;
   readonly telegramState: string;
+  /** The code that pairs the first Telegram chat; present only while no chat is paired. */
+  readonly telegramPairingCode: string;
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
@@ -57,6 +59,7 @@ export function homePaths(root: string): HomePaths {
     cloneOrigins: join(stateFolder, "clone-origins.json"),
     schedulesState: join(stateFolder, "schedules-state.json"),
     telegramState: join(stateFolder, "telegram.json"),
+    telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
     logsFolder: join(root, "logs"),

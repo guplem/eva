@@ -177,7 +177,10 @@ export class TelegramBot {
   private readonly state: BotState;
   private allowedChatId: number | null;
   private allowedUserId: number | null;
-  private readonly pendingText = new Map<string, string[]>();
+  /** The sends of each chat, in event order: `onEvent` runs unawaited, so a later block could overtake an earlier one. */
+  private readonly outbox: Map<string, Promise<void>>;
+  /** The files that the running turn of each chat attached, and the ones it offers at its end. A file goes once per answer. */
+  private readonly turnFiles: Map<string, { attached: Set<string>; offered: Set<string> }>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
@@ -211,6 +214,8 @@ export class TelegramBot {
     this.approvalMessages = new Map();
     this.stoppedSessions = new Set();
     this.tooLongCards = new Map();
+    this.outbox = new Map();
+    this.turnFiles = new Map();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -840,32 +845,70 @@ export class TelegramBot {
     }
     switch (event.kind) {
       case "text":
-        this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
+        await this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, event));
         return;
       case "approval_needed":
         await this.sendApproval(target.chatId, target.topicId, event, null);
         return;
       case "history_lost":
-        await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
+        await this.inOrder(event.sessionId, async () => {
+          await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
+        });
         return;
       case "turn_finished":
       case "turn_failed": {
         this.stopTyping(event.sessionId);
-        const answer = (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
-        this.pendingText.delete(event.sessionId);
-        // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).
-        const markers = extractFileMarkers(answer);
-        if (markers.text.length > 0) await this.sendAnswer(target.chatId, target.topicId, markers.text);
-        for (const path of markers.attach) await this.sendVaultFile(target.chatId, target.topicId, path);
-        if (markers.offer.length > 0) await this.offerFiles(target.chatId, target.topicId, markers.offer);
         const stopped = this.stoppedSessions.delete(event.sessionId);
-        if (event.kind === "turn_failed")
-          await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+        await this.inOrder(event.sessionId, async () => {
+          const files = this.turnFiles.get(event.sessionId);
+          this.turnFiles.delete(event.sessionId);
+          // A file named twice goes once, and attach wins over offer, also across blocks.
+          const offers = [...(files?.offered ?? [])].filter((path) => files?.attached.has(path) !== true);
+          if (offers.length > 0) await this.offerFiles(target.chatId, target.topicId, offers);
+          if (event.kind === "turn_failed")
+            await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+        });
         return;
       }
       default:
         return;
     }
+  }
+
+  /** Runs a send after every earlier send of the same chat. A failed send never blocks the next one. */
+  private inOrder(sessionId: string, send: () => Promise<void>): Promise<void> {
+    const next = (this.outbox.get(sessionId) ?? Promise.resolve()).then(send).catch((error: unknown) => {
+      this.logFailedCall("send", error);
+    });
+    this.outbox.set(sessionId, next);
+    return next.then(() => {
+      if (this.outbox.get(sessionId) === next) this.outbox.delete(sessionId);
+    });
+  }
+
+  /**
+   * Sends one answer block and its attachments as soon as the block ends. A marker is one whole
+   * line, and a block holds whole lines, so a marker is never shown half written (lesson 124).
+   * Offers wait for the turn end, because a later block can still attach the same file.
+   */
+  private async sendBlock(
+    chatId: number,
+    topicId: number | null,
+    event: Extract<SessionEvent, { kind: "text" }>,
+  ): Promise<void> {
+    const markers = extractFileMarkers(event.text);
+    let files = this.turnFiles.get(event.sessionId);
+    if (files === undefined) {
+      files = { attached: new Set(), offered: new Set() };
+      this.turnFiles.set(event.sessionId, files);
+    }
+    if (markers.text.length > 0) await this.sendAnswer(chatId, topicId, markers.text);
+    for (const path of markers.attach) {
+      if (files.attached.has(path)) continue;
+      files.attached.add(path);
+      await this.sendVaultFile(chatId, topicId, path);
+    }
+    for (const path of markers.offer) files.offered.add(path);
   }
 
   private async sendApproval(

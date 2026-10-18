@@ -231,6 +231,40 @@ describe("chats", () => {
     expect(telegram.callsTo("sendMessage").at(-1)?.params).toMatchObject({ chat_id: owner, parse_mode: "HTML" });
   });
 
+  test("each answer block goes out while the turn still runs (issue #40)", async () => {
+    let finish: () => void = () => undefined;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    createEva((request) =>
+      (async function* () {
+        const [, end] = FakeEngine.answer(request, "Second part.");
+        yield { kind: "text" as const, text: "First part.", messageId: "m1" };
+        await finished;
+        yield { kind: "text" as const, text: "Second part.", messageId: "m2" };
+        if (end !== undefined) yield end;
+      })(),
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "Tell me");
+    await settle(bot, () => telegram.sentTexts().includes("First part."));
+    expect(telegram.sentTexts()).not.toContain("Second part.");
+    finish();
+    await settle(bot, () => telegram.sentTexts().includes("Second part."));
+  });
+
+  test("a failed turn says so after the blocks it already sent", async () => {
+    createEva(() => [
+      { kind: "text", text: "Working on it.", messageId: "m1" },
+      { kind: "turn_failed", reason: "boom" },
+    ]);
+    const bot = createBot();
+    telegram.sendText(owner, "Try");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("boom")));
+    const texts = telegram.sentTexts();
+    expect(texts.indexOf("Working on it.")).toBeLessThan(texts.indexOf("The turn failed: boom"));
+  });
+
   test("a second message continues the same chat", async () => {
     const bot = createBot();
     telegram.sendText(owner, "one");
@@ -902,6 +936,44 @@ describe("files (lessons 72, 74, 124)", () => {
       bot,
       () => uploads().length === 1 && telegram.sentTexts().includes("That file is no longer available."),
     );
+  });
+
+  test("a file named in two blocks of one answer goes once", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m1" },
+        { kind: "text", text: "Again.\n[[offer: Methods/Plan.md]]\n[[attach: Methods/Plan.md]]", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "send the plan");
+    await settle(bot, () => telegram.sentTexts().includes("Again."));
+    await eva.idle();
+    expect(uploads()).toEqual(["Plan.md"]);
+    expect(telegram.sentTexts()).not.toContain("Files you can open:");
+  });
+
+  test("an attach in a later block beats an offer in an earlier one", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    sandbox.write(vault(), "Methods/Other.md", "# Other\n");
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Maybe.\n[[offer: Methods/Plan.md]]\n[[offer: Methods/Other.md]]", messageId: "m1" },
+        { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "send the plan");
+    await settle(bot, () => telegram.sentTexts().includes("Files you can open:"));
+    expect(uploads()).toEqual(["Plan.md"]);
+    const markup = JSON.stringify(telegram.callsTo("sendMessage").at(-1)?.params["reply_markup"]);
+    expect(markup).toContain("Other.md");
+    expect(markup).not.toContain("Plan.md");
   });
 
   test("a file outside the vault gets a sentence instead of an upload", async () => {

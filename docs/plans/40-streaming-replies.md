@@ -17,7 +17,7 @@ The person starts to read an answer while the agent still works. This holds in e
 
 1. Claude Code adapter: send each event when it arrives. Keep the events only until the first event that can be shown. A lost history fails before any output, so the retry still works.
 2. Telegram: send each finished text block when it arrives, not at the end of the turn. Read the file markers in each block.
-3. Decide about word-by-word streaming (gap 1). If yes: add a new event kind for a piece of text, map it in both engines, and show it in each front end.
+3. Word-by-word streaming moves to #117.
 4. Update the user guide where it describes how answers arrive.
 
 ## Gaps
@@ -31,7 +31,7 @@ The person starts to read an answer while the agent still works. This holds in e
 
 Three review agents read the code for each gap. They agree on the points below.
 
-1. **Word by word: needs the owner.** Finished blocks meet most of the issue. A long final answer with no tool call still arrives at once. Word by word costs:
+1. **Word by word: the owner chose a follow-up issue (#117).** Finished blocks meet most of the issue. A long final answer with no tool call still arrives at once. Word by word costs:
    - A new event kind (a schema change).
    - A hold-back buffer in the core. The `Redactor` reads one string at a time, so a secret cut across two pieces would pass unredacted.
    - New code in every front end. Telegram must edit a growing message, which hits the edit limits and half-written Markdown.
@@ -43,4 +43,4 @@ Three review agents read the code for each gap. They agree on the points below.
 
 ## Found on the way
 
-- The web app clears the streamed text when the page becomes visible again (`recover` in `App.tsx`). On a phone, the blocks already shown vanish until the turn ends.
+- The web app clears the streamed text when the page becomes visible again (`recover` in `App.tsx`). On a phone, the blocks already shown vanish until the turn ends. The owner chose a follow-up issue (#118).

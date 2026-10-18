@@ -72,7 +72,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Never push to a person's vault.
 - One owner per branch. Agent worktrees live in `.claude/worktrees/`, which git ignores.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
-- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`.
+- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To implement an issue, follow `.agents/skills/implement-issue/SKILL.md`.
 
 ## Shell commands
 

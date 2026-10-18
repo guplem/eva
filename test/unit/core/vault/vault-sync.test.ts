@@ -494,18 +494,22 @@ describe("VaultSync conflicts", () => {
 
 describe("VaultSync conflict edge cases", () => {
   test("a note name with a glob character gets its own version, not the version of a note it matches", async () => {
-    pushFromOther("n*.md", "star base\n");
-    pushFromOther("nb.md", "nb base\n");
+    pushFromOther("[ab].md", "bracket base\n");
+    pushFromOther("a.md", "a base\n");
     sandbox.git(vault, "pull", "-q");
-    pushFromOther("n*.md", "star theirs\n");
-    pushFromOther("nb.md", "nb theirs\n");
-    sandbox.write(vault, "n*.md", "star mine\n");
-    sandbox.write(vault, "nb.md", "nb mine\n");
+    pushFromOther("[ab].md", "bracket theirs\n");
+    pushFromOther("a.md", "a theirs\n");
+    sandbox.write(vault, "[ab].md", "bracket mine\n");
+    sandbox.write(vault, "a.md", "a mine\n");
     const sync = createSync(vault);
     expect((await sync.pull()).status).toBe("conflict");
-    await sync.resolve("n*.md", "mine");
-    expect(readFileSync(join(vault, "n*.md"), "utf-8")).toBe("star mine\n");
-    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["nb.md"]);
+    await sync.resolve("[ab].md", "mine");
+    expect(readFileSync(join(vault, "[ab].md"), "utf-8")).toBe("bracket mine\n");
+    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["a.md"]);
+    // A save must never stage a.md through the pattern: it still holds conflict markers.
+    await sync.save();
+    expect(sandbox.git(vault, "show", "HEAD:a.md")).not.toContain("<<<<<<<");
+    expect(sandbox.git(vault, "status", "--porcelain")).toContain("UU a.md");
   });
 
   test("drops a pick when the remote changes that note again, so the person sees the new version first", async () => {

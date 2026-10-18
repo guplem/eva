@@ -269,6 +269,14 @@ describe("mapSdkMessages", () => {
     // The engine sends a result, then the subagent's work, then a second turn with its own result.
     const agentToolUseId = "toolu_01VWSzFjZEZ8CBgmiDqcysZk";
     expect(await collect(loadCapture("background-subagent"))).toEqual([
+      // The capture's account was near its overage limit.
+      {
+        kind: "usage_limit",
+        status: "warning",
+        window: "overage",
+        usedPercent: 99,
+        resetsAt: "2026-11-01T00:00:00.000Z",
+      },
       {
         kind: "tool_started",
         toolUseId: agentToolUseId,

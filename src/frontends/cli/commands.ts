@@ -236,13 +236,21 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     });
   }
   const client = runningClient(host, paths);
-  if (client !== null) for (const line of await describeSetupProgress(client)) write(line);
-  // Only setup's own answers count: a save on the page meanwhile has its own Restart button.
-  if (client !== null && result.changedAfterStart) {
-    write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");
-    await requestRestart(client);
-  } else if (client === null) {
+  if (client === null) {
     write("Run `eva doctor` to check the tools, then start Eva with `eva service install` or `eva`.");
+    return;
+  }
+  // Every answer is saved by now, so a page that does not answer only gets a line, never a failed setup.
+  try {
+    if (!(await isAnswering(client))) throw new Error("no answer");
+    for (const line of await describeSetupProgress(client)) write(line);
+    // Only setup's own answers count: a save on the page meanwhile has its own Restart button.
+    if (result.changedAfterStart) {
+      write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");
+      await requestRestart(client);
+    }
+  } catch {
+    write("Eva's page did not answer. Run `eva status`, then restart her from Settings to use the new answers.");
   }
 }
 

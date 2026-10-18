@@ -134,7 +134,7 @@ Setup asks each question only when its step is not done yet. Press Enter to keep
 | Question                     | What to answer                                                                                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code and pi           | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                |
-| Tailscale                    | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).                                             |
+| Tailscale                    | Enter installs it, then Enter signs in. Open the link that it shows. See [Open Eva on your phone](#open-eva-on-your-phone).                       |
 | Start Eva                    | Enter starts Eva now, and each time the computer starts.                                                                                          |
 | The code that the page shows | The short code on Eva's page, to let that device in. Enter goes on in the terminal.                                                               |
 | Time zone                    | Enter keeps your computer's time zone.                                                                                                            |
@@ -150,7 +150,9 @@ Setup asks each question only when its step is not done yet. Press Enter to keep
 | Claude token                 | The token from `claude setup-token`. With pi, press Enter.                                                                                        |
 | Telegram bot token           | Optional: the token from BotFather. Eva works without Telegram.                                                                                   |
 | Telegram chat id             | Enter, to pair with a code instead.                                                                                                               |
-| Google account, voice model  | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
+| Google account               | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
+| Google client id, secret     | For a Google account only: from your own Google OAuth client.                                                                                     |
+| Voice model                  | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
 
 You can run `eva setup` again at any time. It asks only for the steps that are not done.
 

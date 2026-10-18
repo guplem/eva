@@ -235,6 +235,17 @@ describe("with a running Eva", () => {
     expect(printed(answering)).toContain("○ Your devices: Open Eva's page on your phone.");
   });
 
+  test("a page that does not answer at the end never fails a setup that saved every answer", async () => {
+    // The lock says Eva runs, but nothing listens on this port, such as after a slow start.
+    saveConfig(paths, { ...loadSettings(paths).config, port: 65_530 });
+    const answering = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland", EVA_PORT: "65530" },
+    });
+    expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
+    expect(printed(answering)).toContain("Eva's page did not answer.");
+  });
+
   test("devices allow lets in the browser that shows the code, and never prints its token", async () => {
     eva.deviceLogins.attachApprover(terminalDeviceApprover);
     const request = eva.deviceLogins.request("this computer", "this computer, a browser");

@@ -26,7 +26,8 @@ export function SetupProgress({
         {missing === 0 ? "Setup is complete" : `Setup: ${String(missing)} of ${String(steps.length)} steps left`}
       </legend>
       <div className="hint">
-        Each step saves at once, here or in <code>eva setup</code> on Eva&apos;s computer. A step marked ○ is optional.
+        Each answer saves at once, here or in <code>eva setup</code> on Eva&apos;s computer. A step marked ○ is
+        optional.
       </div>
       {restartNeeded && (
         <div className="hint">Eva uses the new tokens after a restart. Press Restart Eva under Updates, below.</div>

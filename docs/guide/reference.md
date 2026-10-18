@@ -167,9 +167,9 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 ## Logging in to the web page
 
-- **A new device** (your phone, another computer, or a browser on Eva's own computer): the first time, the page shows a short code. Allow it in one of these ways, and the device stays logged in for a year:
-  - In a terminal on Eva's computer, run `eva devices allow <code>`, or type the code where `eva setup` asks for it.
-  - In Telegram, tap **Allow** when the code matches. This needs the Telegram bot.
+- **A new device** (your phone, another computer, or a browser on Eva's own computer): the first time, the page shows a short code. Allow it, and the device stays logged in for a year:
+  - In a terminal on Eva's computer, run `eva devices allow <code>`, or type the code where `eva setup` asks for it. This works for every device.
+  - In Telegram, tap **Allow** when the code matches. This needs the Telegram bot, and works only for a phone or another computer: a request from Eva's own computer can come from any program there, so only the terminal answers it.
 - **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, list them all in `remoteAccess.allowedTailscaleIdentities`.
 - **On the computer itself,** the page listens at `http://127.0.0.1:7420` (or that Eva's port), for that computer only.
 - **The token** `localApiToken` from `secrets.json` in Eva's home folder always works as the last way in. The `eva` commands on that computer read it by themselves.

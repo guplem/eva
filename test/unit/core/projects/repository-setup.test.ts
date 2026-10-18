@@ -31,7 +31,7 @@ const reference: RepositoryFacts = {
     ".github/workflows/checks.yml": "ci",
   },
   workflows: [{ path: ".github/workflows/checks.yml", runsOnPullRequest: true, usesCodeql: false }],
-  labels: ["bug", "owner", "waiting-for-human-check"],
+  labels: ["auto-developing", "requires-human-intervention", "waiting-for-human-check"],
   allowRules: ["Read", "Grep", "Bash(git status*)", "Bash(gh pr view*)", "Bash(bun run *)"],
   requiredChecks: true,
   privateVulnerabilityReporting: true,
@@ -110,14 +110,21 @@ describe("evaluateSetup", () => {
   });
 
   test("labels: all present is green, some is yellow, none is red; case does not count", () => {
-    expect(
-      item(evaluateSetup(reference, target({ labels: ["BUG", "Owner", "waiting-for-human-check"] })), "Labels").light,
-    ).toBe("green");
-    const some = item(evaluateSetup(reference, target({ labels: ["bug"] })), "Labels");
+    const all = ["Auto-Developing", "requires-human-intervention", "waiting-for-human-check", "release-blocker"];
+    expect(item(evaluateSetup(reference, target({ labels: all })), "Labels").light).toBe("green");
+    const some = item(evaluateSetup(reference, target({ labels: ["auto-developing"] })), "Labels");
     expect(some.light).toBe("yellow");
-    expect(some.detail).toContain("owner, waiting-for-human-check");
+    expect(some.detail).toContain("requires-human-intervention, waiting-for-human-check");
     expect(some.fixRequest).toContain("gh label clone guplem/eva --repo owner/example-app");
     expect(item(evaluateSetup(reference, target({ labels: [] })), "Labels").light).toBe("red");
+  });
+
+  test("labels: a GitHub default label is yellow, with a request to delete it", () => {
+    const labels = ["auto-developing", "requires-human-intervention", "waiting-for-human-check", "bug", "Help wanted"];
+    const report = item(evaluateSetup(reference, target({ labels })), "Labels");
+    expect(report).toMatchObject({ light: "yellow", detail: "GitHub default labels: bug, Help wanted." });
+    expect(report.fixRequest).toContain('gh label delete "bug" --repo owner/example-app --yes');
+    expect(report.fixRequest).toContain('gh label delete "Help wanted" --repo owner/example-app --yes');
   });
 
   test("unreadable facts are grey, never red", () => {

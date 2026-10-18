@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 
-/** The variable that names the file of server specs. Eva writes the file before each turn. */
+/** The variable that names the file of server specs. pi-mcp-extension.ts holds the same name for Eva. */
 export const mcpServersFileVariable = "EVA_MCP_SERVERS_FILE";
 
 /** `uvx` can download the server on its first start. */

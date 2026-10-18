@@ -11,6 +11,7 @@ import evaMcpBridge, {
   startBridge,
   type BridgePi,
 } from "../../../../src/engines/pi/pi-mcp-bridge.ts";
+import * as extension from "../../../../src/engines/pi/pi-mcp-extension.ts";
 
 type Tool = Parameters<BridgePi["registerTool"]>[0];
 
@@ -86,6 +87,13 @@ function logged(): unknown[] {
 }
 
 describe("the pi MCP bridge", () => {
+  test("is what Eva writes for pi, and reads the variable that Eva sets", async () => {
+    expect(extension.mcpExtensionSource).toBe(
+      await Bun.file(join(import.meta.dir, "..", "..", "..", "..", "src", "engines", "pi", "pi-mcp-bridge.ts")).text(),
+    );
+    expect(extension.mcpServersFileVariable).toBe(mcpServersFileVariable);
+  });
+
   test("registers every tool of every page under Claude Code's name, and deletes the specs", async () => {
     const file = writeServers({ google: google() });
     await evaMcpBridge(api);

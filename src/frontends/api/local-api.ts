@@ -213,7 +213,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
     const tag = url.searchParams.get("tag");
-    // The CLI sends its words as they are, so the filter words are read here.
+    // Read the filter words here: the CLI sends its words as they are.
     const query = parseProjectQuery(url.searchParams.get("text") ?? "");
     return json(
       eva.projects({

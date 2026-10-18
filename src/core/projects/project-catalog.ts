@@ -106,14 +106,22 @@ export function parseProjectQuery(input: string): ProjectQuery {
   let tag: string | undefined;
   for (const word of input.split(/\s+/).filter((candidate) => candidate.length > 0)) {
     const lower = word.toLowerCase();
+    const tagWord = tagOf(word);
     if (lower === "status:any") status = undefined;
     else if (lower.startsWith("status:") && statuses.includes(lower.slice(7) as ProjectStatus)) {
       status = lower.slice(7) as ProjectStatus;
-    } else if (lower.startsWith("tag:") && word.length > 4) tag = word.slice(4);
-    else if (word.startsWith("#") && word.length > 1) tag = word.slice(1);
-    else words.push(word);
+    } else if (tagWord !== null && tag === undefined) tag = tagWord;
+    // A second tag word still searches: the words also match the tags.
+    else words.push(tagWord ?? word);
   }
   return { text: words.join(" "), ...(status === undefined ? {} : { status }), ...(tag === undefined ? {} : { tag }) };
+}
+
+/** The tag of a `tag:work` or `#work` word, or null for any other word. */
+function tagOf(word: string): string | null {
+  if (word.toLowerCase().startsWith("tag:") && word.length > 4) return word.slice(4);
+  if (word.startsWith("#") && word.length > 1) return word.slice(1);
+  return null;
 }
 
 /** Projects that match every given filter, the most recently created first. */

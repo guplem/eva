@@ -17,6 +17,8 @@ interface ProjectViewProps {
   readonly onNavigate: () => void;
 }
 
+const statusWordPattern = /(^|\s)status:/i;
+
 interface Selection {
   readonly project: Project;
   readonly clone: CloneDetails;
@@ -37,7 +39,8 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      api.projects(search, status, tag).then(setProjects, showError);
+      // A status word typed in the search wins over the select.
+      api.projects(search, statusWordPattern.test(search) ? "" : status, tag).then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
   }, [search, status, tag, showError]);

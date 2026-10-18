@@ -152,6 +152,9 @@ describe("parseProjectQuery", () => {
       tag: "hobby",
     });
     expect(parseProjectQuery("tag:life")).toEqual({ text: "", tag: "life" });
+    // One tag filters. A second tag word still searches, because the words also match the tags.
+    expect(parseProjectQuery("#life #money")).toEqual({ text: "money", tag: "life" });
+    expect(parseProjectQuery("tag: #")).toEqual({ text: "tag: #" });
   });
 
   test("status:any removes the status filter, and an unknown status stays a search word", () => {

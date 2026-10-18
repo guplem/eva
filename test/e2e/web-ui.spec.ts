@@ -123,6 +123,10 @@ test("the status filter hides a closed project until Any status", async ({ page 
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   await page.getByLabel("Status").selectOption("");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A status word typed in the search wins over the select.
+  await page.getByLabel("Status").selectOption("active");
+  await page.getByLabel("Search projects").fill("status:closed");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
 });
 
 test("the tag filter shows only the projects with that tag", async ({ page }) => {

@@ -357,6 +357,8 @@ describe("routes", () => {
       await call(`/api/projects?text=${encodeURIComponent("example status:closed")}&status=active`),
     );
     expect(active.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+    const tagged = await json<unknown[]>(await call(`/api/projects?text=${encodeURIComponent("#web")}&tag=missing`));
+    expect(tagged).toEqual([]);
   });
 
   test("an unknown session is a 404, and a bad body is a 400", async () => {

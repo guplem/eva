@@ -125,16 +125,21 @@ function doctor(host: CliHost, paths: HomePaths): Promise<boolean> {
   });
 }
 
-/** The saved Google parts and one token refresh, or null when Google is not set up at all. */
-function googleState(paths: HomePaths, google: EvaConfig["google"]): Promise<CheckResult | null> {
-  const { googleOauthClientId: clientId, googleOauthClientSecret: clientSecret } = loadSecrets(paths);
-  if (google.email === null && clientId === undefined && clientSecret === undefined) return Promise.resolve(null);
-  return checkGoogle({
+/** The saved client and login, plus one token refresh, or null when Google is not set up at all. */
+async function googleState(paths: HomePaths, google: EvaConfig["google"]): Promise<CheckResult | null> {
+  const secrets = loadSecrets(paths);
+  const { googleOauthClientId: clientId, googleOauthClientSecret: clientSecret } = secrets;
+  if (google.email === null && clientId === undefined && clientSecret === undefined) return null;
+  const result = await checkGoogle({
     config: google,
     client: clientId === undefined || clientSecret === undefined ? null : { clientId, clientSecret },
     credentialsFolder: googleCredentialsFolder(paths),
     readServices: false,
   });
+  // The terminal output can reach a log, as the Test result reaches the page: both are redacted (lesson 95).
+  const redactor = new Redactor();
+  for (const secret of Object.values(secrets)) redactor.addSecret(secret);
+  return { ok: result.ok, detail: redactor.redact(result.detail) };
 }
 
 async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): Promise<void> {

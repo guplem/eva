@@ -1,12 +1,14 @@
 /**
  * The pi extension that gives pi Eva's MCP servers, such as the Google tools. pi has no MCP
- * support, so this file is a small MCP client: for each server it starts the server, lists
- * its tools over stdio, and registers each tool with pi as `mcp__<server>__<tool>`. Claude Code
- * uses the same names, so the shared approval rule applies to both engines.
+ * support (MCP: a standard way to give an agent extra tools), so this file is a small MCP client.
+ * For each server, it starts the server and lists its tools over the server's stdin and stdout.
+ * Then it registers each tool with pi as `mcp__<server>__<tool>`. Claude Code uses the same
+ * names, so the shared approval rule applies to both engines.
  *
  * pi loads this file as text with `-e` (see pi-mcp-extension.ts), so it imports nothing but
  * Node modules. It spawns directly because it runs inside pi, outside Eva's process seams.
- * Each wait has a bound, and pi's abort stops a tool call.
+ * Each wait has a bound, and pi's abort stops a tool call. On Windows, a kill stops `uvx` but
+ * not its child, so Eva's stop of pi's process tree is the hard stop (lesson 81).
  */
 import { spawn } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
@@ -20,6 +22,8 @@ const protocolVersion = "2025-06-18";
 /** A bound on `tools/list` pages, so a broken server cannot loop forever. */
 const maxToolPages = 20;
 const stopWaitMs = 1_000;
+/** The longest tool name that OpenAI accepts. */
+const maxToolNameLength = 64;
 
 interface ServerSpec {
   readonly command: string;
@@ -65,47 +69,63 @@ export interface BridgePi {
 interface McpClient {
   request(method: string, params: unknown, timeoutMs: number | null, signal?: AbortSignal): Promise<unknown>;
   notify(method: string, params: unknown): void;
-  /** Ends stdin, which asks the server to stop, and stops it hard after a short wait (lesson 81). */
+  /** Ends stdin to ask the server to stop. After a short wait, kills it (lesson 81). */
   close(): Promise<void>;
 }
 
-export default async function evaMcpBridge(pi: BridgePi): Promise<void> {
-  await startBridge(pi, { startTimeoutMs: defaultStartTimeoutMs });
+export interface BridgeOptions {
+  readonly startTimeoutMs: number;
+  /** Where a problem goes: pi's stderr, which Eva shows when a turn fails. */
+  readonly report: (line: string) => void;
 }
 
-export async function startBridge(pi: BridgePi, options: { readonly startTimeoutMs: number }): Promise<void> {
+export default async function evaMcpBridge(pi: BridgePi): Promise<void> {
+  await startBridge(pi, {
+    startTimeoutMs: defaultStartTimeoutMs,
+    report: (line) => process.stderr.write(`${line}\n`),
+  });
+}
+
+/** Never rejects: pi stops at once when an extension fails to start, and the turn with it. */
+export async function startBridge(pi: BridgePi, options: BridgeOptions): Promise<void> {
   const servers = readServers();
   const clients: McpClient[] = [];
   // pi waits for this handler, so the servers stop before pi exits.
   pi.on("session_shutdown", async () => {
     await Promise.all(clients.map((client) => client.close()));
   });
-  // In parallel, so two slow servers do not add up their waits.
+  // Start the servers in parallel, so that two slow servers do not add up their waits.
   await Promise.all(
     Object.entries(servers).map(async ([server, spec]) => {
-      const client = connect(spec);
-      clients.push(client);
-      // One deadline for the whole start, not one per request.
+      // One deadline for the whole start, so a slow `initialize` gives `tools/list` no fresh wait.
       const deadline = Date.now() + options.startTimeoutMs;
       const remaining = (): number => Math.max(0, deadline - Date.now());
+      let client: McpClient | null = null;
       try {
+        // Inside the try: spawn throws at once for a bad command, such as a `.cmd` file on Windows.
+        client = connect(spec);
+        clients.push(client);
         await client.request(
           "initialize",
           { protocolVersion, capabilities: {}, clientInfo: { name: "eva", version: "1" } },
           remaining(),
         );
         client.notify("notifications/initialized", {});
-        for (const tool of await listTools(client, remaining)) register(pi, client, server, tool);
+        const tools = await listTools(client, remaining);
+        for (const tool of tools) register(pi, client, server, tool, options);
       } catch (error) {
         // A server that fails costs its tools, never the turn.
-        await client.close();
-        process.stderr.write(`Eva could not start the MCP server "${server}": ${messageOf(error)}\n`);
+        await client?.close();
+        options.report(`Eva could not start the MCP server "${server}": ${messageOf(error)}`);
       }
     }),
   );
 }
 
-/** Reads the specs once and deletes them: they hold secrets, and pi's shell tool must not find them. */
+/**
+ * Reads the specs once and deletes them. They hold secrets, so pi's shell tool must not find
+ * them. The server still gets its secrets in its own environment, as with Claude Code.
+ */
 function readServers(): Record<string, ServerSpec> {
   const file = process.env[mcpServersFileVariable];
   Reflect.deleteProperty(process.env, mcpServersFileVariable);
@@ -115,7 +135,11 @@ function readServers(): Record<string, ServerSpec> {
   } catch {
     return {};
   } finally {
-    rmSync(file, { force: true });
+    try {
+      rmSync(file, { force: true });
+    } catch {
+      // Windows can hold a new file for a moment. Eva deletes it after the turn.
+    }
   }
 }
 
@@ -134,9 +158,16 @@ async function listTools(client: McpClient, remaining: () => number): Promise<Mc
   return tools;
 }
 
-function register(pi: BridgePi, client: McpClient, server: string, tool: McpTool): void {
+function register(pi: BridgePi, client: McpClient, server: string, tool: McpTool, options: BridgeOptions): void {
+  // Claude Code makes the same change, so the names stay equal for both engines.
+  const name = `mcp__${server}__${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (name.length > maxToolNameLength) {
+    // The model provider refuses the whole request for one long name, so the turn would fail.
+    options.report(`Eva skipped the MCP tool "${name}": its name is too long.`);
+    return;
+  }
   pi.registerTool({
-    name: `mcp__${server}__${tool.name}`,
+    name,
     label: tool.title ?? tool.name,
     description: tool.description ?? tool.name,
     // pi accepts a plain JSON Schema as well as a TypeBox one.
@@ -173,11 +204,11 @@ function toolContent(parts: readonly McpContentPart[]): ToolContent[] {
   });
 }
 
-/** One stdio MCP connection: JSON-RPC 2.0, one message per line. */
+/** One MCP connection over stdin and stdout. Each message is one line of JSON-RPC 2.0 (a request and answer format). */
 function connect(spec: ServerSpec): McpClient {
   const child = spawn(spec.command, [...spec.args], {
     env: { ...spec.environment },
-    // The server logs to stderr; a pipe that nobody reads could block it.
+    // The server logs to stderr. A pipe that nobody reads could block it.
     stdio: ["pipe", "pipe", "ignore"],
     windowsHide: true,
   });
@@ -194,14 +225,17 @@ function connect(spec: ServerSpec): McpClient {
     if (child.stdin.writable) child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
   };
   const receive = (line: string): void => {
-    let message: { id?: unknown; method?: unknown; result?: unknown; error?: { message?: unknown } };
+    let value: unknown;
     try {
-      message = JSON.parse(line) as typeof message;
+      value = JSON.parse(line);
     } catch {
       return;
     }
+    // A stray line such as `null` or `3` is no message.
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const message = value as { id?: unknown; method?: unknown; result?: unknown; error?: unknown };
     if (typeof message.method === "string") {
-      // A request from the server. Only `ping` has an answer; a notification needs none.
+      // The server sent a request. Answer `ping` only. A notification needs no answer.
       if (message.id === undefined) return;
       if (message.method === "ping") write({ id: message.id, result: {} });
       else write({ id: message.id, error: { code: -32601, message: "Method not found" } });
@@ -210,17 +244,23 @@ function connect(spec: ServerSpec): McpClient {
     const waiter = typeof message.id === "number" ? pending.get(message.id) : undefined;
     if (waiter === undefined || typeof message.id !== "number") return;
     pending.delete(message.id);
-    if (message.error !== undefined)
-      waiter.reject(
-        new Error(typeof message.error.message === "string" ? message.error.message : "The server failed."),
-      );
-    else waiter.resolve(message.result ?? {});
+    const error = message.error;
+    if (typeof error === "object" && error !== null) {
+      const text = (error as { message?: unknown }).message;
+      waiter.reject(new Error(typeof text === "string" ? text : "The server failed."));
+    } else {
+      waiter.resolve(message.result ?? {});
+    }
   };
 
   child.on("error", (error) => {
     failAll(error);
   });
   child.on("exit", () => {
+    stopped = true;
+  });
+  // `close` comes after stdout is read to the end, so an answer written just before the exit still counts.
+  child.on("close", () => {
     stopped = true;
     failAll(new Error("The server stopped."));
   });
@@ -250,7 +290,7 @@ function connect(spec: ServerSpec): McpClient {
         };
         const onAbort = (): void => {
           settle();
-          // The server may still finish a write; the model is told that the call stopped.
+          // The server may still finish a write. The model learns only that the call stopped.
           write({
             method: "notifications/cancelled",
             params: { requestId: id, reason: "The person stopped the turn." },
@@ -261,7 +301,7 @@ function connect(spec: ServerSpec): McpClient {
           reject(new Error("The tool call was stopped."));
           return;
         }
-        if (stopped) {
+        if (stopped || !child.stdin.writable) {
           reject(new Error("The server stopped."));
           return;
         }
@@ -290,7 +330,7 @@ function connect(spec: ServerSpec): McpClient {
     close: async () => {
       if (child.pid === undefined || stopped) return;
       child.stdin.end();
-      // Well under the 5 s that Eva gives pi to close.
+      // Eva gives pi 5 s to close, so wait 1 s at most.
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, stopWaitMs);
         child.once("exit", () => {

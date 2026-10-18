@@ -9,6 +9,8 @@ import { appendFileSync } from "node:fs";
 interface JsonRpcRequest {
   readonly id?: number;
   readonly method?: string;
+  readonly result?: unknown;
+  readonly error?: unknown;
   readonly params?: { readonly name?: string; readonly arguments?: unknown; readonly cursor?: string };
 }
 
@@ -33,6 +35,18 @@ function callTool(message: JsonRpcRequest): void {
     case "broken_tool":
       reply(message.id, { content: [{ type: "text", text: "No such calendar." }], isError: true });
       return;
+    case "rich_tool":
+      reply(message.id, {
+        content: [
+          { type: "image", data: "AAA=", mimeType: "image/png" },
+          { type: "resource", resource: { uri: "file:///notes.txt", text: "A note." } },
+          { type: "audio", data: "AAA=", mimeType: "audio/wav" },
+        ],
+      });
+      return;
+    case "quota_tool":
+      fail(message.id, "Quota exceeded");
+      return;
     case "slow_tool":
       // Never answers, so only a cancel ends the call.
       return;
@@ -42,8 +56,11 @@ function callTool(message: JsonRpcRequest): void {
 }
 
 function handle(message: JsonRpcRequest): void {
-  // An answer from the client, such as to the ping, needs nothing.
-  if (message.method === undefined) return;
+  // An answer from the client, such as to the ping or to an unknown request.
+  if (message.method === undefined) {
+    appendFileSync(logPath, JSON.stringify({ answer: message }) + "\n");
+    return;
+  }
   switch (message.method) {
     case "initialize":
       reply(message.id, {
@@ -54,8 +71,10 @@ function handle(message: JsonRpcRequest): void {
       return;
     case "notifications/initialized":
       initialized = true;
-      // A server may ask the client something; the client must answer and go on.
+      // A server may ask the client something, and may write a line that is not JSON.
       process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: 900, method: "ping" }) + "\n");
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: 901, method: "roots/list" }) + "\n");
+      process.stdout.write("Starting the fake server\n");
       return;
     case "notifications/cancelled":
       appendFileSync(logPath, JSON.stringify({ cancelled: message.params }) + "\n");
@@ -67,6 +86,11 @@ function handle(message: JsonRpcRequest): void {
         reply(message.id, {
           tools: [
             { name: "broken_tool", inputSchema: { type: "object" } },
+            { name: "rich_tool" },
+            // A dot is valid in MCP, but not in a model provider's tool name.
+            { name: "notes.read", inputSchema: { type: "object" } },
+            { name: "a_tool_with_a_name_that_is_too_long_for_a_model_provider", inputSchema: { type: "object" } },
+            { name: "quota_tool", inputSchema: { type: "object" } },
             { name: "slow_tool", inputSchema: { type: "object" } },
           ],
         });

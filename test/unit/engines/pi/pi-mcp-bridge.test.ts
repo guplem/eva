@@ -9,6 +9,7 @@ import { join } from "node:path";
 import evaMcpBridge, {
   mcpServersFileVariable,
   startBridge,
+  type BridgeOptions,
   type BridgePi,
 } from "../../../../src/engines/pi/pi-mcp-bridge.ts";
 import * as extension from "../../../../src/engines/pi/pi-mcp-extension.ts";
@@ -46,7 +47,10 @@ class FakeExtensionApi implements BridgePi {
 let folder: string;
 let log: string;
 let api: FakeExtensionApi;
+let reports: string[];
 beforeEach(() => {
+  reports = [];
+  Reflect.deleteProperty(process.env, mcpServersFileVariable);
   folder = mkdtempSync(join(tmpdir(), "eva-mcp-bridge-"));
   log = join(folder, "calls.jsonl");
   api = new FakeExtensionApi();
@@ -59,6 +63,15 @@ afterEach(async () => {
 
 const fakeServer = join(import.meta.dir, "..", "..", "..", "support", "fake-google-mcp.ts");
 
+function options(startTimeoutMs: number): BridgeOptions {
+  return {
+    startTimeoutMs,
+    report: (line) => {
+      reports.push(line);
+    },
+  };
+}
+
 function writeServers(servers: Record<string, unknown>): string {
   const file = join(folder, "servers.json");
   writeFileSync(file, JSON.stringify(servers));
@@ -67,7 +80,11 @@ function writeServers(servers: Record<string, unknown>): string {
 }
 
 function google(): Record<string, unknown> {
-  return { command: process.execPath, args: [fakeServer], environment: { FAKE_MCP_LOG: log } };
+  // Windows needs SystemRoot to start a process; Eva's base environment holds it too.
+  const base = Object.fromEntries(
+    ["PATH", "Path", "SystemRoot"].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]])),
+  );
+  return { command: process.execPath, args: [fakeServer], environment: { ...base, FAKE_MCP_LOG: log } };
 }
 
 async function failureOf(promise: Promise<unknown>): Promise<string> {
@@ -79,11 +96,16 @@ async function failureOf(promise: Promise<unknown>): Promise<string> {
   }
 }
 
-function logged(): unknown[] {
+function logged(): Record<string, unknown>[] {
   return readFileSync(log, "utf8")
     .trim()
     .split("\n")
-    .map((line) => JSON.parse(line) as unknown);
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+/** What reached the server, without the client's answers to the server's own requests. */
+function calls(): Record<string, unknown>[] {
+  return logged().filter((entry) => !("answer" in entry));
 }
 
 describe("the pi MCP bridge", () => {
@@ -100,6 +122,9 @@ describe("the pi MCP bridge", () => {
     expect(api.tools.map((tool) => tool.name)).toEqual([
       "mcp__google__manage_event",
       "mcp__google__broken_tool",
+      "mcp__google__rich_tool",
+      "mcp__google__notes_read",
+      "mcp__google__quota_tool",
       "mcp__google__slow_tool",
     ]);
     expect(api.tool("mcp__google__manage_event")).toMatchObject({
@@ -113,63 +138,101 @@ describe("the pi MCP bridge", () => {
 
   test("a tool call reaches the server and returns its text", async () => {
     writeServers({ google: google() });
-    await startBridge(api, { startTimeoutMs: 10_000 });
+    await startBridge(api, options(10_000));
     const invite = { action: "create", attendees: ["friend@example.com"] };
     const result = await api.tool("mcp__google__manage_event").execute("c1", invite);
     expect(result).toEqual({ content: [{ type: "text", text: "Event saved." }], details: {} });
-    expect(logged()).toEqual([{ name: "manage_event", arguments: invite }]);
+    expect(calls()).toEqual([{ name: "manage_event", arguments: invite }]);
+  });
+
+  test("answers the server's ping, refuses its other requests, and skips a line that is not JSON", async () => {
+    writeServers({ google: google() });
+    await startBridge(api, options(10_000));
+    await api.shutdown();
+    expect(logged()).toEqual([
+      { answer: { jsonrpc: "2.0", id: 900, result: {} } },
+      { answer: { jsonrpc: "2.0", id: 901, error: { code: -32601, message: "Method not found" } } },
+    ]);
+  });
+
+  test("keeps text and images, gives a resource's text, and names any other part", async () => {
+    writeServers({ google: google() });
+    await startBridge(api, options(10_000));
+    expect(await api.tool("mcp__google__rich_tool").execute("c1", {})).toEqual({
+      content: [
+        { type: "image", data: "AAA=", mimeType: "image/png" },
+        { type: "text", text: "A note." },
+        { type: "text", text: "[audio not shown]" },
+      ],
+      details: {},
+    });
+    expect(api.tool("mcp__google__rich_tool").parameters).toEqual({ type: "object", properties: {} });
   });
 
   test("pi's shutdown stops the servers", async () => {
     writeServers({ google: google() });
-    await startBridge(api, { startTimeoutMs: 10_000 });
+    await startBridge(api, options(10_000));
     await api.shutdown();
     expect(await failureOf(api.tool("mcp__google__manage_event").execute("c1", {}))).toBe("The server stopped.");
   });
 
   test("a failed tool throws, so pi marks the call as failed", async () => {
     writeServers({ google: google() });
-    await startBridge(api, { startTimeoutMs: 10_000 });
+    await startBridge(api, options(10_000));
     expect(await failureOf(api.tool("mcp__google__broken_tool").execute("c1", {}))).toBe("No such calendar.");
+    expect(await failureOf(api.tool("mcp__google__quota_tool").execute("c2", {}))).toBe("Quota exceeded");
   });
 
   test("a stop ends the wait and tells the server", async () => {
     writeServers({ google: google() });
-    await startBridge(api, { startTimeoutMs: 10_000 });
+    await startBridge(api, options(10_000));
     const controller = new AbortController();
     const call = api.tool("mcp__google__slow_tool").execute("c1", {}, controller.signal);
-    await Bun.sleep(100);
     controller.abort();
     expect(await failureOf(call)).toBe("The tool call was stopped.");
-    await Bun.sleep(100);
-    expect(logged()).toEqual([
-      { name: "slow_tool", arguments: {} },
-      { cancelled: { requestId: 4, reason: "The person stopped the turn." } },
-    ]);
     expect(await failureOf(api.tool("mcp__google__slow_tool").execute("c2", {}, controller.signal))).toBe(
       "The tool call was stopped.",
     );
+    // The server reads stdin in order and before it exits, so the log is complete after the stop.
+    await api.shutdown();
+    expect(calls()).toEqual([
+      { name: "slow_tool", arguments: {} },
+      { cancelled: { requestId: 4, reason: "The person stopped the turn." } },
+    ]);
   });
 
   test("a server that does not start or does not answer costs its tools, never the turn", async () => {
     writeServers({
       missing: { command: join(folder, "no-such-program"), args: [], environment: {} },
+      // Not an array, so spawn throws at once.
+      broken: { command: process.execPath, args: 3, environment: {} },
       silent: { command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], environment: {} },
       google: google(),
     });
-    await startBridge(api, { startTimeoutMs: 1_000 });
+    await startBridge(api, options(3_000));
     expect(api.tools.map((tool) => tool.name)).toEqual([
       "mcp__google__manage_event",
       "mcp__google__broken_tool",
+      "mcp__google__rich_tool",
+      "mcp__google__notes_read",
+      "mcp__google__quota_tool",
       "mcp__google__slow_tool",
     ]);
+    // Each report names its server or tool; the reason after it comes from the system.
+    expect(reports.map((line) => line.slice(0, line.indexOf('": ') + 1)).toSorted()).toEqual([
+      'Eva could not start the MCP server "broken"',
+      'Eva could not start the MCP server "missing"',
+      'Eva could not start the MCP server "silent"',
+      'Eva skipped the MCP tool "mcp__google__a_tool_with_a_name_that_is_too_long_for_a_model_provider"',
+    ]);
+    expect(reports.find((line) => line.includes('"silent"'))).toMatch(/No answer to initialize after \d+ ms\.$/);
   });
 
   test("no specs, or a broken specs file, starts no server", async () => {
-    await startBridge(api, { startTimeoutMs: 1_000 });
+    await startBridge(api, options(1_000));
     writeFileSync(join(folder, "servers.json"), "{");
     process.env[mcpServersFileVariable] = join(folder, "servers.json");
-    await startBridge(api, { startTimeoutMs: 1_000 });
+    await startBridge(api, options(1_000));
     expect(api.tools).toEqual([]);
   });
 });

@@ -25,9 +25,9 @@ Before you start, have these ready. Each one takes a few minutes.
 1. **A computer that stays on.** Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
 2. **An AI subscription** for the harness that does the thinking. Use a Claude subscription (Pro or Max) from [claude.ai](https://claude.ai) with Claude Code, or another provider with pi, such as ChatGPT or OpenRouter.
 3. **A GitHub account** from [github.com](https://github.com). Eva keeps a private copy of your notes there.
-4. **Telegram** on your phone, and a bot of your own. [Read here how to create your own Telegram bot](docs/guide/setup.md#create-your-telegram-bot).
+4. **Telegram** on your phone, and [a bot of your own](docs/guide/setup.md#create-your-telegram-bot). It is optional, but it is the easiest way to talk to Eva.
 
-To open Eva's web page from your phone, you also need **Tailscale** (free). You can add it later. On Windows and Linux, `eva setup` installs it for you.
+To open Eva's web page from your phone, you also need **Tailscale** (free). You can add it later. `eva setup` installs it for you.
 
 ## Get started
 
@@ -57,9 +57,7 @@ Eva updates herself from new releases. You choose which ones in Settings.
 
 ### In Telegram
 
-Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation.
-
-Any conversation can continue in Telegram. Send `/chats` to pick one from the web page or the terminal: it opens in its own topic, with its last messages. When Eva gives work to a project from Telegram, its conversation opens in a topic too.
+Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation. Telegram, the web page and the terminal share the same conversations: see [Conversations](docs/guide/reference.md#conversations).
 
 | Command      | What it does                                  |
 | ------------ | --------------------------------------------- |
@@ -83,25 +81,13 @@ You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it. Before Tailscale works, `/link` shows the setup steps, with buttons that install Tailscale and sign in.
-
-1. Install the Tailscale app on the phone or computer, and sign in with the same account that you used on Eva's computer.
-2. Open the address, or scan its QR code in Settings, under "Use Eva from any device". The first time on each device, the page shows a short code, and Eva asks in Telegram whether to allow it. Tap **Allow** when the code matches. That device then stays logged in for a year.
-3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
+Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it. [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone) gives the steps.
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
-To change a project's title, status, tags or repositories, open the project in the list and press **Project details**. The same page shows the project's whole `AGENTS.md` for any other change.
+To change a project's title, status, tags or repositories, open the project in the list and press **Project details**.
 
-### Settings
-
-Open **Settings** on the web page. The most useful ones:
-
-- **Install updates automatically:** how often Eva looks for a new version. She installs it only when no conversation is running.
-- **Eva installs by herself:** fixes only, fixes and new features (the default), or every release. A major release can break things that work today.
-- **Fetch the notebook's changes:** how often Eva brings in notes that another computer saved.
-- **Make this machine the hub:** when Eva runs on more than one computer, this chooses which one answers in Telegram.
-- **Tokens and Test:** paste the GitHub, Telegram and Claude Code tokens, then press **Test** to check each part. Only a login with the token can change a token.
+Open **Settings** on the web page to change the updates, the notebook sync, the hub and the tokens. [Settings](docs/guide/reference.md#settings) explains each one.
 
 ## Words you will see
 
@@ -126,7 +112,7 @@ Open the web page and look at Settings, or run `eva status` on Eva's computer. C
 Open the Tailscale app and check that it says "Connected", with the same account as Eva's computer. Then send `/link` in Telegram and open that exact address.
 
 **Eva says "conflict" for the notebook.**
-Two computers changed the same note. Eva stops saving to GitHub until a person fixes it, so that nothing is lost. The fix needs a terminal on Eva's computer: see [Notebook conflicts](docs/guide/reference.md#notebook-conflicts).
+Two computers changed the same note. Eva stops saving to GitHub until you pick a version, so that nothing is lost. Send `/conflicts` in Telegram: see [Notebook conflicts](docs/guide/reference.md#notebook-conflicts).
 
 **Something else.**
 Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.
@@ -147,13 +133,11 @@ To run Eva from source, clone this repository and run `bun install`. Then type `
 | Install the dependencies and the git hooks | `bun install`    |
 | Run every check                            | `bun run check`  |
 | Format the code                            | `bun run format` |
-| Run the tests                              | `bun test`       |
+| Run the tests                              | `bun run test`   |
 
-`bun run check` runs the same checks as the continuous integration (CI) on every pull request: format, lint, types, architecture rules, dead code, a personal-data check, and the tests with coverage.
+`bun run check` runs the same checks as the continuous integration (CI, the checks that GitHub runs) on every pull request.
 
-| Document                                           | What it holds                                 |
-| -------------------------------------------------- | --------------------------------------------- |
-| [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
+[docs/lessons-from-v1.md](docs/lessons-from-v1.md) holds what the previous version, Wall-I v1, learned.
 
 Steps that only a person can do are GitHub issues with the `requires-human-intervention` label.
 

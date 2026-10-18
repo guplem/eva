@@ -43,7 +43,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 25. `[keep]` **Rebase with `--autostash`.** Source: `adr/0002`.
 26. `[adapt]` **v1 `sync-pull.sh` always exited 0 and reported failure only in a JSON line.** → The service reports sync state in the UI and in `/status`. Source: `server/AGENTS.md`.
 27. `[keep]` **A pre-commit hook must never block an autosave commit.** Source: `.githooks/pre-commit`, `4ef7d76`.
-28. `[adapt]` **A repository that autosaves to `main` cannot have a required-check ruleset.** Source: `adr/0002`. → The engine repository could have one, but the owner chose none for now (2026-10-14). CI runs on every pull request, and an agent never merges on red CI.
+28. `[adapt]` **A repository that autosaves to `main` cannot have a required-check ruleset.** Source: `adr/0002`. → The engine repository has one: the "Requirements for merge" ruleset requires every CI check.
 29. `[keep]` **Gitignore anything secret, per-machine, or a cache.** Autosave pushes it within seconds otherwise. Source: `.gitignore`.
 30. `[keep]` **The lock orders git operations, not agents.** Two conversations can edit one note, and one edit can be lost. Accepted. Source: `ARCHITECTURE.md` section 7.
 
@@ -78,7 +78,7 @@ The code must respect every `[keep]` and `[adapt]` item. A code comment cites on
 51. `[keep]` **Gather messages for 1 second**, so a forward of several messages shares one turn. Source: `ARCHITECTURE.md` section 3.
 52. `[adapt]` **Raise the stream line limit.** One `Grep` result passed 64 KB and aborted a turn. → Applies to any engine read as a child process, such as pi in RPC mode. The Agent SDK handles its own stream. Source: `server/adr/0004`.
 53. `[adapt]` **Claude Code `stream-json` output needs `--verbose`**, and the error does not say so. → Only if Eva ever calls `claude -p` directly. The Agent SDK sets its own flags. Source: `server/adr/0004`.
-54. `[keep]` **State files: write a temporary file and rename it. Drop an old format instead of migrating it. Never crash on a bad file.** Source: `ARCHITECTURE.md` section 7.
+54. `[adapt]` **State files: write a temporary file and rename it. Drop an old format instead of migrating it. Never crash on a bad file.** Source: `ARCHITECTURE.md` section 7. → Eva changes a stored format with a dated migration in `src/core/migrations/`.
 55. `[keep]` **Deleting a chat does not delete the engine's transcript.** Say so in the UI. Source: `ARCHITECTURE.md` section 4.
 
 ## 6. Telegram

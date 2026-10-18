@@ -58,8 +58,8 @@ jobs:
           bun-version: 1.4.2
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
-      # One umbrella script, the same one Lefthook runs before each push:
-      # format, lint, types, architecture, dead code, public content, tests with coverage.
+      # One umbrella script: format, lint, types, architecture, dead code, public content, and the
+      # tests with coverage. Lefthook runs all but the tests (`check:static`) before each push.
       - if: runner.os == 'Linux'
         run: bun run check
       # The static checks and the coverage give the same result on every system, so Windows runs

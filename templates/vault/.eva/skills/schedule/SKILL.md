@@ -5,7 +5,7 @@ description: Create, change or remove a scheduled message by editing .eva/schedu
 
 # Schedule a message
 
-A schedule makes Eva post on her own, at a set time, in a chat of its own (a Telegram topic). The schedules live in `.eva/schedules.json`. Eva reads the file at the start of every minute, so a change takes effect within a minute. Eva's autosave commits the file like a note, so never commit it yourself.
+A schedule makes Eva post on her own, at a set time, in a chat of its own (a Telegram topic). The schedules live in `.eva/schedules.json`. Eva reads the file every 30 seconds, so a change takes effect within a minute. Eva's autosave commits the file like a note, so never commit it yourself.
 
 ## 1. Read the file
 
@@ -36,7 +36,7 @@ Each schedule is one object in `schedules`:
 ```
 
 - **`id`**: 1 to 32 lowercase letters, digits or dashes. It must be unique. Never change the id of an existing schedule, because Eva keys its chat by the id. Never reuse the id of a removed schedule either, because Eva can still hold that schedule's old chat under it. It can also hold that schedule's last setup card, so the next card reads as a change to the old schedule.
-- **`name`**: the name of the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
+- **`name`**: required. It names the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
 - **`at`**: `HH:MM`, 24 hours, in the time zone that each prompt's first line names. Eva's settings hold it.
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
 - **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `Scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh conversation, at that time. The steps run in that order.
@@ -54,7 +54,7 @@ Read the file again after you edit it, and check each point:
 - `at` has two digits on each side, such as `07:30` and never `7:30`.
 - Every `id` is a slug of lowercase letters, digits or dashes, and no two entries share one.
 - `days` is absent, or a list that is not empty, of `mon` to `sun`.
-- Each entry has at least one step: `text`, `file` or `prompt`.
+- Each entry has a `name`, and at least one step: `text`, `file` or `prompt`.
 
 Eva skips an entry that fails a check. It says so once in the main chat, in a message that starts "Schedules file problems:", and in `/schedules`.
 

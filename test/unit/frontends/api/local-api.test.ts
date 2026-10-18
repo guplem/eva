@@ -885,8 +885,13 @@ describe("an Eva with releases to pick", () => {
       const post = (body: unknown): Promise<Response> =>
         fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
       expect((await post({ version: "0.1.0" })).status).toBe(409);
+      // An older script posts no body at all: it still means "what the policy allows".
+      const empty = await fetch(`${updatingApi.url}/api/update/check`, { method: "POST", headers: headers() });
+      expect(empty.status).toBe(200);
       expect((await post({ version: "not a version" })).status).toBe(400);
       expect(await json<unknown>(await post({ version: "1.0.0" }))).toMatchObject({ phase: "restarting" });
+      // During the restart, an install with no body changes nothing.
+      expect((await fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers() })).status).toBe(200);
       expect(applied).toEqual(["1.0.0"]);
     } finally {
       updatingApi.stop();

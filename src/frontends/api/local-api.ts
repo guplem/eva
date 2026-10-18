@@ -357,7 +357,7 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     if (method === "POST") {
       const status =
         url.pathname === "/api/update"
-          ? await eva.updateNow(updateSchema.parse(await request.json()).version)
+          ? await eva.updateNow(updateSchema.parse(await optionalJson(request)).version)
           : await eva.checkForUpdate();
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
@@ -503,4 +503,10 @@ function json(body: unknown, status = 200): Response {
 /** A route value must be a Response: the single executable refuses a `Bun.file` there. */
 function staticFile(path: string, contentType: string): Response {
   return new Response(readFileSync(path), { headers: { "content-type": contentType } });
+}
+
+/** The JSON body, or `{}` for none: older scripts post to /api/update with no body. */
+async function optionalJson(request: Request): Promise<unknown> {
+  const text = await request.text();
+  return text.trim() === "" ? {} : (JSON.parse(text) as unknown);
 }

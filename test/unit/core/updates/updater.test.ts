@@ -292,6 +292,73 @@ describe("Updater policy", () => {
     expect(run.applied).toEqual([]);
   });
 
+  test("a version chosen while an install runs never starts a second install", async () => {
+    let finish: () => void = () => undefined;
+    const applied: (string | undefined)[] = [];
+    const updater = new Updater({
+      channel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "1.4.2", latest: "2.0.0", available: true, releases }),
+        apply: async (version) => {
+          applied.push(version);
+          await new Promise<void>((resolve) => (finish = resolve));
+          return { current: "1.4.2", latest: version ?? "?", available: false, releases: [] };
+        },
+      },
+      frequency: () => "daily",
+      policy: () => "minor",
+      isIdle: () => true,
+      restart: () => undefined,
+      now: () => new Date("2026-10-17T10:00:00Z"),
+    });
+    const first = updater.updateNow("2.0.0");
+    for (let round = 0; round < 50 && applied.length === 0; round += 1) await Bun.sleep(1);
+    expect((await updater.updateNow("1.4.3")).phase).toBe("updating");
+    await updater.tick();
+    finish();
+    expect((await first).phase).toBe("restarting");
+    expect((await updater.updateNow("1.4.3")).phase).toBe("restarting");
+    expect(applied).toEqual(["2.0.0"]);
+  });
+
+  test("a version chosen while Eva waits for the chats replaces the pick, and installs at the next idle tick", async () => {
+    const applied: (string | undefined)[] = [];
+    let idle = false;
+    const updater = new Updater({
+      channel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "1.4.2", latest: "2.0.0", available: true, releases }),
+        apply: (version) => {
+          applied.push(version);
+          return Promise.resolve({ current: "1.4.2", latest: version ?? "?", available: false, releases: [] });
+        },
+      },
+      frequency: () => "daily",
+      policy: () => "minor",
+      isIdle: () => idle,
+      restart: () => undefined,
+      now: () => new Date("2026-10-17T10:00:00Z"),
+    });
+    expect(await updater.updateNow()).toMatchObject({ phase: "waiting_for_idle", target: "1.5.0", heldBack: "2.0.0" });
+    // The newest release is no longer held back once the person chose it.
+    expect(await updater.updateNow("2.0.0")).toMatchObject({
+      phase: "waiting_for_idle",
+      target: "2.0.0",
+      heldBack: null,
+    });
+    expect(applied).toEqual([]);
+    idle = true;
+    await updater.tick();
+    expect(applied).toEqual(["2.0.0"]);
+  });
+
+  test("a chosen version that is not newer says so", async () => {
+    const error = await policyHarness("major")
+      .updater.updateNow("1.4.2")
+      .catch((caught: unknown) => caught);
+    expect(String(error)).toContain("1.4.2 is not a newer release");
+  });
+
   test("a source checkout has no versions, so it cannot pick one, and holds nothing back", async () => {
     const run = harness();
     expect(await run.updater.check()).toMatchObject({ target: "bbb2222", heldBack: null, releases: [] });

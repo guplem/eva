@@ -7,6 +7,7 @@ import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { pickUpdate, type NewerRelease, type ReleaseInfo, type UpdatePolicy } from "./release-policy.ts";
+import { isNewerVersion } from "./release-verification.ts";
 
 export type UpdateFrequency = EvaConfig["updates"]["frequency"];
 
@@ -108,7 +109,7 @@ export class Updater {
       latest: this.last?.latest ?? null,
       available: target !== null,
       target,
-      heldBack: pick?.heldBack ?? null,
+      heldBack: this.heldBack(pick?.heldBack ?? null),
       releases: pick?.newer ?? [],
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       lastError: this.lastError,
@@ -139,26 +140,32 @@ export class Updater {
    * else the newest release that the policy allows. Throws for a version that is not a newer release.
    */
   async updateNow(version?: string): Promise<UpdateStatus> {
-    if (this.phase === "waiting_for_idle" && version === undefined) return this.status();
-    await this.check();
-    if (this.lastError !== null) return this.status();
-    if (version !== undefined) {
-      const releases = this.last?.releases ?? null;
-      if (releases === null)
-        throw new EvaError(
-          "update_failed",
-          "This Eva runs from a git checkout, so she cannot install a chosen version.",
-        );
-      if (!releases.some((release) => release.version === version))
-        throw new EvaError("update_failed", `No newer release ${version} exists. Eva never installs an older version.`);
-      this.chosen = version;
+    // One check or install at a time: a second download could replace the first one's file.
+    if (this.phase === "checking" || this.phase === "updating" || this.phase === "restarting") return this.status();
+    if (this.phase !== "waiting_for_idle") {
+      await this.check();
+      if (this.lastError !== null) return this.status();
     }
+    if (version !== undefined) this.choose(version);
+    if (this.phase === "waiting_for_idle") return this.status();
     if (this.target() === null) return this.status();
     if (!this.options.isIdle()) {
       this.phase = "waiting_for_idle";
       return this.status();
     }
     return this.install();
+  }
+
+  private choose(version: string): void {
+    const releases = this.last?.releases ?? null;
+    if (releases === null)
+      throw new EvaError("update_failed", "This Eva runs from a git checkout, so she cannot install a chosen version.");
+    if (!releases.some((release) => release.version === version))
+      throw new EvaError(
+        "update_failed",
+        `${version} is not a newer release than ${this.last?.current ?? "this version"}. Eva never installs an older version.`,
+      );
+    this.chosen = version;
   }
 
   /** Called once a minute: installs a waiting update, or checks when the frequency says so. */
@@ -185,6 +192,12 @@ export class Updater {
     if (last === null) return null;
     if (last.releases === null) return last.available ? last.latest : null;
     return pickUpdate(last.current, last.releases, this.options.policy()).install;
+  }
+
+  /** A version that the person chose is not held back, and neither is an older one. */
+  private heldBack(version: string | null): string | null {
+    if (version === null || this.chosen === null) return version;
+    return isNewerVersion(version, this.chosen) ? version : null;
   }
 
   private restartWhenIdle(): void {

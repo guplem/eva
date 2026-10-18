@@ -16,6 +16,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { isTurnEnd, type EngineEventPayload, type SessionEvent } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
+import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 
 export interface PreparedTurn {
@@ -104,11 +105,13 @@ interface SessionRuntime {
 }
 
 const titleLength = 60;
-/** What a turn did, for the activity chips under its answer. */
+/** What a turn did, for the activity chips and the step badges under its answer. */
 interface TurnActivity {
   readonly toolCount: number;
   readonly commandCount: number;
   readonly taskCount: number;
+  readonly steps: TurnStep[];
+  readonly omittedSteps: number;
 }
 
 const defaultTitle = "New chat";
@@ -338,6 +341,7 @@ export class SessionManager {
     const activity = { toolCount: 0, commandCount: 0, taskCount: 0 };
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
+    let steps: readonly TurnStep[] = [];
 
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
@@ -406,12 +410,19 @@ ${prompt}`,
           taskIds.add(payload.taskId);
           activity.taskCount = taskIds.size;
         }
+        steps = addStep(steps, payload);
         if (payload.kind === "turn_finished") {
           finished = payload;
           // Record first: a front end that reloads the list on this event must find the turn in it.
           this.recordTurn(
             session,
-            { userText: this.options.redactor.redact(prompt), answerText: answerParts.join("\n\n"), ...activity },
+            {
+              userText: this.options.redactor.redact(prompt),
+              answerText: answerParts.join("\n\n"),
+              ...activity,
+              ...storedSteps(steps),
+              contextTokens: payload.contextTokens,
+            },
             payload,
             lastText,
           );
@@ -425,7 +436,8 @@ ${prompt}`,
       clearTimeout(timeout);
       runtime.controller = null;
     }
-    if (finished === null) this.recordFailure(session.id, prompt, answerParts, activity, historyLost);
+    if (finished === null)
+      this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
@@ -451,7 +463,7 @@ ${prompt}`,
 
   private recordTurn(
     session: SessionRecord,
-    turn: { userText: string; answerText: string } & TurnActivity,
+    turn: { userText: string; answerText: string; contextTokens: number | null } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
   ): void {
@@ -495,6 +507,7 @@ ${prompt}`,
           userText: this.options.redactor.redact(prompt),
           answerText: answerParts.join("\n\n"),
           ...activity,
+          contextTokens: null,
           failure: last,
           lastMessageId: null,
           at,

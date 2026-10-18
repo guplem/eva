@@ -3,8 +3,8 @@
  * Assistant turn, commit and push after it, and an idle sweep. Nothing here ever
  * discards a change; a conflict stops the pushes and asks a person.
  */
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join, posix } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { isEvaError } from "../../shared/errors.ts";
@@ -27,6 +27,32 @@ export interface VaultSyncState {
   readonly lastError: string | null;
   /** Files that the last commit left out. */
   readonly withheldFiles: readonly WithheldFile[];
+}
+
+/** "both" keeps this machine's version at the path and the other version in a copy beside it. */
+export type ConflictChoice = "mine" | "theirs" | "both";
+
+/**
+ * "committed": commits here and on the remote change the same lines. "uncommitted": an edit
+ * that was not committed yet clashes with the remote, and the file holds conflict markers.
+ */
+export type ConflictKind = "committed" | "uncommitted";
+
+export interface VaultConflict {
+  readonly path: string;
+  readonly kind: ConflictKind;
+  /** A committed conflict waits until every note has a pick. */
+  readonly picked: ConflictChoice | null;
+}
+
+export interface VaultConflictReport {
+  readonly state: VaultSyncState;
+  readonly conflicts: readonly VaultConflict[];
+}
+
+export interface ConflictResolution extends VaultConflictReport {
+  /** False when the note had no conflict: nothing changed. */
+  readonly found: boolean;
 }
 
 export interface VaultSyncOptions {
@@ -59,19 +85,39 @@ interface StatusEntry {
   readonly path: string;
 }
 
+interface Version {
+  readonly mode: string;
+  readonly oid: string;
+}
+
+/** A conflicted path and its two versions; null where that side deleted the file. */
+interface ConflictedPath {
+  readonly path: string;
+  readonly mine: Version | null;
+  readonly theirs: Version | null;
+}
+
+/** The result of merging the remote into HEAD: the merged tree, and the paths that conflict. */
+interface MergePlan {
+  readonly tree: string;
+  readonly paths: readonly ConflictedPath[];
+}
+
 export class VaultSync {
   private readonly options: VaultSyncOptions;
-  private queue: Promise<unknown> = Promise.resolve();
-  private state: VaultSyncState = {
-    status: "ok",
-    lastCommitAt: null,
-    lastPushAt: null,
-    lastError: null,
-    withheldFiles: [],
-  };
+  private queue: Promise<unknown>;
+  private state: VaultSyncState;
+  /**
+   * The picks of a committed conflict, by path, until every note has one. Memory is enough: a
+   * restart loses only these picks, and git still holds every version.
+   */
+  private readonly picks: Map<string, ConflictChoice>;
 
   constructor(options: VaultSyncOptions) {
     this.options = options;
+    this.queue = Promise.resolve();
+    this.state = { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] };
+    this.picks = new Map();
   }
 
   get currentState(): VaultSyncState {
@@ -97,15 +143,228 @@ export class VaultSync {
     return this.serialize(async () => {
       const branch = await this.checkedDefaultBranch();
       if (branch === null) return this.state;
-      const entries = await this.statusEntries();
-      const committed = await this.commitChanges(entries);
-      if (!committed) return this.state;
-      // A rebase needs a clean index, so the other notes stay committed here until a person fixes the file.
-      const unmerged = unmergedPaths(entries);
-      if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
-      await this.pushWithRetry(branch);
-      return this.state;
+      return this.commitAndPush(branch);
     });
+  }
+
+  /** The notes that conflict now, from git itself, so the list survives a restart. */
+  conflicts(): Promise<VaultConflictReport> {
+    return this.serialize(async () => ({ state: this.state, conflicts: await this.listConflicts() }));
+  }
+
+  /**
+   * Applies a person's pick for one note. After the last note, Eva commits the result and pushes.
+   * Git keeps both versions: a committed conflict ends in a merge commit with both parents, and an
+   * uncommitted edit stays in the stash.
+   */
+  resolve(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
+    return this.serialize(async () => {
+      const found = await this.applyPick(path, choice);
+      return { state: this.state, conflicts: await this.listConflicts(), found };
+    });
+  }
+
+  private async commitAndPush(branch: string): Promise<VaultSyncState> {
+    const entries = await this.statusEntries();
+    const committed = await this.commitChanges(entries);
+    if (!committed) return this.state;
+    // A rebase needs a clean index, so the other notes stay committed here until a person picks a version.
+    const unmerged = unmergedPaths(entries);
+    if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
+    await this.pushWithRetry(branch);
+    return this.state;
+  }
+
+  private async listConflicts(): Promise<VaultConflict[]> {
+    const branch = await this.checkedDefaultBranch();
+    if (branch === null) return [];
+    const unmerged = unmergedPaths(await this.statusEntries());
+    if (unmerged.length > 0) return unmerged.map((path) => ({ path, kind: "uncommitted", picked: null }));
+    const plan = await this.mergePlan(branch);
+    if (plan === null) return [];
+    this.dropStalePicks(plan);
+    return plan.paths.map(({ path }) => ({ path, kind: "committed", picked: this.picks.get(path) ?? null }));
+  }
+
+  /** Returns false when the note has no conflict. */
+  private async applyPick(path: string, choice: ConflictChoice): Promise<boolean> {
+    const branch = await this.checkedDefaultBranch();
+    if (branch === null) return false;
+    const entries = await this.statusEntries();
+    const unmerged = unmergedPaths(entries);
+    if (unmerged.length > 0) {
+      if (!unmerged.includes(path)) return false;
+      if ((await this.resolveUncommitted(path, choice)) && unmerged.length === 1) await this.commitAndPush(branch);
+      return true;
+    }
+    const plan = await this.mergePlan(branch);
+    if (!plan?.paths.some((entry) => entry.path === path)) return false;
+    this.picks.set(path, choice);
+    this.dropStalePicks(plan);
+    if (plan.paths.some((entry) => !this.picks.has(entry.path))) return true;
+    // A fast-forward refuses to overwrite an edit, so the edits go into a commit first.
+    if ((await this.commitChanges(entries)) && (await this.mergeRemote(branch))) await this.pushWithRetry(branch);
+    return true;
+  }
+
+  /**
+   * Writes the pick into the index and the file. In this state, stage 2 is the remote's version
+   * (HEAD after the rebase) and stage 3 is this machine's edit, from the stash.
+   */
+  private async resolveUncommitted(path: string, choice: ConflictChoice): Promise<boolean> {
+    const listed = await this.git(["ls-files", "-u", "-z", "--", path], localTimeoutMs);
+    const stages = new Map(parseStageEntries(listed.stdout).map((entry) => [entry.stage, entry.version]));
+    const entry = { path, mine: stages.get("3") ?? null, theirs: stages.get("2") ?? null };
+    const written = await this.writePick(entry, choice, "HEAD", {});
+    if (written === null) return false;
+    for (const removed of written.removed) rmSync(join(this.options.vaultPath, removed), { force: true });
+    if (written.kept.length === 0) return true;
+    const checkout = await this.git(["checkout", "--", ...written.kept], localTimeoutMs);
+    if (checkout.exitCode !== 0) {
+      this.update({ status: "error", lastError: `git checkout failed: ${firstLine(checkout.stderr)}` });
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Sets the picked version of one path in an index, and the copy for "both". Returns the paths
+   * that the index keeps and the paths that it removes, or null when git failed.
+   */
+  private async writePick(
+    entry: ConflictedPath,
+    choice: ConflictChoice,
+    tree: string,
+    environment: Readonly<Record<string, string>>,
+  ): Promise<{ kept: string[]; removed: string[] } | null> {
+    const keep = choice === "mine" ? entry.mine : choice === "theirs" ? entry.theirs : (entry.mine ?? entry.theirs);
+    const kept: string[] = [];
+    const removed: string[] = [];
+    const steps: string[][] = [];
+    if (keep === null) {
+      steps.push(["update-index", "--force-remove", "--", entry.path]);
+      removed.push(entry.path);
+    } else {
+      steps.push(["update-index", "--add", "--cacheinfo", keep.mode, keep.oid, entry.path]);
+      kept.push(entry.path);
+    }
+    if (choice === "both" && entry.mine !== null && entry.theirs !== null) {
+      const copy = await this.freeCopyPath(entry.path, tree);
+      steps.push(["update-index", "--add", "--cacheinfo", entry.theirs.mode, entry.theirs.oid, copy]);
+      kept.push(copy);
+    }
+    for (const step of steps) {
+      const result = await this.git(step, localTimeoutMs, environment);
+      if (result.exitCode !== 0) {
+        this.update({ status: "error", lastError: `git update-index failed: ${firstLine(result.stderr)}` });
+        return null;
+      }
+    }
+    return { kept, removed };
+  }
+
+  /** `Plan (conflict copy).md` beside `Plan.md`, with a number when that name is taken. */
+  private async freeCopyPath(path: string, tree: string): Promise<string> {
+    const folder = posix.dirname(path);
+    const extension = posix.extname(path);
+    const stem = posix.basename(path, extension);
+    for (let number = 1; ; number += 1) {
+      const name = `${stem} (conflict copy${number === 1 ? "" : ` ${String(number)}`})${extension}`;
+      const candidate = folder === "." ? name : `${folder}/${name}`;
+      const inTree = await this.git(["cat-file", "-e", `${tree}:${candidate}`], localTimeoutMs);
+      if (inTree.exitCode !== 0 && !existsSync(join(this.options.vaultPath, candidate))) return candidate;
+    }
+  }
+
+  /**
+   * Merges the remote into HEAD without touching a file until the end: the merge-tree result goes
+   * into a temporary index, each conflicted path gets its pick, and a fast-forward moves the
+   * worktree. Git refuses that fast-forward when it would overwrite an edit. A missing pick
+   * reports the conflict instead.
+   */
+  private async mergeRemote(branch: string): Promise<boolean> {
+    const upToDate = await this.git(["merge-base", "--is-ancestor", `origin/${branch}`, "HEAD"], localTimeoutMs);
+    if (upToDate.exitCode === 0) return true;
+    const plan = await this.mergePlan(branch);
+    if (plan === null) return false;
+    if (plan.paths.some((entry) => !this.picks.has(entry.path))) {
+      this.reportCommittedConflict(plan);
+      return false;
+    }
+    const indexFile = join(this.options.vaultPath, ".git", "eva-merge-index");
+    const environment = { GIT_INDEX_FILE: indexFile };
+    rmSync(indexFile, { force: true });
+    try {
+      if (!(await this.gitStep(["read-tree", plan.tree], environment))) return false;
+      for (const entry of plan.paths) {
+        if ((await this.writePick(entry, this.picks.get(entry.path) ?? "mine", plan.tree, environment)) === null)
+          return false;
+      }
+      const tree = await this.git(["write-tree"], localTimeoutMs, environment);
+      if (tree.exitCode !== 0) return this.failStep("write-tree", tree);
+      const count = plan.paths.length;
+      const message =
+        count === 0
+          ? "eva: merge the remote"
+          : `eva: resolve a conflict (${String(count)} ${count === 1 ? "file" : "files"})`;
+      const commit = await this.git(
+        ["commit-tree", tree.stdout.trim(), "-p", "HEAD", "-p", `origin/${branch}`, "-m", message],
+        localTimeoutMs,
+      );
+      if (commit.exitCode !== 0) return this.failStep("commit-tree", commit);
+      if (!(await this.gitStep(["merge", "--ff-only", "-q", commit.stdout.trim()], {}))) return false;
+    } finally {
+      rmSync(indexFile, { force: true });
+    }
+    this.picks.clear();
+    this.update({ status: "ok", lastError: null, lastCommitAt: this.options.now() });
+    return true;
+  }
+
+  /**
+   * What a merge of the remote into HEAD gives, from `git merge-tree`, which touches no file.
+   * In its output, stage 2 is HEAD (this machine) and stage 3 is the remote.
+   */
+  private async mergePlan(branch: string): Promise<MergePlan | null> {
+    const merged = await this.git(
+      ["merge-tree", "-z", "--write-tree", "--no-messages", "HEAD", `origin/${branch}`],
+      localTimeoutMs,
+    );
+    if (merged.exitCode !== 0 && merged.exitCode !== 1) {
+      this.update({
+        status: "error",
+        lastError: `git merge-tree failed, and Eva needs it to name the conflicts (git 2.38 or newer): ${firstLine(merged.stderr)}`,
+      });
+      return null;
+    }
+    const [tree = "", ...fields] = merged.stdout.split("\0");
+    const byPath = new Map<string, { mine: Version | null; theirs: Version | null }>();
+    for (const { path, stage, version } of parseStageEntries(fields.join("\0"))) {
+      const sides = byPath.get(path) ?? { mine: null, theirs: null };
+      if (stage === "2") sides.mine = version;
+      if (stage === "3") sides.theirs = version;
+      byPath.set(path, sides);
+    }
+    return { tree: tree.trim(), paths: [...byPath].map(([path, sides]) => ({ path, ...sides })) };
+  }
+
+  private dropStalePicks(plan: MergePlan): void {
+    for (const path of this.picks.keys()) {
+      if (!plan.paths.some((entry) => entry.path === path)) this.picks.delete(path);
+    }
+  }
+
+  private async gitStep(
+    arguments_: readonly string[],
+    environment: Readonly<Record<string, string>>,
+  ): Promise<boolean> {
+    const result = await this.git(arguments_, localTimeoutMs, environment);
+    return result.exitCode === 0 || this.failStep(arguments_[0] ?? "", result);
+  }
+
+  private failStep(name: string, result: GitResult): false {
+    this.update({ status: "error", lastError: `git ${name} failed: ${firstLine(result.stderr)}` });
+    return false;
   }
 
   private async checkedDefaultBranch(): Promise<string | null> {
@@ -211,20 +470,20 @@ export class VaultSync {
    * drops the stash.
    */
   private async rebaseOnto(branch: string): Promise<boolean> {
+    // A rebase drops a merge commit and replays its parents, so a resolved conflict would come back.
+    if (await this.hasUnpushedMerge(branch)) return this.mergeRemote(branch);
     const stashesBefore = await this.stashCount();
     const rebase = await this.git(["rebase", "-q", "--autostash", `origin/${branch}`], localTimeoutMs);
     if (rebase.exitCode !== 0) {
       // The conflicted files tell a real conflict from a timeout or a git failure.
       const conflicted = unmergedPaths(await this.statusEntries());
       await this.git(["rebase", "--abort"], localTimeoutMs);
-      this.update(
-        conflicted.length > 0
-          ? {
-              status: "conflict",
-              lastError: "The vault conflicts with the remote. The notes are committed here; nothing was pushed.",
-            }
-          : { status: "error", lastError: `The rebase on the remote failed: ${firstLine(rebase.stderr)}` },
-      );
+      if (conflicted.length === 0) {
+        this.update({ status: "error", lastError: `The rebase on the remote failed: ${firstLine(rebase.stderr)}` });
+        return false;
+      }
+      const plan = await this.mergePlan(branch);
+      if (plan !== null) this.reportCommittedConflict(plan);
       return false;
     }
     const unmerged = unmergedPaths(await this.statusEntries());
@@ -232,7 +491,24 @@ export class VaultSync {
       this.reportConflictMarkers(unmerged);
       return false;
     }
-    if ((await this.stashCount()) > stashesBefore) {
+    if ((await this.stashCount()) > stashesBefore) return this.applyKeptStash();
+    this.update({ status: "ok", lastError: null });
+    return true;
+  }
+
+  /**
+   * Older git keeps the edits only in the stash when the autostash does not apply. Eva applies
+   * the newest entry, which is that autostash, and never drops it. A clash then shows as
+   * conflict markers, which the person resolves from the phone.
+   */
+  private async applyKeptStash(): Promise<boolean> {
+    const applied = await this.git(["stash", "apply", "-q"], localTimeoutMs);
+    const unmerged = unmergedPaths(await this.statusEntries());
+    if (unmerged.length > 0) {
+      this.reportConflictMarkers(unmerged);
+      return false;
+    }
+    if (applied.exitCode !== 0) {
       this.update({
         status: "conflict",
         lastError: "Local edits clash with the remote. Git keeps them in the stash: see git stash list.",
@@ -246,8 +522,20 @@ export class VaultSync {
   private reportConflictMarkers(paths: readonly string[]): VaultSyncState {
     return this.update({
       status: "conflict",
-      lastError: `These files have conflict markers: ${paths.join(", ")}. Fix each file and run git add on it. Nothing was pushed.`,
+      lastError: `These notes have edits here that clash with the remote: ${paths.join(", ")}. Nothing was pushed.`,
     });
+  }
+
+  private reportCommittedConflict(plan: MergePlan): VaultSyncState {
+    return this.update({
+      status: "conflict",
+      lastError: `These notes changed here and on the remote: ${plan.paths.map((entry) => entry.path).join(", ")}. The notes are committed here; nothing was pushed.`,
+    });
+  }
+
+  private async hasUnpushedMerge(branch: string): Promise<boolean> {
+    const count = await this.git(["rev-list", "--merges", "--count", `origin/${branch}..HEAD`], localTimeoutMs);
+    return count.exitCode === 0 && count.stdout.trim() !== "0";
   }
 
   private async stashCount(): Promise<number> {
@@ -306,11 +594,15 @@ export class VaultSync {
     return pathExists(join(gitFolder, "rebase-merge")) || pathExists(join(gitFolder, "rebase-apply"));
   }
 
-  private async git(arguments_: readonly string[], timeoutMs: number): Promise<GitResult> {
+  private async git(
+    arguments_: readonly string[],
+    timeoutMs: number,
+    environment: Readonly<Record<string, string>> = {},
+  ): Promise<GitResult> {
     try {
       return await this.options.runner.run(["git", ...arguments_], {
         cwd: this.options.vaultPath,
-        environment: { ...this.options.environment, GIT_TERMINAL_PROMPT: "0" },
+        environment: { ...this.options.environment, ...environment, GIT_TERMINAL_PROMPT: "0" },
         timeoutMs,
       });
     } catch (error) {
@@ -333,6 +625,18 @@ export class VaultSync {
 
 function unmergedPaths(entries: readonly StatusEntry[]): string[] {
   return entries.filter((entry) => unmergedCodes.has(entry.code)).map((entry) => entry.path);
+}
+
+/** The `<mode> <oid> <stage>\t<path>` entries of `git ls-files -u -z` and `git merge-tree -z`. */
+function parseStageEntries(output: string): { path: string; stage: string; version: Version }[] {
+  const entries: { path: string; stage: string; version: Version }[] = [];
+  for (const field of output.split("\0")) {
+    const match = /^(\d+) ([0-9a-f]+) (\d)\t([\s\S]+)$/.exec(field);
+    if (match === null) continue;
+    const [, mode = "", oid = "", stage = "", path = ""] = match;
+    entries.push({ path, stage, version: { mode, oid } });
+  }
+  return entries;
 }
 
 function firstLine(text: string): string {

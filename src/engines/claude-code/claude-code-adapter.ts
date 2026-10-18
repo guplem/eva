@@ -145,7 +145,7 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
       case "assistant": {
         if (message.parent_tool_use_id !== null) break;
         // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
-        contextTokens = contextOf(message.message.usage);
+        contextTokens = contextOf(message.message.usage) ?? contextTokens;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -208,12 +208,14 @@ function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEven
   return null;
 }
 
+/** Null for a message with no usage, such as the synthetic message after an API error. */
 function contextOf(usage: {
   input_tokens: number;
   cache_read_input_tokens: number | null;
   cache_creation_input_tokens: number | null;
-}): number {
-  return usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+}): number | null {
+  const total = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+  return total > 0 ? total : null;
 }
 
 function usageOf(usage: {

@@ -189,6 +189,23 @@ describe("mapSdkMessages", () => {
     ]);
   });
 
+  test("a synthetic message with no usage keeps the context of the last real call", async () => {
+    const lines = loadCapture("new-turn-with-tool");
+    const lastAssistant = lines.findLast((line) => line.type === "assistant")!;
+    const usage = { ...lastAssistant.message.usage, input_tokens: 0, cache_read_input_tokens: 0 };
+    lines.splice(lines.indexOf(lastAssistant) + 1, 0, {
+      ...lastAssistant,
+      uuid: "00000000-0000-0000-0000-000000000000",
+      message: { ...lastAssistant.message, content: [], usage: { ...usage, cache_creation_input_tokens: 0 } },
+    });
+    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: 25_365 });
+  });
+
+  test("a turn with no usage at all has no context", async () => {
+    const events = await collect([resultOf("new-turn-with-tool")]);
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: null });
+  });
+
   test("an error result becomes one turn_failed with the engine's own errors", async () => {
     // The SDK throws after this result. The map stops at the result, so the throw adds no second turn end.
     expect(await collect(loadCapture("missing-session"))).toEqual([

@@ -155,7 +155,7 @@ export class PiEngine implements EnginePort {
         if (message === undefined) continue;
         if (message.role !== "assistant") continue;
         addUsage(usage, message);
-        contextTokens = contextOf(message);
+        contextTokens = contextOf(message) ?? contextTokens;
         costUsd += message.usage?.cost?.total ?? 0;
         const text = (message.content ?? [])
           .filter((part) => part.type === "text")
@@ -288,8 +288,10 @@ function parseToolCall(message: unknown): { toolName: string; input: Record<stri
   }
 }
 
-function contextOf(message: PiMessage): number {
-  return (message.usage?.input ?? 0) + (message.usage?.cacheRead ?? 0) + (message.usage?.cacheWrite ?? 0);
+/** Null when the provider reports no usage, so the web app says "Not known" instead of 0 tokens. */
+function contextOf(message: PiMessage): number | null {
+  const total = (message.usage?.input ?? 0) + (message.usage?.cacheRead ?? 0) + (message.usage?.cacheWrite ?? 0);
+  return total > 0 ? total : null;
 }
 
 function addUsage(usage: { -readonly [Key in keyof TurnUsage]: number }, message: PiMessage): void {

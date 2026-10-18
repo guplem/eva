@@ -390,6 +390,31 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
   });
 
+  test("the Google MCP server never gets the GitHub token (lesson 96)", async () => {
+    const engine = new FakeEngine();
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({ google: { ...defaultConfig.google, email: "person@example.com", services: ["calendar"] } }),
+      secrets: {
+        githubToken: "github-token-for-tests",
+        googleOauthClientId: "google-client-id-for-tests",
+        googleOauthClientSecret: "google-client-secret-for-tests",
+      },
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      gatherMs: 5,
+    });
+    const session = eva.createAssistantSession({ source: "cli", model: "default" });
+    await eva.sessions.send(session.id, "hi");
+    const google = engine.requests[0]?.mcpServers["google"];
+    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("google-client-id-for-tests");
+    expect(google?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
+    expect(Object.values(google?.environment ?? {})).not.toContain("github-token-for-tests");
+  });
+
   test("an agent finds an `eva` command for this instance, and the chat id of its turn", async () => {
     const engine = new FakeEngine();
     eva = new Eva({

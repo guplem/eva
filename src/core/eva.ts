@@ -1015,7 +1015,8 @@ export class Eva {
       config: this.options.config.google,
       secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
-      environment: this.gitEnvironment,
+      // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
+      environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
     return google === null ? {} : { google };
   }

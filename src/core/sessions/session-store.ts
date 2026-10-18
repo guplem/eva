@@ -7,9 +7,10 @@ import { copyFileSync } from "node:fs";
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { stepKinds } from "../../shared/turn-steps.ts";
 
 const stepSchema = z.object({
-  kind: z.enum(["message", "command", "tool", "task"]),
+  kind: z.enum(stepKinds),
   text: z.string(),
   isError: z.boolean(),
   id: z.string().nullable(),

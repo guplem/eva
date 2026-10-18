@@ -5,8 +5,9 @@
  */
 import type { EngineEventPayload } from "./events.ts";
 
-/** A stored name: renaming a kind needs a tolerant read of the old one. */
-export type StepKind = "message" | "command" | "tool" | "task";
+/** Stored names: renaming a kind needs a tolerant read of the old one. The session store reads this list. */
+export const stepKinds = ["message", "command", "tool", "task"] as const;
+export type StepKind = (typeof stepKinds)[number];
 
 export interface TurnStep {
   readonly kind: StepKind;

@@ -96,23 +96,33 @@ export async function readTailscaleState(context: TailscaleContext): Promise<Tai
     if (isEvaError(error, "process_failed")) return { kind: "missing" };
     return { kind: "stopped", detail: error instanceof Error ? error.message : String(error) };
   }
-  let status: {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    parsed = null;
+  }
+  // A bad answer never crashes Eva: `null` parses too, but it has no fields.
+  if (typeof parsed !== "object" || parsed === null)
+    return { kind: "stopped", detail: "tailscale status gave no JSON" };
+  const status = parsed as {
     BackendState?: unknown;
     AuthURL?: unknown;
     CertDomains?: unknown;
     Self?: { DNSName?: unknown; UserID?: unknown };
     User?: Record<string, { LoginName?: unknown } | undefined>;
   };
-  try {
-    status = JSON.parse(stdout) as typeof status;
-  } catch {
-    return { kind: "stopped", detail: "tailscale status gave no JSON" };
-  }
   const backend = status.BackendState;
-  if (backend === "NeedsLogin" || backend === "Stopped") {
+  if (backend === "NeedsLogin") {
+    // Only Tailscale's own login page: the link lets anyone who opens it take this machine.
     const link = status.AuthURL;
-    return { kind: "needs_login", loginUrl: typeof link === "string" && link.length > 0 ? link : null };
+    return {
+      kind: "needs_login",
+      loginUrl: typeof link === "string" && loginLinkPattern.exec(link)?.[0] === link ? link : null,
+    };
   }
+  // `tailscale down` keeps the login; `tailscale up` turns it on again.
+  if (backend === "Stopped") return { kind: "stopped", detail: "Tailscale is turned off. Run `tailscale up`." };
   const name = status.Self?.DNSName;
   if (backend !== "Running" || typeof name !== "string" || name.length < 2)
     return { kind: "stopped", detail: `Tailscale is ${typeof backend === "string" ? backend : "not ready"}` };

@@ -51,10 +51,16 @@ describe("readTailscaleState", () => {
     expect(
       await readTailscaleState(context(answering(0, status({ BackendState: "NeedsLogin", AuthURL: "" })))),
     ).toEqual({ kind: "needs_login", loginUrl: null });
-    // `tailscale down` keeps the login; `tailscale up` brings the machine back.
+    // Only Tailscale's own login page passes: the link lets anyone who opens it take this machine.
+    expect(
+      await readTailscaleState(
+        context(answering(0, status({ BackendState: "NeedsLogin", AuthURL: "https://attacker.example/a/abc" }))),
+      ),
+    ).toEqual({ kind: "needs_login", loginUrl: null });
+    // `tailscale down` keeps the login, so the step is to turn Tailscale on, not to sign in.
     expect(await readTailscaleState(context(answering(0, status({ BackendState: "Stopped" }))))).toEqual({
-      kind: "needs_login",
-      loginUrl: null,
+      kind: "stopped",
+      detail: "Tailscale is turned off. Run `tailscale up`.",
     });
   });
 
@@ -71,6 +77,7 @@ describe("readTailscaleState", () => {
     const slow: ProcessRunner = { run: () => Promise.reject(new EvaError("process_timeout", "timed out")) };
     expect((await readTailscaleState(context(slow))).kind).toBe("stopped");
     expect((await readTailscaleState(context(answering(0, "not json")))).kind).toBe("stopped");
+    expect((await readTailscaleState(context(answering(0, "null")))).kind).toBe("stopped");
     expect((await readTailscaleState(context(answering(0, status({ BackendState: "Starting" }))))).kind).toBe(
       "stopped",
     );

@@ -21,13 +21,14 @@ export function remoteAccessStep(access: RemoteAccess): RemoteAccessStep {
 /** What to do on this machine now; empty once the address works. */
 export function setupSteps(access: RemoteAccess): GuideStep[] {
   const step = remoteAccessStep(access);
-  const problem: GuideStep[] =
-    access.problem === null || step === "start" ? [] : [{ text: access.problem, link: null, action: null }];
+  const problem: GuideStep[] = access.problem === null ? [] : [{ text: access.problem, link: null, action: null }];
   switch (step) {
     case "ready":
       return [];
     case "failed":
-      return problem;
+      return problem.length > 0
+        ? problem
+        : [{ text: "Eva cannot publish her page. See the warnings in her log.", link: null, action: null }];
     case "install":
       if (access.busy === "installing")
         return [
@@ -45,8 +46,9 @@ export function setupSteps(access: RemoteAccess): GuideStep[] {
       ];
     case "start":
       return [
+        ...problem,
         {
-          text: `Start Tailscale on this machine: open the Tailscale app, or on Linux start the tailscaled service.${access.problem === null ? "" : ` (${access.problem})`}`,
+          text: "Start Tailscale on this machine. On Windows or macOS, open the Tailscale app. On Linux, start the tailscaled service.",
           link: null,
           action: null,
         },
@@ -110,14 +112,14 @@ export function describeAccess(input: {
       "Use Eva from any device: off. Run `eva settings set remoteAccess.tailscaleServe true` to turn it on.",
       local,
     ];
-  const devices = deviceSteps(access).map((step, index) => `${String(index + 1)}. ${lineOf(step)}`);
+  const devices = deviceSteps(access).map((step, index) => `${String(index + 1)}. ${stepLine(step)}`);
   if (access.url !== null && remoteAccessStep(access) === "ready")
     return [`Open Eva: ${access.url}`, "On each phone or computer:", ...devices, local];
   const here = setupSteps(access);
   const hint = input.actionHint !== undefined && here.some((step) => step.action !== null) ? [input.actionHint] : [];
   return [
     "Use Eva from any device: not ready yet. Next, on this machine:",
-    ...here.map((step) => `- ${lineOf(step)}`),
+    ...here.map((step) => `- ${stepLine(step)}`),
     ...hint,
     "Then, on each phone or computer:",
     ...devices,
@@ -126,6 +128,12 @@ export function describeAccess(input: {
   ];
 }
 
-function lineOf(step: GuideStep): string {
+/** One step as plain text, for a terminal or a chat. */
+export function stepLine(step: GuideStep): string {
   return step.link === null ? step.text : `${step.text} ${step.link}`;
+}
+
+/** The label of the button that runs an action, the same in every front end. */
+export function actionLabel(action: NonNullable<GuideStep["action"]>): string {
+  return action === "install" ? "Install Tailscale" : "Sign in to Tailscale";
 }

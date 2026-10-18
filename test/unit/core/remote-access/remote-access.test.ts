@@ -1,50 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
-import type { ProcessResult, ProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 
-const running = (https: boolean, owner = "owner@example.com"): string =>
-  JSON.stringify({
-    BackendState: "Running",
-    CertDomains: https ? ["server.example-tailnet.ts.net"] : null,
-    Self: { DNSName: "server.example-tailnet.ts.net.", UserID: 7 },
-    User: { "7": { LoginName: owner } },
-  });
-const needsLogin = JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "" });
-
-/** A fake Tailscale whose answers the test changes as it goes. */
-class FakeTailscale {
-  /** A status JSON, or "missing" or "stopped". */
-  status = "missing";
-  serveExitCode = 0;
-  upOutput = "To authenticate, visit:\n\thttps://login.tailscale.com/a/fresh\n";
-  readonly commands: string[] = [];
-  readonly runner: ProcessRunner = {
-    run: (command): Promise<ProcessResult> => {
-      const verb = command[1] ?? "";
-      this.commands.push(verb);
-      if (this.status === "missing")
-        return Promise.reject(new EvaError("process_failed", "Could not start tailscale."));
-      if (verb === "up") return Promise.resolve({ exitCode: 1, stdout: "", stderr: this.upOutput });
-      if (verb === "serve") return Promise.resolve({ exitCode: this.serveExitCode, stdout: "", stderr: "serve broke" });
-      if (this.status === "stopped") return Promise.resolve({ exitCode: 1, stdout: "", stderr: "no tailscaled" });
-      return Promise.resolve({ exitCode: 0, stdout: this.status, stderr: "" });
-    },
-  };
-}
+const running = runningStatus;
+const needsLogin = needsLoginStatus;
 
 function watcher(
   fake: FakeTailscale,
-  options: { publish?: boolean; install?: (() => Promise<void>) | null } = {},
+  options: { install?: (() => Promise<void>) | null; port?: number } = {},
 ): RemoteAccessWatcher {
-  return new RemoteAccessWatcher({
-    runner: fake.runner,
-    environment: {},
-    port: 7420,
-    program: () => ["tailscale"],
-    publish: options.publish ?? true,
-    install: options.install ?? null,
-  });
+  return fake.watcher(options);
 }
 
 describe("the remote access watcher", () => {
@@ -72,38 +38,71 @@ describe("the remote access watcher", () => {
     expect(access.current().step).toBe("ready");
   });
 
-  test("a ready address is published once, not at each read", async () => {
+  test("a second instance publishes and shows its own port", async () => {
+    const fake = new FakeTailscale();
+    fake.status = running(true);
+    expect(await watcher(fake, { port: 7421 }).refresh()).toMatchObject({
+      url: "https://server.example-tailnet.ts.net:7421",
+    });
+    expect(fake.full.find((command) => command[1] === "serve")).toEqual([
+      "tailscale",
+      "serve",
+      "--bg",
+      "--https=7421",
+      "http://127.0.0.1:7421",
+    ]);
+  });
+
+  test("a ready address is published again only now and then, a lost one at once", async () => {
     const fake = new FakeTailscale();
     fake.status = running(true);
     const access = watcher(fake);
     await access.refresh();
     await access.refresh();
     expect(fake.commands.filter((verb) => verb === "serve")).toHaveLength(1);
+    // `tailscale serve reset` shows no change in the status, so Eva publishes again now and then.
+    for (let read = 0; read < 20; read += 1) await access.refresh();
+    expect(fake.commands.filter((verb) => verb === "serve")).toHaveLength(2);
+    fake.status = "stopped";
+    await access.refresh();
+    fake.status = running(true);
+    await access.refresh();
+    expect(fake.commands.filter((verb) => verb === "serve")).toHaveLength(3);
   });
 
-  test("a failed publish is its own step; eva setup reads the address without publishing", async () => {
+  test("a new host name publishes again, and only the new name is trusted", async () => {
+    const fake = new FakeTailscale();
+    fake.status = running(true);
+    const access = watcher(fake);
+    await access.refresh();
+    fake.status = running(true, "owner@example.com", "renamed.example-tailnet.ts.net");
+    expect(await access.refresh()).toMatchObject({ url: "https://renamed.example-tailnet.ts.net" });
+    expect(access.tailnet().hostName).toBe("renamed.example-tailnet.ts.net");
+    expect(fake.commands.filter((verb) => verb === "serve")).toHaveLength(2);
+  });
+
+  test("a failed publish is its own step", async () => {
     const fake = new FakeTailscale();
     fake.status = running(true);
     fake.serveExitCode = 1;
-    expect(await watcher(fake).refresh()).toMatchObject({ step: "failed", url: null });
-    expect((await watcher(fake).refresh()).problem).toContain("serve broke");
-    const setup = await watcher(fake, { publish: false }).refresh();
-    expect(setup).toMatchObject({ step: "ready", url: "https://server.example-tailnet.ts.net" });
+    const failed = await watcher(fake).refresh();
+    expect(failed).toMatchObject({ step: "failed", url: null });
+    expect(failed.problem).toContain("serve broke");
   });
 
-  test("the tailnet snapshot exists only while Tailscale runs, so the local API trusts no stale host", async () => {
+  test("the host name exists only while Tailscale runs; the owner stays, so the identity check stays on", async () => {
     const fake = new FakeTailscale();
     const access = watcher(fake);
-    expect(access.tailnet()).toBeNull();
+    expect(access.tailnet()).toEqual({ hostName: null, ownerLogin: null });
     fake.status = running(true);
     await access.refresh();
     expect(access.tailnet()).toEqual({ hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com" });
     fake.status = "stopped";
     await access.refresh();
-    expect(access.tailnet()).toBeNull();
+    expect(access.tailnet()).toEqual({ hostName: null, ownerLogin: "owner@example.com" });
   });
 
-  test("a sign-in asks for a fresh link and keeps it until Tailscale shows its own", async () => {
+  test("a sign-in asks for a fresh link and keeps it while Tailscale waits for the sign-in", async () => {
     const fake = new FakeTailscale();
     fake.status = needsLogin;
     const access = watcher(fake);
@@ -113,9 +112,14 @@ describe("the remote access watcher", () => {
     expect(await access.refresh()).toMatchObject({ link: "https://login.tailscale.com/a/newer" });
     fake.upOutput = "Access denied: prefs write access denied";
     expect((await access.signIn()).problem).toContain("--operator");
+    // A link that expired never comes back after another state.
+    fake.status = "stopped";
+    await access.refresh();
+    fake.status = needsLogin;
+    expect(await access.refresh()).toMatchObject({ link: null });
   });
 
-  test("an install runs once at a time, and its failure stays on the install step", async () => {
+  test("an install runs once at a time", async () => {
     const fake = new FakeTailscale();
     let release = (): void => undefined;
     let installs = 0;
@@ -131,15 +135,53 @@ describe("the remote access watcher", () => {
     const first = access.install();
     expect(access.current().busy).toBe("installing");
     await access.install();
-    expect(installs).toBe(1);
+    while (installs === 0) await Bun.sleep(1);
     fake.status = needsLogin;
     release();
     expect(await first).toMatchObject({ step: "sign_in", busy: null });
+    expect(installs).toBe(1);
+  });
 
+  test("Eva never installs where Tailscale exists: a second daemon would hide the one that works", async () => {
+    const fake = new FakeTailscale();
+    fake.status = running(true);
+    let installs = 0;
+    const access = watcher(fake, {
+      install: () => {
+        installs += 1;
+        return Promise.resolve();
+      },
+    });
+    await access.refresh();
+    expect(await access.install()).toMatchObject({ step: "ready", busy: null });
+    expect(installs).toBe(0);
+  });
+
+  test("a failed install stays visible, also when it left a daemon that does not run", async () => {
     const failing = watcher(new FakeTailscale(), {
       install: () => Promise.reject(new EvaError("tailscale_install_failed", "The download failed.")),
     });
     expect(await failing.install()).toMatchObject({ step: "install", problem: "The download failed.", busy: null });
+    expect(await failing.refresh()).toMatchObject({ problem: "The download failed." });
+
+    const fake = new FakeTailscale();
+    const partial = watcher(fake, {
+      install: () => {
+        fake.status = "stopped";
+        return Promise.reject(new EvaError("tailscale_install_failed", "systemctl --user failed: no bus"));
+      },
+    });
+    expect(await partial.install()).toMatchObject({ step: "start", problem: "systemctl --user failed: no bus" });
+
+    const other = watcher(new FakeTailscale(), { install: () => Promise.reject(new Error("disk full")) });
+    expect((await other.install()).problem).toBe("The Tailscale install failed: disk full");
+  });
+
+  test("an install that ends with no Tailscale to find says so", async () => {
+    const access = watcher(new FakeTailscale(), { install: () => Promise.resolve() });
+    const after = await access.install();
+    expect(after.step).toBe("install");
+    expect(after.problem).toContain("does not find Tailscale yet");
   });
 
   test("where Eva cannot install, the install step says so and the action does nothing", async () => {
@@ -159,7 +201,6 @@ describe("the remote access watcher", () => {
       environment: {},
       port: 7420,
       program: () => ["tailscale"],
-      publish: true,
       install: null,
       onChange: (changed) => steps.push(changed.step ?? ""),
       setInterval: (tick) => {
@@ -171,9 +212,9 @@ describe("the remote access watcher", () => {
     access.watch(30_000);
     fake.status = running(true);
     ticks[0]?.();
-    await access.settled();
+    await access.refresh();
     ticks[0]?.();
-    await access.settled();
+    await access.refresh();
     expect(steps).toEqual(["install", "ready"]);
     access.stop();
     expect(ticks).toHaveLength(0);

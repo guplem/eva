@@ -2,14 +2,10 @@
  * The Test buttons of the settings page: one real, small check for each
  * part Eva depends on. A check never shows a secret, even in its error text.
  */
-import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { EngineName, EnginePort } from "../shared/engine-port.ts";
-import type { EngineEventPayload } from "../shared/events.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { checkGoogle, type GoogleCheckInputs } from "./google/google-check.ts";
+import { engineLabels, ModelCalls } from "./model-calls/model-calls.ts";
 
 export type CheckName = "vault" | EngineName | "github" | "telegram" | "google";
 
@@ -45,7 +41,7 @@ export interface CheckInputs {
 const checkTimeoutMs = 30_000;
 /** A cold start of an engine and one short answer. */
 const engineCheckTimeoutMs = 90_000;
-const engineLabels: Readonly<Record<EngineName, string>> = { "claude-code": "Claude Code", pi: "pi" };
+const engineSystemPrompt = "You answer in one short line.";
 const enginePrompt = "Reply with the single word OK.";
 const replyPreviewLength = 80;
 
@@ -66,73 +62,23 @@ export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<Ch
   );
 }
 
-/**
- * One real turn proves the program, the login and the model at once; `--version` proves only the
- * program. Project mode in an empty, untrusted folder adds no prompt, skill, hook or MCP server.
- */
+/** One real model call proves the program, the login and the model at once; `--version` proves only the program. */
 async function checkEngine(name: EngineName, inputs: CheckInputs): Promise<CheckResult> {
-  const engine = inputs.engines.find((candidate) => candidate.name === name);
-  if (engine === undefined) return { ok: false, detail: `Eva did not find ${engineLabels[name]} on this machine.` };
-  const folder = mkdtempSync(join(tmpdir(), "eva-engine-check-"));
-  const controller = new AbortController();
-  // The abort asks the engine to stop; the deadline ends the check even if the engine never does.
-  const deadline = new Promise<"late">((resolve) => {
-    controller.signal.addEventListener("abort", () => {
-      resolve("late");
-    });
+  const calls = new ModelCalls({
+    engines: inputs.engines,
+    environment: inputs.engineEnvironment,
+    redact: inputs.redact,
+    timeoutMs: inputs.engineTimeoutMs ?? engineCheckTimeoutMs,
   });
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, inputs.engineTimeoutMs ?? engineCheckTimeoutMs);
-  const late: CheckResult = { ok: false, detail: `${engineLabels[name]} gave no answer in time.` };
-  let events: AsyncIterator<EngineEventPayload> | null = null;
-  try {
-    let reply = "";
-    const stream = engine.runTurn({
-      mode: "project",
-      history: { kind: "new", engineSessionId: randomUUID() },
-      startFolder: folder,
-      prompt: enginePrompt,
-      model: "default",
-      appendSystemPrompt: null,
-      pluginFolders: [],
-      mcpServers: {},
-      trusted: false,
-      environment: inputs.engineEnvironment,
-      requestApproval: () => Promise.resolve("deny"),
-      signal: controller.signal,
-    });
-    events = stream[Symbol.asyncIterator]();
-    for (;;) {
-      const next = await Promise.race([events.next(), deadline]);
-      if (next === "late" || controller.signal.aborted) return late;
-      if (next.done === true) return { ok: false, detail: `${engineLabels[name]} stopped without an answer.` };
-      const event = next.value;
-      if (event.kind === "text") reply += event.text;
-      if (event.kind === "turn_failed") return { ok: false, detail: inputs.redact(event.reason) };
-      if (event.kind === "turn_finished") {
-        const preview = (reply.trim().split(/\r?\n/)[0] ?? "").slice(0, replyPreviewLength);
-        return { ok: true, detail: inputs.redact(`${engineLabels[name]} answered: ${preview}`) };
-      }
-    }
-  } catch (error) {
-    return { ok: false, detail: inputs.redact(error instanceof Error ? error.message : "failed") };
-  } finally {
-    clearTimeout(timer);
-    controller.abort();
-    // Not awaited: a stuck engine would hold the check again. It lets the adapter clean up.
-    void events?.return?.().catch(() => undefined);
-    removeFolder(folder);
-  }
-}
-
-/** On Windows an engine that is still stopping holds its folder; a leftover temporary folder is harmless. */
-function removeFolder(folder: string): void {
-  try {
-    rmSync(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-  } catch {
-    // The system cleans its temporary folder.
-  }
+  const result = await calls.ask({
+    engine: name,
+    model: "default",
+    systemPrompt: engineSystemPrompt,
+    prompt: enginePrompt,
+  });
+  if (!result.ok) return { ok: false, detail: result.reason };
+  const preview = (result.text.trim().split(/\r?\n/)[0] ?? "").slice(0, replyPreviewLength);
+  return { ok: true, detail: inputs.redact(`${engineLabels[name]} answered: ${preview}`) };
 }
 
 async function runProgram(

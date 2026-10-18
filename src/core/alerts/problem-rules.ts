@@ -5,7 +5,7 @@
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
-import type { AlertProblem } from "./alert-center.ts";
+import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 
 /** A short network loss is normal for a laptop; only a long one needs the owner. */
@@ -129,4 +129,23 @@ export function heldBackNews(status: UpdateStatus): string | null {
   ]
     .filter((part) => part !== "")
     .join(" ");
+}
+
+/**
+ * A problem that another machine reports through the vault, for the hub to send. A Telegram command
+ * acts on the hub, so the alert points to the web page of the machine with the problem.
+ */
+export function relayedProblem(machine: string, reportFile: string, problem: OpenAlert): AlertProblem {
+  // A message such as vault_ahead starts with the machine name already.
+  const named = (line: string): string => (line.startsWith(`${machine} `) ? line : `On ${machine}: ${line}`);
+  return {
+    level: problem.level,
+    message: [
+      named(problem.message),
+      `A Telegram command acts on the hub, so open Eva's web page on ${machine}.`,
+      `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
+    ].join(" "),
+    resolvedMessage:
+      problem.resolvedMessage === "" ? `${machine} no longer reports this problem.` : named(problem.resolvedMessage),
+  };
 }

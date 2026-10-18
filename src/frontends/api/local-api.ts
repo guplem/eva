@@ -84,6 +84,8 @@ const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
+/** The rules go to a model with each first turn, so they stay short. */
+const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
@@ -456,12 +458,26 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     if (name === undefined) return json({ error: "No such check." }, 404);
     return json(await eva.runCheck(name));
   }
+  if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
     return new Response(null, { status: 204 });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The person's rules for chat names, in `.eva/chat-names.md`: read or replace (issue 50). */
+async function chatNamesRoute(request: Request, method: string, eva: Eva): Promise<Response> {
+  const chatNames = eva.chatNames;
+  if (chatNames === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET") return json({ rules: chatNames.rules() });
+  if (method === "PUT") {
+    const { rules } = chatNameRulesSchema.parse(await request.json());
+    chatNames.saveRules(rules);
+    return json({ rules: chatNames.rules() });
   }
   return json({ error: "Not found." }, 404);
 }

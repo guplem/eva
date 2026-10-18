@@ -355,7 +355,7 @@ describe("runCheck", () => {
     expect(offline).toEqual({ ok: false, detail: "GitHub could not be reached." });
   });
 
-  test("an engine check runs one tiny real turn in an empty folder, with nothing of Eva's added", async () => {
+  test("an engine check runs one tiny model call in an empty folder, with no tools", async () => {
     let folder = "";
     let folderWasEmpty = false;
     const engine = new FakeEngine((request) => {
@@ -367,10 +367,11 @@ describe("runCheck", () => {
     expect(result).toEqual({ ok: true, detail: "Claude Code answered: OK" });
     const request = engine.requests[0];
     expect(request).toMatchObject({
-      mode: "project",
+      mode: "model-call",
       trusted: false,
+      // The person's own model, so the check proves the model that chats use.
       model: "default",
-      appendSystemPrompt: null,
+      prompt: "Reply with the single word OK.",
       pluginFolders: [],
       mcpServers: {},
       environment: { HOME: "/h" },

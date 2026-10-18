@@ -20,6 +20,10 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("Start the Google login");
   });
 
+  test("says where the rules for chat names go, so the person can change them in a chat (issue 50)", () => {
+    expect(assistantBasePrompt).toContain("`.eva/chat-names.md`");
+  });
+
   test("names no person: the person's rules come from their vault", () => {
     expect(assistantBasePrompt).not.toMatch(/\b(he|she|his|her)\b/i);
   });

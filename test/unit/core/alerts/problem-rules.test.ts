@@ -3,6 +3,7 @@ import {
   scheduleCardProblem,
   scheduleFiringProblem,
   engineUpdateProblem,
+  relayedProblem,
   updateProblem,
   vaultOfflineAlertMs,
   vaultSyncProblem,
@@ -102,5 +103,44 @@ describe("engineUpdateProblem", () => {
     expect(problem?.message).toBe(
       "The Claude Code update failed: No network. Chats keep the old version; press Update Claude Code in the settings to try again.",
     );
+  });
+});
+
+describe("relayedProblem", () => {
+  const file = ".eva/machines/laptop.json";
+
+  test("names the machine once, points to its web page, and names the file to delete", () => {
+    const relayed = relayedProblem("laptop", file, {
+      key: "update",
+      level: "error",
+      message: "The update install failed.",
+      resolvedMessage: "Updates work again.",
+    });
+    expect(relayed.level).toBe("error");
+    expect(relayed.message).toBe(
+      "On laptop: The update install failed. A Telegram command acts on the hub, so open Eva's web page on laptop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+    );
+    expect(relayed.resolvedMessage).toBe("On laptop: Updates work again.");
+  });
+
+  test("adds no prefix to a message that names the machine already", () => {
+    const relayed = relayedProblem("laptop", file, {
+      key: "vault_ahead",
+      level: "warn",
+      message: "laptop runs Eva 1.0.0.",
+      resolvedMessage: "",
+    });
+    expect(relayed.message.startsWith("laptop runs Eva 1.0.0. ")).toBe(true);
+    expect(relayed.resolvedMessage).toBe("laptop no longer reports this problem.");
+  });
+
+  test("a short name inside a word is no name: the prefix stays", () => {
+    const relayed = relayedProblem("pc", ".eva/machines/pc.json", {
+      key: "update",
+      level: "warn",
+      message: "The update check failed: no specification.",
+      resolvedMessage: "Updates work again.",
+    });
+    expect(relayed.message.startsWith("On pc: The update check failed")).toBe(true);
   });
 });

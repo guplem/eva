@@ -41,7 +41,7 @@ A change to one of these goals needs the owner.
 
 ## Checks
 
-- `bun run check` is exactly what CI and the pre-push hook run. `bun install` installs the hooks.
+- `bun run check` is exactly what the pre-push hook and the Ubuntu CI job run. The Windows CI job runs only `bun run test`. `bun install` installs the hooks.
 - The public-content check reads tracked files only (`git add` a new file first). The private denylist lives outside the repository: never copy an entry from it.
 - After `bun run build:executable`, run `bash scripts/smoke-executable.sh dist/eva`.
 

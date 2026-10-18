@@ -1,5 +1,5 @@
 /** Throwaway git repositories for tests: a bare "GitHub" remote and clones of it. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -21,39 +21,74 @@ const gitEnvironment: Record<string, string> = {
   GIT_TERMINAL_PROMPT: "0",
 };
 
+function runGit(cwd: string, arguments_: string[]): string {
+  const result = Bun.spawnSync(["git", ...arguments_], { cwd, env: gitEnvironment, stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${arguments_.join(" ")} failed: ${result.stderr.toString()}`);
+  }
+  return result.stdout.toString().trim();
+}
+
+let template: string | null = null;
+
+/**
+ * Builds the seeded bare remote once per test process. Each sandbox gets a copy of it, so no test
+ * sees another test's commits. The copy saves about ten git processes per test: on a Windows CI
+ * runner each one is slow. A bare repository stores no absolute path, so the copy stands alone.
+ */
+function remoteTemplate(): string {
+  if (template !== null) return template;
+  const root = mkdtempSync(join(tmpdir(), "eva-git-template-"));
+  const remote = join(root, "remote.git");
+  mkdirSync(remote);
+  runGit(remote, ["init", "-q", "--bare", "--initial-branch=main"]);
+  const seed = join(root, "seed");
+  mkdirSync(seed);
+  runGit(seed, ["init", "-q", "--initial-branch=main"]);
+  runGit(seed, ["config", "core.autocrlf", "false"]);
+  writeFileSync(join(seed, "AGENTS.md"), "# Vault\n");
+  runGit(seed, ["add", "-A"]);
+  runGit(seed, ["commit", "-q", "-m", "seed"]);
+  runGit(seed, ["push", "-q", remote, "main"]);
+  runGit(remote, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+  process.once("exit", () => {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // The operating system empties its temporary folder later.
+    }
+  });
+  template = remote;
+  return remote;
+}
+
 export function createGitSandbox(): GitSandbox {
   const root = mkdtempSync(join(tmpdir(), "eva-git-"));
   const remote = join(root, "remote.git");
+  cpSync(remoteTemplate(), remote, { recursive: true });
 
   function git(cwd: string, ...arguments_: string[]): string {
-    const result = Bun.spawnSync(["git", ...arguments_], { cwd, env: gitEnvironment, stdout: "pipe", stderr: "pipe" });
-    if (result.exitCode !== 0) {
-      throw new Error(`git ${arguments_.join(" ")} failed: ${result.stderr.toString()}`);
-    }
-    return result.stdout.toString().trim();
+    return runGit(cwd, arguments_);
   }
-
-  mkdirSync(remote);
-  git(remote, "init", "-q", "--bare", "--initial-branch=main");
-  const seed = join(root, "seed");
-  mkdirSync(seed);
-  git(seed, "init", "-q", "--initial-branch=main");
-  git(seed, "config", "core.autocrlf", "false");
-  writeFileSync(join(seed, "AGENTS.md"), "# Vault\n");
-  git(seed, "add", "-A");
-  git(seed, "commit", "-q", "-m", "seed");
-  git(seed, "remote", "add", "origin", remote);
-  git(seed, "push", "-q", "origin", "main");
-  git(remote, "symbolic-ref", "HEAD", "refs/heads/main");
 
   return {
     root,
     remote,
     clone(name) {
       const path = join(root, name);
-      git(root, "clone", "-q", "-c", "core.autocrlf=false", remote, path);
-      git(path, "config", "user.name", "Eva Test");
-      git(path, "config", "user.email", "eva-test@example.invalid");
+      git(
+        root,
+        "clone",
+        "-q",
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "user.name=Eva Test",
+        "-c",
+        "user.email=eva-test@example.invalid",
+        remote,
+        path,
+      );
       return path;
     },
     git,

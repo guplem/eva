@@ -166,7 +166,7 @@ function createdMatchesId(created: string, folderName: string): boolean {
   return folderName.startsWith(`${asIdPrefix}-`);
 }
 
-export function readTitle(text: string): string | null {
+function readTitle(text: string): string | null {
   return titleHeading(text.replace(frontMatterPattern, ""))?.title ?? null;
 }
 
@@ -185,7 +185,8 @@ export function titleHeading(body: string): TitleHeading | null {
   let index = 0;
   for (const line of body.split("\n")) {
     const content = line.replace(/\r$/, "");
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(content)?.[1];
+    // A backtick in the info string, such as "```js``` text", makes inline code, not a fence.
+    const marker = /^ {0,3}(`{3,}(?!.*`)|~{3,})/.exec(content)?.[1];
     if (marker !== undefined && fence === null) fence = marker;
     else if (
       marker?.[0] === fence?.[0] &&

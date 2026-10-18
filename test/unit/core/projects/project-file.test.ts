@@ -223,3 +223,13 @@ describe("applyProjectDetails keeps what the person did not change", () => {
     expect(result).toContain('tags: ["null", "~", "true", "12", work]');
   });
 });
+
+describe("the title under a body that starts with ---", () => {
+  test("the form reads the same title as the list, so a status save keeps the heading", () => {
+    const text = "---\nstatus: active\n---\n---\n# Old\n---\nbody\n";
+    expect(projectFileOf(text).details?.title).toBe("Old");
+    expect(applyProjectDetails(text, { title: "Old", status: "paused", tags: [], repos: [] })).toBe(
+      text.replace("active", "paused"),
+    );
+  });
+});

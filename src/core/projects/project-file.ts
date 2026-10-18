@@ -5,13 +5,7 @@
 import { createHash } from "node:crypto";
 import { isMap, isNode, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { EvaError } from "../../shared/errors.ts";
-import {
-  frontMatterPattern,
-  parseFrontMatter,
-  readTitle,
-  titleHeading,
-  type ProjectStatus,
-} from "./project-catalog.ts";
+import { frontMatterPattern, parseFrontMatter, titleHeading, type ProjectStatus } from "./project-catalog.ts";
 
 export interface ProjectDetails {
   /** An empty title removes the heading, so the list shows the folder name. */
@@ -186,7 +180,7 @@ export function projectFileOf(text: string): ProjectFile {
     frontMatter === null
       ? null
       : {
-          title: readTitle(withoutBom.replace(frontMatterPattern, "")) ?? "",
+          title: titleHeading(withoutBom.replace(frontMatterPattern, ""))?.title ?? "",
           status: frontMatter.status,
           tags: frontMatter.tags,
           repos: frontMatter.repos,

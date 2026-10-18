@@ -87,6 +87,8 @@ describe("discoverProjects", () => {
       expect(titleHeading(body)?.title).toBe("real");
     }
     expect(titleHeading("    ```\n# real\n")?.title).toBe("real");
+    // A backtick in the info string makes inline code, not a fence.
+    expect(titleHeading("```js``` inline\n# real\n")?.title).toBe("real");
   });
 
   test("the title is the first heading outside a code fence", () => {

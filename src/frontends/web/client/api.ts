@@ -13,6 +13,7 @@ import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts"
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
+import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type {
@@ -41,13 +42,15 @@ export interface ScheduleList {
   readonly schedules: readonly ScheduleView[];
   readonly problems: readonly string[];
 }
-
 export class ApiError extends Error {
   readonly status: number;
+  /** The `EvaErrorCode` of the failure, or null when the answer has none. */
+  readonly code: EvaErrorCode | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: EvaErrorCode | null = null) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -61,12 +64,15 @@ async function request<Body>(method: string, path: string, body?: unknown): Prom
   if (!response.ok) {
     const text = await response.text();
     let message = text;
+    let code: EvaErrorCode | null = null;
     try {
-      message = (JSON.parse(text) as { error?: string }).error ?? text;
+      const parsed = JSON.parse(text) as { error?: string; code?: EvaErrorCode };
+      message = parsed.error ?? text;
+      code = parsed.code ?? null;
     } catch {
       // Not JSON: keep the text.
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code);
   }
   return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
 }

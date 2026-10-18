@@ -553,6 +553,7 @@ describe("web routes", () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const stale = await call(`${path}/file`, { method: "PUT", body: { version: "old", text: "---\n---\n" } });
     expect(stale.status).toBe(409);
+    expect(await json<{ code: string }>(stale)).toMatchObject({ code: "project_changed" });
     const { version } = await json<{ version: string }>(await call(`${path}/file`));
     const bad = await call(`${path}/file`, { method: "PUT", body: { version, text: "no front matter\n" } });
     expect(bad.status).toBe(400);
@@ -561,6 +562,7 @@ describe("web routes", () => {
     expect((await call(`${path}/details`, { method: "PUT", body })).status).toBe(400);
     expect((await call(`${path}/details`, { method: "PUT", body: { ...body, status: "dreaming" } })).status).toBe(400);
     expect((await call("/api/projects/missing/file")).status).toBe(404);
+    expect((await call("/api/projects/%E0/file")).status).toBe(400);
   });
   test("settings: read without secret values, write with a restart notice", async () => {
     const settings = await json<{ config: { timeZone: string }; secretsSet: Record<string, boolean> }>(

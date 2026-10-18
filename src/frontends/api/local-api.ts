@@ -447,10 +447,13 @@ async function scheduleCardsRoute(
 
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
 function errorResponse(error: unknown, eva: Eva): Response {
+  // A bad `%` escape in a path, such as `/api/projects/%E0/file`.
+  if (error instanceof URIError) return json({ error: "The address is invalid." }, 400);
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);
   if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
-  const body = { error: eva.redact(error.message) };
+  // The code lets a page tell one failure from another that shares its status.
+  const body = { error: eva.redact(error.message), code: error.code };
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
   if (
     isEvaError(error, "config_invalid") ||

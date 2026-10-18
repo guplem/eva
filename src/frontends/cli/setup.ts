@@ -133,30 +133,39 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     );
     if (githubToken !== "") saveGithubToken(githubToken);
   };
-  const askGithubLogin = async (githubLogin: NonNullable<SetupOptions["githubLogin"]>): Promise<void> => {
+  /** `enterLogsIn`: false keeps Enter as "skip" when no address needs a token yet, as in a rerun or for a new vault. */
+  const askGithubLogin = async (
+    githubLogin: NonNullable<SetupOptions["githubLogin"]>,
+    enterLogsIn: boolean,
+  ): Promise<void> => {
     options.write(githubLoginAccess);
-    const answer = await ask(
-      "githubToken",
-      secrets.githubToken === undefined
-        ? "GitHub login for your vault: press Enter to log in with your browser, paste a token, or type skip: "
-        : "GitHub login for your vault: press Enter to keep the saved one, type login to log in again, or paste a token: ",
-    );
-    if (answer === "skip" || (answer === "" && secrets.githubToken !== undefined)) return;
-    if (answer !== "" && answer !== "login") {
-      saveGithubToken(answer);
-      return;
-    }
-    try {
-      saveGithubToken(
-        await githubLogin((code, link) => {
-          options.write(`Open ${link} and enter the code ${code}. Setup waits until you confirm.`);
-        }),
+    for (;;) {
+      const answer = await ask(
+        "githubToken",
+        secrets.githubToken !== undefined
+          ? "GitHub login, for a private vault and private projects: press Enter to keep the saved one, type login to log in again, or paste a token: "
+          : enterLogsIn
+            ? "GitHub login, for a private vault and private projects: press Enter to log in with your browser, paste a token, or type skip: "
+            : "GitHub login, for a private vault and private projects: type login to log in with your browser, paste a token, or press Enter to skip: ",
       );
-      options.write("Logged in to GitHub.");
-    } catch (error) {
-      if (!isEvaError(error, "github_failed")) throw error;
-      options.write(error.message);
-      await askGithubToken();
+      const keyword = answer.toLowerCase();
+      if (keyword === "skip" || (answer === "" && (secrets.githubToken !== undefined || !enterLogsIn))) return;
+      if (answer !== "" && keyword !== "login") {
+        saveGithubToken(answer);
+        return;
+      }
+      try {
+        saveGithubToken(
+          await githubLogin((code, link) => {
+            options.write(`Open ${link} and enter the code ${code}. Setup waits until you confirm.`);
+          }),
+        );
+        options.write("Logged in to GitHub.");
+        return;
+      } catch (error) {
+        if (!isEvaError(error, "github_failed")) throw error;
+        options.write(error.message);
+      }
     }
   };
   const askRepository = async (): Promise<string> => {
@@ -164,12 +173,11 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       "vaultRepository",
       "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
     );
-    // A script always reads EVA_GITHUB_TOKEN: project clones use the token too, whatever the vault's address.
-    if (!options.interactive) await askGithubToken();
-    // A new vault and an SSH address need no token, and the browser login works only for github.com.
-    else if (options.githubLogin !== null && /^https:\/\/github\.com\//i.test(repository))
-      await askGithubLogin(options.githubLogin);
-    else if (repository !== "" && !/^(git@|ssh:\/\/)/i.test(repository)) await askGithubToken();
+    // Project clones use the token too, so even a new vault or an SSH address gets the question.
+    // The browser login only gives a github.com token, and a script cannot wait for a person.
+    if (options.interactive && options.githubLogin !== null && /^(https:\/\/github\.com\/|$)/i.test(repository))
+      await askGithubLogin(options.githubLogin, repository !== "");
+    else await askGithubToken();
     return repository;
   };
   let repository = await askRepository();

@@ -469,14 +469,14 @@ describe("runSetup", () => {
       expect(logins).toEqual([]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
       rmSync(join(home, "vault"), { recursive: true, force: true });
-      await setup({ githubToken: "login", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
+      await setup({ githubToken: "Login", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
     });
 
     test("skip skips the login, and a failed login offers a pasted token instead", async () => {
       const logins: string[] = [];
-      await setup({ githubToken: "skip", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
+      await setup({ githubToken: "Skip", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
       expect(logins).toEqual([]);
       expect(loadSecrets(homePaths(home)).githubToken).toBeUndefined();
       rmSync(join(home, "vault"), { recursive: true, force: true });
@@ -495,19 +495,32 @@ describe("runSetup", () => {
       expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
     });
 
-    test("no login for a script, another host, an SSH address or a new vault", async () => {
+    test("a script, another host and an SSH address get the token question, never the login", async () => {
       const logins: string[] = [];
       const githubLogin = browserLogin(logins);
-      await setup({ githubToken: "", vaultRepository: githubVault }, { interactive: false, githubLogin });
+      const lines: string[] = [];
+      await setup({ githubToken: "", vaultRepository: githubVault }, { interactive: false, githubLogin, lines });
+      expect(lines.join("\n")).not.toContain("The login lets Eva");
       rmSync(join(home, "vault"), { recursive: true, force: true });
       await setup({ vaultRepository: "https://git.example.com/you/vault" }, { githubLogin });
       rmSync(join(home, "vault"), { recursive: true, force: true });
-      const asked: SetupQuestion[] = [];
-      await setup({ vaultRepository: "git@github.com:example/vault.git" }, { githubLogin, asked });
-      await setup({ vault: join(home, "new-vault"), createVault: "no" }, { githubLogin, asked });
+      // Project clones use the token too, so an SSH address still gets the question.
+      await setup(
+        { vaultRepository: "git@github.com:example/vault.git", githubToken: "a-pasted-token" },
+        { githubLogin },
+      );
       expect(logins).toEqual([]);
-      // A person with an SSH address or a new vault is not asked for a token at all.
-      expect(asked).not.toContain("githubToken");
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+    });
+
+    test("with no address, as in a rerun or for a new vault, Enter skips the login and login starts it", async () => {
+      const logins: string[] = [];
+      const githubLogin = browserLogin(logins);
+      await setup({}, { githubLogin });
+      expect(logins).toEqual([]);
+      await setup({ githubToken: "login" }, { githubLogin });
+      expect(logins).toEqual(["login"]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
     });
   });
 

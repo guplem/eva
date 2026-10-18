@@ -389,6 +389,19 @@ describe("routes", () => {
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
   });
 
+  test("reads the filter words in the search text, and a status parameter wins", async () => {
+    const closed = await json<unknown[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}`),
+    );
+    expect(closed).toEqual([]);
+    const active = await json<{ id: string }[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}&status=active`),
+    );
+    expect(active.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+    const tagged = await json<unknown[]>(await call(`/api/projects?text=${encodeURIComponent("#web")}&tag=missing`));
+    expect(tagged).toEqual([]);
+  });
+
   test("an unknown session is a 404, and a bad body is a 400", async () => {
     expect((await call("/api/sessions/missing/messages", { method: "POST", body: { text: "x" } })).status).toBe(404);
     expect((await call("/api/sessions", { method: "POST", body: { mode: "dreaming" } })).status).toBe(400);

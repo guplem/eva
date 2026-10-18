@@ -53,7 +53,7 @@ export function SchedulesPanel(): ReactElement {
 
   return (
     <fieldset>
-      <legend>Schedules</legend>
+      <legend>Your schedules</legend>
       {list?.schedules.length === 0 && <div className="chip">No schedules yet.</div>}
       {list?.schedules.map(({ schedule, nextRun }) => (
         <div key={schedule.id} className="check-row">

@@ -1,4 +1,4 @@
-/** The web UI: a mode switch, the two views, settings, approvals, and the setup cards of schedules. */
+/** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import {
   api,
@@ -15,9 +15,10 @@ import type { LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
+import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 
-type Screen = "assistant" | "project" | "settings";
+type Screen = "assistant" | "project" | "settings" | "schedules";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -169,6 +170,7 @@ function EvaApp(): ReactElement {
     }
   };
   const approval = approvals[0];
+  const hasSidebar = screen === "assistant" || screen === "project";
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
@@ -187,11 +189,21 @@ function EvaApp(): ReactElement {
   return (
     <div className="app">
       <header className="topbar">
-        <button className="menu-button" aria-label="Show the list" onClick={() => setSidebarOpen((open) => !open)}>
+        {/* Hidden, not removed, so the mode switch does not move on a phone. */}
+        <button
+          className="menu-button"
+          aria-label="Show the list"
+          style={hasSidebar ? undefined : { visibility: "hidden" }}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
           ☰
         </button>
         <div className="mode-switch" role="group" aria-label="Mode">
-          <button aria-pressed={screen === "assistant"} onClick={() => setScreen("assistant")}>
+          {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}
+          <button
+            aria-pressed={screen === "assistant" || screen === "schedules"}
+            onClick={() => setScreen("assistant")}
+          >
             Assistant
           </button>
           <button aria-pressed={screen === "project"} onClick={() => setScreen("project")}>
@@ -225,6 +237,7 @@ function EvaApp(): ReactElement {
           sidebarOpen={sidebarOpen}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          onOpenSchedules={() => setScreen("schedules")}
         />
       )}
       {screen === "project" && (
@@ -237,6 +250,7 @@ function EvaApp(): ReactElement {
         />
       )}
       {screen === "settings" && <SettingsView onLoggedOut={() => setAuthenticated(false)} />}
+      {screen === "schedules" && <SchedulesView />}
       {approval !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="Approval">

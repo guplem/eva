@@ -755,6 +755,23 @@ repos:
     expect(started).toMatch(/^Started the work in clone remote-0, chat \S+\.$/);
   });
 
+  test("eva projects filters by status and tag, and shows the tags and the warnings", async () => {
+    const options = { baseUrl: api.url, token: "chat-token" };
+    sandbox.write(
+      vault,
+      "Projects/2025-02-01-0900-tax-report/AGENTS.md",
+      "---\ncreated: 2025-02-01T09:00\nstatus: active\ntags: [life, money]\n---\n# Taxes\n",
+    );
+    sandbox.write(vault, "Projects/2024-01-01-0900-photo-sorter/AGENTS.md", "---\ncreated: 2024-01-01T09:00\n---\n");
+    expect(await describeProjects(options, "status:active")).toBe(
+      "2025-02-01-0900-tax-report  active  Taxes  #life #money",
+    );
+    expect(await describeProjects(options, "#MONEY")).toStartWith("2025-02-01-0900-tax-report");
+    expect(await describeProjects(options, "sorter")).toBe(
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter\n  ⚠ status must be idea, active, paused or closed",
+    );
+  });
+
   test("status and projects print short text", async () => {
     const before = await describeStatus({ baseUrl: api.url, token: "chat-token" });
     expect(before).toContain("Vault sync: ok");

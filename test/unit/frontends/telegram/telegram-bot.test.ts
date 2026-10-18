@@ -441,6 +441,64 @@ describe("approvals and commands", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("/projects reads the filter words, and shows the tags and the warnings", async () => {
+    const vault = join(sandbox.root, "vault");
+    sandbox.write(
+      vault,
+      "Projects/2025-02-01-0900-tax-report/AGENTS.md",
+      "---\ncreated: 2025-02-01T09:00\nstatus: active\ntags: [life]\n---\n# Taxes\n",
+    );
+    sandbox.write(
+      vault,
+      "Projects/2024-01-01-0900-photo-sorter/AGENTS.md",
+      "---\ncreated: 2024-01-01T09:00\ntags: [life]\n---\n",
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "/projects status:active");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    telegram.sendText(owner, "/projects #life sorter");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()).toEqual([
+      "2025-02-01-0900-tax-report  active  Taxes  #life",
+      "2024-01-01-0900-photo-sorter  ?  photo-sorter  #life\n  ⚠ status must be idea, active, paused or closed",
+    ]);
+  });
+
+  test("/projects drops whole projects from a list too long for one message, and says so", async () => {
+    const vault = join(sandbox.root, "vault");
+    for (let day = 10; day < 30; day += 1) {
+      sandbox.write(
+        vault,
+        `Projects/2025-02-${String(day)}-0900-project-${String(day)}/AGENTS.md`,
+        `---\ncreated: 2025-02-${String(day)}T09:00\nstatus: active\n---\n# ${"Long title ".repeat(25)}\n`,
+      );
+    }
+    const bot = createBot();
+    telegram.sendText(owner, "/projects");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    const text = telegram.sentTexts()[0] ?? "";
+    expect(text.length).toBeLessThanOrEqual(4_096);
+    expect(text).toMatch(/\n…and \d+ more\. Add words to narrow the search\.$/);
+    expect(
+      text
+        .split("\n")
+        .slice(0, -1)
+        .every((line) => line.endsWith("Long title")),
+    ).toBe(true);
+  });
+
+  test("/projects still shows the first project when it alone is too long for the limit", async () => {
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-02-10-0900-huge/AGENTS.md",
+      `---\ncreated: 2025-02-10T09:00\nstatus: active\n---\n# ${"Huge ".repeat(800)}\n`,
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "/projects");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toStartWith("2025-02-10-0900-huge  active  Huge");
+  });
+
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");

@@ -212,6 +212,20 @@ textarea {
   margin: 12px 0 4px;
 }
 
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon-button {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 8px;
+  line-height: 1;
+}
+
 .list-item {
   text-align: left;
   width: 100%;
@@ -261,6 +275,32 @@ textarea {
   border-radius: 999px;
   background: var(--surface-muted);
   border: 1px solid var(--border);
+}
+
+.badge.warning {
+  margin-left: 6px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.running-tasks {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+.clone-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
 }
 
 .branches {
@@ -495,6 +535,11 @@ textarea {
   gap: 16px;
 }
 
+.settings h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
 .settings fieldset {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -683,6 +728,10 @@ textarea {
   select,
   input {
     min-height: 44px;
+  }
+
+  .icon-button {
+    min-width: 44px;
   }
 
   .tasks {

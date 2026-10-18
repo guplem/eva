@@ -13,9 +13,18 @@ export interface TurnUsage {
 
 export type TaskState = "running" | "done" | "failed";
 
+/** A command runs in a shell; a tool is every other tool call. The activity chips count each kind. */
+export type ToolCategory = "command" | "tool";
+
 export type EngineEventPayload =
   | { readonly kind: "text"; readonly text: string; readonly messageId: string }
-  | { readonly kind: "tool_started"; readonly toolUseId: string; readonly name: string; readonly summary: string }
+  | {
+      readonly kind: "tool_started";
+      readonly toolUseId: string;
+      readonly name: string;
+      readonly category: ToolCategory;
+      readonly summary: string;
+    }
   | { readonly kind: "tool_finished"; readonly toolUseId: string; readonly isError: boolean }
   | { readonly kind: "task_changed"; readonly taskId: string; readonly description: string; readonly state: TaskState }
   | {

@@ -7,9 +7,16 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Alert, AlertProblem } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
-import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
+import {
+  describeLogEntries,
+  describeProjectLines,
+  describeStatusLines,
+  describeSync,
+  describeUpdate,
+} from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
@@ -110,6 +117,8 @@ interface TelegramUpdate {
 const messageLimit = 3_500;
 /** The longest message that Telegram takes; `send` cuts a longer one. */
 const telegramMessageLimit = 4_096;
+/** At most this many projects in one /projects answer: a longer list is hard to read on a phone. */
+const projectListLimit = 20;
 /**
  * Lesson 56: count 409 conflicts in a window, and never let a success reset the count. Past
  * the limit, only the poll loop pauses: the owner reaches Eva from a phone, so Eva never exits.
@@ -153,7 +162,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "delete", description: "Delete this topic and forget its chat" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
-  { command: "projects", description: "Search the projects" },
+  { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
@@ -533,12 +542,8 @@ export class TelegramBot {
         return;
       }
       case "projects": {
-        const projects = this.options.eva.projects({ text: rest.join(" ") }).slice(0, 20);
-        await this.send(
-          chatId,
-          topicId,
-          projects.length === 0 ? "No project matches." : projects.map((project) => `• ${project.id}`).join("\n"),
-        );
+        const projects = this.options.eva.projects(parseProjectQuery(rest.join(" ")));
+        await this.send(chatId, topicId, fitProjects(projects));
         return;
       }
       default:
@@ -1140,4 +1145,20 @@ function cardText(event: ScheduleCard): string {
   const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
   // The card is the check against a schedule that someone else pushed to the vault (lesson 67).
   return [heading, "", ...fields, "", next].join("\n");
+}
+
+/** The /projects answer: whole projects only, within one message, and a note on what was left out. */
+function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): string {
+  const lines: string[] = [];
+  let shown = 0;
+  for (const project of projects.slice(0, projectListLimit)) {
+    const block = describeProjectLines([project]);
+    // The first project always shows; send() cuts it if it alone passes Telegram's size.
+    if (shown > 0 && [...lines, ...block].join("\n").length > messageLimit) break;
+    lines.push(...block);
+    shown += 1;
+  }
+  if (projects.length === 0) return describeProjectLines([]).join("\n");
+  const left = projects.length - shown;
+  return [...lines, ...(left > 0 ? [`…and ${String(left)} more. Add words to narrow the search.`] : [])].join("\n");
 }

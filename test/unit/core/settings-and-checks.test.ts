@@ -176,6 +176,8 @@ describe("settings", () => {
       claudeOauthToken: false,
       githubToken: false,
       localApiToken: false,
+      googleOauthClientId: false,
+      googleOauthClientSecret: false,
     });
     expect(JSON.stringify(settings)).not.toContain("abc-telegram-token-value");
   });

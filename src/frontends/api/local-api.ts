@@ -79,6 +79,8 @@ const projectDetailsSchema = z.object({
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
+/** The address that Google sent the browser to, or its code alone. */
+const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
@@ -126,8 +128,13 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
-      // and a vault sync or pick waits for git's network steps. Each ends at its own timeout.
-      if (url.pathname.startsWith("/api/checks/") || url.pathname.startsWith("/api/vault/"))
+      // a vault sync or pick waits for git's network steps, and the Google login waits for Google.
+      // Each ends at its own timeout.
+      if (
+        url.pathname.startsWith("/api/checks/") ||
+        url.pathname.startsWith("/api/vault/") ||
+        url.pathname.startsWith("/api/google/")
+      )
         bunServer.timeout(request, 0);
       try {
         return await route(request, url, options.eva, hasValidToken(request, options.token));
@@ -389,6 +396,13 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     const options = { pageOnly: !tokenLogin };
     if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value, options));
     if (method === "DELETE") return json(eva.saveSecret(name, null, options));
+  }
+  if (method === "POST" && url.pathname.startsWith("/api/google/")) {
+    // The login decides whose Google account Eva uses, so a lost phone with a device login must not run it.
+    if (!tokenLogin) return json({ error: "Only a login with the token can log in to Google." }, 403);
+    if (url.pathname === "/api/google/login") return json(eva.startGoogleLogin());
+    if (url.pathname === "/api/google/login/finish")
+      return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());

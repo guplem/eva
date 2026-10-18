@@ -1352,3 +1352,120 @@ describe("migrations (#119)", () => {
     expect(instance.role()).toBe("satellite");
   });
 });
+
+describe("machine reports (#126)", () => {
+  function collectAlerts(instance: Eva): Alert[] {
+    const alerts: Alert[] = [];
+    instance.onAlert((alert) => {
+      alerts.push(alert);
+    });
+    return alerts;
+  }
+  const hubClaim = (machine: string): string => JSON.stringify({ machine, since: "" });
+  const laptopReport = (problems: unknown[]): string =>
+    JSON.stringify({ machine: "laptop", version: "0.1.0", problems });
+  const ahead = { key: "vault_ahead", level: "warn", message: "Update Eva on laptop.", resolvedMessage: "Fixed." };
+  const readReport = (machine: string): unknown =>
+    JSON.parse(readFileSync(join(vault, ".eva", "machines", `${machine}.json`), "utf-8"));
+
+  test("a satellite behind the vault writes its problem to its report, and the sync pushes it", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    sandbox.write(
+      vault,
+      ".eva/migrations.json",
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({
+      machine: "example-pc",
+      problems: [{ key: "vault_ahead", level: "warn" }],
+    });
+    expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
+  });
+
+  test("the report leaves out the vault sync problem, which cannot travel through the sync", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportProblem("vault_sync", { level: "error", message: "The sync failed.", resolvedMessage: "Ok." });
+    instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({ problems: [{ key: "telegram" }] });
+  });
+
+  test("the hub raises one alert per problem of another machine, named after it, until the report clears", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    sandbox.write(
+      vault,
+      ".eva/machines/example-pc.json",
+      JSON.stringify({ machine: "example-pc", version: "", problems: [ahead] }),
+    );
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine:laptop:vault_ahead", "warn"]]);
+    expect(alerts[0]?.message.startsWith("On laptop: Update Eva on laptop. ")).toBe(true);
+    expect(alerts[0]?.message).toContain(".eva/machines/laptop.json");
+    expect(instance.status().problems).toHaveLength(1);
+    // The hub's own report never carries the problems that it relays.
+    expect(readReport("example-pc")).toMatchObject({ problems: [] });
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([]));
+    await instance.syncVault();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([
+      ["machine:laptop:vault_ahead", "warn"],
+      ["machine:laptop:vault_ahead", "resolved"],
+    ]);
+    expect(alerts[1]?.message).toBe("On laptop: Fixed.");
+  });
+
+  test("a deleted report, such as from a computer that is gone, resolves its alerts", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    rmSync(join(vault, ".eva", "machines", "laptop.json"));
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("a satellite drops the schedule problems of its time as hub, because no firing clears them now", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportProblem("schedule:daily", {
+      level: "error",
+      message: "The schedule failed.",
+      resolvedMessage: "Ok.",
+    });
+    await instance.syncVault();
+    expect(readReport("example-pc")).toMatchObject({ problems: [] });
+    expect(instance.status().problems).toEqual([]);
+  });
+
+  test("a broken report keeps its alerts until it reads again", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    writeFileSync(join(vault, ".eva", "machines", "laptop.json"), "<<<<<<< ours\n");
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+    expect(instance.status().problems).toHaveLength(1);
+  });
+
+  test('a hub that becomes a satellite drops what it relayed with no false "resolved" line', async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    expect(alerts).toHaveLength(1);
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+    expect(instance.status().problems).toEqual([]);
+  });
+});

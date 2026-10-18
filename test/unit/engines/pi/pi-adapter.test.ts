@@ -193,7 +193,7 @@ describe("PiEngine", () => {
     expect(readFileSync(join(folder, "pi", "prompts", "session-1.md"), "utf8")).toBe("You are Eva.");
   });
 
-  test("the MCP servers reach the bridge in a file that outlives no turn, and a turn without them has neither", async () => {
+  test("a turn with MCP servers gets its specs in a file that Eva deletes after the turn", async () => {
     const google = { command: "uvx", args: ["workspace-mcp==2.1.0"], environment: { PATH: "/bin", SECRET: "s" } };
     let specs = "";
     let written: unknown = null;
@@ -390,6 +390,12 @@ describe("PiEngine", () => {
     const google = { command: "uvx", args: [], environment: { SECRET: "s" } };
     await drain(missing.runTurn(request({ mcpServers: { google } })));
     expect(readdirSync(join(folder, "pi", "mcp-servers"))).toEqual([]);
+    // A specs file that cannot be written fails the turn once, like a pi that cannot start.
+    rmSync(join(folder, "pi", "mcp-servers"), { recursive: true });
+    writeFileSync(join(folder, "pi", "mcp-servers"), "not a folder");
+    const blocked = await drain(engine(new FakePi([])).runTurn(request({ mcpServers: { google } })));
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0]).toMatchObject({ kind: "turn_failed" });
   });
 
   test("continue runs on the same session file; a lost file says so first (lesson 46)", async () => {

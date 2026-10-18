@@ -107,7 +107,6 @@ export class PiEngine implements EnginePort {
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
       : null;
-    if (specsFile !== null) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
     const args = buildPiArguments(request, {
       sessionFile: sessionFile(engineSessionId),
       sessionsFolder,
@@ -118,6 +117,7 @@ export class PiEngine implements EnginePort {
     });
     let pi: PiProcess;
     try {
+      if (specsFile !== null) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
         environment:
@@ -280,7 +280,7 @@ function removeSpecs(file: string | null): void {
   try {
     rmSync(file, { force: true });
   } catch {
-    // Windows can hold a file for a moment. The next turn of the session writes it again.
+    // Windows can hold a file for a moment. The file stays in the instance home, next to secrets.json.
   }
 }
 

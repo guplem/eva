@@ -18,6 +18,7 @@ import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
+import type { ConflictChoice, ConflictResolution } from "../../core/vault/vault-sync.ts";
 import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import { isTurnEnd, type SessionEvent } from "../../shared/events.ts";
@@ -163,6 +164,15 @@ const buttonsPerMessage = 50;
 const pollFailingAlertMs = 15 * 60_000;
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
+/** At most this many conflict messages per /conflicts: more is hard to follow on a phone. */
+const conflictListLimit = 10;
+/** The letter of each pick in the button data, which Telegram limits to 64 bytes. */
+const pickLetters = { m: "mine", t: "theirs", b: "both" } as const satisfies Record<string, ConflictChoice>;
+const pickLabels: Readonly<Record<ConflictChoice, string>> = {
+  mine: "Keep mine",
+  theirs: "Keep theirs",
+  both: "Keep both",
+};
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
@@ -174,6 +184,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
+  { command: "conflicts", description: "Pick a version of each vault note that conflicts" },
   { command: "update", description: "Install the latest version of Eva" },
   { command: "logs", description: "Show the last warnings and errors: /logs [count]" },
   { command: "restart", description: "Restart Eva" },
@@ -196,6 +207,8 @@ export class TelegramBot {
   private readonly unsubscribeSchedules: () => void;
   private readonly unsubscribeAlerts: () => void;
   private readonly offers: OfferStore;
+  /** The ids behind the conflict buttons, apart from the file offers. */
+  private readonly conflictOffers: OfferStore;
   private running = false;
   private readonly clock: Clock;
   /** The times (ms) of the recent 409 conflicts, inside the conflict window. */
@@ -229,6 +242,7 @@ export class TelegramBot {
     this.heldBlocks = new Map();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
+    this.conflictOffers = new OfferStore(join(dirname(options.statePath), "telegram-conflicts.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
       void this.onEvent(event);
     });
@@ -542,6 +556,9 @@ export class TelegramBot {
       case "sync":
         this.runApart(chatId, topicId, "Syncing…", async () => describeSync(await this.options.eva.syncVault()));
         return;
+      case "conflicts":
+        this.inBackground(chatId, topicId, () => this.listConflicts(chatId, topicId));
+        return;
       case "link":
         await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
@@ -591,14 +608,66 @@ export class TelegramBot {
    * still answer while it runs. It sends a first line at once, then the result.
    */
   private runApart(chatId: number, topicId: number | null, firstLine: string, work: () => Promise<string>): void {
+    this.inBackground(chatId, topicId, async () => {
+      await this.send(chatId, topicId, firstLine);
+      await this.send(chatId, topicId, await work());
+    });
+  }
+
+  private inBackground(chatId: number, topicId: number | null, work: () => Promise<void>): void {
     void (async (): Promise<void> => {
       try {
-        await this.send(chatId, topicId, firstLine);
-        await this.send(chatId, topicId, await work());
+        await work();
       } catch (error) {
         await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
       }
     })();
+  }
+
+  /** /conflicts: one message per conflicted note, each with the three picks. */
+  private async listConflicts(chatId: number, topicId: number | null): Promise<void> {
+    const { state, conflicts } = await this.options.eva.vaultConflicts();
+    if (conflicts.length === 0) {
+      await this.send(chatId, topicId, state.status === "error" ? describeSync(state) : "The vault has no conflict.");
+      return;
+    }
+    const plural = conflicts.length === 1 ? "note conflicts" : "notes conflict";
+    await this.send(
+      chatId,
+      topicId,
+      `${String(conflicts.length)} ${plural}. "Mine" is this machine's version, "theirs" is the remote's. "Keep both" keeps mine and puts theirs in a copy beside the note. Git keeps both versions either way.`,
+    );
+    // A committed conflict keeps its picked notes in the list, so the notes that wait for a pick come first.
+    const waitingFirst = [...conflicts].sort((a, b) => Number(a.picked !== null) - Number(b.picked !== null));
+    for (const conflict of waitingFirst.slice(0, conflictListLimit)) {
+      const id = this.conflictOffers.idFor(conflict.path);
+      const what =
+        conflict.kind === "committed"
+          ? "changed here and on the remote."
+          : "has an edit here that clashes with the remote. Keep theirs leaves this machine's edit in git's stash.";
+      const picked = conflict.picked === null ? "" : ` Picked: ${pickLabels[conflict.picked].toLowerCase()}.`;
+      await this.send(chatId, topicId, `${conflict.path} ${what}${picked}`, {
+        inline_keyboard: [
+          Object.entries(pickLetters).map(([letter, choice]) => ({
+            text: pickLabels[choice],
+            callback_data: `c:${id}:${letter}`,
+          })),
+        ],
+      });
+    }
+    if (conflicts.length > conflictListLimit)
+      await this.send(chatId, topicId, `Pick these first, then send /conflicts for the other notes.`);
+  }
+
+  private async pickConflict(chatId: number, topicId: number | null, id: string, letter: string): Promise<void> {
+    const path = this.conflictOffers.pathFor(id);
+    const choice = Object.entries(pickLetters).find(([key]) => key === letter)?.[1];
+    if (path === null || choice === undefined) {
+      await this.send(chatId, topicId, "That note has no conflict anymore. Send /conflicts to see the list.");
+      return;
+    }
+    const result = await this.options.eva.resolveVaultConflict(path, choice);
+    await this.send(chatId, topicId, describePick(path, choice, result));
   }
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
@@ -695,6 +764,9 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    } else if (kind === "c" && first !== undefined && second !== undefined) {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      this.inBackground(chatId, topicId, () => this.pickConflict(chatId, topicId, first, second));
     } else if (kind === "r" && first === "now") {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
       await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");
@@ -1279,4 +1351,18 @@ function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): stri
   if (projects.length === 0) return describeProjectLines([]).join("\n");
   const left = projects.length - shown;
   return [...lines, ...(left > 0 ? [`…and ${String(left)} more. Add words to narrow the search.`] : [])].join("\n");
+}
+
+/** The answer to a conflict button: what Eva did, and what is left. */
+function describePick(path: string, choice: ConflictChoice, result: ConflictResolution): string {
+  if (!result.found) {
+    return result.state.status !== "ok" && result.state.lastError !== null
+      ? describeSync(result.state)
+      : "That note has no conflict anymore. Send /conflicts to see the list.";
+  }
+  const done = `${pickLabels[choice]}: ${path}.`;
+  const waiting = result.conflicts.filter((conflict) => conflict.picked === null).length;
+  if (waiting > 0)
+    return `${done} ${String(waiting)} more ${waiting === 1 ? "note waits" : "notes wait"} for a pick: send /conflicts.`;
+  return result.state.status === "ok" ? `${done} The vault syncs again.` : `${done} ${describeSync(result.state)}`;
 }

@@ -278,6 +278,47 @@ describe("device login", () => {
     expect((await call("/api/status", { headers: { cookie } })).status).toBe(401);
   });
 
+  test("a device login changes the page's settings, but never a machine trust setting", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const device = { cookie, "content-type": "application/json" };
+    const page = await call("/api/settings", {
+      method: "PUT",
+      headers: device,
+      body: { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
+    });
+    expect(page.status).toBe(200);
+    for (const change of [
+      { remoteAccess: { allowedTailscaleIdentities: ["stranger@example.com"] } },
+      { telegram: { allowedChatId: 42 } },
+      { trust: { trustedRepositoryOwners: ["stranger"] } },
+      { engines: { claudeCode: { executable: "/tmp/other" } } },
+      { vaultPath: "/tmp/other-vault" },
+    ]) {
+      const refused = await call("/api/settings", { method: "PUT", headers: device, body: change });
+      expect(refused.status).toBe(403);
+    }
+    expect(eva.publicSettings().config.remoteAccess.allowedTailscaleIdentities).toEqual([]);
+    const withToken = await call("/api/settings", {
+      method: "PUT",
+      body: { trust: { trustedRepositoryOwners: ["me"] } },
+    });
+    expect(withToken.status).toBe(200);
+  });
+
+  test("a device login can neither replace nor remove a token", async () => {
+    attachApprover();
+    const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
+    const replaced = await call("/api/secrets/claudeOauthToken", {
+      method: "PUT",
+      headers: device,
+      body: { value: "sk-ant-oat-stranger-token" },
+    });
+    expect(replaced.status).toBe(403);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE", headers: device })).status).toBe(403);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
+  });
+
   test("Log out every device ends every device login, and needs a login itself", async () => {
     attachApprover();
     const first = deviceCookieOf(await allowedCookie());
@@ -346,6 +387,19 @@ describe("routes", () => {
   test("searches projects", async () => {
     const projects = await json<{ id: string }[]>(await call("/api/projects?text=example&status=active"));
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+  });
+
+  test("reads the filter words in the search text, and a status parameter wins", async () => {
+    const closed = await json<unknown[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}`),
+    );
+    expect(closed).toEqual([]);
+    const active = await json<{ id: string }[]>(
+      await call(`/api/projects?text=${encodeURIComponent("example status:closed")}&status=active`),
+    );
+    expect(active.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);
+    const tagged = await json<unknown[]>(await call(`/api/projects?text=${encodeURIComponent("#web")}&tag=missing`));
+    expect(tagged).toEqual([]);
   });
 
   test("an unknown session is a 404, and a bad body is a 400", async () => {
@@ -471,12 +525,42 @@ describe("web routes", () => {
     const saved = await call("/api/settings", { method: "PUT", body: { timeZone: "Europe/Madrid" } });
     expect(await json<{ saved: boolean; restartNeeded: boolean }>(saved)).toEqual({ saved: true, restartNeeded: true });
     expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
+    const setup = await json<{ engines: string[]; telegram: { paired: boolean } }>(await call("/api/settings/setup"));
+    expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
   });
+
+  test("secrets: write-only, only the three that the page may change", async () => {
+    const saved = await call("/api/secrets/githubToken", { method: "PUT", body: { value: "ghp_example-token-value" } });
+    expect(await saved.text()).not.toContain("example-token-value");
+    expect(saved.status).toBe(200);
+    const settings = await json<{ secretsSet: Record<string, boolean> }>(await call("/api/settings"));
+    expect(settings.secretsSet["githubToken"]).toBe(true);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE" })).status).toBe(200);
+    expect(eva.publicSettings().secretsSet.githubToken).toBe(false);
+    expect((await call("/api/secrets/localApiToken", { method: "PUT", body: { value: "x" } })).status).toBe(404);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: {} })).status).toBe(400);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: { value: " " } })).status).toBe(400);
+  });
+
+  test("an engine check may take longer than Bun's 10 s idle timeout", async () => {
+    // A cold start of a real engine often takes more than 10 s.
+    turnScript = async function* (request) {
+      await Bun.sleep(14_000);
+      yield* FakeEngine.answer(request, "OK");
+    };
+    // With no body, Bun counts the wait as idle: the case that closed the socket.
+    const result = await json<{ ok: boolean }>(await call("/api/checks/claude-code", { method: "POST" }));
+    expect(result.ok).toBe(true);
+  }, 30_000);
 
   test("a check runs by name, and an unknown check is a 404", async () => {
     const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
     expect(result.ok).toBe(true);
     expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
+    const engineCheck = await json<{ ok: boolean }>(
+      await call("/api/checks/claude-code", { method: "POST", body: {} }),
+    );
+    expect(engineCheck.ok).toBe(true);
   });
 
   test("schedules: add, list, refuse an invalid one, and remove", async () => {

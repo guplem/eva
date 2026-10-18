@@ -71,19 +71,19 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 
 Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation.
 
-| Command      | What it does                                |
-| ------------ | ------------------------------------------- |
-| `/new`       | Start a new conversation                    |
-| `/stop`      | Stop what Eva is doing in this conversation |
-| `/status`    | Show whether everything is all right        |
-| `/logs`      | Show Eva's last warnings and errors         |
-| `/restart`   | Restart Eva (she asks you to confirm first) |
-| `/link`      | Show the address of Eva's web page          |
-| `/sync`      | Save the notebook now                       |
-| `/update`    | Install the newest version of Eva           |
-| `/projects`  | Search your projects                        |
-| `/schedules` | List your reminders and repeated tasks      |
-| `/help`      | Show all the commands                       |
+| Command      | What it does                                  |
+| ------------ | --------------------------------------------- |
+| `/new`       | Start a new conversation                      |
+| `/stop`      | Stop what Eva is doing in this conversation   |
+| `/status`    | Show whether everything is all right          |
+| `/logs`      | Show Eva's last warnings and errors           |
+| `/restart`   | Restart Eva (she asks you to confirm first)   |
+| `/link`      | Show the address of Eva's web page            |
+| `/sync`      | Save the notebook now                         |
+| `/update`    | Install the newest version of Eva             |
+| `/projects`  | Search your projects: `status:active`, `#tag` |
+| `/schedules` | List your reminders and repeated tasks        |
+| `/help`      | Show all the commands                         |
 
 You can also send voice notes, photos and files.
 
@@ -104,6 +104,7 @@ Open **Settings** on the web page. The most useful ones:
 - **Install updates automatically:** how often Eva looks for a new version. She installs it only when no conversation is running.
 - **Fetch the notebook's changes:** how often Eva brings in notes that another computer saved.
 - **Make this machine the hub:** when Eva runs on more than one computer, this chooses which one answers in Telegram.
+- **Tokens and Test:** paste the GitHub, Telegram and Claude Code tokens, then press **Test** to check each part. Only a login with the token can change a token.
 
 ## Words you will see
 

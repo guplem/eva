@@ -5,7 +5,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -77,7 +77,7 @@ import type { EnginePort } from "./shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment } from "./shared/environment.ts";
 import { isEvaError } from "./shared/errors.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
-import { writeFileAtomic } from "./shared/files.ts";
+import { readTextTolerant, writeFileAtomic } from "./shared/files.ts";
 import { FileLogger } from "./shared/logger.ts";
 import { systemLongProcessStarter } from "./shared/long-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
@@ -207,10 +207,7 @@ async function runClientCommand(
   const baseUrl = `http://127.0.0.1:${String(config.port)}`;
   try {
     if (command.command === "status") {
-      const codePath = pairingCodePath(paths);
-      writeLine(
-        await describeStatus({ baseUrl, token }, existsSync(codePath) ? readFileSync(codePath, "utf-8").trim() : null),
-      );
+      writeLine(await describeStatus({ baseUrl, token }, readTextTolerant(paths.telegramPairingCode)?.trim() ?? null));
     } else if (command.command === "projects") writeLine(await describeProjects({ baseUrl, token }, command.query));
     else if (command.command === "work") {
       writeLine(
@@ -442,7 +439,7 @@ function startTelegram(paths: HomePaths, eva: Eva, logger: FileLogger): Telegram
   let pairingCode = "";
   if (config.telegram.allowedChatId === null) {
     pairingCode = `EVA-${randomBytes(4).toString("hex").toUpperCase()}`;
-    writeFileAtomic(pairingCodePath(paths), pairingCode);
+    writeFileAtomic(paths.telegramPairingCode, pairingCode);
     writeLine(`Telegram is not paired yet. Send ${pairingCode} to your bot.`);
   }
   const bot = new TelegramBot({
@@ -454,7 +451,7 @@ function startTelegram(paths: HomePaths, eva: Eva, logger: FileLogger): Telegram
     pairingCode,
     onPaired: (chatId, userId) => {
       changeSettings(paths, { telegram: { allowedChatId: chatId, allowedUserId: userId } });
-      rmSync(pairingCodePath(paths), { force: true });
+      rmSync(paths.telegramPairingCode, { force: true });
       logger.log("info", "Telegram paired.");
     },
     logger,
@@ -462,10 +459,6 @@ function startTelegram(paths: HomePaths, eva: Eva, logger: FileLogger): Telegram
   });
   void bot.run();
   return bot;
-}
-
-function pairingCodePath(paths: HomePaths): string {
-  return join(paths.stateFolder, "telegram-pairing-code.txt");
 }
 
 async function installService(paths: HomePaths): Promise<number> {

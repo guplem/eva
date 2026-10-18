@@ -17,7 +17,7 @@ Run these on the computer where Eva runs. When Eva is already running, each comm
 | `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address.     |
 | `eva link`                       | Shows the address that opens Eva on your phone and other computers.                   |
 | `eva chat`                       | Talks to Eva in this terminal.                                                        |
-| `eva projects [words]`           | Searches your projects.                                                               |
+| `eva projects [words]`           | Searches your projects. `status:active` and `tag:work` filter them.                   |
 | `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.           |
 | `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.        |
 | `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                     |
@@ -36,6 +36,11 @@ Eva keeps two kinds of settings:
 - **Settings that decide who gets in, and what an agent may do, stay on each computer:** the trusted GitHub owners, the allowed Tailscale accounts, and Google's access (read-only, and which services). Eva's AI agent edits the notebook as part of its work, so these never live there.
 
 Change a setting on the web Settings page, or with `eva settings set`. The update frequency and the notebook fetch apply at once; any other change applies at the next restart.
+
+- **Tokens:** paste the GitHub, Telegram and Claude Code tokens on the Settings page. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
+- **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
+- **A device that logged in through Telegram** can change only your notebook settings, the sync and the project folders. It cannot change a token or a security setting, so a lost phone cannot let a stranger in. To change them, log in with the token. You can also run `eva setup` or `eva settings set` on that computer.
+- **Theme and density** stay in each browser, so a phone and a computer can differ.
 
 ## Several computers
 
@@ -62,7 +67,7 @@ Eva saves the notebook to GitHub by herself:
 - She brings in other computers' notes before each conversation turn, and every 5 minutes (`sync.pullIntervalMinutes`; `null` means only before each turn).
 - She saves and pushes after each turn, and every minute when something changed.
 - **Sync now:** the **Sync now** button in Settings, `/sync` in Telegram, or `eva sync`.
-- **Files that Eva keeps out:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` names them.
+- **Files that Eva keeps out:** a file that looks like a secret (outside `Projects/`), and any file over 50 MB, because GitHub refuses files over 100 MB. `eva status` and the Settings page name them.
 
 ### Notebook conflicts
 
@@ -103,7 +108,7 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.
 
-- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or use **Add schedule** on the Settings page. Eva writes them in `.eva/schedules.json` in the notebook. Before one first runs, Telegram shows a card with every detail: check it. Only the hub runs them.
+- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open the Schedules page with the ⏰ button next to **Schedules** in the Assistant list. Eva writes them in `.eva/schedules.json` in the notebook. Before one first runs, Telegram shows a card with every detail: check it. Only the hub runs them.
 - **Files.** Eva can send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`, which reads Spanish and English), and put it at `voice/ggml-base.bin` in Eva's home folder. The audio never leaves the computer.

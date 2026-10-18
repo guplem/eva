@@ -12,8 +12,12 @@ const turnSchema = z.object({
   userText: z.string(),
   /** The answer's text, for the history views of the front ends. */
   answerText: z.string().default(""),
-  /** How many tools the turn used, for the activity chips. */
+  /** How many tools the turn used, commands included, for the activity chips. */
   toolCount: z.number().int().min(0).default(0),
+  /** How many of those tools were shell commands. */
+  commandCount: z.number().int().min(0).default(0),
+  /** How many background tasks the turn started, such as a subagent or a background command. */
+  taskCount: z.number().int().min(0).default(0),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),

@@ -63,6 +63,13 @@ describe("SessionStore", () => {
     expect(corruptCopies()).toEqual([]);
   });
 
+  test("an old turn with no activity counts loads them as 0, with no copy (lesson 69)", () => {
+    const oldTurn = { userText: "hi", toolCount: 2, lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [oldTurn] }] }));
+    expect(openStore().get("one")?.turns[0]).toMatchObject({ toolCount: 2, commandCount: 0, taskCount: 0 });
+    expect(corruptCopies()).toEqual([]);
+  });
+
   test("starts empty with no file, and makes no copy (lesson 54)", () => {
     expect(openStore().list()).toEqual([]);
     expect(corruptCopies()).toEqual([]);

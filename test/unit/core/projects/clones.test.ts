@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CloneOriginStore,
   cloneFolderName,
   createClone,
   githubSlug,
@@ -71,25 +72,31 @@ describe("clone folders", () => {
     expect(listClones(project)[0]).toMatchObject({ repository: "example-app", index: 0 });
   });
 
-  test("creates a clone in the next free folder", async () => {
+  test("creates a clone in the next free folder, and records the URL it came from", async () => {
+    const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const clone = await createClone({
       projectPath: project,
       repositoryUrl: sandbox.remote,
       runner: systemProcessRunner,
       environment: gitEnvironment,
+      origins,
     });
     expect(clone.name).toBe("remote-0");
     expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("seed");
+    expect(origins.origin(clone.path)).toEqual({ kind: "cloned", url: sandbox.remote });
   });
 
-  test("reports a clone that fails", async () => {
+  test("reports a clone that fails, and records nothing", async () => {
+    const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const error: unknown = await createClone({
       projectPath: project,
       repositoryUrl: join(sandbox.root, "missing.git"),
       runner: systemProcessRunner,
       environment: gitEnvironment,
+      origins,
     }).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
+    expect(existsSync(join(sandbox.root, "clone-origins.json"))).toBe(false);
   });
 });
 
@@ -119,5 +126,105 @@ describe("trust", () => {
     const path = join(sandbox.root, "trust.json");
     sandbox.write(sandbox.root, "trust.json", "{broken");
     expect(new TrustStore(path).decision("https://github.com/owner/app")).toBe("unknown");
+  });
+});
+
+describe("clone origins", () => {
+  const originsPath = (): string => join(sandbox.root, "clone-origins.json");
+  /** A folder with a git folder, which is all that the marker needs. */
+  const folder = (name: string): string => {
+    const path = join(project, "repos", name);
+    mkdirSync(join(path, ".git"), { recursive: true });
+    return path;
+  };
+
+  test("the store keeps the URL that Eva cloned from, by clone folder", () => {
+    const store = new CloneOriginStore(originsPath());
+    expect(store.origin(folder("app-0"))).toBeNull();
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(new CloneOriginStore(originsPath()).origin(folder("app-0"))).toEqual({
+      kind: "cloned",
+      url: "https://github.com/owner/app.git",
+    });
+    expect(new CloneOriginStore(originsPath()).origin(folder("app-1"))).toBeNull();
+  });
+
+  test("a person's answer about a folder stays with that folder", () => {
+    new CloneOriginStore(originsPath()).recordAnswer(folder("app-0"), "https://github.com/owner/app.git", "untrusted");
+    expect(new CloneOriginStore(originsPath()).origin(folder("app-0"))).toEqual({
+      kind: "answered",
+      url: "https://github.com/owner/app.git",
+      decision: "untrusted",
+    });
+  });
+
+  test("a new clone in a folder replaces its old record", () => {
+    const store = new CloneOriginStore(originsPath());
+    store.recordAnswer(folder("app-0"), "https://github.com/stranger/old.git", "trusted");
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(store.origin(folder("app-0"))).toEqual({ kind: "cloned", url: "https://github.com/owner/app.git" });
+  });
+
+  test("the same folder, written another way, finds the same record", () => {
+    const store = new CloneOriginStore(originsPath());
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    expect(store.origin(join(project, "repos", ".", "app-0"))).toEqual({
+      kind: "cloned",
+      url: "https://github.com/owner/app.git",
+    });
+  });
+
+  test("a folder made again at the same path, or one whose marker is gone, is replaced", () => {
+    const store = new CloneOriginStore(originsPath());
+    store.recordClone(folder("app-0"), "https://github.com/owner/app.git");
+    rmSync(join(project, "repos", "app-0"), { recursive: true });
+    const replaced = { kind: "replaced", url: "https://github.com/owner/app.git" } as const;
+    expect(store.origin(join(project, "repos", "app-0"))).toEqual(replaced);
+    expect(store.origin(folder("app-0"))).toEqual(replaced);
+    store.recordClone(folder("app-1"), "https://github.com/owner/app.git");
+    rmSync(join(project, "repos", "app-1", ".git", "eva-clone-id"));
+    expect(store.origin(folder("app-1"))).toEqual(replaced);
+  });
+
+  test("a clone whose .git is a file, as in a worktree, keeps its marker in the git folder it names", () => {
+    const store = new CloneOriginStore(originsPath());
+    const gitFolder = join(sandbox.root, "worktree-git");
+    mkdirSync(gitFolder, { recursive: true });
+    const path = join(project, "repos", "app-0");
+    mkdirSync(path, { recursive: true });
+    sandbox.write(path, ".git", `gitdir: ${gitFolder}\n`);
+    store.recordClone(path, "https://github.com/owner/app.git");
+    expect(existsSync(join(gitFolder, "eva-clone-id"))).toBe(true);
+    expect(store.origin(path)).toEqual({ kind: "cloned", url: "https://github.com/owner/app.git" });
+  });
+
+  test("a folder with no git folder gets no record", () => {
+    const store = new CloneOriginStore(originsPath());
+    const path = join(project, "repos", "app-0");
+    mkdirSync(path, { recursive: true });
+    store.recordClone(path, "https://github.com/owner/app.git");
+    sandbox.write(path, ".git", "not a pointer\n");
+    store.recordClone(path, "https://github.com/owner/app.git");
+    expect(store.origin(path)).toBeNull();
+    expect(existsSync(originsPath())).toBe(false);
+  });
+
+  test("a broken or odd origins file means no records yet", () => {
+    const path = folder("app-0");
+    new CloneOriginStore(originsPath()).recordClone(path, "https://github.com/owner/app.git");
+    const good = JSON.parse(readFileSync(originsPath(), "utf8")) as Record<string, Record<string, unknown>>;
+    const [key, record] = Object.entries(good)[0] ?? ["", {}];
+    expect(new CloneOriginStore(originsPath()).origin(path)).not.toBeNull();
+    for (const content of [
+      "{broken",
+      "[]",
+      JSON.stringify({ [key]: null }),
+      JSON.stringify({ [key]: { ...record, url: 3 } }),
+      JSON.stringify({ [key]: { url: record["url"] } }),
+      JSON.stringify({ [key]: { ...record, decision: "maybe" } }),
+    ]) {
+      sandbox.write(sandbox.root, "clone-origins.json", content);
+      expect(new CloneOriginStore(originsPath()).origin(path)).toBeNull();
+    }
   });
 });

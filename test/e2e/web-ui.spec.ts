@@ -14,6 +14,20 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
+/** The task chip under the answer opens the chat's background tasks, also on a phone. */
+async function expectBackgroundTasks(page: Page): Promise<void> {
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+  }
+  await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("Search the notes");
+  await expect(dialog).toContainText("done");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+}
+
 test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("wrong");
@@ -33,11 +47,25 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await expect(page.getByText("1 tools").first()).toBeVisible();
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
 
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.locator(".branch")).toHaveCount(2);
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
+});
+
+test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("show me a list");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator("li")).toHaveText(["first", "second"]);
+  await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
 });
 
 test("an approval opens a dialog, and Allow answers the turn", async ({ page }) => {
@@ -50,6 +78,8 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await composer.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Approval" });
   await expect(dialog).toContainText("gh issue create");
+  // While the turn waits, its running task shows under the conversation, also on a phone.
+  await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
 });
@@ -77,6 +107,38 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
     await trustQuestion.getByRole("button", { name: "Deny" }).click();
   }
   await expect(answer).toContainText("Fix the bug");
+  // Project mode shows the same activity as Assistant mode.
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
+
+  // Another chat's tasks stay out of view. A project chat keeps the Assistant chat list unchanged.
+  await openList(page);
+  await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+      "Nothing runs in the background.",
+    );
+  }
+});
+
+test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await page.getByRole("button", { name: "New clone" }).click();
+  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  await openList(page);
+  const chats = page.getByRole("group", { name: "Chats in this clone" });
+  await expect(chats.locator(".list-item")).toHaveCount(1);
+  await chats.getByRole("button", { name: "New chat", exact: true }).click();
+  await openList(page);
+  await expect(chats.locator(".list-item")).toHaveCount(2);
+  await expect(chats.locator(".list-item").first()).toHaveAttribute("aria-current", "true");
+  await chats.locator(".list-item").last().click();
+  await openList(page);
+  await expect(chats.locator(".list-item").last()).toHaveAttribute("aria-current", "true");
 });
 
 test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
@@ -112,6 +174,38 @@ test("the status filter hides a closed project until Any status", async ({ page 
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   await page.getByLabel("Status").selectOption("");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A status word typed in the search wins over the select.
+  await page.getByLabel("Status").selectOption("active");
+  await page.getByLabel("Search projects").fill("status:closed");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+});
+
+test("the tag filter shows only the projects with that tag", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await page.getByLabel("Tag").selectOption("web");
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await page.getByLabel("Tag").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A tag word typed in the search wins over the select.
+  await page.getByLabel("Tag").selectOption("web");
+  await page.getByLabel("Search projects").fill("#legacy");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+});
+
+test("a project with a bad front matter field shows its warnings", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  const project = page.getByRole("button", { name: /Broken notes/ });
+  await expect(project).toContainText("1 warning");
+  await project.click();
+  await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
 });
 
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
@@ -129,6 +223,93 @@ test("Settings: Log out every device ends this login too", async ({ page }) => {
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Log out every device" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: a token saves write-only, shows as saved, and can be removed", async ({ page }) => {
+  await logIn(page);
+  // A failed earlier run must not leave a token for this one.
+  await page.request.delete("/api/secrets/githubToken");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const field = page.getByLabel("GitHub token", { exact: true });
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+  await field.fill("ghp_e2e-example-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  await expect(field).toHaveValue("");
+  await expect(page.getByRole("status").filter({ hasText: "Restart Eva" })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  expect(await page.content()).not.toContain("e2e-example-token");
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Remove the GitHub token" }).click();
+  await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+});
+
+test("Settings: each engine has a Test that runs a tiny real prompt", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const claudeRow = page.locator(".check-row", { hasText: "Test the Claude Code token" });
+  await claudeRow.getByRole("button", { name: "Test" }).click();
+  await expect(claudeRow).toContainText("✓ Claude Code answered:");
+  const piRow = page.locator(".check-row", { hasText: "Test pi" });
+  await piRow.getByRole("button", { name: "Test" }).click();
+  // The demo server has only the scripted Claude Code engine.
+  await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
+  await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
+  await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
+});
+
+test("Settings: the default model saves at once", async ({ page }) => {
+  await logIn(page);
+  try {
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByLabel("Claude Code model").selectOption("sonnet");
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("Claude Code model")).toHaveValue("sonnet");
+  } finally {
+    // Later tests share the demo vault.
+    await page.request.put("/api/settings", { data: { engines: { claudeCode: { defaultModel: "default" } } } });
+  }
+});
+
+test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as { vaultSync: Record<string, unknown> };
+    status.vaultSync = {
+      ...status.vaultSync,
+      status: "conflict",
+      lastError: "Notes/plan.md has a conflict.",
+      withheldFiles: [
+        { path: "Notes/keys.md", reason: "secret" },
+        { path: "Media/film.mov", reason: "too_large" },
+      ],
+    };
+    await route.fulfill({ response, json: status });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
+  await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
+});
+
+test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByLabel("Theme").selectOption("dark");
+  await page.getByLabel("Density").selectOption("compact");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
 test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
@@ -182,10 +363,25 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
 });
 
-test("Settings: add a schedule, see its next run, and remove it", async ({ page }, testInfo) => {
-  const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("group", { name: "Setup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add schedule" })).toHaveCount(0);
+});
+
+test("Schedules page: open it from the sidebar, add a schedule, see its next run, and remove it", async ({
+  page,
+}, testInfo) => {
+  const id = `walk-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Schedules");
+  // The page belongs to Assistant mode, so the topbar shows the way back.
+  await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
+  // No sidebar shows here, so the list button would do nothing.
+  await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
   await page.getByLabel(/^Id/).fill(id);
   await page.getByLabel("Name").fill(`Walk ${id}`);
   await page.getByLabel("Time (HH:MM)").fill("7:30");
@@ -198,6 +394,9 @@ test("Settings: add a schedule, see its next run, and remove it", async ({ page 
   await expect(row).toContainText("next:");
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
   await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "Assistant" }).click();
+  await openList(page);
+  await expect(page.getByRole("button", { name: "Open schedules" })).toBeVisible();
 });
 
 /** Starts a new Assistant chat and returns its session id. */
@@ -460,8 +659,33 @@ test.describe("on a phone", () => {
       .locator("button:visible, select:visible")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    // An icon button is narrow by nature, so its width needs a check too.
+    const iconBox = await page.getByRole("button", { name: "Open schedules" }).boundingBox();
+    expect(iconBox?.width ?? 0).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
+  });
+
+  test("the mode switch stays in place on a screen with no list", async ({ page }) => {
+    await logIn(page);
+    const modeSwitch = page.getByRole("group", { name: "Mode" });
+    const before = await modeSwitch.boundingBox();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
+    expect((await modeSwitch.boundingBox())?.x).toBe(before?.x);
+  });
+
+  test("on Settings too, every button is at least 44 px tall and nothing is wider than the screen", async ({
+    page,
+  }) => {
+    await logIn(page);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByLabel("GitHub token", { exact: true })).toBeVisible();
+    const heights = await page
+      .locator("button:visible, select:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   });
 
   test("the composer sits at the bottom of the screen", async ({ page }) => {

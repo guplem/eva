@@ -246,6 +246,7 @@ describe("migrationsAhead", () => {
     expect(migrationsAhead(record, ["2026-10-20-a"])).toEqual({
       unknown: ["2026-11-01-b", "2026-11-09-c"],
       version: "0.6.1",
+      readable: true,
     });
   });
 
@@ -260,7 +261,7 @@ describe("migrationsAhead", () => {
     const record = join(vault, ".eva", "migrations.json");
     for (const broken of ["{ broken", JSON.stringify({ applied: [{ name: "2099-01-01-renamed-field" }] })]) {
       writeFileSync(record, broken);
-      expect(migrationsAhead(record, [])).toEqual({ unknown: [], version: null });
+      expect(migrationsAhead(record, [])).toEqual({ unknown: [], version: null, readable: false });
     }
   });
 });

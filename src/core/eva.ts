@@ -538,8 +538,8 @@ export class Eva {
   }
 
   /**
-   * Reports the migrations that ran at start. Call it after the front ends subscribe, so that the
-   * alerts reach the phone.
+   * Reports the migrations that ran at start. Call it after the Telegram bot starts, so that a
+   * failure reaches Telegram on the hub.
    */
   reportStartMigrations(result: StartMigrations): void {
     this.reportMigrationRun("machine", result.machine);
@@ -1015,11 +1015,14 @@ export class Eva {
   }
 
   private runVaultMigrations(): void {
+    const vaultPath = this.options.config.vaultPath;
+    // A vault folder that is not cloned yet has no hub file, so this machine reads as the hub.
+    if (vaultPath === null || !existsSync(vaultPath)) return;
     const run = runMigrations({
       store: "vault",
       migrations,
       paths: this.options.paths,
-      vaultPath: this.options.config.vaultPath,
+      vaultPath,
       version: evaVersion,
       now: this.options.now,
     });

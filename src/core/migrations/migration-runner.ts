@@ -1,8 +1,8 @@
 /**
- * Migrations of stored files, as Prisma does for a database. Each format change comes with a
- * dated migration. Eva records the ids that ran, and runs the missing ones at start. The record
- * holds ids, not a counter, so two pull requests can merge in either order. Migrations only go
- * forward: Eva never installs an older version.
+ * Migrations of stored files. Each format change comes with a dated migration. Eva records the ids
+ * that ran, and runs the missing ones at start. The record holds ids, not a counter, so two pull
+ * requests can merge in either order. Migrations only go forward: Eva never installs an older
+ * version by herself.
  */
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
@@ -110,14 +110,14 @@ export function runMigrations(options: RunMigrationsOptions): MigrationRun {
 export function migrationsAhead(
   recordPath: string,
   knownIds: readonly string[],
-): { unknown: string[]; version: string | null } | null {
+): { unknown: string[]; version: string | null; readable: boolean } | null {
   const record = readRecord(recordPath);
-  if (record === null) return { unknown: [], version: null };
+  if (record === null) return { unknown: [], version: null, readable: false };
   const known = new Set(knownIds);
   const unknown = record.entries.filter((entry) => !known.has(entry.id)).sort((a, b) => a.id.localeCompare(b.id));
   if (unknown.length === 0) return null;
   const newest = unknown.at(-1)?.version ?? "";
-  return { unknown: unknown.map((entry) => entry.id), version: newest === "" ? null : newest };
+  return { unknown: unknown.map((entry) => entry.id), version: newest === "" ? null : newest, readable: true };
 }
 
 /**

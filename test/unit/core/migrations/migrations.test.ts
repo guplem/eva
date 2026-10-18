@@ -37,6 +37,26 @@ describe("the migration list", () => {
 });
 
 describe("the vault gate", () => {
+  function gateMessage(): string {
+    try {
+      assertVaultWritable(vault);
+    } catch (error) {
+      if (isEvaError(error, "vault_ahead")) return error.message;
+    }
+    return "";
+  }
+
+  test("a record without a version asks for a newer Eva", () => {
+    writeFileSync(record(), JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future" }] }));
+    expect(gateMessage()).toBe("The vault needs a newer Eva. Update Eva on this computer first.");
+  });
+
+  test("a record that this Eva cannot read stops the writes, and says how to repair it", () => {
+    writeFileSync(record(), "<<<<<<< conflict");
+    expect(vaultAhead(vault)).toEqual({ unknown: [], version: null, readable: false });
+    expect(gateMessage()).toContain("Ask the Assistant to repair it");
+  });
+
   test("a vault without a record, or with only known ids, is writable", () => {
     expect(vaultAhead(vault)).toBeNull();
     writeRecord(migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id));
@@ -53,7 +73,7 @@ describe("the vault gate", () => {
 
   test("an unknown id stops every vault write with vault_ahead and names the version", () => {
     writeRecord(["2099-01-01-from-the-future"], "9.1.0");
-    expect(vaultAhead(vault)).toEqual({ unknown: ["2099-01-01-from-the-future"], version: "9.1.0" });
+    expect(vaultAhead(vault)).toEqual({ unknown: ["2099-01-01-from-the-future"], version: "9.1.0", readable: true });
     let caught: unknown;
     try {
       assertVaultWritable(vault);
@@ -91,9 +111,10 @@ describe("runStartMigrations", () => {
     rmSync(paths.root, { recursive: true, force: true });
   });
 
-  test("a fresh install records every migration, and changes nothing", () => {
+  test("a fresh install records every migration but the copy, which waits for a vault, and changes nothing", () => {
+    const copy = "2026-10-18-copy-security-settings-from-vault";
     expect(start()).toEqual({
-      machine: { kind: "done", applied: ids("machine"), later: [] },
+      machine: { kind: "done", applied: ids("machine").filter((id) => id !== copy), later: [copy] },
       vault: { kind: "done", applied: ids("vault"), later: [] },
     });
     expect(existsSync(join(vault, ".eva", "settings.json"))).toBe(false);

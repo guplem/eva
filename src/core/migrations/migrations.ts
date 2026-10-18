@@ -1,7 +1,7 @@
 /**
- * Every migration that this Eva knows, and the gate on the vault files. The hub and the satellites
- * update at different times, so a computer that is behind must never write a vault format that
- * a newer Eva already migrated.
+ * Every migration that this Eva knows, and the gate on the vault files. The computers that share a
+ * vault update at different times. A computer that is behind must never write a vault format that a
+ * newer Eva migrated.
  */
 import { EvaError } from "../../shared/errors.ts";
 import type { HomePaths } from "../settings/home.ts";
@@ -32,6 +32,8 @@ export interface VaultAhead {
   readonly unknown: string[];
   /** The version that ran the newest of them, or null when the record does not say. */
   readonly version: string | null;
+  /** False when this Eva cannot read the record: it is damaged, or a newer Eva changed its shape. */
+  readonly readable: boolean;
 }
 
 /** Null when this Eva knows every migration that the vault's record lists. */
@@ -47,10 +49,14 @@ export function vaultAhead(vaultPath: string): VaultAhead | null {
 export function assertVaultWritable(vaultPath: string): void {
   const ahead = vaultAhead(vaultPath);
   if (ahead === null) return;
-  throw new EvaError(
-    "vault_ahead",
-    `The vault needs Eva ${ahead.version ?? "of a newer version"} or later. Update Eva on this computer first.`,
-  );
+  throw new EvaError("vault_ahead", vaultAheadReason(ahead));
+}
+
+/** Why this Eva does not write the vault files, and what the person can do. */
+function vaultAheadReason(ahead: VaultAhead): string {
+  if (!ahead.readable)
+    return "Eva cannot read .eva/migrations.json in the vault. Ask the Assistant to repair it, or update Eva on this computer.";
+  return `The vault needs ${ahead.version === null ? "a newer Eva" : `Eva ${ahead.version}`}. Update Eva on this computer first.`;
 }
 
 export interface StartMigrations {

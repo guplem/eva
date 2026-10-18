@@ -87,6 +87,9 @@ function handle(message: JsonRpcRequest): void {
           tools: [
             { name: "broken_tool", inputSchema: { type: "object" } },
             { name: "rich_tool" },
+            // Entries with no name: the client skips them and keeps the others.
+            null,
+            { description: "No name" },
             // A dot is valid in MCP, but not in a model provider's tool name.
             { name: "notes.read", inputSchema: { type: "object" } },
             { name: "a_tool_with_a_name_that_is_too_long_for_a_model_provider", inputSchema: { type: "object" } },

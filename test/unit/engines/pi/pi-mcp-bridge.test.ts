@@ -79,12 +79,18 @@ function writeServers(servers: Record<string, unknown>): string {
   return file;
 }
 
-function google(): Record<string, unknown> {
-  // Windows needs SystemRoot to start a process. Eva's base environment holds it too.
-  const base = Object.fromEntries(
-    ["PATH", "Path", "SystemRoot"].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]])),
+/** Windows needs SystemRoot to start a process. Eva's base environment holds it too. */
+function baseEnvironment(): Record<string, string> {
+  return Object.fromEntries(
+    ["PATH", "Path", "SystemRoot"].flatMap((key) => {
+      const value = process.env[key];
+      return value === undefined ? [] : [[key, value]];
+    }),
   );
-  return { command: process.execPath, args: [fakeServer], environment: { ...base, FAKE_MCP_LOG: log } };
+}
+
+function google(): Record<string, unknown> {
+  return { command: process.execPath, args: [fakeServer], environment: { ...baseEnvironment(), FAKE_MCP_LOG: log } };
 }
 
 async function failureOf(promise: Promise<unknown>): Promise<string> {
@@ -208,7 +214,11 @@ describe("the pi MCP bridge", () => {
       missing: { command: join(folder, "no-such-program"), args: [], environment: {} },
       // Not an array, so spawn throws at once.
       broken: { command: process.execPath, args: 3, environment: {} },
-      silent: { command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], environment: {} },
+      silent: {
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+        environment: baseEnvironment(),
+      },
     });
     await startBridge(api, options(500));
     expect(api.tools).toEqual([]);

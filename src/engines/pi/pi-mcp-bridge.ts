@@ -148,10 +148,19 @@ async function listTools(client: McpClient, remaining: () => number): Promise<Mc
   let cursor: unknown;
   for (let page = 0; page < maxToolPages; page += 1) {
     const result = (await client.request("tools/list", typeof cursor === "string" ? { cursor } : {}, remaining())) as {
-      tools?: McpTool[];
+      tools?: unknown;
       nextCursor?: unknown;
     };
-    tools.push(...(result.tools ?? []));
+    // An entry with no name is no tool. Skip it, so one bad entry costs no other tool.
+    tools.push(
+      ...(Array.isArray(result.tools) ? result.tools : []).filter(
+        (tool): tool is McpTool =>
+          typeof tool === "object" &&
+          tool !== null &&
+          typeof (tool as { name?: unknown }).name === "string" &&
+          (tool as { name: string }).name !== "",
+      ),
+    );
     cursor = result.nextCursor;
     if (typeof cursor !== "string" || cursor === "") break;
   }

@@ -6,13 +6,14 @@
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 
-// Agent instructions are docs wherever they are. Other Markdown in these folders ships
-// inside the executable or feeds a test, such as the assistant prompt and the vault template.
+// Markdown in these folders can ship inside the executable or feed a test, such as the
+// assistant prompt. Agent instructions in them are docs: Eva never reads her own.
 const agentFiles = new Set(["AGENTS.md", "CLAUDE.md"]);
-const codeFolders = ["src/", "test/", "templates/"];
+const codeFolders = ["src/", "test/"];
 
 export function isDocsPath(path: string): boolean {
   if (!path.endsWith(".md")) return false;
+  // Every file of the vault template ships inside the executable, its AGENTS.md too.
   if (path.startsWith("templates/")) return false;
   if (agentFiles.has(basename(path))) return true;
   return !codeFolders.some((folder) => path.startsWith(folder));

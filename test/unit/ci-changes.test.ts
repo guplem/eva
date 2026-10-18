@@ -8,6 +8,7 @@ import { codeChanged, isDocsPath } from "../../scripts/ci-changes.ts";
 describe("isDocsPath", () => {
   test.each([
     "README.md",
+    "SECURITY.md",
     "AGENTS.md",
     "docs/guide/start.md",
     ".agents/skills/write-commit/SKILL.md",
@@ -26,7 +27,10 @@ describe("isDocsPath", () => {
     // The vault template ships inside the executable.
     "templates/vault/README.md",
     "templates/vault/AGENTS.md",
+    "templates/vault/.eva/skills/schedule/SKILL.md",
     "docs/diagram.png",
+    // Upper case is rare: when in doubt, the full set runs.
+    "docs/NOTES.MD",
     ".agents/skills/example/run.sh",
     ".github/workflows/pull-request-checks.yml",
     "package.json",

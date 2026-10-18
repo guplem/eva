@@ -708,9 +708,9 @@ export class Eva {
     return this.settings.saveSecret(name, value, options);
   }
 
-  runCheck(name: CheckName): Promise<CheckResult> {
+  async runCheck(name: CheckName): Promise<CheckResult> {
     const secrets = this.settings.secrets;
-    return runCheck(name, {
+    const result = await runCheck(name, {
       vaultPath: this.options.config.vaultPath,
       runner: this.options.runner,
       environment: gitEnvironment(this.facts, secrets),
@@ -728,6 +728,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
+    // The Test reads the saved settings, but chats keep the Google settings of the start.
+    return name === "google" && result.ok && this.googleRestartNeeded()
+      ? { ok: true, detail: `${result.detail} Press Restart Eva so that chats use these Google settings.` }
+      : result;
   }
 
   /** The address of Google's consent page, for the scopes of the saved Google settings. */
@@ -754,11 +758,7 @@ export class Eva {
       );
     const { email } = await this.googleLogin.finish(pasted, client);
     if (this.settings.config.google.email !== email) this.settings.update({ google: { email } });
-    // `workspace-mcp` reads the login at each call, but Eva builds its settings at start.
-    const started = this.options;
-    const restartNeeded =
-      started.config.google.email !== email || started.secrets.googleOauthClientId !== client.clientId;
-    return { email, restartNeeded };
+    return { email, restartNeeded: this.googleRestartNeeded() };
   }
 
   private googleClient(): { clientId: string; clientSecret: string } | null {
@@ -896,14 +896,28 @@ export class Eva {
     this.alerts.notify("update_held_back", "news", news);
   }
 
+  /**
+   * True when the saved Google settings differ from the ones that chats got at start.
+   * `workspace-mcp` reads the login file at each call, but its flags and account come from the start.
+   */
+  private googleRestartNeeded(): boolean {
+    const started = this.googleServer(this.options.config.google, this.options.secrets);
+    const saved = this.googleServer(this.settings.config.google, this.settings.secrets);
+    return JSON.stringify(started) !== JSON.stringify(saved);
+  }
+
   private assistantMcpServers(): Record<string, McpServerSpec> {
-    const google = googleMcpServer({
-      config: this.options.config.google,
-      secrets: this.settings.secrets,
+    const google = this.googleServer(this.options.config.google, this.options.secrets);
+    return google === null ? {} : { google };
+  }
+
+  private googleServer(config: EvaConfig["google"], secrets: EvaSecrets): McpServerSpec | null {
+    return googleMcpServer({
+      config,
+      secrets,
       credentialsFolder: googleCredentialsFolder(this.options.paths),
       // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
       environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
-    return google === null ? {} : { google };
   }
 }

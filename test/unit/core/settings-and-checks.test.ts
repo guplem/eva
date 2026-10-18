@@ -270,6 +270,39 @@ describe("runCheck", () => {
     };
   }
 
+  test("the Google check asks for uv, which runs the Google tools in chats", async () => {
+    const google = fakeGoogle();
+    try {
+      const folder = join(home, "engines", "google");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(
+        join(folder, "person@example.com.json"),
+        JSON.stringify({
+          refresh_token: "r",
+          client_id: "id",
+          client_secret: "s",
+          scopes: googleScopes(defaultConfig.google),
+        }),
+      );
+      const googleInputs = {
+        config: { ...defaultConfig.google, email: "person@example.com" },
+        client: { clientId: "id", clientSecret: "s" },
+        credentialsFolder: folder,
+        baseUrl: google.url,
+        readServices: false,
+      };
+      expect(await runCheck("google", inputs({ google: googleInputs }))).toEqual({
+        ok: true,
+        detail: "The Google login of person@example.com works.",
+      });
+      const withoutUv = await runCheck("google", inputs({ google: googleInputs, runner: failingRunner }));
+      expect(withoutUv.ok).toBe(false);
+      expect(withoutUv.detail).toContain("no uv");
+    } finally {
+      google.stop();
+    }
+  });
+
   test("the Google check names the missing step, redacted", async () => {
     const google = {
       config: { ...defaultConfig.google, email: "secret-value@example.com" },
@@ -557,6 +590,14 @@ describe("the hub", () => {
 });
 
 describe("the Google setup", () => {
+  // The Google check runs `uvx --version`; CI has no uv.
+  const uvRunner: ProcessRunner = {
+    run: (command, options) =>
+      command[0] === "uvx"
+        ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
+        : systemProcessRunner.run(command, options),
+  };
+
   test("a pasted login sets the account, and the Test reads each service", async () => {
     const google = fakeGoogle();
     google.grantedScope = googleScopes(defaultConfig.google).join(" ");
@@ -565,7 +606,7 @@ describe("the Google setup", () => {
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: uvRunner,
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -581,10 +622,41 @@ describe("the Google setup", () => {
       expect(loadSettings(homePaths(home)).config.google.email).toBe("person@example.com");
       expect(await withGoogle.runCheck("google")).toEqual({
         ok: true,
-        detail: "Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.",
+        detail:
+          "Eva can read Calendar, Drive, Contacts and Tasks of person@example.com. Press Restart Eva so that chats use these Google settings.",
       });
     } finally {
       withGoogle.stop();
+      google.stop();
+    }
+  });
+
+  test("a login with the settings of the start needs no restart; a change of access does", async () => {
+    const google = fakeGoogle();
+    google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+    const started = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, google: { ...defaultConfig.google, email: "person@example.com" } },
+      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      engines: [engine],
+      runner: uvRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      googleBaseUrl: google.url,
+    });
+    try {
+      started.startGoogleLogin();
+      expect(await started.finishGoogleLogin("the-code")).toEqual({
+        email: "person@example.com",
+        restartNeeded: false,
+      });
+      started.updateSettings({ google: { readOnly: false } });
+      google.grantedScope = googleScopes({ ...defaultConfig.google, readOnly: false }).join(" ");
+      started.startGoogleLogin();
+      expect(await started.finishGoogleLogin("the-code")).toEqual({ email: "person@example.com", restartNeeded: true });
+    } finally {
+      started.stop();
       google.stop();
     }
   });

@@ -29,7 +29,7 @@ export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep
   return [
     {
       title: `${String(googleStep.apis)}. Turn on the Google APIs`,
-      text: "In Google Cloud, make a project, for example eva. Then open each API below and press Enable.",
+      text: "In Google Cloud, make a project with a name of 4 to 30 characters, for example eva-assistant. These APIs cost nothing, even when Google asks for a billing account. Then open each API below and press Enable.",
       links: [
         { label: "Make a project", url: `${cloudConsole}/projectcreate` },
         ...services.map((service) => ({

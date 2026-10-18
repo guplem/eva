@@ -37,6 +37,7 @@ describe("agent permission rules", () => {
     "git push -q",
     "git push",
     "git commit -q -m subject",
+    "git commit -q -F -",
     "git add -A",
     "git fetch origin main",
     "git merge origin/main",
@@ -71,6 +72,17 @@ describe("agent permission rules", () => {
     "git rm -f src/main.ts",
     "git stash drop",
     "gh pr merge 99 --admin",
+    "git push origin main -qf",
+    "git push -q origin main -vf",
+    "git push origin -qd main",
+    "git push --receive-pack=x origin main",
+    "git rm -rf src",
+    "git rm -q -fr src",
+    "git add -Af .env",
+    "git restore --staged -SW src/main.ts",
+    "git fetch --upload-pack=x .",
+    "git fetch -f origin main:main",
+    "git fetch origin +main:main",
   ])("denies %p", (command) => {
     expect(denied(command)).toBe(true);
   });
@@ -83,6 +95,13 @@ describe("agent permission rules", () => {
     "rm -rf /tmp/claude-0/a src /tmp/claude-0/b/test-results",
     "python3 -",
     "pkill bun",
+    "find . -delete",
+    "sort -o src/main.ts /dev/null",
+    "uniq a.txt src/main.ts",
+    "sed -n '1e cat .env' README.md",
+    "sed -i s/a/b/ ../vault/note.md",
+    "cp .env /tmp/claude-0/x",
+    "mv src /tmp/claude-0/x",
   ])("leaves %p to a prompt", (command) => {
     expect(allowed(command)).toBe(false);
   });
@@ -92,6 +111,10 @@ describe("agent permission rules", () => {
     "Read(//**/.env.*)",
     "Read(//**/secrets.json)",
     "Read(~/.ssh/**)",
+    "Read(//**/.credentials.json)",
+    "Read(//**/auth.json)",
+    "Read(//**/gh/hosts.yml)",
+    "Read(//**/engines/google/**)",
     "mcp__github__push_files",
     "mcp__github__create_or_update_file",
     "mcp__github__delete_file",

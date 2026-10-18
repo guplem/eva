@@ -4,6 +4,8 @@ import {
   api,
   ApiError,
   subscribeToEvents,
+  type DeviceLoginEvent,
+  type DeviceLoginRequest,
   type PendingApproval,
   type ScheduleCard,
   type SessionEvent,
@@ -43,6 +45,7 @@ function EvaApp(): ReactElement {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
@@ -131,6 +134,11 @@ function EvaApp(): ReactElement {
     } catch {
       // The next reconnect or the next visit tries again.
     }
+    try {
+      setDeviceRequests(await api.deviceRequests());
+    } catch {
+      // The next reconnect or the next visit tries again.
+    }
   }, [refreshSessions, refreshProblems]);
 
   useEffect(() => {
@@ -155,7 +163,15 @@ function EvaApp(): ReactElement {
       setIsConnected(connected);
       if (connected) void recover();
     };
-    return subscribeToEvents((event: SessionEvent | ScheduleCard) => {
+    return subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
+      if (event.kind === "device_login_request") {
+        setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
+        return;
+      }
+      if (event.kind === "device_login_settled") {
+        setDeviceRequests((current) => current.filter((entry) => entry.id !== event.id));
+        return;
+      }
       if (event.kind === "schedule_card") {
         // The core sends a waiting card again at each check. It replaces the old one in place, so
         // the dialog never jumps to another card while the person reads.
@@ -198,6 +214,17 @@ function EvaApp(): ReactElement {
     }
   };
   const approval = approvals[0];
+
+  /** A failed answer drops the request too: it expired, or another approver answered it. */
+  const answerDevice = async (id: string, answer: "allow" | "deny"): Promise<void> => {
+    setDeviceRequests((current) => current.filter((entry) => entry.id !== id));
+    try {
+      await api.answerDeviceRequest(id, answer);
+    } catch (caught) {
+      showError(caught);
+    }
+  };
+  const deviceRequest = deviceRequests[0];
   const hasSidebar = screen === "assistant" || screen === "project";
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
@@ -297,8 +324,25 @@ function EvaApp(): ReactElement {
           </div>
         </div>
       )}
-      {/* An approval holds a running turn, so it comes first. */}
-      {approval === undefined && card !== undefined && (
+      {/* An approval holds a running turn, so it comes first. A new device waits for a person at its door. */}
+      {approval === undefined && deviceRequest !== undefined && (
+        <div className="dialog-backdrop">
+          <div className="dialog" role="dialog" aria-label="New device">
+            <strong>A new device wants to get in. Allow it?</strong>
+            <span>
+              Allow it only if the new device shows the code <code>{deviceRequest.code}</code>. Account:{" "}
+              {deviceRequest.account}.
+            </span>
+            <div className="message-actions">
+              <button className="primary" onClick={() => void answerDevice(deviceRequest.id, "allow")}>
+                Allow
+              </button>
+              <button onClick={() => void answerDevice(deviceRequest.id, "deny")}>Deny</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {approval === undefined && deviceRequest === undefined && card !== undefined && (
         <ScheduleCardDialog
           card={card}
           onConfirm={() => void answerCard(card, "confirm")}

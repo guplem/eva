@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 
-/** The page asks again at this pace until the owner answers in Telegram. */
+/** The page asks again at this pace until the owner answers in Telegram or on another Eva page. */
 const devicePollMs = 2_000;
 
 type DeviceStep =
@@ -48,7 +48,7 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
         (found) => {
           if (found.state === "allowed") onLoggedIn();
           else if (found.state === "denied")
-            setStep({ kind: "token", reason: "The request was denied in Telegram.", canAskAgain: true });
+            setStep({ kind: "token", reason: "The request was denied.", canAskAgain: true });
           else if (found.state === "expired")
             setStep({
               kind: "token",
@@ -67,9 +67,9 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
     return (
       <div className="login" role="status">
         <h1>Eva</h1>
-        <strong>Confirm this device in Telegram</strong>
+        <strong>Confirm this device</strong>
         <span>
-          Eva sent a question to your Telegram chat. Tap Allow there if it shows the code{" "}
+          Tap Allow in your Telegram chat, or on an Eva page that is open on another device, if it shows the code{" "}
           <code>{step.request.code}</code>.
         </span>
         <span className="chip">This page opens by itself when you allow it.</span>
@@ -124,7 +124,7 @@ function TokenForm({
       {reason !== null && <div role="status">{reason}</div>}
       {onAskAgain !== null && (
         <button type="button" onClick={onAskAgain}>
-          Ask in Telegram again
+          Ask again
         </button>
       )}
       <label htmlFor="token">Token (from the localApiToken in your instance's secrets.json)</label>

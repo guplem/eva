@@ -467,6 +467,7 @@ test("Settings: Use Eva from any device installs Tailscale, then shares the addr
 test("Settings: Log out every device ends this login too", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Log out every device" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
@@ -570,11 +571,7 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
-test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
-  page,
-  context,
-  baseURL,
-}) => {
+test("device login: a browser that Tailscale names waits for Allow, then opens", async ({ page, context, baseURL }) => {
   let polls = 0;
   // The demo server has no Tailscale, so the browser plays the server's side of the device login.
   await page.route("**/api/login/device", (route) =>
@@ -594,7 +591,7 @@ test("device login: a browser that Tailscale names waits for Allow in Telegram, 
     await route.fulfill({ json: { state: "allowed" } });
   });
   await page.goto("/");
-  await expect(page.getByText("Confirm this device in Telegram")).toBeVisible();
+  await expect(page.getByText("Confirm this device")).toBeVisible();
   await expect(page.getByText("K7QX")).toBeVisible();
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
@@ -617,8 +614,8 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   );
   await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("The request was denied in Telegram.");
-  await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("The request was denied.");
+  await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 
 test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
@@ -1272,4 +1269,58 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   const googleRow = page.locator(".check-row", { hasText: "Test Google" });
   await googleRow.getByRole("button", { name: "Test" }).click();
   await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+});
+
+test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {
+  const answers: unknown[] = [];
+  // The demo server has no Tailscale, so the browser plays the server's side of the request.
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-3", code: "R4WZ", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-3", async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await expect(dialog).toContainText("A new device wants to get in. Allow it?");
+  await expect(dialog).toContainText("R4WZ");
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(answers).toEqual([{ answer: "allow" }]);
+});
+
+test("Settings: the device list marks this device, and Remove logs out another one", async ({ page }) => {
+  let devices = [
+    {
+      id: "aaaaaaaaaaaaaaaa",
+      label: "owner@example.com, a phone",
+      createdAt: "2026-10-17T10:00:00.000Z",
+      current: false,
+    },
+    {
+      id: "bbbbbbbbbbbbbbbb",
+      label: "owner@example.com, a laptop",
+      createdAt: "2026-10-17T11:00:00.000Z",
+      current: true,
+    },
+  ];
+  const removed: string[] = [];
+  await page.route("**/api/devices", (route) => route.fulfill({ json: devices }));
+  await page.route("**/api/devices/aaaaaaaaaaaaaaaa", async (route) => {
+    removed.push(route.request().method());
+    devices = devices.filter((device) => device.id !== "aaaaaaaaaaaaaaaa");
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("list", { name: "Devices" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list.getByRole("listitem").nth(1)).toContainText("This device");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  expect(removed).toEqual(["DELETE"]);
 });

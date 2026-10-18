@@ -76,6 +76,55 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   await expect(listed).toHaveCount(0);
 });
 
+async function chatIdNamed(page: Page, title: string): Promise<string> {
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+  const found = sessions.find((session) => session.title === title);
+  if (found === undefined) throw new Error(`no chat named ${title}`);
+  return found.id;
+}
+
+test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {
+  await logIn(page);
+  for (const text of ["First linked chat", "Second linked chat"]) {
+    await openList(page);
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+    const composer = page.getByLabel("Message").first();
+    await composer.fill(text);
+    await composer.press("Enter");
+    await expect(page.locator(".message.answer").first()).toContainText(text);
+  }
+  const firstId = await chatIdNamed(page, "First linked chat");
+  await page.goto(`/#/chat/${firstId}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("First linked chat");
+});
+
+test("the address #/chat/<id> opens a Project chat in its clone", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await page.getByRole("button", { name: "New clone" }).click();
+  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Linked project work");
+  await composer.press("Enter");
+  // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
+  const answer = page.locator(".message.answer").first();
+  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
+  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  await expect(answer).toContainText("Linked project work");
+  const chatId = await chatIdNamed(page, "Linked project work");
+
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
+  await page.goto(`/#/chat/${chatId}`);
+  await expect(page.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".message.user").first()).toContainText("Linked project work");
+});
+
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);

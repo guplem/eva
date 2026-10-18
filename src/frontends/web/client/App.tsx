@@ -23,6 +23,12 @@ type Screen = "assistant" | "project" | "settings" | "schedules";
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
 
+/** The chat that the address names, as `#/chat/<id>`: Telegram links to a chat this way. */
+function linkedChatIdOf(hash: string): string | null {
+  const match = /^#\/chat\/([^/]+)$/.exec(hash);
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+}
+
 export function App(): ReactElement {
   return (
     <ErrorToastProvider>
@@ -41,7 +47,21 @@ function EvaApp(): ReactElement {
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
+  const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
+  const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
+
+  useEffect(() => {
+    const onHashChange = (): void => setLinkedChatId(linkedChatIdOf(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // The linked chat's mode opens once, when the chat is first in the list; then the person moves freely.
+  const linkedMode = linkedChat?.mode ?? null;
+  useEffect(() => {
+    if (linkedMode !== null) setScreen(linkedMode);
+  }, [linkedChatId, linkedMode]);
 
   // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
@@ -240,6 +260,7 @@ function EvaApp(): ReactElement {
           sidebarOpen={sidebarOpen}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          linkedChat={linkedChat}
           onOpenSchedules={() => setScreen("schedules")}
         />
       )}
@@ -248,6 +269,7 @@ function EvaApp(): ReactElement {
           sessions={sessions}
           live={live}
           sidebarOpen={sidebarOpen}
+          linkedChat={linkedChat}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
         />

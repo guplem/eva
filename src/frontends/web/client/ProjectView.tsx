@@ -16,6 +16,8 @@ interface ProjectViewProps {
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  /** The chat that the address names; its project and clone open with it. */
+  readonly linkedChat: SessionRecord | null;
 }
 
 /**
@@ -30,7 +32,14 @@ interface Selection {
   readonly clone: CloneDetails;
 }
 
-export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate }: ProjectViewProps): ReactElement {
+export function ProjectView({
+  sessions,
+  live,
+  sidebarOpen,
+  onChanged,
+  onNavigate,
+  linkedChat,
+}: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
   const [tag, setTag] = useState("");
@@ -57,6 +66,30 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   useEffect(() => {
     api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
   }, [showError]);
+
+  // A linked Project chat opens in its clone, whatever the search and the filters show.
+  const linkedId = linkedChat?.mode === "project" ? linkedChat.id : null;
+  const linkedProjectId = linkedChat?.projectId ?? null;
+  const linkedClone = linkedChat?.clone ?? null;
+  useEffect(() => {
+    if (linkedId === null || linkedProjectId === null || linkedClone === null) return;
+    void (async (): Promise<void> => {
+      try {
+        const project = (await api.projects("", "")).find((candidate) => candidate.id === linkedProjectId);
+        if (project === undefined) return;
+        const details = await api.clones(project.id);
+        const clone = details.find((candidate) => candidate.name === linkedClone);
+        if (clone === undefined) return;
+        setOpenProject(project.id);
+        setClones(details);
+        setSelection({ project, clone });
+        setSelectedChatId(linkedId);
+        setSetupProject(null);
+      } catch (caught) {
+        showError(caught);
+      }
+    })();
+  }, [linkedId, linkedProjectId, linkedClone, showError]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);

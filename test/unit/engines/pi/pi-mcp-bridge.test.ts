@@ -80,7 +80,7 @@ function writeServers(servers: Record<string, unknown>): string {
 }
 
 function google(): Record<string, unknown> {
-  // Windows needs SystemRoot to start a process; Eva's base environment holds it too.
+  // Windows needs SystemRoot to start a process. Eva's base environment holds it too.
   const base = Object.fromEntries(
     ["PATH", "Path", "SystemRoot"].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]])),
   );
@@ -148,8 +148,10 @@ describe("the pi MCP bridge", () => {
   test("answers the server's ping, refuses its other requests, and skips a line that is not JSON", async () => {
     writeServers({ google: google() });
     await startBridge(api, options(10_000));
+    // A parser that broke on the line that is not JSON would lose this answer.
+    expect(await api.tool("mcp__google__manage_event").execute("c1", {})).toMatchObject({ details: {} });
     await api.shutdown();
-    expect(logged()).toEqual([
+    expect(logged().filter((entry) => "answer" in entry)).toEqual([
       { answer: { jsonrpc: "2.0", id: 900, result: {} } },
       { answer: { jsonrpc: "2.0", id: 901, error: { code: -32601, message: "Method not found" } } },
     ]);
@@ -207,9 +209,12 @@ describe("the pi MCP bridge", () => {
       // Not an array, so spawn throws at once.
       broken: { command: process.execPath, args: 3, environment: {} },
       silent: { command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], environment: {} },
-      google: google(),
     });
-    await startBridge(api, options(3_000));
+    await startBridge(api, options(500));
+    expect(api.tools).toEqual([]);
+    // A second start on the same pi, so a slow cold start of the fake races no short deadline.
+    writeServers({ google: google() });
+    await startBridge(api, options(10_000));
     expect(api.tools.map((tool) => tool.name)).toEqual([
       "mcp__google__manage_event",
       "mcp__google__broken_tool",
@@ -218,7 +223,7 @@ describe("the pi MCP bridge", () => {
       "mcp__google__quota_tool",
       "mcp__google__slow_tool",
     ]);
-    // Each report names its server or tool; the reason after it comes from the system.
+    // Each report names its server or tool. The reason after the name comes from the system.
     expect(reports.map((line) => line.slice(0, line.indexOf('": ') + 1)).toSorted()).toEqual([
       'Eva could not start the MCP server "broken"',
       'Eva could not start the MCP server "missing"',

@@ -34,3 +34,27 @@ Each change to a stored format comes with a dated migration. Eva records the ids
 6. **Notice a vault that moved ahead** after each pull (in `logSyncState`) and at start, with one `vault_ahead` alert that resolves after the update. A machine that becomes the hub runs the vault migrations; a machine that is behind cannot claim the hub.
 7. **Start order.** Take the instance lock before the migrations, so a second start never migrates under a running Eva. Hold the results, and report them after the Telegram bot starts.
 8. Update `AGENTS.md` ("Renames"): a format change needs a migration, or a `!`. Lesson 54 stays as history.
+
+## First review round
+
+Fixed:
+
+- The runner never throws: the record write and the restore end in a failed result.
+- A restore uses the content that the run read, never an older copy on disk.
+- A vault record that this Eva cannot read counts as ahead (fail closed). A rewrite keeps unknown fields.
+- `eva setup` can join a vault that is ahead: the gate compares with what Eva loads after the save.
+- Separate alert keys: `migration_failed:<store>`, `machine_ahead`, `vault_ahead`. Waiting migrations go in the log.
+- Shorter alert texts, the `migrationRecord` path name, the `parseConfig` exception in the migrations rule, and stronger start tests.
+
+Not changed, with the reason:
+
+1. A satellite alert reaches no Telegram: only the hub runs the bot. A relay through the vault is new design (gap 2).
+2. A satellite's own shared values lose when the hub starts the vault file. The vault wins, as on `main`. Only the winner changes: the hub, not the first machine to start.
+3. Vault migrations at a role change do not wait for an Assistant turn. They write a few small files atomically, and the next save pushes them.
+4. Two machines that claim the hub at once can conflict on the record. The claim race exists on `main`, and the pull before the claim keeps it rare.
+5. A "later" migration does not stop the run, but a failure does. A waiting migration can wait for months; each migration checks its own format.
+6. The `vault_ahead` alert repeats once a day and resolves, as every alert does, not only once.
+7. The backup copies stay in `state/migration-backups/`. They are small, and a person may need them.
+8. The hub drops a bad security value that it could not copy, as `main` did.
+9. The tests that pin each migration's store stay: the store is a decision.
+10. #97: PR #115 is still a draft. A comment on #115 asks it to add the update rule.

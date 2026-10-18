@@ -66,6 +66,8 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   // The list keeps its items when it is closed on a phone, so the count needs no open list.
   const listed = page.locator(".sidebar .list-item", { hasText: "A chat to delete" });
   await expect(listed).toHaveCount(1);
+  // A chat that still works refuses a delete, and an Assistant turn ends after the vault sync.
+  await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
 
   page.once("dialog", (dialog) => void dialog.dismiss());
   await page.getByRole("button", { name: "Delete chat" }).click();
@@ -97,6 +99,15 @@ test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram
   const firstId = await chatIdNamed(page, "First linked chat");
   await page.goto(`/#/chat/${firstId}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("First linked chat");
+
+  // The link opens once: the person's own choice then stays, also after another screen.
+  await openList(page);
+  // Both screen sizes share one demo server: the newest chat of that name is this run's.
+  await page.locator(".sidebar .list-item", { hasText: "Second linked chat" }).first().click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Assistant" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Second linked chat");
+  expect(new URL(page.url()).hash).toBe("");
 });
 
 test("the address #/chat/<id> opens a Project chat in its clone", async ({ page }) => {

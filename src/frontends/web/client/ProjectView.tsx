@@ -18,6 +18,7 @@ interface ProjectViewProps {
   readonly onNavigate: () => void;
   /** The chat that the address names; its project and clone open with it. */
   readonly linkedChat: SessionRecord | null;
+  readonly onLinkedChatOpened: () => void;
 }
 
 /**
@@ -39,6 +40,7 @@ export function ProjectView({
   onChanged,
   onNavigate,
   linkedChat,
+  onLinkedChatOpened,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -76,20 +78,23 @@ export function ProjectView({
     void (async (): Promise<void> => {
       try {
         const project = (await api.projects("", "")).find((candidate) => candidate.id === linkedProjectId);
-        if (project === undefined) return;
-        const details = await api.clones(project.id);
+        const details = project === undefined ? [] : await api.clones(project.id);
         const clone = details.find((candidate) => candidate.name === linkedClone);
-        if (clone === undefined) return;
-        setOpenProject(project.id);
-        setClones(details);
-        setSelection({ project, clone });
-        setSelectedChatId(linkedId);
-        setSetupProject(null);
+        if (project === undefined || clone === undefined) {
+          showError(new Error("The linked chat's project or clone is not on this computer any more."));
+        } else {
+          setOpenProject(project.id);
+          setClones(details);
+          setSelection({ project, clone });
+          setSelectedChatId(linkedId);
+          setSetupProject(null);
+        }
       } catch (caught) {
         showError(caught);
       }
+      onLinkedChatOpened();
     })();
-  }, [linkedId, linkedProjectId, linkedClone, showError]);
+  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);

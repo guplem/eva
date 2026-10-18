@@ -17,6 +17,7 @@ interface AssistantViewProps {
   readonly onNavigate: () => void;
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
+  readonly onLinkedChatOpened: () => void;
   readonly onOpenSchedules: () => void;
 }
 
@@ -27,6 +28,7 @@ export function AssistantView({
   onChanged,
   onNavigate,
   linkedChat,
+  onLinkedChatOpened,
   onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -39,8 +41,10 @@ export function AssistantView({
   const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
 
   useEffect(() => {
-    if (linkedId !== null) setSelectedId(linkedId);
-  }, [linkedId]);
+    if (linkedId === null) return;
+    setSelectedId(linkedId);
+    onLinkedChatOpened();
+  }, [linkedId, onLinkedChatOpened]);
 
   const newChat = async (): Promise<void> => {
     try {

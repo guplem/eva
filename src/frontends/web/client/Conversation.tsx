@@ -29,7 +29,7 @@ export function DeleteChatButton({
 }): ReactElement {
   const showError = useShowError();
   const remove = async (): Promise<void> => {
-    if (!window.confirm(`Delete “${chat.title}” and its branches in every front end?`)) return;
+    if (!window.confirm(`Delete “${chat.title}” and its forks in every front end?`)) return;
     try {
       await api.deleteChat(chat.id);
       await onChanged();

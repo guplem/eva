@@ -57,11 +57,21 @@ function EvaApp(): ReactElement {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // The linked chat's mode opens once, when the chat is first in the list; then the person moves freely.
+  // The linked chat's mode opens when the chat is first in the list.
   const linkedMode = linkedChat?.mode ?? null;
   useEffect(() => {
     if (linkedMode !== null) setScreen(linkedMode);
   }, [linkedChatId, linkedMode]);
+
+  /**
+   * A view opened the linked chat: the link is used up. A view mounts again at each screen
+   * change, so a kept link would undo the person's own choice. A clear address also lets the
+   * same link open again.
+   */
+  const onLinkedChatOpened = useCallback((): void => {
+    setLinkedChatId(null);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
 
   // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
@@ -261,6 +271,7 @@ function EvaApp(): ReactElement {
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
           linkedChat={linkedChat}
+          onLinkedChatOpened={onLinkedChatOpened}
           onOpenSchedules={() => setScreen("schedules")}
         />
       )}
@@ -270,6 +281,7 @@ function EvaApp(): ReactElement {
           live={live}
           sidebarOpen={sidebarOpen}
           linkedChat={linkedChat}
+          onLinkedChatOpened={onLinkedChatOpened}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
         />

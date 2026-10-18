@@ -7,7 +7,7 @@ description: Implement a GitHub issue from plan to merged PR, with sub-agents to
 
 ## Pick the issue
 
-- **An issue number:** implement that issue.
+- **An issue number or link:** implement that issue. If the link points to another repository, work in that repository.
 - **An issue description:** search for an open issue that matches it. If none exists, create one from the description.
 - **No input:** find the oldest open issue that has neither the `waiting-for-human-check` nor the `auto-developing` label.
 

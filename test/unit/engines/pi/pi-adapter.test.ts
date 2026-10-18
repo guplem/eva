@@ -120,6 +120,20 @@ describe("buildPiArguments", () => {
     ]);
   });
 
+  test("A model call: the caller's prompt alone, with no tools, skills, templates or context files", () => {
+    const call = request({ mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [], trusted: false });
+    expect(buildPiArguments(call, inputs)).toEqual([
+      ...base,
+      "--no-extensions",
+      "--no-tools",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--system-prompt",
+      "/eva/pi/prompts/session-1.md",
+    ]);
+  });
+
   test("a configured model is passed through", () => {
     const project = request({ mode: "project", appendSystemPrompt: null });
     expect(buildPiArguments(project, { ...inputs, promptFile: null, model: "openai/gpt-5" })).toEqual([
@@ -248,6 +262,24 @@ describe("PiEngine", () => {
     );
     expect(asked).toEqual([]);
     expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: true });
+  });
+
+  test("A model call refuses every tool without a question", async () => {
+    const asked: string[] = [];
+    const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);
+    await drain(
+      engine(fake).runTurn(
+        request({
+          mode: "model-call",
+          requestApproval: (approval) => {
+            asked.push(approval.summary);
+            return Promise.resolve("allow");
+          },
+        }),
+      ),
+    );
+    expect(asked).toEqual([]);
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
   test("a dialog from another extension is cancelled, and a notice needs no answer", async () => {

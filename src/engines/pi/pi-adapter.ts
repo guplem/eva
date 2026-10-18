@@ -243,7 +243,11 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     inputs.extensionFile,
   ];
   if (inputs.model !== null) args.push("--model", inputs.model);
-  if (request.mode === "assistant") {
+  if (request.mode === "model-call") {
+    // Eva's own extension still loads with `-e`, so a tool that still appears gets a refusal.
+    args.push("--no-extensions", "--no-tools", "--no-skills", "--no-prompt-templates", "--no-context-files");
+    if (inputs.promptFile !== null) args.push("--system-prompt", inputs.promptFile);
+  } else if (request.mode === "assistant") {
     // Assistant mode has no hooks; pi's hooks are extensions. Eva's own extension still loads.
     args.push("--no-extensions");
     if (inputs.promptFile !== null) args.push("--append-system-prompt", inputs.promptFile);
@@ -271,6 +275,8 @@ function answerDialog(pi: PiProcess, request: TurnRequest, record: Record<string
 }
 
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
+  // A model call has no tools, and nobody waits for a question.
+  if (request.mode === "model-call") return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
   if (request.mode === "project" || !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });

@@ -65,6 +65,8 @@ export class Updater {
   private lastCheckAt: Date | null;
   private lastError: string | null;
   private failedStep: UpdateStep | null;
+  /** The new version is in place, and Eva restarts once no chat runs a turn. */
+  private restartPending: boolean;
 
   constructor(options: UpdaterOptions) {
     this.options = options;
@@ -73,6 +75,7 @@ export class Updater {
     this.lastCheckAt = null;
     this.lastError = null;
     this.failedStep = null;
+    this.restartPending = false;
   }
 
   status(): UpdateStatus {
@@ -121,6 +124,10 @@ export class Updater {
 
   /** Called once a minute: installs a waiting update, or checks when the frequency says so. */
   async tick(): Promise<void> {
+    if (this.restartPending) {
+      this.restartWhenIdle();
+      return;
+    }
     if (this.phase === "waiting_for_idle") {
       if (this.options.isIdle()) await this.install();
       return;
@@ -132,6 +139,12 @@ export class Updater {
     if (due) await this.updateNow();
   }
 
+  private restartWhenIdle(): void {
+    if (!this.options.isIdle()) return;
+    this.restartPending = false;
+    this.options.restart();
+  }
+
   private async install(): Promise<UpdateStatus> {
     this.phase = "updating";
     try {
@@ -139,7 +152,9 @@ export class Updater {
       this.last = installed;
       this.options.logger?.log("info", "Eva updated; she restarts.", { from: installed.current, to: installed.latest });
       this.phase = "restarting";
-      this.options.restart();
+      // A chat can start during a long download: the restart waits for it too (lesson 92).
+      this.restartPending = true;
+      this.restartWhenIdle();
     } catch (error) {
       this.lastError = errorText(error);
       this.failedStep = "install";

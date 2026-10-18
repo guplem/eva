@@ -2,6 +2,7 @@
  * Which state is a problem worth an alert, and the words of each alert. Each message says what
  * happened and what the owner can do, from a phone.
  */
+import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
 import type { AlertProblem } from "./alert-center.ts";
@@ -57,6 +58,16 @@ export function updateProblem(status: UpdateStatus): AlertProblem | null {
     level: "warn",
     message: `The update check failed: ${status.lastError}. Eva tries again at the next check; send /update to try now.`,
     resolvedMessage: "Updates work again.",
+  };
+}
+
+/** The problem of an engine update's result: only a failure. */
+export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | null {
+  if (result.outcome !== "failed") return null;
+  return {
+    level: "warn",
+    message: `The Claude Code update failed: ${result.detail ?? "unknown reason."} Chats keep the old version; press Update Claude Code in the settings to try again.`,
+    resolvedMessage: "The Claude Code update works again.",
   };
 }
 

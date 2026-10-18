@@ -355,6 +355,82 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
+test("Settings: Update now waits until the new Eva answers, not the old one", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    current: "0.1.0",
+    latest: "0.2.0",
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  let restarting = false;
+  let readsWhileRestarting = 0;
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      restarting = true;
+      await route.fulfill({ json: { ...base, phase: "restarting" } });
+      return;
+    }
+    if (restarting) readsWhileRestarting += 1;
+    // The old Eva answers twice more while a chat ends, then the new one answers.
+    const old = restarting && readsWhileRestarting <= 2;
+    await route.fulfill({ json: { ...base, phase: old ? "restarting" : "idle", available: !restarting } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Update now" }).click();
+  await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
+  await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
+  expect(readsWhileRestarting).toBe(3);
+});
+
+test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
+  const posts: string[] = [];
+  let finished = false;
+  await page.route("**/api/update/engine", async (route) => {
+    if (route.request().method() === "POST") {
+      posts.push("POST");
+      await route.fulfill({ json: { phase: "updating", last: null } });
+      return;
+    }
+    const last = { outcome: "updated", before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: finished ? { phase: "idle", last } : { phase: "idle", last: null } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Claude Code: no update has run yet")).toBeVisible();
+  finished = true;
+  await page.getByRole("button", { name: "Update Claude Code" }).click();
+  await expect(page.getByText("Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it")).toBeVisible({
+    timeout: 10_000,
+  });
+  expect(posts).toEqual(["POST"]);
+});
+
+test("Settings: a page opened during the engine update follows it, past a failed read", async ({ page }) => {
+  let reads = 0;
+  await page.route("**/api/update/engine", async (route) => {
+    reads += 1;
+    if (reads === 2) {
+      await route.abort();
+      return;
+    }
+    const last = { outcome: "up_to_date", before: "2.1.0", after: "2.1.0", detail: null, at: "2026-10-17T10:00:00Z" };
+    await route.fulfill({ json: reads === 1 ? { phase: "waiting_for_idle", last: null } : { phase: "idle", last } });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    page.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeDisabled();
+  await expect(page.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeEnabled();
+});
+
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {
   await logIn(page);
   await openList(page);

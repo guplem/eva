@@ -472,8 +472,13 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
   await openList(page);
   await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
+  const chats = page.locator(".sidebar .list-item");
+  const before = await chats.count();
   await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  // Every chat is called "New chat", so the heading shows before the new chat exists.
+  // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
+  await expect(chats).toHaveCount(before + 1);
+  await expect(chats.first()).toHaveAttribute("aria-current", "true");
   await openList(page);
   // The list clips its items, so the check compares with the list, not with the window.
   // A short list can cut the bottom of the chat. Its top shows that the list is not scrolled away.

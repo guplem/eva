@@ -31,6 +31,25 @@ import { keepFencesWhole, splitForTelegram, toTelegramHtml } from "./telegram-fo
 
 type Turn = SessionRecord["turns"][number];
 
+/** What a newly bound chat shows: the turns before the bind, and whether a turn runs. */
+interface ChatHistory {
+  readonly turns: readonly Turn[];
+  readonly working: boolean;
+}
+
+type OpenedTopic =
+  | { readonly kind: "opened"; readonly topicId: number }
+  | { readonly kind: "no_topics"; readonly history: ChatHistory }
+  | { readonly kind: "failed"; readonly reason: string }
+  /** Another press or a project work opens this chat's topic now. */
+  | { readonly kind: "opening" };
+
+/** An event that waits while its chat's topic opens, with the answer that the record held then. */
+interface WaitingEvent {
+  readonly event: SessionEvent;
+  readonly answer: string | null;
+}
+
 export interface TelegramBotOptions {
   readonly api: TelegramApi;
   readonly eva: Eva;
@@ -205,7 +224,7 @@ export class TelegramBot {
   /** The chats that /stop stopped, so their failed turn says "Stopped." instead of a failure. */
   private readonly stoppedSessions: Set<string>;
   /** The events of each chat whose topic opens now, to show once the topic exists. */
-  private readonly opening: Map<string, SessionEvent[]>;
+  private readonly opening: Map<string, WaitingEvent[]>;
   /** The card text of each schedule that was too long for Telegram, so the notice goes out once per card. */
   private readonly tooLongCards: Map<string, string>;
   private readonly detachDeviceApprover: () => void;
@@ -737,7 +756,6 @@ export class TelegramBot {
     }
     const opened = await this.openTopicFor(chatId, sessionId, session.title);
     if (opened.kind === "opened") {
-      this.noteRunningTurn(chatId, opened.topicId, sessionId);
       await this.send(
         chatId,
         topicId,
@@ -745,74 +763,104 @@ export class TelegramBot {
       );
       return;
     }
-    if (opened.kind === "failed") {
-      // A chat with topics must not lose its main chat to a short Telegram problem.
-      await this.send(chatId, topicId, `Telegram did not open the topic: ${opened.reason} Press the chat again.`);
+    if (opened.kind === "opening") {
+      await this.send(chatId, topicId, "Eva opens a topic for this chat already. It comes in a moment.");
       return;
     }
-    const main = this.state.topics[keyOf(chatId, null)];
-    if (main !== undefined && this.options.eva.sessions.isActive(main.sessionId)) {
-      // Never take the main chat from a turn that runs (lesson 49).
-      await this.send(chatId, null, "Eva is still working in this chat. Press the chat again when she finishes.");
-      return;
+    try {
+      if (opened.kind === "failed") {
+        // A chat with topics must not lose its main chat to a short Telegram problem.
+        await this.send(chatId, topicId, `Telegram did not open the topic: ${opened.reason} Press the chat again.`);
+        return;
+      }
+      const main = this.state.topics[keyOf(chatId, null)];
+      if (main !== undefined && this.options.eva.sessions.isActive(main.sessionId)) {
+        // Never take the main chat from a turn that runs (lesson 49).
+        await this.send(chatId, null, "Eva is still working in this chat. Press the chat again when she finishes.");
+        return;
+      }
+      this.state.topics[keyOf(chatId, null)] = { sessionId, openedByEva: false, renamed: true };
+      this.saveState();
+      await this.send(
+        chatId,
+        null,
+        `The main chat now continues “${session.title}”. The chat before it stays in the web app and in /chats.`,
+      );
+      await this.showHistory(chatId, null, sessionId, opened.history);
+    } finally {
+      // The chat's events waited for the bind; without one, only an approval shows.
+      await this.flushOpening(sessionId);
     }
-    // The turns before the bind: a turn that ends after it shows by its own events.
-    const turns = this.turnsOf(sessionId);
-    this.state.topics[keyOf(chatId, null)] = { sessionId, openedByEva: false, renamed: true };
-    this.saveState();
-    await this.send(
-      chatId,
-      null,
-      `The main chat now continues “${session.title}”. The chat before it stays in the web app and in /chats.`,
-    );
-    await this.replayTurns(chatId, null, turns);
-    this.noteRunningTurn(chatId, null, sessionId);
   }
 
   /**
    * Opens a topic for a chat, binds it, and shows its last turns. Only a refused topic (400)
-   * means that this chat has no topics (lesson 61); any other failure says why.
+   * means that this chat has no topics (lesson 61); any other failure says why. Without a
+   * topic, the chat's events still wait: the caller binds the chat elsewhere, then flushes them.
    */
-  private async openTopicFor(
-    chatId: number,
-    sessionId: string,
-    name: string,
-  ): Promise<{ kind: "opened"; topicId: number } | { kind: "no_topics" } | { kind: "failed"; reason: string }> {
+  private async openTopicFor(chatId: number, sessionId: string, name: string): Promise<OpenedTopic> {
+    if (this.opening.has(sessionId)) return { kind: "opening" };
     // The chat's events wait from here: a turn that ends while Telegram opens the topic shows
     // once, after the turns that were in the record before.
-    const turns = this.turnsOf(sessionId);
-    const waiting: SessionEvent[] = [];
-    this.opening.set(sessionId, waiting);
+    const history = { turns: this.turnsOf(sessionId), working: this.options.eva.sessions.isBusy(sessionId) };
+    this.opening.set(sessionId, []);
+    let topicId: number;
     try {
-      let topicId: number;
-      try {
-        const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
-          chat_id: chatId,
-          name: titleOf(name),
-        });
-        topicId = topic.message_thread_id;
-      } catch (error) {
-        if (error instanceof TelegramError && error.code === 400) return { kind: "no_topics" };
-        return { kind: "failed", reason: this.describeError(error) };
+      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
+        chat_id: chatId,
+        name: titleOf(name),
+      });
+      topicId = topic.message_thread_id;
+    } catch (error) {
+      if (error instanceof TelegramError && error.code === 400) return { kind: "no_topics", history };
+      return { kind: "failed", reason: this.describeError(error) };
+    }
+    try {
+      if (!this.sessionExists(sessionId)) {
+        // Deleted while the topic opened: an empty topic would only confuse.
+        await this.quietCall("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
+        return { kind: "failed", reason: "That chat no longer exists." };
       }
       // Eva named the topic, so the first message keeps that name (lesson 125).
       this.state.topics[keyOf(chatId, topicId)] = { sessionId, openedByEva: true, renamed: true };
       this.saveState();
-      await this.replayTurns(chatId, topicId, turns);
+      await this.showHistory(chatId, topicId, sessionId, history);
       return { kind: "opened", topicId };
     } finally {
-      // New events keep waiting while the loop sends, so they stay in order.
-      for (let next = waiting.shift(); next !== undefined; next = waiting.shift()) await this.dispatch(next);
-      this.opening.delete(sessionId);
+      await this.flushOpening(sessionId);
     }
   }
 
-  /** A turn that runs at the bind: its message went out before, so a sentence takes its place. */
-  private noteRunningTurn(chatId: number, topicId: number | null, sessionId: string): void {
-    // A gathered message has no turn yet: its own event shows it later.
-    if (!this.options.eva.sessions.isBusy(sessionId)) return;
-    void this.send(chatId, topicId, "Eva is working on a message from another front end. Her answer comes here.");
+  /**
+   * The last turns of a newly bound chat. A turn that ran at the bind sent its message before,
+   * so a sentence takes its place.
+   */
+  private async showHistory(
+    chatId: number,
+    topicId: number | null,
+    sessionId: string,
+    history: ChatHistory,
+  ): Promise<void> {
+    await this.replayTurns(chatId, topicId, history.turns);
+    if (!history.working) return;
     this.startTyping(chatId, topicId, sessionId);
+    await this.send(
+      chatId,
+      topicId,
+      "Eva is working on a message from the web app or the terminal. Her answer comes here.",
+    );
+  }
+
+  /** Shows the events that waited while a topic opened, in order, and then lets new events through. */
+  private async flushOpening(sessionId: string): Promise<void> {
+    const waiting = this.opening.get(sessionId) ?? [];
+    try {
+      // New events keep waiting while the loop sends, so they stay in order.
+      for (let next = waiting.shift(); next !== undefined; next = waiting.shift())
+        await this.dispatch(next.event, next.answer);
+    } finally {
+      this.opening.delete(sessionId);
+    }
   }
 
   /**
@@ -826,6 +874,8 @@ export class TelegramBot {
       this.options.eva.projects().find((candidate) => candidate.id === event.projectId)?.title ?? event.projectId;
     const name = titleOf(`${project}: ${event.request}`);
     const opened = await this.openTopicFor(asking.chatId, event.projectSessionId, name);
+    // Without a topic, the Project chat lives on the web only: its waiting events go nowhere.
+    if (opened.kind === "no_topics" || opened.kind === "failed") await this.flushOpening(event.projectSessionId);
     const topicId = opened.kind === "opened" ? opened.topicId : null;
     const url = this.options.eva.status().remoteAccess?.url ?? null;
     const lines = [
@@ -1089,14 +1139,15 @@ export class TelegramBot {
     // A topic opens for this chat: its events wait, so the topic shows them in order.
     const waiting = this.opening.get(event.sessionId);
     if (waiting !== undefined) {
-      waiting.push(event);
+      // A later turn may end before the flush, so the answer is read now.
+      waiting.push({ event, answer: event.kind === "turn_finished" ? this.lastAnswerOf(event.sessionId) : null });
       return;
     }
-    await this.dispatch(event);
+    await this.dispatch(event, null);
   }
 
   /** Shows one event of a chat where the chat lives. */
-  private async dispatch(event: SessionEvent): Promise<void> {
+  private async dispatch(event: SessionEvent, waitedAnswer: string | null): Promise<void> {
     const target = this.targetOf(event.sessionId);
     if (target === null) {
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
@@ -1130,7 +1181,7 @@ export class TelegramBot {
         this.stopTyping(event.sessionId);
         // A topic can open while a turn runs, after its first text events. The record holds a
         // finished turn before its end event, so the whole answer comes from there.
-        const recorded = event.kind === "turn_finished" ? this.lastAnswerOf(event.sessionId) : null;
+        const recorded = event.kind === "turn_finished" ? (waitedAnswer ?? this.lastAnswerOf(event.sessionId)) : null;
         const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
         this.pendingText.delete(event.sessionId);
         // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).

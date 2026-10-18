@@ -617,11 +617,36 @@ describe("/chats: every chat of the instance (#9)", () => {
     const bot = createBot();
     await settle(bot, () => engine.requests.length === 1);
     telegram.pressButton(owner, `c:${session.id}`);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Eva is working on a message")));
+    await settle(bot, () =>
+      telegram.sentTexts().some((text) => text.startsWith("Eva is working on a message from the web app")),
+    );
     release();
     await settle(bot, () => telegram.sentTexts().includes("done at last"));
     const answer = telegram.callsTo("sendMessage").find((call) => call.params["text"] === "done at last");
     expect(answer?.params["message_thread_id"]).toBe(500);
+  });
+});
+
+describe("/chats while a turn runs (#9)", () => {
+  test("without topics, the answer of a running chat reaches the main chat", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "done at last");
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `c:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("done at last"));
+    expect(telegram.sentTexts()).toContain(
+      "Eva is working on a message from the web app or the terminal. Her answer comes here.",
+    );
   });
 });
 

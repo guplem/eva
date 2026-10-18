@@ -69,6 +69,7 @@ import {
 } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, machineRole, type MachineRole } from "./core/instance/hub.ts";
 import { runStartMigrations, type StartMigrations } from "./core/migrations/migrations.ts";
+import { withMachineDefaults } from "./core/settings/machine-defaults.ts";
 import { publishWithTailscale, readTailscale } from "./core/remote-access/tailscale.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions } from "./frontends/cli/setup.ts";
 import { describeAccess, runNetworkSetup } from "./frontends/cli/network-setup.ts";
@@ -718,10 +719,11 @@ async function migrateAfterPull(
   paths: HomePaths,
   secrets: EvaSecrets,
 ): Promise<{ migrations: StartMigrations; hubClaimed: boolean }> {
-  const machineConfig = loadConfig(paths);
+  // The machine defaults find the vault in the home folder when config.json names none.
+  const machineConfig = withMachineDefaults(loadConfig(paths), { homeRoot: paths.root, exists: existsSync });
   const machine = machineConfig.machineName ?? hostname();
-  const vaultPath =
-    machineConfig.vaultPath !== null && existsSync(machineConfig.vaultPath) ? machineConfig.vaultPath : null;
+  const configuredVault = machineConfig.vaultPath;
+  const vaultPath = configuredVault !== null && existsSync(configuredVault) ? configuredVault : null;
   if (vaultPath !== null) {
     await new VaultSync({
       vaultPath,
@@ -733,8 +735,9 @@ async function migrateAfterPull(
   const hubClaimed = vaultPath !== null && claimHubIfUnclaimed(vaultPath, machine, new Date());
   const migrations = runStartMigrations({
     paths,
-    vaultPath,
-    isHub: () => machineRole(vaultPath, machine, "satellite") === "hub",
+    // A machine migration waits for a vault that is not cloned yet; the vault store runs only on a clone.
+    vaultPath: configuredVault,
+    isHub: () => vaultPath !== null && machineRole(vaultPath, machine, "satellite") === "hub",
     version: evaVersion,
     now: () => new Date(),
   });

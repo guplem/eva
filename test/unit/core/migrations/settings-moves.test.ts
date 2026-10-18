@@ -37,12 +37,12 @@ function readJson(path: string): Record<string, unknown> {
 }
 
 /** Runs one migration alone, as the runner does, and gives its outcome. */
-function migrate(migration: Migration): "done" | "later" | "failed" {
+function migrate(migration: Migration, vaultPath: string | null = vault): "done" | "later" | "failed" {
   const result = runMigrations({
     store: migration.store,
     migrations: [migration],
     paths,
-    vaultPath: vault,
+    vaultPath,
     version: "0.4.0",
     now: () => new Date("2026-10-20T08:00:00.000Z"),
   });
@@ -77,6 +77,13 @@ describe("moveSharedSettingsToVault (machine)", () => {
     });
   });
 
+  test("a machine that uses the default vault folder drops its shared keys too", () => {
+    writeJson(paths.config, { port: 4000, timeZone: "UTC" });
+    writeJson(vaultSettings, {});
+    expect(migrate(moveSharedSettingsToVault)).toBe("done");
+    expect(readJson(paths.config)).toEqual({ port: 4000 });
+  });
+
   test("waits while the vault has no settings file, and the values in config.json still work", () => {
     writeJson(paths.config, { vaultPath: vault, timeZone: "Europe/Madrid" });
     expect(migrate(moveSharedSettingsToVault)).toBe("later");
@@ -86,14 +93,14 @@ describe("moveSharedSettingsToVault (machine)", () => {
 
   test("waits while the vault folder is missing", () => {
     writeJson(paths.config, { vaultPath: join(root, "not-cloned"), timeZone: "Europe/Madrid" });
-    expect(migrate(moveSharedSettingsToVault)).toBe("later");
+    expect(migrate(moveSharedSettingsToVault, join(root, "not-cloned"))).toBe("later");
   });
 
   test("a fresh install, a config without a vault, or one without shared keys has nothing to move", () => {
     expect(migrate(moveSharedSettingsToVault)).toBe("done");
     rmSync(paths.migrationRecord);
     writeJson(paths.config, { timeZone: "Europe/Madrid" });
-    expect(migrate(moveSharedSettingsToVault)).toBe("done");
+    expect(migrate(moveSharedSettingsToVault, null)).toBe("done");
     expect(readJson(paths.config)).toEqual({ timeZone: "Europe/Madrid" });
     rmSync(paths.migrationRecord);
     writeJson(paths.config, { vaultPath: vault, port: 4000 });
@@ -178,12 +185,13 @@ describe("copySecuritySettingsFromVault (machine)", () => {
     expect(readJson(paths.config)).toEqual({ vaultPath: vault });
   });
 
-  test("nothing to copy without a config file, a vault, a vault file, or a security key in it", () => {
-    expect(migrate(copySecuritySettingsFromVault)).toBe("done");
-    rmSync(paths.migrationRecord);
+  test("waits while the machine has no vault: a later setup can join a vault that still holds the keys", () => {
+    expect(migrate(copySecuritySettingsFromVault, null)).toBe("later");
     writeJson(paths.config, { port: 4000 });
-    expect(migrate(copySecuritySettingsFromVault)).toBe("done");
-    rmSync(paths.migrationRecord);
+    expect(migrate(copySecuritySettingsFromVault, null)).toBe("later");
+  });
+
+  test("nothing to copy without a vault file, or without a security key in it", () => {
     writeJson(paths.config, { vaultPath: vault });
     expect(migrate(copySecuritySettingsFromVault)).toBe("done");
     rmSync(paths.migrationRecord);
@@ -194,7 +202,14 @@ describe("copySecuritySettingsFromVault (machine)", () => {
 
   test("waits while the vault folder is missing", () => {
     writeJson(paths.config, { vaultPath: join(root, "not-cloned") });
-    expect(migrate(copySecuritySettingsFromVault)).toBe("later");
+    expect(migrate(copySecuritySettingsFromVault, join(root, "not-cloned"))).toBe("later");
+  });
+
+  test("a machine that uses the default vault folder, with no vaultPath in config.json, copies too", () => {
+    writeJson(paths.config, { port: 4000 });
+    writeJson(vaultSettings, { trust: { trustedRepositoryOwners: ["example-owner"] } });
+    expect(migrate(copySecuritySettingsFromVault)).toBe("done");
+    expect(readJson(paths.config)).toEqual({ port: 4000, trust: { trustedRepositoryOwners: ["example-owner"] } });
   });
 });
 

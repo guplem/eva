@@ -43,7 +43,7 @@ export const moveSharedSettingsToVault: Migration = {
     const machine = readObject(context.paths.config);
     if (machine === "broken") return "later";
     if (machine === null || Object.keys(pickKeys(machine, sharedKeys)).length === 0) return "done";
-    const vaultPath = vaultPathOf(machine);
+    const vaultPath = context.vaultPath;
     if (vaultPath === null) return "done";
     if (!existsSync(vaultPath)) return "later";
     // Until the hub starts the vault's file, the values in config.json still apply.
@@ -80,9 +80,9 @@ export const copySecuritySettingsFromVault: Migration = {
   run: (context) => {
     const machine = readObject(context.paths.config);
     if (machine === "broken") return "later";
-    if (machine === null) return "done";
-    const vaultPath = vaultPathOf(machine);
-    if (vaultPath === null) return "done";
+    // Without a vault, it waits: a later setup can join a vault that still holds the keys.
+    const vaultPath = context.vaultPath;
+    if (machine === null || vaultPath === null) return "later";
     if (!existsSync(vaultPath)) return "later";
     const vault = readObject(settingsFile(vaultPath));
     if (vault === "broken") return "later";
@@ -121,11 +121,6 @@ function readObject(path: string): JsonObject | null | "broken" {
   const read = readJsonTolerant(path);
   if (!read.ok) return read.reason === "missing" ? null : "broken";
   return isObject(read.value) ? read.value : "broken";
-}
-
-function vaultPathOf(machine: JsonObject): string | null {
-  const vaultPath = machine["vaultPath"];
-  return typeof vaultPath === "string" && vaultPath !== "" ? vaultPath : null;
 }
 
 function isValidConfig(value: unknown): boolean {

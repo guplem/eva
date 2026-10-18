@@ -66,8 +66,28 @@ describe("SessionStore", () => {
   test("an old turn with no activity counts loads them as 0, with no copy (lesson 69)", () => {
     const oldTurn = { userText: "hi", toolCount: 2, lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [oldTurn] }] }));
-    expect(openStore().get("one")?.turns[0]).toMatchObject({ toolCount: 2, commandCount: 0, taskCount: 0 });
+    expect(openStore().get("one")?.turns[0]).toMatchObject({
+      toolCount: 2,
+      commandCount: 0,
+      taskCount: 0,
+      steps: [],
+      omittedSteps: 0,
+      contextTokens: null,
+    });
     expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a turn with a bad step list keeps its session and loses only its steps", () => {
+    const turn = {
+      userText: "hi",
+      lastMessageId: null,
+      at: "2026-10-14T10:00:00.000Z",
+      steps: [{ kind: "renamed-kind", text: "x" }],
+      omittedSteps: -1,
+      contextTokens: "many",
+    };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
+    expect(openStore().get("one")?.turns[0]).toMatchObject({ steps: [], omittedSteps: 0, contextTokens: null });
   });
 
   test("starts empty with no file, and makes no copy (lesson 54)", () => {

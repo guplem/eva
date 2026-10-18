@@ -57,17 +57,36 @@ afterEach(() => {
 describe("source update channel", () => {
   test("an up-to-date checkout has nothing to install", async () => {
     const head = sandbox.git(checkout, "rev-parse", "--short", "HEAD");
-    expect(await channel().check()).toEqual({ current: head, latest: head, available: false });
-    expect(await channel().apply()).toEqual({ current: head, latest: head, available: false });
+    expect(await channel().check()).toEqual({ current: head, latest: head, available: false, releases: null });
+    expect(await channel().apply()).toEqual({ current: head, latest: head, available: false, releases: null });
   });
 
   test("a new commit is found, then fast-forwarded, with no install when the dependencies stay", async () => {
     const before = sandbox.git(checkout, "rev-parse", "--short", "HEAD");
     const latest = pushFromOther("src/new.ts", "export {};\n");
-    expect(await channel().check()).toEqual({ current: before, latest, available: true });
-    expect(await channel().apply()).toEqual({ current: before, latest, available: false });
+    expect(await channel().check()).toEqual({ current: before, latest, available: true, releases: null });
+    expect(await channel().apply()).toEqual({ current: before, latest, available: false, releases: null });
     expect(sandbox.git(checkout, "rev-parse", "--short", "HEAD")).toBe(latest);
     expect(installs).toEqual([]);
+  });
+
+  test("git runs with Lefthook off, so the checkout's own hooks never run inside an update", async () => {
+    const lefthook: (string | undefined)[] = [];
+    const watching: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] === "git") lefthook.push(options.environment["LEFTHOOK"]);
+        return runner.run(command, options);
+      },
+    };
+    pushFromOther("src/new.ts", "export {};\n");
+    await sourceUpdateChannel({
+      folder: checkout,
+      runner: watching,
+      environment: gitEnvironment,
+      bunExecutable: fakeBun,
+    }).apply();
+    expect(lefthook.length).toBeGreaterThan(0);
+    expect(lefthook.every((value) => value === "0")).toBe(true);
   });
 
   test("changed dependencies run a production install when the checkout has no development tools", async () => {

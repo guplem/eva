@@ -1,10 +1,13 @@
 /**
  * Eva's automatic updates: a check at the frequency in the settings, and an install
  * only when no chat runs a turn, so a restart never cuts a turn off. A manual update waits for
- * the same moment.
+ * the same moment. The person's policy decides which releases she installs by herself.
  */
+import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { EvaConfig } from "../settings/home.ts";
+import { pickUpdate, type NewerRelease, type ReleaseInfo, type UpdatePolicy } from "./release-policy.ts";
+import { isNewerVersion } from "./release-verification.ts";
 
 export type UpdateFrequency = EvaConfig["updates"]["frequency"];
 
@@ -13,14 +16,16 @@ export interface UpdateCheck {
   readonly current: string;
   readonly latest: string;
   readonly available: boolean;
+  /** The newer releases, newest first. Null for a source checkout, which has no versions to pick. */
+  readonly releases: readonly ReleaseInfo[] | null;
 }
 
 /** Where updates come from: signed releases for the executable, git for a source checkout. */
 export interface UpdateChannel {
   readonly kind: "executable" | "source";
   check(): Promise<UpdateCheck>;
-  /** Installs the latest version. Returns the version before and after. */
-  apply(): Promise<UpdateCheck>;
+  /** Installs `version`, or the newest one when it is undefined. Returns the version before and after. */
+  apply(version?: string): Promise<UpdateCheck>;
 }
 
 export type UpdatePhase = "idle" | "checking" | "waiting_for_idle" | "updating" | "restarting";
@@ -31,10 +36,18 @@ export type UpdateStep = "check" | "install";
 export interface UpdateStatus {
   readonly kind: UpdateChannel["kind"];
   readonly frequency: UpdateFrequency;
+  readonly install: UpdatePolicy;
   readonly phase: UpdatePhase;
   readonly current: string | null;
   readonly latest: string | null;
+  /** True when a version waits that Eva installs: the policy's pick, or one chosen by hand. */
   readonly available: boolean;
+  /** The version that Eva installs next, or null. */
+  readonly target: string | null;
+  /** The newest release, when the policy does not install it. */
+  readonly heldBack: string | null;
+  /** The newer releases, newest first. Empty for a source checkout. */
+  readonly releases: readonly NewerRelease[];
   readonly lastCheckAt: string | null;
   readonly lastError: string | null;
   readonly failedStep: UpdateStep | null;
@@ -43,6 +56,7 @@ export interface UpdateStatus {
 export interface UpdaterOptions {
   readonly channel: UpdateChannel;
   readonly frequency: () => UpdateFrequency;
+  readonly policy: () => UpdatePolicy;
   /** True when no chat runs a turn. */
   readonly isIdle: () => boolean;
   /** Stops Eva so that the new version starts. */
@@ -65,6 +79,8 @@ export class Updater {
   private lastCheckAt: Date | null;
   private lastError: string | null;
   private failedStep: UpdateStep | null;
+  /** A version chosen by hand, which waits for Eva to be idle. */
+  private chosen: string | null;
   /** The new version is in place, and Eva restarts once no chat runs a turn. */
   private restartPending: boolean;
 
@@ -75,17 +91,26 @@ export class Updater {
     this.lastCheckAt = null;
     this.lastError = null;
     this.failedStep = null;
+    this.chosen = null;
     this.restartPending = false;
   }
 
   status(): UpdateStatus {
+    const policy = this.options.policy();
+    const releases = this.last?.releases ?? null;
+    const pick = releases === null || this.last === null ? null : pickUpdate(this.last.current, releases, policy);
+    const target = this.target();
     return {
       kind: this.options.channel.kind,
       frequency: this.options.frequency(),
+      install: policy,
       phase: this.phase,
       current: this.last?.current ?? null,
       latest: this.last?.latest ?? null,
-      available: this.last?.available ?? false,
+      available: target !== null,
+      target,
+      heldBack: this.heldBack(pick?.heldBack ?? null),
+      releases: pick?.newer ?? [],
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       lastError: this.lastError,
       failedStep: this.failedStep,
@@ -110,16 +135,45 @@ export class Updater {
     return this.status();
   }
 
-  /** Checks, then installs a newer version as soon as no chat runs a turn. */
-  async updateNow(): Promise<UpdateStatus> {
+  /**
+   * Checks, then installs as soon as no chat runs a turn: `version` when the person chose one,
+   * else the newest release that the policy allows. Throws for a version that is not a newer release.
+   */
+  async updateNow(version?: string): Promise<UpdateStatus> {
+    // One check or install at a time: a second download could replace the first one's file.
+    if (this.phase === "checking" || this.phase === "updating" || this.phase === "restarting") {
+      // A chosen version must never vanish without a word.
+      if (version !== undefined)
+        throw new EvaError(
+          "update_failed",
+          `Eva is busy with an update check or install. Try ${version} again in a moment.`,
+        );
+      return this.status();
+    }
+    if (this.phase !== "waiting_for_idle") {
+      await this.check();
+      if (this.lastError !== null) return this.status();
+    }
+    if (version !== undefined) this.choose(version);
     if (this.phase === "waiting_for_idle") return this.status();
-    await this.check();
-    if (this.last?.available !== true || this.lastError !== null) return this.status();
+    if (this.target() === null) return this.status();
     if (!this.options.isIdle()) {
       this.phase = "waiting_for_idle";
       return this.status();
     }
     return this.install();
+  }
+
+  private choose(version: string): void {
+    const releases = this.last?.releases ?? null;
+    if (releases === null)
+      throw new EvaError("update_failed", "This Eva runs from a git checkout, so she cannot install a chosen version.");
+    if (!releases.some((release) => release.version === version))
+      throw new EvaError(
+        "update_failed",
+        `${version} is not a newer release than ${this.last?.current ?? "this version"}. Eva never installs an older version.`,
+      );
+    this.chosen = version;
   }
 
   /** Called once a minute: installs a waiting update, or checks when the frequency says so. */
@@ -139,6 +193,21 @@ export class Updater {
     if (due) await this.updateNow();
   }
 
+  /** The version to install next: one chosen by hand, the policy's pick, or the newest commit of a checkout. */
+  private target(): string | null {
+    if (this.chosen !== null) return this.chosen;
+    const last = this.last;
+    if (last === null) return null;
+    if (last.releases === null) return last.available ? last.latest : null;
+    return pickUpdate(last.current, last.releases, this.options.policy()).install;
+  }
+
+  /** A version that the person chose is not held back, and neither is an older one. */
+  private heldBack(version: string | null): string | null {
+    if (version === null || this.chosen === null) return version;
+    return isNewerVersion(version, this.chosen) ? version : null;
+  }
+
   private restartWhenIdle(): void {
     if (!this.options.isIdle()) return;
     this.restartPending = false;
@@ -146,10 +215,17 @@ export class Updater {
   }
 
   private async install(): Promise<UpdateStatus> {
+    const target = this.target();
+    // The policy can change while Eva waits for the chats to end.
+    if (target === null) {
+      this.phase = "idle";
+      return this.status();
+    }
     this.phase = "updating";
     try {
-      const installed = await this.options.channel.apply();
+      const installed = await this.options.channel.apply(this.last?.releases === null ? undefined : target);
       this.last = installed;
+      this.chosen = null;
       this.options.logger?.log("info", "Eva updated; she restarts.", { from: installed.current, to: installed.latest });
       this.phase = "restarting";
       // A chat can start during a long download: the restart waits for it too (lesson 92).
@@ -158,6 +234,7 @@ export class Updater {
     } catch (error) {
       this.lastError = errorText(error);
       this.failedStep = "install";
+      this.chosen = null;
       this.options.logger?.log("warn", "The update failed.", { reason: this.lastError });
       this.phase = "idle";
     }

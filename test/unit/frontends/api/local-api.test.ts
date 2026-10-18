@@ -753,6 +753,16 @@ describe("updates and the vault sync", () => {
     expect(response.status).toBe(200);
     expect(await json<{ status: string }>(response)).toMatchObject({ status: "ok" });
   });
+
+  test("the vault conflicts list, and a pick for a note with no conflict changes nothing", async () => {
+    const listed = await json<{ conflicts: unknown[] }>(await call("/api/vault/conflicts"));
+    expect(listed.conflicts).toEqual([]);
+    const picked = await call("/api/vault/conflicts", { method: "POST", body: { path: "a.md", choice: "mine" } });
+    expect(picked.status).toBe(200);
+    expect(await json<{ found: boolean }>(picked)).toMatchObject({ found: false });
+    const invalid = await call("/api/vault/conflicts", { method: "POST", body: { path: "a.md", choice: "all" } });
+    expect(invalid.status).toBe(400);
+  });
 });
 
 describe("an Eva with an update channel", () => {
@@ -769,8 +779,8 @@ describe("an Eva with an update channel", () => {
       basePrompt: "Base.",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -905,6 +915,63 @@ describe("problems, logs and restart", () => {
     } finally {
       restartingApi.stop();
       restarting.stop();
+    }
+  });
+});
+
+describe("an Eva with releases to pick", () => {
+  test("the API installs a chosen newer version, and refuses an unknown one", async () => {
+    const applied: (string | undefined)[] = [];
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({
+            current: "0.2.0",
+            latest: "1.0.0",
+            available: true,
+            releases: [
+              { version: "1.0.0", notes: "" },
+              { version: "0.3.0", notes: "" },
+            ],
+          }),
+        apply: (version) => {
+          applied.push(version);
+          return Promise.resolve({ current: "0.2.0", latest: version ?? "?", available: false, releases: [] });
+        },
+      },
+      restartForUpdate: () => undefined,
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const post = (body: unknown): Promise<Response> =>
+        fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+      expect((await post({ version: "0.1.0" })).status).toBe(409);
+      // An older script posts no body at all: it still means "what the policy allows".
+      const empty = await fetch(`${updatingApi.url}/api/update/check`, { method: "POST", headers: headers() });
+      expect(empty.status).toBe(200);
+      expect((await post({ version: "not a version" })).status).toBe(400);
+      expect(await json<unknown>(await post({ version: "1.0.0" }))).toMatchObject({ phase: "restarting" });
+      // During the restart, an install with no body changes nothing.
+      expect((await fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers() })).status).toBe(200);
+      expect(applied).toEqual(["1.0.0"]);
+    } finally {
+      updatingApi.stop();
+      updating.stop();
     }
   });
 });

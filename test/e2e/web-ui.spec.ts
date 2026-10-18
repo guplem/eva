@@ -17,7 +17,7 @@ async function openList(page: Page): Promise<void> {
 /** The task chip under the answer opens the chat's background tasks, also on a phone. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("Search the notes");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
@@ -181,7 +181,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await openList(page);
   await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
       "Nothing runs in the background.",
     );
   }
@@ -343,7 +343,8 @@ test("Settings: the default model saves at once", async ({ page }) => {
   }
 });
 
-test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
+test("Settings: the vault sync state shows a conflict, its picks and the held-back files", async ({ page }) => {
+  let conflictState: Record<string, unknown> = {};
   await page.route("**/api/status", async (route) => {
     const response = await route.fetch();
     const status = (await response.json()) as { vaultSync: Record<string, unknown> };
@@ -356,12 +357,23 @@ test("Settings: the vault sync state shows a conflict and the held-back files", 
         { path: "Media/film.mov", reason: "too_large" },
       ],
     };
+    conflictState = status.vaultSync;
     await route.fulfill({ response, json: status });
   });
+  // The demo vault has no conflict, so the browser plays the conflict list as well.
+  await page.route("**/api/vault/conflicts", (route) =>
+    route.fulfill({
+      json: { state: conflictState, conflicts: [{ path: "Notes/plan.md", kind: "committed", picked: null }] },
+    }),
+  );
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
   const sync = page.getByRole("region", { name: "Vault sync" });
   await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  await expect(sync.getByRole("group", { name: "Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep mine: Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep theirs: Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep both: Notes/plan.md" })).toBeVisible();
   await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
 });
@@ -574,6 +586,77 @@ test("back on the page, a stale answer from before the sleep is cleared", async 
   await expect(page.getByText("an answer from before the sleep")).toHaveCount(0);
 });
 
+test("an answer shows its steps as badges with a hover text, and a tap lists them", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  // The live answer has the same badges until the turn ends, so wait for the stored one and its Retry button.
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(answer.locator(".answer-body")).toContainText(/Echo \d+: Hello Eva/);
+  // The demo turn runs a task, a tool and a command before its one message.
+  const toggle = answer.getByRole("button", { name: "Show 3 steps" });
+  await expect(answer.locator(".step-badge")).toHaveCount(3);
+  await expect(answer.locator('.step-badge[title="Command: ls"]')).toBeVisible();
+  if (test.info().project.name === "phone") {
+    // A finger needs a target of 44 px or more, also for a row of one small badge.
+    const box = await toggle.boundingBox();
+    expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  }
+  await toggle.click();
+  const steps = answer.getByRole("list", { name: "Steps" });
+  await expect(steps.getByRole("listitem")).toHaveText([
+    /Task\s+Search the notes/,
+    /Tool\s+Grep notes/,
+    /Command\s+ls/,
+  ]);
+  await answer.getByRole("button", { name: "Hide 3 steps" }).click();
+  await expect(steps).toHaveCount(0);
+});
+
+test("the chat panel shows the model, engine and context, and a phone opens it from Chat info", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  if (test.info().project.name === "desktop") {
+    const panel = page.getByRole("complementary", { name: "This chat" });
+    await expect(panel).toContainText("claude-code");
+    await expect(panel).toContainText("15 tokens");
+    // getByRole skips hidden elements, so count the button by its class.
+    await expect(page.locator(".chat-info-button")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    return;
+  }
+  await page.getByRole("button", { name: "Chat info" }).click();
+  const dialog = page.getByRole("dialog", { name: "This chat" });
+  await expect(dialog).toContainText("assistant");
+  await expect(dialog).toContainText("15 tokens");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("a new message of a running turn replaces the shown one, and the older one becomes a badge", async ({ page }) => {
+  const sockets = await routeEvents(page);
+  await logIn(page);
+  const sessionId = await newChat(page);
+  sockets.at(-1)?.send(textEvent(sessionId, "first thought"));
+  await expect(page.getByText("first thought")).toBeVisible();
+  sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
+  await expect(page.getByText("second thought")).toBeVisible();
+  await expect(page.getByText("first thought")).toHaveCount(0);
+  await expect(page.locator('.step-badge[title="Message: first thought"]')).toHaveCount(1);
+  // A badge keeps a short text, so the whole answer is one tap away.
+  await page.getByRole("button", { name: "Show the whole answer" }).click();
+  await expect(page.getByText("first thought")).toBeVisible();
+  await expect(page.getByText("second thought")).toBeVisible();
+});
+
 test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events$/, (socket) => {
@@ -663,12 +746,76 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
-test("Settings: Update now waits until the new Eva answers, not the old one", async ({ page }) => {
+test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({
+  page,
+}) => {
+  const status = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "1.0.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: "1.0.0",
+    releases: [
+      {
+        version: "1.0.0",
+        notes: "",
+        level: "major",
+        summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
+      },
+      { version: "0.3.0", notes: "", level: "minor", summary: "New features:\n• feat: voice notes (0.3.0)" },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  const installs: unknown[] = [];
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") installs.push(route.request().postDataJSON());
+    await route.fulfill({ json: status });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
+  await page.getByRole("button", { name: "Update to a version…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await dialog.getByRole("combobox").press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Update to a version…" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("It can break things");
+  await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
+  await dialog.getByRole("combobox").selectOption("0.3.0");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Install 0.3.0" }).click();
+  await expect.poll(() => installs).toEqual([{ version: "0.3.0" }]);
+  await expect(dialog).toHaveCount(0);
+});
+
+test("Settings: the major update policy shows a warning", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
+  await page.getByLabel("Eva installs by herself").selectOption("major");
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toBeVisible();
+  await page.getByLabel("Eva installs by herself").selectOption("minor");
+});
+
+test("Settings: Check and install waits until the new Eva answers, not the old one", async ({ page }) => {
   const base = {
     kind: "executable",
     frequency: "daily",
+    install: "minor",
     current: "0.1.0",
     latest: "0.2.0",
+    target: "0.2.0",
+    heldBack: null,
+    releases: [],
     available: true,
     lastCheckAt: null,
     lastError: null,
@@ -689,7 +836,7 @@ test("Settings: Update now waits until the new Eva answers, not the old one", as
   });
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Update now" }).click();
+  await page.getByRole("button", { name: "Check and install" }).click();
   await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
   await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
   expect(readsWhileRestarting).toBe(3);

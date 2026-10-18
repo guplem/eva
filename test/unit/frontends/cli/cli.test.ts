@@ -17,7 +17,10 @@ import {
   describeEngineUpdate,
   describeStatusLines,
   describeSync,
+  describeRelease,
   describeUpdate,
+  describeUpdateWithHint,
+  majorUpdateWarning,
   requestHub,
   requestStatus,
   requestSettingsChange,
@@ -29,7 +32,6 @@ import {
 import { runDoctor, type DoctorOptions } from "../../../../src/frontends/cli/doctor.ts";
 import {
   restartMethod,
-  serviceCommand,
   serviceName,
   servicePath,
   systemdUnit,
@@ -97,8 +99,21 @@ describe("parseArguments", () => {
     expect(parseArguments(["work", "only-a-project"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", home: undefined, engine: "pi" });
     expect(parseArguments(["chat", "--engine", "codex"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false });
-    expect(parseArguments(["update", "--check"])).toEqual({ command: "update", home: undefined, checkOnly: true });
+    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false, version: null });
+    expect(parseArguments(["update", "--check"])).toEqual({
+      command: "update",
+      home: undefined,
+      checkOnly: true,
+      version: null,
+    });
+    expect(parseArguments(["update", "1.2.0"])).toEqual({
+      command: "update",
+      home: undefined,
+      checkOnly: false,
+      version: "1.2.0",
+    });
+    expect(parseArguments(["update", "v1.2.0"])).toMatchObject({ version: "1.2.0" });
+    expect(parseArguments(["update", "latest"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
     expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
     expect(parseArguments(["link"])).toEqual({ command: "link", home: undefined });
@@ -788,15 +803,6 @@ describe("service", () => {
     expect(windowsRunTaskCommand()).toEqual(["schtasks", "/Run", "/TN", "Eva"]);
     expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
   });
-
-  test("the single executable runs itself; a source checkout runs bun with main.ts", () => {
-    expect(
-      serviceCommand({ standalone: true, execPath: "C:/eva/eva.exe", mainScript: "B:/~BUN/root/eva.exe" }),
-    ).toEqual(["C:/eva/eva.exe"]);
-    expect(serviceCommand({ standalone: false, execPath: "/usr/bin/bun", mainScript: "/opt/eva/src/main.ts" })).toEqual(
-      ["/usr/bin/bun", "/opt/eva/src/main.ts"],
-    );
-  });
 });
 
 describe("runChat", () => {
@@ -909,6 +915,7 @@ repos:
   test("update, sync and settings commands go through the running Eva", async () => {
     const options = { baseUrl: api.url, token: "chat-token" };
     expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
+    expect(String(await requestUpdate(options, false, "1.0.0").catch((caught: unknown) => caught))).toContain("409");
     expect(await requestSync(options)).toStartWith("Vault sync: ");
     expect(await requestHub(options)).toContain("is now the hub.");
     expect((await requestStatus(options)).localUrl).toStartWith("http://127.0.0.1:");
@@ -1015,6 +1022,10 @@ describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
     frequency: "daily",
+    install: "minor",
+    target: null,
+    heldBack: null,
+    releases: [],
     phase: "idle",
     current: "aaa1111",
     latest: "aaa1111",
@@ -1046,6 +1057,45 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
       "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
+  });
+
+  test("a release, the policy's pick and a held-back version each read clearly", () => {
+    const release = { ...base, kind: "executable" as const, current: "1.2.0", latest: "2.0.0" };
+    expect(describeUpdate({ ...release, available: true, target: "1.3.0", heldBack: "2.0.0" })).toBe(
+      "Updates: 1.3.0 is available (this is 1.2.0); 2.0.0 is held back by the update policy (minor); checks daily",
+    );
+    expect(describeUpdate({ ...release, heldBack: "2.0.0", install: "patch" })).toBe(
+      "Updates: this is 1.2.0; 2.0.0 is held back by the update policy (patch); checks daily",
+    );
+    expect(describeUpdate({ ...release, target: "1.3.0", phase: "waiting_for_idle" })).toBe(
+      "Updates: 1.3.0 installs when the running chats end",
+    );
+  });
+
+  test("a chosen release reads as the jump, with a warning for a major one", () => {
+    const release = {
+      ...base,
+      kind: "executable" as const,
+      current: "1.2.0",
+      releases: [
+        { version: "2.0.0", notes: "", level: "major" as const, summary: "Breaking changes:\n• feat!: x (2.0.0)" },
+        { version: "1.3.0", notes: "", level: "minor" as const, summary: "New features:\n• feat: y (1.3.0)" },
+      ],
+    };
+    expect(describeRelease(release, "2.0.0")).toBe(
+      `Eva 1.2.0 → 2.0.0\n\n${majorUpdateWarning}\n\nBreaking changes:\n• feat!: x (2.0.0)`,
+    );
+    expect(describeRelease(release, "1.3.0")).toBe("Eva 1.2.0 → 1.3.0\n\nNew features:\n• feat: y (1.3.0)");
+    expect(describeRelease(release, "0.9.0")).toBeNull();
+    // Below the policy pick, the next check after the restart moves Eva on again.
+    expect(describeRelease({ ...release, install: "major", target: "2.0.0" }, "1.3.0")).toEndWith(
+      "The update policy (major) installs 2.0.0 after the restart. To stay on 1.3.0, change the policy first.",
+    );
+  });
+
+  test("in a terminal, a held-back version comes with the command that installs it", () => {
+    expect(describeUpdateWithHint({ ...base, heldBack: "2.0.0" })).toEndWith("Run `eva update 2.0.0` to install it.");
+    expect(describeUpdateWithHint(base)).toBe(describeUpdate(base));
   });
 
   test("the sync line names the reason of a problem", () => {

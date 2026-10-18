@@ -579,6 +579,24 @@ describe("Eva", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Diary/2026-10-14.md");
   });
 
+  test("each turn end goes to the log, with the cache counts of a finished turn (lesson 120)", async () => {
+    const lines: string[] = [];
+    const instance = start(
+      new FakeEngine((request, turnNumber) => {
+        if (turnNumber === 1) return FakeEngine.answer(request, "done");
+        throw new Error("the engine broke");
+      }),
+      {},
+      { logger: { log: (level, message, details) => lines.push(`${level} ${message} ${JSON.stringify(details)}`) } },
+    );
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(session.id, "hi");
+    await instance.sessions.send(session.id, "again");
+    const turnLines = lines.filter((line) => line.includes("A turn"));
+    expect(turnLines[0]).toStartWith(`info A turn finished. {"sessionId":"${session.id}"`);
+    expect(turnLines[0]).toContain("cacheReadTokens");
+    expect(turnLines[1]).toStartWith(`warn A turn failed. {"sessionId":"${session.id}","reason":`);
+  });
   test("a sync failure and a held-back secret file go to the log (lessons 16, 26)", async () => {
     const lines: string[] = [];
     eva = new Eva({
@@ -671,9 +689,9 @@ describe("Eva", () => {
         kind: "source",
         check: () => {
           checks += 1;
-          return Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false });
+          return Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
         },
-        apply: () => Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false }),
+        apply: () => Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false, releases: null }),
       },
     });
     // The first tick waits on its vault fetch; a second tick at that moment must do nothing.
@@ -698,8 +716,8 @@ describe("Eva", () => {
       gatherMs: 50,
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -783,8 +801,8 @@ describe("Eva", () => {
       claudeExecutable: "/opt/claude",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -830,10 +848,10 @@ describe("Eva", () => {
       claudeExecutable: "/opt/claude",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
         apply: async () => {
           await new Promise<void>((resolve) => (finishInstallGate.open = resolve));
-          return { current: "0.1.0", latest: "0.2.0", available: false };
+          return { current: "0.1.0", latest: "0.2.0", available: false, releases: null };
         },
       },
       restartForUpdate: () => restarts.push("restart"),
@@ -866,8 +884,8 @@ describe("Eva", () => {
       {
         updateChannel: {
           kind: "executable",
-          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
         },
       },
     );
@@ -949,6 +967,47 @@ describe("Eva alerts", () => {
     return alerts;
   }
 
+  test("a vault conflict raises an alert that names the phone fix, and the last pick clears it", async () => {
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    expect(await instance.sweep()).toBe("conflict");
+    expect(alerts.at(-1)?.message).toContain("/conflicts");
+    expect((await instance.vaultConflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["Notes/plan.md"]);
+    const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
+    expect(result.state.status).toBe("ok");
+    expect(alerts.at(-1)?.level).toBe("resolved");
+  });
+
+  test("a pick waits while an Assistant turn runs, like a sync (lessons 22, 30)", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
+    expect(result.found).toBe(false);
+    expect(result.state.status).toBe("skipped");
+    expect(result.state.lastError).toContain("Assistant chat");
+    release();
+    await turn;
+  });
+
+  test("with no vault, there is no conflict to list or resolve", async () => {
+    const instance = start(new FakeEngine(), { vaultPath: null });
+    expect((await instance.vaultConflicts()).conflicts).toEqual([]);
+    expect((await instance.resolveVaultConflict("a.md", "mine")).found).toBe(false);
+  });
+
   test("a vault offline for more than 30 minutes is a problem, and a good sync clears it", async () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
@@ -978,7 +1037,7 @@ describe("Eva alerts", () => {
           check: () =>
             failCheck
               ? Promise.reject(new Error("no network"))
-              : Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true }),
+              : Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true, releases: null }),
           apply: () => Promise.reject(new Error("bun install failed")),
         },
       },
@@ -994,6 +1053,34 @@ describe("Eva alerts", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
     expect(instance.status().problems[0]).toStartWith("The update install failed");
+  });
+
+  test("each new held-back release reaches the phone once, even across a restart", async () => {
+    let releases = [{ version: "1.0.0", notes: "## Breaking changes\n\n- feat!: rename the keys\n" }];
+    const options: Partial<EvaOptions> = {
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({ current: "0.2.0", latest: releases[0]?.version ?? "", available: true, releases }),
+        apply: () => Promise.reject(new Error("not in this test")),
+      },
+    };
+    const first = start(new FakeEngine(), {}, options);
+    const alerts = collectAlerts(first);
+    await first.checkForUpdate();
+    await first.checkForUpdate();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["update_held_back", "news"]]);
+    expect(alerts[0]?.message).toContain("1.0.0");
+    expect(alerts[0]?.message).toContain("can break");
+    first.stop();
+    const second = start(new FakeEngine(), {}, options);
+    const later = collectAlerts(second);
+    await second.checkForUpdate();
+    expect(later).toEqual([]);
+    releases = [{ version: "1.1.0", notes: "" }, ...releases];
+    await second.checkForUpdate();
+    expect(later).toHaveLength(1);
+    expect(later[0]?.message).toContain("1.1.0");
   });
 
   test("a failed engine update reaches the phone as an alert, and a good one clears it", async () => {

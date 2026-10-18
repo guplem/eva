@@ -8,8 +8,8 @@ description: Implement a GitHub issue from plan to merged PR, with sub-agents to
 ## Pick the issue
 
 - **An issue number or link:** implement that issue. If the link points to another repository, work in that repository.
-- **An issue description:** search for an open issue that matches it. If none exists, create one from the description.
-- **No input:** find the oldest open issue that has neither the `waiting-for-human-check` nor the `auto-developing` label.
+- **An issue description:** search for an open issue that matches it. If none exists, create one from the description with the `create-issue` skill.
+- **No input:** find the oldest open issue that has none of the labels `waiting-for-human-check`, `auto-developing` and `requires-human-intervention`.
 
 Once you select the issue, add the `auto-developing` label to it and assign the authenticated user as the assignee. For the PR you create, do the same: add the `auto-developing` label and assign the authenticated user as the assignee.
 
@@ -39,4 +39,4 @@ Implement the issue by following this process:
 
 11. Ensure that all CI checks pass and there are no merge conflicts. Fix any failing CI checks related to this PR's changes. If a check fails for unrelated reasons, or the cause is unclear, try rerunning it.
 
-12. Ensure the PR is merged. Remove the `auto-developing` label from the issue and PR once the PR is merged. If the PR is closed without merging, remove the `auto-developing` label from both the issue and PR.
+12. Ensure the PR is merged. Turn on auto-merge. When the PR does not merge, find the cause and fix it: update a branch that is behind `main`, resolve a conflict, or fix a red check. Never bypass the merge ruleset, for example with an admin merge. Remove the `auto-developing` label from the issue and PR once the PR is merged. If the PR is closed without merging, remove the `auto-developing` label from both the issue and PR.

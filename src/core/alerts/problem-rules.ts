@@ -32,7 +32,7 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
     case "conflict":
       return {
         level: "error",
-        message: `The vault sync stopped on a conflict: ${state.lastError ?? "unknown files"}. Fix the conflict in the vault folder, then send /sync.`,
+        message: `The vault sync stopped on a conflict: ${state.lastError ?? "unknown files."} Send /conflicts, or open Settings on this machine's web page, and pick a version of each note. Nothing is lost: git keeps both versions.`,
         resolvedMessage,
       };
     case "error":
@@ -90,3 +90,17 @@ export function scheduleCardProblem(name: string): AlertProblem {
 
 export const uncleanExitMessage =
   "Eva started after an unclean exit: a crash, a kill or a power loss. Send /logs to see the last errors.";
+
+/** The news of a release that the update policy holds back, or null when none waits. */
+export function heldBackNews(status: UpdateStatus): string | null {
+  const version = status.heldBack;
+  if (version === null) return null;
+  const major = status.releases.find((release) => release.version === version)?.level === "major";
+  return [
+    `Eva ${version} is out. Your update policy (${status.install}) does not install it by herself.`,
+    major ? "It is a major release, so it can break things." : "",
+    "Send /update to see what it brings and install it.",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+}

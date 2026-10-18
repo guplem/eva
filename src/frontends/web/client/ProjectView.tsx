@@ -6,9 +6,9 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
+import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 
@@ -112,6 +112,14 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
     selection === null ? [] : rootChats(sessions.filter((session) => session.startFolder === selection.clone.path));
   // The newest chat opens first, as in Assistant mode.
   const chat = cloneChats.find((candidate) => candidate.id === selectedChatId) ?? cloneChats[0];
+  const tree = chat === undefined ? [] : chatTree(chat, sessions);
+  const chatDetails = {
+    tree,
+    tasks: tasksOf(
+      live.tasks,
+      tree.map((session) => session.id),
+    ),
+  };
 
   return (
     <div className="layout">
@@ -245,6 +253,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
               </h1>
               {selection.clone.branch !== null && <span className="badge">{selection.clone.branch}</span>}
               {selection.clone.pullRequest !== null && <span className="badge">PR #{selection.clone.pullRequest}</span>}
+              {chat !== undefined && <ChatInfoButton {...chatDetails} />}
             </div>
             {chat === undefined ? (
               <div className="empty">
@@ -258,7 +267,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           </>
         )}
       </main>
-      <TasksPanel tasks={tasksOf(live.tasks, chat === undefined ? [] : chatTreeIds(chat, sessions))} />
+      <ChatPanel {...chatDetails} />
     </div>
   );
 }

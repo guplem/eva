@@ -81,7 +81,8 @@ Write to your bot as you write to a person. Eva answers in the same chat. Each n
 | `/restart`   | Restart Eva (she asks you to confirm first)   |
 | `/link`      | Show the address of Eva's web page            |
 | `/sync`      | Save the notebook now                         |
-| `/update`    | Install the newest version of Eva             |
+| `/conflicts` | Pick a version of each note in a conflict     |
+| `/update`    | Check for updates, or pick a version of Eva   |
 | `/projects`  | Search your projects: `status:active`, `#tag` |
 | `/schedules` | List your reminders and repeated tasks        |
 | `/help`      | Show all the commands                         |
@@ -105,6 +106,7 @@ To change a project's title, status, tags or repositories, open the project in t
 Open **Settings** on the web page. The most useful ones:
 
 - **Install updates automatically:** how often Eva looks for a new version. She installs it only when no conversation is running.
+- **Eva installs by herself:** fixes only, fixes and new features (the default), or every release. A major release can break things that work today.
 - **Fetch the notebook's changes:** how often Eva brings in notes that another computer saved.
 - **Make this machine the hub:** when Eva runs on more than one computer, this chooses which one answers in Telegram.
 - **Tokens and Test:** paste the GitHub, Telegram and Claude Code tokens, then press **Test** to check each part. Only a login with the token can change a token.
@@ -159,7 +161,7 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 | -------------------------------------------------- | --------------------------------------------- |
 | [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
 
-Steps that only the owner can do are GitHub issues with the `owner` label.
+Steps that only a person can do are GitHub issues with the `requires-human-intervention` label.
 
 ## License
 

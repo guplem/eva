@@ -818,8 +818,8 @@ repos:
     expect(output.join("")).toContain("Hi! I am Eva.");
   });
 
-  test("/rename renames the chat, and says why when Eva refuses it (issue 46)", async () => {
-    const lines = ["/rename Trip plans", "/rename", "/exit"];
+  test("/rename renames the chat, and a bare /rename shows how to use it (issue 46)", async () => {
+    const lines = ["/rename\tTrip plans", "/rename", "/exit"];
     const output: string[] = [];
     await runChat({
       baseUrl: api.url,

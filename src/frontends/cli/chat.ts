@@ -76,7 +76,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
       const line = await options.readLine();
       if (line === null || line.trim() === "/exit") break;
       if (line.trim() === "") continue;
-      if (line.trim() === "/rename" || line.trim().startsWith("/rename ")) {
+      if (/^\/rename(\s|$)/.test(line.trim())) {
         options.write(await renameChat(options.baseUrl, headers, session.id, line.trim().slice("/rename".length)));
         continue;
       }
@@ -144,11 +144,12 @@ export function describeEvent(event: SessionEvent): string | null {
       return "  (The earlier history of this chat is lost.)\n";
     case "turn_failed":
       return `  The turn failed: ${event.reason}\n`;
-    // A rename needs no line: the terminal shows no title, and its own /rename answers from the request.
     case "turn_finished":
     case "tool_finished":
-    case "session_renamed":
     case "approval_resolved":
+      return null;
+    case "session_renamed":
+      // The terminal shows no title, and its own /rename answers from the request.
       return null;
   }
 }

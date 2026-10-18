@@ -40,6 +40,7 @@ import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
+  CloneOriginStore,
   createClone,
   describeClone,
   githubSlug,
@@ -54,7 +55,7 @@ import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
-import { ghApiGet, readRepositoryFacts, type GithubGet } from "./projects/repository-facts.ts";
+import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./projects/repository-facts.ts";
 import {
   evaluateSetup,
   unreadableReport,
@@ -101,7 +102,7 @@ export interface EvaOptions {
    */
   readonly defaultHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
-  readonly githubGet?: GithubGet;
+  readonly githubRequest?: GithubRequest;
 }
 
 export interface ProjectWorkInput {
@@ -206,6 +207,7 @@ export class Eva {
   private readonly redactor: Redactor;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
+  private readonly cloneOrigins: CloneOriginStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -239,6 +241,7 @@ export class Eva {
     this.lastHousekeepingAt = null;
     this.vaultOfflineSince = null;
     this.settings = options.config;
+    this.cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
     this.secrets = options.secrets;
@@ -295,6 +298,7 @@ export class Eva {
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
+          cloneOrigins: this.cloneOrigins,
           trustedOwners: options.config.trust.trustedRepositoryOwners,
           environment: engineEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, this.gitEnvironment),
@@ -687,10 +691,10 @@ export class Eva {
     const project = this.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
     if (project.frontMatter.repos.length === 0) return [];
-    const get = this.options.githubGet ?? ghApiGet(this.options.runner, this.gitEnvironment);
+    const request = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.gitEnvironment);
     const read = async (slug: string): Promise<RepositoryFacts | string> => {
       try {
-        return await readRepositoryFacts(slug, get);
+        return await readRepositoryFacts(slug, request);
       } catch (error) {
         if (isEvaError(error, "github_failed")) return error.message;
         throw error;
@@ -852,12 +856,19 @@ export class Eva {
       repositoryUrl: url,
       runner: this.options.runner,
       environment: this.gitEnvironment,
+      origins: this.cloneOrigins,
     });
   }
 
   /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
-    for (const clone of listClones(project.path)) {
+    // A clone with a record goes first: one with none asks a trust question, and work may run with nobody to answer it.
+    const clones = listClones(project.path);
+    const recorded = clones.filter((clone) => {
+      const kind = this.cloneOrigins.origin(clone.path)?.kind;
+      return kind === "cloned" || kind === "answered";
+    });
+    for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
       const busy =
         this.reservedClones.has(clone.path) ||
         this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));

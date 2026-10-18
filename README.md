@@ -33,7 +33,7 @@ To open Eva's web page from your phone, you also need **Tailscale** (free). You 
 
 The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
 
-1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), and your harness: [Claude Code](https://claude.ai/code) or [pi](https://pi.dev).
+1. **Install git** on the computer that stays on: [git-scm.com/downloads](https://git-scm.com/downloads).
 2. **Download Eva:** one program from the [latest release](https://github.com/guplem/eva/releases/latest). [Install Eva on Windows](docs/guide/setup.md#install-eva-on-windows) and [Install Eva on Linux](docs/guide/setup.md#install-eva-on-linux) give the commands.
 3. **Answer Eva's questions:**
 
@@ -41,7 +41,7 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
    eva setup
    ```
 
-   Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
+   Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She installs the harnesses, Claude Code and pi, when they are missing. She checks the notebook's address before she continues.
 
 4. **Start Eva, and let her start by herself from now on:**
 

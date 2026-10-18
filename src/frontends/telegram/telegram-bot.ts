@@ -888,18 +888,25 @@ export class TelegramBot {
   }
 
   /**
-   * Gives the chat's topic the person's title. A schedule's topic holds every run of the schedule,
-   * so a rename of one run keeps the schedule's name.
+   * Gives the chat's topic the person's title. Lesson 125 limits only the automatic rename to the topics
+   * that Eva opened: this name is the person's choice, so any chat topic takes it. A schedule's topic
+   * holds every run of the schedule, so a rename of one run keeps the schedule's name.
    */
   private async renameTopic(chatId: number, topicId: number | null, title: string): Promise<void> {
     if (topicId === null || Object.values(this.state.scheduleTopics).includes(topicId)) return;
     const entry = this.state.topics[keyOf(chatId, topicId)];
-    // The person chose this name, so the first message must not replace it (lesson 125).
+    // The first message must not replace the name that the person chose.
     if (entry !== undefined && !entry.renamed) {
       entry.renamed = true;
       this.saveState();
     }
-    await this.quietCall("editForumTopic", { chat_id: chatId, message_thread_id: topicId, name: title });
+    try {
+      await this.callWithRetry("editForumTopic", { chat_id: chatId, message_thread_id: topicId, name: title });
+    } catch (error) {
+      // The chat already says that the rename worked, so a topic that keeps its old name must say why.
+      this.logFailedCall("editForumTopic", error);
+      await this.send(chatId, topicId, `Telegram did not rename this topic: ${this.describeError(error)}`);
+    }
   }
 
   private async sendApproval(

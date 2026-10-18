@@ -387,6 +387,18 @@ describe("topics", () => {
     expect(telegram.callsTo("editForumTopic")[0]?.params).toMatchObject({ message_thread_id: 500, name: "Trip plans" });
   });
 
+  test("a topic that Telegram refuses to rename says so in the chat, so the phone sees it", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.failNext("editForumTopic", 400, "Bad Request: not enough rights to manage topics");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("did not rename this topic")));
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("did not"));
+    expect(notice?.params["message_thread_id"]).toBe(500);
+    expect(String(notice?.params["text"])).toContain("not enough rights");
+  });
+
   test("/rename with no title says how to use it, and with no chat says so", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/rename");
@@ -1091,7 +1103,6 @@ describe("schedules (lessons 66, 70, 126)", () => {
     // The topic holds every run of the schedule, so a rename of one run keeps the topic's name.
     eva.sessions.rename(eva.sessions.list()[0]!.id, "Tuesday plan");
     await bot.pollOnce();
-    await Bun.sleep(20);
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 

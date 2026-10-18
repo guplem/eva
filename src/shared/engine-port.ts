@@ -6,6 +6,11 @@ import type { EngineEventPayload } from "./events.ts";
 
 export type EngineName = "claude-code" | "pi";
 export type SessionMode = "assistant" | "project";
+/**
+ * What a turn runs as. A model call is one question with one answer, outside every chat: no tools,
+ * no settings, no context files and no saved session. It is no session mode, so no record stores it.
+ */
+export type TurnMode = SessionMode | "model-call";
 export type ModelAlias = "default" | "opus" | "sonnet" | "haiku";
 
 /** Where the turn's history comes from. */
@@ -34,14 +39,14 @@ export interface McpServerSpec {
 }
 
 export interface TurnRequest {
-  readonly mode: SessionMode;
+  readonly mode: TurnMode;
   readonly history: TurnHistory;
   readonly startFolder: string;
   readonly prompt: string;
   readonly model: ModelAlias;
   /**
    * Assistant mode: Eva's prompt. Claude Code uses it in place of its own system prompt; pi appends it.
-   * Byte-identical every turn (lesson 40).
+   * Byte-identical every turn (lesson 40). A model call: the caller's prompt, in place of each engine's own.
    */
   readonly appendSystemPrompt: string | null;
   /** Assistant mode: local plugin folders, such as the vault's `.eva/`. */

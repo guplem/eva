@@ -136,6 +136,21 @@ describe("buildQueryOptions", () => {
     expect(options.settingSources).toEqual(["user"]);
   });
 
+  test("A model call: the caller's prompt alone, with no tools, no settings and no saved session", () => {
+    const options = buildQueryOptions(
+      request({ mode: "model-call", appendSystemPrompt: "Name chats.", pluginFolders: [], trusted: false }),
+      "/bin/claude",
+    );
+    expect(options).toMatchObject({
+      systemPrompt: "Name chats.",
+      tools: [],
+      settingSources: [],
+      persistSession: false,
+      strictMcpConfig: true,
+      settings: { disableAllHooks: true, autoMemoryEnabled: false },
+    });
+  });
+
   test("continue resumes the session; fork resumes at a message into a new session", () => {
     expect(buildQueryOptions(request({ history: { kind: "continue", engineSessionId: "s1" } }), "c")).toMatchObject({
       resume: "s1",
@@ -522,6 +537,31 @@ describe("ClaudeCodeEngine", () => {
     });
     await drain(engine.runTurn(request({ mode: "project", appendSystemPrompt: null })));
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
+  });
+
+  test("A model call denies every tool without a question", async () => {
+    let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const asked: string[] = [];
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: ({ options }) => {
+        canUseTool = (options as { canUseTool: typeof canUseTool }).canUseTool;
+        return (async function* () {
+          await Promise.resolve();
+          yield resultOf("resumed-turn");
+        })();
+      },
+    });
+    const callRequest = request({
+      mode: "model-call",
+      requestApproval: (approval) => {
+        asked.push(approval.toolName);
+        return Promise.resolve("allow");
+      },
+    });
+    await drain(engine.runTurn(callRequest));
+    expect(await canUseTool?.("Read", { file_path: "notes.md" })).toMatchObject({ behavior: "deny" });
+    expect(asked).toEqual([]);
   });
 });
 

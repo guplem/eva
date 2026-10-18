@@ -71,7 +71,22 @@ export interface NewSessionInput {
   readonly title?: string;
 }
 
+/** A chat's first finished turn, for a name from a model. */
+export interface FirstTurn {
+  readonly engine: EngineName;
+  readonly model: ModelAlias;
+  /** Already redacted. */
+  readonly userText: string;
+  /** Already redacted. */
+  readonly answerText: string;
+}
+
 export interface SessionManagerOptions {
+  /**
+   * Gives a chat a better name after its first turn, or null to keep the first line. The turn
+   * never waits for it, and a title that the person gave wins over it.
+   */
+  readonly nameChat?: (turn: FirstTurn) => Promise<string | null>;
   readonly engines: readonly EnginePort[];
   readonly store: SessionStore;
   readonly preparers: Readonly<Record<SessionMode, TurnPreparer>>;
@@ -193,13 +208,30 @@ export class SessionManager {
    * exactly the default title also takes its first message as its title.
    */
   rename(sessionId: string, title: string): SessionRecord {
-    const session = this.get(sessionId);
+    return this.retitle(this.get(sessionId), title, false);
+  }
+
+  private retitle(session: SessionRecord, title: string, automatic: boolean): SessionRecord {
     const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
     if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
     const updated = { ...session, title: cleaned };
     this.options.store.save(updated);
-    this.emit(sessionId, { kind: "session_renamed", title: cleaned });
+    this.emit(session.id, { kind: "session_renamed", title: cleaned, ...(automatic ? { automatic: true } : {}) });
     return updated;
+  }
+
+  /** Asks for a name in the background. A failed or empty answer keeps the first-line title. */
+  private nameInBackground(sessionId: string, firstLineTitle: string, turn: FirstTurn): void {
+    const nameChat = this.options.nameChat;
+    if (nameChat === undefined) return;
+    void nameChat(turn)
+      .then((name) => {
+        const current = this.options.store.get(sessionId);
+        // Any other title came from the person, or the chat is gone.
+        if (name === null || current?.title !== firstLineTitle) return;
+        this.retitle(current, name, true);
+      })
+      .catch(() => undefined);
   }
 
   subscribe(listener: EventListener): () => void {
@@ -469,19 +501,24 @@ ${prompt}`,
         steps = addStep(steps, payload);
         if (payload.kind === "turn_finished") {
           finished = payload;
+          const recorded = {
+            userText: this.options.redactor.redact(prompt),
+            answerText: answerParts.join("\n\n"),
+          };
           // Record first: a front end that reloads the list on this event must find the turn in it.
-          this.recordTurn(
+          const firstLineTitle = this.recordTurn(
             session,
-            {
-              userText: this.options.redactor.redact(prompt),
-              answerText: answerParts.join("\n\n"),
-              ...activity,
-              ...storedSteps(steps),
-              contextTokens: payload.contextTokens,
-            },
+            { ...recorded, ...activity, ...storedSteps(steps), contextTokens: payload.contextTokens },
             payload,
             lastText,
           );
+          if (firstLineTitle !== null) {
+            this.nameInBackground(sessionId, firstLineTitle, {
+              engine: session.engine,
+              model: session.modelAlias,
+              ...recorded,
+            });
+          }
         }
         emit(payload);
       }
@@ -517,26 +554,29 @@ ${prompt}`,
     return { kind: "new", engineSessionId: session.engineSessionId };
   }
 
+  /** Returns the first-line title when this turn named the chat, or null. */
   private recordTurn(
     session: SessionRecord,
     turn: { userText: string; answerText: string; contextTokens: number | null } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
-  ): void {
+  ): string | null {
     const at = this.options.now().toISOString();
     const current = this.get(session.id);
+    const firstLineTitle =
+      current.turns.length === 0 && current.parentId === null && current.title === defaultTitle
+        ? titleOf(turn.userText)
+        : null;
     this.options.store.save({
       ...current,
       engineSessionId: finished.engineSessionId,
       forkFromEngineSessionId: null,
       historyLost: false,
       lastTurnAt: at,
-      title:
-        current.turns.length === 0 && current.parentId === null && current.title === defaultTitle
-          ? titleOf(turn.userText)
-          : current.title,
+      title: firstLineTitle ?? current.title,
       turns: [...current.turns, { ...turn, failure: null, lastMessageId: finished.lastMessageId ?? lastText, at }],
     });
+    return firstLineTitle;
   }
 
   /** Keeps a failed turn, with its reason, so the person sees it after a reload. */

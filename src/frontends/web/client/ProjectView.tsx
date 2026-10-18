@@ -17,7 +17,9 @@ interface ProjectViewProps {
   readonly onNavigate: () => void;
 }
 
-const statusWordPattern = /(^|\s)status:/i;
+/** The filter words that the core reads in the search text. A typed word wins over its select. */
+const statusWordPattern = /(^|\s)status:(idea|active|paused|closed|any)(\s|$)/i;
+const tagWordPattern = /(^|\s)(tag:|#)\S/i;
 
 interface Selection {
   readonly project: Project;
@@ -39,8 +41,9 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      // A status word typed in the search wins over the select.
-      api.projects(search, statusWordPattern.test(search) ? "" : status, tag).then(setProjects, showError);
+      api
+        .projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag)
+        .then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
   }, [search, status, tag, showError]);

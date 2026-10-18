@@ -19,7 +19,7 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
     await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
   }
-  await page.getByRole("button", { name: "1 background task" }).first().click();
+  await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("Search the notes");
   await expect(dialog).toContainText("done");
@@ -153,6 +153,11 @@ test("the tag filter shows only the projects with that tag", async ({ page }) =>
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   await page.getByLabel("Tag").selectOption("");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A tag word typed in the search wins over the select.
+  await page.getByLabel("Tag").selectOption("web");
+  await page.getByLabel("Search projects").fill("#legacy");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
 });
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {

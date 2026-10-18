@@ -76,7 +76,7 @@ A commit that changes `src/` with no test change says why in its message.
 
 ## Shell commands
 
-`.claude/settings.json` cannot allow these forms, so each one stops for a prompt:
+Follow these rules. `.claude/settings.json` cannot allow the other forms, so they stop for a prompt or a refusal:
 
 - Do not put `&&` before a heredoc, or text after `<<'EOF'` on its line. Join the next command after `EOF` with a new line.
 - Quote each heredoc delimiter: `<<'EOF'`, never `<<EOF`.

@@ -42,9 +42,10 @@ import {
   firstFreePort,
   runSetup,
   setupEnvironmentNames,
+  type SetupOptions,
   type SetupQuestion,
 } from "../../../../src/frontends/cli/setup.ts";
-import { isEvaError } from "../../../../src/shared/errors.ts";
+import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
@@ -263,6 +264,7 @@ describe("runSetup", () => {
       lines?: string[];
       asked?: SetupQuestion[];
       defaultHome?: string;
+      githubLogin?: SetupOptions["githubLogin"];
     } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
@@ -280,6 +282,7 @@ describe("runSetup", () => {
       runner: extra.runner ?? okRunner,
       environment: gitEnvironment,
       defaultHome: extra.defaultHome ?? home,
+      githubLogin: extra.githubLogin ?? null,
       platform: "linux",
     });
   }
@@ -419,6 +422,93 @@ describe("runSetup", () => {
     }
     expect(isEvaError(caught, "config_invalid")).toBe(true);
     expect(String(caught)).toContain(`git could not read ${missing}`);
+  });
+
+  describe("the GitHub login", () => {
+    const githubVault = "https://github.com/example/vault";
+    const tokenRunner = (tokens: (string | undefined)[]): ProcessRunner => ({
+      run: (_command, options) => {
+        tokens.push(options.environment["EVA_GITHUB_TOKEN"]);
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      },
+    });
+    const browserLogin = (logins: string[]): NonNullable<SetupOptions["githubLogin"]> => {
+      return (show) => {
+        show("ABCD-1234", "https://github.com/login/device");
+        logins.push("login");
+        return Promise.resolve(`gho_browser_token_${String(logins.length)}`);
+      };
+    };
+
+    test("Enter logs in with the browser: setup says the access, shows the code, and saves the token", async () => {
+      const lines: string[] = [];
+      const logins: string[] = [];
+      const tokens: (string | undefined)[] = [];
+      await setup(
+        { vaultRepository: githubVault },
+        { lines, runner: tokenRunner(tokens), githubLogin: browserLogin(logins) },
+      );
+      const text = lines.join("\n");
+      expect(text).toContain("read and write all your GitHub repositories");
+      expect(text).toContain("Open https://github.com/login/device and enter the code ABCD-1234.");
+      expect(logins).toEqual(["login"]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
+      expect(tokens.every((token) => token === "gho_browser_token_1")).toBe(true);
+    });
+
+    test("with a saved token, Enter keeps it, and login logs in again", async () => {
+      const logins: string[] = [];
+      await setup(
+        { githubToken: "a-pasted-token", vaultRepository: githubVault },
+        { githubLogin: browserLogin(logins) },
+      );
+      expect(logins).toEqual([]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      await setup({ vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
+      expect(logins).toEqual([]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      await setup({ githubToken: "login", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
+      expect(logins).toEqual(["login"]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
+    });
+
+    test("skip skips the login, and a failed login offers a pasted token instead", async () => {
+      const logins: string[] = [];
+      await setup({ githubToken: "skip", vaultRepository: githubVault }, { githubLogin: browserLogin(logins) });
+      expect(logins).toEqual([]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBeUndefined();
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      const lines: string[] = [];
+      const asked: SetupQuestion[] = [];
+      await setup(
+        { githubToken: ["", "a-pasted-token"], vaultRepository: githubVault },
+        {
+          lines,
+          asked,
+          githubLogin: () => Promise.reject(new EvaError("github_failed", "The GitHub login was refused.")),
+        },
+      );
+      expect(lines.join("\n")).toContain("The GitHub login was refused.");
+      expect(asked.filter((key) => key === "githubToken")).toHaveLength(2);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+    });
+
+    test("no login for a script, another host, an SSH address or a new vault", async () => {
+      const logins: string[] = [];
+      const githubLogin = browserLogin(logins);
+      await setup({ githubToken: "", vaultRepository: githubVault }, { interactive: false, githubLogin });
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      await setup({ vaultRepository: "https://git.example.com/you/vault" }, { githubLogin });
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      const asked: SetupQuestion[] = [];
+      await setup({ vaultRepository: "git@github.com:example/vault.git" }, { githubLogin, asked });
+      await setup({ vault: join(home, "new-vault"), createVault: "no" }, { githubLogin, asked });
+      expect(logins).toEqual([]);
+      // A person with an SSH address or a new vault is not asked for a token at all.
+      expect(asked).not.toContain("githubToken");
+    });
   });
 
   test("the GitHub token is saved before the clone, so a failed clone keeps it", async () => {

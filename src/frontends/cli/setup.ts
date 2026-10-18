@@ -19,8 +19,9 @@ import {
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/settings/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
+import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
-import { EvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import {
   engineLoginReport,
@@ -87,6 +88,8 @@ export interface SetupOptions {
   /** The platform's default home: a setup in any other home sets up an extra instance. */
   readonly defaultHome: string;
   readonly platform: NodeJS.Platform;
+  /** The GitHub browser login, which shows its code through `show`; null when Eva has no OAuth App yet. */
+  readonly githubLogin: ((show: (code: string, link: string) => void) => Promise<string>) | null;
 }
 
 const ghTimeoutMs = 120_000;
@@ -118,20 +121,56 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? detectedTimeZone}]: `);
   if (timeZone !== "") config = { ...config, timeZone };
 
-  const askRepository = async (): Promise<string> => {
+  const saveGithubToken = (token: string): void => {
+    secrets.githubToken = token;
+    // Saved now, so a failed clone never makes the person type the token again.
+    saveSecrets(paths, secrets);
+  };
+  const askGithubToken = async (): Promise<void> => {
     const githubToken = await ask(
       "githubToken",
       `GitHub token, for a private vault over HTTPS (Enter to skip${secrets.githubToken === undefined ? "" : ", one is saved"}): `,
     );
-    if (githubToken !== "") {
-      secrets.githubToken = githubToken;
-      // Saved now, so a failed clone never makes the person type the token again.
-      saveSecrets(paths, secrets);
+    if (githubToken !== "") saveGithubToken(githubToken);
+  };
+  const askGithubLogin = async (githubLogin: NonNullable<SetupOptions["githubLogin"]>): Promise<void> => {
+    options.write(githubLoginAccess);
+    const answer = await ask(
+      "githubToken",
+      secrets.githubToken === undefined
+        ? "GitHub login for your vault: press Enter to log in with your browser, paste a token, or type skip: "
+        : "GitHub login for your vault: press Enter to keep the saved one, type login to log in again, or paste a token: ",
+    );
+    if (answer === "skip" || (answer === "" && secrets.githubToken !== undefined)) return;
+    if (answer !== "" && answer !== "login") {
+      saveGithubToken(answer);
+      return;
     }
-    return ask(
+    try {
+      saveGithubToken(
+        await githubLogin((code, link) => {
+          options.write(`Open ${link} and enter the code ${code}. Setup waits until you confirm.`);
+        }),
+      );
+      options.write("Logged in to GitHub.");
+    } catch (error) {
+      if (!isEvaError(error, "github_failed")) throw error;
+      options.write(error.message);
+      await askGithubToken();
+    }
+  };
+  const askRepository = async (): Promise<string> => {
+    const repository = await ask(
       "vaultRepository",
       "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
     );
+    // A script always reads EVA_GITHUB_TOKEN: project clones use the token too, whatever the vault's address.
+    if (!options.interactive) await askGithubToken();
+    // A new vault and an SSH address need no token, and the browser login works only for github.com.
+    else if (options.githubLogin !== null && /^https:\/\/github\.com\//i.test(repository))
+      await askGithubLogin(options.githubLogin);
+    else if (repository !== "" && !/^(git@|ssh:\/\/)/i.test(repository)) await askGithubToken();
+    return repository;
   };
   let repository = await askRepository();
   // Eva clones the vault herself: with a repository, the folder has a default, so only

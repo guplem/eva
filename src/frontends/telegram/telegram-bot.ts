@@ -606,7 +606,9 @@ export class TelegramBot {
       topicId,
       `${String(conflicts.length)} ${plural}. "Mine" is this machine's version, "theirs" is the remote's. "Keep both" keeps mine and puts theirs in a copy beside the note. Git keeps both versions either way.`,
     );
-    for (const conflict of conflicts.slice(0, conflictListLimit)) {
+    // A committed conflict keeps its picked notes in the list, so the notes that wait for a pick come first.
+    const waitingFirst = [...conflicts].sort((a, b) => Number(a.picked !== null) - Number(b.picked !== null));
+    for (const conflict of waitingFirst.slice(0, conflictListLimit)) {
       const id = this.conflictOffers.idFor(conflict.path);
       const what =
         conflict.kind === "committed"
@@ -1236,8 +1238,8 @@ function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): stri
 /** The answer to a conflict button: what Eva did, and what is left. */
 function describePick(path: string, choice: ConflictChoice, result: ConflictResolution): string {
   if (!result.found) {
-    return result.state.status === "skipped" && result.state.lastError !== null
-      ? result.state.lastError
+    return result.state.status !== "ok" && result.state.lastError !== null
+      ? describeSync(result.state)
       : "That note has no conflict anymore. Send /conflicts to see the list.";
   }
   const done = `${pickLabels[choice]}: ${path}.`;

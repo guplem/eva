@@ -533,6 +533,26 @@ describe("approvals and commands", () => {
     expect(sandbox.git(sandbox.remote, "show", "main:Notes/plan.md")).toBe("mine");
   });
 
+  test("/conflicts lists the notes without a pick first, so a long list reaches every note", async () => {
+    const vault = join(sandbox.root, "vault");
+    const other = sandbox.clone("other");
+    const names = Array.from({ length: 11 }, (_, index) => `Notes/n${String(index).padStart(2, "0")}.md`);
+    for (const name of names) sandbox.write(other, name, "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    for (const name of names) sandbox.write(vault, name, "mine\n");
+    expect(await eva.sweep()).toBe("conflict");
+    await eva.resolveVaultConflict("Notes/n00.md", "mine");
+
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick these first")));
+    const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("Notes/n10.md");
+    expect(texts).not.toContain("Notes/n00.md");
+  });
+
   test("/conflicts says so when the vault has none, and a stale button says the note has no conflict", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/conflicts");

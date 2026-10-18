@@ -115,7 +115,10 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         if (schedules !== null) {
           socket.data.unsubscribe.push(
             schedules.subscribe((event) => {
-              if (event.kind === "schedule_card") socket.send(JSON.stringify(event));
+              // Only a card that already waits: a card that Telegram shows at once never opens the dialog.
+              if (event.kind !== "schedule_card") return false;
+              const waits = schedules.waitingCards().some((card) => card.scheduleId === event.scheduleId);
+              if (waits) socket.send(JSON.stringify(event));
               // A socket is no proof that anyone saw the card: a sleeping phone keeps a dead
               // socket open. The card counts when the person confirms it over HTTP.
               return false;

@@ -519,6 +519,10 @@ describe("web routes", () => {
       body: { id: "morning", name: "Morning", at: "07:30", text: "Hi." },
     });
     await eva.schedules?.tick();
+    await Bun.sleep(50);
+    expect(events).toEqual([]);
+    // Only a card that already waits goes out, so the second check pushes it.
+    await eva.schedules?.tick();
     while (!events.some((event) => event.kind === "schedule_card")) await Bun.sleep(10);
     socket.close();
     expect(eva.schedules?.waitingCards()).toHaveLength(1);

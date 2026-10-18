@@ -365,6 +365,15 @@ describe("PiEngine", () => {
     expect(events.at(-1)).toEqual({ kind: "turn_failed", reason: "The turn was stopped." });
   });
 
+  test("a stop before pi's run starts is sent again when the run starts", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fake = new FakePi([{ records: loadPiFixture("abort") }]);
+    const events = await drain(engine(fake).runTurn(request({ signal: controller.signal })));
+    expect(fake.runs[0]?.sent.filter((record) => record["type"] === "abort")).toHaveLength(2);
+    expect(events.at(-1)).toEqual({ kind: "turn_failed", reason: "The turn was stopped." });
+  });
+
   test("a refused prompt, a dead process and a failed start each end the turn once", async () => {
     const refused = new FakePi([
       { records: [{ type: "response", command: "prompt", success: false, error: "Agent is already processing." }] },
@@ -395,7 +404,8 @@ describe("PiEngine", () => {
     writeFileSync(join(folder, "pi", "mcp-servers"), "not a folder");
     const blocked = await drain(engine(new FakePi([])).runTurn(request({ mcpServers: { google } })));
     expect(blocked).toHaveLength(1);
-    expect(blocked[0]).toMatchObject({ kind: "turn_failed" });
+    expect(blocked[0]?.kind).toBe("turn_failed");
+    expect(JSON.stringify(blocked[0])).toContain("Eva could not write the MCP server list");
   });
 
   test("continue runs on the same session file; a lost file says so first (lesson 46)", async () => {

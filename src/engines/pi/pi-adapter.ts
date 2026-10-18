@@ -19,8 +19,8 @@
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
  *   the person's global pi settings, so Eva never sends them.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -115,9 +115,22 @@ export class PiEngine implements EnginePort {
       promptFile,
       model: this.options.models[request.model] ?? this.options.models.default,
     });
+    if (specsFile !== null) {
+      try {
+        mkdirSync(dirname(specsFile), { recursive: true });
+        // A new name for each turn, so no atomic rename, and no temporary copy of the secrets can stay.
+        writeFileSync(specsFile, JSON.stringify(request.mcpServers), { mode: 0o600, flag: "wx" });
+      } catch (error) {
+        removeSpecs(specsFile);
+        yield {
+          kind: "turn_failed",
+          reason: `Eva could not write the MCP server list: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        return;
+      }
+    }
     let pi: PiProcess;
     try {
-      if (specsFile !== null) writeFileAtomic(specsFile, JSON.stringify(request.mcpServers));
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
         environment:
@@ -136,6 +149,7 @@ export class PiEngine implements EnginePort {
       pi.send({ type: "abort" });
     };
     request.signal.addEventListener("abort", onAbort);
+    if (request.signal.aborted) onAbort();
     try {
       yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
@@ -161,6 +175,10 @@ export class PiEngine implements EnginePort {
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
     for await (const record of pi.records) {
       const type = record["type"];
+      if (type === "agent_start" && request.signal.aborted) {
+        // pi drops an abort that comes before the run starts, such as while the MCP bridge loads.
+        pi.send({ type: "abort" });
+      }
       if (type === "response" && record["id"] === promptRequestId && record["success"] === false) {
         const error = record["error"];
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };

@@ -40,7 +40,10 @@ const host: CliHost = {
   platform: process.platform,
   arch: process.arch,
   userHome: homedir(),
-  userName: userInfo().username,
+  // Lazy: userInfo() throws for a uid with no passwd entry, and only doctor and the service install read it.
+  get userName() {
+    return userInfo().username;
+  },
   hostName: hostname(),
   pid: process.pid,
   parentPid: () => process.ppid,

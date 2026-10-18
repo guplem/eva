@@ -530,8 +530,8 @@ describe("approvals and commands", () => {
       {
         updateChannel: {
           kind: "executable",
-          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
         },
         restartForUpdate: () => restarts.push("restart"),
       },

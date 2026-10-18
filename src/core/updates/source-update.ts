@@ -58,6 +58,7 @@ async function check(options: SourceCheckoutOptions): Promise<UpdateCheck> {
     current: await git(options, ["rev-parse", "--short", "HEAD"]),
     latest: await git(options, ["rev-parse", "--short", `origin/${branch}`]),
     available: behind !== "0",
+    releases: null,
   };
 }
 
@@ -72,7 +73,12 @@ async function apply(options: SourceCheckoutOptions): Promise<UpdateCheck> {
     throw new EvaError("update_failed", `${options.folder} has its own commits. Update it by hand with git pull.`);
   const changed = (await git(options, ["diff", "--name-only", found.current, "HEAD"])).split("\n");
   if (changed.some((file) => dependencyFiles.includes(file.trim()))) await install(options, found.current);
-  return { current: found.current, latest: await git(options, ["rev-parse", "--short", "HEAD"]), available: false };
+  return {
+    current: found.current,
+    latest: await git(options, ["rev-parse", "--short", "HEAD"]),
+    available: false,
+    releases: null,
+  };
 }
 
 /** Installs the new dependencies, or goes back to the old commit when that fails. */

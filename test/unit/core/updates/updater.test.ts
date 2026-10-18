@@ -24,7 +24,7 @@ function harness(): Harness {
   let idle = true;
   let frequency: UpdateFrequency = "daily";
   let now = new Date("2026-10-17T10:00:00Z");
-  let found: UpdateCheck | Error = { current: "aaa1111", latest: "bbb2222", available: true };
+  let found: UpdateCheck | Error = { current: "aaa1111", latest: "bbb2222", available: true, releases: null };
   let applyError: Error | null = null;
   const channel: UpdateChannel = {
     kind: "source",
@@ -35,7 +35,7 @@ function harness(): Harness {
     apply: () => {
       calls.push("apply");
       if (applyError !== null) return Promise.reject(applyError);
-      return Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: false });
+      return Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: false, releases: null });
     },
   };
   const updater = new Updater({
@@ -98,7 +98,7 @@ describe("Updater", () => {
     const run = harness();
     run.setFound(new Error("offline"));
     expect(await run.updater.check()).toMatchObject({ lastError: "offline", failedStep: "check" });
-    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false });
+    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
     expect(await run.updater.check()).toMatchObject({ lastError: null, failedStep: null });
   });
 
@@ -111,7 +111,7 @@ describe("Updater", () => {
 
   test("update now does nothing when Eva is up to date or the check fails", async () => {
     const run = harness();
-    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false });
+    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
     expect((await run.updater.updateNow()).phase).toBe("idle");
     run.setFound(new Error("offline"));
     expect((await run.updater.updateNow()).phase).toBe("idle");
@@ -144,7 +144,7 @@ describe("Updater", () => {
 
   test("the tick checks at the frequency in the settings, and never when it is off", async () => {
     const run = harness();
-    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false });
+    run.setFound({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
     await run.updater.tick();
     run.advanceHours(23);
     await run.updater.tick();
@@ -183,11 +183,11 @@ describe("Updater restart", () => {
     const updater = new Updater({
       channel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
         apply: () => {
           // A schedule fires while the new version downloads.
           idle = false;
-          return Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false });
+          return Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null });
         },
       },
       frequency: () => "off",

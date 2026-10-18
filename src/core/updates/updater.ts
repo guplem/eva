@@ -5,6 +5,7 @@
  */
 import type { Logger } from "../../shared/logger.ts";
 import type { EvaConfig } from "../settings/home.ts";
+import type { ReleaseInfo } from "./release-policy.ts";
 
 export type UpdateFrequency = EvaConfig["updates"]["frequency"];
 
@@ -13,14 +14,16 @@ export interface UpdateCheck {
   readonly current: string;
   readonly latest: string;
   readonly available: boolean;
+  /** The newer releases, newest first. Null for a source checkout, which has no versions to pick. */
+  readonly releases: readonly ReleaseInfo[] | null;
 }
 
 /** Where updates come from: signed releases for the executable, git for a source checkout. */
 export interface UpdateChannel {
   readonly kind: "executable" | "source";
   check(): Promise<UpdateCheck>;
-  /** Installs the latest version. Returns the version before and after. */
-  apply(): Promise<UpdateCheck>;
+  /** Installs `version`, or the newest one when it is undefined. Returns the version before and after. */
+  apply(version?: string): Promise<UpdateCheck>;
 }
 
 export type UpdatePhase = "idle" | "checking" | "waiting_for_idle" | "updating" | "restarting";

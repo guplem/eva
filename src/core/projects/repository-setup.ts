@@ -98,6 +98,7 @@ const stackNeutralPrograms = new Set(["ls", "cat", "head", "tail", "wc", "grep",
 const needsAdmin = "Eva needs admin rights on this repository to read this.";
 const notRead = "Eva could not read this from GitHub.";
 const filesUnknown = "Eva could not read the files from GitHub.";
+const packageUnknown = "Eva could not read package.json from GitHub.";
 /** The last step of each fix request. "Copy all fixes" asks for one pull request instead. */
 const pullRequestStep = " Then open a pull request.";
 
@@ -253,9 +254,14 @@ function hookItem(context: Context): SetupItem {
   const files = context.target.files;
   if (files === null) return grey(label, filesUnknown);
   const paths = Object.keys(files);
-  const fixRequest = `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${context.referenceLink("blob", "lefthook.yml")} does.${pullRequestStep}`;
+  const example = context.referenceLink("blob", "lefthook.yml");
   if (!paths.some((path) => hookFilePattern.test(path) || path.startsWith(".husky/"))) {
-    return { label, light: "red", detail: "No Lefthook, Husky or pre-commit setup.", fixRequest };
+    return {
+      label,
+      light: "red",
+      detail: "No Lefthook, Husky or pre-commit setup.",
+      fixRequest: `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${example} does.${pullRequestStep}`,
+    };
   }
   const hooks = context.target.hooks;
   if (hooks === null) return grey(label, notRead);
@@ -265,7 +271,14 @@ function hookItem(context: Context): SetupItem {
     { name: "push", checks: checksOf(hooks.push, scripts) },
   ].filter((stage) => stage.checks.size > 0);
   if (stages.length === 0) {
-    return { label, light: "yellow", detail: "The hooks run no format check, lint or tests.", fixRequest };
+    // An unread package.json could hide the checks of a script that a hook calls.
+    if (context.target.scripts === null) return grey(label, packageUnknown);
+    return {
+      label,
+      light: "yellow",
+      detail: "The hooks run no format check, lint or tests.",
+      fixRequest: `In ${context.target.slug}, make the git hooks run the format and lint checks before each commit or push, as ${example} does.${pullRequestStep}`,
+    };
   }
   return green(label, stages.map((stage) => `Before each ${stage.name}: ${checkList(stage.checks)}.`).join(" "));
 }
@@ -323,12 +336,12 @@ function ciItem(context: Context): SetupItem {
     const missing = requiredCiChecks.filter((kind) => !checks.has(kind));
     if (missing.length === 0) return green(label, runs);
     // An unread package.json could hide the checks of a script that CI calls.
-    if (context.target.scripts === null) return grey(label, "Eva could not read package.json from GitHub.");
+    if (context.target.scripts === null) return grey(label, packageUnknown);
     return {
       label,
       light: "yellow",
       detail: checks.size === 0 ? runs : `${runs} No ${missing.map((kind) => checkNames[kind]).join(" or ")}.`,
-      fixRequest: `In ${context.target.slug}, make the pull-request CI run the lint and the tests, through one script that also runs the format check.${exampleText}${pullRequestStep}`,
+      fixRequest: `In ${context.target.slug}, make the pull-request CI run the lint and the tests. Each step calls the tool, such as \`eslint\` or \`pytest\`, or a package script that calls it.${exampleText}${pullRequestStep}`,
     };
   }
   return {

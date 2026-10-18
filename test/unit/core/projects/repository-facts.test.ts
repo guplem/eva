@@ -313,13 +313,39 @@ describe("readRepositoryFacts, scripts and git hooks", () => {
     expect(facts.scripts).toBeNull();
   });
 
-  test("a broken config gives no commands, not an error", async () => {
+  test("a broken package.json has no scripts; a hook config that Eva cannot parse is unknown", async () => {
     const facts = await readRepositoryFacts(
       slug,
       fakeGet(withFiles({ "package.json": "{ not json", "lefthook.yml": "pre-commit: [" })),
     );
     expect(facts.scripts).toEqual({});
-    expect(facts.hooks).toEqual({ commit: [], push: [] });
+    expect(facts.hooks).toBeNull();
+    const toml = await readRepositoryFacts(slug, fakeGet(withFiles({ "lefthook.toml": '[pre-push]\nrun = "x"' })));
+    expect(toml.hooks).toBeNull();
+  });
+
+  test("old pre-commit stage names count, and a hook with no stages runs before a commit", async () => {
+    const config = [
+      "repos:",
+      "  - hooks:",
+      "      - id: black",
+      "      - id: mypy",
+      "        stages: [push]",
+      "      - id: flake8",
+      "        stages: [commit, push]",
+    ].join("\n");
+    const facts = await readRepositoryFacts(slug, fakeGet(withFiles({ ".pre-commit-config.yaml": config })));
+    expect(facts.hooks).toEqual({ commit: ["black", "flake8"], push: ["mypy", "flake8"] });
+  });
+
+  test("a job that calls a workflow of the same repository runs that workflow's steps", async () => {
+    const caller = "on: pull_request\njobs:\n  checks:\n    uses: ./.github/workflows/shared.yml\n";
+    const shared = "on: workflow_call\njobs:\n  lint:\n    steps:\n      - run: npx eslint .\n";
+    const facts = await readRepositoryFacts(
+      slug,
+      fakeGet(withFiles({ ".github/workflows/ci.yml": caller, ".github/workflows/shared.yml": shared })),
+    );
+    expect(facts.workflows?.[0]).toMatchObject({ runsOnPullRequest: true, commands: ["npx eslint ."] });
   });
 });
 

@@ -27,7 +27,7 @@ const ghTimeoutMs = 30_000;
 const workflowPattern = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const settingsPath = ".claude/settings.json";
 const packagePath = "package.json";
-const lefthookPattern = /^\.?lefthook\.(?:ya?ml|json|jsonc)$/;
+const lefthookPattern = /^\.?lefthook\.(?:ya?ml|json|jsonc|toml)$/;
 const huskyStages: Readonly<Record<string, keyof HookFacts>> = {
   ".husky/pre-commit": "commit",
   ".husky/pre-push": "push",
@@ -186,7 +186,7 @@ async function readWorkflows(
       commands: stepCommands(fields),
     });
   }
-  return workflows;
+  return withLocalWorkflows(workflows);
 }
 
 function runsOnPullRequest(fields: Record<string, unknown> | null): boolean {
@@ -197,13 +197,25 @@ function runsOnPullRequest(fields: Record<string, unknown> | null): boolean {
   return asRecord(trigger)?.["pull_request"] !== undefined;
 }
 
-/** The `run` text or the `uses` action of each step, job by job. */
+/** The `run` text or the `uses` action of each step, job by job. A job can also `uses` a whole workflow. */
 function stepCommands(workflow: Record<string, unknown> | null): string[] {
   const jobs = Object.values(asRecord(workflow?.["jobs"]) ?? {});
   return jobs.flatMap((job) => {
-    const steps = asRecord(job)?.["steps"];
-    return listOf(steps).flatMap((step) => textField(step, "run") ?? textField(step, "uses") ?? []);
+    const steps = listOf(asRecord(job)?.["steps"]);
+    return [
+      textField(job, "uses") ?? [],
+      steps.map((step) => textField(step, "run") ?? textField(step, "uses") ?? []),
+    ].flat(2);
   });
+}
+
+/** Each call of a workflow in the same repository becomes the commands of that workflow, one level deep. */
+function withLocalWorkflows(workflows: readonly WorkflowFacts[]): WorkflowFacts[] {
+  const byPath = new Map(workflows.map((workflow) => [workflow.path, workflow.commands]));
+  return workflows.map((workflow) => ({
+    ...workflow,
+    commands: workflow.commands.flatMap((command) => byPath.get(command.replace(/^\.\//, "")) ?? [command]),
+  }));
 }
 
 /** The string scripts of a `package.json`; none when it is not JSON, as the package manager would fail. */
@@ -232,12 +244,16 @@ async function readHooks(
     const husky = huskyStages[path];
     if (husky !== undefined) {
       hooks[husky].push(text.text);
-    } else if (path === preCommitPath) {
-      addPreCommitHooks(asRecord(parseYamlText(text.text)), hooks);
+      continue;
+    }
+    // Eva reads no TOML, and a config with comments in JSON is not YAML. Unknown is grey, not "no checks".
+    const config = asRecord(parseYamlText(text.text));
+    if (config === null) return null;
+    if (path === preCommitPath) {
+      addPreCommitHooks(config, hooks);
     } else {
-      const config = asRecord(parseYamlText(text.text));
-      hooks.commit.push(...lefthookCommands(asRecord(config?.["pre-commit"])));
-      hooks.push.push(...lefthookCommands(asRecord(config?.["pre-push"])));
+      hooks.commit.push(...lefthookCommands(asRecord(config["pre-commit"])));
+      hooks.push.push(...lefthookCommands(asRecord(config["pre-push"])));
     }
   }
   return hooks;

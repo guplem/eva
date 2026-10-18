@@ -319,6 +319,8 @@ describe("evaluateSetup, edge cases", () => {
     });
     expect(item(report, "Git hooks").fixRequest).toContain("https://github.com/guplem/eva/blob/main/lefthook.yml");
     expect(item(evaluateSetup(reference, target({ hooks: null })), "Git hooks").light).toBe("grey");
+    const unreadScripts = target({ scripts: null, hooks: { commit: [], push: ["npm run check"] } });
+    expect(item(evaluateSetup(reference, unreadScripts), "Git hooks").light).toBe("grey");
     expect(item(evaluateSetup(reference, target()), "Git hooks").detail).toBe(
       "Before each commit: format check. Before each push: lint, tests.",
     );

@@ -20,7 +20,7 @@ import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
-import type { SessionEvent } from "../../shared/events.ts";
+import { isTurnEnd, type SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
@@ -63,8 +63,6 @@ interface AnswerState {
   readonly attached: Set<string>;
   /** Offered at the turn end, because a later block can still attach the same file. */
   readonly offered: Set<string>;
-  /** When a block of this answer last made the phone ring, in ms; null before the first block. */
-  lastRingMs: number | null;
 }
 
 interface TopicEntry {
@@ -139,8 +137,6 @@ const firstRetryMs = 1_000;
 const maxPollRetryMs = 60_000;
 const sendRetries = 3;
 const maxSendRetryMs = 30_000;
-/** The shortest time between two rings of one answer. */
-const answerRingGapMs = 60_000;
 const confirmAttempts = 3;
 /**
  * Message contents that Eva cannot read yet: the Telegram field, then its name in the reply.
@@ -192,6 +188,8 @@ export class TelegramBot {
   private readonly outbox: Map<string, Promise<void>>;
   /** The running turn of each chat. A file goes once per answer. */
   private readonly answers: Map<string, AnswerState>;
+  /** The newest answer block of each chat, until the next event of its turn. */
+  private readonly heldBlocks: Map<string, Extract<SessionEvent, { kind: "text" }>>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
@@ -227,6 +225,7 @@ export class TelegramBot {
     this.tooLongCards = new Map();
     this.outbox = new Map();
     this.answers = new Map();
+    this.heldBlocks = new Map();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -857,9 +856,18 @@ export class TelegramBot {
       }
       return;
     }
+    // A block waits for the next event of its turn, which tells whether the answer goes on. Only
+    // the block that ends the turn rings the phone, as the whole answer did before (issue #40).
+    // A tool call follows its text at once, so the wait is short.
+    const held = this.heldBlocks.get(event.sessionId);
+    if (held !== undefined) {
+      this.heldBlocks.delete(event.sessionId);
+      const quiet = !isTurnEnd(event);
+      void this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, held, quiet));
+    }
     switch (event.kind) {
       case "text":
-        await this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, event));
+        this.heldBlocks.set(event.sessionId, event);
         return;
       case "approval_needed":
         // In the chat's order, so the card never comes before the text that explains it.
@@ -902,29 +910,23 @@ export class TelegramBot {
   }
 
   /**
-   * Sends one answer block and its attachments as soon as the block ends. A marker is one whole
-   * line, and a block holds whole lines, so a marker is never shown half written (lesson 124).
-   * Offers wait for the turn end, because a later block can still attach the same file.
+   * Sends one answer block and its attachments. A marker is one whole line, and a block holds
+   * whole lines, so a marker is never shown half written (lesson 124). Offers wait for the turn
+   * end, because a later block can still attach the same file.
    */
   private async sendBlock(
     chatId: number,
     topicId: number | null,
     event: Extract<SessionEvent, { kind: "text" }>,
+    quiet: boolean,
   ): Promise<void> {
     const markers = extractFileMarkers(event.text);
     let answer = this.answers.get(event.sessionId);
     if (answer === undefined) {
-      answer = { attached: new Set(), offered: new Set(), lastRingMs: null };
+      answer = { attached: new Set(), offered: new Set() };
       this.answers.set(event.sessionId, answer);
     }
-    if (markers.text.length > 0) {
-      // A turn can write a short block before each tool call, and a ring for each would be noise.
-      // A long turn still rings again, so its last answer never arrives in silence.
-      const now = this.clock.now().getTime();
-      const ring = answer.lastRingMs === null || now - answer.lastRingMs >= answerRingGapMs;
-      if (ring) answer.lastRingMs = now;
-      await this.sendAnswer(chatId, topicId, markers.text, !ring);
-    }
+    if (markers.text.length > 0) await this.sendAnswer(chatId, topicId, markers.text, quiet);
     for (const path of markers.attach) {
       if (answer.attached.has(path)) continue;
       answer.attached.add(path);
@@ -996,7 +998,7 @@ export class TelegramBot {
           ...(quiet ? { disable_notification: true } : {}),
         });
       } catch (error) {
-        if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk);
+        if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk, undefined, quiet);
         else this.logFailedCall("sendMessage", error);
       }
     }
@@ -1008,6 +1010,7 @@ export class TelegramBot {
     topicId: number | null,
     text: string,
     replyMarkup?: unknown,
+    quiet = false,
   ): Promise<number | null> {
     try {
       const sent = await this.callWithRetry<{ message_id: number }>("sendMessage", {
@@ -1015,6 +1018,7 @@ export class TelegramBot {
         text: text.slice(0, telegramMessageLimit),
         ...threadOf(topicId),
         ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }),
+        ...(quiet ? { disable_notification: true } : {}),
       });
       return sent.message_id;
     } catch (error) {

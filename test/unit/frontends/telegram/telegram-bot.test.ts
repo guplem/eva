@@ -13,6 +13,13 @@ import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const owner = 4242;
+const readNote = {
+  kind: "tool_started",
+  toolUseId: "t1",
+  name: "Read",
+  category: "tool",
+  summary: "Read Methods/Plan.md",
+} as const;
 let sandbox: GitSandbox;
 let home: string;
 let telegram: FakeTelegram;
@@ -240,6 +247,7 @@ describe("chats", () => {
       (async function* () {
         const [, end] = FakeEngine.answer(request, "Second part.");
         yield { kind: "text" as const, text: "First part.", messageId: "m1" };
+        yield readNote;
         await finished;
         yield { kind: "text" as const, text: "Second part.", messageId: "m2" };
         if (end !== undefined) yield end;
@@ -253,49 +261,46 @@ describe("chats", () => {
     await settle(bot, () => telegram.sentTexts().includes("Second part."));
   });
 
-  test("the blocks of an answer ring the phone once", async () => {
+  test("only the block that ends the turn rings the phone, as the whole answer did", async () => {
     createEva((request) => {
       const [, end] = FakeEngine.answer(request, "done");
       return [
         { kind: "text", text: "Let me look.", messageId: "m1" },
-        { kind: "text", text: "Found it.", messageId: "m2" },
+        readNote,
+        { kind: "text", text: "Still on it.", messageId: "m2" },
+        { kind: "tool_finished", toolUseId: "t1", isError: false },
+        { kind: "text", text: "Here is the answer.", messageId: "m3" },
         ...(end === undefined ? [] : [end]),
       ];
     });
     const bot = createBot();
     telegram.sendText(owner, "Look");
-    await settle(bot, () => telegram.sentTexts().includes("Found it."));
-    const quiet = (text: string): unknown =>
-      telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
-    expect(quiet("Let me look.")).toBeUndefined();
-    expect(quiet("Found it.")).toBe(true);
-  });
-
-  test("a block after a minute with no ring rings again, so a long turn never ends in silence", async () => {
-    let finish: () => void = () => undefined;
-    const finished = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    createEva((request) =>
-      (async function* () {
-        const [, end] = FakeEngine.answer(request, "done");
-        yield { kind: "text" as const, text: "Let me look.", messageId: "m1" };
-        await finished;
-        yield { kind: "text" as const, text: "Still on it.", messageId: "m2" };
-        yield { kind: "text" as const, text: "Here is the answer.", messageId: "m3" };
-        if (end !== undefined) yield end;
-      })(),
-    );
-    const bot = createBot();
-    telegram.sendText(owner, "Look");
-    await settle(bot, () => telegram.sentTexts().includes("Let me look."));
-    clock = new Date(clock.getTime() + 61_000);
-    finish();
     await settle(bot, () => telegram.sentTexts().includes("Here is the answer."));
     const quiet = (text: string): unknown =>
       telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
-    expect(quiet("Still on it.")).toBeUndefined();
-    expect(quiet("Here is the answer.")).toBe(true);
+    expect(quiet("Let me look.")).toBe(true);
+    expect(quiet("Still on it.")).toBe(true);
+    expect(quiet("Here is the answer.")).toBeUndefined();
+  });
+
+  test("a quiet block stays quiet when Telegram refuses its HTML (lesson 58)", async () => {
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Let me look.", messageId: "m1" },
+        readNote,
+        { kind: "text", text: "Done.", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: can't parse entities");
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Done."));
+    const plain = telegram
+      .callsTo("sendMessage")
+      .find((call) => call.params["text"] === "Let me look." && call.params["parse_mode"] === undefined);
+    expect(plain?.params["disable_notification"]).toBe(true);
   });
 
   test("a failed turn says so after the blocks it already sent", async () => {

@@ -14,6 +14,19 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
+/** The task chip under the answer opens the chat's background tasks, also on a phone. */
+async function expectBackgroundTasks(page: Page): Promise<void> {
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+  }
+  await page.getByRole("button", { name: "1 background task" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("Search the notes");
+  await expect(dialog).toContainText("done");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
 test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("wrong");
@@ -33,7 +46,8 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await expect(page.getByText("1 tools").first()).toBeVisible();
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
 
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.locator(".branch")).toHaveCount(2);
@@ -77,6 +91,9 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
     await trustQuestion.getByRole("button", { name: "Deny" }).click();
   }
   await expect(answer).toContainText("Fix the bug");
+  // Project mode shows the same activity as Assistant mode.
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
 });
 
 test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {

@@ -55,6 +55,14 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     summary: "Grep notes",
   };
   yield { kind: "tool_finished", toolUseId: `tool-${String(turnNumber)}`, isError: false };
+  yield {
+    kind: "tool_started",
+    toolUseId: `command-${String(turnNumber)}`,
+    name: "Bash",
+    category: "command",
+    summary: "ls",
+  };
+  yield { kind: "tool_finished", toolUseId: `command-${String(turnNumber)}`, isError: false };
   if (lastLine.includes("approve")) {
     const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "gh issue create" });
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);

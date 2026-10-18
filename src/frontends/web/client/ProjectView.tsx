@@ -5,8 +5,9 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { Conversation, rootChats } from "./Conversation.tsx";
+import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
+import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -208,6 +209,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
           </>
         )}
       </main>
+      <TasksPanel tasks={tasksOf(live.tasks, chat === undefined ? [] : chatTreeIds(chat, sessions))} />
     </div>
   );
 }

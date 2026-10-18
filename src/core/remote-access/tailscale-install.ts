@@ -4,7 +4,7 @@
  * Other systems get the steps only.
  */
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { posix } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -29,6 +29,8 @@ const commandTimeoutMs = 60_000;
 const defaultPackagesBaseUrl = "https://pkgs.tailscale.com";
 /** Node's processor names, as the static builds name them. */
 const buildArch: Readonly<Record<string, string>> = { x64: "amd64", arm64: "arm64", arm: "arm", ia32: "386" };
+/** The programs of the static build that Eva keeps. */
+const programs = ["tailscale", "tailscaled"] as const;
 
 export function canInstallTailscale(platform: NodeJS.Platform): boolean {
   return platform === "win32" || platform === "linux";
@@ -87,14 +89,18 @@ async function installUserspace(inputs: InstallInputs): Promise<void> {
     throw failure("The Tailscale download does not match its checksum. Eva installed nothing.");
 
   const folders = userspaceFolders(inputs.homeFolder);
-  mkdirSync(folders.lib, { recursive: true });
+  mkdirSync(posix.dirname(folders.lib), { recursive: true });
   mkdirSync(folders.state, { recursive: true });
-  const download = posix.join(folders.lib, "download.tgz");
-  writeFileSync(download, tarball);
+  // Its own staging folder: two installs at once, such as from eva setup and from Telegram, never share a file.
+  const staging = mkdtempSync(posix.join(posix.dirname(folders.lib), "tailscale-download-"));
   try {
-    await run(inputs, ["tar", "-xzf", download, "--strip-components=1", "-C", folders.lib]);
+    const download = posix.join(staging, "download.tgz");
+    writeFileSync(download, tarball);
+    await run(inputs, ["tar", "-xzf", download, "--strip-components=1", "-C", staging]);
+    mkdirSync(folders.lib, { recursive: true });
+    for (const program of programs) renameSync(posix.join(staging, program), posix.join(folders.lib, program));
   } finally {
-    rmSync(download, { force: true });
+    rmSync(staging, { recursive: true, force: true });
   }
 
   // The person's own commands find the same daemon through this script.
@@ -127,8 +133,14 @@ async function installUserspace(inputs: InstallInputs): Promise<void> {
       "",
     ].join("\n"),
   );
-  await run(inputs, ["systemctl", "--user", "daemon-reload"]);
-  await run(inputs, ["systemctl", "--user", "enable", "--now", "tailscaled"]);
+  try {
+    await run(inputs, ["systemctl", "--user", "daemon-reload"]);
+    await run(inputs, ["systemctl", "--user", "enable", "--now", "tailscaled"]);
+  } catch (error) {
+    // Programs with no service that runs them would hide the Install step for good: take them out again.
+    for (const program of programs) rmSync(posix.join(folders.lib, program), { force: true });
+    throw error;
+  }
 }
 
 async function fetchOrFail(url: string): Promise<Response> {

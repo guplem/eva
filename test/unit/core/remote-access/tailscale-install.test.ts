@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canInstallTailscale, installTailscale } from "../../../../src/core/remote-access/tailscale-install.ts";
@@ -120,7 +129,8 @@ describe("installTailscale", () => {
     const lib = join(home, ".local", "lib", "tailscale");
     expect(existsSync(join(lib, "tailscale"))).toBe(true);
     expect(existsSync(join(lib, "tailscaled"))).toBe(true);
-    expect(existsSync(join(lib, "download.tgz"))).toBe(false);
+    // The download unpacked in its own staging folder, which is gone now.
+    expect(readdirSync(join(home, ".local", "lib"))).toEqual(["tailscale"]);
     expect(commands[0]?.[0]).toBe("tar");
     const unit = readFileSync(join(home, ".config", "systemd", "user", "tailscaled.service"), "utf8");
     expect(unit).toContain("--tun=userspace-networking");
@@ -130,7 +140,8 @@ describe("installTailscale", () => {
     const wrapper = join(home, ".local", "bin", "tailscale");
     expect(readFileSync(wrapper, "utf8")).toContain('--socket="$HOME/.local/share/tailscale/tailscaled.sock"');
     expect(readFileSync(wrapper, "utf8")).not.toContain(home);
-    expect(statSync(wrapper).mode & 0o111).not.toBe(0);
+    // Windows has no execute bit (lesson 76).
+    if (process.platform !== "win32") expect(statSync(wrapper).mode & 0o111).not.toBe(0);
     expect(commands.slice(1)).toEqual([
       ["systemctl", "--user", "daemon-reload"],
       ["systemctl", "--user", "enable", "--now", "tailscaled"],
@@ -190,6 +201,8 @@ describe("installTailscale", () => {
       (caught: unknown) => caught,
     );
     expect((noService as Error).message).toContain("systemctl broke");
+    // No program stays behind with no service to run it, so the Install step comes back.
+    expect(existsSync(join(home, ".local", "lib", "tailscale", "tailscale"))).toBe(false);
     const offline = await installTailscale({
       ...inputs,
       runner: fakeRunner([]),

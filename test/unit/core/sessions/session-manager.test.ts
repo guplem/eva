@@ -798,6 +798,49 @@ describe("approvals", () => {
   });
 });
 
+describe("background tasks", () => {
+  test("a front end that missed the events reads the tasks of a running turn, in their last state", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value");
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "task_changed", taskId: "k1", description: "look", state: "running" };
+        yield { kind: "task_changed", taskId: "k1", description: "looked", state: "done" };
+        yield { kind: "task_changed", taskId: "k2", description: "echo the-secret-value", state: "running" };
+        await released;
+        yield* FakeEngine.answer(request, "done");
+      }),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    while (manager.backgroundTasks().length < 2) await Bun.sleep(5);
+    expect(manager.backgroundTasks()).toEqual([
+      { taskId: "k1", sessionId, description: "looked", state: "done" },
+      { taskId: "k2", sessionId, description: "echo [redacted]", state: "running" },
+    ]);
+    release();
+    await turn;
+    expect(manager.backgroundTasks()).toEqual([]);
+  });
+
+  test("a failed turn forgets its tasks, because the engine process ends with the turn", async () => {
+    const manager = createManager(
+      new FakeEngine(() => [
+        { kind: "task_changed", taskId: "k1", description: "look", state: "running" },
+        { kind: "turn_failed", reason: "boom" },
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(manager.backgroundTasks()).toEqual([]);
+  });
+});
+
 describe("after a turn", () => {
   test("a follow-up message from the mode goes to the same session as the next turn", async () => {
     followUps = ["continue the skill run", null];

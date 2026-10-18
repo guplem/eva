@@ -19,6 +19,7 @@ import {
   type EngineEventPayload,
   type MessageOrigin,
   type SessionEvent,
+  type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
@@ -109,6 +110,14 @@ export interface PendingApproval {
   readonly summary: string;
 }
 
+/** A background task of a running turn, in its last state. The description is already redacted. */
+export interface BackgroundTask {
+  readonly taskId: string;
+  readonly sessionId: string;
+  readonly description: string;
+  readonly state: TaskState;
+}
+
 type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
@@ -148,6 +157,11 @@ export class SessionManager {
     string,
     { readonly question: PendingApproval; readonly resolve: (answer: PrepareAnswer) => void }
   >();
+  /**
+   * The tasks of each running turn, by task id. A task cannot outlive its turn: the engine
+   * process ends with it, and the stream drops each later event.
+   */
+  private readonly tasks = new Map<string, BackgroundTask>();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
@@ -364,6 +378,15 @@ export class SessionManager {
     return [...this.approvals.values()].map((pending) => pending.question);
   }
 
+  /** The tasks of the running turns, so a front end that missed the events still shows them. */
+  backgroundTasks(): BackgroundTask[] {
+    return [...this.tasks.values()];
+  }
+
+  private forgetTasks(sessionId: string): void {
+    for (const [taskId, task] of this.tasks) if (task.sessionId === sessionId) this.tasks.delete(taskId);
+  }
+
   private expireApprovals(sessionId: string): void {
     for (const [requestId, pending] of this.approvals) {
       if (pending.question.sessionId === sessionId) this.resolveApproval(requestId, "expired");
@@ -497,6 +520,8 @@ ${prompt}`,
         if (payload.kind === "task_changed") {
           taskIds.add(payload.taskId);
           activity.taskCount = taskIds.size;
+          const { taskId, description, state } = payload;
+          this.tasks.set(taskId, { taskId, sessionId, description, state });
         }
         steps = addStep(steps, payload);
         if (payload.kind === "turn_finished") {
@@ -528,6 +553,7 @@ ${prompt}`,
     } finally {
       clearTimeout(timeout);
       runtime.controller = null;
+      this.forgetTasks(sessionId);
     }
     if (finished === null)
       this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);

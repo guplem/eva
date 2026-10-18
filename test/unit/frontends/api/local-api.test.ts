@@ -375,6 +375,29 @@ describe("routes", () => {
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
   });
 
+  test("serves the background tasks of a running turn, for a page that missed their events", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      yield { kind: "task_changed", taskId: "k1", description: "look around", state: "running" };
+      await released;
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    while (eva.sessions.backgroundTasks().length === 0) await Bun.sleep(5);
+    expect(await json<unknown>(await call("/api/tasks"))).toEqual([
+      { taskId: "k1", sessionId: session.id, description: "look around", state: "running" },
+    ]);
+    release();
+    await turn;
+    expect(await json<unknown>(await call("/api/tasks"))).toEqual([]);
+  });
+
   test("a WebSocket with no token is refused", async () => {
     const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events`);
     const outcome = await new Promise<string>((resolve) => {

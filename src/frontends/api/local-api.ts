@@ -275,6 +275,7 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   if (method === "GET" && url.pathname === "/api/sessions")
     return json(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps));
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
+  if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
     const tag = url.searchParams.get("tag");

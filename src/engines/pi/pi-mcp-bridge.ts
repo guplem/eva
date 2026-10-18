@@ -16,6 +16,12 @@ import { readFileSync, rmSync } from "node:fs";
 /** The variable that names the file of server specs. pi-mcp-extension.ts holds the same name for Eva. */
 export const mcpServersFileVariable = "EVA_MCP_SERVERS_FILE";
 
+/**
+ * Starts each problem line that the bridge sends to pi's RPC client with `notify`. The prefix
+ * tells Eva's pi adapter that the line is the bridge's. pi-mcp-extension.ts holds the same text.
+ */
+export const mcpNoticePrefix = "eva-mcp-notice:";
+
 /** `uvx` can download the server on its first start. */
 const defaultStartTimeoutMs = 60_000;
 const protocolVersion = "2025-06-18";
@@ -64,6 +70,12 @@ export interface BridgePi {
     ): Promise<{ content: ToolContent[]; details: Record<string, never> }>;
   }): void;
   on(event: "session_shutdown", handler: () => Promise<void>): void;
+  on(event: "session_start", handler: (event: unknown, context: BridgeContext) => Promise<void>): void;
+}
+
+/** The part of pi's extension context that the bridge uses. */
+export interface BridgeContext {
+  readonly ui: { notify(message: string, type?: "info" | "warning" | "error"): void };
 }
 
 interface McpClient {
@@ -75,7 +87,7 @@ interface McpClient {
 
 export interface BridgeOptions {
   readonly startTimeoutMs: number;
-  /** Where a problem goes: pi's stderr, which Eva shows when a turn fails. */
+  /** Where a problem goes too: pi's stderr, which Eva shows when a turn fails. */
   readonly report: (line: string) => void;
 }
 
@@ -90,6 +102,16 @@ export default async function evaMcpBridge(pi: BridgePi): Promise<void> {
 export async function startBridge(pi: BridgePi, options: BridgeOptions): Promise<void> {
   const servers = readServers();
   const clients: McpClient[] = [];
+  const problems: string[] = [];
+  const report = (line: string): void => {
+    problems.push(line);
+    options.report(line);
+  };
+  // pi binds the RPC client to the context before `session_start`, and after this start ends.
+  pi.on("session_start", async (_event, context) => {
+    for (const line of problems) context.ui.notify(`${mcpNoticePrefix}${line}`, "error");
+    await Promise.resolve();
+  });
   // pi waits for this handler, so the servers stop before pi exits.
   pi.on("session_shutdown", async () => {
     await Promise.all(clients.map((client) => client.close()));
@@ -112,11 +134,11 @@ export async function startBridge(pi: BridgePi, options: BridgeOptions): Promise
         );
         client.notify("notifications/initialized", {});
         const tools = await listTools(client, remaining);
-        for (const tool of tools) register(pi, client, server, tool, options);
+        for (const tool of tools) register(pi, client, server, tool, report);
       } catch (error) {
         // A server that fails costs its tools, never the turn.
         await client?.close();
-        options.report(`Eva could not start the MCP server "${server}": ${messageOf(error)}`);
+        report(`Eva could not start the MCP server "${server}": ${messageOf(error)}`);
       }
     }),
   );
@@ -167,12 +189,18 @@ async function listTools(client: McpClient, remaining: () => number): Promise<Mc
   return tools;
 }
 
-function register(pi: BridgePi, client: McpClient, server: string, tool: McpTool, options: BridgeOptions): void {
+function register(
+  pi: BridgePi,
+  client: McpClient,
+  server: string,
+  tool: McpTool,
+  report: (line: string) => void,
+): void {
   // Claude Code makes the same change, so the names stay equal for both engines.
   const name = `mcp__${server}__${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, "_");
   if (name.length > maxToolNameLength) {
     // The model provider refuses the whole request for one long name, so the turn would fail.
-    options.report(`Eva skipped the MCP tool "${name}": its name is too long.`);
+    report(`Eva skipped the MCP tool "${name}": its name is too long.`);
     return;
   }
   pi.registerTool({

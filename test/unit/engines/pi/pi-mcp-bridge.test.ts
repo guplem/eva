@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import evaMcpBridge, {
+  mcpNoticePrefix,
   mcpServersFileVariable,
   startBridge,
   type BridgeOptions,
@@ -15,22 +16,44 @@ import evaMcpBridge, {
 import * as extension from "../../../../src/engines/pi/pi-mcp-extension.ts";
 
 type Tool = Parameters<BridgePi["registerTool"]>[0];
+type StartHandler = Parameters<BridgePi["on"]>[1];
+interface Notice {
+  readonly message: string;
+  readonly type: string | undefined;
+}
 
 class FakeExtensionApi implements BridgePi {
   readonly tools: Tool[];
   private readonly shutdownHandlers: (() => Promise<void>)[];
+  private readonly startHandlers: StartHandler[];
 
   constructor() {
     this.tools = [];
     this.shutdownHandlers = [];
+    this.startHandlers = [];
   }
 
   registerTool(tool: Tool): void {
     this.tools.push(tool);
   }
 
-  on(_event: "session_shutdown", handler: () => Promise<void>): void {
-    this.shutdownHandlers.push(handler);
+  on(event: "session_start" | "session_shutdown", handler: StartHandler): void {
+    if (event === "session_start") this.startHandlers.push(handler);
+    else this.shutdownHandlers.push(handler as () => Promise<void>);
+  }
+
+  /** What pi's RPC client gets from each `notify` at the session start. */
+  async startSession(): Promise<Notice[]> {
+    const notices: Notice[] = [];
+    const context = {
+      ui: {
+        notify: (message: string, type?: "info" | "warning" | "error") => {
+          notices.push({ message, type });
+        },
+      },
+    };
+    for (const handler of this.startHandlers) await handler({}, context);
+    return notices;
   }
 
   async shutdown(): Promise<void> {
@@ -120,6 +143,7 @@ describe("the pi MCP bridge", () => {
       await Bun.file(join(import.meta.dir, "..", "..", "..", "..", "src", "engines", "pi", "pi-mcp-bridge.ts")).text(),
     );
     expect(extension.mcpServersFileVariable).toBe(mcpServersFileVariable);
+    expect(extension.mcpNoticePrefix).toBe(mcpNoticePrefix);
   });
 
   test("registers every tool of every page under Claude Code's name, and deletes the specs", async () => {
@@ -241,6 +265,22 @@ describe("the pi MCP bridge", () => {
       'Eva skipped the MCP tool "mcp__google__a_tool_with_a_name_that_is_too_long_for_a_model_provider"',
     ]);
     expect(reports.find((line) => line.includes('"silent"'))).toMatch(/No answer to initialize after \d+ ms\.$/);
+  });
+
+  test("tells pi's client each problem at the session start, so the person sees it", async () => {
+    writeServers({ missing: { command: join(folder, "no-such-program"), args: [], environment: {} } });
+    await startBridge(api, options(1_000));
+    const notices = await api.startSession();
+    expect(notices).toEqual([{ message: `${mcpNoticePrefix}${reports[0] ?? ""}`, type: "error" }]);
+    expect(reports[0]).toStartWith('Eva could not start the MCP server "missing": ');
+  });
+
+  test("a server that starts tells pi's client only of the tools that it skipped", async () => {
+    writeServers({ google: google() });
+    await startBridge(api, options(10_000));
+    expect((await api.startSession()).map((notice) => notice.message)).toEqual([
+      `${mcpNoticePrefix}Eva skipped the MCP tool "mcp__google__a_tool_with_a_name_that_is_too_long_for_a_model_provider": its name is too long.`,
+    ]);
   });
 
   test("no specs, or a broken specs file, starts no server", async () => {

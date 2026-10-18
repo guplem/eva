@@ -828,8 +828,10 @@ describe("background tasks", () => {
     const sessionId = newAssistantSession(manager);
     const turn = manager.send(sessionId, "go");
     try {
-      await waitUntil(() => manager.backgroundTasks().length === 2);
-      expect(manager.backgroundTasks()).toEqual([
+      await waitUntil(() => manager.backgroundTasks().tasks.length === 2);
+      // The page drops a snapshot older than an event that it already has.
+      expect(manager.backgroundTasks().seq).toBe(events.at(-1)?.seq ?? -1);
+      expect(manager.backgroundTasks().tasks).toEqual([
         { taskId: "k1", sessionId, description: "looked", state: "done" },
         { taskId: "k2", sessionId, description: "echo [redacted]", state: "running" },
       ]);
@@ -837,7 +839,7 @@ describe("background tasks", () => {
       release();
       await turn;
     }
-    expect(manager.backgroundTasks()).toEqual([]);
+    expect(manager.backgroundTasks().tasks).toEqual([]);
   });
 
   test("the end event forgets the tasks, also while the engine stream still closes", async () => {
@@ -856,7 +858,7 @@ describe("background tasks", () => {
     const turn = manager.send(sessionId, "go");
     try {
       await waitUntil(() => events.some((event) => event.kind === "turn_finished"));
-      expect(manager.backgroundTasks()).toEqual([]);
+      expect(manager.backgroundTasks().tasks).toEqual([]);
     } finally {
       release();
       await turn;
@@ -880,7 +882,7 @@ describe("background tasks", () => {
       // The second chat's turn ends first: the first chat's task still runs.
       releases[1]?.();
       await turns[1];
-      expect(manager.backgroundTasks()).toEqual([
+      expect(manager.backgroundTasks().tasks).toEqual([
         { taskId: "k1", sessionId: first, description: "one", state: "running" },
       ]);
     } finally {
@@ -899,10 +901,10 @@ describe("background tasks", () => {
     );
     const sessionId = newAssistantSession(manager);
     const turn = manager.send(sessionId, "go");
-    await waitUntil(() => manager.backgroundTasks().length === 1);
+    await waitUntil(() => manager.backgroundTasks().tasks.length === 1);
     manager.stop(sessionId);
     await turn;
-    expect(manager.backgroundTasks()).toEqual([]);
+    expect(manager.backgroundTasks().tasks).toEqual([]);
   });
 
   test("a failed turn forgets its tasks, because the engine process ends with the turn", async () => {
@@ -914,7 +916,7 @@ describe("background tasks", () => {
     );
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(manager.backgroundTasks()).toEqual([]);
+    expect(manager.backgroundTasks().tasks).toEqual([]);
   });
 });
 

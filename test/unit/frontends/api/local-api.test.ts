@@ -392,15 +392,15 @@ describe("routes", () => {
     const turn = eva.sessions.send(session.id, "go");
     try {
       const deadline = Date.now() + 5_000;
-      while (eva.sessions.backgroundTasks().length === 0 && Date.now() < deadline) await Bun.sleep(5);
-      expect(await json<unknown>(await call("/api/tasks"))).toEqual([
+      while (eva.sessions.backgroundTasks().tasks.length === 0 && Date.now() < deadline) await Bun.sleep(5);
+      expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([
         { taskId: "k1", sessionId: session.id, description: "look around", state: "running" },
       ]);
     } finally {
       release();
       await turn;
     }
-    expect(await json<unknown>(await call("/api/tasks"))).toEqual([]);
+    expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([]);
   });
 
   test("the session list sends the steps of the recent turns only, and the store keeps them all", async () => {

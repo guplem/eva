@@ -9,7 +9,7 @@ import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
-import type { BackgroundTask, PendingApproval } from "../../../core/sessions/session-manager.ts";
+import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
@@ -118,7 +118,7 @@ export const api = {
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
-  backgroundTasks: (): Promise<BackgroundTask[]> => request("GET", "/api/tasks"),
+  backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {

@@ -118,6 +118,15 @@ export interface BackgroundTask {
   readonly state: TaskState;
 }
 
+export interface TaskSnapshot {
+  /**
+   * The `seq` of the last event before the snapshot. A front end drops a snapshot older than
+   * an event that it already applied, because the reply and the events travel apart (lesson 83).
+   */
+  readonly seq: number;
+  readonly tasks: readonly BackgroundTask[];
+}
+
 type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
@@ -379,8 +388,8 @@ export class SessionManager {
   }
 
   /** The tasks of the running turns, so a front end that missed the events still shows them. */
-  backgroundTasks(): BackgroundTask[] {
-    return [...this.tasks.values()];
+  backgroundTasks(): TaskSnapshot {
+    return { seq: this.sequence.current(), tasks: [...this.tasks.values()] };
   }
 
   private forgetTasks(sessionId: string): void {

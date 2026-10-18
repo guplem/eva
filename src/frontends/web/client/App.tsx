@@ -132,8 +132,8 @@ function EvaApp(): ReactElement {
       // The next reconnect or the next visit tries again.
     }
     try {
-      const tasks = await api.backgroundTasks();
-      setLive((state) => withTasks(state, tasks));
+      const snapshot = await api.backgroundTasks();
+      setLive((state) => withTasks(state, snapshot));
     } catch {
       // The next reconnect or the next visit tries again.
     }

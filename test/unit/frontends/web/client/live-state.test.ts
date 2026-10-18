@@ -91,7 +91,10 @@ describe("applyEvent", () => {
   });
 
   test("a turn that ends after a reload drops the tasks that the core sent", () => {
-    let state = withTasks(emptyLiveState, [{ taskId: "k1", sessionId: "s1", description: "look", state: "running" }]);
+    let state = withTasks(emptyLiveState, {
+      seq: 0,
+      tasks: [{ taskId: "k1", sessionId: "s1", description: "look", state: "running" }],
+    });
     expect(state.tasks).toEqual({ k1: { description: "look", state: "running", sessionId: "s1" } });
     state = applyEvent(state, event({ kind: "turn_finished", ...finished }));
     expect(state.tasks).toEqual({});
@@ -99,12 +102,30 @@ describe("applyEvent", () => {
 
   test("the tasks from the core replace the ones this page knew", () => {
     const state = run([{ kind: "task_changed", taskId: "k1", description: "look", state: "running" }]);
-    expect(withTasks(state, []).tasks).toEqual({});
+    expect(withTasks(state, { seq: seq + 1, tasks: [] }).tasks).toEqual({});
   });
 
-  test("the end of a turn with no live steps leaves the state as it was", () => {
-    const state = run([{ kind: "text", text: "hi", messageId: "m1" }], "s2");
-    expect(applyEvent(state, event({ kind: "turn_failed", reason: "boom" }))).toBe(state);
+  test("a snapshot older than the last task event is ignored, so an ended task never comes back (lesson 83)", () => {
+    const running = { taskId: "k1", sessionId: "s1", description: "look", state: "running" as const };
+    const read = seq;
+    const state = run([
+      { kind: "task_changed", ...running },
+      { kind: "turn_finished", ...finished },
+    ]);
+    expect(withTasks(state, { seq: read + 1, tasks: [running] })).toBe(state);
+  });
+
+  test("the end of a turn with no live steps keeps the steps and tasks of the other sessions", () => {
+    const state = run(
+      [
+        { kind: "text", text: "hi", messageId: "m1" },
+        { kind: "task_changed", taskId: "k1", description: "look", state: "running" },
+      ],
+      "s2",
+    );
+    const after = applyEvent(state, event({ kind: "turn_failed", reason: "boom" }));
+    expect(after.steps).toEqual(state.steps);
+    expect(after.tasks).toEqual(state.tasks);
   });
 
   test("an event with no step leaves the state as it was", () => {

@@ -116,7 +116,9 @@ export const api = {
   removeSecret: (name: PageSecretName): Promise<{ restartNeeded: boolean }> =>
     request("DELETE", `/api/secrets/${name}`),
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
-  updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
+  updateNow: (version?: string): Promise<UpdateStatus> =>
+    request("POST", "/api/update", version === undefined ? {} : { version }),
+  checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),

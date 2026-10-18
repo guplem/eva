@@ -1,0 +1,56 @@
+/**
+ * The manual update to a chosen version: only newer releases, each with what the jump to it
+ * brings, breaking changes first. A major jump shows a warning before the person confirms.
+ */
+import { useState, type ReactElement } from "react";
+import type { UpdateStatus } from "../../../core/updates/updater.ts";
+
+export const majorUpdateWarning =
+  "This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
+
+export function UpdateVersionDialog(props: {
+  update: UpdateStatus;
+  onInstall: (version: string) => void;
+  onClose: () => void;
+}): ReactElement {
+  const { releases } = props.update;
+  const [version, setVersion] = useState(releases[0]?.version ?? "");
+  const chosen = releases.find((release) => release.version === version);
+  return (
+    <div className="dialog-backdrop">
+      <div className="dialog" role="dialog" aria-modal="true" aria-label="Update to a version">
+        <strong>Update to a version</strong>
+        {chosen === undefined ? (
+          <div>Eva {props.update.current ?? "?"} is the newest version. No newer release exists.</div>
+        ) : (
+          <>
+            <label>
+              Version (this is {props.update.current ?? "?"})
+              <select value={version} onChange={(event) => setVersion(event.target.value)}>
+                {releases.map((release) => (
+                  <option key={release.version} value={release.version}>
+                    {release.version} ({release.level})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {chosen.level === "major" && (
+              <div className="update-warning" role="alert">
+                {majorUpdateWarning}
+              </div>
+            )}
+            <div className="release-summary">{chosen.summary}</div>
+          </>
+        )}
+        <div className="message-actions">
+          {chosen !== undefined && (
+            <button className="primary" onClick={() => props.onInstall(chosen.version)}>
+              Install {chosen.version}
+            </button>
+          )}
+          <button onClick={props.onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}

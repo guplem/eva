@@ -803,3 +803,16 @@ textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.update-warning {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.release-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow-y: auto;
+  font-size: 13px;
+}

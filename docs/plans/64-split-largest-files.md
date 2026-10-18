@@ -55,4 +55,10 @@ The types that front ends import move with their logic. The importers change to 
 
 ## Gaps
 
-To be filled by the gap review.
+Three reviewers looked at each gap. They agreed, so no gap needs the owner.
+
+1. **Where `serve` goes.** `src/main.ts` keeps the composition: the engines, `new Eva`, the local API and the `process` handlers. Each decision moves to a tested function: the start steps, the Tailscale retry, the stop order, the new copy and the Telegram start.
+2. **Process facts.** One readonly `CliHost` interface in `frontends/cli/host.ts`. `main.ts` builds the only real host. Tests build a literal. `runDoctor`, `runSetup` and `runNetworkSetup` keep their own options.
+3. **Types from `eva.ts`.** Each type moves with its logic, and the importers change to the new path. No re-export: `src/` has none today, and commit `2eecb32` split `core/instance` the same way.
+4. **Tests.** Bun checks the coverage floor for each file. A pure move keeps its facade tests, if they cover the new file. Code out of `main.ts` has no tests today, so each new module gets a test file.
+5. **The raw `spawn` of the new copy.** No seam fits a detached child. The pure parts move to `core/instance/new-copy.ts` with tests. The one `spawn(...).unref()` call stays in `main.ts`, and the stop order gets it as a function.

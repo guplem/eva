@@ -50,10 +50,10 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 
 **Claude Code**, for a Claude subscription:
 
-1. When setup asks for the Claude token, open another terminal.
-2. Run `claude setup-token`, and sign in when the browser opens.
-   If the terminal does not find `claude`, run the command that setup showed after the install.
-3. Copy the token that it prints, and paste it into setup.
+1. Run `claude setup-token` on any computer with a browser, such as your laptop. Sign in when the browser opens.
+   On Eva's computer, if the terminal does not find `claude`, run the command that setup showed after the install.
+2. Copy the token that it prints. It lasts a year.
+3. Paste it into setup at "Claude token", or into **Engines** in Settings on Eva's page.
 
 **pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
 
@@ -103,47 +103,56 @@ Setup also asks for a GitHub token (a password for one app). Eva needs it for a 
 
    Close PowerShell and open it again, so that it finds the new programs.
 
-3. Run the setup, and answer its questions (see [What setup asks](#what-setup-asks)). It installs Claude Code and pi too:
+3. Run the setup, as [The short path](#the-short-path) says:
 
    ```bash
    eva setup
    ```
 
-4. Start Eva, and make her start by herself each time you log in:
-
-   ```bash
-   eva service install
-   ```
-
-   Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator** and run the command again.
+   When setup starts Eva, Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator**, and run `eva service install`.
 
    If Eva crashes, she starts again within a minute. On the hub, she then tells you in Telegram. She does not start again after you stop her, or when her settings are wrong.
 
-5. Pair your Telegram chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
+4. With a Telegram bot, pair your chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
+
+## The short path
+
+Eva's computer may have no screen. You then reach it over SSH, and touch it as little as possible. `eva setup` does the steps that only that computer can do, and you finish the rest on Eva's page:
+
+1. Setup installs what is missing: Claude Code, pi and Tailscale. Open the Tailscale sign-in link that it shows, on any device.
+2. Setup asks to start Eva. Press Enter. She then starts by herself each time the computer starts.
+3. Setup shows Eva's address. Open it on your phone or your laptop. The page shows a short code.
+4. Type that code in the terminal. The device that shows it can now open Eva, with the same control as the terminal.
+5. Finish on the page: **Settings** lists each step that is left, with what to do. Or answer the next questions in the terminal. Both work at the same time.
+
+Setup saves each answer at once, so you can stop it with Ctrl+C at any question and lose nothing. A step done on the page is not asked again in the terminal. To let another device in later, open the page on it, and run `eva devices allow <code>` on Eva's computer.
 
 ## What setup asks
 
-Press Enter to keep the value in brackets. Eva saves each answer on this computer.
+Setup asks each question only when its step is not done yet. Press Enter to keep the value in brackets, or to skip a question.
 
-| Question                    | What to answer                                                                                                                                                                                                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Time zone                   | Enter keeps your computer's time zone.                                                                                                                                                                                                                                   |
-| Your vault's repository     | Your notebook's address, or Enter to start a new notebook.                                                                                                                                                                                                               |
-| GitHub login or token       | For an `https://github.com/` address, Enter logs in in the browser. Otherwise, type `login`, or press Enter to skip. Until [#113](https://github.com/guplem/eva/issues/113), paste the token. See [Decide where your notebook lives](#decide-where-your-notebook-lives). |
-| New notebook                | For a new notebook only: `y`, then the questions below.                                                                                                                                                                                                                  |
-| What should Eva call you?   | Your name, or the name that you like.                                                                                                                                                                                                                                    |
-| Language                    | The language of Eva's answers. Enter keeps English.                                                                                                                                                                                                                      |
-| Main topics                 | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                                                                                                                    |
-| New GitHub repository       | A name for your notebook's private repository, such as `vault`.                                                                                                                                                                                                          |
-| Claude Code and pi          | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                                                                                                                                       |
-| Trusted GitHub accounts     | Your GitHub user name. Eva then opens your own projects without a question.                                                                                                                                                                                              |
-| Claude token                | The token from `claude setup-token`. With pi, press Enter.                                                                                                                                                                                                               |
-| Telegram bot token          | The token from BotFather.                                                                                                                                                                                                                                                |
-| Telegram chat id            | Enter, to pair with a code instead.                                                                                                                                                                                                                                      |
-| Google account, voice model | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                                                                             |
-| Tailscale                   | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).                                                                                                                                                                    |
+| Question                     | What to answer                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code and pi           | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                |
+| Tailscale                    | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).                                             |
+| Start Eva                    | Enter starts Eva now, and each time the computer starts.                                                                                          |
+| The code that the page shows | The short code on Eva's page, to let that device in. Enter goes on in the terminal.                                                               |
+| Time zone                    | Enter keeps your computer's time zone.                                                                                                            |
+| Your vault's repository      | Your notebook's address, or Enter to start a new notebook.                                                                                        |
+| GitHub token                 | A token for a private notebook and private projects, or Enter to skip. See [Decide where your notebook lives](#decide-where-your-notebook-lives). |
+| Vault folder                 | For a new notebook only: the folder for it. Enter keeps the folder in brackets.                                                                   |
+| New notebook                 | For a new notebook only: `y`, then the questions below.                                                                                           |
+| What should Eva call you?    | Your name, or the name that you like.                                                                                                             |
+| Language                     | The language of Eva's answers. Enter keeps English.                                                                                               |
+| Main topics                  | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                             |
+| New GitHub repository        | A name for your notebook's private repository, such as `vault`. This needs `gh`.                                                                  |
+| Trusted GitHub accounts      | Your GitHub user name. Eva then opens your own projects without a question.                                                                       |
+| Claude token                 | The token from `claude setup-token`. With pi, press Enter.                                                                                        |
+| Telegram bot token           | Optional: the token from BotFather. Eva works without Telegram.                                                                                   |
+| Telegram chat id             | Enter, to pair with a code instead.                                                                                                               |
+| Google account, voice model  | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
 
-You can run `eva setup` again at any time. It keeps every answer that you do not change.
+You can run `eva setup` again at any time. It asks only for the steps that are not done.
 
 ## Install Eva on Linux
 
@@ -166,21 +175,17 @@ These steps work over SSH too. They install Eva for your own user.
 
    The last line lets this terminal find `eva`. Ubuntu adds the folder to the `PATH` by itself at your next login.
 
-3. Run the setup, and answer its questions (see [What setup asks](#what-setup-asks)). It installs Claude Code and pi too:
+3. Run the setup, as [The short path](#the-short-path) says:
 
    ```bash
    eva setup
    ```
 
-4. Start Eva with the system. The command also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator.
+   When setup starts Eva, it also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator. If you said no, run `eva service install` later.
 
-   ```bash
-   eva service install
-   ```
+4. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-5. Pair your Telegram chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
-
-**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`.
+**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and it never waits for a device code.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive

@@ -1,5 +1,6 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
+import type { ProgressStep } from "../../core/setup/progress.ts";
 import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
@@ -33,6 +34,11 @@ export function describeStatusLines(status: EvaStatus): string[] {
     count === 0 ? "All good" : `${String(count)} ${count === 1 ? "problem" : "problems"}`,
     ...status.problems.map((problem) => `• ${problem}`),
     `Eva ${status.version}, ${describeRole(status)}`,
+    ...(status.setupMissing > 0
+      ? [
+          `Setup: ${String(status.setupMissing)} ${status.setupMissing === 1 ? "step" : "steps"} left. Open Settings on Eva's page to see them.`,
+        ]
+      : []),
     `Vault: ${status.vaultPath ?? "not configured"}`,
     describeSync(status.vaultSync),
     // Over JSON the date arrives as text; new Date reads both forms.
@@ -226,6 +232,50 @@ export async function requestSettingsChange(
   });
   if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
   return ((await response.json()) as { restartNeeded: boolean }).restartNeeded;
+}
+
+/**
+ * `eva devices allow`: lets in the browser that waits with this code. Returns its label, or null
+ * when no browser waits with it. The device token stays with that browser.
+ */
+export async function requestDeviceAllow(options: ClientOptions, code: string): Promise<string | null> {
+  const response = await fetch(`${options.baseUrl}/api/devices/allow`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  return ((await response.json()) as { label: string }).label;
+}
+
+/** The setup progress list of the running Eva, one line per step, as the page shows it. */
+export async function describeSetupProgress(options: ClientOptions): Promise<string[]> {
+  const state = await getJson<{ progress: readonly ProgressStep[] }>(options, "/api/settings/setup");
+  const marks = { done: "✓", missing: "✗", optional: "○" } as const;
+  return ["Setup progress:", ...state.progress.map((step) => `${marks[step.state]} ${step.title}: ${step.detail}`)];
+}
+
+/** True when the running Eva's page answers, as it does a few seconds after her start. */
+export async function isAnswering(options: ClientOptions): Promise<boolean> {
+  try {
+    const response = await fetch(`${options.baseUrl}/api/status`, {
+      headers: { authorization: `Bearer ${options.token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Restarts the running Eva, so she reads the files that setup changed. */
+export async function requestRestart(options: ClientOptions): Promise<void> {
+  const response = await fetch(`${options.baseUrl}/api/restart`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}` },
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
 }
 
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {

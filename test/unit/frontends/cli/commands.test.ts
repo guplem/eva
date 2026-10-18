@@ -18,6 +18,7 @@ import {
 import { loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
+import { terminalDeviceApprover } from "../../../../src/frontends/cli/devices.ts";
 import { defaultHomeFolder, evaCommand } from "../../../../src/frontends/cli/host.ts";
 import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
@@ -130,14 +131,23 @@ describe("doctor and setup", () => {
     expect(loadSecrets(paths).localApiToken).toBeString();
   });
 
-  test("an interactive setup asks at the console", async () => {
-    const host = fakeHost({}, []);
+  test("an interactive setup asks at the console, and starts Eva as a service", async () => {
+    const host = fakeHost({ userHome: join(root, "user") }, []);
     expect(await run(host, "setup")).toBe(exitCodes.clean);
     expect(loadSecrets(paths).localApiToken).toBeString();
+    expect(host.commands).toContainEqual(["systemctl", "--user", "enable", "--now", "eva-home.service"]);
+    // The fake runs no real Eva, so she never answers, and setup goes on.
+    expect(printed(host)).toContain("Eva did not start.");
   });
 });
 
 describe("the client commands", () => {
+  test("devices allow needs a running Eva, which holds the waiting devices", async () => {
+    const host = fakeHost();
+    expect(await run(host, "devices", "allow", "AB2C")).toBe(exitCodes.badConfig);
+    expect(host.errors.join("")).toContain("Eva does not run");
+  });
+
   test("need the local token from setup", async () => {
     const host = fakeHost();
     expect(await run(host, "status")).toBe(exitCodes.badConfig);
@@ -175,7 +185,8 @@ describe("with a running Eva", () => {
     api = startLocalApi({ eva, port: 0, token: "running-token", extraHosts: [], allowedTailscaleIdentities: [] });
     saveConfig(paths, { ...config, port: Number(new URL(api.url).port) });
     saveSecrets(paths, { localApiToken: "running-token" });
-    acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+    // This process holds the lock, so setup, which asks the real system, sees Eva run and keeps her port.
+    acquireInstanceLock(paths.lock, { pid: process.pid, bootId: null, isProcessAlive: () => false });
     host = fakeHost({ isProcessAlive: () => true });
   }, gitHookTimeoutMs);
   afterEach(async () => {
@@ -209,6 +220,43 @@ describe("with a running Eva", () => {
       (error: unknown) => error,
     );
     expect(String(failure)).toContain("no update channel");
+  });
+
+  test("setup restarts a running Eva when it changed her files, so she uses the new answers", async () => {
+    const answering = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland" },
+    });
+    expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
+    expect(printed(answering)).toContain("Restarting Eva, so she uses the new answers.");
+    // The same list as on the page, before the restart takes the page away.
+    expect(printed(answering)).toContain("Setup progress:");
+    // Phone access is off in this test, so a device is optional.
+    expect(printed(answering)).toContain("○ Your devices: Open Eva's page on your phone.");
+  });
+
+  test("a page that does not answer at the end never fails a setup that saved every answer", async () => {
+    // The lock says Eva runs, but nothing listens on this port, such as after a slow start.
+    saveConfig(paths, { ...loadSettings(paths).config, port: 65_530 });
+    const answering = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland", EVA_PORT: "65530" },
+    });
+    expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
+    expect(printed(answering)).toContain("Eva's page did not answer.");
+  });
+
+  test("devices allow lets in the browser that shows the code, and never prints its token", async () => {
+    eva.deviceLogins.attachApprover(terminalDeviceApprover);
+    const request = eva.deviceLogins.request("this computer", "this computer, a browser");
+    expect(request.approvers).toEqual(["terminal"]);
+    expect(await run(host, "devices", "allow", "ZZZZ")).toBe(exitCodes.badConfig);
+    expect(host.errors.join("")).toContain("No device waits with this code.");
+    expect(await run(host, "devices", "allow", request.code.toLowerCase())).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("Allowed this computer, a browser.");
+    const answer = eva.deviceLogins.check(request.id, "this computer");
+    expect(answer.state).toBe("allowed");
+    expect(printed(host)).not.toContain(answer.state === "allowed" ? answer.token : "no token");
   });
 
   test("a setting changes through the running Eva, which says whether it needs a restart", async () => {

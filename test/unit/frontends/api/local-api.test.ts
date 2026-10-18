@@ -8,6 +8,7 @@ import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
+import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
@@ -389,13 +390,29 @@ describe("routes", () => {
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
     );
     const turn = eva.sessions.send(session.id, "go");
-    while (eva.sessions.backgroundTasks().length === 0) await Bun.sleep(5);
-    expect(await json<unknown>(await call("/api/tasks"))).toEqual([
-      { taskId: "k1", sessionId: session.id, description: "look around", state: "running" },
-    ]);
-    release();
-    await turn;
+    try {
+      const deadline = Date.now() + 5_000;
+      while (eva.sessions.backgroundTasks().length === 0 && Date.now() < deadline) await Bun.sleep(5);
+      expect(await json<unknown>(await call("/api/tasks"))).toEqual([
+        { taskId: "k1", sessionId: session.id, description: "look around", state: "running" },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
     expect(await json<unknown>(await call("/api/tasks"))).toEqual([]);
+  });
+
+  test("the session list sends the steps of the recent turns only, and the store keeps them all", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    for (let count = 0; count <= recentTurnsWithSteps; count += 1) await eva.sessions.send(session.id, "go");
+    const listed = (await json<{ id: string; turns: { steps: unknown[] }[] }[]>(await call("/api/sessions"))).find(
+      (entry) => entry.id === session.id,
+    );
+    expect(listed?.turns.map((turn) => turn.steps.length)).toEqual([0, ...Array<number>(recentTurnsWithSteps).fill(1)]);
+    expect(eva.sessions.get(session.id).turns[0]?.steps).toHaveLength(1);
   });
 
   test("a WebSocket with no token is refused", async () => {

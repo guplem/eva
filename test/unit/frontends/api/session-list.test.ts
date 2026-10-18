@@ -45,12 +45,17 @@ function session(turns: Turn[]): SessionRecord {
 
 describe("withRecentSteps", () => {
   test("keeps the steps of the recent turns only, so a long chat costs a phone little on each fetch", () => {
-    const [listed] = withRecentSteps([session(["one", "two", "three"].map(turn))], 2);
+    const stored = session(["one", "two", "three"].map(turn));
+    const [listed] = withRecentSteps([stored], 2);
     expect(listed?.turns.map((kept) => [kept.answerText, kept.steps.length, kept.omittedSteps])).toEqual([
       ["one", 0, 0],
       ["two", 1, 2],
       ["three", 1, 2],
     ]);
+    // The fork view finds a turn by its last message id.
+    expect(listed?.turns[0]?.lastMessageId).toBe("one");
+    // Telegram reads the stored record in the process, with every step.
+    expect(stored.turns[0]?.steps).toHaveLength(1);
   });
 
   test("a chat with few turns stays the same", () => {

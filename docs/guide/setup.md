@@ -13,6 +13,28 @@ Create these accounts first, in your browser:
 3. **Tailscale** at [tailscale.com](https://tailscale.com) (free). Sign in with Google, Microsoft or GitHub.
 4. **Telegram** on your phone, from your app store.
 
+## Prepare a server that you reach from your desk
+
+Skip this section when Eva runs on a computer that you use every day. Read it when Eva gets her own machine, such as an old laptop in a cupboard. You set the machine up once, and from then on you reach it only over SSH (a secure terminal connection from another computer). A coding agent that helps you can follow these steps too.
+
+1. **Install Ubuntu Server LTS.** Choose the Server edition: with no desktop, an old laptop keeps its memory for Eva. Download it from [ubuntu.com/download/server](https://ubuntu.com/download/server).
+2. **Write the installer to a USB stick with [Rufus](https://rufus.ie).** Choose "ISO Image mode", partition scheme `GPT`, target `UEFI (non CSM)`, file system `FAT32`. Do not use balenaEtcher: old firmware does not see the stick that it makes.
+3. **Install with these answers:**
+   - **Disk:** use the entire disk, and clear "Set up this disk as an LVM group". Otherwise Ubuntu uses only about 100 GB of the disk.
+   - **Password:** use only letters and digits. The keyboard layout can change between the installer and the login, and symbols move.
+   - **Install OpenSSH server:** yes. This is how you reach the machine later.
+   - **Third-party drivers:** none.
+4. **Check the bootloader before you press "Reboot Now".** Some laptops finish the install with no bootloader, and then show "no bootable device". Open **Help → Enter shell**, and run `ls /target/boot/efi/EFI/BOOT`. If `BOOTX64.EFI` is not there, run `chroot /target grub-install --removable` after you bind-mount `/dev`, `/dev/pts`, `/proc`, `/sys` and `/run` into `/target`.
+5. **Connect from your desk.** On the server, run `ip address`, and note the address that starts with `192.168.` or `10.`. On your computer, run `ssh your-user@<address>`.
+6. **Log in with a key, not a password.** On your computer, run `ssh-keygen -t ed25519 -f ~/.ssh/eva_server`. Then copy the public half to the server with `ssh-copy-id -i ~/.ssh/eva_server.pub your-user@<address>`. Windows has no `ssh-copy-id`: append the `.pub` file to `~/.ssh/authorized_keys` on the server instead. To give a coding agent access, append its public key the same way. Delete the line to remove the access.
+7. **Keep the address fixed.** In your router, add a DHCP reservation (a fixed address for this machine) inside the router's DHCP range. Some routers accept an address outside the range and then ignore it.
+8. **Keep the server awake** (needs `sudo`):
+   - **Closed lid:** run `sudo mkdir -p /etc/systemd/logind.conf.d`, then write `[Login]` and `HandleLidSwitch=ignore` in `/etc/systemd/logind.conf.d/eva.conf`.
+   - **Wi-fi:** use a cable when you can. On wi-fi, some cards save power by sleeping between packets, and every talk with GitHub then stalls. Run `iw dev` to find the card name, then `sudo iw dev <card> set power_save off`. Repeat it at each start with a systemd unit.
+   - **Power:** keep the laptop plugged in.
+
+Then follow [Install Eva on a Linux server](#install-eva-on-a-linux-server), over SSH.
+
 ## Create your Telegram bot
 
 A bot is a Telegram account that a program controls. Eva talks to you through your own bot.

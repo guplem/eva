@@ -37,7 +37,7 @@ describe("applyEvent", () => {
     expect(state.steps["s1"]?.[0]?.text).toContain("lost");
   });
 
-  test("a usage limit stays after its turn ends, until the chat's next turn starts (issue #67)", () => {
+  test("a usage limit outlives its turn and the next one, until a newer limit or a delete (issue #67)", () => {
     const limit = {
       kind: "usage_limit",
       status: "rejected",
@@ -50,9 +50,12 @@ describe("applyEvent", () => {
     expect(state.steps["s1"]).toBeUndefined();
     const stamp = { sessionId: "s1", seq: 99, at: "2026-10-18T10:00:00.000Z" };
     state = applyEvent(state, { ...stamp, kind: "message_received", text: "again", origin: "api" });
+    expect(state.usageLimits["s1"]?.status).toBe("rejected");
+    state = applyEvent(state, event({ ...limit, status: "warning", usedPercent: 90 }));
+    expect(state.usageLimits["s1"]?.status).toBe("warning");
+    state = applyEvent(state, { ...stamp, kind: "session_deleted" });
     expect(state.usageLimits["s1"]).toBeUndefined();
   });
-
   test("a task is kept by id with its newest state, and is a step of its turn", () => {
     const state = run([
       { kind: "task_changed", taskId: "k1", description: "look", state: "running" },

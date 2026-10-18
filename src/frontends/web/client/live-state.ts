@@ -25,8 +25,9 @@ export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
     const { sessionId, seq: _seq, at: _at, ...limit } = event;
     return { ...state, usageLimits: { ...state.usageLimits, [sessionId]: limit } };
   }
-  // A new turn starts, and it sends its own limit when one still applies.
-  if (event.kind === "message_received" && event.sessionId in state.usageLimits) {
+  // Only a deleted chat drops its line. The engine may not repeat a limit at each turn, so the
+  // line stays until a newer limit replaces it, and the chat hides it once its window resets.
+  if (event.kind === "session_deleted" && event.sessionId in state.usageLimits) {
     const usageLimits = { ...state.usageLimits };
     Reflect.deleteProperty(usageLimits, event.sessionId);
     return { ...state, usageLimits };

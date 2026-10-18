@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { EngineEventPayload } from "../../../src/shared/events.ts";
-import { describeUsageLimit, hasReset } from "../../../src/shared/usage-limit.ts";
-
-type UsageLimit = Extract<EngineEventPayload, { kind: "usage_limit" }>;
+import { describeUsageLimit, hasReset, type UsageLimit } from "../../../src/shared/usage-limit.ts";
 
 function limit(overrides: Partial<UsageLimit> = {}): UsageLimit {
   return {

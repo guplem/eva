@@ -16,6 +16,10 @@ describe("assistantBasePrompt", () => {
     }
   });
 
+  test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {
+    expect(assistantBasePrompt).toContain("Start the Google login");
+  });
+
   test("names no person: the person's rules come from their vault", () => {
     expect(assistantBasePrompt).not.toMatch(/\b(he|she|his|her)\b/i);
   });

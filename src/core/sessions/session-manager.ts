@@ -120,8 +120,8 @@ export interface BackgroundTask {
 
 export interface TaskSnapshot {
   /**
-   * The `seq` of the last event before the snapshot. A front end drops a snapshot older than
-   * an event that it already applied, because the reply and the events travel apart (lesson 83).
+   * The `seq` of the last event before the snapshot. The reply and the events travel apart, so
+   * a front end keeps its own tasks of a chat with a newer event (lesson 83).
    */
   readonly seq: number;
   readonly tasks: readonly BackgroundTask[];

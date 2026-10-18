@@ -11,7 +11,7 @@ import {
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
-import { applyEvent, emptyLiveState, withTasks, type LiveState } from "./live-state.ts";
+import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -123,7 +123,7 @@ function EvaApp(): ReactElement {
    * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...state, steps: {} }));
+    setLive((state) => ({ ...forgetTaskEvents(state), steps: {} }));
     await refreshSessions();
     await refreshProblems();
     try {

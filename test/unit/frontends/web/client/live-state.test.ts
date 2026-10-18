@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   applyEvent,
   emptyLiveState,
+  forgetTaskEvents,
   withTasks,
   type LiveState,
 } from "../../../../../src/frontends/web/client/live-state.ts";
@@ -105,14 +106,29 @@ describe("applyEvent", () => {
     expect(withTasks(state, { seq: seq + 1, tasks: [] }).tasks).toEqual({});
   });
 
-  test("a snapshot older than the last task event is ignored, so an ended task never comes back (lesson 83)", () => {
+  test("a snapshot older than a chat's last task event keeps that chat as it is, so an ended task never comes back (lesson 83)", () => {
     const running = { taskId: "k1", sessionId: "s1", description: "look", state: "running" as const };
     const read = seq;
     const state = run([
       { kind: "task_changed", ...running },
       { kind: "turn_finished", ...finished },
     ]);
-    expect(withTasks(state, { seq: read + 1, tasks: [running] })).toBe(state);
+    expect(withTasks(state, { seq: read + 1, tasks: [running] }).tasks).toEqual({});
+  });
+
+  test("a newer event of another chat does not hide the tasks that the page missed", () => {
+    const read = seq;
+    const state = run([{ kind: "task_changed", taskId: "k2", description: "other", state: "running" }], "s2");
+    const missed = { taskId: "k1", sessionId: "s1", description: "look", state: "running" as const };
+    expect(withTasks(state, { seq: read, tasks: [missed] }).tasks).toEqual({
+      k1: { description: "look", state: "running", sessionId: "s1" },
+      k2: { description: "other", state: "running", sessionId: "s2" },
+    });
+  });
+
+  test("after a reconnect, a snapshot from a restarted Eva counts, though its seq starts again", () => {
+    const state = run([{ kind: "task_changed", taskId: "k1", description: "look", state: "running" }]);
+    expect(withTasks(forgetTaskEvents(state), { seq: 0, tasks: [] }).tasks).toEqual({});
   });
 
   test("the end of a turn with no live steps keeps the steps and tasks of the other sessions", () => {

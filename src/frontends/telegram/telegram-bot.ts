@@ -152,6 +152,8 @@ const deviceExpiredText = "This request expired.";
 const maxDownloadBytes = 20 * 1024 * 1024;
 /** Telegram refuses a keyboard of more than 100 buttons. */
 const buttonsPerMessage = 50;
+const majorUpdateWarning =
+  "⚠️ This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
 /** A short Telegram outage heals by itself; only a long one needs the owner. */
 const pollFailingAlertMs = 15 * 60_000;
 const pollProblemKey = "telegram_poll";
@@ -166,7 +168,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
-  { command: "update", description: "Install the latest version of Eva" },
+  { command: "update", description: "Check for updates, or pick a version of Eva" },
   { command: "logs", description: "Show the last warnings and errors: /logs [count]" },
   { command: "restart", description: "Restart Eva" },
   { command: "help", description: "Show the commands" },
@@ -517,10 +519,7 @@ export class TelegramBot {
         await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
       case "update":
-        this.runApart(chatId, topicId, "Updating…", async () => {
-          const update = await this.options.eva.updateNow();
-          return update === null ? "This Eva cannot update herself." : describeUpdate(update);
-        });
+        this.offerUpdates(chatId, topicId);
         return;
       case "logs": {
         const count = Number.parseInt(rest[0] ?? "", 10);
@@ -570,6 +569,60 @@ export class TelegramBot {
         await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
       }
     })();
+  }
+
+  /**
+   * /update: checks, and installs what the policy allows, as the automatic update does. Then it
+   * offers each other newer version as a button, so the person can go past the policy.
+   */
+  private offerUpdates(chatId: number, topicId: number | null): void {
+    void (async (): Promise<void> => {
+      try {
+        await this.send(chatId, topicId, "Checking for updates…");
+        const update = await this.options.eva.updateNow();
+        if (update === null) {
+          await this.send(chatId, topicId, "This Eva cannot update herself.");
+          return;
+        }
+        const installing = update.phase === "idle" ? null : update.target;
+        const others = update.releases
+          .filter((release) => release.version !== installing)
+          .slice(0, buttonsPerMessage)
+          .map((release) => [{ text: `${release.version} (${release.level})`, callback_data: `u:${release.version}` }]);
+        await this.send(
+          chatId,
+          topicId,
+          others.length === 0
+            ? describeUpdate(update)
+            : `${describeUpdate(update)}\n\nOr pick a version to see what it brings:`,
+          others.length === 0 ? undefined : { inline_keyboard: others },
+        );
+      } catch (error) {
+        await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
+      }
+    })();
+  }
+
+  /** A version button: what the jump to it brings, breaking changes first, and an Install button. */
+  private async showRelease(chatId: number, topicId: number | null, version: string): Promise<void> {
+    const update = this.options.eva.updateStatus();
+    const release = update?.releases.find((each) => each.version === version);
+    if (update === null || release === undefined) {
+      await this.send(chatId, topicId, `${version} is not a newer release. Send /update to check again.`);
+      return;
+    }
+    const warning = release.level === "major" ? `\n\n${majorUpdateWarning}` : "";
+    const text = `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}`;
+    const parts = splitForTelegram(text, messageLimit);
+    for (const [index, part] of parts.entries()) {
+      const last = index === parts.length - 1;
+      await this.send(
+        chatId,
+        topicId,
+        part,
+        last ? { inline_keyboard: [[{ text: `Install ${version}`, callback_data: `u:${version}:go` }]] } : undefined,
+      );
+    }
   }
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
@@ -666,6 +719,14 @@ export class TelegramBot {
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+    } else if (kind === "u" && first !== undefined && /^\d+\.\d+\.\d+$/.test(first)) {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      if (second !== "go") await this.showRelease(chatId, topicId, first);
+      else
+        this.runApart(chatId, topicId, `Updating to ${first}…`, async () => {
+          const update = await this.options.eva.updateNow(first);
+          return update === null ? "This Eva cannot update herself." : describeUpdate(update);
+        });
     } else if (kind === "r" && first === "now") {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
       await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");

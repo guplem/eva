@@ -121,16 +121,18 @@ export function describeUpdate(update: UpdateStatus): string {
   const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
   if (update.lastError !== null)
     return `Updates: ${automatic}; the last ${update.failedStep ?? "check"} failed: ${update.lastError}`;
-  if (update.phase === "waiting_for_idle")
-    return `Updates: ${update.latest ?? "?"} installs when the running chats end`;
-  if (update.phase === "updating") return `Updates: installing ${update.latest ?? "?"}`;
+  const next = update.target ?? update.latest ?? "?";
+  if (update.phase === "waiting_for_idle") return `Updates: ${next} installs when the running chats end`;
+  if (update.phase === "updating") return `Updates: installing ${next}`;
   // The restart waits for the running chats, which can take hours (lesson 92).
   if (update.phase === "restarting")
     return `Updates: ${update.latest ?? "?"} is installed; Eva restarts when no chat runs`;
   if (update.current === null) return `Updates: ${automatic}; not checked yet`;
+  const heldBack =
+    update.heldBack === null ? "" : `; ${update.heldBack} is held back by the update policy (${update.install})`;
   return update.available
-    ? `Updates: ${update.latest ?? "?"} is available (this is ${update.current}); ${automatic}`
-    : `Updates: ${update.current} is the latest; ${automatic}`;
+    ? `Updates: ${next} is available (this is ${update.current})${heldBack}; ${automatic}`
+    : `Updates: ${update.current} is ${heldBack === "" ? "the latest" : "installed"}${heldBack}; ${automatic}`;
 }
 
 /** One line about the engine update of the settings page. */

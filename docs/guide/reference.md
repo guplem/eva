@@ -144,4 +144,12 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Files.** Eva can send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`, which reads Spanish and English), and put it at `voice/ggml-base.bin` in Eva's home folder. The audio never leaves the computer.
-- **Google (Calendar, Drive, Contacts, Tasks).** Install [uv](https://docs.astral.sh/uv/). Create an OAuth client in Google Cloud, of type "Desktop app", and set its publishing status to "In production", so that the login does not expire after 7 days. Put its id and secret in `secrets.json` as `googleOauthClientId` and `googleOauthClientSecret`, and set your account with `eva settings set google.email <address>`. The first Google request gives you a link to log in. Eva starts with read-only access; set `google.readOnly` to `false` to let her add events. She asks you before any change that reaches other people, such as an invitation.
+- **Google (Calendar, Drive, Contacts, Tasks).** Eva uses your own OAuth client. It is an app id and secret that let her ask for access to your account. Settings in the web app guide you, also on your phone, with a link for each step. First, install [uv](https://docs.astral.sh/uv/) on the computer: this step needs the computer. Then follow the steps in Settings:
+  1. Turn on the Google APIs.
+  2. Set the consent screen to "In production". In "Testing", the login ends after 7 days.
+  3. Make an OAuth client of type "Desktop app". Paste its id and secret into Settings.
+  4. Press Start the Google login, and allow the access. Your browser then opens an address that does not load. Copy that address into Settings, and press Finish.
+
+  Press Test. It reads each service, or names the step to fix. Then press Restart Eva.
+
+  `eva doctor` shows whether the login still works. Eva starts with read-only access. To let her add events, pick "Read and change" in Settings, and log in again. She asks you before any change that reaches other people, such as an invitation. The Google tools work with Claude Code and with pi. The id and secret stay in the computer's `secrets.json`, never in the notebook.

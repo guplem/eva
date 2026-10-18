@@ -7,3 +7,5 @@
 - Parser tests use fixtures captured from the neutral demo vault. Contract tests pin the exact SDK options and argument lists for each mode.
 - Never embed `claude`: it adds about 270 MB and breaks updates. Never run pi inside the core process: it would see every secret. Never use a Claude login in pi: it bills as extra usage.
 - Run a model call with no tools, no settings and no saved session, and deny every approval: its text can come from other people, such as a chat message.
+- Import a file in `src/` either as code or `with { type: "text" }`, never both: the bundler keeps one form, and the executable breaks.
+- The pi MCP bridge runs inside pi, so it spawns its servers without a seam.

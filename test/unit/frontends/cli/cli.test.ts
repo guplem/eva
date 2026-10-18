@@ -149,7 +149,35 @@ describe("runDoctor", () => {
     platform: "win32",
     userName: "person",
     defaultEngine: "claude-code",
+    google: () => Promise.resolve(null),
   } as const satisfies Partial<DoctorOptions>;
+
+  test("reports the Google state, which never fails the doctor", async () => {
+    const runner: ProcessRunner = {
+      run: () => Promise.resolve({ exitCode: 0, stdout: "1.0\n", stderr: "" }),
+    };
+    const report = async (google: DoctorOptions["google"]): Promise<{ healthy: boolean; text: string }> => {
+      const lines: string[] = [];
+      const healthy = await runDoctor({
+        ...doctorBasics,
+        runner,
+        environment: {},
+        write: (line) => lines.push(line),
+        google,
+      });
+      return { healthy, text: lines.join("\n") };
+    };
+    expect((await report(() => Promise.resolve(null))).text).toContain("off     Google: not set up.");
+    const works = await report(() =>
+      Promise.resolve({ ok: true, detail: "The Google login of person@example.com works." }),
+    );
+    expect(works.text).toContain("ok      Google: The Google login of person@example.com works.");
+    const broken = await report(() => Promise.resolve({ ok: false, detail: "Log in to Google again (step 4)." }));
+    expect(broken).toEqual({
+      healthy: true,
+      text: expect.stringContaining("failed  Google: Log in to Google again (step 4).") as string,
+    });
+  });
 
   test("reports each tool, grouped by feature, and fails only on a missing required tool", async () => {
     const runner: ProcessRunner = {
@@ -360,6 +388,9 @@ describe("runSetup", () => {
     const config = loadSettings(homePaths(home)).config;
     expect(config.google.email).toBe("person@example.com");
     expect(config.voice.modelPath).toBe("/models/ggml-base.bin");
+    const again: string[] = [];
+    await setup({}, { lines: again });
+    expect(again.join("\n")).not.toContain("each Google step");
     expect(loadSecrets(homePaths(home))).toMatchObject({
       googleOauthClientId: "client-id",
       googleOauthClientSecret: "client-secret",
@@ -367,7 +398,9 @@ describe("runSetup", () => {
   });
 
   test("without a Google account, the OAuth client is not asked", async () => {
-    await setup({ googleClientId: "client-id" });
+    const lines: string[] = [];
+    await setup({ googleClientId: "client-id" }, { lines });
+    expect(lines.join("\n")).toContain("Settings in the web app show each Google step");
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
 

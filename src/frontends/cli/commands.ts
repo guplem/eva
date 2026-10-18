@@ -8,8 +8,12 @@ import {
   homePaths,
   loadSecrets,
   resolveHomeFolder,
+  type EvaConfig,
   type HomePaths,
 } from "../../core/settings/home.ts";
+import type { CheckResult } from "../../core/checks.ts";
+import { checkGoogle } from "../../core/google/google-check.ts";
+import { googleCredentialsFolder } from "../../core/google/google-login.ts";
 import { loadSettings } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
@@ -106,6 +110,7 @@ export function describeFailure(error: unknown): { readonly exitCode: number; re
 }
 
 function doctor(host: CliHost, paths: HomePaths): Promise<boolean> {
+  const config = loadSettings(paths).config;
   return runDoctor({
     runner: host.runner,
     environment: childEnvironment(host),
@@ -115,8 +120,26 @@ function doctor(host: CliHost, paths: HomePaths): Promise<boolean> {
     standalone: host.standalone,
     platform: host.platform,
     userName: host.userName,
-    defaultEngine: loadSettings(paths).config.engines.default,
+    defaultEngine: config.engines.default,
+    google: () => googleState(paths, config.google),
   });
+}
+
+/** The saved client and login, plus one token refresh, or null when Google is not set up at all. */
+async function googleState(paths: HomePaths, google: EvaConfig["google"]): Promise<CheckResult | null> {
+  const secrets = loadSecrets(paths);
+  const { googleOauthClientId: clientId, googleOauthClientSecret: clientSecret } = secrets;
+  if (google.email === null && clientId === undefined && clientSecret === undefined) return null;
+  const result = await checkGoogle({
+    config: google,
+    client: clientId === undefined || clientSecret === undefined ? null : { clientId, clientSecret },
+    credentialsFolder: googleCredentialsFolder(paths),
+    readServices: false,
+  });
+  // The terminal output can reach a log, as the Test result reaches the page: both are redacted (lesson 95).
+  const redactor = new Redactor();
+  for (const secret of Object.values(secrets)) redactor.addSecret(secret);
+  return { ok: result.ok, detail: redactor.redact(result.detail) };
 }
 
 async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): Promise<void> {

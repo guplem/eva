@@ -11,19 +11,23 @@
  *   arrives first means that no retry follows.
  * - **Approvals:** the extension in pi-approval-extension.ts asks before each tool call; the
  *   shared outward-action rule decides.
+ * - **MCP servers:** pi has no MCP support, so the bridge in pi-mcp-bridge.ts runs Eva's
+ *   servers and gives their tools Claude Code's names. The specs hold secrets. They go in a file
+ *   that the bridge deletes at start. A shell command can read pi's environment, so never there.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
  *   ran, with the session file complete.
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
  *   the person's global pi settings, so Eva never sends them.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { mcpExtensionSource, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
 
@@ -106,20 +110,43 @@ export class PiEngine implements EnginePort {
       request.appendSystemPrompt === null
         ? null
         : this.writeIfChanged(join("prompts", `${promptName}.md`), request.appendSystemPrompt);
+    const hasMcpServers = Object.keys(request.mcpServers).length > 0;
+    const mcpExtensionFile = hasMcpServers ? this.writeIfChanged("eva-mcp-extension.ts", mcpExtensionSource) : null;
+    // One file per turn: a stopped turn that still closes must not delete the file of the next one.
+    const specsFile = hasMcpServers
+      ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
+      : null;
     const args = buildPiArguments(request, {
       sessionFile: sessionFile(engineSessionId),
       sessionsFolder,
       extensionFile,
+      mcpExtensionFile,
       promptFile,
       model: this.options.models[request.model] ?? this.options.models.default,
     });
+    if (specsFile !== null) {
+      try {
+        mkdirSync(dirname(specsFile), { recursive: true });
+        // A new name for each turn, so no atomic rename, and no temporary copy of the secrets can stay.
+        writeFileSync(specsFile, JSON.stringify(request.mcpServers), { mode: 0o600, flag: "wx" });
+      } catch (error) {
+        removeSpecs(specsFile);
+        yield {
+          kind: "turn_failed",
+          reason: `Eva could not write the MCP server list: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        return;
+      }
+    }
     let pi: PiProcess;
     try {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
-        environment: request.environment,
+        environment:
+          specsFile !== null ? { ...request.environment, [mcpServersFileVariable]: specsFile } : request.environment,
       });
     } catch (error) {
+      removeSpecs(specsFile);
       yield {
         kind: "turn_failed",
         reason: `pi could not start: ${error instanceof Error ? error.message : String(error)}`,
@@ -131,10 +158,13 @@ export class PiEngine implements EnginePort {
       pi.send({ type: "abort" });
     };
     request.signal.addEventListener("abort", onAbort);
+    if (request.signal.aborted) onAbort();
     try {
       yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
       request.signal.removeEventListener("abort", onAbort);
+      // The bridge deletes the file at start. This covers a pi that stopped before it.
+      removeSpecs(specsFile);
     }
   }
 
@@ -154,6 +184,10 @@ export class PiEngine implements EnginePort {
     pi.send({ id: promptRequestId, type: "prompt", message: request.prompt });
     for await (const record of pi.records) {
       const type = record["type"];
+      if (type === "agent_start" && request.signal.aborted) {
+        // pi drops an abort that comes before the run starts, such as while the MCP bridge loads.
+        pi.send({ type: "abort" });
+      }
       if (type === "response" && record["id"] === promptRequestId && record["success"] === false) {
         const error = record["error"];
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };
@@ -232,6 +266,8 @@ export interface PiArgumentInputs {
   readonly sessionFile: string;
   readonly sessionsFolder: string;
   readonly extensionFile: string;
+  /** Eva's MCP bridge, when the turn has MCP servers. */
+  readonly mcpExtensionFile: string | null;
   readonly promptFile: string | null;
   readonly model: string | null;
 }
@@ -251,6 +287,7 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     "-e",
     inputs.extensionFile,
   ];
+  if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
   if (request.mode === "model-call") {
     // Eva's own extension still loads with `-e`, so a tool that still appears gets a refusal.
@@ -266,6 +303,16 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     args.push("--no-extensions");
   }
   return args;
+}
+
+/** Never throws: the turn has already ended with one event, and a stuck file never breaks Eva. */
+function removeSpecs(file: string | null): void {
+  if (file === null) return;
+  try {
+    rmSync(file, { force: true });
+  } catch {
+    // Windows can hold a file for a moment. The file stays in the instance home, next to secrets.json.
+  }
 }
 
 /** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */

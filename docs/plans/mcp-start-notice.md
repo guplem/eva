@@ -10,13 +10,14 @@ Assistant mode gets its Google tools from an MCP server that `uvx` starts. When 
 
 - Each engine sends the existing `notice` event when one of Eva's own MCP servers fails to start. The text names the server and gives the reason.
 - The turn goes on without the server's tools.
-- Telegram shows a `notice` in the chat's topic, in the chat's order, as it shows `history_lost`.
-- The web app shows a `notice` as a live note of the turn, as it shows `history_lost`.
+- Telegram shows a `notice` in the chat's topic, in the chat's order, as a quiet message.
+- The web app shows a `notice` as a note under the chat. The note stays until the chat's next turn starts.
 
 ### Claude Code
 
 - The SDK's `init` system message lists each MCP server with its status, but with no reason.
 - When one of Eva's servers has the status `failed` or `needs-auth`, the adapter asks the query for `mcpServerStatus()`. That answer has the `error` text.
+- A server that is `pending` at init gets a second check before the result.
 - The wait for that answer has a bound, so a slow answer never holds the turn.
 
 ### pi

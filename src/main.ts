@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Eva's entry point. It only wires the layers together, so it holds no decision worth a test;
- * every piece it joins has its own tests.
+ * Eva's entry point. It only wires the layers together, so it holds almost no decision of its own;
+ * every piece it joins has its own tests. The engine choice stays here, because only this file may
+ * name an engine adapter.
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";

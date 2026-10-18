@@ -1,5 +1,5 @@
 /**
- * The facts of the process that runs a CLI command. Only `src/main.ts` reads them from the
+ * The facts of the process that runs a CLI command. `src/main.ts` reads them from the
  * real process; a test passes its own, so each command runs in a test.
  */
 import { resolveHomeFolder } from "../../core/settings/home.ts";

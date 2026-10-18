@@ -2,7 +2,7 @@
  * `eva service install`: starts Eva by herself, as a systemd user service on Linux (lesson 85)
  * or a logon task on Windows. The logon task runs Eva's own supervisor, which restarts her
  * after a crash as systemd does. Exit codes 2 (bad config) and 3 (second instance) never
- * restart (lesson 89).
+ * restart (lesson 89). This file also holds `eva supervise`, and how Eva starts again after an update.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";

@@ -80,7 +80,13 @@ import {
 } from "./projects/repository-setup.ts";
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
-import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import {
+  type ConflictChoice,
+  type ConflictResolution,
+  VaultSync,
+  type VaultConflictReport,
+  type VaultSyncState,
+} from "./vault/vault-sync.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
@@ -477,6 +483,31 @@ export class Eva {
     this.lastPullAt = this.options.now();
     this.logSyncState(await this.vaultSync.pull());
     return this.logSyncState(await this.vaultSync.save());
+  }
+
+  /** The vault notes that conflict now, so a phone can pick a version of each. */
+  async vaultConflicts(): Promise<VaultConflictReport> {
+    if (this.vaultSync === null) return { state: noVaultState, conflicts: [] };
+    const report = await this.vaultSync.conflicts();
+    return { ...report, state: this.logSyncState(report.state) };
+  }
+
+  /** A pick for one conflicted note. Eva refuses it while an Assistant turn runs, as she refuses a sync: the turn can write the same note. */
+  async resolveVaultConflict(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
+    if (this.vaultSync === null) return { state: noVaultState, conflicts: [], found: false };
+    if (this.assistantBusy())
+      return {
+        state: {
+          ...this.vaultSync.currentState,
+          status: "skipped",
+          lastError: "Eva is working in an Assistant chat. Pick again when it ends.",
+        },
+        conflicts: [],
+        found: false,
+      };
+    const result = await this.vaultSync.resolve(path, choice);
+    this.options.logger?.log("info", "A vault conflict got a pick.", { path, choice, found: result.found });
+    return { ...result, state: this.logSyncState(result.state) };
   }
 
   updateStatus(): UpdateStatus | null {

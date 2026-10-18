@@ -33,7 +33,7 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
     case "conflict":
       return {
         level: "error",
-        message: `The vault sync stopped on a conflict: ${state.lastError ?? "unknown files"}. Fix the conflict in the vault folder, then send /sync.`,
+        message: `The vault sync stopped on a conflict: ${state.lastError ?? "unknown files."} Send /conflicts, or open Settings on this machine's web page, and pick a version of each note. Nothing is lost: git keeps both versions.`,
         resolvedMessage,
       };
     case "error":

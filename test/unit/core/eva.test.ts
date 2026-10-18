@@ -949,6 +949,47 @@ describe("Eva alerts", () => {
     return alerts;
   }
 
+  test("a vault conflict raises an alert that names the phone fix, and the last pick clears it", async () => {
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    expect(await instance.sweep()).toBe("conflict");
+    expect(alerts.at(-1)?.message).toContain("/conflicts");
+    expect((await instance.vaultConflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["Notes/plan.md"]);
+    const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
+    expect(result.state.status).toBe("ok");
+    expect(alerts.at(-1)?.level).toBe("resolved");
+  });
+
+  test("a pick waits while an Assistant turn runs, like a sync (lessons 22, 30)", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    const result = await instance.resolveVaultConflict("Notes/plan.md", "mine");
+    expect(result.found).toBe(false);
+    expect(result.state.status).toBe("skipped");
+    expect(result.state.lastError).toContain("Assistant chat");
+    release();
+    await turn;
+  });
+
+  test("with no vault, there is no conflict to list or resolve", async () => {
+    const instance = start(new FakeEngine(), { vaultPath: null });
+    expect((await instance.vaultConflicts()).conflicts).toEqual([]);
+    expect((await instance.resolveVaultConflict("a.md", "mine")).found).toBe(false);
+  });
+
   test("a vault offline for more than 30 minutes is a problem, and a good sync clears it", async () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);

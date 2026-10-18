@@ -99,12 +99,19 @@ export function ChatInfoButton(props: ChatProps): ReactElement {
   );
 }
 
-export function TasksDialog({ tasks, onClose }: { readonly tasks: Tasks; readonly onClose: () => void }): ReactElement {
+export function TasksDialog({
+  tasks,
+  empty,
+  onClose,
+}: {
+  readonly tasks: Tasks;
+  readonly empty: string;
+  readonly onClose: () => void;
+}): ReactElement {
   return (
     <Dialog label="Background tasks" onClose={onClose}>
-      <strong>Background tasks of this chat</strong>
-      {/* The tasks live in this page only, so a count from before a reload can have no list. */}
-      <TaskList tasks={tasks} empty="This page has no news of these tasks. They ran before it opened." />
+      <strong>Background tasks</strong>
+      <TaskList tasks={tasks} empty={empty} />
     </Dialog>
   );
 }

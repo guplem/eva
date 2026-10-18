@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type SessionRecord } from "./api.ts";
+import { tasksOfTurn } from "./chat-details.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
@@ -98,8 +99,9 @@ function Branch({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const [showTasks, setShowTasks] = useState(false);
-  const closeTasks = useCallback(() => setShowTasks(false), []);
+  /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
+  const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
+  const closeTasks = useCallback(() => setShownTasks(null), []);
   const tasks = tasksOf(live.tasks, [session.id]);
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
@@ -156,7 +158,7 @@ function Branch({
             <div className="message-actions">
               {activityOf(turn) !== "" && <span className="chip">{activityOf(turn)}</span>}
               {turn.taskCount > 0 && (
-                <button onClick={() => setShowTasks(true)}>{counted(turn.taskCount, "background task")}</button>
+                <button onClick={() => setShownTasks(index)}>{counted(turn.taskCount, "background task")}</button>
               )}
               <button onClick={() => runAction(() => api.retry(session.id, index))}>Retry</button>
               {turn.lastMessageId !== null && turn.failure === null && (
@@ -173,11 +175,19 @@ function Branch({
         </div>
       )}
       {running > 0 && (
-        <button className="running-tasks" onClick={() => setShowTasks(true)}>
+        <button className="running-tasks" onClick={() => setShownTasks("running")}>
           {counted(running, "background task")} running
         </button>
       )}
-      {showTasks && <TasksDialog tasks={tasks} onClose={closeTasks} />}
+      {shownTasks === "running" && <TasksDialog tasks={tasks} empty="No task runs now." onClose={closeTasks} />}
+      {typeof shownTasks === "number" && (
+        <TasksDialog
+          tasks={tasksOfTurn(session.turns[shownTasks]?.steps ?? [], session.id)}
+          // The list sends the steps of the recent answers only, and a turn keeps 100 steps at most.
+          empty="Eva no longer keeps the details of these tasks."
+          onClose={closeTasks}
+        />
+      )}
       {usageLimit !== undefined && !hasReset(usageLimit, new Date()) && (
         <div className={`usage-limit ${usageLimit.status}`} role="status">
           {describeUsageLimit(usageLimit, new Date())}

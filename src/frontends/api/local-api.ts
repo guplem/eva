@@ -79,6 +79,9 @@ const projectDetailsSchema = z.object({
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
+const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
+/** The account of a browser on Eva's own computer, which has no Tailscale account. */
+const localAccount = "this computer";
 /** The address that Google sent the browser to, or its code alone. */
 const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
@@ -236,14 +239,14 @@ async function session(request: Request, url: URL, options: LocalApiOptions): Pr
 }
 
 /**
- * Device login: a browser that comes through an allowed Tailscale account asks, the
- * owner allows it in Telegram, and the page polls until it gets the device cookie. Only such a
- * browser may ask, and only for itself: a request of another account looks expired.
+ * Device login: a browser of an allowed Tailscale account, or on this computer, asks. The owner
+ * allows it in Telegram or in the terminal, and the page polls until it gets the device cookie.
+ * A browser asks only for itself: a request of another account looks expired.
  */
 function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Response {
-  const account = allowedTailscaleAccount(request, options);
+  const account = deviceLoginAccount(request, options);
   if (account === null)
-    return json({ error: "A device login works only through Tailscale, from an allowed account." }, 403);
+    return json({ error: "A device login works through Tailscale from an allowed account, or on this computer." }, 403);
   const deviceLogins = options.eva.deviceLogins;
   const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
   try {
@@ -404,6 +407,13 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
   }
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
+  if (method === "POST" && url.pathname === "/api/devices/allow") {
+    // Only the label comes back: the device token reaches only the browser that asked.
+    const label = eva.deviceLogins.allowByCode(deviceCodeSchema.parse(await request.json()).code);
+    if (label === null)
+      return json({ error: "No device waits with this code. Check it, or ask again on the page." }, 404);
+    return json({ label });
+  }
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (url.pathname === "/api/vault/conflicts") {
     if (method === "GET") return json(await eva.vaultConflicts());
@@ -543,11 +553,14 @@ function errorResponse(error: unknown, eva: Eva): Response {
  * the allowlist holds it, or null. It decides only who may ask for a device login: a local program
  * can forge the header, so it never authenticates a request alone.
  */
-function allowedTailscaleAccount(request: Request, options: LocalApiOptions): string | null {
+/** The account that may ask for a device login: an allowed Tailscale account, or this computer itself. */
+function deviceLoginAccount(request: Request, options: LocalApiOptions): string | null {
   const host = hostNameOf(request.headers.get("host"));
   const identity = request.headers.get("tailscale-user-login");
   const remote = host !== null && host !== "127.0.0.1" && host !== "localhost";
-  return remote && identity !== null && allowedIdentities(options).includes(identity) ? identity : null;
+  // Any program here can reach this address, but only a person at Eva's terminal can allow its code.
+  if (!remote) return identity === null ? localAccount : null;
+  return identity !== null && allowedIdentities(options).includes(identity) ? identity : null;
 }
 
 function allowedHostNames(options: LocalApiOptions): Set<string> {

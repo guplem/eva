@@ -167,9 +167,12 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 ## Logging in to the web page
 
-- **Through Tailscale** (your phone, other computers): the first time on each device, the page shows a short code and Eva asks in Telegram whether to allow it. Tap **Allow** when the code matches; the device stays logged in for a year. Only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, list them all in `remoteAccess.allowedTailscaleIdentities`.
-- **When no Telegram bot runs on that computer** (a satellite, or no bot token), the page asks for the token instead.
-- **On the computer itself** (advanced): the page also listens at `http://127.0.0.1:7420` (or that Eva's port), for that computer only. It asks once for the token `localApiToken` from `secrets.json` in Eva's home folder. The `eva` commands on that computer read the token by themselves.
+- **A new device** (your phone, another computer, or a browser on Eva's own computer): the first time, the page shows a short code. Allow it in one of these ways, and the device stays logged in for a year:
+  - In a terminal on Eva's computer, run `eva devices allow <code>`, or type the code where `eva setup` asks for it.
+  - In Telegram, tap **Allow** when the code matches. This needs the Telegram bot.
+- **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, list them all in `remoteAccess.allowedTailscaleIdentities`.
+- **On the computer itself,** the page listens at `http://127.0.0.1:7420` (or that Eva's port), for that computer only.
+- **The token** `localApiToken` from `secrets.json` in Eva's home folder always works as the last way in. The `eva` commands on that computer read it by themselves.
 - **End every device login:** tap "Log out every device" on the Settings page.
 - **Keep Eva off Tailscale:** run `eva settings set remoteAccess.tailscaleServe false`.
 

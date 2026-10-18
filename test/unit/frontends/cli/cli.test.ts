@@ -119,6 +119,13 @@ describe("parseArguments", () => {
     expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
     expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
     expect(parseArguments(["link"])).toEqual({ command: "link", home: undefined });
+    expect(parseArguments(["devices", "allow", "AB2C"])).toEqual({
+      command: "devices-allow",
+      home: undefined,
+      code: "AB2C",
+    });
+    expect(parseArguments(["devices", "allow"])).toMatchObject({ command: "usage-error" });
+    expect(parseArguments(["devices"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["settings"])).toEqual({ command: "settings", home: undefined, action: "list" });
     expect(parseArguments(["settings", "get", "updates.frequency"])).toEqual({
       command: "settings",

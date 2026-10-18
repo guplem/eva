@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 
-/** The page asks again at this pace until the owner answers in Telegram. */
+/** The page asks again at this pace until the owner answers in Telegram or in the terminal. */
 const devicePollMs = 2_000;
 
 type DeviceStep =
@@ -11,8 +11,8 @@ type DeviceStep =
   | { readonly kind: "token"; readonly reason: string | null; readonly canAskAgain: boolean };
 
 /**
- * A browser that comes through Tailscale asks the owner in Telegram, so a phone needs no typing.
- * Any other browser types the token: in a form, never in a URL. The server answers
+ * A browser shows a short code, and the owner allows it in a terminal on Eva's computer or in
+ * Telegram, so a phone needs no long token. The token stays as the last way in: in a form, never in a URL. The server answers
  * each login with a cookie.
  */
 export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElement {
@@ -48,7 +48,7 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
         (found) => {
           if (found.state === "allowed") onLoggedIn();
           else if (found.state === "denied")
-            setStep({ kind: "token", reason: "The request was denied in Telegram.", canAskAgain: true });
+            setStep({ kind: "token", reason: "The request was denied.", canAskAgain: true });
           else if (found.state === "expired")
             setStep({
               kind: "token",
@@ -64,14 +64,21 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
 
   if (step.kind === "asking") return <div className="empty">Loading…</div>;
   if (step.kind === "waiting") {
+    const approvers = step.request.approvers;
     return (
       <div className="login" role="status">
         <h1>Eva</h1>
-        <strong>Confirm this device in Telegram</strong>
+        <strong>Confirm this device</strong>
         <span>
-          Eva sent a question to your Telegram chat. Tap Allow there if it shows the code{" "}
-          <code>{step.request.code}</code>.
+          The code of this device is <code>{step.request.code}</code>.
         </span>
+        {approvers.includes("terminal") && (
+          <span>
+            In a terminal on Eva's computer, run <code>eva devices allow {step.request.code}</code>, or type the code
+            where <code>eva setup</code> asks for it.
+          </span>
+        )}
+        {approvers.includes("Telegram") && <span>Or tap Allow in your Telegram chat, if it shows the same code.</span>}
         <span className="chip">This page opens by itself when you allow it.</span>
       </div>
     );
@@ -124,7 +131,7 @@ function TokenForm({
       {reason !== null && <div role="status">{reason}</div>}
       {onAskAgain !== null && (
         <button type="button" onClick={onAskAgain}>
-          Ask in Telegram again
+          Ask again
         </button>
       )}
       <label htmlFor="token">Token (from the localApiToken in your instance's secrets.json)</label>

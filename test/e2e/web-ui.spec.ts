@@ -570,17 +570,19 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
-test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
-  page,
-  context,
-  baseURL,
-}) => {
+test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
   let polls = 0;
   // The demo server has no Tailscale, so the browser plays the server's side of the device login.
   await page.route("**/api/login/device", (route) =>
     route.fulfill({
       status: 201,
-      json: { id: "request-1", code: "K7QX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+      json: {
+        id: "request-1",
+        code: "K7QX",
+        account: "owner@example.com",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        approvers: ["Telegram", "terminal"],
+      },
     }),
   );
   await page.route("**/api/login/device/request-1", async (route) => {
@@ -594,17 +596,18 @@ test("device login: a browser that Tailscale names waits for Allow in Telegram, 
     await route.fulfill({ json: { state: "allowed" } });
   });
   await page.goto("/");
-  await expect(page.getByText("Confirm this device in Telegram")).toBeVisible();
-  await expect(page.getByText("K7QX")).toBeVisible();
+  await expect(page.getByText("Confirm this device")).toBeVisible();
+  await expect(page.getByText("eva devices allow K7QX")).toBeVisible();
+  await expect(page.getByText("Or tap Allow in your Telegram chat")).toBeVisible();
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
 
-test("device login: without a Telegram bot, the page says why and asks for the token", async ({ page }) => {
+test("device login: with no approver, the page says why and asks for the token", async ({ page }) => {
   await page.route("**/api/login/device", (route) =>
-    route.fulfill({ status: 409, json: { error: "This machine runs no Telegram bot that can confirm a new device." } }),
+    route.fulfill({ status: 409, json: { error: "Nothing on this machine can confirm a new device." } }),
   );
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("This machine runs no Telegram bot that can confirm a new device.");
+  await expect(page.getByRole("status")).toHaveText("Nothing on this machine can confirm a new device.");
   await expect(page.getByLabel(/Token/)).toBeVisible();
 });
 
@@ -612,13 +615,19 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await page.route("**/api/login/device", (route) =>
     route.fulfill({
       status: 201,
-      json: { id: "request-2", code: "M3PT", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+      json: {
+        id: "request-2",
+        code: "M3PT",
+        account: "owner@example.com",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        approvers: ["terminal"],
+      },
     }),
   );
   await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("The request was denied in Telegram.");
-  await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("The request was denied.");
+  await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 
 test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {

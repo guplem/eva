@@ -159,7 +159,11 @@ describe("device login", () => {
   let asked: DeviceLoginRequest[];
 
   function attachApprover(canApprove = true): void {
-    eva.deviceLogins.attachApprover({ canApprove: () => canApprove, ask: (request) => asked.push(request) });
+    eva.deviceLogins.attachApprover({
+      name: "Telegram",
+      canApprove: () => canApprove,
+      ask: (request) => asked.push(request),
+    });
   }
 
   async function requestLogin(extra: Record<string, string> = {}): Promise<Response> {
@@ -223,12 +227,40 @@ describe("device login", () => {
 
   test("only an allowed Tailscale account on the tailnet name may ask", async () => {
     attachApprover();
-    expect((await call("/api/login/device", { method: "POST", headers: {} })).status).toBe(403);
-    expect((await call("/api/login/device", { method: "POST", headers: headers() })).status).toBe(403);
+    const noAccount = { host: "eva.example-tailnet.ts.net" };
+    expect((await call("/api/login/device", { method: "POST", headers: noAccount })).status).toBe(403);
     expect((await requestLogin({ "tailscale-user-login": "stranger@example.com" })).status).toBe(403);
-    expect((await call("/api/login/device/unknown", { headers: {} })).status).toBe(403);
+    expect((await call("/api/login/device/unknown", { headers: noAccount })).status).toBe(403);
     expect((await call("/api/login/device", { method: "PUT", headers: tailnet })).status).toBe(404);
     expect(asked).toEqual([]);
+  });
+
+  test("the page on Eva's own computer asks too, and only that browser collects the cookie", async () => {
+    attachApprover();
+    const created = await call("/api/login/device", { method: "POST", headers: {} });
+    expect(created.status).toBe(201);
+    const request = await json<DeviceLoginRequest>(created);
+    expect(request.account).toBe("this computer");
+    eva.deviceLogins.answer(request.id, "allow");
+    const stolen = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(stolen)).toEqual({ state: "expired" });
+  });
+
+  test("the terminal allows a device with its code, through the token", async () => {
+    attachApprover();
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const unknown = await call("/api/devices/allow", { method: "POST", body: { code: "ZZZZ" } });
+    expect(unknown.status).toBe(404);
+    const allowed = await call("/api/devices/allow", { method: "POST", body: { code: request.code } });
+    expect(allowed.status).toBe(200);
+    const body = await allowed.text();
+    expect(JSON.parse(body)).toEqual({ label: expect.stringContaining("owner@example.com") as string });
+    const collected = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(collected)).toEqual({ state: "allowed" });
+    expect(body).not.toContain(deviceCookieOf(collected.headers.get("set-cookie") ?? "").slice("eva_device=".length));
+    expect((await call("/api/devices/allow", { method: "POST", headers: {}, body: { code: "ZZZZ" } })).status).toBe(
+      401,
+    );
   });
 
   test("another account cannot collect the cookie of a request", async () => {
@@ -254,10 +286,10 @@ describe("device login", () => {
     }
   });
 
-  test("without a Telegram bot that can ask, the page learns why and falls back to the token", async () => {
+  test("with no approver that can ask, the page learns why and falls back to the token", async () => {
     const refused = await requestLogin();
     expect(refused.status).toBe(409);
-    expect((await json<{ error: string }>(refused)).error).toContain("Telegram");
+    expect((await json<{ error: string }>(refused)).error).toContain("Log in with the token");
     attachApprover(false);
     expect((await requestLogin()).status).toBe(409);
   });
@@ -618,7 +650,7 @@ describe("web routes", () => {
   });
 
   test("a device login changes the Google client and reaches the Google login", async () => {
-    eva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+    eva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = eva.deviceLogins.request("owner@example.com", "a phone");
     eva.deviceLogins.answer(request.id, "allow");
     const answer = eva.deviceLogins.check(request.id, "owner@example.com");
@@ -1131,7 +1163,7 @@ describe("remote access", () => {
 
   test("a device login sets up Tailscale, as the console does", async () => {
     startRemote();
-    remoteEva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+    remoteEva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = remoteEva.deviceLogins.request("owner@example.com", "a phone");
     remoteEva.deviceLogins.answer(request.id, "allow");
     const answer = remoteEva.deviceLogins.check(request.id, "owner@example.com");

@@ -228,6 +228,21 @@ export async function requestSettingsChange(
   return ((await response.json()) as { restartNeeded: boolean }).restartNeeded;
 }
 
+/**
+ * `eva devices allow`: lets in the browser that waits with this code. Returns its label, or null
+ * when no browser waits with it. The device token stays with that browser.
+ */
+export async function requestDeviceAllow(options: ClientOptions, code: string): Promise<string | null> {
+  const response = await fetch(`${options.baseUrl}/api/devices/allow`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  return ((await response.json()) as { label: string }).label;
+}
+
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);

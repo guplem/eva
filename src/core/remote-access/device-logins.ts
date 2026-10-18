@@ -1,7 +1,6 @@
 /**
- * Device login for the web UI. A browser that comes through an allowed
- * Tailscale account asks to log in, the owner allows it in Telegram, and the browser gets a
- * device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
+ * Device login for the web UI. A browser asks to log in with a short code. The owner allows it in
+ * Telegram, or types the code in a terminal on Eva's computer, and the browser gets a device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EvaError } from "../../shared/errors.ts";
@@ -14,6 +13,8 @@ export interface DeviceLoginRequest {
   /** The Tailscale account of the browser. */
   readonly account: string;
   readonly expiresAt: string;
+  /** The approvers that can answer, such as "Telegram" and "terminal", so the page says where to answer. */
+  readonly approvers: readonly string[];
 }
 
 export type DeviceLoginState =
@@ -25,6 +26,8 @@ export type DeviceLoginState =
 
 /** A front end that asks the owner, such as the Telegram bot. */
 export interface DeviceLoginApprover {
+  /** How the page names it to the person. */
+  readonly name: string;
   /** False while the approver cannot reach the owner, such as a bot with no paired chat. */
   canApprove(): boolean;
   ask(request: DeviceLoginRequest): void;
@@ -89,7 +92,7 @@ export class DeviceLogins {
     if (ready.length === 0)
       throw new EvaError(
         "device_login_unavailable",
-        "This machine runs no Telegram bot that can confirm a new device. Log in with the token instead.",
+        "Nothing on this machine can confirm a new device. Log in with the token instead.",
       );
     const nowMs = this.options.now().getTime();
     this.requestTimes = this.requestTimes.filter((time) => nowMs - time < requestWindowMs);
@@ -102,6 +105,7 @@ export class DeviceLogins {
       code: newCode(),
       account,
       expiresAt: new Date(nowMs + pendingLifetimeMs).toISOString(),
+      approvers: ready.map((approver) => approver.name),
     };
     this.pending.set(request.id, { request, label, expiresAtMs: nowMs + pendingLifetimeMs, answer: null });
     for (const approver of ready) approver.ask(request);
@@ -126,6 +130,20 @@ export class DeviceLogins {
     this.saveDevices();
     login.answer = { state: "allowed", token };
     return true;
+  }
+
+  /**
+   * Allows the request with this exact code, for the person who types the code that the page
+   * shows. Returns its label, or null. Never "the newest request": any local program can make one.
+   */
+  allowByCode(code: string): string | null {
+    this.removeExpired(this.options.now().getTime());
+    const wanted = code.trim().toUpperCase();
+    const found = [...this.pending.values()].filter((login) => login.answer === null && login.request.code === wanted);
+    // Two waiting requests with one code are rare; neither is allowed, so the person asks again.
+    if (found.length !== 1 || found[0] === undefined) return null;
+    this.answer(found[0].request.id, "allow");
+    return found[0].label;
   }
 
   /** The state of a request, for the browser that made it. An issued token is handed out once. */

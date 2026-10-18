@@ -26,6 +26,7 @@ import { evaVersion } from "../../shared/version.ts";
 import { parseArguments, usageText, type CliCommand } from "./arguments.ts";
 import { runChat } from "./chat.ts";
 import { describeProjects, describeStatus, startProjectWork } from "./client.ts";
+import { allowDevice } from "./devices.ts";
 import { runDoctor } from "./doctor.ts";
 import {
   childEnvironment,
@@ -91,6 +92,8 @@ export async function runCli(argv: readonly string[], host: CliHost, wiring: Cli
       return link(host, paths);
     case "settings":
       return settings(host, paths, command);
+    case "devices-allow":
+      return allowDevice(host, paths, command.code);
     case "status":
     case "projects":
     case "chat":

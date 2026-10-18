@@ -63,13 +63,18 @@ export interface CreateCloneOptions {
 
 /** Clones the repository into the next free folder, and records the URL it came from. */
 export async function createClone(options: CreateCloneOptions): Promise<Clone> {
+  // The URL comes from front matter or the API. Git reads `--upload-pack=<command>` as an option
+  // and runs the command, so refuse it here too, and not only with the `--` below.
+  if (options.repositoryUrl.startsWith("-")) {
+    throw new EvaError("project_invalid", `A repository URL cannot start with "-": ${options.repositoryUrl}`);
+  }
   const repository = repositoryName(options.repositoryUrl);
   const name = cloneFolderName(options.projectPath, repository);
   const reposFolder = join(options.projectPath, "repos");
   const path = join(reposFolder, name);
   // Eva's credential helper, so a private project repository clones with the GitHub token too.
   const result = await options.runner.run(
-    ["git", ...githubCredentialArguments, "clone", "-q", options.repositoryUrl, path],
+    ["git", ...githubCredentialArguments, "clone", "-q", "--", options.repositoryUrl, path],
     {
       cwd: options.projectPath,
       environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },

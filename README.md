@@ -43,7 +43,7 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 
    Setup installs the harnesses (Claude Code and pi) and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
 
-4. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left: your notebook, your AI login, and the optional Telegram bot. The terminal asks the same questions. Each answer is saved at once, in both places.
+4. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left, such as your AI login and the optional Telegram bot. Your notebook still needs the terminal: setup asks for it. Each answer is saved at once, in both places.
 
 5. **With a Telegram bot, pair your chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
 

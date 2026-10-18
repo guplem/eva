@@ -286,7 +286,9 @@ function EvaApp(): ReactElement {
           onNavigate={() => setSidebarOpen(false)}
         />
       )}
-      {screen === "settings" && <SettingsView onLoggedOut={() => setAuthenticated(false)} />}
+      {screen === "settings" && (
+        <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
+      )}
       {screen === "schedules" && <SchedulesView />}
       {approval !== undefined && (
         <div className="dialog-backdrop">

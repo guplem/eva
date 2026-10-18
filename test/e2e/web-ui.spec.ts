@@ -638,8 +638,21 @@ test("Settings: the progress list shows each step, and keeps the last Test resul
   const list = page.getByRole("group", { name: "Progress list" });
   await expect(list).toContainText("Your devices");
   await expect(list).toContainText("eva devices allow");
-  await list.getByRole("button", { name: "Test Your notebook" }).click();
+  await list.getByRole("button", { name: "Test Your vault" }).click();
   await expect(list).toContainText("Last test:");
+});
+
+test("Settings: a token saved on the page shows at once in the progress list", async ({ page }) => {
+  await logIn(page);
+  await page.request.delete("/api/secrets/githubToken");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("group", { name: "Progress list" });
+  await expect(list).not.toContainText("The token is saved.");
+  await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-progress-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(list).toContainText("The token is saved.");
+  await expect(list).toContainText("Eva uses the new tokens after a restart.");
+  await page.request.delete("/api/secrets/githubToken");
 });
 
 test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {

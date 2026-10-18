@@ -123,7 +123,7 @@ Eva's computer may have no screen. You then reach it over SSH, and touch it as l
 2. Setup asks to start Eva. Press Enter. She then starts by herself each time the computer starts.
 3. Setup shows Eva's address. Open it on your phone or your laptop. The page shows a short code.
 4. Type that code in the terminal. The device that shows it can now open Eva, with the same control as the terminal.
-5. Finish on the page: **Settings** lists each step that is left, with what to do. Or answer the next questions in the terminal. Both work at the same time.
+5. Finish on the page: **Settings** lists each step that is left, with what to do. Or answer the next questions in the terminal. Both work at the same time. Your notebook needs the terminal: the page cannot clone it yet.
 
 Setup saves each answer at once, so you can stop it with Ctrl+C at any question and lose nothing. A step done on the page is not asked again in the terminal. To let another device in later, open the page on it, and run `eva devices allow <code>` on Eva's computer.
 

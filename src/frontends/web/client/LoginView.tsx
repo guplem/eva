@@ -74,8 +74,8 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
         </span>
         {approvers.includes("terminal") && (
           <span>
-            In a terminal on Eva's computer, run <code>eva devices allow {step.request.code}</code>, or type the code
-            where <code>eva setup</code> asks for it.
+            In a terminal on Eva's computer, run <code>eva devices allow {step.request.code}</code>. During{" "}
+            <code>eva setup</code>, type the code where setup asks for it.
           </span>
         )}
         {approvers.includes("Telegram") && <span>Or tap Allow in your Telegram chat, if it shows the same code.</span>}

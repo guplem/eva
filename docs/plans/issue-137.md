@@ -36,3 +36,19 @@ Over SSH, a person runs `eva setup`, answers only what the terminal truly needs,
 - **G6. What "tested" means, and where the last check result lives.** A model call per engine is slow, so the list cannot run every check on each load.
 - **G7. The pi login on a computer with no browser.**
 - **G8. One pull request or several.** The change is large.
+
+## Decisions after the gap review
+
+- **G1:** a shell approver in `DeviceLogins`, with `answerByCode(code)`: the exact code only, never "the newest request", because any local program can forge a pending request. The CLI talks to the running Eva through the local API with `localApiToken`, as `eva settings` does. A new route `POST /api/devices/allow` refuses a device login. `eva devices allow <code>` and `eva setup` print only the device label, never the token. Expiry and rate limit stay. The page and its error texts stop saying "Telegram" only, and show `eva devices allow <code>`.
+- **G2:** setup starts Eva with `installService`, after it saves the port and makes `localApiToken`. A script skips it unless it asks, as with `EVA_INSTALL_ENGINES`, so the smoke test starts nothing. A missing systemd prints "run `eva`" and never fails setup.
+- **G5:** when Eva runs, setup saves through the local API, as `eva settings` does, and asks for one restart at the end when a saved value needs it. It says first that a restart ends a running turn. When Eva does not run, setup writes the files and re-reads them before each save. No file watcher.
+- **G6:** the last result of each check, with its time, lives in Eva's memory, set in `Eva.runCheck`. A restart clears it. "Done" means configured; "tested" is a second mark. The page never runs a model check on load. The results join `GET /api/settings/setup`.
+- **Progress list:** a pure module beside `core/remote-access/steps.ts`, built from `checkNames`, the setup state, the saved secrets and the Tailscale step. It adds a "first device" step. Telegram is optional. The engine step is done when one engine has a login. The terminal and the page render the same list.
+- **G7:** the page and the terminal print the pi steps. Nobody has checked pi's `/login` on a computer with no browser yet.
+- **Missed gaps:** a page save must never be undone by setup (test it). Problems that Telegram reports today must show on the page. New sent names: an `EvaErrorCode` for an unknown code, and the `devices` command with its registration points. Docs: the "What setup asks" table, where to run `claude setup-token`, and the `gh` text in the doctor.
+
+## The owner's answers
+
+- **G4, device rights:** a new machine setting in `config.json`, never in the vault, since AGENTS.md keeps every security setting on the machine. Values: full (the default, the rights of a token login), fill empty tokens only, and restricted (today's page-only rights). It applies to every device login. Settings on the page change it, with a warning, and so does `eva settings`. A device login may make it stricter, never looser.
+- **G1:** the terminal asks the person to type the code that the page shows. No [y/N] question.
+- **G8:** one pull request, #145, with small commits.

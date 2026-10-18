@@ -24,7 +24,7 @@
   "scripts": {
     "prepare": "lefthook install",
     "eva": "bun run src/main.ts",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
+    "check": "bun run commits && bun run format:check && bun run lint && bun run typecheck && bun run arch && bun run deadcode && bun run public-content && bun run test:coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -32,6 +32,7 @@
     "arch": "depcruise src --config .dependency-cruiser.cjs",
     "deadcode": "knip",
     "public-content": "bun run scripts/check-public-content.ts",
+    "commits": "bun run scripts/check-commits.ts",
     "test": "bun test --timeout 30000",
     "test:coverage": "bun test --coverage --timeout 30000",
     "test:e2e": "playwright test",

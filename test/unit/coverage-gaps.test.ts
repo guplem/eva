@@ -81,6 +81,8 @@ describe("describeEvent", () => {
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
       },
+      { ...base, kind: "session_deleted" },
+      { ...base, kind: "project_work_started", projectId: "p", projectSessionId: "q" },
     ];
     expect(events.map(describeEvent)).toEqual([
       "Hi\n",
@@ -92,6 +94,8 @@ describe("describeEvent", () => {
       "  The turn failed: boom\n",
       null,
       null,
+      null,
+      "  (This chat was deleted in another front end.)\n",
       null,
     ]);
   });

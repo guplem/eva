@@ -100,6 +100,15 @@ export class SessionStore {
 
   save(session: SessionRecord): void {
     this.sessions.set(session.id, session);
+    this.write();
+  }
+
+  delete(id: string): void {
+    this.sessions.delete(id);
+    this.write();
+  }
+
+  private write(): void {
     writeFileAtomic(this.path, JSON.stringify({ version: 1, sessions: this.list() }, null, 2) + "\n");
   }
 }

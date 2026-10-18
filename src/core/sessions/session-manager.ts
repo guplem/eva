@@ -13,7 +13,7 @@ import type {
   TurnHistory,
 } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
-import { isTurnEnd, type EngineEventPayload, type SessionEvent } from "../../shared/events.ts";
+import { isTurnEnd, type CoreEventPayload, type EngineEventPayload, type SessionEvent } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
@@ -213,6 +213,29 @@ export class SessionManager {
       }, this.options.gatherMs);
     }
     return batch.done;
+  }
+
+  /**
+   * Deletes a chat and every fork of it, and returns their ids. A fork left behind would point
+   * at a parent that is gone. The engine keeps its own transcript.
+   */
+  delete(sessionId: string): string[] {
+    this.get(sessionId);
+    const ids = [sessionId];
+    // The loop also visits the ids that it adds, so it walks the whole tree.
+    for (const parentId of ids) {
+      for (const session of this.list()) if (session.parentId === parentId) ids.push(session.id);
+    }
+    // A queued message would run on a deleted record, so a gathered one refuses the delete too.
+    if (ids.some((id) => this.isActive(id)))
+      throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
+    for (const id of ids) {
+      this.options.store.delete(id);
+      this.runtimes.delete(id);
+      this.lastFailure.delete(id);
+      this.emit(id, { kind: "session_deleted" });
+    }
+    return ids;
   }
 
   /** A new branch of a conversation, up to and including one message. Its first message starts it. */
@@ -520,8 +543,8 @@ ${prompt}`,
     });
   }
 
-  private emit(sessionId: string, payload: EngineEventPayload): void {
-    const event = redactPayload(payload, this.options.redactor);
+  private emit(sessionId: string, payload: EngineEventPayload | CoreEventPayload): void {
+    const event = isCorePayload(payload) ? payload : redactPayload(payload, this.options.redactor);
     if (event.kind === "turn_failed") this.lastFailure.set(sessionId, event.reason);
     const stamped: SessionEvent = {
       ...event,
@@ -540,6 +563,10 @@ ${prompt}`,
     }
     return runtime;
   }
+}
+
+function isCorePayload(payload: EngineEventPayload | CoreEventPayload): payload is CoreEventPayload {
+  return payload.kind === "session_deleted" || payload.kind === "project_work_started";
 }
 
 function createBatch(): PendingBatch {

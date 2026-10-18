@@ -333,6 +333,51 @@ describe("forks and retries", () => {
   });
 });
 
+describe("delete", () => {
+  test("a delete removes the chat and its forks, and tells the front ends of each one", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    const otherId = newAssistantSession(manager);
+    await manager.send(rootId, "one");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]!.lastMessageId!);
+    const forkOfFork = manager.fork(fork.id, "message-1");
+    events = [];
+
+    expect(manager.delete(rootId).sort()).toEqual([rootId, fork.id, forkOfFork.id].sort());
+    expect(manager.list().map((session) => session.id)).toEqual([otherId]);
+    expect(events.map((event) => [event.kind, event.sessionId]).sort()).toEqual(
+      [rootId, fork.id, forkOfFork.id].map((id) => ["session_deleted", id]).sort(),
+    );
+  });
+
+  test("a delete of a chat that works, or of one of its forks that works, is refused", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const rootId = newAssistantSession(manager);
+    const fork = manager.fork(rootId, "message-1");
+    const turn = manager.send(fork.id, "long work");
+
+    let refused: unknown = null;
+    try {
+      manager.delete(rootId);
+    } catch (error) {
+      refused = error;
+    }
+    expect(isEvaError(refused, "session_busy")).toBe(true);
+    expect(manager.list()).toHaveLength(2);
+    for (let attempt = 0; attempt < 200 && !manager.stop(fork.id); attempt += 1) await Bun.sleep(5);
+    await turn;
+  });
+
+  test("a delete of an unknown chat is an EvaError", () => {
+    const manager = createManager(new FakeEngine());
+    expect(() => manager.delete("nothing")).toThrow("No session nothing.");
+  });
+});
+
 describe("approvals", () => {
   test("an engine's permission ask becomes an event, and the first answer wins", async () => {
     const answers: string[] = [];

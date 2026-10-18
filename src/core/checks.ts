@@ -14,7 +14,10 @@ export interface CheckResult {
 export interface CheckInputs {
   readonly vaultPath: string | null;
   readonly runner: ProcessRunner;
+  /** Eva's git environment, with the GitHub token. */
   readonly environment: Readonly<Record<string, string>>;
+  /** The environment of Eva's own `claude` runs: no token (lesson 96). */
+  readonly engineEnvironment: Readonly<Record<string, string>>;
   readonly claudeExecutable: string | null;
   readonly telegramToken: string | null;
   /** The Bot API address; a test points it at a fake server. */
@@ -25,10 +28,11 @@ const checkTimeoutMs = 30_000;
 
 export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<CheckResult> {
   if (name === "telegram") return checkTelegram(inputs);
-  if (name === "github") return runProgram(["gh", "auth", "status"], process.cwd(), inputs, "gh is logged in.");
+  if (name === "github")
+    return runProgram(["gh", "auth", "status"], process.cwd(), inputs.environment, inputs, "gh is logged in.");
   if (name === "engine") {
     if (inputs.claudeExecutable === null) return { ok: false, detail: "No claude program was found." };
-    return runProgram([inputs.claudeExecutable, "--version"], process.cwd(), inputs, null);
+    return runProgram([inputs.claudeExecutable, "--version"], process.cwd(), inputs.engineEnvironment, inputs, null);
   }
   if (inputs.vaultPath === null) return { ok: false, detail: "No vault is configured." };
   // A dry-run push to a branch that does not exist checks write access: a read-only key passes
@@ -36,6 +40,7 @@ export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<Ch
   return runProgram(
     ["git", "push", "--dry-run", "origin", "HEAD:refs/heads/eva-access-check"],
     inputs.vaultPath,
+    inputs.environment,
     inputs,
     "Eva can push to the vault's remote.",
   );
@@ -44,13 +49,14 @@ export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<Ch
 async function runProgram(
   command: readonly string[],
   cwd: string,
+  environment: Readonly<Record<string, string>>,
   inputs: CheckInputs,
   okDetail: string | null,
 ): Promise<CheckResult> {
   try {
     const result = await inputs.runner.run(command, {
       cwd,
-      environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
+      environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: checkTimeoutMs,
     });
     const output = (result.stdout.trim() || result.stderr.trim()).split(/\r?\n/)[0] ?? "";

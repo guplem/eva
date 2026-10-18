@@ -56,28 +56,46 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
 });
 
 test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
+  // Both screen sizes share one demo server, so each size names its own chats.
+  const title = `A chat to delete (${test.info().project.name})`;
   await logIn(page);
   await openList(page);
   await page.getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
-  await composer.fill("A chat to delete");
+  await composer.fill(title);
   await composer.press("Enter");
-  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: A chat to delete/);
+  await expect(page.locator(".message.answer").first()).toContainText(title);
   // The list keeps its items when it is closed on a phone, so the count needs no open list.
-  const listed = page.locator(".sidebar .list-item", { hasText: "A chat to delete" });
+  const listed = page.locator(".sidebar .list-item", { hasText: title });
   await expect(listed).toHaveCount(1);
-  // A chat that still works refuses a delete, and an Assistant turn ends after the vault sync.
-  await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  // A chat that still works refuses a delete, and it works until the vault sync after its answer.
+  await waitUntilIdle(page, await chatIdNamed(page, title));
+  const deletes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "DELETE") deletes.push(request.url());
+  });
 
   page.once("dialog", (dialog) => void dialog.dismiss());
   await page.getByRole("button", { name: "Delete chat" }).click();
   await expect(listed).toHaveCount(1);
+  expect(deletes).toEqual([]);
 
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete chat" }).click();
   await expect(listed).toHaveCount(0);
+  expect(deletes).toHaveLength(1);
 });
+
+/** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
+async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        ((await (await page.request.get("/api/status")).json()) as { busySessionIds: string[] }).busySessionIds,
+    )
+    .not.toContain(chatId);
+}
 
 async function chatIdNamed(page: Page, title: string): Promise<string> {
   const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
@@ -86,32 +104,61 @@ async function chatIdNamed(page: Page, title: string): Promise<string> {
   return found.id;
 }
 
+/** A new Assistant chat with one answer. Each screen size names its own chats, on the shared demo server. */
+async function newAnsweredChat(page: Page, text: string): Promise<string> {
+  const title = `${text} (${test.info().project.name})`;
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(title);
+  return title;
+}
+
 test("the address #/chat/<id> opens that Assistant chat, as a link from Telegram does", async ({ page }) => {
   await logIn(page);
-  for (const text of ["First linked chat", "Second linked chat"]) {
-    await openList(page);
-    await page.getByRole("button", { name: "New chat", exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-    const composer = page.getByLabel("Message").first();
-    await composer.fill(text);
-    await composer.press("Enter");
-    await expect(page.locator(".message.answer").first()).toContainText(text);
-  }
-  const firstId = await chatIdNamed(page, "First linked chat");
-  await page.goto(`/#/chat/${firstId}`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("First linked chat");
+  const first = await newAnsweredChat(page, "First linked chat");
+  const second = await newAnsweredChat(page, "Second linked chat");
+  await page.goto(`/#/chat/${await chatIdNamed(page, first)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
 
   // The link opens once: the person's own choice then stays, also after another screen.
   await openList(page);
-  // Both screen sizes share one demo server: the newest chat of that name is this run's.
-  await page.locator(".sidebar .list-item", { hasText: "Second linked chat" }).first().click();
+  await page.locator(".sidebar .list-item", { hasText: second }).click();
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Assistant" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Second linked chat");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(second);
+  expect(new URL(page.url()).hash).toBe("");
+});
+
+test("a link opened before the login opens its chat after the login", async ({ page }) => {
+  await logIn(page);
+  const linked = await newAnsweredChat(page, "Linked before login");
+  await newAnsweredChat(page, "Newer chat");
+  const chatId = await chatIdNamed(page, linked);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
+
+  await page.goto(`/#/chat/${chatId}`);
+  await page.getByLabel(/Token/).fill(token);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(linked);
+});
+
+test("a link to a deleted chat says so", async ({ page }) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "A chat that goes"));
+  await waitUntilIdle(page, chatId);
+  expect((await page.request.delete(`/api/sessions/${chatId}`)).status()).toBe(200);
+  await page.goto(`/#/chat/${chatId}`);
+  await expect(page.getByRole("alert")).toContainText("That chat no longer exists.");
   expect(new URL(page.url()).hash).toBe("");
 });
 
 test("the address #/chat/<id> opens a Project chat in its clone", async ({ page }) => {
+  const title = `Linked project work (${test.info().project.name})`;
   await logIn(page);
   await page.getByRole("button", { name: "Project" }).click();
   await openList(page);
@@ -120,21 +167,21 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await page.getByRole("button", { name: "New clone" }).click();
   await page.getByRole("button", { name: "Start a chat in this clone" }).click();
   const composer = page.getByLabel("Message").first();
-  await composer.fill("Linked project work");
+  await composer.fill(title);
   await composer.press("Enter");
   // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("dialog", { name: "Approval" });
   await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  await expect(answer).toContainText("Linked project work");
-  const chatId = await chatIdNamed(page, "Linked project work");
+  await expect(answer).toContainText(title);
+  const chatId = await chatIdNamed(page, title);
 
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
   await page.goto(`/#/chat/${chatId}`);
   await expect(page.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".message.user").first()).toContainText("Linked project work");
+  await expect(page.locator(".message.user").first()).toContainText(title);
 });
 
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {

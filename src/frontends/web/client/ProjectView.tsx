@@ -74,7 +74,12 @@ export function ProjectView({
   const linkedProjectId = linkedChat?.projectId ?? null;
   const linkedClone = linkedChat?.clone ?? null;
   useEffect(() => {
-    if (linkedId === null || linkedProjectId === null || linkedClone === null) return;
+    if (linkedId === null) return;
+    if (linkedProjectId === null || linkedClone === null) {
+      showError(new Error("The linked chat has no project or clone."));
+      onLinkedChatOpened();
+      return;
+    }
     void (async (): Promise<void> => {
       try {
         const project = (await api.projects("", "")).find((candidate) => candidate.id === linkedProjectId);

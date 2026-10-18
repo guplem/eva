@@ -100,6 +100,24 @@ function EvaApp(): ReactElement {
     void refreshSessions();
   }, [refreshSessions]);
 
+  // Telegram can link to a chat that is newer than this page's list: read the list once more.
+  // A chat that is not in it either was deleted, and the link says so.
+  const linkIsMissing = authenticated === true && linkedChatId !== null && linkedChat === null;
+  useEffect(() => {
+    if (!linkIsMissing) return;
+    void (async (): Promise<void> => {
+      try {
+        const fresh = await api.sessions();
+        setSessions(fresh);
+        if (fresh.some((session) => session.id === linkedChatId)) return;
+        showError(new Error("That chat no longer exists."));
+      } catch (caught) {
+        showError(caught);
+      }
+      onLinkedChatOpened();
+    })();
+  }, [linkIsMissing, linkedChatId, showError, onLinkedChatOpened]);
+
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
    * waits, with no event here. Read the state again, and drop the text of turns that ran meanwhile.

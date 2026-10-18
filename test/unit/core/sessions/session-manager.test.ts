@@ -247,6 +247,20 @@ describe("renames (issue 46)", () => {
     expect(manager.rename(sessionId, "key the-telegram-token-value").title).toBe("key [redacted]");
   });
 
+  test("a cut never splits an emoji", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, `${"x".repeat(58)}🙂🙂🙂`).title).toBe(`${"x".repeat(58)}🙂…`);
+  });
+
+  test("the same title again changes nothing and tells no front end", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.rename(sessionId, "Trip plans");
+    expect(manager.rename(sessionId, " Trip plans ").title).toBe("Trip plans");
+    expect(events.filter((event) => event.kind === "session_renamed")).toHaveLength(1);
+  });
+
   test("an empty title is refused", () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);

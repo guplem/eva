@@ -178,12 +178,15 @@ export class SessionManager {
 
   /**
    * Gives a chat the person's title. A running turn keeps it, because its end reads the record
-   * again; a first message names only a chat whose title is still the default.
+   * again. A first message names only a chat whose title is still the default, so a chat renamed
+   * to exactly the default title still takes its first message as its title.
    */
   rename(sessionId: string, title: string): SessionRecord {
     const session = this.get(sessionId);
     const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
     if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
+    // Telegram refuses to give a topic the name it already has.
+    if (cleaned === session.title) return session;
     const updated = { ...session, title: cleaned };
     this.options.store.save(updated);
     this.emit(sessionId, { kind: "session_renamed", title: cleaned });
@@ -569,8 +572,10 @@ function titleOf(prompt: string): string {
   return cutTitle(firstLine) || defaultTitle;
 }
 
+/** Counts code points, not UTF-16 units, so a cut never leaves half an emoji. */
 function cutTitle(title: string): string {
-  return title.length > titleLength ? `${title.slice(0, titleLength - 1)}…` : title;
+  const characters = Array.from(title);
+  return characters.length > titleLength ? `${characters.slice(0, titleLength - 1).join("")}…` : title;
 }
 
 function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload {

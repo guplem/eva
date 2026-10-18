@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverProjects, parseFrontMatter, searchProjects } from "../../../../src/core/projects/project-catalog.ts";
+import {
+  discoverProjects,
+  parseFrontMatter,
+  parseProjectQuery,
+  searchProjects,
+} from "../../../../src/core/projects/project-catalog.ts";
 
 let vault: string;
 
@@ -123,5 +128,38 @@ describe("searchProjects", () => {
     expect(searchProjects(projects, { status: "active", tag: "hobby" }).map((project) => project.id)).toEqual([
       "2026-05-01-0900-photo-booth",
     ]);
+  });
+
+  test("the words also match the tags, and the tag filter ignores case", () => {
+    addProject("2025-02-01-0900-tax-report", "created: 2025-02-01T09:00\nstatus: active\ntags: [Life]", "\n# Taxes\n");
+    addProject("2026-05-01-0900-photo-booth", "created: 2026-05-01T09:00\nstatus: active\ntags: [hobby]");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+
+    expect(searchProjects(projects, { text: "life" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-tax-report",
+    ]);
+    expect(searchProjects(projects, { tag: "LIFE" }).map((project) => project.id)).toEqual([
+      "2025-02-01-0900-tax-report",
+    ]);
+  });
+});
+
+describe("parseProjectQuery", () => {
+  test("reads the status and tag words, and keeps the rest as text", () => {
+    expect(parseProjectQuery("photo status:Active #hobby booth")).toEqual({
+      text: "photo booth",
+      status: "active",
+      tag: "hobby",
+    });
+    expect(parseProjectQuery("tag:life")).toEqual({ text: "", tag: "life" });
+    // One tag filters. A second tag word still searches, because the words also match the tags.
+    expect(parseProjectQuery("#life #money")).toEqual({ text: "money", tag: "life" });
+    expect(parseProjectQuery("tag: #")).toEqual({ text: "tag: #" });
+  });
+
+  test("status:any removes the status filter, and an unknown status stays a search word", () => {
+    expect(parseProjectQuery("status:any taxes")).toEqual({ text: "taxes" });
+    expect(parseProjectQuery("status:dreaming")).toEqual({ text: "status:dreaming" });
+    expect(parseProjectQuery("  ")).toEqual({ text: "" });
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
+import { toolCategory } from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
 
 describe("EvaError", () => {
@@ -12,6 +13,15 @@ describe("EvaError", () => {
     expect(isEvaError(error, "config_invalid")).toBe(false);
     expect(isEvaError(new Error("other"))).toBe(false);
     expect(error.name).toBe("EvaError");
+  });
+});
+
+describe("toolCategory", () => {
+  test("the shell tool of each engine is a command, and every other tool is a tool", () => {
+    expect(toolCategory("Bash")).toBe("command");
+    expect(toolCategory("bash")).toBe("command");
+    expect(toolCategory("Read")).toBe("tool");
+    expect(toolCategory("Agent")).toBe("tool");
   });
 });
 

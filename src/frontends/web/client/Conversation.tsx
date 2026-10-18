@@ -183,7 +183,8 @@ function Branch({
       {typeof shownTasks === "number" && (
         <TasksDialog
           tasks={tasksOfTurn(session.turns[shownTasks]?.steps ?? [], session.id)}
-          // The list sends the steps of the recent answers only, and a turn keeps 100 steps at most.
+          total={session.turns[shownTasks]?.taskCount ?? 0}
+          // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}
         />

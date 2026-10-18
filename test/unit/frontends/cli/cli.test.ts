@@ -508,10 +508,12 @@ describe("runSetup", () => {
     const lines: string[] = [];
     const newVault = join(home, "new-vault");
     await setup(
-      { vault: newVault, createVault: "yes", name: "Alex", githubRepository: "my-vault" },
+      { vault: newVault, createVault: "yes", name: "Alex", topics: "Work, music", githubRepository: "my-vault" },
       { runner: recordingRunner, lines },
     );
-    expect(readFileSync(join(newVault, ".eva", "assistant.md"), "utf8")).toContain("Alex");
+    const assistant = readFileSync(join(newVault, ".eva", "assistant.md"), "utf8");
+    expect(assistant).toContain("- **Name:** Alex");
+    expect(assistant).toContain("- Work\n- music\n");
     expect(commands.find((command) => command[0] === "gh")).toEqual([
       "gh",
       "repo",

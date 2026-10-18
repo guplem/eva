@@ -39,6 +39,7 @@ export type SetupQuestion =
   | "createVault"
   | "name"
   | "language"
+  | "topics"
   | "githubRepository"
   | "engine"
   | "port"
@@ -60,6 +61,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   createVault: "EVA_CREATE_VAULT",
   name: "EVA_PERSON_NAME",
   language: "EVA_LANGUAGE",
+  topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
   port: "EVA_PORT",
@@ -260,11 +262,14 @@ async function offerNewVault(
 ): Promise<void> {
   const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
   if (!/^y(es)?$/i.test(create)) return;
-  const name = (await ask("name", "Your name, for Eva's rules: ")) || "the owner";
+  const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
+  const topics = splitList(
+    await ask("topics", "Your main topics, comma-separated, such as work, family, music (Enter to skip): "),
+  );
   await createVaultFromTemplate({
     folder,
-    answers: { name, language, timeZone },
+    answers: { name, language, timeZone, topics },
     runner: options.runner,
     environment: options.environment,
   });

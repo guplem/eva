@@ -28,7 +28,7 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-const answers = { name: "Alex", language: "English", timeZone: "Europe/Madrid" };
+const answers = { name: "Alex", language: "English", timeZone: "Europe/Madrid", topics: ["Work", "Music"] };
 
 function git(cwd: string, ...args: string[]): string {
   return Bun.spawnSync(["git", ...args], { cwd, env: environment })
@@ -51,6 +51,10 @@ describe("the vault template", () => {
       "README.md",
     ]);
     expect(files[".eva/assistant.md"]).toContain("- **Name:** Alex");
+    expect(files[".eva/assistant.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
+    expect(vaultTemplateFiles({ ...answers, topics: [] })[".eva/assistant.md"]).toContain(
+      "## Main topics\n\nNone yet.\n",
+    );
     expect(files[".eva/assistant.md"]).toContain("Europe/Madrid");
     expect(Object.values(files).join("\n")).not.toContain("{{");
     expect(JSON.parse(files[".eva/schedules.json"] ?? "")).toEqual({ version: 1, schedules: [] });

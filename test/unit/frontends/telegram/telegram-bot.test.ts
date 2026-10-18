@@ -318,6 +318,17 @@ describe("chats", () => {
     expect(texts.indexOf("Working on it.")).toBeLessThan(texts.indexOf("The turn failed: boom"));
   });
 
+  test("a notice, such as an MCP server that did not start, comes before the answer", async () => {
+    const notice = 'Eva could not start the MCP server "google": spawn_uvx *ENOENT*';
+    createEva((request) => [{ kind: "notice", text: notice }, ...FakeEngine.answer(request, "No calendar today.")]);
+    const bot = createBot();
+    telegram.sendText(owner, "What is on my calendar?");
+    await settle(bot, () => telegram.sentTexts().includes("No calendar today."));
+    const texts = telegram.sentTexts();
+    expect(texts.indexOf(notice)).toBeGreaterThan(-1);
+    expect(texts.indexOf(notice)).toBeLessThan(texts.indexOf("No calendar today."));
+  });
+
   test("a second message continues the same chat", async () => {
     const bot = createBot();
     telegram.sendText(owner, "one");

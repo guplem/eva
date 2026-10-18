@@ -40,7 +40,7 @@ export function googleSetupSteps(services: readonly GoogleService[]): GoogleStep
     },
     {
       title: `${String(googleStep.consent)}. Set up the consent screen`,
-      text: "Open Branding, press Get started, and pick External. Then open Audience and press Publish app, so that the status is In production. In Testing, your login ends after 7 days.",
+      text: "Open Branding, press Get started, and pick External. Google needs two links before it publishes the app. In Branding, set the home page to https://github.com/guplem/eva, the privacy policy to https://github.com/guplem/eva/blob/main/PRIVACY.md, and add the authorised domain github.com. Press Save. Then open Audience and press Publish app, so that the status is In production. In Testing, your login ends after 7 days.",
       links: [
         { label: "Branding", url: `${cloudConsole}/auth/branding` },
         { label: "Audience", url: `${cloudConsole}/auth/audience` },

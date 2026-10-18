@@ -167,8 +167,29 @@ function createdMatchesId(created: string, folderName: string): boolean {
 }
 
 export function readTitle(text: string): string | null {
-  const heading = /^# (.+)$/m.exec(text.replace(frontMatterPattern, ""));
-  return heading?.[1]?.trim() ?? null;
+  return titleHeading(text.replace(frontMatterPattern, ""))?.title ?? null;
+}
+
+export interface TitleHeading {
+  /** Where the `# ` line starts in the body, and its length without the line break. */
+  readonly index: number;
+  readonly length: number;
+  readonly title: string;
+}
+
+/** The first `# ` line of a body outside a code fence, where a `#` line is a comment, not a title. */
+export function titleHeading(body: string): TitleHeading | null {
+  let inFence = false;
+  let index = 0;
+  for (const line of body.split("\n")) {
+    const content = line.replace(/\r$/, "");
+    if (/^\s*(```|~~~)/.test(content)) inFence = !inFence;
+    else if (!inFence && content.startsWith("# ") && content.trim().length > 1) {
+      return { index, length: content.length, title: content.slice(2).trim() };
+    }
+    index += line.length + 1;
+  }
+  return null;
 }
 
 function readTextList(value: unknown): string[] | null {

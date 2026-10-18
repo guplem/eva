@@ -77,6 +77,11 @@ describe("discoverProjects", () => {
     expect(projects.find((project) => project.id === "2019-03-old-tool")?.parsedId.precision).toBe("month");
   });
 
+  test("the title is the first heading outside a code fence", () => {
+    addProject("2025-03-02-1015-example-app", "status: active", "\n```\n# a comment in code\n```\n\n# Real title\n");
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.title).toBe("Real title");
+  });
+
   test("warns when the front matter time does not match the folder name", () => {
     addProject("2025-03-02-1015-example-app", "created: 2025-03-03T10:15\nstatus: active");
     expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([

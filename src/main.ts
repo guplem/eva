@@ -169,13 +169,6 @@ async function serve(paths: HomePaths): Promise<number> {
       if (published) logger.log("info", "Tailscale access.", { ...tailscale.access() });
     });
   }, tailscaleRetryMs);
-  eva.sessions.subscribe((event) => {
-    if (event.kind === "turn_failed")
-      logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
-    // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
-    if (event.kind === "turn_finished")
-      logger.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
-  });
   // A promise that nobody awaits must never end Eva silently (lesson 50).
   process.on("unhandledRejection", (reason: unknown) => {
     logger.log("error", "A background task failed.", {

@@ -269,7 +269,12 @@ export class Eva {
           });
 
     this.sessions.subscribe((event) => {
-      if (event.kind === "turn_finished") this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
+      if (event.kind === "turn_failed")
+        options.logger?.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
+      if (event.kind !== "turn_finished") return;
+      this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
+      // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
+      options.logger?.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
     });
 
     this.schedules =

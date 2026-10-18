@@ -2,15 +2,7 @@
 
 **Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone (Telegram, or a web page), and she remembers everything in a private notebook that only you own.
 
-Some things you can ask her:
-
-- "Remind me every Monday at 9 to pay the rent."
-- "What did I write about the car insurance?"
-- "Save this photo of the receipt with my expenses."
-- "Send me my notes about the trip as a PDF."
-- "In the website project, fix the broken contact form and open a pull request."
-
-**Status:** Eva works and runs every day for her author, but she is young. Expect rough edges, and read [Problems and answers](#problems-and-answers).
+**Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. One program gives you one chat, one notebook and one list of projects, whichever harness does the work.
 
 ## How Eva works, in one picture
 
@@ -20,7 +12,7 @@ Think of Eva as a helper who lives in one computer at your home:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | **The helper's desk** | A computer that stays on, such as an old laptop. Eva runs there.                                                         | the hub                      |
 | **The notebook**      | A private folder of notes. Eva reads and writes it, and keeps a copy on GitHub so that nothing gets lost.                | the vault (a git repository) |
-| **The brain**         | An AI service that does the thinking. Eva uses your own Claude subscription.                                             | the engine (Claude Code)     |
+| **The brain**         | An AI service that does the thinking, with your own subscription.                                                        | the engine (Claude Code, pi) |
 | **The phone line**    | How you talk to Eva: a Telegram chat, or her web page.                                                                   | the front ends               |
 | **The private road**  | A free app that connects your phone and computers to the helper's desk, and to nothing else. Strangers cannot reach Eva. | Tailscale                    |
 
@@ -30,40 +22,36 @@ Eva can also work in your coding projects. Each project gets its own copy of the
 
 Before you start, have these ready. Each one takes a few minutes.
 
-1. **A computer that stays on.** Windows or Linux. An old laptop is enough.
-2. **A Claude subscription** (Pro or Max) from [claude.ai](https://claude.ai). Eva uses it for the thinking.
+1. **A computer that stays on.** Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
+2. **An AI subscription** for the harness that does the thinking. Use a Claude subscription (Pro or Max) from [claude.ai](https://claude.ai) with Claude Code, or another provider with pi, such as ChatGPT or OpenRouter.
 3. **A GitHub account** from [github.com](https://github.com). Eva keeps a private copy of your notes there.
-4. **Telegram** on your phone, and a bot of your own. A bot is a Telegram account that a program controls. [Create your Telegram bot](docs/guide/setup.md#create-your-telegram-bot) explains the 2-minute steps.
-5. **Tailscale** (free), to open Eva's web page from your phone. On Windows and Linux, `eva setup` installs it for you. You can add it later.
+4. **Telegram** on your phone, and a bot of your own. [Read here how to create your own Telegram bot](docs/guide/setup.md#create-your-telegram-bot).
+
+To open Eva's web page from your phone, you also need **Tailscale** (free). You can add it later. On Windows and Linux, `eva setup` installs it for you.
 
 ## Get started
 
 The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
 
-1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), [Bun](https://bun.sh/), and [Claude Code](https://claude.ai/code).
-2. **Get Eva:**
-
-   ```bash
-   git clone https://github.com/guplem/eva.git
-   cd eva
-   bun install
-   ```
-
+1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), and your harness: [Claude Code](https://claude.ai/code) or [pi](https://pi.dev).
+2. **Download Eva:** one program from the [latest release](https://github.com/guplem/eva/releases/latest). [Install Eva on Windows](docs/guide/setup.md#install-eva-on-windows) and [Install Eva on Linux](docs/guide/setup.md#install-eva-on-linux) give the commands.
 3. **Answer Eva's questions:**
 
    ```bash
-   bun run eva setup
+   eva setup
    ```
 
-   Eva asks for your notebook, your Claude login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
+   Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
 
 4. **Start Eva, and let her start by herself from now on:**
 
    ```bash
-   bun run eva service install
+   eva service install
    ```
 
-5. **Pair your Telegram chat.** Run `bun run eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+5. **Pair your Telegram chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+
+Eva updates herself from new releases. You choose which ones in Settings.
 
 ## Use Eva every day
 
@@ -132,7 +120,7 @@ Open **Settings** on the web page. The most useful ones:
 **Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
 
 **Eva does not answer in Telegram.**
-Open the web page and look at Settings, or run `bun run eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.
+Open the web page and look at Settings, or run `eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.
 
 **The web page does not open on my phone.**
 Open the Tailscale app and check that it says "Connected", with the same account as Eva's computer. Then send `/link` in Telegram and open that exact address.
@@ -141,16 +129,18 @@ Open the Tailscale app and check that it says "Connected", with the same account
 Two computers changed the same note. Eva stops saving to GitHub until a person fixes it, so that nothing is lost. The fix needs a terminal on Eva's computer: see [Notebook conflicts](docs/guide/reference.md#notebook-conflicts).
 
 **Something else.**
-Run `bun run eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.
+Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.
 
 ## More guides
 
-- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for a Linux server.
+- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux.
 - [docs/guide/reference.md](docs/guide/reference.md): every command and setting, several computers, updates, and the optional features (voice notes, PDFs, Google Calendar).
 
 ## For developers
 
 Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes the architecture and the rules of the code; it is written for AI coding agents and for developers. Its section "What must not change" lists the goals that guide every change.
+
+To run Eva from source, clone this repository and run `bun install`. Then type `bun run eva` where the guides say `eva`. A copy from source updates itself from `main`, not from releases.
 
 | Task                                       | Command          |
 | ------------------------------------------ | ---------------- |

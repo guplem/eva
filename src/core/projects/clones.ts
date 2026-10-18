@@ -4,8 +4,9 @@
  * run.
  */
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -57,9 +58,10 @@ export interface CreateCloneOptions {
   readonly repositoryUrl: string;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
+  readonly origins: CloneOriginStore;
 }
 
-/** Clones the repository into the next free folder. */
+/** Clones the repository into the next free folder, and records the URL it came from. */
 export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   const repository = repositoryName(options.repositoryUrl);
   const name = cloneFolderName(options.projectPath, repository);
@@ -77,6 +79,7 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   if (result.exitCode !== 0) {
     throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${result.stderr.trim()}`);
   }
+  options.origins.recordClone(path, options.repositoryUrl);
   return { name, path, repository, index: Number(name.slice(repository.length + 1)) };
 }
 
@@ -154,4 +157,123 @@ export class TrustStore {
 function isDecisionMap(value: unknown): value is Record<string, "trusted" | "untrusted"> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.values(value).every((entry) => entry === "trusted" || entry === "untrusted");
+}
+
+/**
+ * What Eva knows about where a clone came from.
+ * - `cloned`: Eva cloned the URL, and the answers by URL apply.
+ * - `answered`: the person judged this folder, and the answer holds for it only. The URL is what
+ *   the question showed.
+ * - `replaced`: Eva cloned the URL, but the folder is not the one she cloned, so it can hold anything.
+ */
+export type CloneOrigin =
+  | { readonly kind: "cloned"; readonly url: string }
+  | { readonly kind: "answered"; readonly url: string; readonly decision: "trusted" | "untrusted" }
+  | { readonly kind: "replaced"; readonly url: string };
+
+interface StoredOrigin {
+  readonly url: string;
+  /** The random text in the clone's marker file. A folder made again at the same path lacks it. */
+  readonly marker: string;
+  readonly decision?: "trusted" | "untrusted";
+}
+
+/** The marker file in the clone's git folder. Git ignores it, and the harness never reads it. */
+const markerFileName = "eva-clone-id";
+
+/**
+ * The origin of each clone, by folder, in `state/clone-origins.json`. Trust reads it, not the live
+ * `origin` remote, which any edit of the clone's `.git/config` changes. Like `trust.json`, it stays
+ * out of the clone and the vault, the places an agent edits.
+ */
+export class CloneOriginStore {
+  private readonly path: string;
+  private readonly origins: Record<string, StoredOrigin>;
+
+  constructor(path: string) {
+    this.path = path;
+    const read = readJsonTolerant(path);
+    this.origins = read.ok && isOriginMap(read.value) ? read.value : {};
+  }
+
+  /** Null when Eva has no record of the folder. */
+  origin(cloneFolder: string): CloneOrigin | null {
+    const stored = this.origins[cloneKey(cloneFolder)];
+    if (stored === undefined) return null;
+    // A marker that is gone or changed fails safe: the folder counts as replaced, never as trusted.
+    if (readMarker(cloneFolder) !== stored.marker) return { kind: "replaced", url: stored.url };
+    return stored.decision === undefined
+      ? { kind: "cloned", url: stored.url }
+      : { kind: "answered", url: stored.url, decision: stored.decision };
+  }
+
+  recordClone(cloneFolder: string, repositoryUrl: string): void {
+    this.write(cloneFolder, repositoryUrl, undefined);
+  }
+
+  recordAnswer(cloneFolder: string, repositoryUrl: string, decision: "trusted" | "untrusted"): void {
+    this.write(cloneFolder, repositoryUrl, decision);
+  }
+
+  private write(cloneFolder: string, url: string, decision: "trusted" | "untrusted" | undefined): void {
+    const marker = writeMarker(cloneFolder);
+    // With no git folder there is nothing to mark, and an unmarked record would never match.
+    if (marker === null) return;
+    this.origins[cloneKey(cloneFolder)] = decision === undefined ? { url, marker } : { url, marker, decision };
+    writeFileAtomic(this.path, JSON.stringify(this.origins, null, 2) + "\n");
+  }
+}
+
+/** One key per folder: Windows paths ignore case, so a vault path typed with another case still matches. */
+function cloneKey(cloneFolder: string): string {
+  const absolute = resolve(cloneFolder);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+
+/**
+ * The clone's git folder: `.git`, or the folder that a `.git` file names, as in a worktree.
+ * A marker file, not the folder's inode and birth time: a file system can give both to a folder
+ * made again at the same path, and some file systems keep no birth time at all.
+ */
+function gitFolder(cloneFolder: string): string | null {
+  const dotGit = join(cloneFolder, ".git");
+  try {
+    if (statSync(dotGit).isDirectory()) return dotGit;
+    const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"));
+    return pointer?.[1] === undefined ? null : resolve(cloneFolder, pointer[1]);
+  } catch {
+    return null;
+  }
+}
+
+function readMarker(cloneFolder: string): string | null {
+  const folder = gitFolder(cloneFolder);
+  if (folder === null) return null;
+  try {
+    return readFileSync(join(folder, markerFileName), "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** A new marker on each record, so an old copy of a marker never matches a later record. */
+function writeMarker(cloneFolder: string): string | null {
+  const folder = gitFolder(cloneFolder);
+  if (folder === null) return null;
+  const marker = randomUUID();
+  writeFileAtomic(join(folder, markerFileName), marker + "\n");
+  return marker;
+}
+
+function isOriginMap(value: unknown): value is Record<string, StoredOrigin> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((entry: unknown) => {
+    if (entry === null || typeof entry !== "object") return false;
+    const { url, marker, decision } = entry as { url?: unknown; marker?: unknown; decision?: unknown };
+    return (
+      typeof url === "string" &&
+      typeof marker === "string" &&
+      (decision === undefined || decision === "trusted" || decision === "untrusted")
+    );
+  });
 }

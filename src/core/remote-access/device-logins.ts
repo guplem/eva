@@ -79,6 +79,7 @@ export class DeviceLogins {
   private readonly options: DeviceLoginsOptions;
   private readonly pending: Map<string, PendingLogin>;
   private readonly approvers: Set<DeviceLoginApprover>;
+  private readonly forgetListeners: Set<() => void>;
   private requestTimes: number[];
   private devices: StoredDevice[];
 
@@ -86,6 +87,7 @@ export class DeviceLogins {
     this.options = options;
     this.pending = new Map();
     this.approvers = new Set();
+    this.forgetListeners = new Set();
     this.requestTimes = [];
     this.devices = loadDevices(options.path);
   }
@@ -155,6 +157,16 @@ export class DeviceLogins {
     return true;
   }
 
+  /**
+   * The answer of one approver. Returns false also for a request that it was not asked, such as a
+   * request from Eva's own computer, which only the terminal may answer.
+   */
+  answerAs(approver: DeviceLoginApprover, id: string, answer: "allow" | "deny"): boolean {
+    this.removeExpired(this.options.now().getTime());
+    if (this.pending.get(id)?.asked.includes(approver) !== true) return false;
+    return this.answer(id, answer);
+  }
+
   /** The requests that wait for an answer and that this approver was asked, oldest first. */
   waitingFor(approver: DeviceLoginApprover): DeviceLoginRequest[] {
     this.removeExpired(this.options.now().getTime());
@@ -178,11 +190,20 @@ export class DeviceLogins {
     return this.devices.some((device) => device.hash === hash);
   }
 
+  /** Calls the listener after each removal of devices, so a front end can end their open connections. */
+  onForget(listener: () => void): () => void {
+    this.forgetListeners.add(listener);
+    return () => {
+      this.forgetListeners.delete(listener);
+    };
+  }
+
   /** Logs out one device. */
   forget(token: string): void {
     const hash = hashOf(token);
     this.devices = this.devices.filter((device) => device.hash !== hash);
     this.saveDevices();
+    this.notifyForget();
   }
 
   /** Every device, oldest first. `currentToken` is the device token of the caller, or null. */
@@ -203,6 +224,7 @@ export class DeviceLogins {
     if (matches.length !== 1 || match === undefined) return false;
     this.devices = this.devices.filter((device) => device !== match);
     this.saveDevices();
+    this.notifyForget();
     return true;
   }
 
@@ -211,11 +233,16 @@ export class DeviceLogins {
     const count = this.devices.length;
     this.devices = [];
     this.saveDevices();
+    this.notifyForget();
     return count;
   }
 
   private removeExpired(nowMs: number): void {
     for (const [id, login] of this.pending) if (login.expiresAtMs <= nowMs) this.pending.delete(id);
+  }
+
+  private notifyForget(): void {
+    for (const listener of this.forgetListeners) listener();
   }
 
   private saveDevices(): void {

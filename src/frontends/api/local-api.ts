@@ -50,6 +50,8 @@ interface SocketData {
   unsubscribe: (() => void)[];
   /** A web page, which shows device requests. `eva chat` opens a socket too, but shows none. */
   isPage: boolean;
+  /** The device token of a device login, or null for a login with the token. A removal closes the socket. */
+  deviceToken: string | null;
 }
 
 const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("default");
@@ -106,6 +108,7 @@ const deviceCookie = "eva_device";
 const deviceLabelBrowserLength = 120;
 
 export function startLocalApi(options: LocalApiOptions): LocalApi {
+  const sockets = new Set<ServerWebSocket<SocketData>>();
   const pages = new Set<ServerWebSocket<SocketData>>();
   const toPages = (event: DeviceLoginEvent): void => {
     for (const page of pages) page.send(JSON.stringify(event));
@@ -118,6 +121,14 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     settled: (id, answer) => toPages({ kind: "device_login_settled", id, answer }),
   };
   const detachPageApprover = options.eva.deviceLogins.attachApprover(pageApprover);
+  // The login is checked once, at the upgrade. So a removed device, such as a lost phone, would
+  // keep its stream of events and stay an approver until its socket dropped.
+  const stopForgetWatch = options.eva.deviceLogins.onForget(() => {
+    for (const socket of sockets) {
+      const deviceToken = socket.data.deviceToken;
+      if (deviceToken !== null && !options.eva.deviceLogins.isValidToken(deviceToken)) socket.close();
+    }
+  });
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
@@ -144,7 +155,13 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
-        return bunServer.upgrade(request, { data: { unsubscribe: [], isPage: url.searchParams.has("devices") } })
+        return bunServer.upgrade(request, {
+          data: {
+            unsubscribe: [],
+            isPage: url.searchParams.has("devices"),
+            deviceToken: hasValidToken(request, options.token) ? null : cookieValue(request, deviceCookie),
+          },
+        })
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
@@ -168,6 +185,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     },
     websocket: {
       open(socket: ServerWebSocket<SocketData>) {
+        sockets.add(socket);
         if (socket.data.isPage) pages.add(socket);
         socket.data.unsubscribe.push(
           options.eva.sessions.subscribe((event: SessionEvent) => {
@@ -199,6 +217,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         // Commands go over HTTP; the socket only carries events to the client.
       },
       close(socket: ServerWebSocket<SocketData>) {
+        sockets.delete(socket);
         pages.delete(socket);
         for (const unsubscribe of socket.data.unsubscribe) unsubscribe();
       },
@@ -209,6 +228,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     url: `http://127.0.0.1:${String(server.port)}`,
     stop: () => {
       detachPageApprover();
+      stopForgetWatch();
       void server.stop(true);
     },
   };
@@ -314,7 +334,7 @@ async function devices(
       return json(logins.waitingFor(pageApprover).map((waiting) => redactedRequest(waiting, eva)));
     if (parts.length === 4 && method === "POST" && parts[3] !== undefined) {
       const { answer } = approvalSchema.parse(await request.json());
-      if (!logins.answer(decodeURIComponent(parts[3]), answer))
+      if (!logins.answerAs(pageApprover, decodeURIComponent(parts[3]), answer))
         return json({ error: "This request no longer waits. It expired, or someone answered it." }, 404);
       return new Response(null, { status: 204 });
     }

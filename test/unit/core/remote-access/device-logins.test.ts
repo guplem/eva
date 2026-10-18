@@ -205,7 +205,8 @@ describe("DeviceLogins for the web page", () => {
     const open = { value: false };
     const page = pageApprover(logins, [], open);
     attachApprover(logins);
-    const unseen = logins.request("owner@example.com", "x");
+    // Asked while no page was open: the page never lists it.
+    logins.request("owner@example.com", "x");
     open.value = true;
     const first = logins.request("owner@example.com", "x");
     const second = logins.request("owner@example.com", "x");
@@ -214,7 +215,6 @@ describe("DeviceLogins for the web page", () => {
     expect(logins.waitingFor(page)).toEqual([second]);
     clock = new Date("2026-10-17T10:05:01Z");
     expect(logins.waitingFor(page)).toEqual([]);
-    expect(unseen.id).not.toBe(first.id);
   });
 
   test("an answer tells every approver that was asked, and only those", () => {
@@ -263,5 +263,39 @@ describe("DeviceLogins for the web page", () => {
         .list(null)
         .map((device) => device.label),
     ).toEqual(["a laptop"]);
+  });
+});
+
+describe("DeviceLogins removal and answers by approver", () => {
+  test("each removal tells the forget listeners, so open sockets can close", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    let calls = 0;
+    const stop = logins.onForget(() => {
+      calls += 1;
+    });
+    const request = logins.request("owner@example.com", "x");
+    logins.answer(request.id, "allow");
+    const found = logins.check(request.id, "owner@example.com");
+    logins.forget(found.state === "allowed" ? found.token : "");
+    logins.forgetById("0000000000000000");
+    logins.forgetAll();
+    expect(calls).toBe(2);
+    stop();
+    logins.forgetAll();
+    expect(calls).toBe(2);
+  });
+
+  test("answerAs answers only a request that this approver was asked", () => {
+    const logins = createLogins();
+    const asker: DeviceLoginApprover = { canApprove: () => true, ask: () => undefined };
+    const other: DeviceLoginApprover = { canApprove: () => false, ask: () => undefined };
+    logins.attachApprover(asker);
+    logins.attachApprover(other);
+    const request = logins.request("owner@example.com", "x");
+    expect(logins.answerAs(other, request.id, "allow")).toBe(false);
+    expect(logins.check(request.id, "owner@example.com")).toEqual({ state: "pending" });
+    expect(logins.answerAs(asker, request.id, "deny")).toBe(true);
+    expect(logins.check(request.id, "owner@example.com")).toEqual({ state: "denied" });
   });
 });

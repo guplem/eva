@@ -351,14 +351,73 @@ describe("device login", () => {
     const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events?devices`, {
       headers: { cookie },
     } as unknown as string[]);
+    openSockets.push(socket);
     socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as DeviceLoginEvent));
     await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
     return { events, socket };
   }
 
   async function until(condition: () => boolean): Promise<void> {
-    for (let tries = 0; tries < 200 && !condition(); tries += 1) await Bun.sleep(10);
+    for (let tries = 0; tries < 200; tries += 1) {
+      if (condition()) return;
+      await Bun.sleep(10);
+    }
+    throw new Error("The condition did not come true in 2 seconds.");
   }
+
+  // A socket left open by a failed test would keep the page approver ready for the next test.
+  let openSockets: WebSocket[] = [];
+  afterEach(() => {
+    for (const socket of openSockets) socket.close();
+    openSockets = [];
+  });
+
+  test("removing a device closes its open page, which then stops being an approver", async () => {
+    attachApprover();
+    const phone = deviceCookieOf(await allowedCookie({ "user-agent": "a phone" }));
+    const laptop = deviceCookieOf(await allowedCookie({ "user-agent": "a laptop" }));
+    const phonePage = await openPage(phone);
+    const laptopPage = await openPage(laptop);
+    let phoneClosed = false;
+    phonePage.socket.addEventListener("close", () => {
+      phoneClosed = true;
+    });
+    const listed = await json<{ id: string; current: boolean }[]>(
+      await call("/api/devices", { headers: { cookie: laptop } }),
+    );
+    const phoneId = listed.find((device) => !device.current)?.id ?? "";
+    expect((await call(`/api/devices/${phoneId}`, { method: "DELETE", headers: { cookie: laptop } })).status).toBe(204);
+    await until(() => phoneClosed);
+    expect(laptopPage.socket.readyState).toBe(WebSocket.OPEN);
+    expect((await call("/api/devices", { method: "DELETE", headers: { cookie: laptop } })).status).toBe(200);
+    await until(() => laptopPage.socket.readyState === WebSocket.CLOSED);
+  });
+
+  test("a token page stays open when every device logs out", async () => {
+    const page = await openPage(`eva_token=${token}`);
+    expect((await call("/api/devices", { method: "DELETE" })).status).toBe(200);
+    await Bun.sleep(50);
+    expect(page.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  test("the page cannot answer a request that it was not asked", async () => {
+    attachApprover();
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const answered = await call(`/api/devices/requests/${request.id}`, { method: "POST", body: { answer: "allow" } });
+    expect(answered.status).toBe(404);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "pending",
+    });
+  });
+
+  test("the device list redacts a secret in a label", async () => {
+    attachApprover();
+    const secretShaped = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    await allowedCookie({ "user-agent": `a browser ${secretShaped}` });
+    const listed = JSON.stringify(await json<unknown>(await call("/api/devices")));
+    expect(listed).toContain("[redacted]");
+    expect(listed).not.toContain(secretShaped);
+  });
 
   test("an allowed device's open page gets the request with its code, and allows it", async () => {
     attachApprover();

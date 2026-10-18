@@ -9,9 +9,9 @@ When a step says "run", type the command and press Enter.
 Create these accounts first, in your browser:
 
 1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT or GitHub Copilot.
-2. **GitHub** at [github.com](https://github.com).
-3. **Tailscale** at [tailscale.com](https://tailscale.com) (free). Sign in with Google, Microsoft or GitHub.
-4. **Telegram** on your phone, from your app store.
+2. **GitHub** at [github.com](https://github.com). Your notebook lives there.
+3. **Telegram** on your phone, from your app store. It is optional, but it is the easiest way to talk to Eva and to get her alerts.
+4. **Tailscale** at [tailscale.com](https://tailscale.com) (free). It is optional: you need it only to open Eva's web page from another device. Sign in with Google, Microsoft or GitHub.
 
 ## Prepare a server that you reach from your desk
 
@@ -69,21 +69,15 @@ When an install fails, setup says why, and gives the command to install the harn
 
 Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 
-- **Start a new notebook.** Leave the repository question empty during setup. Eva creates the notebook from her template, and can create its private GitHub repository for you. To let Eva clone your private projects, type `login` at the GitHub question.
-- **Use a notebook that you already have.** Give its address during setup, such as `https://github.com/you/vault`. Then log in to GitHub in the browser:
-  1. Press Enter when setup asks for the GitHub login.
-  2. Open the link that setup shows, on any device, and enter the short code.
-  3. Confirm the login on GitHub. Setup goes on by itself.
+- **Use a notebook that you already have.** At the repository question, give its address, such as `https://github.com/you/vault`. Eva clones it (makes a copy on this computer).
+- **Start a new notebook.** Press Enter at the repository question. Then type a folder for the notebook, and answer `y` to "Create a new vault there?". Eva fills the folder from her template. To also get a private GitHub repository for it, install the [GitHub CLI](https://cli.github.com) (`gh`) and run `gh auth login` before setup.
 
-  The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to reach GitHub for you, and never gives it to the AI tools that she runs. You can remove it on GitHub under **Settings → Applications**.
+Setup also asks for a GitHub token (a password for one app). Eva needs it for a private notebook with an `https://` address, and to clone your private projects. An address that starts with `git@` uses the computer's SSH key instead. Eva keeps the token on this computer, and never gives it to the AI tools that she runs. To create the token:
 
-  An address that starts with `git@` uses the computer's SSH key. It needs a login only for private projects: type `login` at the GitHub question.
-
-  The browser login is not ready yet ([#113](https://github.com/guplem/eva/issues/113)). Until then, setup asks for a GitHub token. Create the token yourself, and paste it. Do the same if you want Eva to reach only your notebook:
-  1. Open GitHub, then **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-  2. Under **Repository access**, choose **Only select repositories**, and pick your notebook.
-  3. Under **Permissions → Contents**, choose **Read and write**.
-  4. Generate the token and copy it.
+1. Open GitHub, then **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. Under **Repository access**, pick your notebook. To let Eva clone your private projects too, choose **All repositories**.
+3. Under **Permissions → Contents**, choose **Read and write**.
+4. Generate the token and copy it.
 
 ## Install Eva on Windows
 
@@ -151,25 +145,6 @@ Press Enter to keep the value in brackets. Eva saves each answer on this compute
 
 You can run `eva setup` again at any time. It keeps every answer that you do not change.
 
-## Open Eva on your phone
-
-The last step of setup connects Eva's computer to Tailscale:
-
-1. Without Tailscale, setup offers to install it. On Windows, Eva uses `winget`, the Windows package tool. Accept the prompt that asks for administrator rights. Linux gets the userspace build, with no `sudo` (see [Tailscale without root](#tailscale-without-root)). On other systems, install Tailscale from [tailscale.com/download](https://tailscale.com/download).
-2. Setup shows a sign-in link. Open it on any device, and sign in with your Tailscale account.
-3. A new Tailscale network must turn HTTPS on once. Setup shows the page; press **Enable** there.
-4. Setup prints Eva's address, such as `https://your-computer.your-tailnet.ts.net`, and a QR code.
-
-You can also do these steps later, from your phone: send `/link` to your bot in Telegram, and tap the buttons. The **Use Eva from any device** section in Settings shows the same steps. Eva finds each change by herself within a minute, with no restart.
-
-Then, on your phone:
-
-1. Install the **Tailscale** app, sign in with the same account, and switch it on.
-2. Open the address, or scan the QR code from Settings on another screen. Send `/link` to your bot in Telegram if you forget the address. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device: tap **Allow** when the code matches.
-3. Choose "Add to Home screen" in the browser menu. Eva then opens like an app.
-
-Do the same on any other computer: install Tailscale, sign in, open the address. Settings has a **Copy** button for the address, and a **Share** button on a phone.
-
 ## Install Eva on Linux
 
 These steps work over SSH too. They install Eva for your own user.
@@ -213,39 +188,42 @@ EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault
 
 ### Tailscale without root
 
-On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Eva does these steps for you: in `eva setup`, with `/link` in Telegram, or in Settings. Eva installs only when no `tailscale` program exists, so she never starts a second Tailscale beside the system one. Linger is a systemd setting that keeps your services running after you log out. Tailscale needs it, as Eva does. Run `eva doctor` to check it.
+On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Eva installs it this way for you: in `eva setup`, with `/link` in Telegram, or in Settings. Eva installs only when no `tailscale` program exists, so she never starts a second Tailscale beside the system one. Linger is a systemd setting that keeps your services running after you log out. Tailscale needs it, as Eva does. Run `eva doctor` to check it.
 
 If Tailscale already runs for the administrator, Eva cannot sign in or publish her page with it. Ask the administrator to run `sudo tailscale set --operator=$USER` once.
 
-To do the steps by hand, download the static build from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/#static), and put `tailscale` and `tailscaled` in `~/.local/lib/tailscale/`. Then:
+## Open Eva on your phone
 
-1. Create `~/.local/bin/tailscale`, so that every command finds the user's own socket, and make it executable:
+The last step of setup connects Eva's computer to Tailscale:
 
-   ```bash
-   #!/bin/sh
-   exec "$HOME/.local/lib/tailscale/tailscale" --socket="$HOME/.local/share/tailscale/tailscaled.sock" "$@"
-   ```
+1. Without Tailscale, setup offers to install it. On Windows, Eva uses `winget`, the Windows package tool. Accept the prompt that asks for administrator rights. Linux gets the userspace build, with no `sudo` (see [Tailscale without root](#tailscale-without-root)). If setup cannot install it, install Tailscale from [tailscale.com/download](https://tailscale.com/download).
+2. Setup shows a sign-in link. Open it on any device, and sign in with your Tailscale account.
+3. A new Tailscale network must turn on HTTPS once. Setup shows the page. Turn on **HTTPS Certificates** there.
+4. Setup prints Eva's address, such as `https://your-computer.your-tailnet.ts.net`, and a QR code.
 
-2. Create `~/.config/systemd/user/tailscaled.service`:
+You can also do these steps later, from your phone: send `/link` to your bot in Telegram, and tap the buttons. The **Use Eva from any device** section in Settings shows the same steps. Eva finds each change by herself within a minute, with no restart.
 
-   ```ini
-   [Unit]
-   Description=Tailscale for this user
-   After=network-online.target
+Then, on your phone:
 
-   [Service]
-   ExecStart=%h/.local/lib/tailscale/tailscaled --tun=userspace-networking --statedir=%h/.local/share/tailscale --socket=%h/.local/share/tailscale/tailscaled.sock
-   Restart=on-failure
+1. Install the **Tailscale** app, sign in with the same account, and switch it on.
+2. Open the address, or scan the QR code from Settings on another screen. Send `/link` to your bot in Telegram if you forget the address. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device. Tap **Allow** when the code matches.
+3. Choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
-   [Install]
-   WantedBy=default.target
-   ```
+Do the same on any other computer: install Tailscale, sign in, open the address. Settings has a **Copy** button for the address, and a **Share** button on a phone.
 
-3. Run `systemctl --user enable --now tailscaled`, then `tailscale up`, and open the link that it prints.
+## Add the optional tools
+
+Some features need one more program on Eva's computer. For example, the Google tools need [uv](https://docs.astral.sh/uv/), and voice notes need ffmpeg and whisper.cpp. Run:
+
+```bash
+eva doctor
+```
+
+It lists each missing tool, the feature that needs it, and how to install it. [The optional features](reference.md#optional-features) tells how to turn on each feature.
 
 ## A second person on the same computer
 
-Each person gets their own Eva, with their own notebook, bot and Claude login. Give the second Eva her own home folder:
+Each person gets their own Eva, with their own notebook, bot and AI login. Give the second Eva her own home folder:
 
 ```bash
 eva --home ~/eva-partner setup
@@ -255,19 +233,6 @@ eva --home ~/eva-partner setup
 eva --home ~/eva-partner service install
 ```
 
-Setup picks a free port for her. Her pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Her Claude token stays in her `secrets.json`.
+Setup picks a free port for her. Her Claude Code, pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Setup prints one command for each login that is missing. Run each command in another terminal while setup goes on. Run `eva --home ~/eva-partner setup` again to check the logins later.
 
-| Engine      | Folder             | Variable              | What it holds                 |
-| ----------- | ------------------ | --------------------- | ----------------------------- |
-| Claude Code | `engines/claude`   | `CLAUDE_CONFIG_DIR`   | Claude's settings and history |
-| pi          | `engines/pi-agent` | `PI_CODING_AGENT_DIR` | pi's login and settings       |
-| GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       | gh's login                    |
-| git         | `engines/git`      | `GIT_CONFIG_GLOBAL`   | git's GitHub login setting    |
-
-Setup gives one login step for each login that is missing, with her folder in the command. Run each step in another terminal while setup goes on. On Windows, use PowerShell. At the end, setup shows which logins are in place. Run `eva --home ~/eva-partner setup` again to check them later.
-
-The GitHub step uses `gh auth login --insecure-storage`. gh otherwise keeps its token in the system keyring under one name for all folders, and her login would replace yours. With the flag, gh keeps her token as plain text in her own folder. When gh asks to authenticate git, answer No: that changes the git settings that both Evas share.
-
-Her agent's own `git push` to GitHub uses her gh login. Eva writes `engines/git/gitconfig` at each start. That file includes your computer user's global git settings, such as your aliases. Then it tells git to ask her gh for GitHub logins. Her commits still carry the name and email of your global settings, unless the clone sets its own with `git config user.name` and `git config user.email`. For other hosts, git still uses the login of your computer user, such as Git Credential Manager. To keep those apart too, give her a separate computer user.
-
-The first Eva on a computer uses the computer user's own logins, the same as when the person runs Claude Code, pi or `gh` by hand.
+Her commits carry the name and email of your global git settings, unless her clone sets its own with `git config user.name` and `git config user.email`. For hosts other than GitHub, git uses your own login. To keep everything apart, give her a separate computer user.

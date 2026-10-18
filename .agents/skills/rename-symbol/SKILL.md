@@ -5,6 +5,6 @@ description: Rename or refactor a symbol safely by searching every naming-case v
 
 # Rename a symbol safely
 
-When you rename or refactor any symbol, search **all** naming variants (camelCase, PascalCase, snake_case, kebab-case, UPPER_CASE) across the whole project (code, tests, docs, configs, and JSON), not just the obvious code references. A missed variant in a config key or a data file is the usual cause of a rename that compiles fine but breaks at runtime.
-
-When the project's `AGENTS.md` lists names that are stored or sent, or files that register names, follow that list too.
+- Search **every** naming variant: camelCase, PascalCase, snake_case, kebab-case and UPPER_CASE.
+- Search the whole project: code, tests, docs, configs and JSON files. A missed variant in a config key or a data file compiles, but breaks at runtime.
+- Follow the list of stored names and registration points in `AGENTS.md`.

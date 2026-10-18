@@ -621,6 +621,24 @@ describe("Eva", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Diary/2026-10-14.md");
   });
 
+  test("each turn end goes to the log, with the cache counts of a finished turn (lesson 120)", async () => {
+    const lines: string[] = [];
+    const instance = start(
+      new FakeEngine((request, turnNumber) => {
+        if (turnNumber === 1) return FakeEngine.answer(request, "done");
+        throw new Error("the engine broke");
+      }),
+      {},
+      { logger: { log: (level, message, details) => lines.push(`${level} ${message} ${JSON.stringify(details)}`) } },
+    );
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(session.id, "hi");
+    await instance.sessions.send(session.id, "again");
+    const turnLines = lines.filter((line) => line.includes("A turn"));
+    expect(turnLines[0]).toStartWith(`info A turn finished. {"sessionId":"${session.id}"`);
+    expect(turnLines[0]).toContain("cacheReadTokens");
+    expect(turnLines[1]).toStartWith(`warn A turn failed. {"sessionId":"${session.id}","reason":`);
+  });
   test("a sync failure and a held-back secret file go to the log (lessons 16, 26)", async () => {
     const lines: string[] = [];
     eva = new Eva({

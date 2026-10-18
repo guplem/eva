@@ -87,10 +87,35 @@ describe("a conversation", () => {
         toolCount: 0,
         commandCount: 0,
         taskCount: 0,
+        steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
+        omittedSteps: 0,
+        contextTokens: 15,
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
       },
+    ]);
+  });
+
+  test("a turn keeps its steps in order, with the last message in full and a failed tool marked", async () => {
+    const long = "y".repeat(300);
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text", text: long, messageId: "m1" },
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "npm test" },
+        { kind: "tool_finished", toolUseId: "t1", isError: true },
+        { kind: "task_changed", taskId: "k1", description: "look", state: "running" },
+        ...FakeEngine.answer(request, long),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Run the tests.");
+    const steps = manager.get(sessionId).turns[0]?.steps ?? [];
+    expect(steps.map((step) => [step.kind, step.text.length, step.isError])).toEqual([
+      ["message", 200, false],
+      ["command", 8, true],
+      ["task", 4, false],
+      ["message", 300, false],
     ]);
   });
 
@@ -300,7 +325,16 @@ describe("exactly one end event (lesson 47)", () => {
     );
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(manager.get(sessionId).turns[0]).toMatchObject({ toolCount: 1, commandCount: 1, taskCount: 1 });
+    expect(manager.get(sessionId).turns[0]).toMatchObject({
+      toolCount: 1,
+      commandCount: 1,
+      taskCount: 1,
+      steps: [
+        { kind: "command", text: "ls" },
+        { kind: "task", text: "look" },
+      ],
+      contextTokens: null,
+    });
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });
 
@@ -690,5 +724,26 @@ describe("stops, failures and lost histories (security and lesson review)", () =
       userText: "remember [redacted]",
       answerText: "it is [redacted]",
     });
+  });
+
+  test("a secret in a step is redacted before the step is cut (lesson 95)", async () => {
+    const secret = "the-secret-value-123";
+    const redactor = new Redactor();
+    redactor.addSecret(secret);
+    // The secret crosses the 200-character cut, so a cut before the redaction would keep half of it.
+    const summary = `${"a".repeat(190)}${secret}`;
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary },
+        { kind: "task_changed", taskId: "k1", description: `look for ${secret}`, state: "running" },
+        ...FakeEngine.answer(request, "ok"),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const stored = JSON.stringify(manager.get(sessionId).turns[0]?.steps);
+    expect(stored).not.toContain("the-secret");
+    expect(stored).toContain("look for [redacted]");
   });
 });

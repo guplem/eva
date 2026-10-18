@@ -35,7 +35,7 @@ export interface Project {
 
 const statuses: readonly ProjectStatus[] = ["idea", "active", "paused", "closed"];
 const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id"]);
-const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export function parseFrontMatter(text: string): FrontMatterResult {
   const match = frontMatterPattern.exec(text);
@@ -167,8 +167,39 @@ function createdMatchesId(created: string, folderName: string): boolean {
 }
 
 function readTitle(text: string): string | null {
-  const heading = /^# (.+)$/m.exec(text.replace(frontMatterPattern, ""));
-  return heading?.[1]?.trim() ?? null;
+  return titleHeading(text.replace(frontMatterPattern, ""))?.title ?? null;
+}
+
+export interface TitleHeading {
+  /** Where the `# ` line starts in the body, and its length without the line break. */
+  readonly index: number;
+  readonly length: number;
+  readonly title: string;
+}
+
+/** The first `# ` line of a body outside a code fence, where a `#` line is a comment, not a title. */
+export function titleHeading(body: string): TitleHeading | null {
+  // The marker that opened the current fence, such as "```". Markdown closes a fence only with
+  // the same character, at least as many times; four spaces of indent make code, not a fence.
+  let fence: string | null = null;
+  let index = 0;
+  for (const line of body.split("\n")) {
+    const content = line.replace(/\r$/, "");
+    // A backtick in the info string, such as "```js``` text", makes inline code, not a fence.
+    const marker = /^ {0,3}(`{3,}(?!.*`)|~{3,})/.exec(content)?.[1];
+    if (marker !== undefined && fence === null) fence = marker;
+    else if (
+      marker?.[0] === fence?.[0] &&
+      (marker?.length ?? 0) >= (fence?.length ?? 0) &&
+      /^ {0,3}[`~]+\s*$/.test(content)
+    ) {
+      fence = null;
+    } else if (fence === null && content.startsWith("# ") && content.trim().length > 1) {
+      return { index, length: content.length, title: content.slice(2).trim() };
+    }
+    index += line.length + 1;
+  }
+  return null;
 }
 
 function readTextList(value: unknown): string[] | null {

@@ -148,6 +148,7 @@ describe("PiEngine", () => {
       engineSessionId: "session-1",
       lastMessageId: "a1",
       usage: { inputTokens: 1000, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 0 },
+      contextTokens: 1200,
     });
     expect((events.at(-1) as { costUsd: number }).costUsd).toBeGreaterThan(0);
     const run = fake.runs[0];
@@ -185,6 +186,30 @@ describe("PiEngine", () => {
       { kind: "tool_finished", toolUseId: "call_fake_29", isError: false },
     ]);
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", lastMessageId: null });
+  });
+
+  test("the context is the last answer's input, not the sum over the turn", async () => {
+    let answer = 0;
+    const records = loadPiFixture("tool-call").map((record) => {
+      const message = record["message"] as { role?: string; usage?: object } | undefined;
+      if (record["type"] !== "message_end" || message?.role !== "assistant") return record;
+      answer += 1;
+      const usage = { ...message.usage, input: answer * 100, cacheRead: 10, cacheWrite: 1 };
+      return { ...record, message: { ...message, usage } };
+    });
+    const events = await drain(engine(new FakePi([{ records }])).runTurn(request()));
+    expect(answer).toBeGreaterThan(1);
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: answer * 100 + 11 });
+  });
+
+  test("a provider that reports no usage gives no context, not 0 tokens", async () => {
+    const records = loadPiFixture("tool-call").map((record) => {
+      const message = record["message"] as { role?: string } | undefined;
+      if (record["type"] !== "message_end" || message?.role !== "assistant") return record;
+      return { ...record, message: { ...message, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } } };
+    });
+    const events = await drain(engine(new FakePi([{ records }])).runTurn(request()));
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: null });
   });
 
   test("Assistant mode allows a local command at once, and asks the person before an outward one", async () => {

@@ -1,6 +1,7 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaStatus, PageSecretName, PublicSettings, SetupState } from "../../../core/eva.ts";
+import type { EvaStatus } from "../../../core/eva.ts";
+import type { PageSecretName, PublicSettings, SetupState } from "../../../core/settings/live-settings.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";

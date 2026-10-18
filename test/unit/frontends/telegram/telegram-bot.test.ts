@@ -364,6 +364,81 @@ describe("topics", () => {
     });
   });
 
+  test("/rename renames the chat and its topic, and the first message keeps that name (issue 46)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 1);
+    expect(telegram.callsTo("editForumTopic")[0]?.params).toMatchObject({ message_thread_id: 500, name: "Trip plans" });
+    expect(eva.sessions.list()[0]?.title).toBe("Trip plans");
+
+    telegram.sendText(owner, "Plan the trip to Rome", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("answer")));
+    expect(telegram.callsTo("editForumTopic")).toHaveLength(1);
+    expect(eva.sessions.list()[0]?.title).toBe("Trip plans");
+  });
+
+  test("a rename from another front end renames the chat's topic too (issue 46)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    eva.sessions.rename(eva.sessions.list()[0]!.id, "Trip plans");
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 1);
+    expect(telegram.callsTo("editForumTopic")[0]?.params).toMatchObject({ message_thread_id: 500, name: "Trip plans" });
+  });
+
+  test("a topic that Telegram refuses to rename says so in the chat, so the phone sees it", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.failNext("editForumTopic", 400, "Bad Request: not enough rights to manage topics");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("did not rename this topic")));
+    const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("did not"));
+    expect(notice?.params["message_thread_id"]).toBe(500);
+    expect(String(notice?.params["text"])).toContain("not enough rights");
+  });
+
+  test("the same /rename again retries a refused topic, and a topic that has the name already is fine", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.failNext("editForumTopic", 400, "Bad Request: not enough rights to manage topics");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("did not rename this topic")));
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 2);
+
+    telegram.failNext("editForumTopic", 400, "Bad Request: TOPIC_NOT_MODIFIED");
+    telegram.sendText(owner, "/rename Trip plans", 500);
+    await settle(bot, () => telegram.sentTexts().filter((text) => text.includes("now called")).length === 3);
+    await bot.pollOnce();
+    expect(telegram.sentTexts().filter((text) => text.includes("did not rename this topic"))).toHaveLength(1);
+    expect(logs.filter((entry) => entry.message === "A Telegram call failed.")).toHaveLength(1);
+  });
+
+  test("/rename with no title says how to use it, and with no chat says so", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/rename");
+    await settle(bot, () => telegram.sentTexts().length === 1);
+    expect(telegram.sentTexts()[0]).toContain("/rename <title>");
+    telegram.sendText(owner, "/rename Trip plans");
+    await settle(bot, () => telegram.sentTexts().length === 2);
+    expect(telegram.sentTexts()[1]).toContain("no chat");
+    expect(eva.sessions.list()).toEqual([]);
+  });
+
+  test("/rename in the main chat renames its chat, and no topic", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("answer")));
+    telegram.sendText(owner, "/rename Main notes");
+    await settle(bot, () => eva.sessions.list()[0]?.title === "Main notes");
+    await bot.pollOnce();
+    expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
   test("when Telegram refuses a topic, the chat stays in the main chat (lesson 61)", async () => {
     const bot = createBot();
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
@@ -1105,6 +1180,11 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.sentTexts()).toContain("Drink water.");
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
+
+    // The topic holds every run of the schedule, so a rename of one run keeps the topic's name.
+    eva.sessions.rename(eva.sessions.list()[0]!.id, "Tuesday plan");
+    await bot.pollOnce();
+    expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 
   test("a schedule file sends its file; a changed schedule names the change", async () => {

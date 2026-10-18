@@ -386,6 +386,20 @@ describe("routes", () => {
     expect(retry.status).toBe(200);
   });
 
+  test("renames a chat, and refuses an empty title or an unknown chat", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const renamed = await call(`/api/sessions/${session.id}/rename`, { method: "POST", body: { title: "Trip plans" } });
+    expect(renamed.status).toBe(200);
+    expect((await json<{ title: string }>(renamed)).title).toBe("Trip plans");
+    expect(eva.sessions.get(session.id).title).toBe("Trip plans");
+    const empty = await call(`/api/sessions/${session.id}/rename`, { method: "POST", body: { title: "  " } });
+    expect(empty.status).toBe(400);
+    const missing = await call("/api/sessions/missing/rename", { method: "POST", body: { title: "Trip plans" } });
+    expect(missing.status).toBe(404);
+  });
+
   test("searches projects", async () => {
     const projects = await json<{ id: string }[]>(await call("/api/projects?text=example&status=active"));
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);

@@ -299,6 +299,23 @@ textarea {
   font-size: 18px;
   margin: 0;
   flex: 1;
+  /* A long title without spaces must not push the pencil and the badge off a phone screen. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rename-form {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* On a phone, the buttons go to a second row, so the field gets the whole width. */
+.rename-form input {
+  flex: 1 1 12em;
+  min-width: 0;
 }
 
 .badge {

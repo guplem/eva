@@ -37,6 +37,8 @@ import { executableUpdateChannel } from "./core/updates/self-update.ts";
 import { sourceUpdateChannel } from "./core/updates/source-update.ts";
 import type { UpdateChannel } from "./core/updates/updater.ts";
 import { githubTokenVariable } from "./core/vault/vault-clone.ts";
+import { githubClientId, githubDeviceLogin } from "./core/vault/github-login.ts";
+import { systemClock } from "./shared/clock.ts";
 import { VaultSync } from "./core/vault/vault-sync.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
@@ -71,7 +73,7 @@ import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance
 import { RemoteAccessWatcher, type RemoteAccess } from "./core/remote-access/remote-access.ts";
 import { findTailscale } from "./core/remote-access/tailscale.ts";
 import { canInstallTailscale, installTailscale } from "./core/remote-access/tailscale-install.ts";
-import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
+import { runSetup, setupEnvironmentNames, type SetupOptions } from "./frontends/cli/setup.ts";
 import { accessLines, runNetworkSetup, type NetworkSetupOptions } from "./frontends/cli/network-setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
@@ -132,6 +134,7 @@ async function main(argv: readonly string[]): Promise<number> {
         environment: childEnvironment(),
         defaultHome: defaultHomeFolder(),
         platform: process.platform,
+        githubLogin: githubBrowserLogin(githubClientId),
       };
       const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
         // Setup publishes too, so the address that it prints works as soon as Eva runs.
@@ -826,3 +829,9 @@ main(process.argv.slice(2))
     );
     process.exit(exitCodes.crash);
   });
+
+/** The browser login of `eva setup`, or null while Eva has no OAuth App (#113). */
+function githubBrowserLogin(clientId: string | null): SetupOptions["githubLogin"] {
+  if (clientId === null) return null;
+  return (show) => githubDeviceLogin({ clientId, show, sleep: (ms) => Bun.sleep(ms), clock: systemClock });
+}

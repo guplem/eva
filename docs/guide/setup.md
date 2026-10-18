@@ -36,8 +36,17 @@ Eva uses your Claude subscription through Claude Code, Anthropic's program for A
 
 Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 
-- **Start a new notebook.** Leave the repository question empty during setup. Eva creates the notebook from her template, and can create its private GitHub repository for you.
-- **Use a notebook that you already have.** Give its address during setup, such as `https://github.com/you/vault`, and a GitHub token that can read and write it:
+- **Start a new notebook.** Leave the repository question empty during setup. Eva creates the notebook from her template, and can create its private GitHub repository for you. To let Eva clone your private projects, type `login` at the GitHub question.
+- **Use a notebook that you already have.** Give its address during setup, such as `https://github.com/you/vault`. Then log in to GitHub in the browser:
+  1. Press Enter when setup asks for the GitHub login.
+  2. Open the link that setup shows, on any device, and enter the short code.
+  3. Confirm the login on GitHub. Setup goes on by itself.
+
+  The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to reach GitHub for you, and never gives it to the AI tools that she runs. You can remove it on GitHub under **Settings → Applications**.
+
+  An address that starts with `git@` uses the computer's SSH key. It needs a login only for private projects: type `login` at the GitHub question.
+
+  The browser login is not ready yet ([#113](https://github.com/guplem/eva/issues/113)). Until then, setup asks for a GitHub token. Create the token yourself, and paste it. Do the same if you want Eva to reach only your notebook:
   1. Open GitHub, then **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
   2. Under **Repository access**, choose **Only select repositories**, and pick your notebook.
   3. Under **Permissions → Contents**, choose **Read and write**.
@@ -94,18 +103,23 @@ Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 
 Press Enter to keep the value in brackets. Eva saves each answer on this computer.
 
-| Question                    | What to answer                                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------- |
-| GitHub token                | The token from [Decide where your notebook lives](#decide-where-your-notebook-lives), or Enter to skip. |
-| Your vault's repository     | Your notebook's address, or Enter to start a new notebook.                                              |
-| Time zone                   | Enter keeps your computer's time zone.                                                                  |
-| Default engine              | Enter keeps Claude Code.                                                                                |
-| Trusted GitHub accounts     | Your GitHub user name. Eva then opens your own projects without a question.                             |
-| Claude token                | The token from `claude setup-token`.                                                                    |
-| Telegram bot token          | The token from BotFather.                                                                               |
-| Telegram chat id            | Enter, to pair with a code instead.                                                                     |
-| Google account, voice model | Enter, to skip. See [the optional features](reference.md#optional-features).                            |
-| Tailscale                   | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).   |
+| Question                    | What to answer                                                                                                                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Time zone                   | Enter keeps your computer's time zone.                                                                                                                                                                                                                                   |
+| Your vault's repository     | Your notebook's address, or Enter to start a new notebook.                                                                                                                                                                                                               |
+| GitHub login or token       | For an `https://github.com/` address, Enter logs in in the browser. Otherwise, type `login`, or press Enter to skip. Until [#113](https://github.com/guplem/eva/issues/113), paste the token. See [Decide where your notebook lives](#decide-where-your-notebook-lives). |
+| New notebook                | For a new notebook only: `y`, then the questions below.                                                                                                                                                                                                                  |
+| What should Eva call you?   | Your name, or the name that you like.                                                                                                                                                                                                                                    |
+| Language                    | The language of Eva's answers. Enter keeps English.                                                                                                                                                                                                                      |
+| Main topics                 | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                                                                                                                    |
+| New GitHub repository       | A name for your notebook's private repository, such as `vault`.                                                                                                                                                                                                          |
+| Default engine              | Enter keeps Claude Code.                                                                                                                                                                                                                                                 |
+| Trusted GitHub accounts     | Your GitHub user name. Eva then opens your own projects without a question.                                                                                                                                                                                              |
+| Claude token                | The token from `claude setup-token`.                                                                                                                                                                                                                                     |
+| Telegram bot token          | The token from BotFather.                                                                                                                                                                                                                                                |
+| Telegram chat id            | Enter, to pair with a code instead.                                                                                                                                                                                                                                      |
+| Google account, voice model | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                                                                             |
+| Tailscale                   | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).                                                                                                                                                                    |
 
 You can run `bun run eva setup` again at any time. It keeps every answer that you do not change.
 

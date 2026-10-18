@@ -10,6 +10,7 @@ description: Shape git commits well - atomic one-concern commits, conventional-c
 - **Subject plus body.** The subject says what changed, in 72 characters at most, with a conventional-commit prefix (`feat:`, `fix:`, `perf:`, `refactor:`, `build:`, `docs:`, `test:`, `chore:`, `ci:`, `style:`). A scope is optional, such as `feat(web):`. The body says why: the constraint, the old behaviour, the failure it prevents, the issue. Only a trivial commit skips the body.
 - **The prefix picks the release version.** `feat:` raises the middle number. `fix:`, `perf:`, `refactor:` and `build:` raise the last number. The other prefixes release nothing. Pick the prefix for the change to the executable, not for the size of the diff.
 - **Mark a breaking change with `!`,** such as `feat!:`, or with a `BREAKING CHANGE:` line in the body. A breaking change makes a person act, or drops a stored format that Eva cannot read anymore.
+- **A format change needs a migration, or a `!`.** A change to a stored file comes with a dated migration in `src/core/migrations/`. Only a change that no migration can repair keeps the `!`.
 - **History reads as a story.** `git log --oneline main..HEAD` follows the work in order: a refactor lands before the feature that needs it, and tests and docs land with the code that they cover.
 - **Check before each commit.** Sum up the diff in one sentence. If the sentence needs an "and", split the commit.
 - **Never** use `--amend`, `--no-verify` or a force-push. When a hook fails, fix the problem and make a new commit.

@@ -7,6 +7,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
 
 export type MachineRole = "hub" | "satellite";
 
@@ -36,8 +37,12 @@ export function machineRole(vaultPath: string | null, machine: string, roleIfBro
   return claim.machine === machine ? "hub" : "satellite";
 }
 
-/** Makes this machine the hub. Eva's sync commits and pushes the file. */
+/**
+ * Makes this machine the hub. Eva's sync commits and pushes the file. An Eva that is behind the
+ * vault cannot claim it, because the hub runs the vault migrations.
+ */
 export function claimHub(vaultPath: string, machine: string, now: Date): HubClaim {
+  assertVaultWritable(vaultPath);
   const claim: HubClaim = { machine, since: now.toISOString() };
   writeFileAtomic(hubFilePath(vaultPath), JSON.stringify(claim, null, 2) + "\n");
   return claim;
@@ -50,6 +55,7 @@ export function claimHub(vaultPath: string, machine: string, now: Date): HubClai
 export function claimHubIfUnclaimed(vaultPath: string, machine: string, now: Date): boolean {
   // A broken file may hide another machine's claim; a person repairs it with `eva hub`.
   if (!existsSync(vaultPath) || existsSync(hubFilePath(vaultPath))) return false;
+  if (vaultAhead(vaultPath) !== null) return false;
   claimHub(vaultPath, machine, now);
   return true;
 }

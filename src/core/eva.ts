@@ -2,6 +2,7 @@
  * One Eva instance: the core that every front end talks to. It joins the vault sync, the
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
+import { existsSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
@@ -18,10 +19,15 @@ import {
   scheduleCardProblem,
   engineUpdateProblem,
   heldBackNews,
+  machineAheadMessage,
+  migrationFailedMessage,
   scheduleFiringProblem,
   uncleanExitMessage,
   updateProblem,
+  vaultAheadProblem,
 } from "./alerts/problem-rules.ts";
+import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
+import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
@@ -206,6 +212,9 @@ export class Eva {
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
       },
+      afterSync: () => {
+        this.noticeVaultAhead();
+      },
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     this.settings = new LiveSettings({
@@ -324,6 +333,7 @@ export class Eva {
             channel,
             frequency: () => this.settings.config.updates.frequency,
             policy: () => this.settings.config.updates.install,
+            requiredVersion: () => this.vaultNeeds(),
             // A waiting engine update runs first: the restart would lose it, as it lives in memory.
             isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
@@ -513,6 +523,16 @@ export class Eva {
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */
   reportProblem(key: string, problem: AlertProblem | null): void {
     this.alerts.report(key, problem);
+  }
+
+  /**
+   * Reports the migrations that ran at start. Call it after the Telegram bot starts, so that a
+   * failure reaches Telegram on the hub.
+   */
+  reportStartMigrations(result: StartMigrations): void {
+    this.reportMigrationRun("machine", result.machine);
+    if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
+    this.noticeVaultAhead();
   }
 
   /** The start found the marker of a run that never stopped cleanly. */
@@ -716,7 +736,53 @@ export class Eva {
       "info",
       role === "hub" ? "This machine became the hub." : "Another machine is now the hub.",
     );
+    // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
+    if (role === "hub") this.runVaultMigrations();
     for (const listener of this.roleListeners) listener(role);
+  }
+
+  private runVaultMigrations(): void {
+    const vaultPath = this.options.config.vaultPath;
+    // A vault folder that is not cloned yet has no hub file, so this machine reads as the hub.
+    if (vaultPath === null || !existsSync(vaultPath)) return;
+    const run = runMigrations({
+      store: "vault",
+      migrations,
+      paths: this.options.paths,
+      vaultPath,
+      version: evaVersion,
+      now: this.options.now,
+    });
+    this.reportMigrationRun("vault", run);
+  }
+
+  private reportMigrationRun(store: MigrationStore, run: MigrationRun): void {
+    if (run.kind === "done") {
+      if (run.applied.length > 0) this.options.logger?.log("info", "Migrations ran.", { store, applied: run.applied });
+      if (run.later.length > 0)
+        this.options.logger?.log("info", "Migrations wait for a later start.", { store, later: run.later });
+      return;
+    }
+    if (run.kind === "failed") {
+      this.alerts.notify(`migration_failed:${store}`, "error", migrationFailedMessage(store, run.id, run.reason));
+      return;
+    }
+    // noticeVaultAhead raises the alert of a vault that is ahead, and keeps it open until this Eva updates.
+    if (store === "machine") this.alerts.notify("machine_ahead", "warn", machineAheadMessage(evaVersion));
+  }
+
+  /** The version that a vault from a newer Eva needs, "newest" when its record does not say, or undefined. */
+  private vaultNeeds(): string | undefined {
+    const vaultPath = this.options.config.vaultPath;
+    const ahead = vaultPath === null ? null : vaultAhead(vaultPath);
+    if (ahead === null) return undefined;
+    return ahead.version ?? "newest";
+  }
+
+  private noticeVaultAhead(): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return;
+    this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
   }
 
   private assistantBusy(): boolean {

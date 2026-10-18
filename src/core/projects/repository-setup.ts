@@ -3,6 +3,8 @@
  * compared with Eva's own repository, the reference. This part is pure: it judges facts
  * that `repository-facts.ts` reads from GitHub.
  */
+import { checksOf, type CheckKind } from "./repository-checks.ts";
+
 /** Green: done. Yellow: partly done. Red: missing. Grey: Eva cannot read it, or it does not apply. */
 export type SetupLight = "green" | "yellow" | "red" | "grey";
 
@@ -35,6 +37,14 @@ export interface WorkflowFacts {
   readonly path: string;
   readonly runsOnPullRequest: boolean;
   readonly usesCodeql: boolean;
+  /** The `run` text or the `uses` action of each step, in each job. */
+  readonly commands: readonly string[];
+}
+
+/** The commands that the git hooks run before a commit and before a push. */
+export interface HookFacts {
+  readonly commit: readonly string[];
+  readonly push: readonly string[];
 }
 
 /** What Eva read from GitHub about one repository. Null: Eva could not read that fact. */
@@ -50,6 +60,9 @@ export interface RepositoryFacts {
   /** Each file path of the default branch, and its blob SHA. */
   readonly files: Readonly<Record<string, string>> | null;
   readonly workflows: readonly WorkflowFacts[] | null;
+  /** The `scripts` of the root `package.json`, which CI and hooks often call. Empty when it has none. */
+  readonly scripts: Readonly<Record<string, string>> | null;
+  readonly hooks: HookFacts | null;
   readonly labels: readonly string[] | null;
   /** The `permissions.allow` rules of `.claude/settings.json`, or "none" when it has none. */
   readonly allowRules: readonly string[] | "none" | null;
@@ -240,15 +253,28 @@ function hookItem(context: Context): SetupItem {
   const files = context.target.files;
   if (files === null) return grey(label, filesUnknown);
   const paths = Object.keys(files);
-  if (paths.some((path) => hookFilePattern.test(path) || path.startsWith(".husky/"))) {
-    return green(label, "Checks run before each commit or push.");
+  const fixRequest = `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${context.referenceLink("blob", "lefthook.yml")} does.${pullRequestStep}`;
+  if (!paths.some((path) => hookFilePattern.test(path) || path.startsWith(".husky/"))) {
+    return { label, light: "red", detail: "No Lefthook, Husky or pre-commit setup.", fixRequest };
   }
-  return {
-    label,
-    light: "red",
-    detail: "No Lefthook, Husky or pre-commit setup.",
-    fixRequest: `In ${context.target.slug}, add git hooks that run the format, lint and test checks before each push. Use Lefthook, as ${context.referenceLink("blob", "lefthook.yml")} does.${pullRequestStep}`,
-  };
+  const hooks = context.target.hooks;
+  if (hooks === null) return grey(label, notRead);
+  const scripts = context.target.scripts ?? {};
+  const stages = [
+    { name: "commit", checks: checksOf(hooks.commit, scripts) },
+    { name: "push", checks: checksOf(hooks.push, scripts) },
+  ].filter((stage) => stage.checks.size > 0);
+  if (stages.length === 0) {
+    return { label, light: "yellow", detail: "The hooks run no format check, lint or tests.", fixRequest };
+  }
+  return green(label, stages.map((stage) => `Before each ${stage.name}: ${checkList(stage.checks)}.`).join(" "));
+}
+
+const checkNames: Readonly<Record<CheckKind, string>> = { format: "format check", lint: "lint", test: "tests" };
+
+function checkList(checks: ReadonlySet<CheckKind>): string {
+  const names = (Object.keys(checkNames) as CheckKind[]).filter((kind) => checks.has(kind));
+  return names.length === 0 ? "no format check, lint or tests" : names.map((kind) => checkNames[kind]).join(", ");
 }
 
 function pullRequestItems(context: Context): SetupItem[] {
@@ -286,9 +312,25 @@ function ciItem(context: Context): SetupItem {
   if (workflows === null) return grey(label, filesUnknown);
   // A CodeQL workflow scans for vulnerabilities; it runs no project checks.
   const running = workflows.filter((workflow) => workflow.runsOnPullRequest && !workflow.usesCodeql);
-  if (running.length > 0) return green(label, `Runs ${running.map((workflow) => workflow.path).join(", ")}.`);
   const example = context.reference.workflows?.find((workflow) => workflow.runsOnPullRequest && !workflow.usesCodeql);
   const exampleText = example === undefined ? "" : ` Use ${context.referenceLink("blob", example.path)} as an example.`;
+  if (running.length > 0) {
+    const checks = checksOf(
+      running.flatMap((workflow) => workflow.commands),
+      context.target.scripts ?? {},
+    );
+    const runs = `Runs ${running.map((workflow) => workflow.path).join(", ")}: ${checkList(checks)}.`;
+    const missing = requiredCiChecks.filter((kind) => !checks.has(kind));
+    if (missing.length === 0) return green(label, runs);
+    // An unread package.json could hide the checks of a script that CI calls.
+    if (context.target.scripts === null) return grey(label, "Eva could not read package.json from GitHub.");
+    return {
+      label,
+      light: "yellow",
+      detail: checks.size === 0 ? runs : `${runs} No ${missing.map((kind) => checkNames[kind]).join(" or ")}.`,
+      fixRequest: `In ${context.target.slug}, make the pull-request CI run the lint and the tests, through one script that also runs the format check.${exampleText}${pullRequestStep}`,
+    };
+  }
   return {
     label,
     light: "red",
@@ -296,6 +338,9 @@ function ciItem(context: Context): SetupItem {
     fixRequest: `In ${context.target.slug}, add a GitHub Actions workflow that runs on each pull request. It runs the format check, the lint and the tests through one script.${exampleText}${pullRequestStep}`,
   };
 }
+
+/** The format check shows in the detail, but only a lint and tests decide the light (#91). */
+const requiredCiChecks: readonly CheckKind[] = ["lint", "test"];
 
 function requiredChecksItem(context: Context): SetupItem {
   const label = "Required checks before merge";

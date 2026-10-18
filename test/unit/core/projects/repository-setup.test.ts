@@ -25,7 +25,16 @@ const reference: RepositoryFacts = {
     "lefthook.yml": "hooks",
     ".github/workflows/checks.yml": "ci",
   },
-  workflows: [{ path: ".github/workflows/checks.yml", runsOnPullRequest: true, usesCodeql: false }],
+  workflows: [
+    {
+      path: ".github/workflows/checks.yml",
+      runsOnPullRequest: true,
+      usesCodeql: false,
+      commands: ["actions/checkout@v4", "bun run check"],
+    },
+  ],
+  scripts: { check: "bun run lint && bun test", lint: "eslint ." },
+  hooks: { commit: ["bunx prettier --check {staged_files}"], push: ["bun run check"] },
   labels: ["auto-developing", "requires-human-intervention", "waiting-for-human-check"],
   allowRules: ["Read", "Grep", "Bash(git status*)", "Bash(gh pr view*)", "Bash(bun run *)"],
   requiredChecks: true,
@@ -123,6 +132,8 @@ describe("evaluateSetup", () => {
         isAdmin: false,
         files: null,
         workflows: null,
+        scripts: null,
+        hooks: null,
         labels: null,
         requiredChecks: null,
         dependabotAlerts: null,
@@ -235,7 +246,7 @@ describe("evaluateSetup", () => {
         dependabotAlerts: false,
         readOnlyWorkflowToken: false,
         codeScanningDefaultSetup: false,
-        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true }],
+        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [] }],
       }),
     );
     expect(item(report, "Dependabot alerts").light).toBe("red");
@@ -262,11 +273,55 @@ describe("evaluateSetup, edge cases", () => {
       reference,
       target({
         files: withoutUndefined({ ...reference.files, "lefthook.yml": undefined, "lefthook.json": "hooks" }),
-        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true }],
+        workflows: [{ path: ".github/workflows/codeql.yml", runsOnPullRequest: true, usesCodeql: true, commands: [] }],
       }),
     );
     expect(item(report, "CI on pull requests").light).toBe("red");
     expect(item(report, "Git hooks").light).toBe("green");
+  });
+
+  test("CI that misses a lint or tests is yellow, and says what it runs", () => {
+    const report = evaluateSetup(reference, target({ scripts: { check: "bun test" } }));
+    expect(item(report, "CI on pull requests")).toMatchObject({
+      light: "yellow",
+      detail: "Runs .github/workflows/checks.yml: tests. No lint.",
+    });
+    expect(item(report, "CI on pull requests").fixRequest).toContain("run the lint and the tests");
+    const nothing = evaluateSetup(reference, target({ scripts: {} }));
+    expect(item(nothing, "CI on pull requests").detail).toBe(
+      "Runs .github/workflows/checks.yml: no format check, lint or tests.",
+    );
+    const green = item(evaluateSetup(reference, target()), "CI on pull requests");
+    expect(green.detail).toBe("Runs .github/workflows/checks.yml: lint, tests.");
+  });
+
+  test("CI with an unreadable package.json is grey unless the steps alone show the checks", () => {
+    expect(item(evaluateSetup(reference, target({ scripts: null })), "CI on pull requests").light).toBe("grey");
+    const direct = target({
+      scripts: null,
+      workflows: [
+        {
+          path: ".github/workflows/ci.yml",
+          runsOnPullRequest: true,
+          usesCodeql: false,
+          commands: ["cargo clippy", "cargo test"],
+        },
+      ],
+    });
+    expect(item(evaluateSetup(reference, direct), "CI on pull requests").light).toBe("green");
+  });
+
+  test("git hooks that run no check are yellow; unreadable hooks are grey", () => {
+    const report = evaluateSetup(reference, target({ hooks: { commit: ["echo hi"], push: [] } }));
+    expect(item(report, "Git hooks")).toMatchObject({
+      light: "yellow",
+      detail: "The hooks run no format check, lint or tests.",
+    });
+    expect(item(report, "Git hooks").fixRequest).toContain("https://github.com/guplem/eva/blob/main/lefthook.yml");
+    expect(item(evaluateSetup(reference, target({ hooks: null })), "Git hooks").light).toBe("grey");
+    expect(item(evaluateSetup(reference, target()), "Git hooks").detail).toBe(
+      "Before each commit: format check. Before each push: lint, tests.",
+    );
   });
 
   test("a secret scanning fix uses a command that works in every shell", () => {

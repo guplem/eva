@@ -13,7 +13,8 @@ function ok(body: unknown): GithubAnswer {
   return { status: 200, body: JSON.stringify(body) };
 }
 
-const workflow = "name: checks\non:\n  pull_request:\njobs:\n  checks:\n    runs-on: ubuntu-latest\n";
+const workflow =
+  "name: checks\non:\n  pull_request:\njobs:\n  checks:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: |\n          npm ci\n          npm run check\n";
 const codeql = "on: push\njobs:\n  analyze:\n    steps:\n      - uses: github/codeql-action/analyze@v3\n";
 
 /** The answers of a repository with every feature on, by API path. */
@@ -106,9 +107,21 @@ describe("readRepositoryFacts", () => {
       ".claude/settings.json": "s1",
     });
     expect(facts.workflows).toEqual([
-      { path: ".github/workflows/checks.yml", runsOnPullRequest: true, usesCodeql: false },
-      { path: ".github/workflows/codeql.yaml", runsOnPullRequest: false, usesCodeql: true },
+      {
+        path: ".github/workflows/checks.yml",
+        runsOnPullRequest: true,
+        usesCodeql: false,
+        commands: ["actions/checkout@v4", "npm ci\nnpm run check\n"],
+      },
+      {
+        path: ".github/workflows/codeql.yaml",
+        runsOnPullRequest: false,
+        usesCodeql: true,
+        commands: ["github/codeql-action/analyze@v3"],
+      },
     ]);
+    expect(facts.scripts).toEqual({});
+    expect(facts.hooks).toEqual({ commit: [], push: [] });
   });
 
   test("an admin-only answer that GitHub refuses is null; GraphQL still reads the alerts without admin rights", async () => {
@@ -233,6 +246,82 @@ function failure(promise: Promise<unknown>): Promise<unknown> {
     (error: unknown) => error,
   );
 }
+
+describe("readRepositoryFacts, scripts and git hooks", () => {
+  function withFiles(files: Readonly<Record<string, string>>): Map<string, GithubAnswer> {
+    const answers = fullAnswers();
+    const tree = Object.keys(files).map((path) => ({ path, type: "blob", sha: path }));
+    answers.set(`repos/${slug}/git/trees/main?recursive=1`, ok({ truncated: false, tree }));
+    for (const [path, text] of Object.entries(files)) {
+      answers.set(`raw:repos/${slug}/contents/${path}?ref=main`, { status: 200, body: text });
+    }
+    return answers;
+  }
+
+  test("reads the package scripts, and the commands of Lefthook, Husky and pre-commit", async () => {
+    const lefthook = [
+      "pre-commit:",
+      "  commands:",
+      "    lint:",
+      "      run: npx eslint {staged_files}",
+      "  jobs:",
+      "    - run: npx prettier --check {staged_files}",
+      "pre-push:",
+      "  commands:",
+      "    check:",
+      "      run: npm run check",
+      "post-merge:",
+      "  commands:",
+      "    install:",
+      "      run: npm install",
+    ].join("\n");
+    const preCommit = [
+      "default_stages: [pre-commit]",
+      "repos:",
+      "  - repo: https://github.com/astral-sh/ruff-pre-commit",
+      "    hooks:",
+      "      - id: ruff",
+      "      - id: tests",
+      "        entry: pytest",
+      "        stages: [pre-push]",
+    ].join("\n");
+    const facts = await readRepositoryFacts(
+      slug,
+      fakeGet(
+        withFiles({
+          "package.json": JSON.stringify({ scripts: { check: "eslint .", broken: 7 } }),
+          "lefthook.yml": lefthook,
+          ".husky/pre-push": "#!/bin/sh\nnpm test\n",
+          ".husky/_/husky.sh": "echo helper",
+          ".pre-commit-config.yaml": preCommit,
+        }),
+      ),
+    );
+    expect(facts.scripts).toEqual({ check: "eslint ." });
+    expect(facts.hooks).toEqual({
+      commit: ["ruff", "npx eslint {staged_files}", "npx prettier --check {staged_files}"],
+      push: ["#!/bin/sh\nnpm test\n", "pytest", "npm run check"],
+    });
+  });
+
+  test("a hook file or a package.json that GitHub does not serve is unknown", async () => {
+    const answers = withFiles({ "package.json": "{}", ".husky/pre-commit": "npx lint-staged" });
+    answers.set(`raw:repos/${slug}/contents/.husky/pre-commit?ref=main`, { status: 502, body: "" });
+    answers.set(`raw:repos/${slug}/contents/package.json?ref=main`, { status: 502, body: "" });
+    const facts = await readRepositoryFacts(slug, fakeGet(answers));
+    expect(facts.hooks).toBeNull();
+    expect(facts.scripts).toBeNull();
+  });
+
+  test("a broken config gives no commands, not an error", async () => {
+    const facts = await readRepositoryFacts(
+      slug,
+      fakeGet(withFiles({ "package.json": "{ not json", "lefthook.yml": "pre-commit: [" })),
+    );
+    expect(facts.scripts).toEqual({});
+    expect(facts.hooks).toEqual({ commit: [], push: [] });
+  });
+});
 
 describe("readRepositoryFacts, failed reads", () => {
   test("a file that GitHub does not serve is unknown, not missing", async () => {

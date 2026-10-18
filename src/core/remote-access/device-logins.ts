@@ -28,6 +28,17 @@ export interface DeviceLoginApprover {
   /** False while the approver cannot reach the owner, such as a bot with no paired chat. */
   canApprove(): boolean;
   ask(request: DeviceLoginRequest): void;
+  /** Another approver, or this one, answered a request that this approver was asked. */
+  settled?(id: string, answer: "allow" | "deny"): void;
+}
+
+/** A device as the page lists it. The id is a hash prefix, so the list never shows a whole hash. */
+export interface DeviceSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly createdAt: string;
+  /** The device of the caller. */
+  readonly current: boolean;
 }
 
 export interface DeviceLoginsOptions {
@@ -39,6 +50,7 @@ interface PendingLogin {
   readonly request: DeviceLoginRequest;
   readonly label: string;
   readonly expiresAtMs: number;
+  readonly asked: readonly DeviceLoginApprover[];
   answer: { readonly state: "allowed"; readonly token: string } | { readonly state: "denied" } | null;
 }
 
@@ -55,6 +67,8 @@ const requestsPerWindow = 5;
 /** No 0, O, 1 or I: the owner compares the code by eye. */
 const codeLetters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const codeLength = 4;
+/** 64 bits of the hash tell the devices apart, and the id never logs anyone in. */
+const deviceIdLength = 16;
 
 export class DeviceLogins {
   private readonly options: DeviceLoginsOptions;
@@ -103,7 +117,7 @@ export class DeviceLogins {
       account,
       expiresAt: new Date(nowMs + pendingLifetimeMs).toISOString(),
     };
-    this.pending.set(request.id, { request, label, expiresAtMs: nowMs + pendingLifetimeMs, answer: null });
+    this.pending.set(request.id, { request, label, expiresAtMs: nowMs + pendingLifetimeMs, asked: ready, answer: null });
     for (const approver of ready) approver.ask(request);
     return request;
   }
@@ -116,6 +130,7 @@ export class DeviceLogins {
     if (login?.answer !== null) return false;
     if (answer === "deny") {
       login.answer = { state: "denied" };
+      settle(login, "deny");
       return true;
     }
     const token = randomBytes(32).toString("base64url");
@@ -125,7 +140,16 @@ export class DeviceLogins {
     ];
     this.saveDevices();
     login.answer = { state: "allowed", token };
+    settle(login, "allow");
     return true;
+  }
+
+  /** The requests that wait for an answer and that this approver was asked, oldest first. */
+  waitingFor(approver: DeviceLoginApprover): DeviceLoginRequest[] {
+    this.removeExpired(this.options.now().getTime());
+    return [...this.pending.values()]
+      .filter((login) => login.answer === null && login.asked.includes(approver))
+      .map((login) => login.request);
   }
 
   /** The state of a request, for the browser that made it. An issued token is handed out once. */
@@ -150,6 +174,27 @@ export class DeviceLogins {
     this.saveDevices();
   }
 
+  /** Every device, oldest first. `currentToken` is the device token of the caller, or null. */
+  list(currentToken: string | null): DeviceSummary[] {
+    const currentHash = currentToken === null ? null : hashOf(currentToken);
+    return this.devices.map((device) => ({
+      id: idOf(device),
+      label: device.label,
+      createdAt: device.createdAt,
+      current: device.hash === currentHash,
+    }));
+  }
+
+  /** Logs out the device with this id. Returns false when no single device has it. */
+  forgetById(id: string): boolean {
+    const matches = this.devices.filter((device) => idOf(device) === id);
+    const [match] = matches;
+    if (matches.length !== 1 || match === undefined) return false;
+    this.devices = this.devices.filter((device) => device !== match);
+    this.saveDevices();
+    return true;
+  }
+
   /** Logs out every device. Returns how many there were. */
   forgetAll(): number {
     const count = this.devices.length;
@@ -169,6 +214,14 @@ export class DeviceLogins {
 
 function hashOf(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function idOf(device: StoredDevice): string {
+  return device.hash.slice(0, deviceIdLength);
+}
+
+function settle(login: PendingLogin, answer: "allow" | "deny"): void {
+  for (const approver of login.asked) approver.settled?.(login.request.id, answer);
 }
 
 function newCode(): string {

@@ -177,3 +177,83 @@ describe("DeviceLogins", () => {
     expect(createLogins().isValidToken(token)).toBe(false);
   });
 });
+
+describe("DeviceLogins for the web page", () => {
+  function pageApprover(logins: DeviceLogins, settled: [string, string][], open = { value: true }): DeviceLoginApprover {
+    const approver: DeviceLoginApprover = {
+      canApprove: () => open.value,
+      ask: (request) => asked.push(request),
+      settled: (id, answer) => settled.push([id, answer]),
+    };
+    logins.attachApprover(approver);
+    return approver;
+  }
+
+  function allowedToken(logins: DeviceLogins, label: string): string {
+    const request = logins.request("owner@example.com", label);
+    logins.answer(request.id, "allow");
+    const found = logins.check(request.id, "owner@example.com");
+    return found.state === "allowed" ? found.token : "";
+  }
+
+  test("an approver sees only the requests that wait and that it was asked", () => {
+    const logins = createLogins();
+    const open = { value: false };
+    const page = pageApprover(logins, [], open);
+    attachApprover(logins);
+    const unseen = logins.request("owner@example.com", "x");
+    open.value = true;
+    const first = logins.request("owner@example.com", "x");
+    const second = logins.request("owner@example.com", "x");
+    expect(logins.waitingFor(page)).toEqual([first, second]);
+    logins.answer(first.id, "deny");
+    expect(logins.waitingFor(page)).toEqual([second]);
+    clock = new Date("2026-10-17T10:05:01Z");
+    expect(logins.waitingFor(page)).toEqual([]);
+    expect(unseen.id).not.toBe(first.id);
+  });
+
+  test("an answer tells every approver that was asked, and only those", () => {
+    const logins = createLogins();
+    const pageSettled: [string, string][] = [];
+    const closedSettled: [string, string][] = [];
+    pageApprover(logins, pageSettled);
+    pageApprover(logins, closedSettled, { value: false });
+    const request = logins.request("owner@example.com", "x");
+    logins.answer(request.id, "allow");
+    expect(pageSettled).toEqual([[request.id, "allow"]]);
+    expect(closedSettled).toEqual([]);
+    expect(logins.answer(request.id, "deny")).toBe(false);
+    expect(pageSettled).toEqual([[request.id, "allow"]]);
+  });
+
+  test("the list shows each device with a short id, its label and date, and marks the caller's device", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    const phone = allowedToken(logins, "owner@example.com, a phone");
+    clock = new Date("2026-10-17T11:00:00Z");
+    allowedToken(logins, "owner@example.com, a laptop");
+    const listed = logins.list(phone);
+    expect(listed.map(({ label, createdAt, current }) => ({ label, createdAt, current }))).toEqual([
+      { label: "owner@example.com, a phone", createdAt: "2026-10-17T10:00:00.000Z", current: true },
+      { label: "owner@example.com, a laptop", createdAt: "2026-10-17T11:00:00.000Z", current: false },
+    ]);
+    expect(listed[0]?.id).toBe(createHash("sha256").update(phone).digest("hex").slice(0, 16));
+    expect(JSON.stringify(listed)).not.toContain(createHash("sha256").update(phone).digest("hex"));
+    expect(logins.list(null).every((device) => !device.current)).toBe(true);
+  });
+
+  test("forgetById logs out only that device, and an unknown id changes nothing", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    const phone = allowedToken(logins, "a phone");
+    const laptop = allowedToken(logins, "a laptop");
+    const phoneId = logins.list(null)[0]?.id ?? "";
+    expect(logins.forgetById("0000000000000000")).toBe(false);
+    expect(logins.forgetById("")).toBe(false);
+    expect(logins.forgetById(phoneId)).toBe(true);
+    expect(logins.isValidToken(phone)).toBe(false);
+    expect(logins.isValidToken(laptop)).toBe(true);
+    expect(createLogins().list(null).map((device) => device.label)).toEqual(["a laptop"]);
+  });
+});

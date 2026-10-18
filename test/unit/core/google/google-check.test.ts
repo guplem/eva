@@ -55,11 +55,11 @@ describe("checkGoogle", () => {
     });
     expect(google.tokenRequests[0]?.get("grant_type")).toBe("refresh_token");
     expect(google.tokenRequests[0]?.get("refresh_token")).toBe("the-refresh-token");
-    expect(google.apiRequests).toEqual([
+    expect(google.apiRequests.toSorted()).toEqual([
       "/calendar/v3/calendars/primary/events",
       "/drive/v3/files",
-      "/v1/people/me/connections",
       "/tasks/v1/users/@me/lists",
+      "/v1/people/me/connections",
     ]);
   });
 
@@ -93,5 +93,24 @@ describe("checkGoogle", () => {
     const result = await checkGoogle(inputs);
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("In production");
+  });
+});
+
+describe("checkGoogle when Google refuses a read", () => {
+  test("a refused read asks for a new login", async () => {
+    google.apiStatus = 401;
+    expect((await checkGoogle(inputs)).detail).toBe(
+      "Google refused to show Calendar. Log in to Google again (step 4).",
+    );
+  });
+
+  test("another status says to try later", async () => {
+    google.apiStatus = 500;
+    expect((await checkGoogle(inputs)).detail).toBe("Google answered 500 for Calendar. Try again later.");
+  });
+
+  test("no connection names the machine's internet connection", async () => {
+    google.stop();
+    expect((await checkGoogle(inputs)).detail).toContain("Eva could not reach Google");
   });
 });

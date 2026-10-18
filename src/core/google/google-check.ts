@@ -100,10 +100,10 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
   }
   if (!inputs.readServices) return { ok: true, detail: `The Google login of ${config.email} works.` };
 
-  for (const service of config.services) {
-    const problem = await readService(service, urls, accessToken);
-    if (problem !== null) return failed(problem);
-  }
+  // At once, so that the Test takes one request time, not one for each service.
+  const problems = await Promise.all(config.services.map((service) => readService(service, urls, accessToken)));
+  const problem = problems.find((found) => found !== null);
+  if (problem !== undefined) return failed(problem);
   const labels = config.services.map((service) => serviceLabels[service]);
   return { ok: true, detail: `Eva can read ${listText(labels)} of ${config.email}.` };
 }

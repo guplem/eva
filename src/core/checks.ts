@@ -191,7 +191,16 @@ async function checkTelegram(inputs: CheckInputs): Promise<CheckResult> {
   }
 }
 
+/** A chat's engine starts the Google tools with `uvx`, so a working login without uv still fails in chats. */
 async function checkGoogleSetup(inputs: CheckInputs): Promise<CheckResult> {
   const result = await checkGoogle(inputs.google);
-  return { ok: result.ok, detail: inputs.redact(result.detail) };
+  if (!result.ok) return { ok: false, detail: inputs.redact(result.detail) };
+  const uv = await runProgram(["uvx", "--version"], process.cwd(), inputs.engineEnvironment, inputs, null);
+  if (!uv.ok)
+    return {
+      ok: false,
+      detail:
+        "The Google login works, but this machine has no uv to run the Google tools. Install it on the machine: https://docs.astral.sh/uv/",
+    };
+  return { ok: true, detail: inputs.redact(result.detail) };
 }

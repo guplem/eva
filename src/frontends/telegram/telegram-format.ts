@@ -5,6 +5,7 @@
  * `<`, `>` and `&`. Telegram has no headings, lists or tables: a heading becomes a bold line,
  * a bullet a dot, and a table aligned columns in a monospace block.
  */
+import { closesFence } from "../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../markdown-inline.ts";
 
 const fencePattern = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/;
@@ -24,10 +25,10 @@ export function toTelegramHtml(markdown: string): string {
     const line = lines[index] ?? "";
     const fence = fencePattern.exec(line);
     if (fence) {
-      const closing = (fence[1] ?? "```").charAt(0).repeat(3);
+      const opening = fence[1] ?? "```";
       const body: string[] = [];
       index += 1;
-      while (index < lines.length && !(lines[index] ?? "").trim().startsWith(closing)) {
+      while (index < lines.length && !closesFence(lines[index] ?? "", opening)) {
         body.push(lines[index] ?? "");
         index += 1;
       }
@@ -68,14 +69,20 @@ export function toTelegramHtml(markdown: string): string {
  */
 export function keepFencesWhole(chunks: readonly string[]): string[] {
   const whole: string[] = [];
-  let openFence: string | null = null;
+  // The open block's first line, to reopen it, and its fence, to close it with the same length.
+  let open: { line: string; fence: string } | null = null;
   for (const original of chunks) {
-    const reopened = openFence;
+    const reopened = open;
     for (const line of original.split("\n")) {
-      if (fencePattern.test(line)) openFence = openFence === null ? line.trim() : null;
+      if (open === null) {
+        const fence = fencePattern.exec(line);
+        if (fence) open = { line: line.trim(), fence: fence[1] ?? "```" };
+      } else if (closesFence(line, open.fence)) {
+        open = null;
+      }
     }
-    let chunk = reopened === null ? original : `${reopened}\n${original}`;
-    if (openFence !== null) chunk += `\n${openFence.charAt(0).repeat(3)}`;
+    let chunk = reopened === null ? original : `${reopened.line}\n${original}`;
+    if (open !== null) chunk += `\n${open.fence}`;
     whole.push(chunk);
   }
   return whole;

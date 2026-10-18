@@ -1,25 +1,94 @@
 name: Release
 
-# A tag such as v0.2.0 builds, tests, signs and publishes the executables. Releases come
-# only from CI on tags, and self-update checks the signature.
+# After the checks pass on main, this workflow publishes a release when a commit since the last
+# one changes the executable. The commit types pick the version (src/core/updates/release-version.ts).
+# Releases come only from here, and self-update checks the signature.
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: ["Pull request checks"]
+    types: [completed]
+    branches: [main]
+  # A retry from the phone, for example after the signing key changes.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# One release at a time, so that two runs never pick the same version. A newer waiting run
+# can replace an older one and lose nothing: it reads every commit since the last release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  build:
+  plan:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Release only the tip of main, and only when its checks passed
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          # The run for the newer commit releases this commit too.
+          if [ -n "$TRIGGER_SHA" ] && [ "$TRIGGER_SHA" != "$sha" ]; then
+            echo "main moved on from $TRIGGER_SHA. The run for $sha releases it."
+            exit 0
+          fi
+          conclusion="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "Pull request checks" --event push \
+            --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion')"
+          if [ "$conclusion" != "success" ]; then
+            echo "The checks on $sha did not pass (${conclusion:-no run}). Nothing to release."
+            exit 0
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        if: steps.commit.outputs.sha != ''
+        with:
+          bun-version: 1.4.2
+      - name: Pick the version and write the notes
+        id: next
+        if: steps.commit.outputs.sha != ''
+        run: bun run scripts/next-release.ts release-notes.md
+      - uses: actions/upload-artifact@v4
+        if: steps.next.outputs.version != ''
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.version != ''
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - name: Check that the tag matches package.json
-        run: test "v$(bun -e 'console.log(require("./package.json").version)')" = "$GITHUB_REF_NAME"
+      # Eva reads her version from package.json. Only the build gets the new number: main keeps its own.
+      - name: Set the version
+        run: |
+          bun -e 'const file = Bun.file("package.json"); const json = await file.json();
+          json.version = process.env.VERSION; await Bun.write(file, JSON.stringify(json, null, 2) + "\n");'
       - name: Build the executables
         run: |
           mkdir -p dist
@@ -27,7 +96,7 @@ jobs:
           bun build --compile --minify --target=bun-linux-arm64 src/main.ts --outfile dist/eva-linux-arm64
           bun build --compile --minify --target=bun-windows-x64 src/main.ts --outfile dist/eva-windows-x64.exe
           # The signed file names its version, so an old build cannot come back under a new tag.
-          cd dist && { sha256sum eva-*; echo "# version ${GITHUB_REF_NAME#v}"; } > SHA256SUMS
+          cd dist && { sha256sum eva-*; echo "# version $VERSION"; } > SHA256SUMS
       - name: Sign the checksums
         env:
           EVA_RELEASE_SIGNING_KEY: ${{ secrets.EVA_RELEASE_SIGNING_KEY }}
@@ -38,7 +107,7 @@ jobs:
           path: dist/
 
   install-test:
-    needs: build
+    needs: [plan, build]
     strategy:
       fail-fast: false
       matrix:
@@ -50,33 +119,47 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: release
           path: dist
       - name: Install the release and start it
         shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           cd dist && grep " ${{ matrix.asset }}$" SHA256SUMS | sha256sum -c - && cd ..
           chmod +x "dist/${{ matrix.asset }}"
+          "dist/${{ matrix.asset }}" version | grep -F "$VERSION"
           bash scripts/smoke-executable.sh "dist/${{ matrix.asset }}"
 
   publish:
-    needs: install-test
+    needs: [plan, install-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
+    env:
+      TAG: v${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: release
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/eva-*
+      # A draft stays hidden until every file is in it. Otherwise a self-update could find a
+      # release with no executable yet, and alert the person for nothing.
       - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes
+        run: |
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+            --target "${{ needs.plan.outputs.sha }}" --title "$TAG" --notes-file release-notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

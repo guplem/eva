@@ -96,18 +96,48 @@ export interface ProjectQuery {
   readonly tag?: string;
 }
 
+/**
+ * Reads the filter words of a free text search: `status:active`, `tag:work` and `#work`.
+ * Telegram and the CLI send free text only, so the filters live in the text.
+ */
+export function parseProjectQuery(input: string): ProjectQuery {
+  const words: string[] = [];
+  let status: ProjectStatus | undefined;
+  let tag: string | undefined;
+  for (const word of input.split(/\s+/).filter((candidate) => candidate.length > 0)) {
+    const lower = word.toLowerCase();
+    const tagWord = tagOf(word);
+    if (lower === "status:any") status = undefined;
+    else if (lower.startsWith("status:") && statuses.includes(lower.slice(7) as ProjectStatus)) {
+      status = lower.slice(7) as ProjectStatus;
+    } else if (tagWord !== null && tag === undefined) tag = tagWord;
+    // A second tag word still searches: the words also match the tags.
+    else words.push(tagWord ?? word);
+  }
+  return { text: words.join(" "), ...(status === undefined ? {} : { status }), ...(tag === undefined ? {} : { tag }) };
+}
+
+/** The tag of a `tag:work` or `#work` word, or null for any other word. */
+function tagOf(word: string): string | null {
+  if (word.toLowerCase().startsWith("tag:") && word.length > 4) return word.slice(4);
+  if (word.startsWith("#") && word.length > 1) return word.slice(1);
+  return null;
+}
+
 /** Projects that match every given filter, the most recently created first. */
 export function searchProjects(projects: readonly Project[], query: ProjectQuery): Project[] {
   const words = (query.text ?? "")
     .toLowerCase()
     .split(/\s+/)
     .filter((word) => word.length > 0);
+  const tag = query.tag?.toLowerCase();
   return projects
     .filter((project) => {
-      const haystack = `${project.id} ${project.title}`.toLowerCase();
+      const tags = project.frontMatter.tags.map((candidate) => candidate.toLowerCase());
+      const haystack = `${project.id} ${project.title} ${tags.join(" ")}`.toLowerCase();
       if (!words.every((word) => haystack.includes(word))) return false;
       if (query.status !== undefined && project.frontMatter.status !== query.status) return false;
-      if (query.tag !== undefined && !project.frontMatter.tags.includes(query.tag)) return false;
+      if (tag !== undefined && !tags.includes(tag)) return false;
       return true;
     })
     .sort((first, second) => second.id.localeCompare(first.id));

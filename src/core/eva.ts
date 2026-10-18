@@ -16,6 +16,7 @@ import { Redactor } from "../shared/redaction.ts";
 import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import {
+  scheduleCardProblem,
   engineUpdateProblem,
   scheduleFiringProblem,
   uncleanExitMessage,
@@ -27,6 +28,7 @@ import { DeviceLogins } from "./remote-access/device-logins.ts";
 import {
   engineFolders,
   engineFolderVariables,
+  engineGitConfig,
   isExtraInstance,
   loadSecrets,
   saveSecrets,
@@ -345,6 +347,10 @@ export class Eva {
                 `schedule:${schedule.id}`,
                 failure === null ? null : scheduleFiringProblem(schedule.name, failure),
               );
+            },
+            reportCard: (scheduleId, name, waiting) => {
+              // Its own key: a good firing clears `schedule:<id>`, but must not clear this one.
+              this.alerts.report(`schedule_card:${scheduleId}`, waiting ? scheduleCardProblem(name) : null);
             },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -1010,7 +1016,8 @@ export class Eva {
       config: this.options.config.google,
       secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
-      environment: this.gitEnvironment,
+      // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
+      environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
     return google === null ? {} : { google };
   }
@@ -1055,6 +1062,12 @@ export class Eva {
       ...(this.isExtraInstance() ? engineFolderVariables(engineFolders(this.options.paths)) : {}),
       EVA_HOME: this.options.paths.root,
     };
+    if (this.isExtraInstance()) {
+      // An agent's own `git push` uses the instance's gh login, not the OS user's git login.
+      const gitConfig = join(engineFolders(this.options.paths).git, "gitconfig");
+      writeFileAtomic(gitConfig, engineGitConfig(this.options.processEnvironment, gitConfig));
+      extra["GIT_CONFIG_GLOBAL"] = gitConfig;
+    }
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
       // The agent finds `eva` first, so `eva work` reaches this instance.

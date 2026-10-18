@@ -3,8 +3,9 @@ import { useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { Conversation, rootChats } from "./Conversation.tsx";
+import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
+import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -14,6 +15,7 @@ interface AssistantViewProps {
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  readonly onOpenSchedules: () => void;
 }
 
 export function AssistantView({
@@ -22,13 +24,13 @@ export function AssistantView({
   sidebarOpen,
   onChanged,
   onNavigate,
+  onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The model comes first in a new chat, and the chat keeps it (lesson 41).
   const [model, setModel] = useState<ModelAlias>("default");
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
-  const tasks = Object.entries(live.tasks);
   const showError = useShowError();
 
   const newChat = async (): Promise<void> => {
@@ -58,9 +60,22 @@ export function AssistantView({
         <button className="primary" onClick={() => void newChat()}>
           New chat
         </button>
-        <h2>Schedules</h2>
+        <div className="sidebar-heading">
+          <h2>Schedules</h2>
+          <button
+            className="icon-button"
+            aria-label="Open schedules"
+            title="Open schedules"
+            onClick={() => {
+              onOpenSchedules();
+              onNavigate();
+            }}
+          >
+            ⏰
+          </button>
+        </div>
         {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-          <span className="chip">No schedule has run yet. Add one in Settings.</span>
+          <span className="chip">No schedule has run yet. Add one on the Schedules page (⏰).</span>
         )}
         <h2>Chats</h2>
         {chats.map((chat) => (
@@ -93,16 +108,7 @@ export function AssistantView({
           </>
         )}
       </main>
-      <aside className="tasks" aria-label="Background tasks">
-        <h2 style={{ fontSize: 13, marginTop: 0 }}>Background tasks</h2>
-        {tasks.length === 0 && <span className="chip">Nothing runs in the background.</span>}
-        {tasks.map(([taskId, task]) => (
-          <div key={taskId} className="task">
-            {task.description}
-            <div className="state">{task.state}</div>
-          </div>
-        ))}
-      </aside>
+      <TasksPanel tasks={tasksOf(live.tasks, selected === undefined ? [] : chatTreeIds(selected, sessions))} />
     </div>
   );
 }

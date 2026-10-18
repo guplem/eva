@@ -24,25 +24,36 @@ export const needsLoginStatus = JSON.stringify({ BackendState: "NeedsLogin", Aut
 
 export class FakeTailscale {
   /** A status JSON, or "missing" (no program) or "stopped" (no daemon). */
-  status = "missing";
-  serveExitCode = 0;
-  upOutput = "To authenticate, visit:\n\thttps://login.tailscale.com/a/fresh\n";
+  status: string;
+  serveExitCode: number;
+  serveOutput: string;
+  /** `tailscale up` exits 1 when its timeout ends before the sign-in, and 0 when no sign-in was needed. */
+  upExitCode: number;
+  upOutput: string;
   /** The verb of each command, such as "status" or "serve". */
-  readonly commands: string[] = [];
-  readonly full: string[][] = [];
+  readonly commands: string[];
+  readonly full: string[][];
   readonly runner: ProcessRunner;
 
   constructor() {
+    this.status = "missing";
+    this.serveExitCode = 0;
+    this.serveOutput = "serve broke";
+    this.upExitCode = 1;
+    this.upOutput = "To authenticate, visit:\n\thttps://login.tailscale.com/a/fresh\n";
+    this.commands = [];
+    this.full = [];
     this.runner = {
       run: (command): Promise<ProcessResult> => {
+        // The watcher below runs a bare program, so the verb follows it.
         const verb = command[1] ?? "";
         this.commands.push(verb);
         this.full.push([...command]);
         if (this.status === "missing")
           return Promise.reject(new EvaError("process_failed", "Could not start tailscale."));
-        if (verb === "up") return Promise.resolve({ exitCode: 1, stdout: "", stderr: this.upOutput });
+        if (verb === "up") return Promise.resolve({ exitCode: this.upExitCode, stdout: "", stderr: this.upOutput });
         if (verb === "serve")
-          return Promise.resolve({ exitCode: this.serveExitCode, stdout: "", stderr: "serve broke" });
+          return Promise.resolve({ exitCode: this.serveExitCode, stdout: "", stderr: this.serveOutput });
         if (this.status === "stopped") return Promise.resolve({ exitCode: 1, stdout: "", stderr: "no tailscaled" });
         return Promise.resolve({ exitCode: 0, stdout: this.status, stderr: "" });
       },

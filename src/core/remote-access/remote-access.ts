@@ -38,8 +38,9 @@ export interface RemoteAccess {
 }
 
 /**
- * What the local API trusts. The host name exists only while Tailscale runs. The owner stays
- * from the last good read, so one failed read never turns the identity check off.
+ * What the local API trusts: the host name and the owner from the last good read. One failed
+ * read must not lock every phone out, or turn the identity check off. While Tailscale truly
+ * stops, `tailscale serve` forwards nothing, so a kept name opens nothing.
  */
 export interface TailnetSnapshot {
   readonly hostName: string | null;
@@ -124,32 +125,13 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
     const install = this.options.install;
     if (install === null || this.busy !== null) return this.access;
     this.setBusy("installing");
+    // Busy ends only after the last read, so no reader sees the old install step without busy.
     try {
-      if ((await this.freshRead()).step !== "install") {
-        this.setBusy(null);
-        return this.access;
-      }
-      await install();
-      this.actionProblem = null;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      // A partial Linux install leaves the program but no running daemon: the cause must stay visible.
-      this.actionProblem = {
-        steps: ["install", "start"],
-        text: isEvaError(error, "tailscale_install_failed") ? text : `The Tailscale install failed: ${text}`,
-      };
+      if ((await this.freshRead()).step === "install") await this.runInstall(install);
     } finally {
       this.setBusy(null);
     }
-    const after = await this.freshRead();
-    if (after.step === "install" && after.problem === null) {
-      this.actionProblem = {
-        steps: ["install"],
-        text: "The install ended, but Eva does not find Tailscale yet. Eva looks again within a minute.",
-      };
-      return this.freshRead();
-    }
-    return after;
+    return this.access;
   }
 
   /** Asks Tailscale for a fresh sign-in link. */
@@ -160,10 +142,11 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
       const result = await signInToTailscale(this.context());
       if (result.link !== null) this.loginUrl = result.link;
       this.actionProblem = result.problem === null ? null : { steps: ["sign_in", "start"], text: result.problem };
+      await this.freshRead();
     } finally {
       this.setBusy(null);
     }
-    return this.freshRead();
+    return this.access;
   }
 
   /** Reads again on each tick, also while ready: Tailscale can stop, or the host name can change. */
@@ -185,6 +168,28 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
     this.timer = null;
   }
 
+  private async runInstall(install: () => Promise<void>): Promise<void> {
+    try {
+      await install();
+      this.actionProblem = null;
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      // A partial Linux install can leave a program but no running daemon: the cause must stay visible.
+      this.actionProblem = {
+        steps: ["install", "start"],
+        text: isEvaError(error, "tailscale_install_failed") ? text : `The Tailscale install failed: ${text}`,
+      };
+    }
+    const after = await this.freshRead();
+    if (after.step === "install" && after.problem === null) {
+      this.actionProblem = {
+        steps: ["install"],
+        text: "The install ended, but Eva does not find Tailscale yet. Eva looks again within a minute.",
+      };
+      await this.freshRead();
+    }
+  }
+
   /** A read that starts after an action, never one that began before it ended. */
   private async freshRead(): Promise<RemoteAccess> {
     await this.reading;
@@ -195,8 +200,7 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
     const state = await readTailscaleState(this.context());
     const before = this.access;
     const base = { canInstall: this.options.install !== null, busy: this.busy };
-    let next: RemoteAccess;
-    if (state.kind !== "running") this.hostName = null;
+    let next: RemoteAccess & { readonly step: RemoteAccessStep };
     if (state.kind !== "needs_login") this.loginUrl = null;
     if (state.kind === "missing") {
       next = { ...base, step: "install", url: null, problem: this.problemFor("install"), link: null, account: null };
@@ -225,8 +229,7 @@ export class RemoteAccessWatcher implements RemoteAccessControl {
         next = { ...base, step, url: published.url, problem: published.problem, link: published.link, account };
       }
     }
-    if (this.actionProblem !== null && !this.actionProblem.steps.includes(next.step ?? "failed"))
-      this.actionProblem = null;
+    if (this.actionProblem !== null && !this.actionProblem.steps.includes(next.step)) this.actionProblem = null;
     this.access = next;
     if (next.step !== before.step || next.url !== before.url) this.options.onChange?.(next);
     return next;

@@ -90,7 +90,33 @@ describe("the remote access watcher", () => {
     expect(failed.problem).toContain("serve broke");
   });
 
-  test("the host name exists only while Tailscale runs; the owner stays, so the identity check stays on", async () => {
+  test("a publish that Tailscale refuses names the page or the command that fixes it", async () => {
+    const fake = new FakeTailscale();
+    fake.status = running(true);
+    fake.serveExitCode = 1;
+    fake.serveOutput = "Serve is not enabled on your tailnet.\nhttps://login.tailscale.com/f/serve?node=abc\n";
+    expect(await watcher(fake).refresh()).toMatchObject({
+      step: "https",
+      link: "https://login.tailscale.com/f/serve?node=abc",
+    });
+    fake.serveOutput = "Access denied: serve config denied";
+    const refused = await watcher(fake).refresh();
+    expect(refused.step).toBe("failed");
+    expect(refused.problem).toContain("sudo tailscale set --operator=$USER");
+  });
+
+  test("a sign-in that needs no link, such as after `tailscale down`, brings the address back", async () => {
+    const fake = new FakeTailscale();
+    fake.status = JSON.stringify({ BackendState: "Stopped" });
+    const access = watcher(fake);
+    expect(await access.refresh()).toMatchObject({ step: "start" });
+    fake.upExitCode = 0;
+    fake.upOutput = "";
+    fake.status = running(true);
+    expect(await access.signIn()).toMatchObject({ step: "ready", problem: null, busy: null });
+  });
+
+  test("a failed read keeps the last host name and owner: no phone lockout, and the identity check stays on", async () => {
     const fake = new FakeTailscale();
     const access = watcher(fake);
     expect(access.tailnet()).toEqual({ hostName: null, ownerLogin: null });
@@ -99,7 +125,7 @@ describe("the remote access watcher", () => {
     expect(access.tailnet()).toEqual({ hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com" });
     fake.status = "stopped";
     await access.refresh();
-    expect(access.tailnet()).toEqual({ hostName: null, ownerLogin: "owner@example.com" });
+    expect(access.tailnet()).toEqual({ hostName: "server.example-tailnet.ts.net", ownerLogin: "owner@example.com" });
   });
 
   test("a sign-in asks for a fresh link and keeps it while Tailscale waits for the sign-in", async () => {
@@ -123,9 +149,14 @@ describe("the remote access watcher", () => {
     const fake = new FakeTailscale();
     let release = (): void => undefined;
     let installs = 0;
+    let started = (): void => undefined;
+    const installStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     const access = watcher(fake, {
       install: () => {
         installs += 1;
+        started();
         return new Promise<void>((resolve) => {
           release = resolve;
         });
@@ -135,7 +166,7 @@ describe("the remote access watcher", () => {
     const first = access.install();
     expect(access.current().busy).toBe("installing");
     await access.install();
-    while (installs === 0) await Bun.sleep(1);
+    await installStarted;
     fake.status = needsLogin;
     release();
     expect(await first).toMatchObject({ step: "sign_in", busy: null });

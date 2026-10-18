@@ -925,9 +925,12 @@ describe("remote access", () => {
     expect((await remoteCall("/api/status", { headers: owner })).status).toBe(200);
     const stranger = { ...owner, "tailscale-user-login": "stranger@example.com" };
     expect((await remoteCall("/api/status", { headers: stranger })).status).toBe(403);
-    tailscale.status = "stopped";
+    // A renamed machine: only the new name is a known host.
+    tailscale.status = runningStatus(true, "owner@example.com", "renamed.example-tailnet.ts.net");
     await watcher.refresh();
     expect((await remoteCall("/api/status", { headers: owner })).status).toBe(403);
+    const renamed = { ...owner, host: "renamed.example-tailnet.ts.net" };
+    expect((await remoteCall("/api/status", { headers: renamed })).status).toBe(200);
   });
 
   test("a configured list of accounts wins over the owner of the machine", async () => {

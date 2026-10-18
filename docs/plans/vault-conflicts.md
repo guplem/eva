@@ -27,11 +27,20 @@ A third shape, where older git keeps the edits only in the stash, gets one `git 
 8. The conflict alert says: send /conflicts, or open Settings in the web app.
 9. Update `docs/guide/reference.md`.
 
-## Gaps
+## Gaps and decisions
 
-1. Where do the picks of kind 1 live until the last one: memory or a state file?
-2. How does Eva build the resolved result of kind 1: a merge commit, a rebase, or a worktree merge?
-3. In "keep both", which version stays at the path, and what is the name of the copy?
-4. Is a new Telegram command (`/conflicts`) fine without the owner, or should `/sync` show the conflicts?
-5. Does "keep mine" or "keep theirs" discard a change silently? Git history keeps both versions, so the message can say so.
-6. What if the remote moves again between the resolution and the push?
+Three agents checked each gap. They tested the git steps on git 2.43.
+
+1. **Where the picks of kind 1 live.** In memory, by path. A restart loses only the picks already made, and `conflicts()` rebuilds the list from git. The Telegram buttons still work after a restart, because `OfferStore` keeps their ids on disk (lesson 124). Picks are not tied to HEAD: each sweep adds a commit while the person picks. At the last pick, Eva runs merge-tree again on the current HEAD. A pick for a path that no longer conflicts is dropped. A new conflicted path waits for its own pick.
+2. **How Eva builds the result of kind 1.** A merge commit, built with plumbing: `git merge-tree -z --write-tree --no-messages HEAD origin/<branch>` gives the tree and, per conflicted path, the blob of each stage (2: this machine, 3: the remote). Eva reads that tree into a temporary index, sets each picked blob, writes the tree, and runs `git commit-tree -p HEAD -p origin/<branch>`. Then `git merge --ff-only` moves the worktree. Git refuses the fast-forward when it would overwrite an uncommitted edit, so nothing is lost. A merge-tree failure (git older than 2.38) is an error with that reason, never "no conflicts".
+3. **"Keep both".** This machine's version stays at the path. The other version goes to `<stem> (conflict copy)<ext>` beside it, or `(conflict copy 2)` when the name is taken. When one side deleted the note, "keep both" keeps the version that exists. So all three buttons always make sense.
+4. **The command.** A new `/conflicts` command needs no owner: the rule covers renames only. The buttons use the free letter `c` and an `OfferStore` id.
+5. **No silent loss.** In kind 1, the merge commit keeps both versions as parents. In kind 2, this machine's version was never committed: after "keep theirs" it stays only in the stash, which Eva never drops. The messages say so. In kind 2, stage 2 is the remote's version and stage 3 is this machine's, so "keep mine" takes stage 3. A test covers that swap.
+6. **The remote moves before the push.** A rebase would flatten the merge commit and bring the conflict back. So while `origin/<branch>..HEAD` holds a merge commit, the sync merges the remote with the same plumbing instead of a rebase. A clean result becomes a merge commit; a conflict is kind 1 again.
+
+Other decisions:
+
+- Kind 2 can lead to kind 1: after the last kind 2 pick, the push can meet a new conflict. `conflicts()` then shows kind 1.
+- The third shape (older git keeps the edits only in the stash) gets one `git stash apply` right where Eva notices it, so it applies the newest stash entry, which is that autostash. A conflict turns it into kind 2.
+- Only the hub runs Telegram. A satellite's conflict is resolved on that satellite's web page. The alert names both ways.
+- Resolution is refused while an Assistant turn runs, like `syncVault`.

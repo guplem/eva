@@ -34,6 +34,12 @@ const securitySettingKeys: readonly string[] = [
   "google.services",
 ];
 
+/**
+ * The settings that a device login may change from the web page. A borrowed or lost phone keeps
+ * its login, so every machine and trust setting needs the token (an allowlist protects new keys).
+ */
+const pageSettingKeys: readonly string[] = [...sharedSettingKeys, "sync", "projectRoots"];
+
 type SettingsObject = Record<string, unknown>;
 
 export interface LoadedSettings {
@@ -141,6 +147,11 @@ export function isSettingKey(key: string): boolean {
     current = current[part];
   }
   return true;
+}
+
+/** True when a device login may change this setting from the web page. */
+export function isPageSettingKey(key: string): boolean {
+  return pageSettingKeys.some((page) => key === page || key.startsWith(`${page}.`));
 }
 
 /** True when the vault holds this setting, so it applies on every machine. */

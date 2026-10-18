@@ -48,6 +48,10 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     return;
   }
   yield { kind: "task_changed", taskId: `task-${String(turnNumber)}`, description: "Search the notes", state: "done" };
+  if (lastLine.includes("list")) {
+    yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
+    return;
+  }
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);
 });
 
@@ -63,7 +67,7 @@ const eva = new Eva({
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
   // The reference has a skill that the project's repository lacks, and auto-merge is off there.
-  githubGet: fakeGithub({
+  githubRequest: fakeGithub({
     [evaRepository]: {
       repository: { allow_auto_merge: true },
       files: {

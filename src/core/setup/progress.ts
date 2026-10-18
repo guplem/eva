@@ -16,7 +16,7 @@ export interface CheckRecord {
 }
 
 export interface ProgressInput {
-  /** Each engine: whether Eva found its program, and whether it has a login. */
+  /** Each engine: whether its program was there at Eva's start, and whether it has a login. */
   readonly engines: readonly { readonly name: EngineName; readonly found: boolean; readonly loggedIn: boolean }[];
   readonly defaultEngine: EngineName;
   readonly vaultPath: string | null;
@@ -64,19 +64,25 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
     input.vaultPath === null
       ? make(
           "vault",
-          "Your notebook",
+          "Your vault",
           "missing",
-          "Run `eva setup` on Eva's computer to clone your notebook, or to start a new one.",
+          "Your vault is the notebook of your notes. Run `eva setup` on Eva's computer to clone it, or to start a new one.",
           "vault",
         )
-      : make("vault", "Your notebook", "done", `The notebook is in ${input.vaultPath}.`, "vault"),
+      : make("vault", "Your vault", "done", `The vault is in ${input.vaultPath}.`, "vault"),
     remoteAccessProgress(input.remoteAccess, make),
     input.devices > 0
-      ? make("device", "Your devices", "done", `${String(input.devices)} device(s) can open Eva.`)
+      ? make(
+          "device",
+          "Your devices",
+          "done",
+          `${input.devices === 1 ? "1 device" : `${String(input.devices)} devices`} can open Eva.`,
+        )
       : make(
           "device",
           "Your devices",
-          "missing",
+          // With phone access off, the page on this computer may be the only one the person needs.
+          input.remoteAccess === null ? "optional" : "missing",
           "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
         ),
     input.githubToken

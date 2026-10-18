@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { checkNames } from "../../../../src/core/checks.ts";
 import type { RemoteAccess } from "../../../../src/core/remote-access/remote-access.ts";
 import { missingSteps, setupProgress, type ProgressInput } from "../../../../src/core/setup/progress.ts";
 
@@ -99,5 +100,20 @@ describe("setupProgress", () => {
       state: "optional",
       detail: expect.stringContaining("pairing code") as string,
     });
+  });
+});
+
+describe("the steps and the checks", () => {
+  test("every check behind a Test button belongs to a step, so a new check cannot be forgotten", () => {
+    const checks = new Set(setupProgress(fresh).map((found) => found.check));
+    // The engine step tests one engine at a time: the other one when only it has a login.
+    const piFirst = setupProgress({ ...fresh, defaultEngine: "pi" }).map((found) => found.check);
+    for (const name of checkNames) expect(checks.has(name) || piFirst.includes(name)).toBe(true);
+  });
+
+  test("with phone access off, a device is optional; the count reads well", () => {
+    expect(step({ ...fresh, remoteAccess: null }, "device")?.state).toBe("optional");
+    expect(step({ ...fresh, devices: 1 }, "device")?.detail).toBe("1 device can open Eva.");
+    expect(step({ ...fresh, devices: 2 }, "device")?.detail).toBe("2 devices can open Eva.");
   });
 });

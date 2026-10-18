@@ -244,6 +244,16 @@ describe("settings", () => {
     });
   });
 
+  test("the setup state says when Eva needs a restart to use a token that the files hold", async () => {
+    writeFileSync(homePaths(home).secrets, JSON.stringify({ telegramBotToken: "123:abc-telegram-token-value" }));
+    expect((await eva.setupState()).restartNeeded).toBe(false);
+    writeFileSync(
+      homePaths(home).secrets,
+      JSON.stringify({ telegramBotToken: "123:abc-telegram-token-value", claudeOauthToken: "sk-ant-oat-new" }),
+    );
+    expect((await eva.setupState()).restartNeeded).toBe(true);
+  });
+
   test("a step that `eva setup` saves in the files shows as done at once, with no restart", async () => {
     const engineStep = async (): Promise<string | undefined> =>
       (await eva.setupState()).progress.find((step) => step.key === "engine")?.state;

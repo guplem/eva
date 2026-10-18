@@ -32,7 +32,13 @@ import { migrations, vaultAhead, type StartMigrations } from "./migrations/migra
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
-import { LiveSettings, type PageSecretName, type PublicSettings, type SetupState } from "./settings/live-settings.ts";
+import {
+  LiveSettings,
+  pageSecretNames,
+  type PageSecretName,
+  type PublicSettings,
+  type SetupState,
+} from "./settings/live-settings.ts";
 import {
   engineEnvironment,
   engineLoginFolders,
@@ -152,6 +158,8 @@ export interface EvaStatus {
 /** The Setup section: the settings' state, and the progress list. */
 export interface EvaSetupState extends SetupState {
   readonly progress: readonly ProgressStep[];
+  /** True when the files hold a token that Eva does not use yet, such as one that `eva setup` saved. */
+  readonly restartNeeded: boolean;
 }
 
 const approvalTimeoutMs = 10 * 60_000;
@@ -746,7 +754,10 @@ export class Eva {
   }
 
   async setupState(): Promise<EvaSetupState> {
-    return { ...(await this.settings.setupState()), progress: this.setupProgress() };
+    const saved = this.settings.saved().secrets;
+    // The engines, git and Telegram read the tokens at start, so a token saved since then waits for a restart.
+    const restartNeeded = pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]);
+    return { ...(await this.settings.setupState()), progress: this.setupProgress(), restartNeeded };
   }
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */

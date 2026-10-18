@@ -133,16 +133,16 @@ export class LiveSettings {
     return { saved: true, restartNeeded: true };
   }
 
-  /**
-   * The settings as saved now. The Telegram bot saves a new pairing to `config.json` while Eva
-   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory:
-   * with a broken vault file, the loaded copy holds defaults, and a save would sync them everywhere.
-   */
   /** The settings and secrets as saved now, also by `eva setup` in another process. */
   saved(): { readonly config: EvaConfig; readonly secrets: EvaSecrets } {
     return { config: this.savedSettings(), secrets: loadSecrets(this.options.paths) };
   }
 
+  /**
+   * The settings as saved now. The Telegram bot saves a new pairing to `config.json` while Eva
+   * runs, so a change built on memory would undo it. A missing or bad file falls back to memory:
+   * with a broken vault file, the loaded copy holds defaults, and a save would sync them everywhere.
+   */
   private savedSettings(): EvaConfig {
     if (!existsSync(this.options.paths.config)) return this.settings;
     try {

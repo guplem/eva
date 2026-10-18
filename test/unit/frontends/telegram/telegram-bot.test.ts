@@ -446,6 +446,26 @@ describe("approvals and commands", () => {
     expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Allowed");
   });
 
+  test("an approval never overtakes the answer block before it, even during a 429 wait", async () => {
+    createEva(async function* (request) {
+      yield { kind: "text", text: "I will push the branch.", messageId: "m1" };
+      const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, answer);
+    });
+    const bot = createBot(owner, { sleep: () => Bun.sleep(50) });
+    telegram.failNext("sendMessage", 429, "Too Many Requests", 1, 1);
+    telegram.sendText(owner, "push it");
+    await settle(bot, () => telegram.callsTo("sendMessage").some((call) => call.params["reply_markup"] !== undefined));
+    const texts = telegram.sentTexts();
+    expect(texts.lastIndexOf("I will push the branch.")).toBeLessThan(
+      texts.findIndex((text) => text.startsWith("Eva wants to run Bash")),
+    );
+    const question = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
+    const requestId = /"a:([^:"]+):deny"/.exec(JSON.stringify(question?.params["reply_markup"]))?.[1] ?? "";
+    telegram.pressButton(owner, `a:${requestId}:deny`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+  });
+
   test("an answered approval edits its message to show the answer, and drops the buttons", async () => {
     createEva(async function* (request) {
       const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });

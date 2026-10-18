@@ -831,7 +831,8 @@ export class TelegramBot {
 
   private async onEvent(event: SessionEvent): Promise<void> {
     if (event.kind === "approval_resolved") {
-      await this.closeApproval(event);
+      // After the card, which can still wait in the chat's order.
+      await this.inOrder(event.sessionId, () => this.closeApproval(event));
       return;
     }
     const target = this.targetOf(event.sessionId);
@@ -848,7 +849,8 @@ export class TelegramBot {
         await this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, event));
         return;
       case "approval_needed":
-        await this.sendApproval(target.chatId, target.topicId, event, null);
+        // In the chat's order, so the card never comes before the text that explains it.
+        await this.inOrder(event.sessionId, () => this.sendApproval(target.chatId, target.topicId, event, null));
         return;
       case "history_lost":
         await this.inOrder(event.sessionId, async () => {

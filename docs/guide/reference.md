@@ -152,4 +152,4 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 
   Press Test. It reads each service, or names the step to fix. Then press Restart Eva.
 
-  `eva doctor` shows whether the login still works. Eva starts with read-only access. To let her add events, pick "Read and change" in Settings, and log in again. She asks you before any change that reaches other people, such as an invitation. The id and secret stay in the computer's `secrets.json`, never in the notebook.
+  `eva doctor` shows whether the login still works. Eva starts with read-only access. To let her add events, pick "Read and change" in Settings, and log in again. She asks you before any change that reaches other people, such as an invitation. The Google tools work with Claude Code and with pi. The id and secret stay in the computer's `secrets.json`, never in the notebook.

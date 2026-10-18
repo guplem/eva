@@ -11,6 +11,11 @@ import { checkNames } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import type {
+  DeviceLoginApprover,
+  DeviceLoginEvent,
+  DeviceLoginRequest,
+} from "../../core/remote-access/device-logins.ts";
 import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
 import { changedFields } from "../../core/schedules/schedule-definitions.ts";
 import webPage from "../web/index.html";
@@ -43,6 +48,8 @@ export interface LocalApi {
 
 interface SocketData {
   unsubscribe: (() => void)[];
+  /** A web page, which shows device requests. `eva chat` opens a socket too, but shows none. */
+  isPage: boolean;
 }
 
 const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("default");
@@ -99,6 +106,18 @@ const deviceCookie = "eva_device";
 const deviceLabelBrowserLength = 120;
 
 export function startLocalApi(options: LocalApiOptions): LocalApi {
+  const pages = new Set<ServerWebSocket<SocketData>>();
+  const toPages = (event: DeviceLoginEvent): void => {
+    for (const page of pages) page.send(JSON.stringify(event));
+  };
+  // A logged-in page is an approver too. A sleeping phone may keep a dead socket open, but
+  // Telegram and the terminal still get each request.
+  const pageApprover: DeviceLoginApprover = {
+    canApprove: () => pages.size > 0,
+    ask: (request) => toPages({ kind: "device_login_request", request: redactedRequest(request, options.eva) }),
+    settled: (id, answer) => toPages({ kind: "device_login_settled", id, answer }),
+  };
+  const detachPageApprover = options.eva.deviceLogins.attachApprover(pageApprover);
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
@@ -125,7 +144,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
       if (url.pathname === "/api/events") {
-        return bunServer.upgrade(request, { data: { unsubscribe: [] } })
+        return bunServer.upgrade(request, { data: { unsubscribe: [], isPage: url.searchParams.has("devices") } })
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
@@ -139,13 +158,17 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       )
         bunServer.timeout(request, 0);
       try {
-        return await route(request, url, options.eva, hasValidToken(request, options.token));
+        return (
+          (await devices(request, url, options.eva, pageApprover)) ??
+          (await route(request, url, options.eva, hasValidToken(request, options.token)))
+        );
       } catch (error) {
         return errorResponse(error, options.eva);
       }
     },
     websocket: {
       open(socket: ServerWebSocket<SocketData>) {
+        if (socket.data.isPage) pages.add(socket);
         socket.data.unsubscribe.push(
           options.eva.sessions.subscribe((event: SessionEvent) => {
             socket.send(JSON.stringify(event));
@@ -176,6 +199,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         // Commands go over HTTP; the socket only carries events to the client.
       },
       close(socket: ServerWebSocket<SocketData>) {
+        pages.delete(socket);
         for (const unsubscribe of socket.data.unsubscribe) unsubscribe();
       },
     },
@@ -184,6 +208,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
   return {
     url: `http://127.0.0.1:${String(server.port)}`,
     stop: () => {
+      detachPageApprover();
       void server.stop(true);
     },
   };
@@ -263,6 +288,43 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
     return errorResponse(error, options.eva);
   }
   return json({ error: "Not found." }, 404);
+}
+
+/**
+ * The devices and the device requests, for Settings and for the page as an approver. A device login
+ * may use them too: the person removes a lost phone, or allows a new one, from any allowed device.
+ * Returns null for any other path.
+ */
+async function devices(
+  request: Request,
+  url: URL,
+  eva: Eva,
+  pageApprover: DeviceLoginApprover,
+): Promise<Response | null> {
+  const logins = eva.deviceLogins;
+  const parts = url.pathname.split("/").filter((part) => part.length > 0);
+  if (parts[0] !== "api" || parts[1] !== "devices") return null;
+  const method = request.method;
+  if (parts.length === 2 && method === "GET")
+    return json(
+      logins.list(cookieValue(request, deviceCookie)).map((device) => ({ ...device, label: eva.redact(device.label) })),
+    );
+  if (parts[2] === "requests") {
+    if (parts.length === 3 && method === "GET")
+      return json(logins.waitingFor(pageApprover).map((waiting) => redactedRequest(waiting, eva)));
+    if (parts.length === 4 && method === "POST" && parts[3] !== undefined) {
+      const { answer } = approvalSchema.parse(await request.json());
+      if (!logins.answer(decodeURIComponent(parts[3]), answer))
+        return json({ error: "This request no longer waits. It expired, or someone answered it." }, 404);
+      return new Response(null, { status: 204 });
+    }
+    return null;
+  }
+  if (parts.length === 3 && method === "DELETE" && parts[2] !== undefined) {
+    if (!logins.forgetById(decodeURIComponent(parts[2]))) return json({ error: "No device has this id." }, 404);
+    return new Response(null, { status: 204 });
+  }
+  return null;
 }
 
 /** `tokenLogin` is false for a device login, which may change only the page's settings. */
@@ -627,4 +689,9 @@ function staticFile(path: string, contentType: string): Response {
 async function optionalJson(request: Request): Promise<unknown> {
   const text = await request.text();
   return text.trim() === "" ? {} : (JSON.parse(text) as unknown);
+}
+
+/** The account comes from a header, so it is redacted like any outside text. */
+function redactedRequest(request: DeviceLoginRequest, eva: Eva): DeviceLoginRequest {
+  return { ...request, account: eva.redact(request.account) };
 }

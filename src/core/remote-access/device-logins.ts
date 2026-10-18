@@ -32,6 +32,11 @@ export interface DeviceLoginApprover {
   settled?(id: string, answer: "allow" | "deny"): void;
 }
 
+/** What the page hears on its event socket. These are not session events, so they carry no `seq`. */
+export type DeviceLoginEvent =
+  | { readonly kind: "device_login_request"; readonly request: DeviceLoginRequest }
+  | { readonly kind: "device_login_settled"; readonly id: string; readonly answer: "allow" | "deny" };
+
 /** A device as the page lists it. The id is a hash prefix, so the list never shows a whole hash. */
 export interface DeviceSummary {
   readonly id: string;
@@ -117,7 +122,13 @@ export class DeviceLogins {
       account,
       expiresAt: new Date(nowMs + pendingLifetimeMs).toISOString(),
     };
-    this.pending.set(request.id, { request, label, expiresAtMs: nowMs + pendingLifetimeMs, asked: ready, answer: null });
+    this.pending.set(request.id, {
+      request,
+      label,
+      expiresAtMs: nowMs + pendingLifetimeMs,
+      asked: ready,
+      answer: null,
+    });
     for (const approver of ready) approver.ask(request);
     return request;
   }

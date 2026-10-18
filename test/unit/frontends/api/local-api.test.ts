@@ -557,11 +557,15 @@ describe("web routes", () => {
     const { version } = await json<{ version: string }>(await call(`${path}/file`));
     const bad = await call(`${path}/file`, { method: "PUT", body: { version, text: "no front matter\n" } });
     expect(bad.status).toBe(400);
-    expect((await json<{ error: string }>(bad)).error).toContain("front matter");
+    const refused = await json<{ error: string; code: string }>(bad);
+    expect(refused.code).toBe("project_invalid");
+    expect(refused.error).toContain("front matter");
     const body = { version, title: "x", status: "active", tags: ["two words"], repos: [] };
     expect((await call(`${path}/details`, { method: "PUT", body })).status).toBe(400);
     expect((await call(`${path}/details`, { method: "PUT", body: { ...body, status: "dreaming" } })).status).toBe(400);
-    expect((await call("/api/projects/missing/file")).status).toBe(404);
+    const missing = await call("/api/projects/missing/file");
+    expect(missing.status).toBe(404);
+    expect(await json<{ code: string }>(missing)).toMatchObject({ code: "project_not_found" });
     expect((await call("/api/projects/%E0/file")).status).toBe(400);
   });
   test("settings: read without secret values, write with a restart notice", async () => {

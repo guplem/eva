@@ -447,7 +447,7 @@ async function scheduleCardsRoute(
 
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
 function errorResponse(error: unknown, eva: Eva): Response {
-  // A bad `%` escape in a path, such as `/api/projects/%E0/file`.
+  // `decodeURIComponent` throws on a bad `%` escape in a path. That is the client's fault, not Eva's.
   if (error instanceof URIError) return json({ error: "The address is invalid." }, 400);
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);

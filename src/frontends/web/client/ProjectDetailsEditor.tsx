@@ -21,7 +21,7 @@ type Problem = { readonly kind: "failed" | "changed"; readonly text: string } | 
 
 interface ProjectDetailsEditorProps {
   readonly projectId: string;
-  /** Such as the project list: it shows the new title and status. */
+  /** Runs after each save, so the project list can show the new title and status. */
   readonly onSaved: () => void;
 }
 

@@ -852,6 +852,30 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("status")).toHaveText("Saved.");
   await expect(file).not.toHaveValue(/ideas/);
 
+  // The whole file waits while the form has a change, and the form waits for the whole file.
+  await file.fill(`${await file.inputValue()}\nDraft line.\n`);
+  await expect(page.getByRole("button", { name: "Save details" })).toBeDisabled();
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).not.toHaveValue(/Draft line/);
+
+  // Another device saves meanwhile: this page's save is refused, and says so.
+  const projectId = `2025-05-01-0800-${run}-draft`;
+  await page.evaluate(async (id) => {
+    const path = `/api/projects/${id}/file`;
+    const { text, version } = (await (await fetch(path)).json()) as { text: string; version: string };
+    await fetch(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version, text: `${text}\nFrom another device.\n` }),
+    });
+  }, projectId);
+  await page.getByLabel("Title").fill(`Clash ${run}`);
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("alert")).toContainText("The file changed since you opened it");
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).toHaveValue(/From another device/);
+  await expect(page.getByLabel("Title")).toHaveValue(`Renamed ${run}`);
+
   await file.fill(`${await file.inputValue()}\nMore notes.\n`);
   await page.getByRole("button", { name: "Save the file" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved.");

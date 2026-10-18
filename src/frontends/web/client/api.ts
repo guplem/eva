@@ -42,6 +42,7 @@ export interface ScheduleList {
   readonly schedules: readonly ScheduleView[];
   readonly problems: readonly string[];
 }
+
 export class ApiError extends Error {
   readonly status: number;
   /** The `EvaErrorCode` of the failure, or null when the answer has none. */

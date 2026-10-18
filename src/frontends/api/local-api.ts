@@ -457,9 +457,9 @@ function allowedTailscaleAccount(request: Request, options: LocalApiOptions): st
 }
 
 function allowedHostNames(options: LocalApiOptions): Set<string> {
-  const tailnetHost = options.tailnet?.()?.hostName;
+  const tailnetHost = options.tailnet?.()?.hostName ?? null;
   return new Set(
-    ["127.0.0.1", "localhost", ...options.extraHosts, ...(tailnetHost === undefined ? [] : [tailnetHost])].map((host) =>
+    ["127.0.0.1", "localhost", ...options.extraHosts, ...(tailnetHost === null ? [] : [tailnetHost])].map((host) =>
       host.toLowerCase(),
     ),
   );

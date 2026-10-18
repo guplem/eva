@@ -73,3 +73,20 @@ describe("the hub claim", () => {
     expect(claimHubIfUnclaimed(join(vault, "missing"), "server", now)).toBe(false);
   });
 });
+
+describe("a vault that a newer Eva migrated (#119)", () => {
+  function writeNewerRecord(): void {
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+  }
+
+  test("an older Eva cannot claim the hub: it could not run the vault migrations", () => {
+    writeNewerRecord();
+    expect(() => claimHub(vault, "old-laptop", now)).toThrow("9.0.0");
+    expect(claimHubIfUnclaimed(vault, "old-laptop", now)).toBe(false);
+    expect(readHubClaim(vault)).toBeNull();
+  });
+});

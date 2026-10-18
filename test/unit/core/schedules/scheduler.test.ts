@@ -571,3 +571,18 @@ describe("Scheduler", () => {
     });
   });
 });
+
+describe("a vault that a newer Eva migrated (#119)", () => {
+  test("save and remove refuse with vault_ahead and leave the file as it is", () => {
+    writeSchedules([morning]);
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+    const before = readFileSync(join(vault, ".eva", "schedules.json"), "utf-8");
+    const scheduler = createScheduler();
+    expect(() => scheduler.save({ ...morning, id: "evening" })).toThrow("9.0.0");
+    expect(() => scheduler.remove("morning")).toThrow("9.0.0");
+    expect(readFileSync(join(vault, ".eva", "schedules.json"), "utf-8")).toBe(before);
+  });
+});

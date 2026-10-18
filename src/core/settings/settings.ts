@@ -9,6 +9,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
 import { withMachineDefaults } from "./machine-defaults.ts";
+import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
 
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
@@ -77,11 +78,21 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   }
 }
 
-/** Writes the vault's part to the vault and the rest to `config.json`. Without a vault, all of it goes to `config.json`. */
+/**
+ * Writes the vault's part to the vault and the rest to `config.json`. Without a vault, all of it goes
+ * to `config.json`. A change to the vault's part fails with `vault_ahead` when a newer Eva migrated the vault.
+ */
 export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   const vaultPath = config.vaultPath;
   if (vaultPath === null || !existsSync(vaultPath)) {
     saveConfig(paths, config);
+    return;
+  }
+  if (vaultAhead(vaultPath) !== null) {
+    // A newer Eva migrated the vault, so its file stays as it is; a change to the machine still saves.
+    const shared = (settings: EvaConfig): string => JSON.stringify(pickKeys(settings, sharedSettingKeys));
+    if (shared(config) !== shared(loadSettings(paths).config)) assertVaultWritable(vaultPath);
+    writeFileAtomic(paths.config, toJson(omitKeys(config, sharedSettingKeys)));
     return;
   }
   writeFileAtomic(paths.config, toJson(omitKeys(config, sharedSettingKeys)));

@@ -281,3 +281,38 @@ describe("settings by command", () => {
     expect(lines).toContain("projectRoots = []");
   });
 });
+
+describe("a vault that a newer Eva migrated (#119)", () => {
+  function writeNewerRecord(): void {
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(
+      join(vault, ".eva", "migrations.json"),
+      JSON.stringify({ applied: [{ id: "2099-01-01-from-the-future", at: "", version: "9.0.0" }] }),
+    );
+  }
+
+  test("a change to a machine setting still saves, and the vault file stays as it is", () => {
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    writeNewerRecord();
+    const vaultBefore = readFileSync(vaultSettingsPath(vault), "utf-8");
+    changeSettings(paths, { port: 7421 });
+    expect(readJson(paths.config)).toMatchObject({ port: 7421 });
+    expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
+  });
+
+  test("a change to a vault setting is refused with vault_ahead, and nothing is saved", () => {
+    saveSettings(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
+    writeNewerRecord();
+    const machineBefore = readFileSync(paths.config, "utf-8");
+    const vaultBefore = readFileSync(vaultSettingsPath(vault), "utf-8");
+    let caught: unknown = null;
+    try {
+      changeSettings(paths, { timeZone: "Asia/Tokyo", port: 7421 });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "vault_ahead")).toBe(true);
+    expect(readFileSync(paths.config, "utf-8")).toBe(machineBefore);
+    expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toBe(vaultBefore);
+  });
+});

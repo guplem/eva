@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { ghApiGet, readRepositoryFacts, type GithubAnswer } from "../../../../src/core/projects/repository-facts.ts";
+import {
+  ghApiRequest,
+  readRepositoryFacts,
+  type GithubAnswer,
+} from "../../../../src/core/projects/repository-facts.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
@@ -53,7 +57,7 @@ function fullAnswers(): Map<string, GithubAnswer> {
     [`repos/${slug}/rules/branches/main`, ok([{ type: "deletion" }, { type: "required_status_checks" }])],
     [`repos/${slug}/branches/main`, ok({ protected: false })],
     [`repos/${slug}/private-vulnerability-reporting`, ok({ enabled: true })],
-    [`repos/${slug}/vulnerability-alerts`, { status: 204, body: "" }],
+    ["graphql", ok({ data: { repository: { hasVulnerabilityAlertsEnabled: true, isSecurityPolicyEnabled: false } } })],
     [`repos/${slug}/automated-security-fixes`, ok({ enabled: false })],
     [`repos/${slug}/code-scanning/default-setup`, ok({ state: "not-configured" })],
     [`repos/${slug}/actions/permissions/workflow`, ok({ default_workflow_permissions: "read" })],
@@ -61,9 +65,13 @@ function fullAnswers(): Map<string, GithubAnswer> {
 }
 
 function fakeGet(answers: Map<string, GithubAnswer>, asked: string[] = []) {
-  return (path: string, raw = false): Promise<GithubAnswer> => {
+  return (path: string, raw = false, fields: Readonly<Record<string, string>> = {}): Promise<GithubAnswer> => {
     const key = raw ? `raw:${path}` : path;
     asked.push(key);
+    // The GraphQL query names the repository in its variables, never in its text.
+    if (path === "graphql" && `${fields["owner"] ?? ""}/${fields["name"] ?? ""}` !== slug) {
+      return Promise.resolve({ status: 200, body: '{"data":{"repository":null}}' });
+    }
     return Promise.resolve(answers.get(key) ?? { status: 404, body: '{"message":"Not Found"}' });
   };
 }
@@ -84,6 +92,7 @@ describe("readRepositoryFacts", () => {
       requiredChecks: true,
       privateVulnerabilityReporting: true,
       dependabotAlerts: true,
+      securityPolicy: false,
       dependabotSecurityUpdates: false,
       secretScanning: true,
       pushProtection: false,
@@ -102,13 +111,12 @@ describe("readRepositoryFacts", () => {
     ]);
   });
 
-  test("an admin-only answer that GitHub refuses is null, and a 404 on the alerts is off only for an admin", async () => {
+  test("an admin-only answer that GitHub refuses is null; GraphQL still reads the alerts without admin rights", async () => {
     const answers = fullAnswers();
     const forbidden: GithubAnswer = { status: 403, body: '{"message":"Must have admin rights"}' };
     answers.set(`repos/${slug}`, ok({ default_branch: "main", private: false, permissions: { admin: false } }));
     answers.set(`repos/${slug}/code-scanning/default-setup`, forbidden);
     answers.set(`repos/${slug}/actions/permissions/workflow`, forbidden);
-    answers.delete(`repos/${slug}/vulnerability-alerts`);
     answers.delete(`repos/${slug}/rules/branches/main`);
     const facts = await readRepositoryFacts(slug, fakeGet(answers));
     expect(facts).toMatchObject({
@@ -117,12 +125,9 @@ describe("readRepositoryFacts", () => {
       secretScanning: null,
       codeScanningDefaultSetup: null,
       readOnlyWorkflowToken: null,
-      dependabotAlerts: null,
+      dependabotAlerts: true,
       requiredChecks: null,
     });
-
-    answers.set(`repos/${slug}`, ok({ default_branch: "main", private: false, permissions: { admin: true } }));
-    expect((await readRepositoryFacts(slug, fakeGet(answers))).dependabotAlerts).toBe(false);
   });
 
   test("branch protection with checks counts as required checks", async () => {
@@ -180,7 +185,7 @@ describe("readRepositoryFacts", () => {
   });
 });
 
-describe("ghApiGet", () => {
+describe("ghApiRequest", () => {
   test("reads the HTTP status and the body from gh's --include output", async () => {
     const commands: (readonly string[])[] = [];
     const runner: ProcessRunner = {
@@ -193,7 +198,7 @@ describe("ghApiGet", () => {
         });
       },
     };
-    const get = ghApiGet(runner, { PATH: "x" });
+    const get = ghApiRequest(runner, { PATH: "x" });
     expect(await get("repos/a/b")).toEqual({ status: 404, body: '{"message":"Not Found"}' });
     await get("repos/a/b/contents/x", true);
     expect(commands[0]).toEqual(["gh", "api", "--include", "repos/a/b"]);
@@ -209,7 +214,7 @@ describe("ghApiGet", () => {
 
   test("gh that does not start, or answers with no status, is an error that names gh", async () => {
     const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
-    expect(String(await failure(ghApiGet(failing, {})("repos/a/b")))).toContain("gh auth login");
+    expect(String(await failure(ghApiRequest(failing, {})("repos/a/b")))).toContain("gh auth login");
     const loggedOut: ProcessRunner = {
       run: () =>
         Promise.resolve({
@@ -218,7 +223,7 @@ describe("ghApiGet", () => {
           stderr: "To get started with GitHub CLI, please run: gh auth login",
         }),
     };
-    expect(String(await failure(ghApiGet(loggedOut, {})("repos/a/b")))).toContain("please run: gh auth login");
+    expect(String(await failure(ghApiRequest(loggedOut, {})("repos/a/b")))).toContain("please run: gh auth login");
   });
 });
 
@@ -260,6 +265,37 @@ describe("readRepositoryFacts, failed reads", () => {
 
   test("a gh call that times out says that GitHub was slow, not that gh is missing", async () => {
     const slow: ProcessRunner = { run: () => Promise.reject(new EvaError("process_timeout", "timed out")) };
-    expect(String(await failure(ghApiGet(slow, {})("repos/a/b")))).toContain("did not answer in time");
+    expect(String(await failure(ghApiRequest(slow, {})("repos/a/b")))).toContain("did not answer in time");
+  });
+});
+
+describe("readRepositoryFacts, GraphQL", () => {
+  test("a GraphQL answer with errors leaves both facts unknown", async () => {
+    const answers = fullAnswers();
+    answers.set("graphql", { status: 200, body: '{"data":{"repository":null},"errors":[{"type":"NOT_FOUND"}]}' });
+    const facts = await readRepositoryFacts(slug, fakeGet(answers));
+    expect(facts.dependabotAlerts).toBeNull();
+    expect(facts.securityPolicy).toBeNull();
+  });
+
+  test("gh sends GraphQL fields with -f, which makes the request a POST", async () => {
+    const commands: (readonly string[])[] = [];
+    const runner: ProcessRunner = {
+      run: (command) => {
+        commands.push(command);
+        return Promise.resolve({ exitCode: 0, stdout: "HTTP/2.0 200 OK\r\n\r\n{}", stderr: "" });
+      },
+    };
+    await ghApiRequest(runner, {})("graphql", false, { query: "{ viewer { login } }", owner: "a" });
+    expect(commands[0]).toEqual([
+      "gh",
+      "api",
+      "--include",
+      "graphql",
+      "-f",
+      "query={ viewer { login } }",
+      "-f",
+      "owner=a",
+    ]);
   });
 });

@@ -63,7 +63,7 @@ const eva = new Eva({
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
   // The reference has a skill that the project's repository lacks, and auto-merge is off there.
-  githubGet: fakeGithub({
+  githubRequest: fakeGithub({
     [evaRepository]: {
       repository: { allow_auto_merge: true },
       files: {

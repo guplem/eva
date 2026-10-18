@@ -763,6 +763,10 @@ textarea {
   min-width: 0;
 }
 
+.sync-state li {
+  overflow-wrap: anywhere;
+}
+
 .sync-state ul {
   margin: 4px 0 0;
   padding-left: 20px;

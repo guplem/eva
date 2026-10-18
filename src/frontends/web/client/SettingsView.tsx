@@ -343,7 +343,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
               {syncing ? "Syncing…" : "Sync now"}
             </button>
           </div>
-          {syncState !== null && <VaultSyncView state={syncState} />}
+          {syncState !== null && <VaultSyncView state={syncState} onState={setSyncState} />}
           <label>
             Vault save interval (seconds)
             <input inputMode="numeric" value={sweepSeconds} onChange={(event) => setSweepSeconds(event.target.value)} />

@@ -358,7 +358,8 @@ test("Settings: the default model saves at once", async ({ page }) => {
   }
 });
 
-test("Settings: the vault sync state shows a conflict and the held-back files", async ({ page }) => {
+test("Settings: the vault sync state shows a conflict, its picks and the held-back files", async ({ page }) => {
+  let conflictState: Record<string, unknown> = {};
   await page.route("**/api/status", async (route) => {
     const response = await route.fetch();
     const status = (await response.json()) as { vaultSync: Record<string, unknown> };
@@ -371,12 +372,23 @@ test("Settings: the vault sync state shows a conflict and the held-back files", 
         { path: "Media/film.mov", reason: "too_large" },
       ],
     };
+    conflictState = status.vaultSync;
     await route.fulfill({ response, json: status });
   });
+  // The demo vault has no conflict, so the browser plays the conflict list as well.
+  await page.route("**/api/vault/conflicts", (route) =>
+    route.fulfill({
+      json: { state: conflictState, conflicts: [{ path: "Notes/plan.md", kind: "committed", picked: null }] },
+    }),
+  );
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
   const sync = page.getByRole("region", { name: "Vault sync" });
   await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  await expect(sync.getByRole("group", { name: "Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep mine: Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep theirs: Notes/plan.md" })).toBeVisible();
+  await expect(sync.getByRole("button", { name: "Keep both: Notes/plan.md" })).toBeVisible();
   await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
 });

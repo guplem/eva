@@ -579,6 +579,66 @@ describe("approvals and commands", () => {
     expect(telegram.sentTexts()[0]).toStartWith("2025-02-10-0900-huge  active  Huge");
   });
 
+  test("/conflicts shows each conflicted note with three buttons, and a pick after a restart resolves it", async () => {
+    const vault = join(sandbox.root, "vault");
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Notes/plan.md", "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "Notes/plan.md", "mine\n");
+    expect(await eva.sweep()).toBe("conflict");
+
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Notes/plan.md")));
+    expect(telegram.sentTexts().join("\n")).toContain("Keep both");
+    const question = telegram
+      .callsTo("sendMessage")
+      .find((call) => String(call.params["text"]).includes("Notes/plan.md"));
+    const markup = JSON.stringify(question?.params["reply_markup"]);
+    expect(markup).toContain("Keep mine");
+    expect(markup).toContain("Keep theirs");
+    const data = /"(c:[0-9a-f]+:m)"/.exec(markup)?.[1] ?? "";
+    expect(data).not.toBe("");
+
+    // The button id lives on disk, so a new bot still knows the note (lesson 124).
+    const restarted = createBot();
+    telegram.pressButton(owner, data);
+    await settle(restarted, () => telegram.sentTexts().some((text) => text.includes("The vault syncs again.")));
+    expect(sandbox.git(sandbox.remote, "show", "main:Notes/plan.md")).toBe("mine");
+  });
+
+  test("/conflicts lists the notes without a pick first, so a long list reaches every note", async () => {
+    const vault = join(sandbox.root, "vault");
+    const other = sandbox.clone("other");
+    const names = Array.from({ length: 11 }, (_, index) => `Notes/n${String(index).padStart(2, "0")}.md`);
+    for (const name of names) sandbox.write(other, name, "theirs\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    for (const name of names) sandbox.write(vault, name, "mine\n");
+    expect(await eva.sweep()).toBe("conflict");
+    await eva.resolveVaultConflict("Notes/n00.md", "mine");
+
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick these first")));
+    const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("Notes/n10.md");
+    expect(texts).not.toContain("Notes/n00.md");
+  });
+
+  test("/conflicts says so when the vault has none, and a stale button says the note has no conflict", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/conflicts");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toBe("The vault has no conflict.");
+    telegram.pressButton(owner, "c:000000000000:t");
+    await settle(bot, () => telegram.sentTexts().length >= 2);
+    expect(telegram.sentTexts()[1]).toContain("no conflict anymore");
+  });
+
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");

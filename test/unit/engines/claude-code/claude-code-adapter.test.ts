@@ -172,6 +172,7 @@ describe("mapSdkMessages", () => {
         kind: "tool_started",
         toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83",
         name: "Read",
+        category: "tool",
         summary: "Read /demo-vault\\Methods\\Morning Routine.md",
       },
       { kind: "tool_finished", toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83", isError: false },
@@ -197,7 +198,13 @@ describe("mapSdkMessages", () => {
     const agentToolUseId = "toolu_01BECqHSvNztXpQRA8tYD8gk";
     const events = await collect(loadCapture("subagent-task"));
     expect(events.slice(0, -1)).toEqual([
-      { kind: "tool_started", toolUseId: agentToolUseId, name: "Agent", summary: "Agent Read file and report title" },
+      {
+        kind: "tool_started",
+        toolUseId: agentToolUseId,
+        name: "Agent",
+        category: "tool",
+        summary: "Agent Read file and report title",
+      },
       {
         kind: "task_changed",
         taskId: "af535f9743f2b5266",
@@ -233,6 +240,26 @@ describe("mapSdkMessages", () => {
     const events = await collect([failed, resultOf("subagent-task")]);
     expect(events.map((event) => event.kind)).toEqual(["task_changed", "turn_finished"]);
     expect(events[0]).toMatchObject({ taskId: "af535f9743f2b5266", state: "failed" });
+  });
+
+  test("a Bash tool call is a command", async () => {
+    // The captures run no shell: this is the captured Read call renamed to Bash.
+    const read = loadCapture("new-turn-with-tool")
+      .filter(isMessage)
+      .find(
+        (message) => message.type === "assistant" && message.message.content.some((block) => block.type === "tool_use"),
+      ) as Extract<SDKMessage, { type: "assistant" }>;
+    const bash = {
+      ...read,
+      message: {
+        ...read.message,
+        content: read.message.content.map((block) =>
+          block.type === "tool_use" ? { ...block, name: "Bash", input: { command: "ls" } } : block,
+        ),
+      },
+    } as SDKMessage;
+    const events = await collect([bash, resultOf("new-turn-with-tool")]);
+    expect(events[0]).toMatchObject({ kind: "tool_started", name: "Bash", category: "command", summary: "ls" });
   });
 
   test("text from inside a subagent stays out of the conversation", async () => {

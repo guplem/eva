@@ -304,6 +304,32 @@ textarea {
   border: 1px solid var(--border);
 }
 
+.badge.warning {
+  margin-left: 6px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.running-tasks {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+.clone-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
 .branches {
   display: flex;
   gap: 16px;

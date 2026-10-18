@@ -1,16 +1,24 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   engineInstallSteps,
   engineProgramCandidates,
   findEngineProgram,
   installEngine,
   locateEngineProgram,
+  piInstallFolder,
   type EngineInstallInputs,
 } from "../../../../src/core/engine-install/engine-install.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessResult, ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
-/** Each command answers by the first matching rule; an unknown program does not exist. */
+const posixHome = "/srv/example";
+const windowsHome = "D:\\Homes\\example";
+
+/** Each command answers by `answer`; "missing" means the program does not exist. */
 function fakeRunner(
   commands: string[][],
   answer: (command: readonly string[]) => Partial<ProcessResult> | "missing",
@@ -26,7 +34,13 @@ function fakeRunner(
 }
 
 function inputs(runner: ProcessRunner, platform: NodeJS.Platform = "linux"): EngineInstallInputs {
-  return { runner, environment: { PATH: "/usr/bin" }, platform, homeFolder: "/home/example" };
+  return {
+    runner,
+    environment: { PATH: "/usr/bin" },
+    platform,
+    arch: "x64",
+    homeFolder: platform === "win32" ? windowsHome : posixHome,
+  };
 }
 
 async function caught(work: Promise<unknown>): Promise<unknown> {
@@ -39,44 +53,43 @@ async function caught(work: Promise<unknown>): Promise<unknown> {
 }
 
 describe("engineProgramCandidates", () => {
-  test("names the PATH first, then the folder that each installer uses", () => {
-    expect(engineProgramCandidates("claude-code", "linux", "/home/example", {})).toEqual([
+  test("names the PATH first, then the folder of each installer", () => {
+    expect(engineProgramCandidates("claude-code", "linux", posixHome, {})).toEqual([
       "claude",
-      "/home/example/.local/bin/claude",
+      "/srv/example/.local/bin/claude",
     ]);
-    expect(engineProgramCandidates("claude-code", "win32", "C:\\Users\\example", {})).toEqual([
+    expect(engineProgramCandidates("claude-code", "win32", windowsHome, {})).toEqual([
       "claude",
-      "C:\\Users\\example\\.local\\bin\\claude.exe",
+      "D:\\Homes\\example\\.local\\bin\\claude.exe",
     ]);
-    expect(engineProgramCandidates("pi", "linux", "/home/example", {})).toEqual(["pi", "/home/example/.local/bin/pi"]);
-    expect(engineProgramCandidates("pi", "win32", "C:\\Users\\example", { APPDATA: "D:\\Roaming" })).toEqual([
+    expect(engineProgramCandidates("pi", "linux", posixHome, {})).toEqual([
       "pi",
-      "D:\\Roaming\\npm\\pi.cmd",
+      "/srv/example/.local/lib/pi/pi",
+      "/srv/example/.pi/agent/bin/pi",
     ]);
-    expect(engineProgramCandidates("pi", "win32", "C:\\Users\\example", {})).toEqual([
+    expect(engineProgramCandidates("pi", "win32", windowsHome, { LOCALAPPDATA: "E:\\Local" })).toEqual([
       "pi",
-      "C:\\Users\\example\\AppData\\Roaming\\npm\\pi.cmd",
+      "E:\\Local\\Programs\\pi\\pi.exe",
+      "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd",
     ]);
+    expect(piInstallFolder("win32", windowsHome, {})).toBe("D:\\Homes\\example\\AppData\\Local\\Programs\\pi");
   });
 });
 
 describe("findEngineProgram", () => {
   test("finds claude on the PATH first", async () => {
     const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
-    expect(await findEngineProgram("claude-code", inputs(runner))).toBe("claude");
+    expect(await findEngineProgram("claude-code", inputs(fakeRunner(commands, () => ({}))))).toBe("claude");
     expect(commands).toEqual([["claude", "--version"]]);
   });
 
   test("finds claude in the installer's folder when the PATH lacks it", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, (command) => (command[0] === "claude" ? "missing" : {}));
-    expect(await findEngineProgram("claude-code", inputs(runner))).toBe("/home/example/.local/bin/claude");
+    const runner = fakeRunner([], (command) => (command[0] === "claude" ? "missing" : {}));
+    expect(await findEngineProgram("claude-code", inputs(runner))).toBe("/srv/example/.local/bin/claude");
   });
 
   test("a configured program comes first", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
+    const runner = fakeRunner([], () => ({}));
     expect(await findEngineProgram("claude-code", { ...inputs(runner), configured: "/opt/claude" })).toBe(
       "/opt/claude",
     );
@@ -88,31 +101,37 @@ describe("findEngineProgram", () => {
     expect(await findEngineProgram("pi", inputs(runner))).toBeNull();
   });
 
-  test("finds pi in npm's folder when the PATH lacks it; cmd runs a .cmd path on Windows", async () => {
+  test("on Windows, cmd runs a .cmd program, and an .exe runs by itself", async () => {
     const commands: string[][] = [];
-    const runner = fakeRunner(commands, (command) => (command[3] === "pi" || command[0] === "pi" ? "missing" : {}));
-    expect(await findEngineProgram("pi", inputs(runner))).toBe("/home/example/.local/bin/pi");
-    const windows = { ...inputs(runner, "win32"), homeFolder: "C:\\Users\\example", environment: {} };
-    expect(await findEngineProgram("pi", windows)).toBe("C:\\Users\\example\\AppData\\Roaming\\npm\\pi.cmd");
-    expect(commands.at(-1)).toEqual([
-      "cmd",
-      "/d",
-      "/c",
-      "C:\\Users\\example\\AppData\\Roaming\\npm\\pi.cmd",
-      "--version",
+    const runner = fakeRunner(commands, (command) =>
+      command.some((part) => part.endsWith("pi.cmd")) ? {} : "missing",
+    );
+    expect(await findEngineProgram("pi", { ...inputs(runner, "win32"), environment: {} })).toBe(
+      "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd",
+    );
+    expect(commands).toEqual([
+      ["cmd", "/d", "/c", "pi", "--version"],
+      ["D:\\Homes\\example\\AppData\\Local\\Programs\\pi\\pi.exe", "--version"],
+      ["cmd", "/d", "/c", "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd", "--version"],
     ]);
-  });
-
-  test("on Windows, pi is a .cmd file, so cmd runs it", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
-    expect(await findEngineProgram("pi", inputs(runner, "win32"))).toBe("pi");
-    expect(commands).toEqual([["cmd", "/d", "/c", "pi", "--version"]]);
   });
 });
 
-describe("installEngine", () => {
-  test("Linux runs the official Claude Code installer, then finds the new program", async () => {
+describe("locateEngineProgram", () => {
+  const places = { platform: "linux", homeFolder: posixHome, environment: {} } as const;
+
+  test("finds the name on the PATH first, then an installer's folder", () => {
+    expect(locateEngineProgram("claude-code", { ...places, which: () => "/usr/bin/claude", exists: () => true })).toBe(
+      "/usr/bin/claude",
+    );
+    const onlyInstalled = { ...places, which: () => null, exists: (path: string) => path.endsWith("/lib/pi/pi") };
+    expect(locateEngineProgram("pi", onlyInstalled)).toBe("/srv/example/.local/lib/pi/pi");
+    expect(locateEngineProgram("claude-code", { ...places, which: () => null, exists: () => false })).toBeNull();
+  });
+});
+
+describe("installEngine for Claude Code", () => {
+  test("Linux runs the official installer, then finds the new program", async () => {
     const commands: string[][] = [];
     let installed = false;
     const runner = fakeRunner(commands, (command) => {
@@ -122,14 +141,21 @@ describe("installEngine", () => {
       }
       return installed && command[0] !== "claude" ? {} : "missing";
     });
-    expect(await installEngine("claude-code", inputs(runner))).toBe("/home/example/.local/bin/claude");
+    expect(await installEngine("claude-code", inputs(runner))).toBe("/srv/example/.local/bin/claude");
     expect(commands[0]).toEqual(["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]);
   });
 
   test("Windows runs the PowerShell installer", async () => {
     const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
-    expect(await installEngine("claude-code", inputs(runner, "win32"))).toBe("claude");
+    expect(
+      await installEngine(
+        "claude-code",
+        inputs(
+          fakeRunner(commands, () => ({})),
+          "win32",
+        ),
+      ),
+    ).toBe("claude");
     expect(commands[0]).toEqual([
       "powershell",
       "-NoProfile",
@@ -151,79 +177,120 @@ describe("installEngine", () => {
   });
 
   test("an installer that cannot start gives the steps", async () => {
-    const runner = fakeRunner([], () => "missing");
-    const error = await caught(installEngine("claude-code", inputs(runner)));
+    const error = await caught(installEngine("claude-code", inputs(fakeRunner([], () => "missing"))));
     expect(isEvaError(error, "engine_install_failed")).toBe(true);
-    expect(String(error)).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    expect(String(error)).toContain("bash could not run");
   });
 
   test("an install that leaves no program to find fails with the steps", async () => {
     const runner = fakeRunner([], (command) => (command[0] === "bash" ? {} : "missing"));
     const error = await caught(installEngine("claude-code", inputs(runner)));
+    expect(String(error)).toContain("cannot find the program");
+  });
+});
+
+describe("installEngine for pi", () => {
+  const archive = new TextEncoder().encode("a pretend pi archive");
+  const archiveHash = createHash("sha256").update(archive).digest("hex");
+  let home: string;
+  let server: ReturnType<typeof Bun.serve> | null;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "eva-engine-install-"));
+    server = null;
+  });
+  afterEach(() => {
+    void server?.stop(true);
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  function serveRelease(hash = archiveHash): string {
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/SHA256SUMS")
+          return new Response(`${hash}  pi-linux-x64.tar.gz\n${archiveHash}  pi-windows-x64.zip\n`);
+        if (path === "/pi-linux-x64.tar.gz" || path === "/pi-windows-x64.zip") return new Response(archive);
+        return new Response("not found", { status: 404 });
+      },
+    });
+    return `http://127.0.0.1:${String(server.port)}`;
+  }
+
+  /** `tar` writes the program into its target folder; pi answers once it exists. */
+  function piRunner(commands: string[][], program = "pi"): ProcessRunner {
+    return fakeRunner(commands, (command) => {
+      if (command[0] === "tar") {
+        writeFileSync(join(command[command.indexOf("-C") + 1] ?? "", program), "pretend program");
+        return {};
+      }
+      return existsSync(command[0] ?? "") ? {} : "missing";
+    });
+  }
+
+  function piInputs(runner: ProcessRunner, platform: NodeJS.Platform = "linux"): EngineInstallInputs {
+    return { ...inputs(runner, platform), homeFolder: home, environment: {}, piReleasesBaseUrl: serveRelease() };
+  }
+
+  test("downloads the standalone build, checks it, and puts it in ~/.local/lib/pi with a link", async () => {
+    const commands: string[][] = [];
+    const program = await installEngine("pi", piInputs(piRunner(commands)));
+    expect(program).toBe(`${home}/.local/lib/pi/pi`);
+    expect(readFileSync(program, "utf8")).toBe("pretend program");
+    expect(commands[0]?.slice(0, 2)).toEqual(["tar", "-xzf"]);
+    expect(commands[0]).toContain("--strip-components=1");
+    // Windows lets only an administrator make a link, and Eva needs none there.
+    if (process.platform !== "win32") expect(lstatSync(join(home, ".local", "bin", "pi")).isSymbolicLink()).toBe(true);
+    // The staging folder is gone.
+    expect(readdirSync(join(home, ".local", "lib"))).toEqual(["pi"]);
+  });
+
+  // Windows paths name real folders only on Windows, so the Windows CI job runs this test.
+  test.if(process.platform === "win32")(
+    "on Windows, it reads the zip with tar and keeps pi.exe in its own folder",
+    async () => {
+      const commands: string[][] = [];
+      const settings = { ...piInputs(piRunner(commands, "pi.exe"), "win32"), environment: { LOCALAPPDATA: home } };
+      const program = await installEngine("pi", settings);
+      expect(program.endsWith("pi.exe")).toBe(true);
+      expect(commands[0]?.slice(0, 2)).toEqual(["tar", "-xf"]);
+      expect(commands[0]).not.toContain("--strip-components=1");
+    },
+  );
+
+  test("a download that does not match its checksum installs nothing", async () => {
+    const settings = { ...piInputs(piRunner([])), piReleasesBaseUrl: serveRelease("0".repeat(64)) };
+    const error = await caught(installEngine("pi", settings));
     expect(isEvaError(error, "engine_install_failed")).toBe(true);
-    expect(String(error)).toContain("cannot find");
+    expect(String(error)).toContain("checksum");
+    expect(String(error)).toContain("curl -fsSL https://pi.dev/install.sh | sh");
+    expect(existsSync(join(home, ".local", "lib", "pi"))).toBe(false);
   });
 
-  test("pi installs with npm into ~/.local, which needs no root", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
-    expect(await installEngine("pi", inputs(runner))).toBe("pi");
-    expect(commands).toContainEqual([
-      "npm",
-      "install",
-      "-g",
-      "--prefix",
-      "/home/example/.local",
-      "@mariozechner/pi-coding-agent",
-    ]);
+  test("an archive without the program installs nothing", async () => {
+    const error = await caught(installEngine("pi", piInputs(piRunner([], "README.md"))));
+    expect(String(error)).toContain("holds no pi");
+    expect(existsSync(join(home, ".local", "lib", "pi"))).toBe(false);
   });
 
-  test("on Windows, cmd runs npm, into its own folder", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => ({}));
-    await installEngine("pi", inputs(runner, "win32"));
-    expect(commands).toContainEqual(["cmd", "/d", "/c", "npm", "install", "-g", "@mariozechner/pi-coding-agent"]);
-  });
-
-  test("without npm, pi installs nothing and the steps name Node.js", async () => {
-    const commands: string[][] = [];
-    const runner = fakeRunner(commands, () => "missing");
-    const error = await caught(installEngine("pi", inputs(runner)));
-    expect(isEvaError(error, "engine_install_failed")).toBe(true);
-    expect(String(error)).toContain("https://nodejs.org");
-    expect(commands.some((command) => command.includes("install"))).toBe(false);
-  });
-
-  test("a failed npm install gives npm's last line and the steps", async () => {
-    const runner = fakeRunner([], (command) =>
-      command[1] === "install" ? { exitCode: 1, stderr: "npm error EACCES: permission denied\n" } : {},
+  test("a system with no standalone build, or a failed download, gives the steps", async () => {
+    const unknown = await caught(installEngine("pi", { ...piInputs(piRunner([])), arch: "ia32" }));
+    expect(String(unknown)).toContain("no standalone build for linux on ia32");
+    const offline = await caught(
+      installEngine("pi", { ...piInputs(piRunner([])), piReleasesBaseUrl: `${serveRelease()}/missing` }),
     );
-    const error = await caught(installEngine("pi", inputs(runner)));
-    expect(String(error)).toContain("EACCES");
-    expect(String(error)).toContain("npm install -g --prefix ~/.local @mariozechner/pi-coding-agent");
+    expect(String(offline)).toContain("The download failed (404)");
+    expect(String(offline)).toContain("https://pi.dev");
   });
 });
 
 describe("engineInstallSteps", () => {
-  test("says the command for each platform", () => {
+  test("says the official command for each system", () => {
     expect(engineInstallSteps("claude-code", "linux")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
     expect(engineInstallSteps("claude-code", "win32")).toContain("irm https://claude.ai/install.ps1 | iex");
-    expect(engineInstallSteps("pi", "linux")).toContain(
-      "npm install -g --prefix ~/.local @mariozechner/pi-coding-agent",
-    );
-    expect(engineInstallSteps("pi", "win32")).toContain("npm install -g @mariozechner/pi-coding-agent");
-  });
-});
-
-describe("locateEngineProgram", () => {
-  const places = { platform: "linux", homeFolder: "/home/example", environment: {} } as const;
-
-  test("finds the name on the PATH first, then the installer's folder", () => {
-    expect(locateEngineProgram("claude-code", { ...places, which: () => "/usr/bin/claude", exists: () => true })).toBe(
-      "/usr/bin/claude",
-    );
-    const onlyInstalled = { ...places, which: () => null, exists: (path: string) => path.endsWith("/.local/bin/pi") };
-    expect(locateEngineProgram("pi", onlyInstalled)).toBe("/home/example/.local/bin/pi");
-    expect(locateEngineProgram("claude-code", { ...places, which: () => null, exists: () => false })).toBeNull();
+    expect(engineInstallSteps("pi", "linux")).toContain("curl -fsSL https://pi.dev/install.sh | sh");
+    expect(engineInstallSteps("pi", "win32")).toContain("irm https://pi.dev/install.ps1 | iex");
   });
 });

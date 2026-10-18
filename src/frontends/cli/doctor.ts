@@ -55,9 +55,7 @@ const tools: readonly ToolCheck[] = [
     engine: "pi",
     install: "https://pi.dev, or run `eva setup`",
     installOnLinux: "eva setup",
-    // Outside Windows, `eva setup` installs pi into ~/.local, so an update there needs the same folder.
-    update:
-      "npm install -g @mariozechner/pi-coding-agent@latest, plus `--prefix ~/.local` outside Windows if `eva setup` installed it",
+    update: "with the installer from https://pi.dev",
   },
   {
     program: "gh",

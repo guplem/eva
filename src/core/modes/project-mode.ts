@@ -132,6 +132,8 @@ const shownUrlLimit = 200;
 function shownUrl(url: string): string {
   const clean = url
     .replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, "$1")
+    // A short git address (`user:token@host:path`) has no scheme. A plain `git@` user carries no secret, so it stays.
+    .replace(/^[^@/:\s]+:[^@/\s]*@/, "")
     .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
     .trim();
   return clean.length <= shownUrlLimit ? clean : `${clean.slice(0, shownUrlLimit)}…`;

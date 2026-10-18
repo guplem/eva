@@ -383,6 +383,24 @@ describe("Project mode", () => {
       expect(question).not.toContain("x".repeat(300));
     });
 
+    test("the question hides a token in a short git address, and keeps a plain user name", async () => {
+      for (const [remote, shown, hidden] of [
+        ["x-access-token:token-value@github.com:owner/app.git", "from github.com:owner/app.git", "token-value"],
+        ["git@github.com:owner/app.git", "from git@github.com:owner/app.git", "nothing-hidden"],
+      ] as const) {
+        const asking = recording("expired");
+        await new ProjectPreparer({
+          trustStore: new TrustStore(join(sandbox.root, "t.json")),
+          cloneOrigins: origins,
+          trustedOwners: [],
+          environment: {},
+          readRemote: () => Promise.resolve(remote),
+        }).prepare(session({ mode: "project", startFolder: handMade }), asking);
+        expect(asking.questions[0]).toContain(shown);
+        expect(asking.questions[0]).not.toContain(hidden);
+      }
+    });
+
     test("an expired question keeps nothing and asks again next time", async () => {
       const expired = recording("expired");
       const handMadeSession = session({ mode: "project", startFolder: handMade });

@@ -141,7 +141,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Files.** Eva can send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`, which reads Spanish and English), and put it at `voice/ggml-base.bin` in Eva's home folder. The audio never leaves the computer.
-- **Google (Calendar, Drive, Contacts, Tasks).** Eva uses your own OAuth client: an app id and secret that let her ask for access to your account. Settings in the web app guide you, also on your phone, with a link for each step. First, install [uv](https://docs.astral.sh/uv/) on the computer: this step needs the computer. Then follow the steps in Settings:
+- **Google (Calendar, Drive, Contacts, Tasks).** Eva uses your own OAuth client. It is an app id and secret that let her ask for access to your account. Settings in the web app guide you, also on your phone, with a link for each step. First, install [uv](https://docs.astral.sh/uv/) on the computer: this step needs the computer. Then follow the steps in Settings:
   1. Turn on the Google APIs.
   2. Set the consent screen to "In production". In "Testing", the login ends after 7 days.
   3. Make an OAuth client of type "Desktop app". Paste its id and secret into Settings.

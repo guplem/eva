@@ -17,7 +17,10 @@ import {
   describeEngineUpdate,
   describeStatusLines,
   describeSync,
+  describeRelease,
   describeUpdate,
+  describeUpdateWithHint,
+  majorUpdateWarning,
   requestHub,
   requestStatus,
   requestSettingsChange,
@@ -945,6 +948,28 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...release, target: "1.3.0", phase: "waiting_for_idle" })).toBe(
       "Updates: 1.3.0 installs when the running chats end",
     );
+  });
+
+  test("a chosen release reads as the jump, with a warning for a major one", () => {
+    const release = {
+      ...base,
+      kind: "executable" as const,
+      current: "1.2.0",
+      releases: [
+        { version: "2.0.0", notes: "", level: "major" as const, summary: "Breaking changes:\n• feat!: x (2.0.0)" },
+        { version: "1.3.0", notes: "", level: "minor" as const, summary: "New features:\n• feat: y (1.3.0)" },
+      ],
+    };
+    expect(describeRelease(release, "2.0.0")).toBe(
+      `Eva 1.2.0 → 2.0.0\n\n${majorUpdateWarning}\n\nBreaking changes:\n• feat!: x (2.0.0)`,
+    );
+    expect(describeRelease(release, "1.3.0")).toBe("Eva 1.2.0 → 1.3.0\n\nNew features:\n• feat: y (1.3.0)");
+    expect(describeRelease(release, "0.9.0")).toBeNull();
+  });
+
+  test("in a terminal, a held-back version comes with the command that installs it", () => {
+    expect(describeUpdateWithHint({ ...base, heldBack: "2.0.0" })).toEndWith("Run `eva update 2.0.0` to install it.");
+    expect(describeUpdateWithHint(base)).toBe(describeUpdate(base));
   });
 
   test("the sync line names the reason of a problem", () => {

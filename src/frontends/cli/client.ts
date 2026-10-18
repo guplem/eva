@@ -141,6 +141,24 @@ export function describeUpdate(update: UpdateStatus): string {
       : `Updates: this is ${update.current}${heldBack}; ${automatic}`;
 }
 
+/** In a terminal, a held-back version comes with the command that installs it. */
+export function describeUpdateWithHint(update: UpdateStatus): string {
+  const line = describeUpdate(update);
+  if (update.heldBack === null || update.phase !== "idle") return line;
+  return `${line}\nRun \`eva update ${update.heldBack}\` to install it.`;
+}
+
+/**
+ * What the jump to a chosen version brings, with the major-update warning first. Null when the
+ * version is not a newer release.
+ */
+export function describeRelease(update: UpdateStatus, version: string): string | null {
+  const release = update.releases.find((each) => each.version === version);
+  if (release === undefined) return null;
+  const warning = release.level === "major" ? `\n\n${majorUpdateWarning}` : "";
+  return `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}`;
+}
+
 /** One line about the engine update of the settings page. */
 export function describeEngineUpdate(update: EngineUpdateStatus): string {
   if (update.phase === "waiting_for_idle")
@@ -160,15 +178,19 @@ export function describeSync(state: VaultSyncState): string {
 
 /**
  * `eva update [version]` and `eva update --check` while Eva runs: the running Eva does the work.
- * Without a version, she installs what the update policy allows.
+ * Without a version, she installs what the update policy allows. With one, the text first says
+ * what the jump brings.
  */
 export async function requestUpdate(
   options: ClientOptions,
   checkOnly: boolean,
   version: string | null = null,
 ): Promise<string> {
-  if (checkOnly) return describeUpdate(await postJson<UpdateStatus>(options, "/api/update/check", {}));
-  return describeUpdate(await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version }));
+  const checked = await postJson<UpdateStatus>(options, "/api/update/check", {});
+  if (checkOnly) return describeUpdateWithHint(checked);
+  const release = version === null ? null : describeRelease(checked, version);
+  const update = await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version });
+  return release === null ? describeUpdateWithHint(update) : `${release}\n\n${describeUpdate(update)}`;
 }
 
 /** `eva sync` while Eva runs. */

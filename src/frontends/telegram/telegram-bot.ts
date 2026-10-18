@@ -13,7 +13,7 @@ import {
   describeStatusLines,
   describeSync,
   describeUpdate,
-  majorUpdateWarning,
+  describeRelease,
 } from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
@@ -612,13 +612,11 @@ export class TelegramBot {
   /** A version button: what the jump to it brings, breaking changes first, and an Install button. */
   private async showRelease(chatId: number, topicId: number | null, version: string): Promise<void> {
     const update = this.options.eva.updateStatus();
-    const release = update?.releases.find((each) => each.version === version);
-    if (update === null || release === undefined) {
+    const text = update === null ? null : describeRelease(update, version);
+    if (text === null) {
       await this.send(chatId, topicId, `${version} is not a newer release. Send /update to check again.`);
       return;
     }
-    const warning = release.level === "major" ? `\n\n⚠️ ${majorUpdateWarning}` : "";
-    const text = `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}`;
     const parts = splitForTelegram(text, messageLimit);
     for (const [index, part] of parts.entries()) {
       const last = index === parts.length - 1;

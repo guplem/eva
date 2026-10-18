@@ -48,7 +48,8 @@ import {
   describeProjects,
   describeStatus,
   describeSync,
-  describeUpdate,
+  describeRelease,
+  describeUpdateWithHint,
   requestHub,
   requestStatus,
   requestSettingsChange,
@@ -593,11 +594,14 @@ async function update(paths: HomePaths, checkOnly: boolean, version: string | nu
     restart: () => undefined,
     now: () => new Date(),
   });
-  const status = checkOnly ? await updater.check() : await updater.updateNow(version ?? undefined);
+  const checked = await updater.check();
+  const release = checkOnly || version === null ? null : describeRelease(checked, version);
+  if (release !== null) writeLine(`${release}\n`);
+  const status = checkOnly ? checked : await updater.updateNow(version ?? undefined);
   writeLine(
     status.phase === "restarting"
       ? `Updated Eva from ${status.current ?? "?"} to ${status.latest ?? "?"}.`
-      : describeUpdate(status),
+      : describeUpdateWithHint(status),
   );
   return status.lastError === null ? exitCodes.clean : exitCodes.crash;
 }

@@ -320,10 +320,12 @@ textarea {
   color: var(--text-muted);
 }
 
-/* A wide table scrolls inside the bubble, so the page never scrolls sideways on a phone. */
+/* A wide table scrolls inside the bubble, so the page never scrolls sideways on a phone. The
+   bubble lets a word break anywhere, so the table resets that, or its words would break instead. */
 .answer-body table {
   display: block;
   overflow-x: auto;
+  overflow-wrap: normal;
   border-collapse: collapse;
 }
 

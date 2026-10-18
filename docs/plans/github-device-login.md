@@ -21,3 +21,13 @@ This is the working plan for #47. The last commit of the PR deletes it.
 3. What is the exact question text and the default answer, given that Enter keeps a value everywhere else?
 4. Which questions describe the person, and how do they fill `.eva/assistant.md`?
 5. Where does the code live, and how does a test fake GitHub?
+
+## Decisions
+
+1. **An Eva OAuth App, which the owner registers (#113).** The GitHub CLI's id would make Eva pose as gh. A GitHub App needs an install on each repository, and its tokens expire after 8 hours. A client id is public, so it lives in the code as `githubClientId`. Until #113 sets it, the constant is `null`, and setup asks for a pasted token, as today. Tests use a fake id and a fake server.
+2. **Scope `repo`.** An OAuth App cannot give access to one repository only. The token reaches only Eva's own git commands, never an agent (lesson 96, `gitEnvironmentOf` in `src/core/eva.ts`). The sentence: "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only for her own git commands, and never gives it to an agent."
+3. **Ask for the repository first, then for access only for an `https://github.com/` address.** A new vault and an SSH address need no token. Without a saved token, Enter starts the login. With one, Enter keeps it, and `login` logs in again. A pasted token works as before. `skip` skips. A retry after a failed clone asks both questions again, so the login never loops by itself. Other HTTPS hosts get today's token question. A script never starts the login.
+4. **Three questions: "What should Eva call you?", the language, and the main topics.** Code turns the topics into bullets under `## Main topics`. No answer writes "None yet.", so the template holds no sample topics. `EVA_TOPICS` answers it in a script.
+5. **`src/core/vault/github-login.ts`, with plain `fetch`.** It takes a base URL, a sleep seam and a clock seam, and stops at `expires_in`. A failure is a `github_failed` error. `SetupOptions` gets a `githubLogin` function, or `null` when no client id exists. `src/main.ts` builds it. Tests fake GitHub with `Bun.serve`.
+
+Out of scope: the browser login on the phone (the web settings page), and a GitHub token for `gh repo create`. Setup runs in a terminal today, and `gh repo create` already uses gh's own login.

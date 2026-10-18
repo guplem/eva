@@ -182,7 +182,7 @@ describe("VaultSync.pull", () => {
     expect(sandbox.git(vault, "status", "--porcelain")).toContain("UU AGENTS.md");
   });
 
-  test("reports a conflict when the autostash stays in the stash with no conflicted file", async () => {
+  test("reports an error when the autostash stays in the stash and cannot apply again", async () => {
     pushFromOther("other.md", "news\n");
     let rebased = false;
     const leavesStash: ProcessRunner = {
@@ -194,7 +194,7 @@ describe("VaultSync.pull", () => {
       },
     };
     const state = await createSync(vault, { runner: leavesStash }).pull();
-    expect(state.status).toBe("conflict");
+    expect(state.status).toBe("error");
     expect(state.lastError).toContain("stash");
   });
 });
@@ -282,3 +282,386 @@ function stopRebaseOnRemote(): void {
   expect(() => sandbox.git(vault, "rebase", "-q", "-x", "false", "origin/main")).toThrow();
   expect(existsSync(join(vault, ".git", "rebase-merge"))).toBe(true);
 }
+
+describe("VaultSync conflicts", () => {
+  /** A committed edit here and a pushed edit there, on the same line. */
+  async function committedConflict(sync: VaultSync, path = "AGENTS.md"): Promise<void> {
+    pushFromOther(path, "# Theirs\n");
+    sandbox.write(vault, path, "# Mine\n");
+    expect((await sync.save()).status).toBe("conflict");
+  }
+
+  /** An edit that is not committed here, against a pushed edit there. */
+  async function uncommittedConflict(sync: VaultSync): Promise<void> {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    expect((await sync.pull()).status).toBe("conflict");
+  }
+
+  test("names every note of a committed conflict, in the state and in the list", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync);
+    expect(sync.currentState.lastError).toContain("AGENTS.md");
+    const report = await sync.conflicts();
+    expect(report.conflicts).toEqual([{ path: "AGENTS.md", kind: "committed", picked: null }]);
+  });
+
+  test("lists no conflict when the vault is in sync", async () => {
+    expect((await createSync(vault).conflicts()).conflicts).toEqual([]);
+  });
+
+  test("keep mine on a committed conflict pushes this machine's version, and history keeps both", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync);
+    const result = await sync.resolve("AGENTS.md", "mine");
+    expect(result.found).toBe(true);
+    expect(result.state.status).toBe("ok");
+    expect(result.conflicts).toEqual([]);
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# Mine\n");
+    expect(sandbox.git(sandbox.remote, "log", "--format=%s", "main")).toContain("other");
+    expect(sandbox.git(sandbox.remote, "rev-list", "--merges", "--count", "main")).toBe("1");
+  });
+
+  test("keep theirs on a committed conflict takes the remote's version", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync);
+    expect((await sync.resolve("AGENTS.md", "theirs")).state.status).toBe("ok");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# Theirs\n");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+    expect(sandbox.git(sandbox.remote, "log", "--format=%s", "main")).toContain("eva: autosave (1 file)");
+  });
+
+  test("keep both on a committed conflict keeps mine at the path and the other version beside it", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync, "Notes/Plan.md");
+    expect((await sync.resolve("Notes/Plan.md", "both")).state.status).toBe("ok");
+    expect(readFileSync(join(vault, "Notes/Plan.md"), "utf-8")).toBe("# Mine\n");
+    expect(readFileSync(join(vault, "Notes/Plan (conflict copy).md"), "utf-8")).toBe("# Theirs\n");
+    expect(sandbox.git(sandbox.remote, "show", "main:Notes/Plan (conflict copy).md")).toBe("# Theirs");
+  });
+
+  test("keep both picks a free name when the copy name is taken", async () => {
+    pushFromOther("Notes/Plan (conflict copy).md", "an older copy\n");
+    const sync = createSync(vault);
+    await committedConflict(sync, "Notes/Plan.md");
+    expect((await sync.resolve("Notes/Plan.md", "both")).state.status).toBe("ok");
+    expect(readFileSync(join(vault, "Notes/Plan (conflict copy).md"), "utf-8")).toBe("an older copy\n");
+    expect(readFileSync(join(vault, "Notes/Plan (conflict copy 2).md"), "utf-8")).toBe("# Theirs\n");
+  });
+
+  test("waits for a pick on every note, then pushes once", async () => {
+    pushFromOther("b.md", "b theirs\n");
+    pushFromOther("a.md", "a theirs\n");
+    sandbox.write(vault, "a.md", "a mine\n");
+    sandbox.write(vault, "b.md", "b mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    const first = await sync.resolve("a.md", "theirs");
+    expect(first.state.status).toBe("conflict");
+    expect(first.conflicts).toEqual([
+      { path: "a.md", kind: "committed", picked: "theirs" },
+      { path: "b.md", kind: "committed", picked: null },
+    ]);
+    expect(sandbox.git(sandbox.remote, "show", "main:b.md")).toBe("b theirs");
+    // A sweep commit between two picks keeps the first pick.
+    sandbox.write(vault, "c.md", "c\n");
+    await sync.save();
+    const second = await sync.resolve("b.md", "mine");
+    expect(second.state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:a.md")).toBe("a theirs");
+    expect(sandbox.git(sandbox.remote, "show", "main:b.md")).toBe("b mine");
+    expect(sandbox.git(sandbox.remote, "show", "main:c.md")).toBe("c");
+  });
+
+  test("keep theirs on a note the remote deleted deletes it; keep both keeps it", async () => {
+    sandbox.git(other, "rm", "-q", "AGENTS.md");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["AGENTS.md"]);
+    expect((await sync.resolve("AGENTS.md", "theirs")).state.status).toBe("ok");
+    expect(existsSync(join(vault, "AGENTS.md"))).toBe(false);
+    expect(remoteFiles()).not.toContain("AGENTS.md");
+  });
+
+  test("keep both on a note the remote deleted keeps this machine's version", async () => {
+    sandbox.git(other, "rm", "-q", "AGENTS.md");
+    sandbox.git(other, "commit", "-q", "-m", "other");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    expect((await sync.resolve("AGENTS.md", "both")).state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
+    expect(remoteFiles()).not.toContain("conflict copy");
+  });
+
+  test("answers found: false for a note with no conflict, and changes nothing", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync);
+    const result = await sync.resolve("Other.md", "mine");
+    expect(result.found).toBe(false);
+    expect(result.conflicts).toHaveLength(1);
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+  });
+
+  test("keeps the merge when the remote moves before the push, instead of a rebase that brings the conflict back", async () => {
+    const sync = createSync(vault);
+    await committedConflict(sync);
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    expect((await sync.resolve("AGENTS.md", "mine")).state.status).toBe("offline");
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    pushFromOther("news.md", "news\n");
+    const state = await sync.save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
+    expect(sandbox.git(sandbox.remote, "show", "main:news.md")).toBe("news");
+  });
+
+  test("reports git that is too old for merge-tree as an error, never as no conflict", async () => {
+    const sync = createSync(vault, {
+      runner: {
+        run(command, options) {
+          return command[1] === "merge-tree"
+            ? Promise.resolve({ exitCode: 129, stdout: "", stderr: "error: unknown option `write-tree'" })
+            : systemProcessRunner.run(command, options);
+        },
+      },
+    });
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    expect((await sync.save()).lastError).toContain("2.38");
+    const report = await sync.conflicts();
+    expect(report.state.status).toBe("error");
+    expect(report.state.lastError).toContain("2.38");
+  });
+
+  test("lists an edit that is not committed as an uncommitted conflict", async () => {
+    const sync = createSync(vault);
+    await uncommittedConflict(sync);
+    expect((await sync.conflicts()).conflicts).toEqual([{ path: "AGENTS.md", kind: "uncommitted", picked: null }]);
+  });
+
+  test("keep mine on an uncommitted conflict takes this machine's edit, pushes it, and keeps the stash", async () => {
+    const sync = createSync(vault);
+    await uncommittedConflict(sync);
+    const result = await sync.resolve("AGENTS.md", "mine");
+    expect(result.state.status).toBe("ok");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# Mine\n");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
+    expect(sandbox.git(vault, "stash", "list")).toContain("autostash");
+  });
+
+  test("keep theirs on an uncommitted conflict takes the remote's version, and the stash keeps mine", async () => {
+    const sync = createSync(vault);
+    await uncommittedConflict(sync);
+    expect((await sync.resolve("AGENTS.md", "theirs")).state.status).toBe("ok");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# Theirs\n");
+    expect(sandbox.git(vault, "stash", "list")).toContain("autostash");
+    expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
+  });
+
+  test("keep both on an uncommitted conflict writes the copy and pushes both", async () => {
+    const sync = createSync(vault);
+    await uncommittedConflict(sync);
+    expect((await sync.resolve("AGENTS.md", "both")).state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS (conflict copy).md")).toBe("# Theirs");
+  });
+
+  test("applies the stash again when older git keeps the edits only there", async () => {
+    pushFromOther("other.md", "news\n");
+    let rebased = false;
+    const commands: string[] = [];
+    const leavesStash: ProcessRunner = {
+      async run(command, options) {
+        commands.push(command.slice(1, 3).join(" "));
+        if (command[1] === "stash" && command[2] === "apply") return { exitCode: 0, stdout: "", stderr: "" };
+        const result = await systemProcessRunner.run(command, options);
+        if (command[1] === "rebase") rebased = true;
+        const isStashList = command[1] === "stash" && command[2] === "list";
+        return isStashList && rebased ? { ...result, stdout: `${result.stdout}stash@{0}: autostash\n` } : result;
+      },
+    };
+    const state = await createSync(vault, { runner: leavesStash }).pull();
+    expect(commands).toContain("stash apply");
+    expect(state.status).toBe("ok");
+  });
+});
+
+describe("VaultSync conflict edge cases", () => {
+  test("a note name with a glob character gets its own version, not the version of a note it matches", async () => {
+    pushFromOther("[ab].md", "bracket base\n");
+    pushFromOther("a.md", "a base\n");
+    sandbox.git(vault, "pull", "-q");
+    pushFromOther("[ab].md", "bracket theirs\n");
+    pushFromOther("a.md", "a theirs\n");
+    sandbox.write(vault, "[ab].md", "bracket mine\n");
+    sandbox.write(vault, "a.md", "a mine\n");
+    const sync = createSync(vault);
+    expect((await sync.pull()).status).toBe("conflict");
+    await sync.resolve("[ab].md", "mine");
+    expect(readFileSync(join(vault, "[ab].md"), "utf-8")).toBe("bracket mine\n");
+    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["a.md"]);
+    // A save must never stage a.md through the pattern: it still holds conflict markers.
+    await sync.save();
+    expect(sandbox.git(vault, "show", "HEAD:a.md")).not.toContain("<<<<<<<");
+    expect(sandbox.git(vault, "status", "--porcelain")).toContain("UU a.md");
+  });
+
+  test("drops a pick when the remote changes that note again, so the person sees the new version first", async () => {
+    pushFromOther("a.md", "a theirs\n");
+    pushFromOther("b.md", "b theirs\n");
+    sandbox.write(vault, "a.md", "a mine\n");
+    sandbox.write(vault, "b.md", "b mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    await sync.resolve("a.md", "mine");
+    pushFromOther("a.md", "a theirs, with an important change\n");
+    await sync.save();
+    const result = await sync.resolve("b.md", "mine");
+    expect(result.state.status).toBe("conflict");
+    expect(result.conflicts).toEqual([
+      { path: "a.md", kind: "committed", picked: null },
+      { path: "b.md", kind: "committed", picked: "mine" },
+    ]);
+  });
+});
+
+describe("VaultSync conflict review fixes", () => {
+  test("merges when the rebase stops on a change that a later commit undid, as the merge itself is clean", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Undone\n");
+    sandbox.git(vault, "commit", "-q", "-am", "edit");
+    sandbox.write(vault, "AGENTS.md", "# Vault\n");
+    sandbox.git(vault, "commit", "-q", "-am", "undo");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+  });
+
+  test("never deletes a note when git cannot list its versions", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const failsToList: ProcessRunner = {
+      run(command, options) {
+        return command[1] === "ls-files"
+          ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "fatal: index file corrupt" })
+          : systemProcessRunner.run(command, options);
+      },
+    };
+    const sync = createSync(vault, { runner: failsToList });
+    await sync.pull();
+    const result = await sync.resolve("AGENTS.md", "mine");
+    expect(result.state.status).toBe("error");
+    expect(result.state.lastError).toContain("index file corrupt");
+    expect(existsSync(join(vault, "AGENTS.md"))).toBe(true);
+  });
+
+  test("listing the conflicts of a clean vault never raises an error, even with git older than 2.38", async () => {
+    const sync = createSync(vault, {
+      runner: {
+        run(command, options) {
+          return command[1] === "merge-tree"
+            ? Promise.resolve({ exitCode: 129, stdout: "", stderr: "error: unknown option `write-tree'" })
+            : systemProcessRunner.run(command, options);
+        },
+      },
+    });
+    const report = await sync.conflicts();
+    expect(report.conflicts).toEqual([]);
+    expect(report.state.status).toBe("ok");
+  });
+
+  test("a pull leaves an unpushed merge to the next save, so an edit that is not committed never blocks it", async () => {
+    const sync = createSync(vault);
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    await sync.save();
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    await sync.resolve("AGENTS.md", "mine");
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    pushFromOther("news.md", "news\n");
+    sandbox.git(vault, "fetch", "-q", "origin");
+    sandbox.write(vault, "news.md", "a draft here\n");
+    expect((await sync.pull()).status).not.toBe("error");
+    expect(readFileSync(join(vault, "news.md"), "utf-8")).toBe("a draft here\n");
+  });
+});
+
+describe("VaultSync conflict picks and the secret scan", () => {
+  const token = "token ghp_" + "a".repeat(36) + "\n";
+
+  async function secretConflict(sync: VaultSync): Promise<void> {
+    pushFromOther("a.md", "base\n");
+    sandbox.git(vault, "pull", "-q");
+    pushFromOther("a.md", "theirs\n");
+    sandbox.write(vault, "a.md", token);
+    expect((await sync.pull()).status).toBe("conflict");
+  }
+
+  test("keep mine never pushes an edit that holds a secret, even when another note is committed", async () => {
+    const sync = createSync(vault);
+    await secretConflict(sync);
+    sandbox.write(vault, "other.md", "innocent\n");
+    const result = await sync.resolve("a.md", "mine");
+    expect(result.state.withheldFiles).toEqual([{ path: "a.md", reason: "secret" }]);
+    expect(sandbox.git(sandbox.remote, "show", "main:a.md")).toBe("theirs");
+    expect(sandbox.git(sandbox.remote, "show", "main:other.md")).toBe("innocent");
+    expect(readFileSync(join(vault, "a.md"), "utf-8")).toBe(token);
+  });
+
+  test("keep both pushes the copy but never the note that holds a secret", async () => {
+    const sync = createSync(vault);
+    await secretConflict(sync);
+    await sync.resolve("a.md", "both");
+    expect(sandbox.git(sandbox.remote, "show", "main:a.md")).toBe("theirs");
+    expect(sandbox.git(sandbox.remote, "show", "main:a (conflict copy).md")).toBe("theirs");
+  });
+
+  test("names git's own reason for a merge-tree failure that is not an old git", async () => {
+    const sync = createSync(vault, {
+      runner: {
+        run(command, options) {
+          return command[1] === "merge-tree"
+            ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "fatal: refusing to merge unrelated histories" })
+            : systemProcessRunner.run(command, options);
+        },
+      },
+    });
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const state = await sync.save();
+    expect(state.lastError).toContain("unrelated histories");
+    expect(state.lastError).not.toContain("2.38");
+  });
+});
+
+describe("VaultSync conflict second review fixes", () => {
+  test("the last pick holds when this machine edits the same note again before it", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    sandbox.write(vault, "AGENTS.md", "# Mine, edited again\n");
+    const result = await sync.resolve("AGENTS.md", "theirs");
+    expect(result.state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+    expect(sandbox.git(sandbox.remote, "log", "--format=%s", "main")).toContain("eva: autosave (1 file)");
+  });
+
+  test("a pull never merges with an edit that is not committed, so it raises no false error", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Undone\n");
+    sandbox.git(vault, "commit", "-q", "-am", "edit");
+    sandbox.write(vault, "AGENTS.md", "# Vault\n");
+    sandbox.git(vault, "commit", "-q", "-am", "undo");
+    sandbox.write(vault, "AGENTS.md", "# A draft here\n");
+    const sync = createSync(vault);
+    expect((await sync.pull()).status).not.toBe("error");
+    expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# A draft here\n");
+  });
+});

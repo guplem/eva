@@ -265,6 +265,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     }
   }
 
+  if (config.google.email === null)
+    options.write(
+      "Google is optional. To skip the Google questions, press Enter. Settings in the web app show each Google step, with its links.",
+    );
   const googleEmail = await ask(
     "googleEmail",
     `Google account for Calendar, Drive, Contacts and Tasks [${config.google.email ?? "none"}]: `,

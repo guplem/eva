@@ -850,8 +850,10 @@ export class TelegramBot {
     if (target === null) {
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
       if (event.kind === "approval_needed" && this.allowedChatId !== null) {
+        const chatId = this.allowedChatId;
         const title = this.options.eva.sessions.list().find((session) => session.id === event.sessionId)?.title;
-        await this.sendApproval(this.allowedChatId, null, event, title ?? "another chat");
+        // In the same order as its close, which then always finds the card.
+        await this.inOrder(event.sessionId, () => this.sendApproval(chatId, null, event, title ?? "another chat"));
       }
       return;
     }

@@ -324,6 +324,7 @@ async function serve(paths: HomePaths): Promise<number> {
     restartForUpdate: () => {
       restart?.();
     },
+    claudeExecutable,
     remoteAccess: () => remoteAccess,
     defaultHome: defaultHomeFolder(),
   });

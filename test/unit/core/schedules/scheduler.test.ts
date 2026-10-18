@@ -217,6 +217,25 @@ describe("Scheduler", () => {
     expect(events).toHaveLength(1);
   });
 
+  test("isFiring holds while a check runs, so an update waits for a firing schedule (lesson 92)", async () => {
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    let release = (): void => undefined;
+    const unsubscribe = scheduler.subscribe(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    expect(scheduler.isFiring()).toBe(false);
+    const tick = scheduler.tick();
+    expect(scheduler.isFiring()).toBe(true);
+    unsubscribe();
+    release();
+    await tick;
+    expect(scheduler.isFiring()).toBe(false);
+  });
+
   test("list, save and remove go through the vault file and forget the removed state", async () => {
     const scheduler = createScheduler();
     scheduler.save(morning);

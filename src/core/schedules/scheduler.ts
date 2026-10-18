@@ -114,6 +114,11 @@ export class Scheduler {
     return removed;
   }
 
+  /** True while a check runs: a schedule may be between its chat and its first message. */
+  isFiring(): boolean {
+    return this.ticking;
+  }
+
   /** One check of every schedule. The core calls it every 30 seconds. */
   async tick(): Promise<void> {
     if (!this.options.isHub() || this.ticking) return;

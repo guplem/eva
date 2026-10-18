@@ -14,6 +14,7 @@ import {
   describeRemoteAccess,
   describeRole,
   describeStatus,
+  describeEngineUpdate,
   describeStatusLines,
   describeSync,
   describeUpdate,
@@ -775,6 +776,33 @@ describe("heldBackLines (lesson 26)", () => {
   });
 });
 
+describe("describeEngineUpdate", () => {
+  const result = { before: "2.1.0", after: "2.2.0", detail: null, at: "2026-10-17T10:00:00Z" };
+
+  test("each state of the engine update reads as one line", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: null })).toBe("Claude Code: no update has run yet");
+    expect(describeEngineUpdate({ phase: "waiting_for_idle", last: null })).toBe(
+      "Claude Code: the update starts when the running chats and Eva's own update end",
+    );
+    expect(describeEngineUpdate({ phase: "updating", last: null })).toBe("Claude Code: updating…");
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "updated" } })).toBe(
+      "Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it",
+    );
+    expect(
+      describeEngineUpdate({ phase: "idle", last: { ...result, after: result.before, outcome: "up_to_date" } }),
+    ).toBe("Claude Code: 2.1.0 is the latest");
+  });
+
+  test("a failed update says why", () => {
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed", detail: "No network." } })).toBe(
+      "Claude Code: the update failed: No network.",
+    );
+    expect(describeEngineUpdate({ phase: "idle", last: { ...result, outcome: "failed" } })).toBe(
+      "Claude Code: the update failed: unknown reason.",
+    );
+  });
+});
+
 describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
@@ -806,8 +834,9 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "waiting_for_idle" })).toBe(
       "Updates: bbb2222 installs when the running chats end",
     );
+    expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
-      "Updates: installing bbb2222; Eva restarts in a moment",
+      "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
   });
 

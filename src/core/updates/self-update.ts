@@ -47,22 +47,37 @@ interface ReleaseAsset {
 
 interface Release {
   readonly tag_name: string;
+  readonly body?: string | null;
+  readonly draft?: boolean;
+  readonly prerelease?: boolean;
   readonly assets: readonly ReleaseAsset[];
 }
 
+const releaseTag = /^v\d+\.\d+\.\d+$/;
 const requestTimeoutMs = 30_000;
 const probeTimeoutMs = 30_000;
 /** A 100 MB download on a slow line. */
 const downloadTimeoutMs = 10 * 60_000;
 
-export async function updateExecutable(inputs: UpdateInputs): Promise<UpdateResult> {
+/** Installs the release of `version`, or the newest release when it is undefined. */
+export async function updateExecutable(inputs: UpdateInputs, version?: string): Promise<UpdateResult> {
   const assetName = assetNameFor(inputs.platform, inputs.arch);
   if (assetName === null)
     throw new EvaError("update_failed", `No Eva build exists for ${inputs.platform} ${inputs.arch}.`);
-  const release = await latestRelease(inputs);
-  if (!isNewerVersion(release.tag_name, inputs.currentVersion))
-    return { status: "up_to_date", version: inputs.currentVersion };
+  const releases = await publishedReleases(inputs);
+  const release = version === undefined ? releases[0] : releases.find((each) => versionOf(each) === version);
+  if (release === undefined) {
+    if (version === undefined) return { status: "up_to_date", version: inputs.currentVersion };
+    throw new EvaError("update_failed", `No release ${version} exists. Nothing changed.`);
+  }
+  if (!isNewerVersion(release.tag_name, inputs.currentVersion)) {
+    if (version === undefined) return { status: "up_to_date", version: inputs.currentVersion };
+    throw new EvaError("update_failed", `Eva never installs an older version than ${inputs.currentVersion}.`);
+  }
+  return install(inputs, release, assetName);
+}
 
+async function install(inputs: UpdateInputs, release: Release, assetName: string): Promise<UpdateResult> {
   const checksums = new TextDecoder().decode(await download(release, checksumsFileName));
   const signature = new TextDecoder().decode(await download(release, signatureFileName));
   if (!verifyChecksumsSignature(checksums, signature, inputs.publicKey ?? releasePublicKey))
@@ -90,24 +105,32 @@ export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
   return {
     kind: "executable",
     async check() {
-      const release = await latestRelease(inputs);
+      const releases = await publishedReleases(inputs);
+      const newer = releases.filter((release) => isNewerVersion(release.tag_name, inputs.currentVersion));
       return {
         current: inputs.currentVersion,
-        latest: release.tag_name.replace(/^v/, ""),
-        available: isNewerVersion(release.tag_name, inputs.currentVersion),
+        latest: releases[0] === undefined ? inputs.currentVersion : versionOf(releases[0]),
+        available: newer.length > 0,
+        releases: newer.map((release) => ({ version: versionOf(release), notes: release.body ?? "" })),
       };
     },
-    async apply() {
-      const result = await updateExecutable(inputs);
+    async apply(version) {
+      const result = await updateExecutable(inputs, version);
       return result.status === "updated"
-        ? { current: result.from, latest: result.to, available: false }
-        : { current: result.version, latest: result.version, available: false };
+        ? { current: result.from, latest: result.to, available: false, releases: [] }
+        : { current: result.version, latest: result.version, available: false, releases: [] };
     },
   };
 }
 
-async function latestRelease(inputs: UpdateInputs): Promise<Release> {
-  const url = `${inputs.apiBaseUrl ?? "https://api.github.com"}/repos/${inputs.repository ?? evaRepository}/releases/latest`;
+function versionOf(release: Release): string {
+  return release.tag_name.replace(/^v/, "");
+}
+
+/** The published releases, newest first: never a draft or a pre-release. */
+async function publishedReleases(inputs: UpdateInputs): Promise<Release[]> {
+  // One page of 100 holds months of releases; an older one is too old to pick by hand.
+  const url = `${inputs.apiBaseUrl ?? "https://api.github.com"}/repos/${inputs.repository ?? evaRepository}/releases?per_page=100`;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -118,8 +141,11 @@ async function latestRelease(inputs: UpdateInputs): Promise<Release> {
     throw new EvaError("update_failed", "GitHub could not be reached.");
   }
   if (!response.ok)
-    throw new EvaError("update_failed", `GitHub answered ${String(response.status)} for the latest release.`);
-  return (await response.json()) as Release;
+    throw new EvaError("update_failed", `GitHub answered ${String(response.status)} for the list of releases.`);
+  const releases = (await response.json()) as Release[];
+  return releases
+    .filter((release) => release.draft !== true && release.prerelease !== true && releaseTag.test(release.tag_name))
+    .sort((left, right) => (isNewerVersion(left.tag_name, right.tag_name) ? -1 : 1));
 }
 
 async function download(release: Release, name: string): Promise<Uint8Array> {

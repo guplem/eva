@@ -10,8 +10,8 @@ export type AlertLevel = "warn" | "error";
 
 export interface Alert {
   readonly key: string;
-  /** "resolved" when the problem cleared. */
-  readonly level: AlertLevel | "resolved";
+  /** "resolved" when the problem cleared; "news" for a one-off message that is no problem. */
+  readonly level: AlertLevel | "resolved" | "news";
   /** What happened and what to do, in one line. */
   readonly message: string;
   readonly at: string;
@@ -77,8 +77,8 @@ export class AlertCenter {
     this.emit(key, problem.level, problem.message);
   }
 
-  /** A one-off alert, such as a start after an unclean exit. It never stays open. */
-  notify(key: string, level: AlertLevel, message: string): void {
+  /** A one-off alert, such as a start after an unclean exit, or news. It never stays open. */
+  notify(key: string, level: AlertLevel | "news", message: string): void {
     this.emit(key, level, message);
   }
 
@@ -89,7 +89,7 @@ export class AlertCenter {
 
   private emit(key: string, level: Alert["level"], message: string): void {
     const alert: Alert = { key, level, message: this.redact(message), at: this.options.now().toISOString() };
-    this.options.logger?.log(level === "resolved" ? "info" : level, alert.message, { alert: key });
+    this.options.logger?.log(level === "resolved" || level === "news" ? "info" : level, alert.message, { alert: key });
     // A listener runs in sync and scheduler code, so its failure must never reach the caller.
     for (const listener of this.listeners) {
       try {

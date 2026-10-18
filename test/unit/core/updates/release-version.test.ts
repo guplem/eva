@@ -88,8 +88,9 @@ describe("next release version", () => {
     expect(next([fix, breaking, feature])).toBe("2.0.0");
   });
 
-  test("before 1.0, a breaking change raises only the middle number", () => {
-    expect(nextReleaseVersion({ lastVersion: "0.4.2", packageVersion: "0.1.0", commits: [breaking] })).toBe("0.5.0");
+  test("before 1.0, a breaking change raises Eva to 1.0.0, so a major number always means a break", () => {
+    expect(nextReleaseVersion({ lastVersion: "0.4.2", packageVersion: "0.1.0", commits: [breaking] })).toBe("1.0.0");
+    expect(nextReleaseVersion({ lastVersion: "0.4.2", packageVersion: "0.1.0", commits: [feature] })).toBe("0.5.0");
   });
 
   test("with no change to the executable, nothing is released", () => {

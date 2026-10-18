@@ -55,6 +55,12 @@ const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
+const updateSchema = z.object({
+  version: z
+    .string()
+    .regex(/^\d+\.\d+\.\d+$/)
+    .optional(),
+});
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
@@ -391,7 +397,10 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
     if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
     if (method === "POST") {
-      const status = url.pathname === "/api/update" ? await eva.updateNow() : await eva.checkForUpdate();
+      const status =
+        url.pathname === "/api/update"
+          ? await eva.updateNow(updateSchema.parse(await optionalJson(request)).version)
+          : await eva.checkForUpdate();
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
   }
@@ -545,4 +554,10 @@ function json(body: unknown, status = 200): Response {
 /** A route value must be a Response: the single executable refuses a `Bun.file` there. */
 function staticFile(path: string, contentType: string): Response {
   return new Response(readFileSync(path), { headers: { "content-type": contentType } });
+}
+
+/** The JSON body, or `{}` for none: older scripts post to /api/update with no body. */
+async function optionalJson(request: Request): Promise<unknown> {
+  const text = await request.text();
+  return text.trim() === "" ? {} : (JSON.parse(text) as unknown);
 }

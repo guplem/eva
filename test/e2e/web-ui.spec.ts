@@ -77,6 +77,7 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
   await page.request.post("/api/schedules", { data: { id, name: "Pushed by someone", at: "07:30", text: "Hi." } });
   const dialog = page.getByRole("dialog", { name: "Setup card" });
   await expect(dialog).toContainText("New schedule: Pushed by someone");
+  page.once("dialog", (question) => void question.accept());
   await dialog.getByRole("button", { name: "Remove schedule" }).click();
   await expect(dialog).toHaveCount(0);
   const listed = (await (await page.request.get("/api/schedules")).json()) as {
@@ -199,6 +200,8 @@ test("Settings: add a schedule, see its next run, and remove it", async ({ page 
   await expect(page.getByRole("status").last()).toContainText("no valid time");
   await page.getByLabel("Time (HH:MM)").fill("07:30");
   await page.getByRole("button", { name: "Add schedule" }).click();
+  // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
+  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
   const row = page.locator(".check-row", { hasText: `Walk ${id}` });
   await expect(row).toContainText("next:");
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();

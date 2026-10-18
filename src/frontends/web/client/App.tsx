@@ -46,6 +46,10 @@ function EvaApp(): ReactElement {
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       setProblems((await api.status()).problems);
+    } catch {
+      // The next poll or the next reconnect tries again.
+    }
+    try {
       setCards(await api.scheduleCards());
     } catch {
       // The next poll or the next reconnect tries again.
@@ -104,8 +108,13 @@ function EvaApp(): ReactElement {
     };
     return subscribeToEvents((event: SessionEvent | ScheduleCard) => {
       if (event.kind === "schedule_card") {
-        // The core sends a waiting card again at each check; the newest one replaces the old.
-        setCards((current) => [...current.filter((card) => card.scheduleId !== event.scheduleId), event]);
+        // The core sends a waiting card again at each check. It replaces the old one in place, so
+        // the dialog never jumps to another card while the person reads.
+        setCards((current) =>
+          current.some((card) => card.scheduleId === event.scheduleId)
+            ? current.map((card) => (card.scheduleId === event.scheduleId ? event : card))
+            : [...current, event],
+        );
       } else if (event.kind === "text") {
         setLive((state) => ({
           ...state,
@@ -164,7 +173,8 @@ function EvaApp(): ReactElement {
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
       if (answer === "confirm") await api.confirmScheduleCard(card);
-      else await api.removeSchedule(card.scheduleId);
+      else if (window.confirm(`Remove the schedule ${card.name}?`)) await api.removeSchedule(card.scheduleId);
+      else return;
       setCards((current) => current.filter((entry) => entry.scheduleId !== card.scheduleId));
     } catch (caught) {
       showError(caught);

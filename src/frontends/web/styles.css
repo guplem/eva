@@ -57,6 +57,11 @@ button.primary {
   border-color: var(--accent);
 }
 
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -473,11 +478,15 @@ textarea {
   }
 }
 
-/* A pushed prompt can be long, so the fields scroll and never push the buttons off a phone screen. */
+/* A pushed prompt can be long, so the card scrolls and never pushes the buttons off a phone screen. */
+.schedule-card {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 .card-fields {
   margin: 0;
-  max-height: 50vh;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;

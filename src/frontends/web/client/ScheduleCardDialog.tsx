@@ -17,7 +17,7 @@ export function ScheduleCardDialog(props: {
       : `Schedule changed (${card.changed.join(", ")}): ${card.name}`;
   return (
     <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-label="Setup card">
+      <div className="dialog schedule-card" role="dialog" aria-modal="true" aria-label="Setup card">
         <strong>{heading}</strong>
         <dl className="card-fields">
           {Object.entries(card.fields).map(([name, value]) => (
@@ -35,7 +35,9 @@ export function ScheduleCardDialog(props: {
           <button className="primary" onClick={props.onConfirm}>
             Got it
           </button>
-          <button onClick={props.onRemove}>Remove schedule</button>
+          <button className="danger" onClick={props.onRemove}>
+            Remove schedule
+          </button>
         </div>
       </div>
     </div>

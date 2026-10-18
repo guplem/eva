@@ -28,7 +28,7 @@ export function SchedulesPanel(): ReactElement {
     try {
       await api.saveSchedule(entry);
       setForm(emptyForm);
-      setNotice("Saved. Within a minute Eva shows its setup card. The schedule runs only after a front end shows it.");
+      setNotice("Saved. Within a minute Eva shows its setup card. The schedule runs only after you see the card.");
       reload();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));

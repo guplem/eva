@@ -91,7 +91,8 @@ const tools: readonly ToolCheck[] = [
     versionArguments: ["version"],
     feature: "opening Eva on your phone and other computers",
     required: false,
-    install: "https://tailscale.com/download",
+    install: "https://tailscale.com/download, or run `eva setup` on Windows",
+    installOnLinux: "eva setup",
     update: "with the installer or package manager that installed tailscale",
   },
   {

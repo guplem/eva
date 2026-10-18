@@ -68,9 +68,11 @@ import {
   windowsTaskCommand,
 } from "./frontends/cli/service.ts";
 import { claimHub, claimHubIfUnclaimed, type MachineRole } from "./core/instance/hub.ts";
-import { publishWithTailscale, readTailscale } from "./core/remote-access/tailscale.ts";
+import { RemoteAccessWatcher, type RemoteAccess } from "./core/remote-access/remote-access.ts";
+import { findTailscale } from "./core/remote-access/tailscale.ts";
+import { canInstallTailscale, installTailscale } from "./core/remote-access/tailscale-install.ts";
 import { runSetup, setupEnvironmentNames } from "./frontends/cli/setup.ts";
-import { describeAccess, runNetworkSetup } from "./frontends/cli/network-setup.ts";
+import { accessLines, runNetworkSetup, type NetworkSetupOptions } from "./frontends/cli/network-setup.ts";
 import { HttpTelegramApi } from "./frontends/telegram/telegram-api.ts";
 import { TelegramBot } from "./frontends/telegram/telegram-bot.ts";
 import type { EnginePort } from "./shared/engine-port.ts";
@@ -131,12 +133,13 @@ async function main(argv: readonly string[]): Promise<number> {
         defaultHome: defaultHomeFolder(),
         platform: process.platform,
       };
-      const networkOptions = {
-        runner: systemProcessRunner,
-        environment: childEnvironment(),
+      const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
+        // Only the running Eva publishes her page.
+        access: remoteAccessWatcher(port, false),
+        localUrl: `http://127.0.0.1:${String(port)}`,
         write: writeLine,
         sleep: (ms: number) => Bun.sleep(ms),
-      };
+      });
       if (command.nonInteractive) {
         await runSetup({
           ...setupOptions,
@@ -144,16 +147,15 @@ async function main(argv: readonly string[]): Promise<number> {
           ask: (key) => Promise.resolve(process.env[setupEnvironmentNames[key]] ?? ""),
         });
         await runNetworkSetup({
-          ...networkOptions,
+          ...networkOptions(loadSettings(paths).config.port),
           interactive: false,
           ask: () => Promise.resolve(""),
-          port: loadSettings(paths).config.port,
         });
       } else {
         await withPrompt(async (ask) => {
           await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
           // The last step: the address that opens Eva on every other device.
-          await runNetworkSetup({ ...networkOptions, interactive: true, ask, port: loadSettings(paths).config.port });
+          await runNetworkSetup({ ...networkOptions(loadSettings(paths).config.port), interactive: true, ask });
         });
       }
       return exitCodes.clean;
@@ -259,14 +261,6 @@ async function serve(paths: HomePaths): Promise<number> {
   const config = loaded.config;
   const hubClaimed =
     config.vaultPath !== null && claimHubIfUnclaimed(config.vaultPath, config.machineName ?? hostname(), new Date());
-  const tailscale = config.remoteAccess.tailscaleServe
-    ? await readTailscale(systemProcessRunner, childEnvironment())
-    : null;
-  const ownerLogin = tailscale?.ownerLogin ?? null;
-  let remoteAccess =
-    tailscale === null
-      ? null
-      : await publishWithTailscale(systemProcessRunner, childEnvironment(), tailscale, config.port);
   if (secrets.localApiToken === undefined) {
     secrets.localApiToken = randomBytes(24).toString("base64url");
     saveSecrets(paths, secrets);
@@ -286,8 +280,13 @@ async function serve(paths: HomePaths): Promise<number> {
     logger.log("info", "Moved the security settings from the vault to config.json; the vault's copy is ignored now.");
   if (loaded.problem !== null) logger.log("warn", "The vault's settings were not used.", { problem: loaded.problem });
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
-  if (remoteAccess !== null)
-    logger.log(remoteAccess.url === null ? "warn" : "info", "Tailscale access.", { ...remoteAccess });
+  // The first read happens before the local API starts, so a ready tailnet's host is known at once.
+  const remoteAccess = config.remoteAccess.tailscaleServe
+    ? remoteAccessWatcher(config.port, true, (access) => {
+        logger.log(access.step === "failed" ? "warn" : "info", "Tailscale access.", { ...access });
+      })
+    : null;
+  await remoteAccess?.refresh();
 
   const engines: EnginePort[] = [];
   const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
@@ -324,18 +323,11 @@ async function serve(paths: HomePaths): Promise<number> {
       restart?.();
     },
     claudeExecutable,
-    remoteAccess: () => remoteAccess,
+    remoteAccess,
     defaultHome: defaultHomeFolder(),
   });
-  // Until the tailnet turns HTTPS on, Eva tries again, so the person never needs a restart.
-  const publishRetry = setInterval(() => {
-    if (tailscale === null || (remoteAccess !== null && remoteAccess.url !== null)) return;
-    void readTailscale(systemProcessRunner, childEnvironment()).then(async (fresh) => {
-      if (fresh === null) return;
-      remoteAccess = await publishWithTailscale(systemProcessRunner, childEnvironment(), fresh, config.port);
-      if (remoteAccess.url !== null) logger.log("info", "Tailscale access.", { ...remoteAccess });
-    });
-  }, tailscaleRetryMs);
+  // Tailscale can arrive, sign in or turn HTTPS on after the start: the person never needs a restart.
+  remoteAccess?.watch(tailscaleReadMs);
   eva.sessions.subscribe((event) => {
     if (event.kind === "turn_failed")
       logger.log("warn", "A turn failed.", { sessionId: event.sessionId, reason: event.reason });
@@ -360,12 +352,9 @@ async function serve(paths: HomePaths): Promise<number> {
     eva,
     port: config.port,
     token: secrets.localApiToken,
-    extraHosts: [...config.remoteAccess.hostNames, ...(tailscale === null ? [] : [tailscale.hostName])],
-    // Plug and play: with no list, only the account that owns this machine in Tailscale gets in.
-    allowedTailscaleIdentities:
-      config.remoteAccess.allowedTailscaleIdentities.length > 0 || ownerLogin === null
-        ? config.remoteAccess.allowedTailscaleIdentities
-        : [ownerLogin],
+    extraHosts: config.remoteAccess.hostNames,
+    allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
+    tailnet: () => remoteAccess?.tailnet() ?? null,
   });
   logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
   writeLine(`Eva ${evaVersion} runs on ${api.url}. Vault: ${config.vaultPath ?? "not configured (run eva setup)"}.`);
@@ -384,7 +373,7 @@ async function serve(paths: HomePaths): Promise<number> {
       void (async () => {
         try {
           const outcome = await stopWithinDeadline(async () => {
-            clearInterval(publishRetry);
+            remoteAccess?.stop();
             eva.stop();
             await bot?.stop();
             api.stop();
@@ -625,7 +614,14 @@ async function link(paths: HomePaths): Promise<number> {
     writeLine("Eva is not running, so she publishes no address. Start her with `eva`, or run `eva setup`.");
     return exitCodes.crash;
   }
-  writeLine(describeAccess(await requestStatus(client)).join("\n"));
+  const status = await requestStatus(client);
+  writeLine(
+    accessLines({
+      remoteAccess: status.remoteAccess,
+      localUrl: status.localUrl,
+      actionHint: "Run `eva setup`, or open Settings in Eva's web page, to let Eva do these steps.",
+    }).join("\n"),
+  );
   return exitCodes.clean;
 }
 
@@ -731,7 +727,8 @@ async function moveSettingsAfterPull(
 }
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";
-const tailscaleRetryMs = 60_000;
+/** Within the minute that the person waits for the address; `tailscale status` is a cheap read. */
+const tailscaleReadMs = 30_000;
 /** systemd sends SIGKILL 90 seconds after SIGTERM by default; Eva ends well before that. */
 const shutdownDeadlineMs = 20_000;
 const hardExitGraceMs = 5_000;
@@ -773,6 +770,41 @@ function isStandalone(): boolean {
 
 function childEnvironment(): Record<string, string> {
   return buildChildEnvironment(process.env, baseEnvironmentAllowlist);
+}
+
+/** Phone access through Tailscale on this machine. Only the running Eva publishes. */
+function remoteAccessWatcher(
+  port: number,
+  publish: boolean,
+  onChange?: (access: RemoteAccess) => void,
+): RemoteAccessWatcher {
+  const environment = childEnvironment();
+  const platform = process.platform;
+  return new RemoteAccessWatcher({
+    runner: systemProcessRunner,
+    environment,
+    port,
+    publish,
+    program: () =>
+      findTailscale({
+        platform,
+        homeFolder: homedir(),
+        environment,
+        exists: existsSync,
+        which: (name) => Bun.which(name),
+      }),
+    install: canInstallTailscale(platform)
+      ? () =>
+          installTailscale({
+            runner: systemProcessRunner,
+            environment,
+            platform,
+            arch: process.arch,
+            homeFolder: homedir(),
+          })
+      : null,
+    ...(onChange === undefined ? {} : { onChange }),
+  });
 }
 
 main(process.argv.slice(2))

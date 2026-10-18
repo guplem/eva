@@ -2,12 +2,14 @@
  * A conversation as a tree: the chat and each of its forks in a
  * column of its own, each with its own input, and retry and fork on every answer.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
-import { runningCount, TasksDialog, tasksOf } from "./TasksPanel.tsx";
+import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
+import { StepRow } from "./TurnSteps.tsx";
 import { toWebHtml } from "./web-format.ts";
+import { splitSteps, storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -45,7 +47,7 @@ export function DeleteChatButton({
 }
 
 export function Conversation({ root, sessions, live, onChanged }: ConversationProps): ReactElement {
-  const branches = [root, ...descendantsOf(root.id, sessions)];
+  const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
@@ -106,7 +108,7 @@ function Branch({
   useEffect(() => {
     setPending(null);
   }, [turnCount]);
-  const streaming = live.streaming[session.id];
+  const liveSteps = live.steps[session.id];
   const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
   const send = async (): Promise<void> => {
@@ -147,8 +149,7 @@ function Branch({
         <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
           <div className="message user">{turn.userText}</div>
           <div className="message answer">
-            {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
-            <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(turn.answerText) }} />
+            <AnswerBody steps={turn.steps} omitted={turn.omittedSteps} wholeAnswer={turn.answerText} />
             {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
               {activityOf(turn) !== "" && <span className="chip">{activityOf(turn)}</span>}
@@ -164,9 +165,9 @@ function Branch({
         </div>
       ))}
       {pending !== null && <div className="message user">{pending}</div>}
-      {streaming !== undefined && (
-        <div className="message answer" aria-live="polite">
-          <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(streaming) }} />
+      {liveSteps !== undefined && (
+        <div className="message answer">
+          <LiveAnswerBody steps={liveSteps} />
         </div>
       )}
       {running > 0 && (
@@ -189,7 +190,7 @@ function Branch({
             }
           }}
         />
-        {(streaming !== undefined || pending !== null) && (
+        {(liveSteps !== undefined || pending !== null) && (
           <button onClick={() => runAction(() => api.stop(session.id))}>Stop</button>
         )}
         <button className="primary" disabled={busy || text.trim() === ""} onClick={() => void send()}>
@@ -198,6 +199,63 @@ function Branch({
       </div>
     </section>
   );
+}
+
+/**
+ * The badges of the steps before the last message, the last message in full, then the badges
+ * of the steps after it. A new message in a running turn replaces the shown one, and the older
+ * one becomes a badge. A turn stored before steps existed has none, so it shows its whole answer text.
+ */
+function AnswerBody({
+  steps,
+  omitted,
+  wholeAnswer,
+  live = false,
+}: {
+  readonly steps: readonly TurnStep[];
+  readonly omitted: number;
+  /** Every message in full. A badge keeps only 200 characters, so this is the way to read an earlier message. */
+  readonly wholeAnswer: string;
+  readonly live?: boolean;
+}): ReactElement {
+  const [showWhole, setShowWhole] = useState(false);
+  const { before, lastMessage, after } = splitSteps(steps);
+  const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
+  const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // The steps not kept came first. With no badge before the message, the later row says how many there were.
+  const omittedBefore = before.length > 0 ? omitted : 0;
+  return (
+    <>
+      <StepRow steps={before} omitted={omittedBefore} noun={after.length > 0 ? "earlier step" : "step"} />
+      {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
+      <div
+        className="answer-body"
+        aria-live={live ? "polite" : undefined}
+        dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
+      />
+      {canShowWhole && (
+        <button className="whole-answer" onClick={() => setShowWhole((shown) => !shown)}>
+          {showWhole ? "Show the last message only" : "Show the whole answer"}
+        </button>
+      )}
+      <StepRow steps={after} omitted={omitted - omittedBefore} noun="later step" />
+    </>
+  );
+}
+
+/** A running turn keeps the same window of steps as a stored one, so both show the same badges. */
+function LiveAnswerBody({ steps }: { readonly steps: readonly TurnStep[] }): ReactElement {
+  // A keystroke in the composer renders the branch again, so compute this only when a step arrives.
+  const shown = useMemo(() => storedSteps(steps), [steps]);
+  const wholeAnswer = useMemo(
+    () =>
+      steps
+        .filter((step) => step.kind === "message")
+        .map((step) => step.text)
+        .join("\n\n"),
+    [steps],
+  );
+  return <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} wholeAnswer={wholeAnswer} live />;
 }
 
 function isTouchScreen(): boolean {
@@ -217,9 +275,9 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** The ids of a chat and of each of its forks. */
-export function chatTreeIds(root: SessionRecord, sessions: readonly SessionRecord[]): string[] {
-  return [root, ...descendantsOf(root.id, sessions)].map((session) => session.id);
+/** A chat and each of its forks, the chat first. */
+export function chatTree(root: SessionRecord, sessions: readonly SessionRecord[]): SessionRecord[] {
+  return [root, ...descendantsOf(root.id, sessions)];
 }
 
 function descendantsOf(sessionId: string, sessions: readonly SessionRecord[]): SessionRecord[] {

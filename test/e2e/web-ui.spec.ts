@@ -17,7 +17,7 @@ async function openList(page: Page): Promise<void> {
 /** The task chip under the answer opens the chat's background tasks, also on a phone. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("Search the notes");
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
@@ -184,6 +184,40 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await expect(page.locator(".message.user").first()).toContainText(title);
 });
 
+test("a chat gets a new title in the header and the list, and Escape keeps the old one (issue 46)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await page.getByLabel("Chat title").fill("Draft");
+  await page.getByLabel("Chat title").press("Escape");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  await page.getByRole("button", { name: "Rename this chat" }).click();
+  // The field is selected, so typing replaces the old title.
+  await page.getByLabel("Chat title").pressSequentially("Trip");
+  await expect(page.getByLabel("Chat title")).toHaveValue("Trip");
+  if (test.info().project.name === "phone") {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
+  await page.getByLabel("Chat title").fill("Trip plans");
+  await page.getByLabel("Chat title").press("Enter");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Trip plans");
+  await openList(page);
+  await expect(page.locator(".list-item[aria-current='true']")).toContainText("Trip plans");
+
+  // A rename in Telegram or the terminal reaches the page through the event stream.
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+  const chat = sessions.find((session) => session.title === "Trip plans");
+  expect(chat).toBeDefined();
+  await page.request.post(`/api/sessions/${chat?.id ?? ""}/rename`, { data: { title: "Rome in May" } });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Rome in May");
+});
+
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);
@@ -276,7 +310,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await openList(page);
   await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
       "Nothing runs in the background.",
     );
   }
@@ -669,6 +703,77 @@ test("back on the page, a stale answer from before the sleep is cleared", async 
   await expect(page.getByText("an answer from before the sleep")).toHaveCount(0);
 });
 
+test("an answer shows its steps as badges with a hover text, and a tap lists them", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  // The live answer has the same badges until the turn ends, so wait for the stored one and its Retry button.
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(answer.locator(".answer-body")).toContainText(/Echo \d+: Hello Eva/);
+  // The demo turn runs a task, a tool and a command before its one message.
+  const toggle = answer.getByRole("button", { name: "Show 3 steps" });
+  await expect(answer.locator(".step-badge")).toHaveCount(3);
+  await expect(answer.locator('.step-badge[title="Command: ls"]')).toBeVisible();
+  if (test.info().project.name === "phone") {
+    // A finger needs a target of 44 px or more, also for a row of one small badge.
+    const box = await toggle.boundingBox();
+    expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  }
+  await toggle.click();
+  const steps = answer.getByRole("list", { name: "Steps" });
+  await expect(steps.getByRole("listitem")).toHaveText([
+    /Task\s+Search the notes/,
+    /Tool\s+Grep notes/,
+    /Command\s+ls/,
+  ]);
+  await answer.getByRole("button", { name: "Hide 3 steps" }).click();
+  await expect(steps).toHaveCount(0);
+});
+
+test("the chat panel shows the model, engine and context, and a phone opens it from Chat info", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  if (test.info().project.name === "desktop") {
+    const panel = page.getByRole("complementary", { name: "This chat" });
+    await expect(panel).toContainText("claude-code");
+    await expect(panel).toContainText("15 tokens");
+    // getByRole skips hidden elements, so count the button by its class.
+    await expect(page.locator(".chat-info-button")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    return;
+  }
+  await page.getByRole("button", { name: "Chat info" }).click();
+  const dialog = page.getByRole("dialog", { name: "This chat" });
+  await expect(dialog).toContainText("assistant");
+  await expect(dialog).toContainText("15 tokens");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("a new message of a running turn replaces the shown one, and the older one becomes a badge", async ({ page }) => {
+  const sockets = await routeEvents(page);
+  await logIn(page);
+  const sessionId = await newChat(page);
+  sockets.at(-1)?.send(textEvent(sessionId, "first thought"));
+  await expect(page.getByText("first thought")).toBeVisible();
+  sockets.at(-1)?.send(textEvent(sessionId, "second thought"));
+  await expect(page.getByText("second thought")).toBeVisible();
+  await expect(page.getByText("first thought")).toHaveCount(0);
+  await expect(page.locator('.step-badge[title="Message: first thought"]')).toHaveCount(1);
+  // A badge keeps a short text, so the whole answer is one tap away.
+  await page.getByRole("button", { name: "Show the whole answer" }).click();
+  await expect(page.getByText("first thought")).toBeVisible();
+  await expect(page.getByText("second thought")).toBeVisible();
+});
+
 test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events$/, (socket) => {
@@ -938,4 +1043,77 @@ test.describe("on a touch screen", () => {
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
   });
+});
+
+test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
+  const run = test.info().project.name;
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
+  await page.getByRole("button", { name: "Project details" }).click();
+  await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
+  await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await page.getByLabel("Project status").selectOption("active");
+  await page.getByLabel("Add a tag").fill("ideas");
+  await page.getByRole("button", { name: "Add the tag" }).click();
+  await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  const file = page.getByLabel("AGENTS.md");
+  await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
+  await expect(file).toHaveValue(/# Renamed/);
+
+  if (run === "phone") {
+    const heights = await page
+      .locator("main button:visible, main select:visible, main input:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
+
+  // The whole file waits while the form has a change, so a save cannot drop that change.
+  await page.getByLabel("Title").fill(`Renamed ${run} again`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeDisabled();
+  await expect(page.getByLabel("AGENTS.md")).toBeDisabled();
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Remove the tag ideas" }).click();
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await expect(file).not.toHaveValue(/ideas/);
+
+  // The whole file waits while the form has a change, and the form waits for the whole file.
+  await file.fill(`${await file.inputValue()}\nDraft line.\n`);
+  await expect(page.getByRole("button", { name: "Save details" })).toBeDisabled();
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).not.toHaveValue(/Draft line/);
+
+  // Another device saves meanwhile: this page's save is refused, and says so.
+  const projectId = `2025-05-01-0800-${run}-draft`;
+  await page.evaluate(async (id) => {
+    const path = `/api/projects/${id}/file`;
+    const { text, version } = (await (await fetch(path)).json()) as { text: string; version: string };
+    await fetch(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version, text: `${text}\nFrom another device.\n` }),
+    });
+  }, projectId);
+  await page.getByLabel("Title").fill(`Clash ${run}`);
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("alert")).toContainText("The file changed since you opened it");
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).toHaveValue(/From another device/);
+  await expect(page.getByLabel("Title")).toHaveValue(`Renamed ${run}`);
+
+  await file.fill(`${await file.inputValue()}\nMore notes.\n`);
+  await page.getByRole("button", { name: "Save the file" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await openList(page);
+  await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });

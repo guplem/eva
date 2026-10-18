@@ -22,6 +22,7 @@ import {
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
+import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 
 export interface PreparedTurn {
@@ -112,11 +113,13 @@ interface SessionRuntime {
 }
 
 const titleLength = 60;
-/** What a turn did, for the activity chips under its answer. */
+/** What a turn did, for the activity chips and the step badges under its answer. */
 interface TurnActivity {
   readonly toolCount: number;
   readonly commandCount: number;
   readonly taskCount: number;
+  readonly steps: TurnStep[];
+  readonly omittedSteps: number;
 }
 
 const defaultTitle = "New chat";
@@ -181,6 +184,21 @@ export class SessionManager {
     }
     const updated = { ...session, modelAlias: model };
     this.options.store.save(updated);
+    return updated;
+  }
+
+  /**
+   * Gives a chat the person's title. A running turn keeps it, because its end reads the record
+   * again. A first message names only a chat that still has the default title. A chat renamed to
+   * exactly the default title also takes its first message as its title.
+   */
+  rename(sessionId: string, title: string): SessionRecord {
+    const session = this.get(sessionId);
+    const cleaned = cutTitle(this.options.redactor.redact(title).replace(/\s+/g, " ").trim());
+    if (cleaned.length === 0) throw new EvaError("title_invalid", "A chat title needs at least one character.");
+    const updated = { ...session, title: cleaned };
+    this.options.store.save(updated);
+    this.emit(sessionId, { kind: "session_renamed", title: cleaned });
     return updated;
   }
 
@@ -379,6 +397,7 @@ export class SessionManager {
     const activity = { toolCount: 0, commandCount: 0, taskCount: 0 };
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
+    let steps: readonly TurnStep[] = [];
 
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
@@ -447,12 +466,19 @@ ${prompt}`,
           taskIds.add(payload.taskId);
           activity.taskCount = taskIds.size;
         }
+        steps = addStep(steps, payload);
         if (payload.kind === "turn_finished") {
           finished = payload;
           // Record first: a front end that reloads the list on this event must find the turn in it.
           this.recordTurn(
             session,
-            { userText: this.options.redactor.redact(prompt), answerText: answerParts.join("\n\n"), ...activity },
+            {
+              userText: this.options.redactor.redact(prompt),
+              answerText: answerParts.join("\n\n"),
+              ...activity,
+              ...storedSteps(steps),
+              contextTokens: payload.contextTokens,
+            },
             payload,
             lastText,
           );
@@ -466,7 +492,8 @@ ${prompt}`,
       clearTimeout(timeout);
       runtime.controller = null;
     }
-    if (finished === null) this.recordFailure(session.id, prompt, answerParts, activity, historyLost);
+    if (finished === null)
+      this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
@@ -492,7 +519,7 @@ ${prompt}`,
 
   private recordTurn(
     session: SessionRecord,
-    turn: { userText: string; answerText: string } & TurnActivity,
+    turn: { userText: string; answerText: string; contextTokens: number | null } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
   ): void {
@@ -536,6 +563,7 @@ ${prompt}`,
           userText: this.options.redactor.redact(prompt),
           answerText: answerParts.join("\n\n"),
           ...activity,
+          contextTokens: null,
           failure: last,
           lastMessageId: null,
           at,
@@ -593,7 +621,13 @@ function createBatch(): PendingBatch {
 
 function titleOf(prompt: string): string {
   const firstLine = prompt.split("\n")[0]?.trim() ?? "";
-  return firstLine.length > titleLength ? `${firstLine.slice(0, titleLength - 1)}…` : firstLine || defaultTitle;
+  return cutTitle(firstLine) || defaultTitle;
+}
+
+/** Counts code points, not UTF-16 units, so a cut never leaves half an emoji. */
+function cutTitle(title: string): string {
+  const characters = Array.from(title);
+  return characters.length > titleLength ? `${characters.slice(0, titleLength - 1).join("")}…` : title;
 }
 
 function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload;
@@ -617,6 +651,8 @@ function redactPayload(
       return { ...payload, summary: redactor.redact(payload.summary) };
     case "task_changed":
       return { ...payload, description: redactor.redact(payload.description) };
+    case "session_renamed":
+      return { ...payload, title: redactor.redact(payload.title) };
     case "tool_finished":
     case "history_lost":
     case "approval_resolved":

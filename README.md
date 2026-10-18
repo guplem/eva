@@ -78,6 +78,7 @@ Any conversation can continue in Telegram. Send `/chats` to pick one from the we
 | `/new`       | Start a new conversation                      |
 | `/chats`     | Pick any conversation to continue here        |
 | `/delete`    | Delete this conversation everywhere           |
+| `/rename`    | Give this conversation a new name             |
 | `/stop`      | Stop what Eva is doing in this conversation   |
 | `/status`    | Show whether everything is all right          |
 | `/logs`      | Show Eva's last warnings and errors           |
@@ -100,6 +101,8 @@ Eva's web page shows all your conversations, your projects and the settings. Its
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
+
+To change a project's title, status, tags or repositories, open the project in the list and press **Project details**. The same page shows the project's whole `AGENTS.md` for any other change.
 
 ### Settings
 
@@ -160,7 +163,7 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 | -------------------------------------------------- | --------------------------------------------- |
 | [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
 
-Steps that only the owner can do are GitHub issues with the `owner` label.
+Steps that only a person can do are GitHub issues with the `requires-human-intervention` label.
 
 ## License
 

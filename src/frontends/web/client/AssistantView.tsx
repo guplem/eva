@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTreeIds, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
+import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -37,6 +37,14 @@ export function AssistantView({
   const [model, setModel] = useState<ModelAlias>("default");
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
+  const tree = selected === undefined ? [] : chatTree(selected, sessions);
+  const chat = {
+    tree,
+    tasks: tasksOf(
+      live.tasks,
+      tree.map((session) => session.id),
+    ),
+  };
   const listRef = useRef<HTMLDivElement>(null);
   const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
 
@@ -121,15 +129,86 @@ export function AssistantView({
         ) : (
           <>
             <div className="main-header">
-              <h1>{selected.title}</h1>
+              <ChatTitle key={selected.id} chat={selected} onChanged={onChanged} />
               <span className="badge">{selected.modelAlias}</span>
+              <ChatInfoButton {...chat} />
               <DeleteChatButton chat={selected} onChanged={onChanged} />
             </div>
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
           </>
         )}
       </main>
-      <TasksPanel tasks={tasksOf(live.tasks, selected === undefined ? [] : chatTreeIds(selected, sessions))} />
+      <ChatPanel {...chat} />
     </div>
+  );
+}
+
+/** The chat's title, and a pencil that turns it into a field. Enter saves; Escape keeps the old title. */
+function ChatTitle({
+  chat,
+  onChanged,
+}: {
+  readonly chat: SessionRecord;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
+  const [draft, setDraft] = useState<string | null>(null);
+  // A second Enter while the request runs must not send it again.
+  const [saving, setSaving] = useState(false);
+  const showError = useShowError();
+
+  const save = async (title: string): Promise<void> => {
+    setSaving(true);
+    try {
+      await api.rename(chat.id, title);
+      await onChanged();
+      setDraft(null);
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (draft === null) {
+    return (
+      <>
+        <h1>{chat.title}</h1>
+        <button
+          className="icon-button"
+          aria-label="Rename this chat"
+          title="Rename this chat"
+          onClick={() => setDraft(chat.title)}
+        >
+          ✏️
+        </button>
+      </>
+    );
+  }
+  return (
+    <form
+      className="rename-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!saving) void save(draft);
+      }}
+    >
+      <input
+        aria-label="Chat title"
+        value={draft}
+        autoFocus
+        // Selected, so the person can type a new title at once.
+        onFocus={(event) => event.target.select()}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setDraft(null);
+        }}
+      />
+      <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
+        Save
+      </button>
+      <button type="button" onClick={() => setDraft(null)}>
+        Cancel
+      </button>
+    </form>
   );
 }

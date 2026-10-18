@@ -87,10 +87,35 @@ describe("a conversation", () => {
         toolCount: 0,
         commandCount: 0,
         taskCount: 0,
+        steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
+        omittedSteps: 0,
+        contextTokens: 15,
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
       },
+    ]);
+  });
+
+  test("a turn keeps its steps in order, with the last message in full and a failed tool marked", async () => {
+    const long = "y".repeat(300);
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text", text: long, messageId: "m1" },
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "npm test" },
+        { kind: "tool_finished", toolUseId: "t1", isError: true },
+        { kind: "task_changed", taskId: "k1", description: "look", state: "running" },
+        ...FakeEngine.answer(request, long),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Run the tests.");
+    const steps = manager.get(sessionId).turns[0]?.steps ?? [];
+    expect(steps.map((step) => [step.kind, step.text.length, step.isError])).toEqual([
+      ["message", 200, false],
+      ["command", 8, true],
+      ["task", 4, false],
+      ["message", 300, false],
     ]);
   });
 
@@ -257,6 +282,71 @@ describe("models (lesson 41)", () => {
   });
 });
 
+describe("renames (issue 46)", () => {
+  test("a rename saves the title, tells every front end, and survives a restart", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, "  Trip plans  ").title).toBe("Trip plans");
+    expect(events).toMatchObject([{ kind: "session_renamed", sessionId, title: "Trip plans" }]);
+    expect(createManager(new FakeEngine()).get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a renamed chat keeps its title after its first message", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.rename(sessionId, "Trip plans");
+    await manager.send(sessionId, "Hello there, Eva");
+    expect(manager.get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a rename during a turn stays when the turn ends", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const done = manager.send(sessionId, "Hello there, Eva");
+    manager.rename(sessionId, "Trip plans");
+    await done;
+    expect(manager.get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a title is one line, cut to the title length, and redacted", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-telegram-token-value");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, "first\nsecond").title).toBe("first second");
+    expect(manager.rename(sessionId, "x".repeat(80)).title).toBe(`${"x".repeat(59)}…`);
+    expect(manager.rename(sessionId, "key the-telegram-token-value").title).toBe("key [redacted]");
+  });
+
+  test("a cut never splits an emoji", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, `${"x".repeat(58)}🙂🙂🙂`).title).toBe(`${"x".repeat(58)}🙂…`);
+  });
+
+  test("the same title again tells the front ends again, so Telegram can retry a refused topic rename", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.rename(sessionId, "Trip plans");
+    expect(manager.rename(sessionId, " Trip plans ").title).toBe("Trip plans");
+    expect(events.filter((event) => event.kind === "session_renamed")).toHaveLength(2);
+  });
+
+  test("an empty title is refused", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    let caught: unknown;
+    try {
+      manager.rename(sessionId, " \n ");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "title_invalid")).toBe(true);
+    expect(manager.get(sessionId).title).toBe("New chat");
+    expect(events).toEqual([]);
+  });
+});
+
 describe("event order", () => {
   test("a turn is in the session list before its turn_finished event goes out", async () => {
     const manager = createManager(new FakeEngine());
@@ -281,7 +371,16 @@ describe("exactly one end event (lesson 47)", () => {
     );
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "go");
-    expect(manager.get(sessionId).turns[0]).toMatchObject({ toolCount: 1, commandCount: 1, taskCount: 1 });
+    expect(manager.get(sessionId).turns[0]).toMatchObject({
+      toolCount: 1,
+      commandCount: 1,
+      taskCount: 1,
+      steps: [
+        { kind: "command", text: "ls" },
+        { kind: "task", text: "look" },
+      ],
+      contextTokens: null,
+    });
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });
 
@@ -728,5 +827,26 @@ describe("stops, failures and lost histories (security and lesson review)", () =
       userText: "remember [redacted]",
       answerText: "it is [redacted]",
     });
+  });
+
+  test("a secret in a step is redacted before the step is cut (lesson 95)", async () => {
+    const secret = "the-secret-value-123";
+    const redactor = new Redactor();
+    redactor.addSecret(secret);
+    // The secret crosses the 200-character cut, so a cut before the redaction would keep half of it.
+    const summary = `${"a".repeat(190)}${secret}`;
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary },
+        { kind: "task_changed", taskId: "k1", description: `look for ${secret}`, state: "running" },
+        ...FakeEngine.answer(request, "ok"),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const stored = JSON.stringify(manager.get(sessionId).turns[0]?.steps);
+    expect(stored).not.toContain("the-secret");
+    expect(stored).toContain("look for [redacted]");
   });
 });

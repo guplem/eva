@@ -293,8 +293,14 @@ textarea {
   padding-left: 22px;
 }
 
-.answer-body li > :is(ul, ol, p, pre) {
+/* A paragraph in a loose item keeps its full margin, so a blank line between items still shows. */
+.answer-body li > :is(ul, ol, pre) {
   margin: 4px 0;
+}
+
+/* The browser's default link blue is hard to read in dark mode. */
+.answer-body a {
+  color: var(--accent);
 }
 
 .answer-body pre {

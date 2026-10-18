@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { remoteAccessWatcher } from "../../../../src/frontends/cli/host.ts";
+import { installEnvironment, remoteAccessWatcher } from "../../../../src/frontends/cli/host.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessResult, ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { fakeHost } from "../../../support/fake-host.ts";
@@ -36,5 +36,14 @@ describe("remoteAccessWatcher", () => {
     );
     expect(await watcher.refresh()).toMatchObject({ step: "install", canInstall: false });
     expect(steps).toEqual(["install"]);
+  });
+});
+
+describe("installEnvironment", () => {
+  test("keeps the person's proxy settings, which an installer needs, and drops Eva's own secrets", () => {
+    const host = fakeHost({
+      environment: { PATH: "/usr/bin", HTTPS_PROXY: "http://proxy.example:3128", EVA_TELEGRAM_BOT_TOKEN: "secret" },
+    });
+    expect(installEnvironment(host)).toEqual({ PATH: "/usr/bin", HTTPS_PROXY: "http://proxy.example:3128" });
   });
 });

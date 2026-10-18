@@ -36,6 +36,18 @@ export const baseEnvironmentAllowlist: readonly string[] = [
   "XDG_RUNTIME_DIR",
 ];
 
+/** The person's proxy and certificate settings, for a child that downloads, such as an installer. */
+export const proxyEnvironmentAllowlist: readonly string[] = [
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "SSL_CERT_FILE",
+  "NODE_EXTRA_CA_CERTS",
+];
+
 export type EnvironmentMap = Readonly<Record<string, string | undefined>>;
 
 /** The allowlisted variables of `source`, plus `extra`, which wins on a clash. */

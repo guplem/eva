@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checks one built Eva executable the way a new person starts it:
 # `eva version`, `eva doctor`, then `eva setup --non-interactive` with a new vault.
+# Setup installs no harness: the smoke test changes nothing outside its own folder.
 # Usage: bash scripts/smoke-executable.sh <path to the executable>
 set -euo pipefail
 
@@ -21,6 +22,7 @@ EVA_TIME_ZONE="Europe/Madrid" \
   EVA_VAULT_PATH="$work/vault" \
   EVA_CREATE_VAULT="yes" \
   EVA_PERSON_NAME="Test Person" \
+  EVA_INSTALL_ENGINES="no" \
   "$executable" --home "$work/home" setup --non-interactive
 
 grep -q '"port": 7533' "$work/home/config.json"

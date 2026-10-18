@@ -6,9 +6,11 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { locateEngineProgram } from "./core/engine-install/engine-install.ts";
 import { Eva } from "./core/eva.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
@@ -80,11 +82,19 @@ function createEngines(
   logger: Logger,
 ): { engines: EnginePort[]; claudeExecutable: string | null } {
   const engines: EnginePort[] = [];
-  const claudeExecutable = config.engines.claudeCode.executable ?? Bun.which("claude");
+  // A service keeps the PATH from its install, which can lack the folder of a later engine install.
+  const places = {
+    platform: host.platform,
+    homeFolder: host.userHome,
+    environment: host.environment,
+    which: (name: string) => Bun.which(name),
+    exists: existsSync,
+  };
+  const claudeExecutable = config.engines.claudeCode.executable ?? locateEngineProgram("claude-code", places);
   if (claudeExecutable === null)
     logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
   else engines.push(new ClaudeCodeEngine({ executable: claudeExecutable }));
-  const piExecutable = config.engines.pi.executable ?? Bun.which("pi");
+  const piExecutable = config.engines.pi.executable ?? locateEngineProgram("pi", places);
   if (piExecutable !== null) {
     engines.push(
       new PiEngine({

@@ -1,7 +1,7 @@
 /**
  * A new vault from Eva's template: the files in `templates/vault/`, which
  * Bun embeds at build time, so the single executable carries them. The template holds nothing
- * personal; `eva setup` fills in the person's name, language and time zone.
+ * personal; `eva setup` fills in the person's name, language, time zone and topics.
  */
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,6 +18,8 @@ export interface VaultTemplateAnswers {
   readonly name: string;
   readonly language: string;
   readonly timeZone: string;
+  /** The main topics of the person's life and work, in their own words. */
+  readonly topics: readonly string[];
 }
 
 export interface NewVaultInputs {
@@ -31,11 +33,14 @@ const gitTimeoutMs = 20_000;
 
 /** The template's files, by path from the vault root, with the answers filled in. */
 export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string, string> {
+  // "None yet." shows that the section is empty on purpose, not broken.
+  const topicList = answers.topics.length === 0 ? "None yet." : answers.topics.map((topic) => `- ${topic}`).join("\n");
   const fill = (text: string): string =>
     text
       .replaceAll("{{name}}", answers.name)
       .replaceAll("{{language}}", answers.language)
-      .replaceAll("{{timeZone}}", answers.timeZone);
+      .replaceAll("{{timeZone}}", answers.timeZone)
+      .replaceAll("{{topics}}", topicList);
   return {
     "AGENTS.md": agentsFile,
     "README.md": readmeFile,

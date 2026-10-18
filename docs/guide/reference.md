@@ -16,7 +16,7 @@ Run these on the computer where Eva runs. When Eva is already running, each comm
 | `eva supervise`                  | Runs Eva, and starts her again after a crash (the Windows service does this for you). |
 | `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address.     |
 | `eva link`                       | Shows the address that opens Eva on your phone and other computers.                   |
-| `eva chat`                       | Talks to Eva in this terminal.                                                        |
+| `eva chat`                       | Talks to Eva in this terminal. Type `/rename <title>` to name the chat.               |
 | `eva projects [words]`           | Searches your projects. `status:active` and `tag:work` filter them.                   |
 | `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.           |
 | `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.        |

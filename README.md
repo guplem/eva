@@ -74,6 +74,7 @@ Write to your bot as you write to a person. Eva answers in the same chat. Each n
 | Command      | What it does                                  |
 | ------------ | --------------------------------------------- |
 | `/new`       | Start a new conversation                      |
+| `/rename`    | Give this conversation a new name             |
 | `/stop`      | Stop what Eva is doing in this conversation   |
 | `/status`    | Show whether everything is all right          |
 | `/logs`      | Show Eva's last warnings and errors           |
@@ -97,6 +98,8 @@ Eva's web page shows all your conversations, your projects and the settings. Its
 3. On a phone, choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
+
+To change a project's title, status, tags or repositories, open the project in the list and press **Project details**. The same page shows the project's whole `AGENTS.md` for any other change.
 
 ### Settings
 

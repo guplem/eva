@@ -4,6 +4,7 @@ import type { EvaStatus, PageSecretName, PublicSettings, SetupState } from "../.
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
@@ -18,6 +19,7 @@ import type {
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
+import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type {
@@ -31,6 +33,8 @@ export type {
   PageSecretName,
   PendingApproval,
   Project,
+  ProjectDetails,
+  ProjectFile,
   PublicSettings,
   ScheduleCard,
   SetupState,
@@ -51,10 +55,13 @@ export interface ScheduleList {
 
 export class ApiError extends Error {
   readonly status: number;
+  /** The `EvaErrorCode` of the failure, or null when the answer has none. */
+  readonly code: EvaErrorCode | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: EvaErrorCode | null = null) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -68,12 +75,15 @@ async function request<Body>(method: string, path: string, body?: unknown): Prom
   if (!response.ok) {
     const text = await response.text();
     let message = text;
+    let code: EvaErrorCode | null = null;
     try {
-      message = (JSON.parse(text) as { error?: string }).error ?? text;
+      const parsed = JSON.parse(text) as { error?: string; code?: EvaErrorCode };
+      message = parsed.error ?? text;
+      code = parsed.code ?? null;
     } catch {
       // Not JSON: keep the text.
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code);
   }
   return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
 }
@@ -100,6 +110,8 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
   retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
+  rename: (sessionId: string, title: string): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
@@ -114,6 +126,13 @@ export const api = {
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
+  projectFile: (projectId: string): Promise<ProjectFile> =>
+    request("GET", `/api/projects/${encodeURIComponent(projectId)}/file`),
+  /** A file that changed since `version` answers 409. */
+  saveProjectDetails: (projectId: string, version: string, details: ProjectDetails): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/details`, { version, ...details }),
+  saveProjectFile: (projectId: string, version: string, text: string): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/file`, { version, text }),
   newClone: (projectId: string): Promise<CloneDetails> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),

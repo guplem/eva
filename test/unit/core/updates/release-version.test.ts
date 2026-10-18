@@ -124,8 +124,8 @@ describe("release notes", () => {
     const notes = releaseNotes([
       { ...commit("fix: a bug"), hash: "aaaaaaa" },
       { ...commit("docs: a guide"), hash: "bbbbbbb", pullRequest: pullRequest(5, "docs: a guide") },
-      { ...commit("feat: record a voice note"), hash: "ccccccc", pullRequest: voice },
       { ...commit("fix: trim the silence"), hash: "ddddddd", pullRequest: voice },
+      { ...commit("feat: record a voice note"), hash: "ccccccc", pullRequest: voice },
       { ...commit("test: cover voice notes"), hash: "eeeeeee", pullRequest: voice },
       { ...commit("refactor!: drop Node"), hash: "fffffff", pullRequest: pullRequest(6, "refactor!: drop Node") },
     ]);
@@ -147,8 +147,8 @@ describe("release notes", () => {
         "<summary>Commits</summary>",
         "",
         "- fix: a bug (aaaaaaa)",
-        "- feat: record a voice note (ccccccc)",
         "- fix: trim the silence (ddddddd)",
+        "- feat: record a voice note (ccccccc)",
         "- refactor!: drop Node (fffffff)",
         "",
         "</details>",

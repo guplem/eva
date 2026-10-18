@@ -58,8 +58,10 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
         2,
       ) + "\n",
     ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
-    "Notes/.gitkeep": "",
-    "Projects/.gitkeep": "",
+    // The empty top-level folders that AGENTS.md describes, so a new vault shows its shape.
+    ...Object.fromEntries(
+      ["Principles", "Methods", "Toolbox", "Library", "Life", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),
+    ),
   };
 }
 

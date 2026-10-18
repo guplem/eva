@@ -29,7 +29,7 @@ export interface EngineLoginStateOptions {
 export async function engineLoginState(options: EngineLoginStateOptions): Promise<EngineLoginState> {
   return {
     claudeToken: options.claudeTokenSaved,
-    pi: piLogin(options.folders.piAgent),
+    pi: piLoginState(options.folders.piAgent),
     gh: await ghLoggedIn(options),
   };
 }
@@ -124,7 +124,8 @@ function runPi(folders: EngineFolders, platform: NodeJS.Platform): string {
   return withVariable("PI_CODING_AGENT_DIR", folders.piAgent, ["pi"], platform);
 }
 
-function piLogin(agentFolder: string): EngineLoginState["pi"] {
+/** The pi login in an agent folder: "claude" is an Anthropic login, which Eva never uses through pi. */
+export function piLoginState(agentFolder: string): EngineLoginState["pi"] {
   const file = readJsonTolerant(join(agentFolder, "auth.json"));
   if (!file.ok || typeof file.value !== "object" || file.value === null) return "missing";
   const providers = Object.keys(file.value);

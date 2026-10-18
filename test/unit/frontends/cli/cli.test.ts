@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
 import { loadSettings } from "../../../../src/core/settings/settings.ts";
@@ -50,6 +51,7 @@ import {
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
+import { scriptedRunner } from "../../../support/fake-host.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 describe("parseArguments", () => {
@@ -148,6 +150,7 @@ describe("runDoctor", () => {
     standalone: false,
     platform: "win32",
     userName: "person",
+    userHome: "/srv/person",
     defaultEngine: "claude-code",
     google: () => Promise.resolve(null),
   } as const satisfies Partial<DoctorOptions>;
@@ -230,21 +233,22 @@ describe("runDoctor", () => {
     expect(asked).toContain("git");
   });
 
+  /** On Windows, cmd runs pi, so the program is the fourth word. */
   function finding(programs: readonly string[]): ProcessRunner {
     return {
       run: (command) =>
-        programs.includes(command[0] ?? "")
+        programs.includes((command[0] === "cmd" ? command[3] : command[0]) ?? "")
           ? Promise.resolve({ exitCode: 0, stdout: "v1\n", stderr: "" })
           : Promise.reject(new Error("not found")),
     };
   }
 
-  test("the default engine's program is required, and the Linux hint gives the install command", async () => {
+  test("the default engine's program is required, and setup installs it", async () => {
     const lines: string[] = [];
     const runner = finding(["git", "bun"]);
     const write = (line: string): number => lines.push(line);
     expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(false);
-    expect(lines.join("\n")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    expect(lines.join("\n")).toContain("missing claude (for the Claude Code engine): run `eva setup`");
     // Eva installs Tailscale herself, with no root.
     expect(lines.join("\n")).toContain(
       "missing tailscale (for opening Eva on your phone and other computers): run `eva setup`",
@@ -255,6 +259,14 @@ describe("runDoctor", () => {
     expect(await runDoctor({ ...doctorBasics, runner: withPi, environment: {}, write, defaultEngine: "pi" })).toBe(
       true,
     );
+  });
+
+  test("finds an engine in its installer's folder when the PATH lacks it", async () => {
+    const lines: string[] = [];
+    const runner = finding(["git", "bun", "/srv/person/.local/bin/claude"]);
+    const write = (line: string): number => lines.push(line);
+    expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(true);
+    expect(lines.join("\n")).toContain("ok      claude: v1");
   });
 
   test("on Linux, it reports whether the user's services run while the user is logged out", async () => {
@@ -312,6 +324,7 @@ describe("runSetup", () => {
       asked?: SetupQuestion[];
       defaultHome?: string;
       githubLogin?: SetupOptions["githubLogin"];
+      piReleasesBaseUrl?: string;
     } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
@@ -331,6 +344,10 @@ describe("runSetup", () => {
       defaultHome: extra.defaultHome ?? home,
       githubLogin: extra.githubLogin ?? null,
       platform: "linux",
+      userHome: home,
+      installEnvironment: gitEnvironment,
+      arch: "x64",
+      ...(extra.piReleasesBaseUrl === undefined ? {} : { piReleasesBaseUrl: extra.piReleasesBaseUrl }),
     });
   }
 
@@ -404,13 +421,13 @@ describe("runSetup", () => {
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
 
-  test("the default engine can change; a wrong one is refused", async () => {
-    await setup({ engine: "pi" });
+  test("setup asks no default engine; a script still sets it, and a wrong one stops the script", async () => {
+    const asked: SetupQuestion[] = [];
+    await setup({ engine: "pi" }, { asked });
+    expect(asked).not.toContain("engine");
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
+    await setup({ engine: "pi" }, { interactive: false });
     expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
-    const lines: string[] = [];
-    await setup({ engine: "codex" }, { lines });
-    expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
-    expect(lines.join("\n")).toContain("must be claude-code or pi");
     let caught: unknown;
     try {
       await setup({ engine: "codex" }, { interactive: false });
@@ -418,6 +435,172 @@ describe("runSetup", () => {
       caught = error;
     }
     expect(isEvaError(caught, "config_invalid")).toBe(true);
+  });
+
+  test("the default engine follows the login, and Claude Code stays when both have one", async () => {
+    const piLogin = (): void => {
+      mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+      writeFileSync(join(home, ".pi", "agent", "auth.json"), JSON.stringify({ openai: { type: "oauth" } }));
+    };
+    const lines: string[] = [];
+    piLogin();
+    await setup({}, { lines });
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
+    expect(lines.join("\n")).toContain("Eva uses pi");
+    // A Claude token now: the person chose nothing on the web page, but pi stays, as the default has a login.
+    await setup({ claudeToken: "a-claude-setup-token-value" });
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
+    rmSync(join(home, ".pi"), { recursive: true });
+    await setup({});
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
+    // A Claude Code login of its own counts as much as a token.
+    rmSync(join(home, "secrets.json"));
+    mkdirSync(join(home, ".claude"));
+    writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+    piLogin();
+    await setup({});
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
+  });
+
+  describe("the harness install (#136)", () => {
+    const archive = new TextEncoder().encode("a pretend pi archive");
+    let server: ReturnType<typeof Bun.serve> | null = null;
+    afterEach(() => {
+      void server?.stop(true);
+      server = null;
+    });
+
+    /** A fake pi release; `broken` serves no files. */
+    function serveRelease(broken = false): string {
+      const hash = createHash("sha256").update(archive).digest("hex");
+      void server?.stop(true);
+      server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          if (broken) return new Response("not found", { status: 404 });
+          if (path === "/SHA256SUMS") return new Response(`${hash}  pi-linux-x64.tar.gz\n`);
+          return path === "/pi-linux-x64.tar.gz" ? new Response(archive) : new Response("", { status: 404 });
+        },
+      });
+      return `http://127.0.0.1:${String(server.port)}`;
+    }
+
+    /** No engine answers until its install ran; `failClaude` makes the Claude Code installer fail. */
+    const installRunner = (commands: string[][], failClaude = false): ProcessRunner => {
+      let claude = false;
+      return {
+        run: (command) => {
+          commands.push([...command]);
+          const program = command[0] ?? "";
+          if (program === "bash") {
+            if (failClaude) return Promise.resolve({ exitCode: 1, stdout: "", stderr: "the installer broke\n" });
+            claude = true;
+          } else if (program === "tar") {
+            writeFileSync(join(command[command.indexOf("-C") + 1] ?? "", "pi"), "pretend program");
+          } else if (command.at(-1) === "--version") {
+            const found = program.endsWith("claude") ? claude && program === "claude" : existsSync(program);
+            if (!found) return Promise.reject(new EvaError("process_failed", "Could not start it."));
+          }
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      };
+    };
+
+    test("with neither harness, setup installs both with no question, before the token question", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      const asked: SetupQuestion[] = [];
+      await setup({}, { runner: installRunner(commands), lines, asked, piReleasesBaseUrl: serveRelease() });
+      expect(commands).toContainEqual(["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]);
+      expect(commands.some((command) => command[0] === "tar")).toBe(true);
+      expect(existsSync(join(home, ".local", "lib", "pi", "pi"))).toBe(true);
+      expect(asked).not.toContain("engine");
+      const text = lines.join("\n");
+      expect(text).toContain("Installed Claude Code: claude.");
+      // Setup runs as Linux here, so the path has forward slashes on every machine.
+      expect(text).toContain(`Installed pi: ${posix.join(home, ".local", "lib", "pi", "pi")}.`);
+      expect(text).toContain("and type /login");
+      expect(text).toContain("run `claude setup-token`");
+    });
+
+    test("a script can skip the installs; a person is never asked", async () => {
+      const commands: string[][] = [];
+      const asked: SetupQuestion[] = [];
+      await setup({ installEngines: "no" }, { interactive: false, runner: installRunner(commands), asked });
+      expect(commands.some((command) => command[0] === "bash" || command[0] === "tar")).toBe(false);
+      asked.length = 0;
+      await setup({}, { runner: scriptedRunner([]), asked });
+      expect(asked).not.toContain("installEngines");
+    });
+
+    test("a failed Claude Code install does not stop the pi install", async () => {
+      const lines: string[] = [];
+      await setup({}, { runner: installRunner([], true), lines, piReleasesBaseUrl: serveRelease() });
+      const text = lines.join("\n");
+      expect(text).toContain("bash failed: the installer broke. Run `curl");
+      expect(text).toContain("Setup goes on without it.");
+      expect(text).toContain("Installed pi:");
+    });
+
+    test("an extra instance logs in to pi in its own folder", async () => {
+      const lines: string[] = [];
+      await setup(
+        {},
+        {
+          runner: installRunner([]),
+          lines,
+          piReleasesBaseUrl: serveRelease(),
+          defaultHome: join(home, "default-home"),
+        },
+      );
+      expect(lines.join("\n")).toContain(`PI_CODING_AGENT_DIR='${join(home, "engines", "pi-agent")}' '`);
+    });
+
+    test("only the missing harness installs", async () => {
+      const commands: string[][] = [];
+      const installing = installRunner(commands);
+      const runner: ProcessRunner = {
+        run: (command, runOptions) =>
+          command[0] === "claude" ? okRunner.run(command, runOptions) : installing.run(command, runOptions),
+      };
+      await setup({}, { runner, piReleasesBaseUrl: serveRelease() });
+      expect(commands.some((command) => command[0] === "bash")).toBe(false);
+      expect(commands.some((command) => command[0] === "tar")).toBe(true);
+    });
+
+    test("a script answers yes or no to the installs, and nothing else", async () => {
+      let caught: unknown;
+      try {
+        await setup({ installEngines: "false" }, { interactive: false, runner: scriptedRunner([]) });
+      } catch (error) {
+        caught = error;
+      }
+      expect(isEvaError(caught, "config_invalid")).toBe(true);
+    });
+
+    test("an installed harness stays as it is", async () => {
+      const commands: string[][] = [];
+      await setup({}, { runner: scriptedRunner(commands) });
+      expect(commands.some((command) => command[0] === "bash" || command[0] === "tar")).toBe(false);
+    });
+
+    test("a failed install gives the steps, and setup goes on, in a script too", async () => {
+      for (const interactive of [true, false]) {
+        const lines: string[] = [];
+        await setup(
+          { claudeToken: "a-claude-setup-token-value" },
+          { interactive, runner: installRunner([], true), lines, piReleasesBaseUrl: serveRelease(true) },
+        );
+        const text = lines.join("\n");
+        expect(text).toContain("the installer broke");
+        expect(text).toContain("Run `curl -fsSL https://claude.ai/install.sh | bash`");
+        expect(text).toContain("Run `curl -fsSL https://pi.dev/install.sh | sh`");
+        expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
+        void server?.stop(true);
+      }
+    });
   });
 
   test("a port that another program uses is not suggested", async () => {
@@ -498,8 +681,8 @@ describe("runSetup", () => {
   describe("the GitHub login", () => {
     const githubVault = "https://github.com/example/vault";
     const tokenRunner = (tokens: (string | undefined)[]): ProcessRunner => ({
-      run: (_command, options) => {
-        tokens.push(options.environment["EVA_GITHUB_TOKEN"]);
+      run: (command, options) => {
+        if (command[0] === "git") tokens.push(options.environment["EVA_GITHUB_TOKEN"]);
         return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
       },
     });

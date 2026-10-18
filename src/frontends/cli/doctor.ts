@@ -3,6 +3,7 @@
  * tool never blocks the core (lesson 94).
  */
 import type { CheckResult } from "../../core/checks.ts";
+import { engineProgramCandidates, runnableCommand } from "../../core/engine-install/engine-install.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
@@ -42,8 +43,8 @@ const tools: readonly ToolCheck[] = [
     feature: "the Claude Code engine",
     required: false,
     engine: "claude-code",
-    install: "https://code.claude.com",
-    installOnLinux: "curl -fsSL https://claude.ai/install.sh | bash",
+    install: "https://code.claude.com, or run `eva setup`",
+    installOnLinux: "eva setup",
     update: "claude update",
   },
   {
@@ -52,8 +53,10 @@ const tools: readonly ToolCheck[] = [
     feature: "the pi engine (ChatGPT, Copilot, API keys)",
     required: false,
     engine: "pi",
-    install: "https://pi.dev",
-    update: "npm install -g @mariozechner/pi-coding-agent@latest",
+    install: "https://pi.dev, or run `eva setup`",
+    installOnLinux: "eva setup",
+    // Setup installs only a missing pi, so a new copy needs the old one gone.
+    update: "delete ~/.local/lib/pi (on Windows, %LOCALAPPDATA%\\Programs\\pi), then run `eva setup`",
   },
   {
     program: "gh",
@@ -115,6 +118,8 @@ export interface DoctorOptions {
   readonly platform: NodeJS.Platform;
   /** The OS user, for the Linux check that the user's services run while the user is logged out. */
   readonly userName: string;
+  /** The OS user's home folder, where the engine installers put their programs. */
+  readonly userHome: string;
   /** The default engine's program is required: without it, no chat works. */
   readonly defaultEngine: EngineName;
   /**
@@ -133,7 +138,7 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
   for (const group of [true, false]) {
     options.write(group ? "Required:" : "Optional:");
     for (const tool of needed.filter((candidate) => candidate.required === group)) {
-      const version = await firstOutputLine([tool.program, ...tool.versionArguments], options);
+      const version = await toolVersion(tool, options);
       if (version === null) {
         if (tool.required) healthy = false;
         const install =
@@ -164,6 +169,22 @@ async function describeLinger(options: DoctorOptions): Promise<string> {
   return answer === "Linger=yes"
     ? "  ok      linger: Eva keeps running when you log out"
     : "  missing linger (for Eva while you are logged out): run `loginctl enable-linger`";
+}
+
+/** The version of the tool. An engine counts in its installer's folder too, as setup installs it there. */
+async function toolVersion(tool: ToolCheck, options: DoctorOptions): Promise<string | null> {
+  const programs =
+    tool.engine === undefined
+      ? [tool.program]
+      : engineProgramCandidates(tool.engine, options.platform, options.userHome, options.environment);
+  for (const program of programs) {
+    const version = await firstOutputLine(
+      runnableCommand([program, ...tool.versionArguments], options.platform),
+      options,
+    );
+    if (version !== null) return version;
+  }
+  return null;
 }
 
 /** The first line that the command prints, or null when it fails or does not exist. */

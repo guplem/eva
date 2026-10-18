@@ -8,16 +8,23 @@ A PR that changes only docs skips the work of `web-ui`, `voice`, `package` and t
 
 ## Steps
 
-1. Write a failing test for a function that takes a list of changed paths and says if each one is a docs path.
+1. Write a failing test for a function that takes a list of changed paths. It says that code changed unless every path is a docs path.
 2. Write the function and a small script around it. The script reads the changed paths and writes `code_changed=true|false` to the step output.
 3. Add a first job, `changes`, that runs the script on a PR. On a push, or when the diff fails, it says `code_changed=true`.
 4. Make `web-ui`, `voice`, `package` and `checks` depend on `changes`. Put an `if:` on each step of the code-only work, not on the job.
 5. Add a workflow comment that says why the steps skip and the jobs do not.
 
-## Gaps
+## Gap decisions
 
-1. Where does the docs-path rule live: inline shell in the workflow, or a tested Bun script?
-2. How does the job list the changed files of a PR?
-3. What happens when the `changes` job fails? A failed `needs` job skips its dependents, and a skipped job may not satisfy a required check.
-4. Does a new job, `changes`, need a change to the merge ruleset?
-5. How does the `checks` matrix skip only its Windows run?
+Three agents reviewed the gaps. They agreed on each answer.
+
+1. **Where the rule lives.** A Bun script, `scripts/ci-changes.ts`, exports the pure rule and guards its I/O with `import.meta.main`. The test is `test/unit/ci-changes.test.ts`, like `agent-settings.test.ts`: a script has no `src/` twin. The script uses no package, so the job needs no `bun install`.
+2. **The changed files.** A `pull_request` run checks out the merge commit. Check out with `fetch-depth: 2` and run `git diff --name-only --no-renames -z HEAD^1 HEAD`. `--no-renames` lists both paths of a rename, so a move from `src/` to `docs/` counts as code. `-z` keeps odd file names unquoted.
+3. **A failed `changes` job.** A failed `needs` job skips its dependents, and a skipped job satisfies a required check. A code PR could then merge untested. So the script fails open: an error, an empty diff or a push gives `code_changed=true`. Each dependent job gets `if: ${{ !cancelled() }}`, and each step tests `code_changed != 'false'`. An empty output then means "run".
+4. **The ruleset.** No change. `changes` is not a required check, and the other job names stay the same.
+5. **The `checks` matrix.** A job-level env, `RUN_CODE_CHECKS`, is true on Ubuntu or when code changed. Each step tests it.
+
+## Extra decisions
+
+- **Runtime Markdown.** `src/core/modes/assistant-base-prompt.md` ships inside the executable. So a `.md` file under `src/`, `test/` or `templates/` is code, unless its name is `AGENTS.md` or `CLAUDE.md`. A file that does not end in `.md` is always code.
+- **The whisper cache.** When the cache step skips, its `cache-hit` output is empty. The build step must test `code_changed` too, or it runs.

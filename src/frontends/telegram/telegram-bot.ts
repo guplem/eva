@@ -752,9 +752,10 @@ export class TelegramBot {
         });
         return;
       case "notice":
-        // Plain text: a reason from the system, such as a path, is no Markdown.
+        // Plain text: a reason from the system, such as a path, is no Markdown. Quiet, because
+        // only the block that ends the turn rings the phone (issue #40).
         await this.inOrder(event.sessionId, async () => {
-          await this.sender.sendPlain(target.chatId, target.topicId, event.text);
+          await this.sender.sendPlain(target.chatId, target.topicId, event.text, true);
         });
         return;
       case "session_renamed":

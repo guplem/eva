@@ -327,6 +327,9 @@ describe("chats", () => {
     const texts = telegram.sentTexts();
     expect(texts.indexOf(notice)).toBeGreaterThan(-1);
     expect(texts.indexOf(notice)).toBeLessThan(texts.indexOf("No calendar today."));
+    // Only the block that ends the turn rings the phone (issue #40).
+    const sent = telegram.callsTo("sendMessage").find((call) => call.params["text"] === notice);
+    expect(sent?.params["disable_notification"]).toBe(true);
   });
 
   test("a second message continues the same chat", async () => {

@@ -298,6 +298,28 @@ describe("ClaudeCodeEngine", () => {
     expect(seen[0]).toMatchObject({ prompt: "Hello", options: { cwd: "/demo-vault" } });
   });
 
+  test("each event arrives while the turn still runs, not at its end (issue #40)", async () => {
+    const lines = loadCapture("resumed-turn").filter(isMessage);
+    const result = lines.find((message) => message.type === "result");
+    let finish: () => void = () => undefined;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () =>
+        (async function* () {
+          yield* lines.filter((message) => message.type !== "result");
+          await finished;
+          if (result !== undefined) yield result;
+        })(),
+    });
+    const events = engine.runTurn(request())[Symbol.asyncIterator]();
+    expect((await events.next()).value).toMatchObject({ kind: "text" });
+    finish();
+    expect((await events.next()).value).toMatchObject({ kind: "turn_finished" });
+  });
+
   test("a thrown SDK error becomes one turn_failed", async () => {
     const engine = new ClaudeCodeEngine({
       executable: "/bin/claude",

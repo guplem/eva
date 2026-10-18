@@ -153,10 +153,30 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
   return options;
 }
 
-/** Maps SDK messages to Eva's events. The stream ends with one turn end when the SDK sends a result. */
+/**
+ * Maps SDK messages to Eva's events, with one turn end. A background subagent makes the SDK send
+ * a result, the subagent's work, and a second turn with its own result (issue #70). So a success
+ * ends the turn only when the stream ends. An error result ends it at once. A throw, such as a
+ * stop while the subagent works, fails the turn, so the person sees that the rest is lost.
+ */
 export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
+  let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
+  for await (const event of mapEachTurn(messages)) {
+    if (event.kind === "turn_finished") {
+      finished = event;
+      continue;
+    }
+    yield event;
+    if (event.kind === "turn_failed") return;
+  }
+  if (finished !== null) yield finished;
+}
+
+/** Each SDK result becomes a turn end that covers the whole stream so far. */
+async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
   let lastMessageId: string | null = null;
   let contextTokens: number | null = null;
+  let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
@@ -199,19 +219,22 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
         break;
       }
       case "result": {
-        if (message.subtype === "success") {
-          yield {
-            kind: "turn_finished",
-            engineSessionId: message.session_id,
-            lastMessageId,
-            usage: usageOf(message.usage),
-            costUsd: message.total_cost_usd,
-            contextTokens,
-          };
-        } else {
+        if (message.subtype !== "success") {
+          // The SDK throws after an error result, and the lost-history retry needs the failure now.
           yield { kind: "turn_failed", reason: message.errors.join("; ") || message.subtype };
+          return;
         }
-        return;
+        // Each result's usage counts only its own turn, but its cost is a running total.
+        usage = addUsage(usage, usageOf(message.usage));
+        yield {
+          kind: "turn_finished",
+          engineSessionId: message.session_id,
+          lastMessageId,
+          usage,
+          costUsd: message.total_cost_usd,
+          contextTokens,
+        };
+        break;
       }
       default:
         break;
@@ -286,6 +309,15 @@ function usageOf(usage: {
     outputTokens: usage.output_tokens,
     cacheReadTokens: usage.cache_read_input_tokens,
     cacheWriteTokens: usage.cache_creation_input_tokens,
+  };
+}
+
+function addUsage(a: TurnUsage, b: TurnUsage): TurnUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
   };
 }
 

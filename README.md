@@ -71,19 +71,19 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 
 Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation.
 
-| Command      | What it does                                |
-| ------------ | ------------------------------------------- |
-| `/new`       | Start a new conversation                    |
-| `/stop`      | Stop what Eva is doing in this conversation |
-| `/status`    | Show whether everything is all right        |
-| `/logs`      | Show Eva's last warnings and errors         |
-| `/restart`   | Restart Eva (she asks you to confirm first) |
-| `/link`      | Show the address of Eva's web page          |
-| `/sync`      | Save the notebook now                       |
-| `/update`    | Install the newest version of Eva           |
-| `/projects`  | Search your projects                        |
-| `/schedules` | List your reminders and repeated tasks      |
-| `/help`      | Show all the commands                       |
+| Command      | What it does                                  |
+| ------------ | --------------------------------------------- |
+| `/new`       | Start a new conversation                      |
+| `/stop`      | Stop what Eva is doing in this conversation   |
+| `/status`    | Show whether everything is all right          |
+| `/logs`      | Show Eva's last warnings and errors           |
+| `/restart`   | Restart Eva (she asks you to confirm first)   |
+| `/link`      | Show the address of Eva's web page            |
+| `/sync`      | Save the notebook now                         |
+| `/update`    | Install the newest version of Eva             |
+| `/projects`  | Search your projects: `status:active`, `#tag` |
+| `/schedules` | List your reminders and repeated tasks        |
+| `/help`      | Show all the commands                         |
 
 You can also send voice notes, photos and files.
 

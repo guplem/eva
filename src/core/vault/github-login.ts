@@ -6,10 +6,10 @@ import type { Clock } from "../../shared/clock.ts";
 import { EvaError } from "../../shared/errors.ts";
 
 /**
- * The public client id of the Eva OAuth App, which has the device flow on. A client id is not a
- * secret. Null until the owner registers the app (#113): setup then asks for a pasted token.
+ * The public client id of the Eva OAuth App (#113), which has the device flow on and tokens that
+ * never expire, because Eva does not refresh them. A client id is not a secret.
  */
-export const githubClientId: string | null = null;
+export const githubClientId: string | null = "Ov23liT8JKyYSZlnz2OT";
 
 /** The one sentence that setup says before the login. It must match `scope` below. */
 export const githubLoginAccess =

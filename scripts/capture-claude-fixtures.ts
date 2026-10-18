@@ -86,6 +86,12 @@ const captures: Capture[] = [
       "Start one subagent with the Agent tool, in the foreground, not in the background. It reads Methods/Morning Routine.md and reports the title.",
     options: { ...common, sessionId: crypto.randomUUID() },
   },
+  {
+    name: "background-subagent",
+    prompt:
+      "Start one subagent with the Agent tool, in the background (run_in_background: true). It reads Methods/Morning Routine.md and reports the title. Do not wait for it in this turn.",
+    options: { ...common, sessionId: crypto.randomUUID() },
+  },
 ];
 
 const replacements: [string, string][] = [];

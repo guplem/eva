@@ -108,6 +108,18 @@ describe("release summary", () => {
     );
   });
 
+  test("the summary shows the pull requests, not the commits in the detail view", () => {
+    const notes = releaseNotes([
+      {
+        subject: "feat: record a voice note",
+        body: "",
+        hash: "aaaaaaa",
+        pullRequest: { number: 7, title: "Voice notes" },
+      },
+    ]);
+    expect(releaseSummary([{ version: "1.1.0", notes }])).toBe("New features:\n• Voice notes (#7) (1.1.0)");
+  });
+
   test("notes in another shape still show, under the other changes", () => {
     expect(releaseSummary([{ version: "1.0.0", notes: "Hand-written notes.\n\n* one point\n" }])).toBe(
       ["Fixes and other changes:", "• Hand-written notes. (1.0.0)", "• one point (1.0.0)"].join("\n"),

@@ -72,7 +72,15 @@ Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 - **Use a notebook that you already have.** At the repository question, give its address, such as `https://github.com/you/vault`. Eva clones it (makes a copy on this computer).
 - **Start a new notebook.** Press Enter at the repository question. Then type a folder for the notebook, and answer `y` to "Create a new vault there?". Eva fills the folder from her template. To also get a private GitHub repository for it, install the [GitHub CLI](https://cli.github.com) (`gh`) and run `gh auth login` before setup.
 
-Setup also asks for a GitHub token (a password for one app). Eva needs it for a private notebook with an `https://` address, and to clone your private projects. An address that starts with `git@` uses the computer's SSH key instead. Eva keeps the token on this computer, and never gives it to the AI tools that she runs. To create the token:
+Eva needs a GitHub login for a private notebook with an `https://` address, and to clone your private projects. Setup logs in through the browser:
+
+1. Press Enter at the GitHub question. Setup shows a short code.
+2. Open [github.com/login/device](https://github.com/login/device) on any device, such as your phone, and enter the code.
+3. Press **Authorize**. Setup goes on by itself.
+
+The login lets Eva read and write all your GitHub repositories, private ones too. Eva keeps it on this computer, and never gives it to the AI tools that she runs. You can remove it on GitHub under **Settings → Applications**. An address that starts with `git@` uses the computer's SSH key instead.
+
+To give Eva only your notebook, paste a token at the GitHub question instead:
 
 1. Open GitHub, then **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 2. Under **Repository access**, pick your notebook. To let Eva clone your private projects too, choose **All repositories**.
@@ -131,28 +139,28 @@ Setup saves each answer at once, so you can stop it with Ctrl+C at any question 
 
 Setup asks each question only when its step is not done yet. Press Enter to keep the value in brackets, or to skip a question.
 
-| Question                     | What to answer                                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code and pi           | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                |
-| Tailscale                    | Enter installs it, then Enter signs in. Open the link that it shows. See [Open Eva on your phone](#open-eva-on-your-phone).                       |
-| Start Eva                    | Enter starts Eva now, and each time the computer starts.                                                                                          |
-| The code that the page shows | The short code on Eva's page, to let that device in. Enter goes on in the terminal.                                                               |
-| Time zone                    | Enter keeps your computer's time zone.                                                                                                            |
-| Your vault's repository      | Your notebook's address, or Enter to start a new notebook.                                                                                        |
-| GitHub token                 | A token for a private notebook and private projects, or Enter to skip. See [Decide where your notebook lives](#decide-where-your-notebook-lives). |
-| Vault folder                 | For a new notebook only: the folder for it. Enter keeps the folder in brackets.                                                                   |
-| New notebook                 | For a new notebook only: `y`, then the questions below.                                                                                           |
-| What should Eva call you?    | Your name, or the name that you like.                                                                                                             |
-| Language                     | The language of Eva's answers. Enter keeps English.                                                                                               |
-| Main topics                  | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                             |
-| New GitHub repository        | A name for your notebook's private repository, such as `vault`. This needs `gh`.                                                                  |
-| Trusted GitHub accounts      | Your GitHub user name. Eva then opens your own projects without a question.                                                                       |
-| Claude token                 | The token from `claude setup-token`. With pi, press Enter.                                                                                        |
-| Telegram bot token           | Optional: the token from BotFather. Eva works without Telegram.                                                                                   |
-| Telegram chat id             | Enter, to pair with a code instead.                                                                                                               |
-| Google account               | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
-| Google client id, secret     | For a Google account only: from your own Google OAuth client.                                                                                     |
-| Voice model                  | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                      |
+| Question                     | What to answer                                                                                                                                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code and pi           | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                                                                                |
+| Tailscale                    | Enter installs it, then Enter signs in. Open the link that it shows. See [Open Eva on your phone](#open-eva-on-your-phone).                                                                                       |
+| Start Eva                    | Enter starts Eva now, and each time the computer starts.                                                                                                                                                          |
+| The code that the page shows | The short code on Eva's page, to let that device in. Enter goes on in the terminal.                                                                                                                               |
+| Time zone                    | Enter keeps your computer's time zone.                                                                                                                                                                            |
+| Your vault's repository      | Your notebook's address, or Enter to start a new notebook.                                                                                                                                                        |
+| GitHub login or token        | For an `https://github.com/` address, Enter logs in in the browser. Otherwise, type `login`, or press Enter to skip. Or paste a token. See [Decide where your notebook lives](#decide-where-your-notebook-lives). |
+| Vault folder                 | For a new notebook only: the folder for it. Enter keeps the folder in brackets.                                                                                                                                   |
+| New notebook                 | For a new notebook only: `y`, then the questions below.                                                                                                                                                           |
+| What should Eva call you?    | Your name, or the name that you like.                                                                                                                                                                             |
+| Language                     | The language of Eva's answers. Enter keeps English.                                                                                                                                                               |
+| Main topics                  | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                                                             |
+| New GitHub repository        | A name for your notebook's private repository, such as `vault`. This needs `gh`.                                                                                                                                  |
+| Trusted GitHub accounts      | Your GitHub user name. Eva then opens your own projects without a question.                                                                                                                                       |
+| Claude token                 | The token from `claude setup-token`. With pi, press Enter.                                                                                                                                                        |
+| Telegram bot token           | Optional: the token from BotFather. Eva works without Telegram.                                                                                                                                                   |
+| Telegram chat id             | Enter, to pair with a code instead.                                                                                                                                                                               |
+| Google account               | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                      |
+| Google client id, secret     | For a Google account only: from your own Google OAuth client.                                                                                                                                                     |
+| Voice model                  | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                      |
 
 You can run `eva setup` again at any time. It asks only for the steps that are not done.
 

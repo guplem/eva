@@ -4,7 +4,7 @@
  */
 import type { EvaConfig } from "../settings/home.ts";
 import { isNewerVersion } from "./release-verification.ts";
-import { noChangeNotes, releaseNoteSections } from "./release-version.ts";
+import { detailsEnd, detailsStart, noChangeNotes, releaseNoteSections } from "./release-version.ts";
 
 /** The largest step that Eva installs by herself. */
 export type UpdatePolicy = EvaConfig["updates"]["install"];
@@ -93,8 +93,15 @@ export function releaseSummary(releases: readonly ReleaseInfo[]): string {
   const oldestFirst = [...releases].sort((left, right) => (isNewerVersion(left.version, right.version) ? 1 : -1));
   for (const { version, notes } of oldestFirst) {
     let title = otherTitle;
+    let inDetails = false;
     for (const raw of notes.split(/\r?\n/)) {
       const line = raw.trim();
+      // The commit list repeats the pull requests, too long for a phone message.
+      if (line.startsWith(detailsStart)) inDetails = true;
+      if (inDetails) {
+        if (line.endsWith(detailsEnd)) inDetails = false;
+        continue;
+      }
       const heading = /^#+\s*(.+)$/.exec(line)?.[1];
       if (heading !== undefined) {
         title = lines.has(heading) ? heading : otherTitle;

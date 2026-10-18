@@ -108,10 +108,11 @@ export class VaultSync {
   private queue: Promise<unknown>;
   private state: VaultSyncState;
   /**
-   * The picks of a committed conflict, by path, until every note has one. Memory is enough: a
-   * restart loses only these picks, and git still holds every version.
+   * The picks of a committed conflict, by path, with the versions that the person saw, until
+   * every note has one. Memory is enough: a restart loses only these picks, and git still holds
+   * every version.
    */
-  private readonly picks: Map<string, ConflictChoice>;
+  private readonly picks: Map<string, { choice: ConflictChoice; versions: ConflictedPath }>;
 
   constructor(options: VaultSyncOptions) {
     this.options = options;
@@ -183,7 +184,7 @@ export class VaultSync {
     const plan = await this.mergePlan(branch);
     if (plan === null) return [];
     this.dropStalePicks(plan);
-    return plan.paths.map(({ path }) => ({ path, kind: "committed", picked: this.picks.get(path) ?? null }));
+    return plan.paths.map(({ path }) => ({ path, kind: "committed", picked: this.picks.get(path)?.choice ?? null }));
   }
 
   /** Returns false when the note has no conflict. */
@@ -198,8 +199,9 @@ export class VaultSync {
       return true;
     }
     const plan = await this.mergePlan(branch);
-    if (!plan?.paths.some((entry) => entry.path === path)) return false;
-    this.picks.set(path, choice);
+    const conflicted = plan?.paths.find((entry) => entry.path === path);
+    if (plan === null || conflicted === undefined) return false;
+    this.picks.set(path, { choice, versions: conflicted });
     this.dropStalePicks(plan);
     if (plan.paths.some((entry) => !this.picks.has(entry.path))) return true;
     // A fast-forward refuses to overwrite an edit, so the edits go into a commit first.
@@ -287,6 +289,8 @@ export class VaultSync {
     if (upToDate.exitCode === 0) return true;
     const plan = await this.mergePlan(branch);
     if (plan === null) return false;
+    // The commit before the merge can hold a newer edit of a picked note.
+    this.dropStalePicks(plan);
     if (plan.paths.some((entry) => !this.picks.has(entry.path))) {
       this.reportCommittedConflict(plan);
       return false;
@@ -297,7 +301,9 @@ export class VaultSync {
     try {
       if (!(await this.gitStep(["read-tree", plan.tree], environment))) return false;
       for (const entry of plan.paths) {
-        if ((await this.writePick(entry, this.picks.get(entry.path) ?? "mine", plan.tree, environment)) === null)
+        if (
+          (await this.writePick(entry, this.picks.get(entry.path)?.choice ?? "mine", plan.tree, environment)) === null
+        )
           return false;
       }
       const tree = await this.git(["write-tree"], localTimeoutMs, environment);
@@ -348,9 +354,15 @@ export class VaultSync {
     return { tree: tree.trim(), paths: [...byPath].map(([path, sides]) => ({ path, ...sides })) };
   }
 
+  /** A pick holds only for the versions that the person saw: a newer edit on either side asks again. */
   private dropStalePicks(plan: MergePlan): void {
-    for (const path of this.picks.keys()) {
-      if (!plan.paths.some((entry) => entry.path === path)) this.picks.delete(path);
+    for (const [path, { versions }] of this.picks) {
+      const current = plan.paths.find((entry) => entry.path === path);
+      const same =
+        current !== undefined &&
+        current.mine?.oid === versions.mine?.oid &&
+        current.theirs?.oid === versions.theirs?.oid;
+      if (!same) this.picks.delete(path);
     }
   }
 
@@ -602,7 +614,13 @@ export class VaultSync {
     try {
       return await this.options.runner.run(["git", ...arguments_], {
         cwd: this.options.vaultPath,
-        environment: { ...this.options.environment, ...environment, GIT_TERMINAL_PROMPT: "0" },
+        // Literal pathspecs: a note named "n*.md" must never match "nb.md".
+        environment: {
+          ...this.options.environment,
+          ...environment,
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_LITERAL_PATHSPECS: "1",
+        },
         timeoutMs,
       });
     } catch (error) {

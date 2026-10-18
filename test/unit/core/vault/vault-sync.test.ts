@@ -491,3 +491,38 @@ describe("VaultSync conflicts", () => {
     expect(state.status).toBe("ok");
   });
 });
+
+describe("VaultSync conflict edge cases", () => {
+  test("a note name with a glob character gets its own version, not the version of a note it matches", async () => {
+    pushFromOther("n*.md", "star base\n");
+    pushFromOther("nb.md", "nb base\n");
+    sandbox.git(vault, "pull", "-q");
+    pushFromOther("n*.md", "star theirs\n");
+    pushFromOther("nb.md", "nb theirs\n");
+    sandbox.write(vault, "n*.md", "star mine\n");
+    sandbox.write(vault, "nb.md", "nb mine\n");
+    const sync = createSync(vault);
+    expect((await sync.pull()).status).toBe("conflict");
+    await sync.resolve("n*.md", "mine");
+    expect(readFileSync(join(vault, "n*.md"), "utf-8")).toBe("star mine\n");
+    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["nb.md"]);
+  });
+
+  test("drops a pick when the remote changes that note again, so the person sees the new version first", async () => {
+    pushFromOther("a.md", "a theirs\n");
+    pushFromOther("b.md", "b theirs\n");
+    sandbox.write(vault, "a.md", "a mine\n");
+    sandbox.write(vault, "b.md", "b mine\n");
+    const sync = createSync(vault);
+    await sync.save();
+    await sync.resolve("a.md", "mine");
+    pushFromOther("a.md", "a theirs, with an important change\n");
+    await sync.save();
+    const result = await sync.resolve("b.md", "mine");
+    expect(result.state.status).toBe("conflict");
+    expect(result.conflicts).toEqual([
+      { path: "a.md", kind: "committed", picked: null },
+      { path: "b.md", kind: "committed", picked: "mine" },
+    ]);
+  });
+});

@@ -388,6 +388,9 @@ describe("runSetup", () => {
     const config = loadSettings(homePaths(home)).config;
     expect(config.google.email).toBe("person@example.com");
     expect(config.voice.modelPath).toBe("/models/ggml-base.bin");
+    const again: string[] = [];
+    await setup({}, { lines: again });
+    expect(again.join("\n")).not.toContain("each Google step");
     expect(loadSecrets(homePaths(home))).toMatchObject({
       googleOauthClientId: "client-id",
       googleOauthClientSecret: "client-secret",
@@ -397,7 +400,7 @@ describe("runSetup", () => {
   test("without a Google account, the OAuth client is not asked", async () => {
     const lines: string[] = [];
     await setup({ googleClientId: "client-id" }, { lines });
-    expect(lines.join("\n")).toContain("open Settings in the web app");
+    expect(lines.join("\n")).toContain("Settings in the web app show each Google step");
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
 

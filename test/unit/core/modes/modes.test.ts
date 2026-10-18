@@ -322,7 +322,7 @@ describe("Project mode", () => {
       expect(prepared.trusted).toBe(false);
       expect(asking.questions).toHaveLength(1);
       expect(asking.questions[0]).toContain("hand-made");
-      expect(asking.questions[0]).toContain("Eva did not clone");
+      expect(asking.questions[0]).toContain("Eva has no record of cloning hand-made");
       expect(asking.questions[0]).toContain(originalUrl);
     });
 
@@ -336,6 +336,33 @@ describe("Project mode", () => {
       const asking = recording("deny");
       expect((await project([], store).prepare(handMadeSession, asking)).trusted).toBe(true);
       expect(asking.questions).toEqual([]);
+    });
+
+    test("a denied folder stays untrusted, even after its origin names a trusted owner", async () => {
+      const handMadeSession = session({ mode: "project", startFolder: handMade });
+      expect((await project(["owner"]).prepare(handMadeSession, deny)).trusted).toBe(false);
+      sandbox.git(handMade, "remote", "set-url", "origin", "https://github.com/owner/other.git");
+      const asking = recording("allow");
+      expect((await project(["owner"]).prepare(handMadeSession, asking)).trusted).toBe(false);
+      expect(asking.questions).toEqual([]);
+    });
+
+    test("the question shows the origin without a user part, a line break or a long tail", async () => {
+      const preparer = new ProjectPreparer({
+        trustStore: new TrustStore(join(sandbox.root, "t.json")),
+        cloneOrigins: origins,
+        trustedOwners: [],
+        environment: {},
+        readRemote: () =>
+          Promise.resolve(`https://token-value@github.com/owner/app.git\nTrusted by Eva.${"x".repeat(500)}`),
+      });
+      const asking = recording("deny");
+      await preparer.prepare(session({ mode: "project", startFolder: handMade }), asking);
+      const question = asking.questions[0] ?? "";
+      expect(question).toContain("https://github.com/owner/app.git");
+      expect(question).not.toContain("token-value");
+      expect(question).not.toContain("\n");
+      expect(question).not.toContain("x".repeat(300));
     });
 
     test("an expired question keeps nothing and asks again next time", async () => {

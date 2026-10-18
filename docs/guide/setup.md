@@ -8,7 +8,7 @@ When a step says "run", type the command and press Enter.
 
 Create these accounts first, in your browser:
 
-1. **Claude** at [claude.ai](https://claude.ai), with a Pro or Max subscription.
+1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT or GitHub Copilot.
 2. **GitHub** at [github.com](https://github.com).
 3. **Tailscale** at [tailscale.com](https://tailscale.com) (free). Sign in with Google, Microsoft or GitHub.
 4. **Telegram** on your phone, from your app store.
@@ -44,15 +44,25 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 3. Give it a name, for example `My Eva`, and a user name that ends in `bot`, for example `my_eva_123_bot`.
 4. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Copy it. Eva asks for it during setup. Never share it: whoever has it controls the bot.
 
-## Get your Claude token
+## Connect your AI
 
-Eva uses your Claude subscription through Claude Code, Anthropic's program for AI agents.
+Eva does not think by herself. She runs a harness: a program that runs an AI agent with your login. Choose one.
+
+**Claude Code**, for a Claude subscription:
 
 1. Install Claude Code:
    - Windows (PowerShell): `irm https://claude.ai/install.ps1 | iex`
    - Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 2. Run `claude setup-token`, and sign in when the browser opens.
 3. Copy the token that it prints. Eva asks for it during setup.
+
+**pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
+
+1. Install pi from [pi.dev](https://pi.dev).
+2. Run `pi`, type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
+3. During setup, answer `pi` to "Default engine", and press Enter at "Claude token".
+
+You can install both, and choose the harness for each chat later.
 
 ## Decide where your notebook lives
 
@@ -135,9 +145,9 @@ Press Enter to keep the value in brackets. Eva saves each answer on this compute
 | Language                    | The language of Eva's answers. Enter keeps English.                                                                                                                                                                                                                      |
 | Main topics                 | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                                                                                                                    |
 | New GitHub repository       | A name for your notebook's private repository, such as `vault`.                                                                                                                                                                                                          |
-| Default engine              | Enter keeps Claude Code.                                                                                                                                                                                                                                                 |
+| Default engine              | Enter keeps Claude Code. Type `pi` to use pi.                                                                                                                                                                                                                            |
 | Trusted GitHub accounts     | Your GitHub user name. Eva then opens your own projects without a question.                                                                                                                                                                                              |
-| Claude token                | The token from `claude setup-token`.                                                                                                                                                                                                                                     |
+| Claude token                | The token from `claude setup-token`. Enter skips it, with pi.                                                                                                                                                                                                            |
 | Telegram bot token          | The token from BotFather.                                                                                                                                                                                                                                                |
 | Telegram chat id            | Enter, to pair with a code instead.                                                                                                                                                                                                                                      |
 | Google account, voice model | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                                                                             |
@@ -178,7 +188,7 @@ These steps install Eva for one user with no `sudo` (administrator rights), for 
    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && export PATH="$HOME/.bun/bin:$PATH"
    ```
 
-2. Install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), then get Eva:
+2. Install your harness, as [Connect your AI](#connect-your-ai) says. Then get Eva:
 
    ```bash
    git clone https://github.com/guplem/eva.git ~/eva
@@ -197,7 +207,7 @@ These steps install Eva for one user with no `sudo` (administrator rights), for 
    bun run src/main.ts setup --non-interactive
    ```
 
-   `src/frontends/cli/setup.ts` lists every `EVA_*` name.
+   With pi, add `EVA_ENGINE="pi"`, and leave out `EVA_CLAUDE_TOKEN`. `src/frontends/cli/setup.ts` lists every `EVA_*` name.
 
 4. Start Eva with the system. The command also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator.
 

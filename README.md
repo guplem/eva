@@ -12,7 +12,7 @@ Think of Eva as a helper who lives in one computer at your home:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | **The helper's desk** | A computer that stays on, such as an old laptop. Eva runs there.                                                         | the hub                      |
 | **The notebook**      | A private folder of notes. Eva reads and writes it, and keeps a copy on GitHub so that nothing gets lost.                | the vault (a git repository) |
-| **The brain**         | An AI service that does the thinking. Eva uses your own Claude subscription.                                             | the engine (Claude Code)     |
+| **The brain**         | An AI service that does the thinking, with your own subscription.                                                        | the engine (Claude Code, pi) |
 | **The phone line**    | How you talk to Eva: a Telegram chat, or her web page.                                                                   | the front ends               |
 | **The private road**  | A free app that connects your phone and computers to the helper's desk, and to nothing else. Strangers cannot reach Eva. | Tailscale                    |
 
@@ -33,7 +33,7 @@ To open Eva's web page from your phone, you also need **Tailscale** (free). You 
 
 The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
 
-1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), [Bun](https://bun.sh/), and [Claude Code](https://claude.ai/code).
+1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), [Bun](https://bun.sh/), and your harness: [Claude Code](https://claude.ai/code) or [pi](https://pi.dev).
 2. **Get Eva:**
 
    ```bash
@@ -48,7 +48,7 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
    bun run eva setup
    ```
 
-   Eva asks for your notebook, your Claude login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
+   Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
 
 4. **Start Eva, and let her start by herself from now on:**
 

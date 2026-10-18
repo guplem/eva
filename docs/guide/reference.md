@@ -106,10 +106,10 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 ## Conversations
 
-- **One list.** Telegram, the web page and `eva chat` show the same conversations. A message from one shows in the others.
+- **One list.** Telegram, the web page and `eva chat` show the same conversations. A topic in Telegram also shows the messages that the web page and the terminal send to its conversation.
 - **Continue a conversation in Telegram:** send `/chats` and tap the conversation. It opens in a topic of its own, with its last 3 turns. Without topics, the main chat continues it.
 - **Project work:** when Eva gives work to a project from Telegram, its conversation opens in a topic. Eva sends the link to that topic, and to the conversation on the web page.
-- **Delete a conversation:** send `/delete` in its topic, or tap **Delete chat** on the web page. It goes from Telegram, the web page and the terminal, with its branches. The engine keeps its own transcript.
+- **Delete a conversation:** send `/delete` in its topic, or tap **Delete chat** on the web page. It goes from Telegram, the web page and the terminal, with its forks. The engine keeps its own transcript.
 - **Open one conversation on the web page:** add `#/chat/<id>` to the address.
 
 ## Optional features

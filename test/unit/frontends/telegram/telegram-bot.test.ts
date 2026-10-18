@@ -385,8 +385,9 @@ describe("topics", () => {
     await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
     // The chat is gone from every front end, not only from Telegram (#9).
     expect(eva.sessions.list()).toEqual([]);
-    telegram.sendText(owner, "/delete");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("only inside a topic")));
+    // The main chat has no chat of its own yet, so its delete has nothing to do.
+    telegram.pressButton(owner, "d:main");
+    await settle(bot, () => telegram.sentTexts().includes("There is no chat here to delete."));
   });
 
   test("/delete of a chat that works deletes nothing", async () => {
@@ -550,6 +551,96 @@ describe("/chats: every chat of the instance (#9)", () => {
     const bot = createBot();
     telegram.pressButton(owner, "c:gone");
     await settle(bot, () => telegram.sentTexts().includes("That chat no longer exists."));
+  });
+
+  test("a topic that Telegram fails to open leaves the main chat as it was", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.sendText(owner, "the main chat's own message");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    await eva.idle();
+    telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 1", 1, 4);
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    telegram.sendText(owner, "still the main chat");
+    await settle(bot, () => telegram.sentTexts().includes("answer 3"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(1);
+  });
+
+  test("a long message from another front end arrives whole, in parts", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    const long = `${"word ".repeat(1_500)}END`;
+    void eva.sessions.send(sessionId, long, "api");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    const parts = telegram.sentTexts().filter((text) => text.includes("word"));
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.at(-1)).toEndWith("END");
+  });
+
+  test("a message from another front end during a turn shows after that turn's answer (lesson 114)", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      if (request.prompt.endsWith("slow")) await held;
+      yield* FakeEngine.answer(request, `answer to ${request.prompt.split("\n").at(-1) ?? ""}`);
+    });
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer to one"));
+    const before = telegram.sentTexts().length;
+    telegram.sendText(owner, "slow", 500);
+    await settle(bot, () => engine.requests.length === 2);
+    void eva.sessions.send(sessionId, "from the web", "api");
+    await Bun.sleep(50);
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("answer to from the web"));
+    expect(telegram.sentTexts().slice(before)).toEqual([
+      "answer to slow",
+      "Message: from the web",
+      "answer to from the web",
+    ]);
+  });
+
+  test("a press on a chat that works says so, and its answer reaches the new topic", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "done at last");
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.pressButton(owner, `c:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Eva is working on a message")));
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("done at last"));
+    const answer = telegram.callsTo("sendMessage").find((call) => call.params["text"] === "done at last");
+    expect(answer?.params["message_thread_id"]).toBe(500);
+  });
+});
+
+describe("/delete in the main chat (#9)", () => {
+  test("deletes the main chat's chat everywhere, after a confirm", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    await eva.idle();
+    telegram.sendText(owner, "/delete");
+    await settle(bot, () =>
+      telegram
+        .callsTo("sendMessage")
+        .some((call) => JSON.stringify(call.params["reply_markup"] ?? "").includes("d:main")),
+    );
+    telegram.pressButton(owner, "d:main");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Deleted.")));
+    expect(eva.sessions.list()).toEqual([]);
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 });
 
@@ -1278,6 +1369,20 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.sentTexts()).not.toContain("Message: Plan my day.");
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
+  });
+
+  test("a deleted firing chat leaves the schedule's topic, with the earlier firings in it", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest."));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    await eva.idle();
+    eva.sessions.delete(eva.sessions.list()[0]!.id);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("This chat was deleted")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 
   test("a schedule file sends its file; a changed schedule names the change", async () => {

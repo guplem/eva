@@ -66,7 +66,7 @@ export class ModelCalls {
       controller.abort();
     };
     request.signal?.addEventListener("abort", stop);
-    // The abort asks the engine to stop; the deadline ends the call even if the engine never does.
+    // The abort asks the engine to stop. The deadline ends the call even if the engine never stops.
     const deadline = new Promise<"stopped">((resolve) => {
       controller.signal.addEventListener("abort", () => {
         resolve("stopped");
@@ -112,7 +112,7 @@ export class ModelCalls {
       clearTimeout(timer);
       request.signal?.removeEventListener("abort", stop);
       controller.abort();
-      // Not awaited: a stuck engine would hold the call again. It lets the adapter clean up.
+      // Do not await this: a stuck engine would hold the call. It lets the adapter clean up.
       void events?.return?.().catch(() => undefined);
       if (folder !== null) removeFolder(folder);
     }
@@ -127,7 +127,7 @@ function withContext(prompt: string, context: Readonly<Record<string, string>>):
   return [prompt, ...blocks].join("\n\n");
 }
 
-/** On Windows an engine that is still stopping holds its folder; a leftover temporary folder is harmless. */
+/** On Windows, an engine that is still stopping holds its folder. A leftover temporary folder is harmless. */
 function removeFolder(folder: string): void {
   try {
     rmSync(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });

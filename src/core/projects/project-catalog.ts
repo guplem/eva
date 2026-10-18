@@ -35,7 +35,7 @@ export interface Project {
 
 const statuses: readonly ProjectStatus[] = ["idea", "active", "paused", "closed"];
 const knownKeys = new Set(["created", "status", "repos", "tags", "legacy_id"]);
-const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+export const frontMatterPattern = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export function parseFrontMatter(text: string): FrontMatterResult {
   const match = frontMatterPattern.exec(text);
@@ -166,7 +166,7 @@ function createdMatchesId(created: string, folderName: string): boolean {
   return folderName.startsWith(`${asIdPrefix}-`);
 }
 
-function readTitle(text: string): string | null {
+export function readTitle(text: string): string | null {
   const heading = /^# (.+)$/m.exec(text.replace(frontMatterPattern, ""));
   return heading?.[1]?.trim() ?? null;
 }

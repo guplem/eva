@@ -95,9 +95,10 @@ export const uncleanExitMessage =
 /** The vault's record lists a migration that this Eva does not know: a newer Eva wrote it. */
 export function vaultAheadProblem(ahead: VaultAhead | null, machine: string, version: string): AlertProblem | null {
   if (ahead === null) return null;
+  const needed = ahead.version === null ? "a newer Eva" : `Eva ${ahead.version}`;
   return {
     level: "warn",
-    message: `This computer, ${machine}, runs Eva ${version}, an older Eva than the vault, which needs Eva ${ahead.version ?? "of a newer version"}. Update Eva on ${machine}. Until then it does not change the vault's settings, schedules or hub; chats and the note sync go on.`,
+    message: `${machine} runs Eva ${version}, but the vault needs ${needed}. Update Eva on ${machine}. Until then, it does not change the vault's settings, schedules or hub. Chats and the vault sync go on.`,
     resolvedMessage: `${machine} runs an Eva that knows the vault's format again.`,
   };
 }
@@ -105,13 +106,11 @@ export function vaultAheadProblem(ahead: VaultAhead | null, machine: string, ver
 /** A migration at start failed, or its record is broken. Eva keeps the files and tries again at the next start. */
 export function migrationFailedMessage(store: "machine" | "vault", id: string | null, reason: string): string {
   const what =
-    id === null
-      ? `The record of the ${store} migrations is broken: ${reason}`
-      : `The ${store} migration ${id} failed: ${reason}.`;
-  return `${what} The files stay as they were, and Eva tries again at the next start. Send /logs to see more.`;
+    id === null ? `Eva cannot read the record of the ${store} migrations.` : `The ${store} migration ${id} failed.`;
+  return `${what} ${reason} The files stay as they were. Eva tries again at the next start. Send /logs to see more.`;
 }
 
-/** The machine's record lists a migration that this Eva does not know, such as after a downgrade by hand. */
+/** The machine's record lists a migration that this Eva does not know, such as after a person installed an older Eva. */
 export function machineAheadMessage(version: string): string {
   return `A newer Eva migrated the files of this computer, so Eva ${version} runs no migration on them. Install the newer Eva again.`;
 }

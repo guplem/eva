@@ -10,6 +10,7 @@ import {
   type StartMigrationsOptions,
 } from "../../../../src/core/migrations/migrations.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
+import { loadSettings } from "../../../../src/core/settings/settings.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let vault: string;
@@ -114,6 +115,9 @@ describe("runStartMigrations", () => {
       trust: { trustedRepositoryOwners: ["example-owner"] },
     });
     expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({ voice: { language: "es" } });
+    const loaded = loadSettings(paths).config;
+    expect(loaded).toMatchObject({ port: 4000, voice: { language: "es" } });
+    expect(loaded.trust.trustedRepositoryOwners).toEqual(["example-owner"]);
   });
 
   test("on a hub without a vault settings file, the shared keys move at the next start", () => {
@@ -138,6 +142,7 @@ describe("runStartMigrations", () => {
     const result = start({ isHub: () => false });
     expect(result.vault).toBeNull();
     expect(result.machine).toEqual({ kind: "done", applied: ids("machine"), later: [] });
+    expect(readJson(paths.config)).toEqual({ vaultPath: vault, trust: { trustedRepositoryOwners: ["example-owner"] } });
     expect(readJson(join(vault, ".eva", "settings.json"))).toEqual({
       trust: { trustedRepositoryOwners: ["example-owner"] },
     });
@@ -146,9 +151,14 @@ describe("runStartMigrations", () => {
 
   test("an older Eva that sees a newer vault still runs the machine migrations, and leaves the vault", () => {
     writeRecord(["2099-01-01-from-the-future"], "9.0.0");
+    const vaultFile = join(vault, ".eva", "settings.json");
+    writeFileSync(vaultFile, JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
+    writeFileSync(paths.config, JSON.stringify({ vaultPath: vault }));
     const result = start();
     expect(result.vault).toEqual({ kind: "ahead", unknown: ["2099-01-01-from-the-future"] });
-    expect(result.machine.kind).toBe("done");
+    expect(result.machine).toEqual({ kind: "done", applied: ids("machine"), later: [] });
+    expect(readJson(vaultFile)).toEqual({ trust: { trustedRepositoryOwners: ["example-owner"] } });
+    expect(readJson(paths.config)).toEqual({ vaultPath: vault, trust: { trustedRepositoryOwners: ["example-owner"] } });
   });
 
   test("a failed migration of one store leaves the other store running", () => {
@@ -159,7 +169,7 @@ describe("runStartMigrations", () => {
         throw new Error("broken");
       },
     };
-    const result = start({ list: [...migrations, failing] });
+    const result = start({ migrations: [...migrations, failing] });
     expect(result.machine).toMatchObject({ kind: "failed", id: "2026-10-19-fails", reason: "broken" });
     expect(result.vault).toEqual({ kind: "done", applied: ids("vault"), later: [] });
   });

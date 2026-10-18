@@ -1029,14 +1029,16 @@ export class Eva {
   private reportMigrationRun(store: MigrationStore, run: MigrationRun): void {
     if (run.kind === "done") {
       if (run.applied.length > 0) this.options.logger?.log("info", "Migrations ran.", { store, applied: run.applied });
+      if (run.later.length > 0)
+        this.options.logger?.log("info", "Migrations wait for a later start.", { store, later: run.later });
       return;
     }
     if (run.kind === "failed") {
-      this.alerts.notify(`migration:${store}`, "error", migrationFailedMessage(store, run.id, run.reason));
+      this.alerts.notify(`migration_failed:${store}`, "error", migrationFailedMessage(store, run.id, run.reason));
       return;
     }
-    // A vault that is ahead is an open problem (noticeVaultAhead); a machine that is ahead is rare.
-    if (store === "machine") this.alerts.notify("migration:machine", "warn", machineAheadMessage(evaVersion));
+    // noticeVaultAhead raises the alert of a vault that is ahead, and keeps it open until this Eva updates.
+    if (store === "machine") this.alerts.notify("machine_ahead", "warn", machineAheadMessage(evaVersion));
   }
 
   private noticeVaultAhead(): void {

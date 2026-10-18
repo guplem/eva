@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
 import { parseConfig } from "../settings/home.ts";
-import type { Migration, MigrationContext } from "./migration-runner.ts";
+import type { Migration } from "./migration-runner.ts";
 
 /** The settings that the vault held on 2026-10-18. */
 const sharedKeys: readonly string[] = [
@@ -40,7 +40,7 @@ export const moveSharedSettingsToVault: Migration = {
   id: "2026-10-18-move-shared-settings-to-vault",
   store: "machine",
   run: (context) => {
-    const machine = readMachineConfig(context);
+    const machine = readObject(context.paths.config);
     if (machine === "broken") return "later";
     if (machine === null || Object.keys(pickKeys(machine, sharedKeys)).length === 0) return "done";
     const vaultPath = vaultPathOf(machine);
@@ -61,7 +61,7 @@ export const startVaultSettings: Migration = {
     if (context.vaultPath === null) return "done";
     const file = settingsFile(context.vaultPath);
     if (existsSync(file)) return "done";
-    const machine = readMachineConfig(context);
+    const machine = readObject(context.paths.config);
     if (machine === "broken") return "later";
     const shared = machine === null ? {} : pickKeys(machine, sharedKeys);
     if (Object.keys(shared).length === 0) return "done";
@@ -78,10 +78,11 @@ export const copySecuritySettingsFromVault: Migration = {
   id: "2026-10-18-copy-security-settings-from-vault",
   store: "machine",
   run: (context) => {
-    const machine = readMachineConfig(context);
+    const machine = readObject(context.paths.config);
     if (machine === "broken") return "later";
-    const vaultPath = machine === null ? null : vaultPathOf(machine);
-    if (machine === null || vaultPath === null) return "done";
+    if (machine === null) return "done";
+    const vaultPath = vaultPathOf(machine);
+    if (vaultPath === null) return "done";
     if (!existsSync(vaultPath)) return "later";
     const vault = readObject(settingsFile(vaultPath));
     if (vault === "broken") return "later";
@@ -90,6 +91,7 @@ export const copySecuritySettingsFromVault: Migration = {
     const copied = pickKeys(vault, missing);
     if (Object.keys(copied).length === 0) return "done";
     const merged = merge(copied, machine);
+    // A bad value in config.json would stop Eva at every start, so a bad vault value is dropped instead.
     if (isValidConfig(merged)) context.write(context.paths.config, toJson(merged));
     return "done";
   },
@@ -112,10 +114,6 @@ export const dropSecuritySettingsFromVault: Migration = {
 
 function settingsFile(vaultPath: string): string {
   return join(vaultPath, ".eva", "settings.json");
-}
-
-function readMachineConfig(context: MigrationContext): JsonObject | null | "broken" {
-  return readObject(context.paths.config);
 }
 
 /** A JSON object, null for a missing file, or "broken" for a file that is not a JSON object. */

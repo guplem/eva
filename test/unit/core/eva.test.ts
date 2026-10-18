@@ -1135,7 +1135,7 @@ describe("migrations (#119)", () => {
       machine: { kind: "failed", applied: [], id: "2026-10-20-example", reason: "disk is full" },
       vault: { kind: "done", applied: [], later: [] },
     });
-    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["migration:machine", "error"]]);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["migration_failed:machine", "error"]]);
     expect(alerts[0]?.message).toContain("2026-10-20-example");
     expect(alerts[0]?.message).toContain("disk is full");
   });
@@ -1147,7 +1147,7 @@ describe("migrations (#119)", () => {
       machine: { kind: "ahead", unknown: ["2099-01-01-from-the-future"] },
       vault: null,
     });
-    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["migration:machine", "warn"]]);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine_ahead", "warn"]]);
   });
 
   test("a vault that a newer Eva migrated raises one alert with the computer and the versions, until it clears", async () => {

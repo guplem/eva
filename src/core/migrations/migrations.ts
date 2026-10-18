@@ -66,7 +66,8 @@ export interface StartMigrationsOptions {
   readonly isHub: () => boolean;
   readonly version: string;
   readonly now: () => Date;
-  readonly list?: readonly Migration[];
+  /** Every migration that this Eva knows. Tests pass their own list. */
+  readonly migrations?: readonly Migration[];
 }
 
 /**
@@ -74,7 +75,7 @@ export interface StartMigrationsOptions {
  * The machine store runs first, so each machine copies a vault value before the hub drops it.
  */
 export function runStartMigrations(options: StartMigrationsOptions): StartMigrations {
-  const common = { ...options, migrations: options.list ?? migrations };
+  const common = { ...options, migrations: options.migrations ?? migrations };
   const machine = runMigrations({ ...common, store: "machine" });
   const vault = options.isHub() ? runMigrations({ ...common, store: "vault" }) : null;
   return { machine, vault };

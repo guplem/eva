@@ -201,7 +201,7 @@ describe("runMigrations", () => {
       store: "machine",
       run: (context) => {
         const current = readFileSync(file, "utf-8");
-        if (!current.includes("+")) context.write(file, current.replace("\n", "+\n"));
+        if (!current.includes("+")) context.write(file, `${current.trimEnd()}+\n`);
         return "done";
       },
     };

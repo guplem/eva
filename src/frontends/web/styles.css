@@ -95,6 +95,17 @@ button.primary {
   border-color: var(--accent);
 }
 
+/* A link that does the work of a button, such as opening Google's login page. */
+a.button-link {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+
 button.danger {
   color: var(--danger);
   border-color: var(--danger);
@@ -914,6 +925,13 @@ textarea {
   button,
   select,
   input {
+    min-height: 44px;
+  }
+
+  .link-list a,
+  a.button-link {
+    display: inline-flex;
+    align-items: center;
     min-height: 44px;
   }
 

@@ -13,13 +13,17 @@ import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } fro
 export interface PublicSettings {
   readonly config: EvaConfig;
   /** Whether each secret is set. The values never leave the core. */
-  readonly secretsSet: Readonly<
-    Record<"telegramBotToken" | "claudeOauthToken" | "githubToken" | "localApiToken", boolean>
-  >;
+  readonly secretsSet: Readonly<Record<PageSecretName | "localApiToken", boolean>>;
 }
 
-/** The secrets that the settings page may save. The local token and the Google keys stay with `eva setup`. */
-export const pageSecretNames = ["githubToken", "telegramBotToken", "claudeOauthToken"] as const;
+/** The secrets that the settings page may save. The local token stays with `eva setup`. */
+export const pageSecretNames = [
+  "githubToken",
+  "telegramBotToken",
+  "claudeOauthToken",
+  "googleOauthClientId",
+  "googleOauthClientSecret",
+] as const;
 export type PageSecretName = (typeof pageSecretNames)[number];
 
 /** What the Setup section shows beside the settings. */
@@ -75,6 +79,8 @@ export class LiveSettings {
         claudeOauthToken: secrets.claudeOauthToken !== undefined,
         githubToken: secrets.githubToken !== undefined,
         localApiToken: secrets.localApiToken !== undefined,
+        googleOauthClientId: secrets.googleOauthClientId !== undefined,
+        googleOauthClientSecret: secrets.googleOauthClientSecret !== undefined,
       },
     };
   }

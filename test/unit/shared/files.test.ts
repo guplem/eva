@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../../../src/shared/files.ts";
@@ -19,6 +19,15 @@ describe("writeFileAtomic", () => {
     writeFileAtomic(path, "second");
     expect(Bun.file(path).size).toBe(6);
     expect(readdirSync(join(folder, "state"))).toEqual(["sessions.json"]);
+  });
+
+  test("a failed rename removes the temporary file, which may hold a secret", () => {
+    const path = join(folder, "taken");
+    mkdirSync(join(path, "inside"), { recursive: true });
+    expect(() => {
+      writeFileAtomic(path, "secret");
+    }).toThrow();
+    expect(readdirSync(folder)).toEqual(["taken"]);
   });
 });
 

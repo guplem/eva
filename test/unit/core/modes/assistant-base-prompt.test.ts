@@ -16,6 +16,10 @@ describe("assistantBasePrompt", () => {
     }
   });
 
+  test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {
+    expect(assistantBasePrompt).toContain("Start the Google login");
+  });
+
   test("says where the rules for chat names go, so the person can change them in a chat (issue 50)", () => {
     expect(assistantBasePrompt).toContain("`.eva/chat-names.md`");
   });

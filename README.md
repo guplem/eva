@@ -22,11 +22,12 @@ Eva can also work in your coding projects. Each project gets its own copy of the
 
 Before you start, have these ready. Each one takes a few minutes.
 
-1. **A computer that stays on.** Windows or Linux. An old laptop is enough.
-2. **A Claude subscription** (Pro or Max) from [claude.ai](https://claude.ai). Eva uses it for the thinking.
+1. **A computer that stays on.** Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
+2. **An AI subscription** for the harness that does the thinking. Use a Claude subscription (Pro or Max) from [claude.ai](https://claude.ai) with Claude Code, or another provider with pi, such as ChatGPT or OpenRouter.
 3. **A GitHub account** from [github.com](https://github.com). Eva keeps a private copy of your notes there.
-4. **Telegram** on your phone, and a bot of your own. A bot is a Telegram account that a program controls. [Create your Telegram bot](docs/guide/setup.md#create-your-telegram-bot) explains the 2-minute steps.
-5. **Tailscale** (free), to open Eva's web page from your phone. On Windows and Linux, `eva setup` installs it for you. You can add it later.
+4. **Telegram** on your phone, and a bot of your own. [Read here how to create your own Telegram bot](docs/guide/setup.md#create-your-telegram-bot).
+
+To open Eva's web page from your phone, you also need **Tailscale** (free). You can add it later. On Windows and Linux, `eva setup` installs it for you.
 
 ## Get started
 

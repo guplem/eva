@@ -818,6 +818,23 @@ repos:
     expect(output.join("")).toContain("Hi! I am Eva.");
   });
 
+  test("/rename renames the chat, and a bare /rename shows how to use it (issue 46)", async () => {
+    const lines = ["/rename\tTrip plans", "/rename", "/exit"];
+    const output: string[] = [];
+    await runChat({
+      baseUrl: api.url,
+      token: "chat-token",
+      mode: "assistant",
+      model: "default",
+      readLine: () => Promise.resolve(lines.shift() ?? null),
+      write: (text) => output.push(text),
+    });
+    const text = output.join("");
+    expect(text).toContain("The chat is now called Trip plans.");
+    expect(text).toContain("Use: /rename <title>");
+    expect(eva.sessions.list()[0]?.title).toBe("Trip plans");
+  });
+
   test("an approval is asked in the terminal, with y or n", async () => {
     const lines = ["push it", "y", "push it", "no", "/exit"];
     const output: string[] = [];

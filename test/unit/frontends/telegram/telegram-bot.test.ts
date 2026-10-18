@@ -44,6 +44,10 @@ function createEva(
 }
 
 function createBot(allowedChatId: number | null = owner, extra: Partial<TelegramBotOptions> = {}): TelegramBot {
+  // A bot can still retry an alert after its test ends. It must record into its own test's lists,
+  // or it changes the result of the next test.
+  const ownSleeps = sleeps;
+  const ownLogs = logs;
   return new TelegramBot({
     api: new HttpTelegramApi({ token: telegram.token, baseUrl: telegram.baseUrl }),
     eva,
@@ -56,10 +60,10 @@ function createBot(allowedChatId: number | null = owner, extra: Partial<Telegram
     typingIntervalMs: 20,
     clock: { now: () => clock },
     sleep: (ms) => {
-      sleeps.push(ms);
+      ownSleeps.push(ms);
       return Promise.resolve();
     },
-    logger: { log: (level, message) => logs.push({ level, message }) },
+    logger: { log: (level, message) => ownLogs.push({ level, message }) },
     ...extra,
   });
 }

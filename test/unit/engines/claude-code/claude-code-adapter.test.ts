@@ -242,6 +242,26 @@ describe("mapSdkMessages", () => {
     expect(events[0]).toMatchObject({ taskId: "af535f9743f2b5266", state: "failed" });
   });
 
+  test("a Bash tool call is a command", async () => {
+    // The captures run no shell: this is the captured Read call renamed to Bash.
+    const read = loadCapture("new-turn-with-tool")
+      .filter(isMessage)
+      .find(
+        (message) => message.type === "assistant" && message.message.content.some((block) => block.type === "tool_use"),
+      ) as Extract<SDKMessage, { type: "assistant" }>;
+    const bash = {
+      ...read,
+      message: {
+        ...read.message,
+        content: read.message.content.map((block) =>
+          block.type === "tool_use" ? { ...block, name: "Bash", input: { command: "ls" } } : block,
+        ),
+      },
+    } as SDKMessage;
+    const events = await collect([bash, resultOf("new-turn-with-tool")]);
+    expect(events[0]).toMatchObject({ kind: "tool_started", name: "Bash", category: "command", summary: "ls" });
+  });
+
   test("text from inside a subagent stays out of the conversation", async () => {
     // The foreground capture has no inner text: this is the captured answer moved inside the subagent.
     const answer = loadCapture("subagent-task")

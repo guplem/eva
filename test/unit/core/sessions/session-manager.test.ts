@@ -214,6 +214,20 @@ describe("event order", () => {
 });
 
 describe("exactly one end event (lesson 47)", () => {
+  test("a failed turn keeps its activity too", async () => {
+    const manager = createManager(
+      new FakeEngine(() => [
+        { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls" },
+        { kind: "task_changed", taskId: "k1", description: "look", state: "running" },
+        { kind: "turn_failed", reason: "boom" },
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(manager.get(sessionId).turns[0]).toMatchObject({ toolCount: 1, commandCount: 1, taskCount: 1 });
+    expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
+  });
+
   test("a stream that stops without an end gets one turn_failed", async () => {
     const manager = createManager(new FakeEngine(() => [{ kind: "text", text: "half", messageId: "m1" }]));
     await manager.send(newAssistantSession(manager), "go");

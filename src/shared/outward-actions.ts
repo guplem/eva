@@ -16,7 +16,7 @@ const calendarEventToolPattern = /^mcp__.*manage_event$/;
 export function reachesOtherPeople(toolName: string, input: Readonly<Record<string, unknown>>): boolean {
   const command = typeof input["command"] === "string" ? input["command"] : "";
   return (
-    (toolName.toLowerCase() === "bash" && outwardCommandPattern.test(command)) ||
+    (isShellTool(toolName) && outwardCommandPattern.test(command)) ||
     outwardMcpPattern.test(toolName) ||
     (calendarEventToolPattern.test(toolName) && eventReachesOthers(input))
   );
@@ -24,7 +24,7 @@ export function reachesOtherPeople(toolName: string, input: Readonly<Record<stri
 
 /** Each adapter tags its tool calls with this one rule, so the core knows no engine's tool names. */
 export function toolCategory(name: string): ToolCategory {
-  return name.toLowerCase() === "bash" ? "command" : "tool";
+  return isShellTool(name) ? "command" : "tool";
 }
 
 /** One line that says what a tool call does, for an approval button or an activity chip. */
@@ -32,9 +32,13 @@ export function summarizeToolCall(name: string, input: unknown): string {
   const fields = (input ?? {}) as Record<string, unknown>;
   for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
     const value = fields[key];
-    if (typeof value === "string") return name.toLowerCase() === "bash" ? value : `${name} ${value}`;
+    if (typeof value === "string") return isShellTool(name) ? value : `${name} ${value}`;
   }
   return JSON.stringify(input);
+}
+
+function isShellTool(name: string): boolean {
+  return name.toLowerCase() === "bash";
 }
 
 function eventReachesOthers(input: Readonly<Record<string, unknown>>): boolean {

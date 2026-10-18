@@ -29,6 +29,13 @@ Assistant mode gets its Google tools from an MCP server that `uvx` starts. When 
 
 1. **Where does the notice go: a per-turn notice or an alert?** Decision: a per-turn `notice`. The notice sits next to the answer that lacks the tools, and the event kind exists. An alert reaches only Telegram, not the web app.
 2. **Which servers count?** Decision: only the servers in `request.mcpServers`. Project mode stays a transparent wrapper.
-3. **Does the web app keep the notice after the turn?** Decision: no, as with `history_lost`. A stored step kind is a schema change for a later issue.
+3. **Does the web app keep the notice after the turn?** Decision: no, as with `history_lost`. Telegram keeps it in the topic. A stored step kind is a schema change: a follow-up issue tracks it. A failed message step was the other option, but it hides the notice behind a badge and adds it to the whole answer.
 4. **Does the notice repeat at each turn?** Decision: yes. Each turn lacks the tools again, and the person sees the cause where it matters.
-5. **How does the pi adapter know a `notify` is Eva's?** Decision: a fixed prefix, kept equal in the bridge and the adapter by a test, as with `mcpServersFileVariable`.
+5. **How does the pi adapter know a `notify` is Eva's?** Decision: a fixed prefix, kept equal in the bridge and the adapter by a test, as with `mcpServersFileVariable`. The adapter cuts the prefix off. A `notify` never reaches the dialog answer path.
+
+## Notes from the gap check
+
+- `McpServerStatus.error` exists only for `failed`. A `needs-auth` server gets a fixed reason. A `pending` server is no failure.
+- The SDK's control request has no timeout of its own. The adapter races it against a timer and catches its failure. A notice with no reason still goes out.
+- A tool that the bridge skips for its long name becomes a notice too.
+- Telegram drops an event of a chat that has no topic yet. A chat that starts on the web then misses the notice in Telegram, as it misses `history_lost`.

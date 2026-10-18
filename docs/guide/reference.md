@@ -20,7 +20,7 @@ Run these on the computer where Eva runs. When Eva is already running, each comm
 | `eva projects [words]`           | Searches your projects. `status:active` and `tag:work` filter them.                   |
 | `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.           |
 | `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.        |
-| `eva update [--check]`           | Installs the newest version, then restarts. `--check` only looks.                     |
+| `eva update [version] [--check]` | Installs what the policy allows, or the version given. `--check` only looks.          |
 | `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.                   |
 | `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.         |
 | `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                       |
@@ -35,7 +35,7 @@ Eva keeps two kinds of settings:
 - **This computer's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows). `config.json` holds the notebook folder, the machine name, the port, the project folders, the program paths, the Telegram chat, and the remote access settings. `secrets.json` holds the tokens. Tokens never go in the notebook.
 - **Settings that decide who gets in, and what an agent may do, stay on each computer:** the trusted GitHub owners, the allowed Tailscale accounts, and Google's access (read-only, and which services). Eva's AI agent edits the notebook as part of its work, so these never live there.
 
-Change a setting on the web Settings page, or with `eva settings set`. The update frequency and the notebook fetch apply at once; any other change applies at the next restart.
+Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy and the notebook fetch apply at once. Any other change applies at the next restart.
 
 - **Tokens:** paste the GitHub, Telegram and Claude Code tokens on the Settings page. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
@@ -55,9 +55,20 @@ Eva works on several computers with one notebook, with no role to set.
 
 Eva looks for a new version every day by default (`updates.frequency`: `off`, `hourly`, `daily` or `weekly`). She installs it only when no conversation is running, then restarts.
 
-- **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. She never touches a copy with your own changes, your own commits, or another branch.
-- **Installed as one executable** (a GitHub release): Eva takes the newest signed release.
-- **Update now:** the **Update now** button in Settings, `/update` in Telegram, or `eva update`.
+Each version has three numbers, `MAJOR.MINOR.PATCH`. A fix raises the last number, a new feature raises the middle one, and a change that can break something raises the first one. The update policy (`updates.install`) chooses what Eva installs by herself:
+
+| Value             | Eva installs by herself                                    |
+| ----------------- | ---------------------------------------------------------- |
+| `patch`           | Fixes only.                                                |
+| `minor` (default) | Fixes and new features. She holds back a major version.    |
+| `major`           | Every release. A major version can break things that work. |
+
+The policy lives in the notebook, so every computer follows the same one. When the policy holds back a newer version, Eva sends one Telegram message for it, and the status names it.
+
+- **Installed as one executable** (a GitHub release): Eva takes the newest signed release that the policy allows.
+- **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. The policy does not apply. She never touches a copy with your own changes, your own commits, or another branch.
+- **Check and install:** the **Check and install** button in Settings, `/update` then **Install** in Telegram, or `eva update`. Eva installs what the policy allows, at once.
+- **Update to a version:** the **Update to a version…** button in Settings, a version button under `/update` in Telegram, or `eva update 1.2.0`. Eva shows what the update brings, breaking changes first. She never installs an older version.
 - **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the result. The engine update waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
 
 ## Notebook sync

@@ -67,41 +67,65 @@ describe("release verification", () => {
 describe("updateExecutable", () => {
   let folder: string;
   let server: Server<undefined>;
+  /** The files of the newest release, v0.2.0. */
   let files: Record<string, Uint8Array<ArrayBuffer> | string>;
-  let latestStatus: number;
+  /** The files of an older release, v0.1.5. */
+  let olderFiles: Record<string, Uint8Array<ArrayBuffer> | string>;
+  let listStatus: number;
   let brokenDownloads: boolean;
   let probeAnswer: string;
   let executable: string;
+
+  function signedFiles(version: string, build: string): Record<string, Uint8Array<ArrayBuffer> | string> {
+    const bytes = new TextEncoder().encode(build);
+    const sums = `${sha256Hex(bytes)}  eva-linux-x64\n# version ${version}\n`;
+    return { "eva-linux-x64": bytes, SHA256SUMS: sums, "SHA256SUMS.sig": signText(sums) };
+  }
 
   beforeEach(() => {
     folder = mkdtempSync(join(tmpdir(), "eva-update-"));
     executable = join(folder, "eva");
     writeFileSync(executable, "old build");
-    latestStatus = 200;
+    listStatus = 200;
     brokenDownloads = false;
     probeAnswer = "0.2.0";
-    const fresh = new TextEncoder().encode("new build");
-    const sums = `${sha256Hex(fresh)}  eva-linux-x64\n# version 0.2.0\n`;
-    files = { "eva-linux-x64": fresh, SHA256SUMS: sums, "SHA256SUMS.sig": signText(sums) };
+    files = signedFiles("0.2.0", "new build");
+    olderFiles = signedFiles("0.1.5", "older build");
     server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       fetch: (request) => {
         const path = new URL(request.url).pathname;
-        if (path === "/repos/guplem/eva/releases/latest") {
+        const release = (
+          tag: string,
+          body: string,
+          assets: Record<string, unknown>,
+          flags: { draft?: boolean; prerelease?: boolean } = {},
+        ): unknown => ({
+          tag_name: tag,
+          body,
+          draft: flags.draft ?? false,
+          prerelease: flags.prerelease ?? false,
+          assets: Object.keys(assets).map((name) => ({
+            name,
+            browser_download_url: `http://127.0.0.1:${String(server.port)}/download/${tag}/${name}`,
+          })),
+        });
+        if (path === "/repos/guplem/eva/releases") {
           return Response.json(
-            {
-              tag_name: "v0.2.0",
-              assets: Object.keys(files).map((name) => ({
-                name,
-                browser_download_url: `http://127.0.0.1:${String(server.port)}/download/${name}`,
-              })),
-            },
-            { status: latestStatus },
+            [
+              release("v0.3.0", "", files, { draft: true }),
+              release("v0.2.1-rc", "", files, { prerelease: true }),
+              release("v0.2.0", "## New features\n\n- feat: voice notes\n", files),
+              release("v0.1.5", "## Fixes and other changes\n\n- fix: a crash\n", olderFiles),
+              release("v0.1.0", "", {}),
+            ],
+            { status: listStatus },
           );
         }
         if (brokenDownloads) return new Response("broken", { status: 500 });
-        const body = files[path.replace("/download/", "")];
+        const [, , tag, name = ""] = path.split("/");
+        const body = (tag === "v0.1.5" ? olderFiles : files)[name];
         return body === undefined ? new Response("missing", { status: 404 }) : new Response(body);
       },
     });
@@ -131,11 +155,32 @@ describe("updateExecutable", () => {
     );
   }
 
-  test("as an update channel, a check finds the release and installs nothing", async () => {
+  test("as an update channel, a check lists the newer published releases and installs nothing", async () => {
     const channel = executableUpdateChannel(inputs());
     expect(channel.kind).toBe("executable");
-    expect(await channel.check()).toEqual({ current: "0.1.0", latest: "0.2.0", available: true });
-    expect(await executableUpdateChannel(inputs("0.2.0")).check()).toMatchObject({ available: false });
+    expect(await channel.check()).toEqual({
+      current: "0.1.0",
+      latest: "0.2.0",
+      available: true,
+      releases: [
+        { version: "0.2.0", notes: "## New features\n\n- feat: voice notes\n" },
+        { version: "0.1.5", notes: "## Fixes and other changes\n\n- fix: a crash\n" },
+      ],
+    });
+    expect(await executableUpdateChannel(inputs("0.2.0")).check()).toMatchObject({ available: false, releases: [] });
+    expect(readFileSync(executable, "utf8")).toBe("old build");
+  });
+
+  test("an update to a chosen version installs that release, not the newest", async () => {
+    probeAnswer = "0.1.5";
+    expect(await updateExecutable(inputs(), "0.1.5")).toEqual({ status: "updated", from: "0.1.0", to: "0.1.5" });
+    expect(readFileSync(executable, "utf8")).toBe("older build");
+  });
+
+  test("a chosen version that is unknown, a draft or not newer is refused", async () => {
+    for (const version of ["0.9.9", "0.3.0", "0.2.1-rc"])
+      expect(String(await failure(updateExecutable(inputs(), version)))).toContain(`No release ${version}`);
+    expect(String(await failure(updateExecutable(inputs("0.2.0"), "0.1.5")))).toContain("never installs an older");
     expect(readFileSync(executable, "utf8")).toBe("old build");
   });
 
@@ -144,11 +189,13 @@ describe("updateExecutable", () => {
       current: "0.2.0",
       latest: "0.2.0",
       available: false,
+      releases: [],
     });
     expect(await executableUpdateChannel(inputs()).apply()).toEqual({
       current: "0.1.0",
       latest: "0.2.0",
       available: false,
+      releases: [],
     });
     expect(readFileSync(executable, "utf8")).toBe("new build");
   });
@@ -214,7 +261,7 @@ describe("updateExecutable", () => {
   test("a missing asset, a GitHub error, an unreachable server and an unknown machine are clear errors", async () => {
     Reflect.deleteProperty(files, "eva-linux-x64");
     expect(String(await failure(updateExecutable(inputs())))).toContain("has no eva-linux-x64");
-    latestStatus = 404;
+    listStatus = 404;
     expect(String(await failure(updateExecutable(inputs())))).toContain("GitHub answered 404");
     expect(String(await failure(updateExecutable({ ...inputs(), apiBaseUrl: "http://127.0.0.1:1" })))).toContain(
       "could not be reached",

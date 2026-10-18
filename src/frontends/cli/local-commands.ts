@@ -8,7 +8,7 @@ import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadConfig, loadSecrets, type EvaSecrets, type HomePaths } from "../../core/settings/home.ts";
 import { executableUpdateChannel } from "../../core/updates/self-update.ts";
 import { sourceUpdateChannel } from "../../core/updates/source-update.ts";
-import type { UpdateChannel } from "../../core/updates/updater.ts";
+import { Updater, type UpdateChannel } from "../../core/updates/updater.ts";
 import {
   changeSettings,
   describeSettings,
@@ -21,7 +21,9 @@ import { exitCodes } from "../../shared/exit-codes.ts";
 import { evaVersion } from "../../shared/version.ts";
 import type { CliCommand } from "./arguments.ts";
 import {
+  describeRelease,
   describeSync,
+  describeUpdateWithHint,
   requestHub,
   requestSettingsChange,
   requestStatus,
@@ -33,23 +35,38 @@ import { childEnvironment, writeLine, type CliHost } from "./host.ts";
 import { describeAccess } from "./network-setup.ts";
 
 /** `eva update`: the running Eva updates and restarts herself; a stopped Eva is updated here. */
-export async function update(host: CliHost, paths: HomePaths, checkOnly: boolean): Promise<number> {
+export async function update(
+  host: CliHost,
+  paths: HomePaths,
+  checkOnly: boolean,
+  version: string | null,
+): Promise<number> {
   const client = runningClient(host, paths);
   if (client !== null) {
-    writeLine(host, await requestUpdate(client, checkOnly));
+    writeLine(host, await requestUpdate(client, checkOnly, version));
     return exitCodes.clean;
   }
-  const channel = updateChannel(host, loadSecrets(paths));
-  const found = checkOnly ? await channel.check() : await channel.apply();
+  const settings = loadSettings(paths).config.updates;
+  // The same rules as a running Eva: the policy picks, unless the person names a version.
+  const updater = new Updater({
+    channel: updateChannel(host, loadSecrets(paths)),
+    frequency: () => settings.frequency,
+    policy: () => settings.install,
+    isIdle: () => true,
+    restart: () => undefined,
+    now: () => new Date(),
+  });
+  const checked = await updater.check();
+  const release = checkOnly || version === null ? null : describeRelease(checked, version);
+  if (release !== null) writeLine(host, `${release}\n`);
+  const status = checkOnly ? checked : await updater.updateNow(version ?? undefined);
   writeLine(
     host,
-    found.current === found.latest
-      ? `Eva ${found.current} is the latest version.`
-      : checkOnly
-        ? `Eva ${found.latest} is available (this is ${found.current}). Run \`eva update\` to install it.`
-        : `Updated Eva from ${found.current} to ${found.latest}.`,
+    status.phase === "restarting"
+      ? `Updated Eva from ${status.current ?? "?"} to ${status.latest ?? "?"}.`
+      : describeUpdateWithHint(status),
   );
-  return exitCodes.clean;
+  return status.lastError === null ? exitCodes.clean : exitCodes.crash;
 }
 
 /** `eva sync`: the running Eva syncs; a stopped Eva syncs here. */

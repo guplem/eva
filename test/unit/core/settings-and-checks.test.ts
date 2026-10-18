@@ -480,10 +480,10 @@ describe("live settings, the vault fetch and updates", () => {
       basePrompt: "Base.",
       updateChannel: {
         kind: "source",
-        check: () => Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true }),
+        check: () => Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true, releases: null }),
         apply: () => {
           steps.push("apply");
-          return Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: false });
+          return Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: false, releases: null });
         },
       },
       restartForUpdate: () => steps.push("restart"),

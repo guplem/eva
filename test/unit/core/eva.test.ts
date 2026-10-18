@@ -731,9 +731,9 @@ describe("Eva", () => {
         kind: "source",
         check: () => {
           checks += 1;
-          return Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false });
+          return Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false, releases: null });
         },
-        apply: () => Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false }),
+        apply: () => Promise.resolve({ current: "aaa1111", latest: "aaa1111", available: false, releases: null }),
       },
     });
     // The first tick waits on its vault fetch; a second tick at that moment must do nothing.
@@ -758,8 +758,8 @@ describe("Eva", () => {
       gatherMs: 50,
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -843,8 +843,8 @@ describe("Eva", () => {
       claudeExecutable: "/opt/claude",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
     });
@@ -890,10 +890,10 @@ describe("Eva", () => {
       claudeExecutable: "/opt/claude",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
         apply: async () => {
           await new Promise<void>((resolve) => (finishInstallGate.open = resolve));
-          return { current: "0.1.0", latest: "0.2.0", available: false };
+          return { current: "0.1.0", latest: "0.2.0", available: false, releases: null };
         },
       },
       restartForUpdate: () => restarts.push("restart"),
@@ -926,8 +926,8 @@ describe("Eva", () => {
       {
         updateChannel: {
           kind: "executable",
-          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
         },
       },
     );
@@ -1079,7 +1079,7 @@ describe("Eva alerts", () => {
           check: () =>
             failCheck
               ? Promise.reject(new Error("no network"))
-              : Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true }),
+              : Promise.resolve({ current: "aaa1111", latest: "bbb2222", available: true, releases: null }),
           apply: () => Promise.reject(new Error("bun install failed")),
         },
       },
@@ -1095,6 +1095,34 @@ describe("Eva alerts", () => {
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
     expect(instance.status().problems[0]).toStartWith("The update install failed");
+  });
+
+  test("each new held-back release reaches the phone once, even across a restart", async () => {
+    let releases = [{ version: "1.0.0", notes: "## Breaking changes\n\n- feat!: rename the keys\n" }];
+    const options: Partial<EvaOptions> = {
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({ current: "0.2.0", latest: releases[0]?.version ?? "", available: true, releases }),
+        apply: () => Promise.reject(new Error("not in this test")),
+      },
+    };
+    const first = start(new FakeEngine(), {}, options);
+    const alerts = collectAlerts(first);
+    await first.checkForUpdate();
+    await first.checkForUpdate();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["update_held_back", "news"]]);
+    expect(alerts[0]?.message).toContain("1.0.0");
+    expect(alerts[0]?.message).toContain("can break");
+    first.stop();
+    const second = start(new FakeEngine(), {}, options);
+    const later = collectAlerts(second);
+    await second.checkForUpdate();
+    expect(later).toEqual([]);
+    releases = [{ version: "1.1.0", notes: "" }, ...releases];
+    await second.checkForUpdate();
+    expect(later).toHaveLength(1);
+    expect(later[0]?.message).toContain("1.1.0");
   });
 
   test("a failed engine update reaches the phone as an alert, and a good one clears it", async () => {

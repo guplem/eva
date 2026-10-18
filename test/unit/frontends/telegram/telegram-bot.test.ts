@@ -999,14 +999,65 @@ describe("approvals and commands", () => {
     await settle(bot, () => telegram.sentTexts().length >= 5);
     const texts = telegram.sentTexts().join("\n");
     expect(texts).toContain("Syncing…");
-    expect(texts).toContain("Updating…");
+    expect(texts).toContain("Checking for updates…");
     expect(texts).toContain("Vault sync:");
     expect(texts).toContain("This Eva cannot update herself.");
     expect(texts).toContain("On this machine only (advanced): http://127.0.0.1:");
     expect(engine.requests).toEqual([]);
   });
 
-  test("/update installs a newer Eva and restarts her, after the running chat ends (lesson 92)", async () => {
+  test("/update offers each newer version; a button shows what it brings, and a second one installs it", async () => {
+    const applied: (string | undefined)[] = [];
+    createEva(undefined, systemProcessRunner, {
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({
+            current: "0.2.0",
+            latest: "1.0.0",
+            available: true,
+            releases: [
+              { version: "1.0.0", notes: "## Breaking changes\n\n- feat!: rename the keys\n" },
+              { version: "0.3.0", notes: "## New features\n\n- feat: voice notes\n" },
+            ],
+          }),
+        apply: (version) => {
+          applied.push(version);
+          return Promise.resolve({ current: "0.2.0", latest: version ?? "?", available: false, releases: [] });
+        },
+      },
+      restartForUpdate: () => undefined,
+    });
+    eva.updateSettings({ updates: { install: "patch" } });
+    const bot = createBot();
+    const sent = (): { text: string; buttons: string }[] =>
+      telegram.callsTo("sendMessage").map((call) => ({
+        text: String(call.params["text"]),
+        buttons: JSON.stringify(call.params["reply_markup"] ?? null),
+      }));
+    telegram.sendText(owner, "/update");
+    await settle(bot, () => sent().some((message) => message.buttons.includes("u:1.0.0")));
+    const offer = sent().find((message) => message.buttons.includes("u:1.0.0"));
+    expect(offer?.text).toContain("1.0.0 is held back");
+    expect(offer?.buttons).not.toContain("u:next:go");
+    // The held-back news reaches the chat as news, not as a problem.
+    expect(telegram.sentTexts().some((text) => text.startsWith("Eva 1.0.0 is out."))).toBe(true);
+    expect(offer?.buttons).toContain("u:0.3.0");
+    expect(applied).toEqual([]);
+    telegram.pressButton(owner, "u:1.0.0");
+    await settle(bot, () => sent().some((message) => message.buttons.includes("u:1.0.0:go")));
+    const details = sent().find((message) => message.buttons.includes("u:1.0.0:go"));
+    expect(details?.text).toContain("feat!: rename the keys (1.0.0)");
+    expect(details?.text).toContain("feat: voice notes (0.3.0)");
+    expect(details?.text).toContain("can break");
+    telegram.pressButton(owner, "u:9.9.9");
+    await settle(bot, () => sent().some((message) => message.text.includes("9.9.9 is not a newer release")));
+    telegram.pressButton(owner, "u:1.0.0:go");
+    await settle(bot, () => applied.length > 0);
+    expect(applied).toEqual(["1.0.0"]);
+  });
+
+  test("/update offers the update, and its button installs after the running chat ends (lesson 92)", async () => {
     let release: () => void = () => undefined;
     const restarts: string[] = [];
     createEva(
@@ -1018,8 +1069,8 @@ describe("approvals and commands", () => {
       {
         updateChannel: {
           kind: "executable",
-          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true }),
-          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false }),
+          check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+          apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
         },
         restartForUpdate: () => restarts.push("restart"),
       },
@@ -1029,6 +1080,12 @@ describe("approvals and commands", () => {
     const turn = eva.sessions.send(session.id, "work");
     for (let round = 0; round < 400 && engine.requests.length === 0; round += 1) await Bun.sleep(5);
     telegram.sendText(owner, "/update");
+    await settle(bot, () =>
+      telegram.callsTo("sendMessage").some((call) => JSON.stringify(call.params).includes("u:next:go")),
+    );
+    // /update only looks; the button installs.
+    expect(eva.updateStatus()?.phase).toBe("idle");
+    telegram.pressButton(owner, "u:next:go");
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("installs when")));
     expect(restarts).toEqual([]);
     release();

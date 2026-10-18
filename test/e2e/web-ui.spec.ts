@@ -875,12 +875,76 @@ test("Settings: Restart Eva asks first, then restarts and waits for Eva", async 
   expect(restarts).toEqual(["POST"]);
 });
 
-test("Settings: Update now waits until the new Eva answers, not the old one", async ({ page }) => {
+test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({
+  page,
+}) => {
+  const status = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "1.0.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: "1.0.0",
+    releases: [
+      {
+        version: "1.0.0",
+        notes: "",
+        level: "major",
+        summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
+      },
+      { version: "0.3.0", notes: "", level: "minor", summary: "New features:\n• feat: voice notes (0.3.0)" },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  const installs: unknown[] = [];
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") installs.push(route.request().postDataJSON());
+    await route.fulfill({ json: status });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
+  await page.getByRole("button", { name: "Update to a version…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await dialog.getByRole("combobox").press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Update to a version…" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("It can break things");
+  await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
+  await dialog.getByRole("combobox").selectOption("0.3.0");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Install 0.3.0" }).click();
+  await expect.poll(() => installs).toEqual([{ version: "0.3.0" }]);
+  await expect(dialog).toHaveCount(0);
+});
+
+test("Settings: the major update policy shows a warning", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
+  await page.getByLabel("Eva installs by herself").selectOption("major");
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toBeVisible();
+  await page.getByLabel("Eva installs by herself").selectOption("minor");
+});
+
+test("Settings: Check and install waits until the new Eva answers, not the old one", async ({ page }) => {
   const base = {
     kind: "executable",
     frequency: "daily",
+    install: "minor",
     current: "0.1.0",
     latest: "0.2.0",
+    target: "0.2.0",
+    heldBack: null,
+    releases: [],
     available: true,
     lastCheckAt: null,
     lastError: null,
@@ -901,7 +965,7 @@ test("Settings: Update now waits until the new Eva answers, not the old one", as
   });
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Update now" }).click();
+  await page.getByRole("button", { name: "Check and install" }).click();
   await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
   await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
   expect(readsWhileRestarting).toBe(3);

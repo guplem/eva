@@ -638,7 +638,9 @@ describe("approvals and commands", () => {
     expect(JSON.stringify(signInMessage?.params["reply_markup"])).toContain("t:sign_in");
 
     telegram.pressButton(owner, "t:sign_in");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://login.tailscale.com/a/fresh")));
+    // A whole line, not a part of the text: a link check by substring would also pass a look-alike host.
+    const signInLine = "- Sign in to Tailscale: open this link on any device. https://login.tailscale.com/a/fresh";
+    await settle(bot, () => telegram.sentTexts().some((text) => text.split("\n").includes(signInLine)));
     expect(telegram.sentTexts()).toContain("Asking Tailscale for a sign-in link…");
 
     // Only the paired owner may press the buttons.

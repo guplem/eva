@@ -326,7 +326,9 @@ export class TelegramBot {
     await this.send(
       this.allowedChatId,
       null,
-      `${alert.level === "resolved" ? "Resolved" : "Problem"}: ${alert.message}`,
+      alert.level === "news"
+        ? alert.message
+        : `${alert.level === "resolved" ? "Resolved" : "Problem"}: ${alert.message}`,
     );
   }
 

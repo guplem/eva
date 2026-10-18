@@ -5,7 +5,7 @@
 import { chmodSync, existsSync } from "node:fs";
 import { hostname } from "node:os";
 import { delimiter, join } from "node:path";
-import { readTextTolerant, writeFileAtomic } from "../shared/files.ts";
+import { readJsonTolerant, readTextTolerant, writeFileAtomic } from "../shared/files.ts";
 import type { EngineName, EnginePort, McpServerSpec, ModelAlias } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError, isEvaError } from "../shared/errors.ts";
@@ -18,6 +18,7 @@ import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-cente
 import {
   scheduleCardProblem,
   engineUpdateProblem,
+  heldBackNews,
   scheduleFiringProblem,
   uncleanExitMessage,
   updateProblem,
@@ -68,6 +69,7 @@ import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
+import { isNewerVersion } from "./updates/release-verification.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -421,7 +423,7 @@ export class Eva {
       const engineUpdater = this.engineUpdater;
       if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
-      this.noticeUpdateProblem();
+      this.noticeUpdateState();
     } finally {
       this.backgroundTicking = false;
     }
@@ -472,14 +474,17 @@ export class Eva {
 
   async checkForUpdate(): Promise<UpdateStatus | null> {
     const status = (await this.updater?.check()) ?? null;
-    this.noticeUpdateProblem();
+    this.noticeUpdateState();
     return status;
   }
 
-  /** Installs a newer version as soon as no chat runs a turn, then restarts. */
-  async updateNow(): Promise<UpdateStatus | null> {
-    const status = (await this.updater?.updateNow()) ?? null;
-    this.noticeUpdateProblem();
+  /**
+   * Installs `version`, or the newest one that the policy allows, as soon as no chat runs a turn,
+   * then restarts. Throws for a version that is not a newer release.
+   */
+  async updateNow(version?: string): Promise<UpdateStatus | null> {
+    const status = (await this.updater?.updateNow(version)) ?? null;
+    this.noticeUpdateState();
     return status;
   }
 
@@ -981,9 +986,29 @@ export class Eva {
     });
   }
 
-  private noticeUpdateProblem(): void {
+  private noticeUpdateState(): void {
     const status = this.updater?.status();
-    if (status !== undefined) this.alerts.report("update", updateProblem(status));
+    if (status === undefined) return;
+    this.alerts.report("update", updateProblem(status));
+    this.announceHeldBack(status);
+  }
+
+  /**
+   * Sends one message for each new held-back release, never one at each check. The file keeps
+   * the newest announced version, so a restart does not send it again.
+   */
+  private announceHeldBack(status: UpdateStatus): void {
+    const news = heldBackNews(status);
+    if (news === null || status.heldBack === null) return;
+    const file = this.options.paths.updatesState;
+    const read = readJsonTolerant(file);
+    const announced =
+      read.ok && typeof read.value === "object" && read.value !== null && "announced" in read.value
+        ? read.value.announced
+        : null;
+    if (typeof announced === "string" && !isNewerVersion(status.heldBack, announced)) return;
+    writeFileAtomic(file, `${JSON.stringify({ announced: status.heldBack }, null, 2)}\n`);
+    this.alerts.notify("update_held_back", "news", news);
   }
 
   private noticeSyncProblem(state: VaultSyncState): void {

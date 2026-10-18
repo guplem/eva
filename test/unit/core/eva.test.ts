@@ -931,6 +931,34 @@ describe("Eva alerts", () => {
     expect(instance.status().problems[0]).toStartWith("The update install failed");
   });
 
+  test("each new held-back release reaches the phone once, even across a restart", async () => {
+    let releases = [{ version: "1.0.0", notes: "## Breaking changes\n\n- feat!: rename the keys\n" }];
+    const options: Partial<EvaOptions> = {
+      updateChannel: {
+        kind: "executable",
+        check: () =>
+          Promise.resolve({ current: "0.2.0", latest: releases[0]?.version ?? "", available: true, releases }),
+        apply: () => Promise.reject(new Error("not in this test")),
+      },
+    };
+    const first = start(new FakeEngine(), {}, options);
+    const alerts = collectAlerts(first);
+    await first.checkForUpdate();
+    await first.checkForUpdate();
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["update_held_back", "news"]]);
+    expect(alerts[0]?.message).toContain("1.0.0");
+    expect(alerts[0]?.message).toContain("can break");
+    first.stop();
+    const second = start(new FakeEngine(), {}, options);
+    const later = collectAlerts(second);
+    await second.checkForUpdate();
+    expect(later).toEqual([]);
+    releases = [{ version: "1.1.0", notes: "" }, ...releases];
+    await second.checkForUpdate();
+    expect(later).toHaveLength(1);
+    expect(later[0]?.message).toContain("1.1.0");
+  });
+
   test("a failed engine update reaches the phone as an alert, and a good one clears it", async () => {
     let refuse = true;
     const instance = new Eva({

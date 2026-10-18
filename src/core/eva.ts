@@ -38,7 +38,7 @@ import {
 } from "./settings/home.ts";
 import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } from "./settings/settings.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
-import type { RemoteAccess } from "./remote-access/tailscale.ts";
+import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
@@ -96,8 +96,8 @@ export interface EvaOptions {
   readonly updateChannel?: UpdateChannel | null;
   /** Stops Eva so that she starts again: after an update, and for a restart on request. */
   readonly restartForUpdate?: () => void;
-  /** The web UI's address for the phone through Tailscale, now. Null: Tailscale does not run here. */
-  readonly remoteAccess?: () => RemoteAccess | null;
+  /** Phone access through Tailscale, such as the RemoteAccessWatcher. Null: `tailscaleServe` is off. */
+  readonly remoteAccess?: RemoteAccessControl | null;
   /**
    * The platform's default home folder. An instance with another home is an extra instance on
    * the same OS user, so its engines get their own config folders (lesson 111).
@@ -492,6 +492,26 @@ export class Eva {
   }
 
   /**
+   * Starts the Tailscale install and answers at once: a download or an administrator
+   * prompt can outlast an HTTP request. The status shows the outcome. Null: phone access is off.
+   */
+  installTailscale(): RemoteAccess | null {
+    const remoteAccess = this.options.remoteAccess ?? null;
+    if (remoteAccess === null) return null;
+    const done = remoteAccess.install();
+    void done.then((access) => {
+      if (access.problem !== null)
+        this.options.logger?.log("warn", "Tailscale install failed.", { problem: access.problem });
+    });
+    return remoteAccess.current();
+  }
+
+  /** Asks Tailscale for a fresh sign-in link. Null: phone access is off. */
+  async signInToTailscale(): Promise<RemoteAccess | null> {
+    return (await this.options.remoteAccess?.signIn()) ?? null;
+  }
+
+  /**
    * Starts `claude update` as soon as no chat runs a turn, and answers at once: the update can
    * outlast an HTTP request. Null when no claude program was found.
    */
@@ -598,7 +618,7 @@ export class Eva {
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,
       update: this.updateStatus(),
-      remoteAccess: this.options.remoteAccess?.() ?? null,
+      remoteAccess: this.options.remoteAccess?.current() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
     };

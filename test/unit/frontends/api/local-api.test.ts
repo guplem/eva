@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
+import type { RemoteAccess } from "../../../../src/core/remote-access/remote-access.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
@@ -840,5 +841,109 @@ describe("problems, logs and restart", () => {
       restartingApi.stop();
       restarting.stop();
     }
+  });
+});
+
+describe("remote access", () => {
+  let snapshot: { hostName: string; ownerLogin: string | null } | null;
+  let calls: string[];
+  let remoteEva: Eva;
+  let remoteApi: LocalApi;
+  const access: RemoteAccess = {
+    url: null,
+    problem: null,
+    step: "install",
+    link: null,
+    account: null,
+    canInstall: true,
+    busy: null,
+  };
+
+  beforeEach(() => {
+    snapshot = null;
+    calls = [];
+    remoteEva = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      remoteAccess: {
+        current: () => access,
+        install: () => {
+          calls.push("install");
+          return Promise.resolve(access);
+        },
+        signIn: () => {
+          calls.push("sign_in");
+          return Promise.resolve({ ...access, step: "sign_in", link: "https://login.tailscale.com/a/x" });
+        },
+      },
+    });
+    remoteApi = startLocalApi({
+      eva: remoteEva,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+      tailnet: () => snapshot,
+    });
+  });
+  afterEach(() => {
+    remoteApi.stop();
+    remoteEva.stop();
+  });
+
+  function remoteCall(
+    path: string,
+    init: { method?: string; headers?: Record<string, string> } = {},
+  ): Promise<Response> {
+    return fetch(`${remoteApi.url}${path}`, {
+      method: init.method ?? "GET",
+      headers: init.headers ?? headers(),
+      ...(init.method === "POST" ? { body: "{}" } : {}),
+    });
+  }
+
+  test("a tailnet name that arrives after the start is a known host at once, with its owner only", async () => {
+    const owner = headers({ host: "eva.example-tailnet.ts.net", "tailscale-user-login": "owner@example.com" });
+    expect((await remoteCall("/api/status", { headers: owner })).status).toBe(403);
+    snapshot = { hostName: "eva.example-tailnet.ts.net", ownerLogin: "owner@example.com" };
+    expect((await remoteCall("/api/status", { headers: owner })).status).toBe(200);
+    const stranger = { ...owner, "tailscale-user-login": "stranger@example.com" };
+    expect((await remoteCall("/api/status", { headers: stranger })).status).toBe(403);
+    snapshot = null;
+    expect((await remoteCall("/api/status", { headers: owner })).status).toBe(403);
+  });
+
+  test("the status carries the setup step, and the token starts the install and the sign-in", async () => {
+    expect((await json<{ remoteAccess: RemoteAccess }>(await remoteCall("/api/status"))).remoteAccess).toEqual(access);
+    const installed = await remoteCall("/api/remote-access/install", { method: "POST" });
+    expect(installed.status).toBe(200);
+    expect(await json<RemoteAccess>(installed)).toEqual(access);
+    const signedIn = await remoteCall("/api/remote-access/sign-in", { method: "POST" });
+    expect(await json<RemoteAccess>(signedIn)).toMatchObject({ link: "https://login.tailscale.com/a/x" });
+    expect(calls).toEqual(["install", "sign_in"]);
+  });
+
+  test("a device login cannot install programs on the machine", async () => {
+    remoteEva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+    const request = remoteEva.deviceLogins.request("owner@example.com", "a phone");
+    remoteEva.deviceLogins.answer(request.id, "allow");
+    const answer = remoteEva.deviceLogins.check(request.id, "owner@example.com");
+    const deviceToken = answer.state === "allowed" ? answer.token : "";
+    const device = { cookie: `eva_device=${deviceToken}`, "content-type": "application/json" };
+    expect((await remoteCall("/api/status", { headers: device })).status).toBe(200);
+    for (const path of ["/api/remote-access/install", "/api/remote-access/sign-in"])
+      expect((await remoteCall(path, { method: "POST", headers: device })).status).toBe(403);
+    expect(calls).toEqual([]);
+  });
+
+  test("with tailscale serve off, the actions answer that phone access is off", async () => {
+    expect((await call("/api/remote-access/install", { method: "POST", body: {} })).status).toBe(409);
+    expect((await call("/api/remote-access/sign-in", { method: "POST", body: {} })).status).toBe(409);
   });
 });

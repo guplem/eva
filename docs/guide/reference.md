@@ -67,8 +67,8 @@ The policy lives in the notebook, so every computer follows the same one. When t
 
 - **Installed as one executable** (a GitHub release): Eva takes the newest signed release that the policy allows.
 - **Installed from source** (`git clone`): Eva takes the newest version of `main`, and runs `bun install` when the dependencies changed. The policy does not apply. She never touches a copy with your own changes, your own commits, or another branch.
-- **Check and install:** the **Check and install** button in Settings, `/update` in Telegram, or `eva update`. Eva installs what the policy allows, at once.
-- **Update to a version:** the **Update to a version…** button in Settings, a version button under `/update` in Telegram, or `eva update 1.2.0`. Settings and Telegram show what each release brings, breaking changes first, before you confirm. Eva never installs an older version.
+- **Check and install:** the **Check and install** button in Settings, `/update` then **Install** in Telegram, or `eva update`. Eva installs what the policy allows, at once.
+- **Update to a version:** the **Update to a version…** button in Settings, a version button under `/update` in Telegram, or `eva update 1.2.0`. Eva shows what the update brings, breaking changes first. She never installs an older version.
 - **Update Claude Code:** the **Update Claude Code** button in Settings runs `claude update` and shows the result. The engine update waits until no conversation is running. If Claude Code was installed with a package manager, such as npm, update it with that tool.
 
 ## Notebook sync

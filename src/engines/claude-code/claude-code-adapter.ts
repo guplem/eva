@@ -174,6 +174,7 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
  * a result, the subagent's work, and a second turn with its own result (issue #70). So a success
  * ends the turn only when the stream ends. An error result ends it at once. A throw, such as a
  * stop while the subagent works, fails the turn, so the person sees that the rest is lost.
+ * With `mcp`, each of Eva's MCP servers that did not start becomes a notice.
  */
 export async function* mapSdkMessages(
   messages: AsyncIterable<SDKMessage>,
@@ -198,6 +199,8 @@ async function* mapEachTurn(
 ): AsyncIterable<EngineEventPayload> {
   // A background subagent's follow-up turn can send its own init, and the person needs one notice.
   let mcpChecked = false;
+  // A server that `uvx` downloads on its first start can still connect at init, and fail later.
+  let stillStarting: string[] = [];
   let lastMessageId: string | null = null;
   let contextTokens: number | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
@@ -235,7 +238,10 @@ async function* mapEachTurn(
       case "system": {
         if (message.subtype === "init" && mcp !== null && !mcpChecked) {
           mcpChecked = true;
-          yield* mcpStartNotices(message.mcp_servers, mcp);
+          const own = message.mcp_servers.filter((server) => mcp.servers.includes(server.name));
+          stillStarting = own.filter((server) => server.status === "pending").map((server) => server.name);
+          const failed = own.filter(isStartFailure);
+          if (failed.length > 0) yield* startNotices(failed, await boundedStatus(mcp));
         }
         const task = taskEvent(message);
         if (task !== null) yield task;
@@ -247,6 +253,12 @@ async function* mapEachTurn(
         break;
       }
       case "result": {
+        if (mcp !== null && stillStarting.length > 0) {
+          const statuses = await boundedStatus(mcp);
+          const failed = statuses.filter((status) => stillStarting.includes(status.name) && isStartFailure(status));
+          stillStarting = [];
+          yield* startNotices(failed, statuses);
+        }
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.
           yield { kind: "turn_failed", reason: message.errors.join("; ") || message.subtype };
@@ -270,16 +282,15 @@ async function* mapEachTurn(
   }
 }
 
-/** One notice for each of Eva's servers that did not start. The turn goes on without its tools. */
-async function* mcpStartNotices(
-  servers: readonly { readonly name: string; readonly status: string }[],
-  mcp: McpStartCheck,
-): AsyncIterable<EngineEventPayload> {
-  const failed = servers.filter(
-    (server) => mcp.servers.includes(server.name) && (server.status === "failed" || server.status === "needs-auth"),
-  );
-  if (failed.length === 0) return;
-  const statuses = await boundedStatus(mcp);
+function isStartFailure(server: { readonly status: string }): boolean {
+  return server.status === "failed" || server.status === "needs-auth";
+}
+
+/** One notice for each server that did not start. The turn goes on without its tools. */
+function* startNotices(
+  failed: readonly { readonly name: string; readonly status: string }[],
+  statuses: readonly McpServerStatus[],
+): Iterable<EngineEventPayload> {
   for (const server of failed) {
     const reason =
       server.status === "needs-auth"

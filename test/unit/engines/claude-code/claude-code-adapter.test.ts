@@ -505,6 +505,35 @@ describe("the start of Eva's MCP servers", () => {
     ]);
   });
 
+  test("a server still starting at init that fails later gives its notice before the turn ends", async () => {
+    const failedLater = await mapped([{ name: "google", status: "pending" }], () =>
+      Promise.resolve([{ name: "google", status: "failed", error: "uvx timed out" }]),
+    );
+    const startedLater = await mapped([{ name: "google", status: "pending" }], () =>
+      Promise.resolve([{ name: "google", status: "connected" }]),
+    );
+    expect(failedLater.map((event) => event.kind)).toEqual(["notice", "turn_finished"]);
+    expect(failedLater[0]).toEqual({
+      kind: "notice",
+      text: 'Eva could not start the MCP server "google": uvx timed out',
+    });
+    expect(startedLater.map((event) => event.kind)).toEqual(["turn_finished"]);
+  });
+
+  test("a query with no status request still gives the notice, with no reason", async () => {
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () => replay([initLine([{ name: "google", status: "failed" }]), resultOf("new-turn-with-tool")]),
+    });
+    const events = await drain(
+      engine.runTurn(request({ mcpServers: { google: { command: "uvx", args: [], environment: {} } } })),
+    );
+    expect(events[0]).toEqual({
+      kind: "notice",
+      text: 'Eva could not start the MCP server "google": Claude Code gave no reason.',
+    });
+  });
+
   test("the engine checks the servers of the turn through the query's own status", async () => {
     const engine = new ClaudeCodeEngine({
       executable: "/bin/claude",

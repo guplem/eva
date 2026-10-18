@@ -158,11 +158,15 @@ function EvaApp(): ReactElement {
   return (
     <div className="app">
       <header className="topbar">
-        {hasSidebar && (
-          <button className="menu-button" aria-label="Show the list" onClick={() => setSidebarOpen((open) => !open)}>
-            ☰
-          </button>
-        )}
+        {/* Hidden, not removed, so the mode switch does not move on a phone. */}
+        <button
+          className="menu-button"
+          aria-label="Show the list"
+          style={hasSidebar ? undefined : { visibility: "hidden" }}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          ☰
+        </button>
         <div className="mode-switch" role="group" aria-label="Mode">
           {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}
           <button

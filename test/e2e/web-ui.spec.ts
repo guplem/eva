@@ -200,7 +200,7 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   // The page belongs to Assistant mode, so the topbar shows the way back.
   await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
   // No sidebar shows here, so the list button would do nothing.
-  await expect(page.getByRole("button", { name: "Show the list" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
   await page.getByLabel(/^Id/).fill(id);
   await page.getByLabel("Name").fill(`Walk ${id}`);
   await page.getByLabel("Time (HH:MM)").fill("7:30");
@@ -407,6 +407,15 @@ test.describe("on a phone", () => {
     expect(iconBox?.width ?? 0).toBeGreaterThanOrEqual(44);
     await page.getByRole("button", { name: "Close the list" }).click({ position: { x: 360, y: 200 } });
     await expect(sidebar).toBeHidden();
+  });
+
+  test("the mode switch stays in place on a screen with no list", async ({ page }) => {
+    await logIn(page);
+    const modeSwitch = page.getByRole("group", { name: "Mode" });
+    const before = await modeSwitch.boundingBox();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
+    expect((await modeSwitch.boundingBox())?.x).toBe(before?.x);
   });
 
   test("the composer sits at the bottom of the screen", async ({ page }) => {

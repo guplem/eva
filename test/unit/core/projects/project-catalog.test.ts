@@ -7,6 +7,7 @@ import {
   parseFrontMatter,
   parseProjectQuery,
   searchProjects,
+  titleHeading,
 } from "../../../../src/core/projects/project-catalog.ts";
 
 let vault: string;
@@ -75,6 +76,24 @@ describe("discoverProjects", () => {
     const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
     expect(projects.map((project) => project.id).sort()).toEqual(["2019-03-old-tool", "2025-03-02-1015-example-app"]);
     expect(projects.find((project) => project.id === "2019-03-old-tool")?.parsedId.precision).toBe("month");
+  });
+
+  test("a fence closes only on the same marker, at least as long", () => {
+    for (const body of [
+      "```\n~~~\n# in\n```\n# real\n",
+      "~~~\n```\n# a\n~~~\n# real\n",
+      "````\n```\n# in\n````\n# real\n",
+    ]) {
+      expect(titleHeading(body)?.title).toBe("real");
+    }
+    expect(titleHeading("    ```\n# real\n")?.title).toBe("real");
+    // A backtick in the info string makes inline code, not a fence.
+    expect(titleHeading("```js``` inline\n# real\n")?.title).toBe("real");
+  });
+
+  test("the title is the first heading outside a code fence", () => {
+    addProject("2025-03-02-1015-example-app", "status: active", "\n```\n# a comment in code\n```\n\n# Real title\n");
+    expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.title).toBe("Real title");
   });
 
   test("warns when the front matter time does not match the folder name", () => {

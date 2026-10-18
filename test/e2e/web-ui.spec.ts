@@ -844,3 +844,76 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.answer").first()).toContainText("second line");
   });
 });
+
+test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
+  const run = test.info().project.name;
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
+  await page.getByRole("button", { name: "Project details" }).click();
+  await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
+  await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await page.getByLabel("Project status").selectOption("active");
+  await page.getByLabel("Add a tag").fill("ideas");
+  await page.getByRole("button", { name: "Add the tag" }).click();
+  await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  const file = page.getByLabel("AGENTS.md");
+  await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
+  await expect(file).toHaveValue(/# Renamed/);
+
+  if (run === "phone") {
+    const heights = await page
+      .locator("main button:visible, main select:visible, main input:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
+
+  // The whole file waits while the form has a change, so a save cannot drop that change.
+  await page.getByLabel("Title").fill(`Renamed ${run} again`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeDisabled();
+  await expect(page.getByLabel("AGENTS.md")).toBeDisabled();
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await expect(page.getByRole("button", { name: "Save the file" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Remove the tag ideas" }).click();
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await expect(file).not.toHaveValue(/ideas/);
+
+  // The whole file waits while the form has a change, and the form waits for the whole file.
+  await file.fill(`${await file.inputValue()}\nDraft line.\n`);
+  await expect(page.getByRole("button", { name: "Save details" })).toBeDisabled();
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).not.toHaveValue(/Draft line/);
+
+  // Another device saves meanwhile: this page's save is refused, and says so.
+  const projectId = `2025-05-01-0800-${run}-draft`;
+  await page.evaluate(async (id) => {
+    const path = `/api/projects/${id}/file`;
+    const { text, version } = (await (await fetch(path)).json()) as { text: string; version: string };
+    await fetch(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version, text: `${text}\nFrom another device.\n` }),
+    });
+  }, projectId);
+  await page.getByLabel("Title").fill(`Clash ${run}`);
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("alert")).toContainText("The file changed since you opened it");
+  await page.getByRole("button", { name: "Load again" }).click();
+  await expect(file).toHaveValue(/From another device/);
+  await expect(page.getByLabel("Title")).toHaveValue(`Renamed ${run}`);
+
+  await file.fill(`${await file.inputValue()}\nMore notes.\n`);
+  await page.getByRole("button", { name: "Save the file" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await openList(page);
+  await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
+});

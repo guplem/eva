@@ -1,6 +1,7 @@
 /**
  * Project mode: projects with search and filters, their clones, "New clone", the
- * conversation of the selected clone with its branch and pull request, and the repository setup.
+ * conversation of the selected clone with its branch and pull request, the project details, and
+ * the repository setup.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
@@ -8,6 +9,7 @@ import type { LiveState } from "./live-state.ts";
 import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
+import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 
 interface ProjectViewProps {
@@ -30,6 +32,12 @@ interface Selection {
   readonly clone: CloneDetails;
 }
 
+/** A project page that takes the place of the conversation. */
+interface Panel {
+  readonly kind: "details" | "setup";
+  readonly project: Project;
+}
+
 export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -40,7 +48,8 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   const [clones, setClones] = useState<CloneDetails[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [setupProject, setSetupProject] = useState<Project | null>(null);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [listVersion, setListVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const showError = useShowError();
 
@@ -51,12 +60,12 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
         .then(setProjects, showError);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, status, tag, showError]);
+  }, [search, status, tag, listVersion, showError]);
 
   // The tags come from every project, so a tag of a closed project is offered too.
   useEffect(() => {
     api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
-  }, [showError]);
+  }, [listVersion, showError]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);
@@ -70,7 +79,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   const selectClone = (next: Selection): void => {
     setSelection(next);
     setSelectedChatId(null);
-    setSetupProject(null);
+    setPanel(null);
     onNavigate();
   };
 
@@ -79,7 +88,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
       const chat = await api.newProjectChat(current.project.id, current.clone.name, "default");
       await onChanged();
       setSelectedChatId(chat.id);
-      setSetupProject(null);
+      setPanel(null);
       onNavigate();
     } catch (caught) {
       showError(caught);
@@ -165,7 +174,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                   <div key={clone.name} style={{ display: "contents" }}>
                     <button
                       className="list-item"
-                      aria-current={setupProject === null && selection?.clone.path === clone.path}
+                      aria-current={panel === null && selection?.clone.path === clone.path}
                       onClick={() => selectClone({ project, clone })}
                     >
                       {clone.name}
@@ -179,7 +188,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                             aria-current={candidate.id === chat?.id}
                             onClick={() => {
                               setSelectedChatId(candidate.id);
-                              setSetupProject(null);
+                              setPanel(null);
                               onNavigate();
                             }}
                           >
@@ -194,9 +203,18 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
                 ))}
                 <button onClick={() => void newClone(project)}>New clone</button>
                 <button
-                  aria-current={setupProject?.id === project.id}
+                  aria-current={panel?.kind === "details" && panel.project.id === project.id}
                   onClick={() => {
-                    setSetupProject(project);
+                    setPanel({ kind: "details", project });
+                    onNavigate();
+                  }}
+                >
+                  Project details
+                </button>
+                <button
+                  aria-current={panel?.kind === "setup" && panel.project.id === project.id}
+                  onClick={() => {
+                    setPanel({ kind: "setup", project });
                     onNavigate();
                   }}
                 >
@@ -209,8 +227,14 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
-        {setupProject !== null ? (
-          <RepositorySetup key={setupProject.id} projectId={setupProject.id} title={setupProject.title} />
+        {panel?.kind === "details" ? (
+          <ProjectDetailsEditor
+            key={panel.project.id}
+            projectId={panel.project.id}
+            onSaved={() => setListVersion((version) => version + 1)}
+          />
+        ) : panel?.kind === "setup" ? (
+          <RepositorySetup key={panel.project.id} projectId={panel.project.id} title={panel.project.title} />
         ) : selection === null ? (
           <div className="empty">Pick a project and one of its clones.</div>
         ) : (

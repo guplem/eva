@@ -33,19 +33,12 @@ To open Eva's web page from your phone, you also need **Tailscale** (free). You 
 
 The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
 
-1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), [Bun](https://bun.sh/), and your harness: [Claude Code](https://claude.ai/code) or [pi](https://pi.dev).
-2. **Get Eva:**
-
-   ```bash
-   git clone https://github.com/guplem/eva.git
-   cd eva
-   bun install
-   ```
-
+1. **Install the tools** on the computer that stays on: [git](https://git-scm.com/downloads), and your harness: [Claude Code](https://claude.ai/code) or [pi](https://pi.dev).
+2. **Download Eva:** one program from the [latest release](https://github.com/guplem/eva/releases/latest). [Install Eva on Windows](docs/guide/setup.md#install-eva-on-windows) and [Install Eva on Linux](docs/guide/setup.md#install-eva-on-linux) give the commands.
 3. **Answer Eva's questions:**
 
    ```bash
-   bun run eva setup
+   eva setup
    ```
 
    Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She checks the notebook's address before she continues.
@@ -53,10 +46,12 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 4. **Start Eva, and let her start by herself from now on:**
 
    ```bash
-   bun run eva service install
+   eva service install
    ```
 
-5. **Pair your Telegram chat.** Run `bun run eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+5. **Pair your Telegram chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+
+Eva updates herself from new releases. You choose which ones in Settings.
 
 ## Use Eva every day
 
@@ -125,7 +120,7 @@ Open **Settings** on the web page. The most useful ones:
 **Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
 
 **Eva does not answer in Telegram.**
-Open the web page and look at Settings, or run `bun run eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.
+Open the web page and look at Settings, or run `eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.
 
 **The web page does not open on my phone.**
 Open the Tailscale app and check that it says "Connected", with the same account as Eva's computer. Then send `/link` in Telegram and open that exact address.
@@ -134,16 +129,18 @@ Open the Tailscale app and check that it says "Connected", with the same account
 Two computers changed the same note. Eva stops saving to GitHub until a person fixes it, so that nothing is lost. The fix needs a terminal on Eva's computer: see [Notebook conflicts](docs/guide/reference.md#notebook-conflicts).
 
 **Something else.**
-Run `bun run eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.
+Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how to install each one.
 
 ## More guides
 
-- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for a Linux server.
+- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux.
 - [docs/guide/reference.md](docs/guide/reference.md): every command and setting, several computers, updates, and the optional features (voice notes, PDFs, Google Calendar).
 
 ## For developers
 
 Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes the architecture and the rules of the code; it is written for AI coding agents and for developers. Its section "What must not change" lists the goals that guide every change.
+
+To run Eva from source, clone this repository and run `bun install`. Then type `bun run eva` where the guides say `eva`. A copy from source updates itself from `main`, not from releases.
 
 | Task                                       | Command          |
 | ------------------------------------------ | ---------------- |

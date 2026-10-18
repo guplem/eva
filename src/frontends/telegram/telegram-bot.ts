@@ -115,6 +115,8 @@ interface TelegramUpdate {
 
 /** Telegram refuses a message past 4096 characters; the split leaves room for the HTML tags. */
 const messageLimit = 3_500;
+/** At most this many projects in one /projects answer: a longer list is hard to read on a phone. */
+const projectListLimit = 20;
 /**
  * Lesson 56: count 409 conflicts in a window, and never let a success reset the count. Past
  * the limit, only the poll loop pauses: the owner reaches Eva from a phone, so Eva never exits.
@@ -535,8 +537,8 @@ export class TelegramBot {
         return;
       }
       case "projects": {
-        const projects = this.options.eva.projects(parseProjectQuery(rest.join(" "))).slice(0, 20);
-        await this.send(chatId, topicId, describeProjectLines(projects).join("\n"));
+        const projects = this.options.eva.projects(parseProjectQuery(rest.join(" ")));
+        await this.send(chatId, topicId, fitProjects(projects));
         return;
       }
       default:
@@ -1124,4 +1126,19 @@ function cardText(event: Extract<ScheduleEvent, { kind: "schedule_card" }>): str
   const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
   // The card is the check against a schedule that someone else pushed to the vault (lesson 67).
   return [heading, "", ...fields, "", next].join("\n");
+}
+
+/** The /projects answer: whole projects only, within one message, and a note on what was left out. */
+function fitProjects(projects: Parameters<typeof describeProjectLines>[0]): string {
+  const lines: string[] = [];
+  let shown = 0;
+  for (const project of projects.slice(0, projectListLimit)) {
+    const block = describeProjectLines([project]);
+    if ([...lines, ...block].join("\n").length > messageLimit) break;
+    lines.push(...block);
+    shown += 1;
+  }
+  if (projects.length === 0) return describeProjectLines([]).join("\n");
+  const left = projects.length - shown;
+  return [...lines, ...(left > 0 ? [`…and ${String(left)} more. Add words to narrow the search.`] : [])].join("\n");
 }

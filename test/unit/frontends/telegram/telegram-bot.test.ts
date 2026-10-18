@@ -464,6 +464,29 @@ describe("approvals and commands", () => {
     ]);
   });
 
+  test("/projects drops whole projects from a list too long for one message, and says so", async () => {
+    const vault = join(sandbox.root, "vault");
+    for (let day = 10; day < 30; day += 1) {
+      sandbox.write(
+        vault,
+        `Projects/2025-02-${String(day)}-0900-project-${String(day)}/AGENTS.md`,
+        `---\ncreated: 2025-02-${String(day)}T09:00\nstatus: active\n---\n# ${"Long title ".repeat(25)}\n`,
+      );
+    }
+    const bot = createBot();
+    telegram.sendText(owner, "/projects");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    const text = telegram.sentTexts()[0] ?? "";
+    expect(text.length).toBeLessThanOrEqual(4_096);
+    expect(text).toMatch(/\n…and \d+ more\. Add words to narrow the search\.$/);
+    expect(
+      text
+        .split("\n")
+        .slice(0, -1)
+        .every((line) => line.endsWith("Long title")),
+    ).toBe(true);
+  });
+
   test("/sync syncs the vault, and /update says when this Eva cannot update herself", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/sync");

@@ -61,6 +61,15 @@ function createManager(
   return manager;
 }
 
+/** Polls with a deadline, so a regression fails fast instead of holding a turn open. */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("The condition never came true.");
+    await Bun.sleep(5);
+  }
+}
+
 function newAssistantSession(manager: SessionManager): string {
   return manager.createSession({
     mode: "assistant",
@@ -818,12 +827,80 @@ describe("background tasks", () => {
     );
     const sessionId = newAssistantSession(manager);
     const turn = manager.send(sessionId, "go");
-    while (manager.backgroundTasks().length < 2) await Bun.sleep(5);
-    expect(manager.backgroundTasks()).toEqual([
-      { taskId: "k1", sessionId, description: "looked", state: "done" },
-      { taskId: "k2", sessionId, description: "echo [redacted]", state: "running" },
-    ]);
-    release();
+    try {
+      await waitUntil(() => manager.backgroundTasks().length === 2);
+      expect(manager.backgroundTasks()).toEqual([
+        { taskId: "k1", sessionId, description: "looked", state: "done" },
+        { taskId: "k2", sessionId, description: "echo [redacted]", state: "running" },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
+    expect(manager.backgroundTasks()).toEqual([]);
+  });
+
+  test("the end event forgets the tasks, also while the engine stream still closes", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "task_changed", taskId: "k1", description: "look", state: "running" };
+        yield* FakeEngine.answer(request, "done");
+        await released;
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    try {
+      await waitUntil(() => events.some((event) => event.kind === "turn_finished"));
+      expect(manager.backgroundTasks()).toEqual([]);
+    } finally {
+      release();
+      await turn;
+    }
+  });
+
+  test("two chats may use the same task id", async () => {
+    const releases: (() => void)[] = [];
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "task_changed", taskId: "k1", description: request.prompt, state: "running" };
+        await new Promise<void>((resolve) => releases.push(resolve));
+        yield* FakeEngine.answer(request, "done");
+      }),
+    );
+    const first = newAssistantSession(manager);
+    const second = newAssistantSession(manager);
+    const turns = [manager.send(first, "one"), manager.send(second, "two")];
+    try {
+      await waitUntil(() => releases.length === 2);
+      // The second chat's turn ends first: the first chat's task still runs.
+      releases[1]?.();
+      await turns[1];
+      expect(manager.backgroundTasks()).toEqual([
+        { taskId: "k1", sessionId: first, description: "one", state: "running" },
+      ]);
+    } finally {
+      for (const release of releases) release();
+      await Promise.all(turns);
+    }
+  });
+
+  test("a stopped turn forgets its tasks", async () => {
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "task_changed", taskId: "k1", description: "look", state: "running" };
+        await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+        throw new Error("stopped");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.backgroundTasks().length === 1);
+    manager.stop(sessionId);
     await turn;
     expect(manager.backgroundTasks()).toEqual([]);
   });

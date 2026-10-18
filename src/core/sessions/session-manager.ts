@@ -158,8 +158,8 @@ export class SessionManager {
     { readonly question: PendingApproval; readonly resolve: (answer: PrepareAnswer) => void }
   >();
   /**
-   * The tasks of each running turn, by task id. A task cannot outlive its turn: the engine
-   * process ends with it, and the stream drops each later event.
+   * The tasks of each running turn, by session id and task id. A task cannot outlive its turn.
+   * The engine process ends with the turn. The stream drops each later event.
    */
   private readonly tasks = new Map<string, BackgroundTask>();
   private readonly sequence = new SequenceCounter();
@@ -384,7 +384,7 @@ export class SessionManager {
   }
 
   private forgetTasks(sessionId: string): void {
-    for (const [taskId, task] of this.tasks) if (task.sessionId === sessionId) this.tasks.delete(taskId);
+    for (const [key, task] of this.tasks) if (task.sessionId === sessionId) this.tasks.delete(key);
   }
 
   private expireApprovals(sessionId: string): void {
@@ -456,7 +456,11 @@ export class SessionManager {
 
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
-      if (isTurnEnd(payload)) turn.ended = true;
+      if (isTurnEnd(payload)) {
+        turn.ended = true;
+        // Before the event: a front end that reads the tasks after it must not get them back.
+        this.forgetTasks(sessionId);
+      }
       this.emit(sessionId, payload);
     };
 
@@ -521,7 +525,8 @@ ${prompt}`,
           taskIds.add(payload.taskId);
           activity.taskCount = taskIds.size;
           const { taskId, description, state } = payload;
-          this.tasks.set(taskId, { taskId, sessionId, description, state });
+          // The engine names a task, so two chats may use the same id.
+          this.tasks.set(`${sessionId}\n${taskId}`, { taskId, sessionId, description, state });
         }
         steps = addStep(steps, payload);
         if (payload.kind === "turn_finished") {

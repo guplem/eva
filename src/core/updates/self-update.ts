@@ -3,8 +3,8 @@
  * release, after the signature and the checksum match. A running executable cannot
  * be overwritten on Windows, but it can be renamed, so the old file moves aside first.
  */
-import { chmodSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { evaRepository } from "../../shared/version.ts";
@@ -139,7 +139,6 @@ async function download(release: Release, name: string): Promise<Uint8Array> {
 async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, version: string): Promise<void> {
   const executablePath = inputs.executablePath;
   const fresh = `${executablePath}.new`;
-  const old = `${executablePath}.old`;
   writeFileSync(fresh, bytes);
   chmodSync(fresh, 0o755);
   // A file that does not start on this machine must never take the old one's place (lesson 91).
@@ -154,7 +153,7 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
     rmSync(fresh, { force: true });
     throw new EvaError("update_failed", `The new executable did not start and say ${version}. Nothing changed.`);
   }
-  rmSync(old, { force: true });
+  const old = asideName(executablePath);
   renameSync(executablePath, old);
   try {
     renameSync(fresh, executablePath);
@@ -163,5 +162,36 @@ async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, versio
     throw new EvaError("update_failed", "The new executable could not take the old one's place. Nothing changed.", {
       cause: error,
     });
+  }
+}
+
+/**
+ * Where the old executable goes. Windows cannot remove a running file, and Eva's supervisor
+ * still runs the file from before the last update. So `.old` can stay, and the old executable
+ * then gets a unique name. Each update removes the leftovers that it can.
+ */
+function asideName(executablePath: string): string {
+  const old = `${executablePath}.old`;
+  const folder = dirname(executablePath);
+  const leftover = `${basename(old)}-`;
+  let names: string[] = [];
+  try {
+    names = readdirSync(folder);
+  } catch {
+    // Removing the leftovers is a courtesy: the update goes on without it.
+  }
+  // Only the names that this function gives: never a file of the person's own.
+  for (const name of names.filter((each) => each.startsWith(leftover) && /^\d+$/.test(each.slice(leftover.length)))) {
+    try {
+      rmSync(join(folder, name), { force: true });
+    } catch {
+      // Still running: the next update tries again.
+    }
+  }
+  try {
+    rmSync(old, { force: true });
+    return old;
+  } catch {
+    return `${old}-${String(Date.now())}`;
   }
 }

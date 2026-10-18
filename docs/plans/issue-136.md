@@ -26,6 +26,16 @@ Delete this file before the merge. The decisions then live in the commits and in
 ## Gaps
 
 - **Where Claude Code lands, and the service `PATH`:** decision 2 and 8.
-- **A question for `--non-interactive`:** decision 5.
+- **A question for `--non-interactive`:** decision 5. Tailscale prints only steps in a script, but the issue asks a script to install the harness. So Enter, or no variable, means yes.
 - **pi without Node.js:** steps only (decision 4). Eva does not install Node.js.
 - **macOS:** the same as Linux. Eva does not test it, but the installer supports it.
+
+## Decisions after the gap review
+
+- **One list of places for each program,** `engineProgramCandidates`. `src/main.ts`, setup and the doctor all use it. Claude Code: `claude`, then `~/.local/bin/claude`. pi: `pi`, then `~/.local/bin/pi`, then `%APPDATA%\npm\pi.cmd` on Windows.
+- **npm installs into `~/.local` on Linux and macOS** (`--prefix`). A system Node needs root for a plain `npm install -g`. Windows keeps npm's default folder, which needs no administrator.
+- **The doctor uses the same list,** and its hint for an engine becomes "run `eva setup`", as for Tailscale.
+- **The installers get the proxy variables** (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`). They are the person's own settings, not Eva's secrets.
+- **The installers never get an instance's engine folders.** The program belongs to the OS user; each instance keeps only its own login.
+- **Timeout:** 10 minutes per install, as for the Tailscale download.
+- **Out of scope:** an install from the phone. Setup runs in a terminal. A later missing engine shows in `eva doctor` and in the log, as today.

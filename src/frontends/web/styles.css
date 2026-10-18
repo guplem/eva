@@ -355,6 +355,15 @@ textarea {
   font-size: 13px;
 }
 
+.usage-limit {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.usage-limit.rejected {
+  color: var(--danger);
+}
+
 .clone-chats {
   display: flex;
   flex-direction: column;

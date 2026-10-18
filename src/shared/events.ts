@@ -16,6 +16,9 @@ export type TaskState = "running" | "done" | "failed";
 /** A command runs in a shell; a tool is every other tool call. The activity chips count each kind. */
 export type ToolCategory = "command" | "tool";
 
+/** A usage window of a subscription. `other` is a window that Eva does not know yet. */
+export type UsageWindow = "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage" | "other";
+
 export type EngineEventPayload =
   | { readonly kind: "text"; readonly text: string; readonly messageId: string }
   | {
@@ -48,6 +51,16 @@ export type EngineEventPayload =
    */
   | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
   | { readonly kind: "notice"; readonly text: string }
+  /** The subscription is near the limit of a usage window, or past it, so the engine refused the turn. */
+  | {
+      readonly kind: "usage_limit";
+      readonly status: "warning" | "rejected";
+      readonly window: UsageWindow;
+      /** A whole percent of the window, or null when the engine does not say. */
+      readonly usedPercent: number | null;
+      /** An ISO time, or null when the engine does not say. */
+      readonly resetsAt: string | null;
+    }
   | {
       readonly kind: "turn_finished";
       readonly engineSessionId: string;

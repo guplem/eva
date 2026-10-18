@@ -3,10 +3,15 @@
  * `claude`. Two pure parts carry the logic so tests can pin them:
  * the SDK options for each mode, and the map from SDK messages to Eva's events.
  */
-import { query as sdkQuery, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query as sdkQuery,
+  type Options,
+  type SDKMessage,
+  type SDKRateLimitInfo,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
-import type { EngineEventPayload, TaskState, TurnUsage } from "../../shared/events.ts";
+import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 
 type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
 
@@ -208,6 +213,11 @@ async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<
         if (task !== null) yield task;
         break;
       }
+      case "rate_limit_event": {
+        const limit = usageLimitEvent(message.rate_limit_info);
+        if (limit !== null) yield limit;
+        break;
+      }
       case "result": {
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.
@@ -241,6 +251,41 @@ function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEven
     return { kind: "task_changed", taskId: message.task_id, description: message.summary, state };
   }
   return null;
+}
+
+const knownWindows: readonly UsageWindow[] = [
+  "five_hour",
+  "seven_day",
+  "seven_day_opus",
+  "seven_day_sonnet",
+  "overage",
+];
+
+/** Null while the window is well inside its limit: the engine sends that state in each turn. */
+function usageLimitEvent(info: SDKRateLimitInfo): EngineEventPayload | null {
+  if (info.status === "allowed") return null;
+  const window =
+    info.rateLimitType === "seven_day_overage_included"
+      ? "seven_day"
+      : (knownWindows.find((known) => known === info.rateLimitType) ?? "other");
+  return {
+    kind: "usage_limit",
+    status: info.status === "rejected" ? "rejected" : "warning",
+    window,
+    // The engine sends a fraction of the window and a time in Unix seconds.
+    usedPercent: finite(info.utilization) ? Math.round(info.utilization * 100) : null,
+    resetsAt: finite(info.resetsAt) ? isoTime(info.resetsAt * 1000) : null,
+  };
+}
+
+function finite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value);
+}
+
+/** Null for a time out of the Date range, because toISOString throws there and would end the stream. */
+function isoTime(ms: number): string | null {
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /** Null for a message with no usage, such as the synthetic message after an API error. */

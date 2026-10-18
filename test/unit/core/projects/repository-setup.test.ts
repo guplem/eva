@@ -36,6 +36,7 @@ const reference: RepositoryFacts = {
   requiredChecks: true,
   privateVulnerabilityReporting: true,
   dependabotAlerts: true,
+  securityPolicy: true,
   dependabotSecurityUpdates: true,
   secretScanning: true,
   pushProtection: true,
@@ -129,6 +130,7 @@ describe("evaluateSetup", () => {
         labels: null,
         requiredChecks: null,
         dependabotAlerts: null,
+        securityPolicy: null,
         dependabotSecurityUpdates: null,
         secretScanning: null,
         pushProtection: null,
@@ -288,5 +290,22 @@ describe("evaluateSetup, edge cases", () => {
     expect(report.allFixes).not.toContain("Then open a pull request.");
     expect(report.allFixes).not.toContain("malware");
     expect(evaluateSetup(reference, target()).allFixes).toBeNull();
+  });
+});
+
+describe("evaluateSetup, security policy", () => {
+  test("no security policy is red, with a request that points to private reporting", () => {
+    const policy = item(evaluateSetup(reference, target({ securityPolicy: false })), "Security policy");
+    expect(policy).toMatchObject({ light: "red", detail: "No SECURITY.md." });
+    expect(policy.fixRequest).toContain("SECURITY.md");
+    expect(policy.fixRequest).toContain("https://github.com/owner/example-app/security/advisories/new");
+    expect(item(evaluateSetup(reference, target()), "Security policy").light).toBe("green");
+    // A private repository has no private vulnerability reporting, so the link would lead nowhere.
+    const privateFix = item(
+      evaluateSetup(reference, target({ isPrivate: true, securityPolicy: false })),
+      "Security policy",
+    );
+    expect(privateFix.fixRequest).not.toContain("advisories/new");
+    expect(privateFix.fixRequest).toContain("contact the maintainers in private");
   });
 });

@@ -2,7 +2,7 @@
  * A fake GitHub API for the setup report: each repository answers its main address, its tree,
  * its labels and its file contents. Every other address answers 404.
  */
-import type { GithubAnswer, GithubGet } from "../../src/core/projects/repository-facts.ts";
+import type { GithubAnswer, GithubRequest } from "../../src/core/projects/repository-facts.ts";
 import { gitBlobSha } from "../../src/core/projects/repository-setup.ts";
 
 export interface FakeRepository {
@@ -11,10 +11,17 @@ export interface FakeRepository {
   /** Each file path and its content. */
   readonly files: Readonly<Record<string, string>>;
   readonly labels: readonly string[];
+  /** The GraphQL security facts; both true when not given. */
+  readonly security?: { readonly hasVulnerabilityAlertsEnabled: boolean; readonly isSecurityPolicyEnabled: boolean };
 }
 
-export function fakeGithub(repositories: Readonly<Record<string, FakeRepository>>): GithubGet {
-  return (path, raw = false) => {
+export function fakeGithub(repositories: Readonly<Record<string, FakeRepository>>): GithubRequest {
+  return (path, raw = false, fields = {}) => {
+    const named = repositories[`${fields["owner"] ?? ""}/${fields["name"] ?? ""}`];
+    if (path === "graphql" && named !== undefined) {
+      const security = named.security ?? { hasVulnerabilityAlertsEnabled: true, isSecurityPolicyEnabled: true };
+      return Promise.resolve({ status: 200, body: JSON.stringify({ data: { repository: security } }) });
+    }
     for (const [slug, fake] of Object.entries(repositories)) {
       const answer = answerFor(`repos/${slug}`, fake, path, raw);
       if (answer !== null) return Promise.resolve(answer);

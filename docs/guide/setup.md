@@ -8,10 +8,32 @@ When a step says "run", type the command and press Enter.
 
 Create these accounts first, in your browser:
 
-1. **Claude** at [claude.ai](https://claude.ai), with a Pro or Max subscription.
+1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT or GitHub Copilot.
 2. **GitHub** at [github.com](https://github.com).
 3. **Tailscale** at [tailscale.com](https://tailscale.com) (free). Sign in with Google, Microsoft or GitHub.
 4. **Telegram** on your phone, from your app store.
+
+## Prepare a server that you reach from your desk
+
+Skip this section when Eva runs on a computer that you use every day. Read it when Eva gets her own machine, such as an old laptop in a cupboard. You set the machine up once, and from then on you reach it only over SSH (a secure terminal connection from another computer). A coding agent that helps you can follow these steps too.
+
+1. **Install Ubuntu Server LTS.** Choose the Server edition: with no desktop, an old laptop keeps its memory for Eva. Download it from [ubuntu.com/download/server](https://ubuntu.com/download/server).
+2. **Write the installer to a USB stick with [Rufus](https://rufus.ie).** Choose "ISO Image mode", partition scheme `GPT`, target `UEFI (non CSM)`, file system `FAT32`. Do not use balenaEtcher: old firmware does not see the stick that it makes.
+3. **Install with these answers:**
+   - **Disk:** use the entire disk, and clear "Set up this disk as an LVM group". Otherwise Ubuntu uses only about 100 GB of the disk.
+   - **Password:** use only letters and digits. The keyboard layout can change between the installer and the login, and symbols move.
+   - **Install OpenSSH server:** yes. This is how you reach the machine later.
+   - **Third-party drivers:** none.
+4. **Check the bootloader before you press "Reboot Now".** Some laptops finish the install with no bootloader, and then show "no bootable device". Open **Help → Enter shell**, and run `ls /target/boot/efi/EFI/BOOT`. If `BOOTX64.EFI` is not there, run `chroot /target grub-install --removable` after you bind-mount `/dev`, `/dev/pts`, `/proc`, `/sys` and `/run` into `/target`.
+5. **Connect from your desk.** On the server, run `ip address`, and note the address that starts with `192.168.` or `10.`. On your computer, run `ssh your-user@<address>`.
+6. **Log in with a key, not a password.** On your computer, run `ssh-keygen -t ed25519 -f ~/.ssh/eva_server`. Then copy the public half to the server with `ssh-copy-id -i ~/.ssh/eva_server.pub your-user@<address>`. Windows has no `ssh-copy-id`: append the `.pub` file to `~/.ssh/authorized_keys` on the server instead. To give a coding agent access, append its public key the same way. Delete the line to remove the access.
+7. **Keep the address fixed.** In your router, add a DHCP reservation (a fixed address for this machine) inside the router's DHCP range. Some routers accept an address outside the range and then ignore it.
+8. **Keep the server awake** (needs `sudo`):
+   - **Closed lid:** run `sudo mkdir -p /etc/systemd/logind.conf.d`, then write `[Login]` and `HandleLidSwitch=ignore` in `/etc/systemd/logind.conf.d/eva.conf`.
+   - **Wi-fi:** use a cable when you can. On wi-fi, some cards save power by sleeping between packets, and every talk with GitHub then stalls. Run `iw dev` to find the card name, then `sudo iw dev <card> set power_save off`. Repeat it at each start with a systemd unit.
+   - **Power:** keep the laptop plugged in.
+
+Then follow [Install Eva on Linux](#install-eva-on-linux), over SSH.
 
 ## Create your Telegram bot
 
@@ -22,15 +44,25 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 3. Give it a name, for example `My Eva`, and a user name that ends in `bot`, for example `my_eva_123_bot`.
 4. BotFather answers with a **token**: a long code such as `123456789:AAH...`. Copy it. Eva asks for it during setup. Never share it: whoever has it controls the bot.
 
-## Get your Claude token
+## Connect your AI
 
-Eva uses your Claude subscription through Claude Code, Anthropic's program for AI agents.
+Eva does not think by herself. She runs a harness: a program that runs an AI agent with your login. Choose one.
+
+**Claude Code**, for a Claude subscription:
 
 1. Install Claude Code:
    - Windows (PowerShell): `irm https://claude.ai/install.ps1 | iex`
    - Linux: `curl -fsSL https://claude.ai/install.sh | bash`
 2. Run `claude setup-token`, and sign in when the browser opens.
 3. Copy the token that it prints. Eva asks for it during setup.
+
+**pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
+
+1. Install pi from [pi.dev](https://pi.dev).
+2. Run `pi`, type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
+3. During setup, answer `pi` to "Default engine", and press Enter at "Claude token".
+
+You can install both, and choose the harness for each chat later.
 
 ## Decide where your notebook lives
 
@@ -54,50 +86,45 @@ Your notebook (the vault) is a private GitHub repository of notes. Choose one:
 
 ## Install Eva on Windows
 
-1. Install git and Bun. Run:
+1. Install git. Run:
 
    ```bash
    winget install --id Git.Git -e
    ```
 
+2. Download Eva into her own folder, and add that folder to your `PATH` (the list of folders where Windows finds programs). Run these one by one:
+
    ```bash
-   powershell -c "irm bun.sh/install.ps1 | iex"
+   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\Eva"
+   ```
+
+   ```bash
+   Invoke-WebRequest https://github.com/guplem/eva/releases/latest/download/eva-windows-x64.exe -OutFile "$env:LOCALAPPDATA\Programs\Eva\eva.exe"
+   ```
+
+   ```bash
+   [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\Eva", "User")
    ```
 
    Close PowerShell and open it again, so that it finds the new programs.
 
-2. Get Eva. Run these one by one:
-
-   ```bash
-   git clone https://github.com/guplem/eva.git
-   ```
-
-   ```bash
-   cd eva
-   ```
-
-   ```bash
-   bun install
-   ```
-
 3. Run the setup, and answer its questions (see [What setup asks](#what-setup-asks)):
 
    ```bash
-   bun run eva setup
+   eva setup
    ```
 
 4. Start Eva, and make her start by herself each time you log in:
 
    ```bash
-   bun run eva service install
+   eva service install
    ```
 
    Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator** and run the command again.
 
    If Eva crashes, she starts again within a minute. On the hub, she then tells you in Telegram. She does not start again after you stop her, or when her settings are wrong.
-   On Windows, if you installed the service before this behavior existed, run the command again once. The change takes effect at your next logon.
 
-5. Pair your Telegram chat, so that Eva answers only you. Run `bun run eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
+5. Pair your Telegram chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
 
 ## What setup asks
 
@@ -113,15 +140,15 @@ Press Enter to keep the value in brackets. Eva saves each answer on this compute
 | Language                    | The language of Eva's answers. Enter keeps English.                                                                                                                                                                                                                      |
 | Main topics                 | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                                                                                                                    |
 | New GitHub repository       | A name for your notebook's private repository, such as `vault`.                                                                                                                                                                                                          |
-| Default engine              | Enter keeps Claude Code.                                                                                                                                                                                                                                                 |
+| Default engine              | Enter keeps Claude Code. Type `pi` to use pi.                                                                                                                                                                                                                            |
 | Trusted GitHub accounts     | Your GitHub user name. Eva then opens your own projects without a question.                                                                                                                                                                                              |
-| Claude token                | The token from `claude setup-token`.                                                                                                                                                                                                                                     |
+| Claude token                | The token from `claude setup-token`. Enter skips it, with pi.                                                                                                                                                                                                            |
 | Telegram bot token          | The token from BotFather.                                                                                                                                                                                                                                                |
 | Telegram chat id            | Enter, to pair with a code instead.                                                                                                                                                                                                                                      |
 | Google account, voice model | Enter, to skip. See [the optional features](reference.md#optional-features).                                                                                                                                                                                             |
 | Tailscale                   | Yes. Open the link that it shows, and sign in. See [Open Eva on your phone](#open-eva-on-your-phone).                                                                                                                                                                    |
 
-You can run `bun run eva setup` again at any time. It keeps every answer that you do not change.
+You can run `eva setup` again at any time. It keeps every answer that you do not change.
 
 ## Open Eva on your phone
 
@@ -142,50 +169,47 @@ Then, on your phone:
 
 Do the same on any other computer: install Tailscale, sign in, open the address. Settings has a **Copy** button for the address, and a **Share** button on a phone.
 
-## Install Eva on a Linux server
+## Install Eva on Linux
 
-These steps install Eva for one user with no `sudo` (administrator rights), for example over SSH. They need `git`, `curl` and `python3`.
+These steps work over SSH too. They install Eva for your own user.
 
-1. Install Bun. The official script needs `unzip`; without it, unpack the release with Python:
-
-   ```bash
-   mkdir -p ~/.bun/bin && cd /tmp
-   curl -fsSL -o bun.zip https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip
-   python3 -c "import zipfile; zipfile.ZipFile('bun.zip').extractall('.')"
-   mv bun-linux-x64/bun ~/.bun/bin/ && rm -r bun.zip bun-linux-x64
-   echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && export PATH="$HOME/.bun/bin:$PATH"
-   ```
-
-2. Install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), then get Eva:
+1. Install git, if `git --version` does not find it. On Ubuntu or Debian, run:
 
    ```bash
-   git clone https://github.com/guplem/eva.git ~/eva
-   cd ~/eva && bun install --frozen-lockfile --production --ignore-scripts
+   sudo apt install -y git
    ```
 
-3. Set Eva up in one command. An SSH address (`git@github.com:you/vault.git`) uses the machine's SSH key; an HTTPS address uses `EVA_GITHUB_TOKEN`.
+2. Install your harness, as [Connect your AI](#connect-your-ai) says.
+3. Download Eva into `~/.local/bin`, a folder for your own programs. On an ARM computer, such as a Raspberry Pi, use `eva-linux-arm64` instead of `eva-linux-x64`.
 
    ```bash
-   EVA_TIME_ZONE="Europe/Madrid" \
-   EVA_VAULT_REPOSITORY="git@github.com:you/vault.git" \
-   EVA_GITHUB_TOKEN="..." \
-   EVA_CLAUDE_TOKEN="..." \
-   EVA_TELEGRAM_BOT_TOKEN="..." \
-   EVA_TELEGRAM_CHAT_ID="..." \
-   bun run src/main.ts setup --non-interactive
+   mkdir -p ~/.local/bin
+   curl -fsSL -o ~/.local/bin/eva https://github.com/guplem/eva/releases/latest/download/eva-linux-x64
+   chmod +x ~/.local/bin/eva
+   export PATH="$HOME/.local/bin:$PATH"
    ```
 
-   `src/frontends/cli/setup.ts` lists every `EVA_*` name.
+   The last line lets this terminal find `eva`. Ubuntu adds the folder to the `PATH` by itself at your next login.
 
-4. Start Eva with the system. The command also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator.
+4. Run the setup, and answer its questions (see [What setup asks](#what-setup-asks)):
 
    ```bash
-   bun run src/main.ts service install
+   eva setup
    ```
 
-5. Check her with `bun run src/main.ts status`. The log is in `~/.config/eva/logs/`.
+5. Start Eva with the system. The command also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator.
 
-A laptop server must not sleep when its lid closes. Ask the machine's administrator to set `HandleLidSwitch=ignore` in `/etc/systemd/logind.conf`.
+   ```bash
+   eva service install
+   ```
+
+6. Pair your Telegram chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
+
+**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. With pi, add `EVA_ENGINE="pi"`, and leave out `EVA_CLAUDE_TOKEN`.
+
+```bash
+EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive
+```
 
 ### Tailscale without root
 
@@ -224,11 +248,11 @@ To do the steps by hand, download the static build from [pkgs.tailscale.com](htt
 Each person gets their own Eva, with their own notebook, bot and Claude login. Give the second Eva her own home folder:
 
 ```bash
-bun run eva --home ~/eva-partner setup
+eva --home ~/eva-partner setup
 ```
 
 ```bash
-bun run eva --home ~/eva-partner service install
+eva --home ~/eva-partner service install
 ```
 
 Setup picks a free port for her. Her pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Her Claude token stays in her `secrets.json`.
@@ -240,7 +264,7 @@ Setup picks a free port for her. Her pi and GitHub logins stay in the `engines` 
 | GitHub CLI  | `engines/gh`       | `GH_CONFIG_DIR`       | gh's login                    |
 | git         | `engines/git`      | `GIT_CONFIG_GLOBAL`   | git's GitHub login setting    |
 
-Setup gives one login step for each login that is missing, with her folder in the command. Run each step in another terminal while setup goes on. On Windows, use PowerShell. At the end, setup shows which logins are in place. Run `bun run eva --home ~/eva-partner setup` again to check them later.
+Setup gives one login step for each login that is missing, with her folder in the command. Run each step in another terminal while setup goes on. On Windows, use PowerShell. At the end, setup shows which logins are in place. Run `eva --home ~/eva-partner setup` again to check them later.
 
 The GitHub step uses `gh auth login --insecure-storage`. gh otherwise keeps its token in the system keyring under one name for all folders, and her login would replace yours. With the flag, gh keeps her token as plain text in her own folder. When gh asks to authenticate git, answer No: that changes the git settings that both Evas share.
 

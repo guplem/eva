@@ -55,6 +55,40 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
 });
 
+test("a chat gets a new title in the header and the list, and Escape keeps the old one (issue 46)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await page.getByLabel("Chat title").fill("Draft");
+  await page.getByLabel("Chat title").press("Escape");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  await page.getByRole("button", { name: "Rename this chat" }).click();
+  // The field is selected, so typing replaces the old title.
+  await page.getByLabel("Chat title").pressSequentially("Trip");
+  await expect(page.getByLabel("Chat title")).toHaveValue("Trip");
+  if (test.info().project.name === "phone") {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
+  await page.getByLabel("Chat title").fill("Trip plans");
+  await page.getByLabel("Chat title").press("Enter");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Trip plans");
+  await openList(page);
+  await expect(page.locator(".list-item[aria-current='true']")).toContainText("Trip plans");
+
+  // A rename in Telegram or the terminal reaches the page through the event stream.
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; title: string }[];
+  const chat = sessions.find((session) => session.title === "Trip plans");
+  expect(chat).toBeDefined();
+  await page.request.post(`/api/sessions/${chat?.id ?? ""}/rename`, { data: { title: "Rome in May" } });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Rome in May");
+});
+
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);

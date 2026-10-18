@@ -42,6 +42,8 @@ export type EngineEventPayload =
       readonly timedOut: boolean;
     }
   | { readonly kind: "history_lost" }
+  /** The person renamed the chat; front ends show the new title, and Telegram renames the chat's topic. */
+  | { readonly kind: "session_renamed"; readonly title: string }
   | { readonly kind: "notice"; readonly text: string }
   | {
       readonly kind: "turn_finished";

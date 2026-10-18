@@ -30,7 +30,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
   });
   if (!created.ok) throw new Error(`Eva refused the chat: ${await created.text()}`);
   const session = (await created.json()) as { id: string; startFolder: string };
-  options.write(`Chat ${session.id} in ${session.startFolder}. Type /exit to leave.\n`);
+  options.write(`Chat ${session.id} in ${session.startFolder}. Type /rename <title> to name it, or /exit to leave.\n`);
 
   const socket = new WebSocket(`${options.baseUrl.replace(/^http/, "ws")}/api/events`, {
     headers,
@@ -76,6 +76,10 @@ export async function runChat(options: ChatOptions): Promise<void> {
       const line = await options.readLine();
       if (line === null || line.trim() === "/exit") break;
       if (line.trim() === "") continue;
+      if (/^\/rename(\s|$)/.test(line.trim())) {
+        options.write(await renameChat(options.baseUrl, headers, session.id, line.trim().slice("/rename".length)));
+        continue;
+      }
       turn.over = false;
       const sent = await fetch(`${options.baseUrl}/api/sessions/${session.id}/messages`, {
         method: "POST",
@@ -107,6 +111,23 @@ export async function runChat(options: ChatOptions): Promise<void> {
   }
 }
 
+/** Renames the chat and returns the line to show: the new title, or the reason Eva refused it. */
+async function renameChat(
+  baseUrl: string,
+  headers: Record<string, string>,
+  sessionId: string,
+  title: string,
+): Promise<string> {
+  if (title.trim() === "") return "Use: /rename <title>\n";
+  const renamed = await fetch(`${baseUrl}/api/sessions/${sessionId}/rename`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ title }),
+  });
+  if (!renamed.ok) return `Eva refused the new title: ${await renamed.text()}\n`;
+  return `The chat is now called ${((await renamed.json()) as { title: string }).title}.\n`;
+}
+
 export function describeEvent(event: SessionEvent): string | null {
   switch (event.kind) {
     case "text":
@@ -126,6 +147,9 @@ export function describeEvent(event: SessionEvent): string | null {
     case "turn_finished":
     case "tool_finished":
     case "approval_resolved":
+      return null;
+    case "session_renamed":
+      // The terminal shows no title, and its own /rename answers from the request.
       return null;
   }
 }

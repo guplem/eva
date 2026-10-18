@@ -221,7 +221,8 @@ test("the model menu and the New chat button sit at the bottom of the chat list,
     throw new Error("A sidebar part is not on the screen.");
   }
   expect(sidebar.y + sidebar.height - (buttonBox.y + buttonBox.height)).toBeLessThanOrEqual(24);
-  expect(buttonBox.y - (modelBox.y + modelBox.height)).toBeGreaterThanOrEqual(16);
+  // The footer gap is 16 px. The margin of 1 px allows for a rounded layout.
+  expect(buttonBox.y - (modelBox.y + modelBox.height)).toBeGreaterThanOrEqual(15);
   expect(firstChatBox.y).toBeLessThan(modelBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page

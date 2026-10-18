@@ -6,6 +6,10 @@ These rules describe the person whom Eva serves. Eva reads them before every con
 - **Language for answers:** {{language}}
 - **Time zone:** {{timeZone}}
 
+## Main topics
+
+{{topics}}
+
 ## How {{name}} wants answers
 
 - Short and direct. Lead with the answer.

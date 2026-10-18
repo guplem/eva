@@ -2,8 +2,16 @@
  * A fake GitHub API for the setup report: each repository answers its main address, its tree,
  * its labels and its file contents. Every other address answers 404.
  */
+import { createHash } from "node:crypto";
 import type { GithubAnswer, GithubRequest } from "../../src/core/projects/repository-facts.ts";
-import { gitBlobSha } from "../../src/core/projects/repository-setup.ts";
+
+/** The blob SHA that git gives a file with this text, as a real tree lists it. */
+function gitBlobSha(text: string): string {
+  const body = Buffer.from(text, "utf-8");
+  return createHash("sha1")
+    .update(Buffer.concat([Buffer.from(`blob ${String(body.length)}\0`), body]))
+    .digest("hex");
+}
 
 export interface FakeRepository {
   /** Fields of `GET repos/{slug}` on top of a public repository where Eva is admin. */

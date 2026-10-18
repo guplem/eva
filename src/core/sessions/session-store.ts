@@ -7,6 +7,14 @@ import { copyFileSync } from "node:fs";
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { stepKinds } from "../../shared/turn-steps.ts";
+
+const stepSchema = z.object({
+  kind: z.enum(stepKinds),
+  text: z.string(),
+  isError: z.boolean(),
+  id: z.string().nullable(),
+});
 
 const turnSchema = z.object({
   userText: z.string(),
@@ -18,6 +26,12 @@ const turnSchema = z.object({
   commandCount: z.number().int().min(0).default(0),
   /** How many background tasks the turn started, such as a subagent or a background command. */
   taskCount: z.number().int().min(0).default(0),
+  /** The turn's messages, commands, tools and tasks, for the badges. A bad list costs only the badges. */
+  steps: z.array(stepSchema).catch([]),
+  /** How many early steps the turn dropped to keep the list short. */
+  omittedSteps: z.number().int().min(0).catch(0),
+  /** How full the context was after the turn, or null when the engine did not say. */
+  contextTokens: z.number().int().min(0).nullable().catch(null),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),

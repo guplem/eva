@@ -12,11 +12,14 @@ concurrency:
 permissions:
   contents: read
 
-# A pull request that changes only docs skips the code-only work (#103). The merge ruleset requires
-# each job by its name, and a path filter on the workflow would leave those checks unreported. So each
-# code-only job still runs: its steps skip, and a job with skipped steps reports success.
-# The jobs run with `!cancelled()`: a skipped job also counts as a pass, so a failed `changes` job must
-# not skip them. Its output is then empty, and an empty output runs the work.
+# The merge ruleset requires each job by its name. Rename a job only together with the ruleset.
+#
+# A pull request that changes only docs skips the code-only work (#103). The steps skip, not the jobs.
+# A job with skipped steps reports success under its full name. A path filter on the workflow leaves the
+# required checks unreported. A skipped matrix job reports under its bare name, such as `checks`, so
+# `checks (windows-latest)` never reports.
+# The jobs run with `!cancelled()`, because a failed `changes` job would skip them. A skipped job can pass
+# a required check with nothing run. The output of a failed `changes` job is empty, and that runs the work.
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -33,7 +36,6 @@ jobs:
       - id: diff
         run: bun run scripts/ci-changes.ts
 
-  # The merge ruleset requires each job by its name. Rename a job only together with the ruleset.
   checks:
     needs: changes
     if: ${{ !cancelled() }}

@@ -566,6 +566,34 @@ textarea {
   background: var(--surface);
 }
 
+.tasks h2 {
+  font-size: 13px;
+  margin-top: 0;
+}
+
+.tasks h3,
+.dialog h3 {
+  font-size: 13px;
+  margin: 12px 0 8px;
+}
+
+.chat-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.chat-details dt {
+  color: var(--text-muted);
+}
+
+.chat-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .task {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -787,7 +815,8 @@ textarea {
 }
 
 .menu-button,
-.sidebar-backdrop {
+.sidebar-backdrop,
+.chat-info-button {
   display: none;
 }
 
@@ -833,7 +862,8 @@ textarea {
     display: none;
   }
 
-  .menu-button {
+  .menu-button,
+  .chat-info-button {
     display: inline-block;
   }
 

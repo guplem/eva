@@ -3,9 +3,9 @@ import { useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
+import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -32,6 +32,14 @@ export function AssistantView({
   const [model, setModel] = useState<ModelAlias>("default");
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
+  const branches = selected === undefined ? [] : chatTree(selected, sessions);
+  const chat = {
+    branches,
+    tasks: tasksOf(
+      live.tasks,
+      branches.map((branch) => branch.id),
+    ),
+  };
   const listRef = useRef<HTMLDivElement>(null);
 
   const newChat = async (): Promise<void> => {
@@ -111,12 +119,13 @@ export function AssistantView({
             <div className="main-header">
               <h1>{selected.title}</h1>
               <span className="badge">{selected.modelAlias}</span>
+              <ChatInfoButton {...chat} />
             </div>
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
           </>
         )}
       </main>
-      <TasksPanel tasks={tasksOf(live.tasks, selected === undefined ? [] : chatTreeIds(selected, sessions))} />
+      <ChatPanel {...chat} />
     </div>
   );
 }

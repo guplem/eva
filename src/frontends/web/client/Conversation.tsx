@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactEl
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
-import { runningCount, TasksDialog, tasksOf } from "./TasksPanel.tsx";
+import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { splitSteps, StepRow } from "./TurnSteps.tsx";
 import { toWebHtml } from "./web-format.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
@@ -22,7 +22,7 @@ interface ConversationProps {
 }
 
 export function Conversation({ root, sessions, live, onChanged }: ConversationProps): ReactElement {
-  const branches = [root, ...descendantsOf(root.id, sessions)];
+  const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
@@ -223,9 +223,9 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** The ids of a chat and of each of its forks. */
-export function chatTreeIds(root: SessionRecord, sessions: readonly SessionRecord[]): string[] {
-  return [root, ...descendantsOf(root.id, sessions)].map((session) => session.id);
+/** A chat and each of its forks, the chat first. */
+export function chatTree(root: SessionRecord, sessions: readonly SessionRecord[]): SessionRecord[] {
+  return [root, ...descendantsOf(root.id, sessions)];
 }
 
 function descendantsOf(sessionId: string, sessions: readonly SessionRecord[]): SessionRecord[] {

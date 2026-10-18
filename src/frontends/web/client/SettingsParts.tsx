@@ -64,7 +64,11 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
       await api.saveSecret(name, value);
       setValue("");
       setIsSaved(true);
-      onChanged(`Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`);
+      onChanged(
+        check === undefined
+          ? `Saved the ${label}. Press Restart Eva to use it in chats.`
+          : `Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`,
+      );
     } catch (error) {
       onChanged(error instanceof Error ? error.message : String(error));
     }

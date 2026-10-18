@@ -1100,7 +1100,7 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.getByLabel("GitHub token", { exact: true })).toBeVisible();
     const heights = await page
-      .locator("button:visible, select:visible")
+      .locator("button:visible, select:visible, .link-list a:visible, a.button-link:visible")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);

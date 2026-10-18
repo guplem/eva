@@ -142,14 +142,14 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     );
   const config = settings.config;
 
-  /** A dropdown saves its own value at once. */
-  const saveNow = async (change: Record<string, unknown>): Promise<void> => {
+  /** A dropdown saves its own value at once. True when the save worked. */
+  const saveNow = async (change: Record<string, unknown>): Promise<boolean> => {
     let result: { restartNeeded: boolean };
     try {
       result = await api.saveSettings(change);
     } catch (error) {
       setNotice(errorText(error));
-      return;
+      return false;
     }
     setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
     try {
@@ -158,6 +158,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     } catch (error) {
       setNotice(`Saved, but the page did not reload the settings: ${errorText(error)}`);
     }
+    return true;
   };
 
   const changeAppearance = (change: Partial<Appearance>): void => {

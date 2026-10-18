@@ -9,8 +9,8 @@ import { CheckRow, SecretField } from "./SettingsParts.tsx";
 
 interface GooglePanelProps {
   readonly settings: PublicSettings;
-  /** Saves a settings change and reloads the settings. */
-  readonly saveNow: (change: Record<string, unknown>) => Promise<void>;
+  /** Saves a settings change and reloads the settings. False when the save failed. */
+  readonly saveNow: (change: Record<string, unknown>) => Promise<boolean>;
   readonly onChanged: (note: string) => void;
   /** Reads the settings again, such as the account that the login set. */
   readonly reload: () => void;
@@ -20,18 +20,24 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
   const google = settings.config.google;
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [address, setAddress] = useState("");
+  // One request at a time: a double tap would start a second login and end the first one.
+  const [busy, setBusy] = useState(false);
   const steps = googleSetupSteps(google.services);
 
   const startLogin = async (): Promise<void> => {
+    setBusy(true);
     try {
       // A phone blocks a window that opens after a wait, so the page shows a link instead.
       setLoginUrl((await api.startGoogleLogin()).url);
     } catch (error) {
       onChanged(errorText(error));
+    } finally {
+      setBusy(false);
     }
   };
 
   const finishLogin = async (): Promise<void> => {
+    setBusy(true);
     try {
       const result = await api.finishGoogleLogin(address);
       setAddress("");
@@ -42,7 +48,15 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
       reload();
     } catch (error) {
       onChanged(errorText(error));
+    } finally {
+      setBusy(false);
     }
+  };
+
+  /** The old login holds the old access, so a change needs a new login. */
+  const changeAccess = async (readOnly: boolean): Promise<void> => {
+    if (await saveNow({ google: { readOnly } }))
+      onChanged("Saved. Log in to Google again below, then press Restart Eva.");
   };
 
   return (
@@ -74,7 +88,7 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
         Google access
         <select
           value={google.readOnly ? "read" : "write"}
-          onChange={(event) => void saveNow({ google: { readOnly: event.target.value === "read" } })}
+          onChange={(event) => void changeAccess(event.target.value === "read")}
         >
           <option value="read">Read only</option>
           <option value="write">Read and change, such as add events</option>
@@ -87,9 +101,11 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
       {steps[3] !== undefined && <GoogleStepView title={steps[3].title} text={steps[3].text} links={[]} />}
       <div>Account: {google.email ?? "none yet. The login sets it."}</div>
       <div className="check-row">
-        <button onClick={() => void startLogin()}>Start the Google login</button>
+        <button disabled={busy} onClick={() => void startLogin()}>
+          Start the Google login
+        </button>
         {loginUrl !== null && (
-          <a href={loginUrl} target="_blank" rel="noreferrer">
+          <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
             Open Google&apos;s page
           </a>
         )}
@@ -99,11 +115,15 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
           <input
             aria-label="The address after the Google login"
             autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="url"
             placeholder="http://127.0.0.1/eva-google-login?state=…"
             value={address}
             onChange={(event) => setAddress(event.target.value)}
           />
-          <button disabled={address.trim() === ""} onClick={() => void finishLogin()}>
+          <button disabled={busy || address.trim() === ""} onClick={() => void finishLogin()}>
             Finish
           </button>
         </div>
@@ -119,7 +139,7 @@ function GoogleStepView({ title, text, links }: ReturnType<typeof googleSetupSte
       <strong>{title}</strong>
       <div className="hint">{text}</div>
       {links.length > 0 && (
-        <ul>
+        <ul className="link-list">
           {links.map((link) => (
             <li key={link.url}>
               <a href={link.url} target="_blank" rel="noreferrer">

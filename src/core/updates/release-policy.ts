@@ -21,6 +21,8 @@ export interface ReleaseInfo {
 export interface NewerRelease extends ReleaseInfo {
   /** The step from the current version to this one. */
   readonly level: ReleaseLevel;
+  /** What the jump from the current version to this one brings, breaking changes first. */
+  readonly summary: string;
 }
 
 export interface UpdatePick {
@@ -47,10 +49,12 @@ export function releaseLevel(from: string, to: string): ReleaseLevel {
 }
 
 export function pickUpdate(current: string, releases: readonly ReleaseInfo[], policy: UpdatePolicy): UpdatePick {
-  const newer = releases
+  const sorted = releases
     .filter((release) => isNewerVersion(release.version, current))
     .map((release) => ({ ...release, level: releaseLevel(current, release.version) }))
     .sort((left, right) => (isNewerVersion(left.version, right.version) ? -1 : 1));
+  // Sorted newest first, so the releases up to one are that one and all after it.
+  const newer = sorted.map((release, index) => ({ ...release, summary: releaseSummary(sorted.slice(index)) }));
   const install = newer.find((release) => levelRank[release.level] <= levelRank[policy])?.version ?? null;
   const newest = newer[0]?.version ?? null;
   return { newer, install, heldBack: newest === install ? null : newest };

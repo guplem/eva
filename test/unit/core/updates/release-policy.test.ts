@@ -50,6 +50,18 @@ describe("pick update", () => {
       ["1.4.3", "patch"],
     ]);
   });
+
+  test("each newer release carries the summary of the jump from the current version to it", () => {
+    const newer = pickUpdate(
+      "1.0.0",
+      [release("1.1.0", "feat: voice notes"), release("1.0.1", "fix: a crash")],
+      "minor",
+    ).newer;
+    expect(newer.map(({ summary }) => summary)).toEqual([
+      "New features:\n• feat: voice notes (1.1.0)\n\nFixes and other changes:\n• fix: a crash (1.0.1)",
+      "Fixes and other changes:\n• fix: a crash (1.0.1)",
+    ]);
+  });
 });
 
 describe("release summary", () => {

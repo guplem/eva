@@ -711,7 +711,13 @@ export class Eva {
 
   /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
-    for (const clone of listClones(project.path)) {
+    // A clone with a record goes first: one with none asks a trust question, and work may run with nobody to answer it.
+    const clones = listClones(project.path);
+    const recorded = clones.filter((clone) => {
+      const kind = this.cloneOrigins.origin(clone.path)?.kind;
+      return kind === "cloned" || kind === "answered";
+    });
+    for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
       const busy =
         this.reservedClones.has(clone.path) ||
         this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));

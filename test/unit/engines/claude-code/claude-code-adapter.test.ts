@@ -332,6 +332,22 @@ describe("mapSdkMessages", () => {
     ]);
   });
 
+  test("the weekly window that includes extra usage is the weekly window", async () => {
+    const weekly = rateLimitLine({ status: "rejected", rateLimitType: "seven_day_overage_included" });
+    expect(await collect([weekly])).toMatchObject([{ kind: "usage_limit", window: "seven_day" }]);
+  });
+
+  test("a number that is not finite gives null, never a crash", async () => {
+    const bad = rateLimitLine({
+      status: "allowed_warning",
+      utilization: Number.NaN,
+      resetsAt: Number.POSITIVE_INFINITY,
+    });
+    expect(await collect([bad])).toEqual([
+      { kind: "usage_limit", status: "warning", window: "five_hour", usedPercent: null, resetsAt: null },
+    ]);
+  });
+
   test("a missing or unknown field gives null or other, never a crash", async () => {
     const bare = rateLimitLine({
       status: "rejected",

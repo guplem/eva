@@ -21,8 +21,15 @@ export function describeUsageLimit(limit: UsageLimit, now: Date, timeZone?: stri
       : limit.usedPercent === null
         ? `You are near your ${name}.`
         : `You used ${String(limit.usedPercent)}% of your ${name}.`;
-  if (limit.resetsAt === null) return state;
-  return `${state} It resets ${resetText(new Date(limit.resetsAt), now, validZone(timeZone))}.`;
+  const resetsAt = new Date(limit.resetsAt ?? Number.NaN);
+  // A stored or relayed event can hold any text, and Intl throws on an invalid date.
+  if (Number.isNaN(resetsAt.getTime())) return state;
+  return `${state} It resets ${resetText(resetsAt, now, validZone(timeZone))}.`;
+}
+
+/** True once the window has reset, so a line that stays on screen stops saying the person is blocked. */
+export function hasReset(limit: UsageLimit, now: Date): boolean {
+  return limit.resetsAt !== null && new Date(limit.resetsAt).getTime() <= now.getTime();
 }
 
 function resetText(at: Date, now: Date, timeZone: string | undefined): string {

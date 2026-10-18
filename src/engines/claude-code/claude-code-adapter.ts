@@ -230,18 +230,31 @@ const knownWindows: readonly UsageWindow[] = [
   "overage",
 ];
 
-/** Null while the window is well inside its limit: the engine sends that state at the start of each turn. */
+/** Null while the window is well inside its limit: the engine sends that state in each turn. */
 function usageLimitEvent(info: SDKRateLimitInfo): EngineEventPayload | null {
   if (info.status === "allowed") return null;
-  const window = knownWindows.find((known) => known === info.rateLimitType) ?? "other";
+  const window =
+    info.rateLimitType === "seven_day_overage_included"
+      ? "seven_day"
+      : (knownWindows.find((known) => known === info.rateLimitType) ?? "other");
   return {
     kind: "usage_limit",
     status: info.status === "rejected" ? "rejected" : "warning",
     window,
     // The engine sends a fraction of the window and a time in Unix seconds.
-    usedPercent: info.utilization === undefined ? null : Math.round(info.utilization * 100),
-    resetsAt: info.resetsAt === undefined ? null : new Date(info.resetsAt * 1000).toISOString(),
+    usedPercent: finite(info.utilization) ? Math.round(info.utilization * 100) : null,
+    resetsAt: finite(info.resetsAt) ? isoTime(info.resetsAt * 1000) : null,
   };
+}
+
+function finite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value);
+}
+
+/** Null for a time out of the Date range, because toISOString throws there and would end the stream. */
+function isoTime(ms: number): string | null {
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /** Null for a message with no usage, such as the synthetic message after an API error. */

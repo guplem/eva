@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineEventPayload } from "../../../src/shared/events.ts";
-import { describeUsageLimit } from "../../../src/shared/usage-limit.ts";
+import { describeUsageLimit, hasReset } from "../../../src/shared/usage-limit.ts";
 
 type UsageLimit = Extract<EngineEventPayload, { kind: "usage_limit" }>;
 
@@ -41,6 +41,18 @@ describe("describeUsageLimit", () => {
     expect(describeUsageLimit(limit({ window: "other", usedPercent: null, resetsAt: null }), now, "UTC")).toBe(
       "You are near your usage limit.",
     );
+  });
+
+  test("a reset time that is no time drops the reset part, never a crash", () => {
+    expect(describeUsageLimit(limit({ resetsAt: "soon" }), now, "UTC")).toBe(
+      "You used 86% of your 5-hour usage limit.",
+    );
+  });
+
+  test("a limit has reset only after its reset time", () => {
+    expect(hasReset(limit(), now)).toBe(false);
+    expect(hasReset(limit(), new Date("2026-10-18T12:30:00.000Z"))).toBe(true);
+    expect(hasReset(limit({ resetsAt: null }), now)).toBe(false);
   });
 
   test("a bad time zone falls back to the machine's own, never a crash", () => {

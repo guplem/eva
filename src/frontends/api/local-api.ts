@@ -270,6 +270,15 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     });
     return json(session, 201);
   }
+  if (
+    method === "DELETE" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === undefined
+  ) {
+    return json({ deleted: eva.sessions.delete(decodeURIComponent(parts[2])) });
+  }
   if (method === "POST" && parts[0] === "api" && parts[1] === "sessions" && parts[2] !== undefined) {
     const sessionId = decodeURIComponent(parts[2]);
     const action = parts[3];

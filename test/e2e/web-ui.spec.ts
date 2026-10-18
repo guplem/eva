@@ -55,6 +55,27 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
 });
 
+test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("A chat to delete");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: A chat to delete/);
+  // The list keeps its items when it is closed on a phone, so the count needs no open list.
+  const listed = page.locator(".sidebar .list-item", { hasText: "A chat to delete" });
+  await expect(listed).toHaveCount(1);
+
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await page.getByRole("button", { name: "Delete chat" }).click();
+  await expect(listed).toHaveCount(1);
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Delete chat" }).click();
+  await expect(listed).toHaveCount(0);
+});
+
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);

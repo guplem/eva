@@ -3,7 +3,7 @@ import { useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTreeIds, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
 
@@ -111,6 +111,7 @@ export function AssistantView({
             <div className="main-header">
               <h1>{selected.title}</h1>
               <span className="badge">{selected.modelAlias}</span>
+              <DeleteChatButton chat={selected} onChanged={onChanged} />
             </div>
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
           </>

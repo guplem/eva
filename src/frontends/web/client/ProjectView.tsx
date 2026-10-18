@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTreeIds, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTreeIds, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { TasksPanel, tasksOf } from "./TasksPanel.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
@@ -221,6 +221,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
               </h1>
               {selection.clone.branch !== null && <span className="badge">{selection.clone.branch}</span>}
               {selection.clone.pullRequest !== null && <span className="badge">PR #{selection.clone.pullRequest}</span>}
+              {chat !== undefined && <DeleteChatButton chat={chat} onChanged={onChanged} />}
             </div>
             {chat === undefined ? (
               <div className="empty">

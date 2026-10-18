@@ -384,6 +384,19 @@ describe("routes", () => {
     expect(retry.status).toBe(200);
   });
 
+  test("a delete removes the chat and its forks, and an unknown chat is a 404", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "one");
+    const fork = eva.sessions.fork(session.id, eva.sessions.get(session.id).turns[0]?.lastMessageId ?? "");
+    const deleted = await call(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect((await json<{ deleted: string[] }>(deleted)).deleted.sort()).toEqual([session.id, fork.id].sort());
+    expect(eva.sessions.list()).toEqual([]);
+    expect((await call(`/api/sessions/${session.id}`, { method: "DELETE" })).status).toBe(404);
+  });
+
   test("searches projects", async () => {
     const projects = await json<{ id: string }[]>(await call("/api/projects?text=example&status=active"));
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);

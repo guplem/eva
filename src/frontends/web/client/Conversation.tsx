@@ -19,6 +19,31 @@ interface ConversationProps {
   readonly onChanged: () => Promise<void>;
 }
 
+/** Deletes the chat and its forks in every front end, after a confirm. */
+export function DeleteChatButton({
+  chat,
+  onChanged,
+}: {
+  readonly chat: SessionRecord;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
+  const showError = useShowError();
+  const remove = async (): Promise<void> => {
+    if (!window.confirm(`Delete “${chat.title}” and its branches in every front end?`)) return;
+    try {
+      await api.deleteChat(chat.id);
+      await onChanged();
+    } catch (caught) {
+      showError(caught);
+    }
+  };
+  return (
+    <button className="danger" onClick={() => void remove()}>
+      Delete chat
+    </button>
+  );
+}
+
 export function Conversation({ root, sessions, live, onChanged }: ConversationProps): ReactElement {
   const branches = [root, ...descendantsOf(root.id, sessions)];
   const scroller = useRef<HTMLDivElement>(null);

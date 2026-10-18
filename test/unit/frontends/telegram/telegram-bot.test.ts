@@ -470,7 +470,16 @@ describe("topics", () => {
     await settle(bot, () =>
       eva.sessions.list().some((session) => session.telegramTopicId === 600 && session.title === "🇮🇹 Rome trip"),
     );
-    expect(telegram.callsTo("editForumTopic")).toHaveLength(2);
+    // The bot handles the rename event after the store changes. A person's rename in the same topic
+    // comes after it, so once that one arrives, a wrong automatic rename would have arrived too.
+    const topic600 = eva.sessions.list().find((session) => session.telegramTopicId === 600);
+    eva.sessions.rename(topic600!.id, "Paris");
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 3);
+    expect(telegram.callsTo("editForumTopic").map((call) => call.params["name"])).toEqual([
+      "Plan the trip to Rome",
+      "🇮🇹 Rome trip",
+      "Paris",
+    ]);
   });
 
   test("/rename renames the chat and its topic, and the first message keeps that name (issue 46)", async () => {

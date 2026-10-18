@@ -348,7 +348,7 @@ describe("chat names from a model (issue 50)", () => {
     expect(manager.get(sessionId).title).toBe("Holidays");
   });
 
-  test("no name, a later turn, a fixed title, a fork or a failed turn asks nothing more", async () => {
+  test("a chat whose first turn failed keeps the default title and asks no model, as before", async () => {
     const namer = handNamer();
     const failing = new FakeEngine((request, turnNumber) =>
       turnNumber === 1 ? [{ kind: "turn_failed", reason: "no" }] : FakeEngine.answer(request, "ok"),
@@ -356,12 +356,14 @@ describe("chat names from a model (issue 50)", () => {
     const manager = createManager(failing, { nameChat: namer.nameChat });
     const sessionId = newAssistantSession(manager);
     await manager.send(sessionId, "first try");
-    expect(namer.asked).toHaveLength(0);
-    // A failed first turn leaves the default title, so a later first answer names the chat.
+    // The failed turn stays in the record, so the later answer is no first turn and names nothing.
     await manager.send(sessionId, "second try");
     expect(manager.get(sessionId).title).toBe("New chat");
     expect(namer.asked).toHaveLength(0);
+  });
 
+  test("a fixed title, an empty name, a later turn and a fork ask no model again", async () => {
+    const namer = handNamer();
     const named = createManager(new FakeEngine(), { nameChat: namer.nameChat });
     const scheduled = named.createSession({
       mode: "assistant",
@@ -384,12 +386,27 @@ describe("chat names from a model (issue 50)", () => {
     expect(namer.asked).toHaveLength(1);
   });
 
-  test("a namer that throws keeps the first-line title", async () => {
-    const manager = createManager(new FakeEngine(), { nameChat: () => Promise.reject(new Error("boom")) });
-    const sessionId = newAssistantSession(manager);
-    await manager.send(sessionId, "Hello there");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(manager.get(sessionId).title).toBe("Hello there");
+  test("a namer that fails, or a name that cleans to nothing, keeps the first-line title and leaks no rejection", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const failing = createManager(new FakeEngine(), { nameChat: () => Promise.reject(new Error("boom")) });
+      const first = newAssistantSession(failing);
+      await failing.send(first, "Hello there");
+      // A blank name fails the title check inside the background step.
+      const blank = createManager(new FakeEngine(), { nameChat: () => Promise.resolve(" \n ") });
+      const second = newAssistantSession(blank);
+      await blank.send(second, "Good morning");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(failing.get(first).title).toBe("Hello there");
+      expect(blank.get(second).title).toBe("Good morning");
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
   });
 
   test("a chat deleted before its name arrives stays deleted", async () => {

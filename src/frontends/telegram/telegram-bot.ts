@@ -805,10 +805,10 @@ export class TelegramBot {
   }
 
   /**
-   * Gives the chat's topic the person's title. Lesson 125 limits only the automatic rename to the topics
-   * that Eva opened: this name is the person's choice, so any chat topic takes it. A schedule's topic
-   * holds every run of the schedule, so a rename of one run keeps the schedule's name.
-   * A model's name is automatic, so lesson 125 applies to it: only a topic that Eva opened takes it.
+   * Gives the chat's topic its new title. A rename by the person reaches every chat topic, because
+   * the name is the person's choice. A model's name is automatic, so lesson 125 limits it to the
+   * topics that Eva opened. A schedule's topic holds every run of the schedule, so a rename of one
+   * run keeps the schedule's name.
    */
   private async renameTopic(chatId: number, topicId: number | null, title: string, automatic: boolean): Promise<void> {
     if (topicId === null || isScheduleTopic(this.state, topicId)) return;

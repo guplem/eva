@@ -64,4 +64,4 @@ To change a schedule, edit its entry and keep its `id`. Within a minute Eva post
 
 ## 5. Reply
 
-Say in one sentence what will be sent, when, and in which topic. A schedule created after its time today first runs on its next day. Tell them that within a minute Eva opens the chat and posts a setup card there, with every field and the next run. Ask them to check that card. If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what will be sent, when, and in which topic. A schedule created after its time today first runs on its next day. Tell them that within a minute Eva opens the chat and posts a setup card there, with every field and the next run. Ask them to check that card. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches them: in the web app, after they tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

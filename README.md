@@ -104,6 +104,7 @@ Open **Settings** on the web page. The most useful ones:
 - **Install updates automatically:** how often Eva looks for a new version. She installs it only when no conversation is running.
 - **Fetch the notebook's changes:** how often Eva brings in notes that another computer saved.
 - **Make this machine the hub:** when Eva runs on more than one computer, this chooses which one answers in Telegram.
+- **Tokens and Test:** paste the GitHub, Telegram and Claude Code tokens, then press **Test** to check each part. Only a login with the token can change a token.
 
 ## Words you will see
 

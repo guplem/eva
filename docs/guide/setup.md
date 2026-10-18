@@ -51,16 +51,16 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 **Claude Code**, for a Claude subscription:
 
 1. When setup asks for the Claude token, open another terminal.
-2. Run `claude setup-token`, and sign in when the browser opens. If the terminal does not find `claude`, use the full path that setup shows.
+2. Run `claude setup-token`, and sign in when the browser opens. If the terminal does not find `claude`, run the command that setup shows after the install.
 3. Copy the token that it prints, and paste it into setup.
 
 **pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
 
 1. After setup installs pi, open another terminal.
-2. Run `pi`, or the full path that setup shows. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
+2. Run the command that setup shows after the install, or `pi`. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
 3. In setup, press Enter at "Claude token". If you log in to pi after setup ends, run `eva setup` again, or choose pi in Settings in the web app.
 
-Eva uses the harness that has a login. When both have one, she uses Claude Code. To change the default harness, open Settings in the web app. You can also choose the harness for each chat.
+Claude Code is the default harness at first. Setup changes the default only when the default harness has no login and the other one has one. To change the default harness, open Settings in the web app. You can also choose the harness for each chat.
 
 When an install fails, setup says why, and gives the command to install the harness by hand. `eva doctor` shows a missing harness too.
 

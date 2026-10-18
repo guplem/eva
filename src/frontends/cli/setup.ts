@@ -242,8 +242,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   else if (engine !== "") throw new EvaError("config_invalid", "The engine must be claude-code or pi.");
   // Only a script skips the installs, such as a test or a machine image that brings its own harnesses.
   const install = options.interactive ? "" : await ask("installEngines", "Install the missing harnesses? [Y/n]: ");
+  if (install !== "" && !/^(y(es)?|no?)$/i.test(install))
+    throw new EvaError("config_invalid", "The answer to install the harnesses must be yes or no.");
   // Before the token question, so the person can run `claude setup-token` with the new program.
-  if (!/^n(o)?$/i.test(install)) await installEngines(options, config);
+  if (!/^no?$/i.test(install)) await installEngines(options, config);
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
@@ -266,7 +268,12 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (claudeToken !== "") secrets.claudeOauthToken = claudeToken;
   if (engine === "") {
     const piFolder = engineFolders?.piAgent ?? join(options.userHome, ".pi", "agent");
-    const logins = { "claude-code": secrets.claudeOauthToken !== undefined, pi: piLoginState(piFolder) === "ok" };
+    // Without a token, Claude Code uses its own login. macOS keeps that login in the keychain, out of sight.
+    const claudeFolder = engineFolders?.claude ?? join(options.userHome, ".claude");
+    const logins = {
+      "claude-code": secrets.claudeOauthToken !== undefined || existsSync(join(claudeFolder, ".credentials.json")),
+      pi: piLoginState(piFolder) === "ok",
+    };
     config = withLoggedInEngine(config, logins, options.write);
   }
 
@@ -332,8 +339,8 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 }
 
 /**
- * Installs each engine's missing program, with no question: both are small, and one path is
- * simpler than a choice. A failed install gives the steps, and setup goes on.
+ * Installs each engine's missing program, with no question: one path is simpler than a choice.
+ * A failed install gives the steps, and setup goes on.
  */
 async function installEngines(options: SetupOptions, config: EvaConfig): Promise<void> {
   for (const engine of ["claude-code", "pi"] as const) {
@@ -354,18 +361,16 @@ async function installEngines(options: SetupOptions, config: EvaConfig): Promise
       program = await installEngine(engine, inputs);
     } catch (error) {
       if (!isEvaError(error, "engine_install_failed")) throw error;
-      options.write(error.message);
+      options.write(`${error.message} Setup goes on without it.`);
       continue;
     }
     options.write(`Installed ${name}: ${program}.`);
-    if (engine === "claude-code") {
-      const command = program === "claude" ? "claude" : quoteForShell(program, options.platform);
-      // PowerShell runs a quoted path only after its call operator.
-      const run = options.platform === "win32" && program !== "claude" ? `& ${command}` : command;
-      options.write(
-        `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`,
-      );
-    }
+    const run = commandLine(program, options.platform);
+    options.write(
+      engine === "claude-code"
+        ? `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`
+        : `For another provider, run \`${run}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
+    );
   }
 }
 
@@ -476,4 +481,11 @@ function splitList(text: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+/** How a person types the program in their shell: a bare name as it is, or a quoted path. */
+function commandLine(program: string, platform: NodeJS.Platform): string {
+  if (!/[\\/]/.test(program)) return program;
+  // PowerShell runs a quoted path only after its call operator.
+  return platform === "win32" ? `& ${quoteForShell(program, platform)}` : quoteForShell(program, platform);
 }

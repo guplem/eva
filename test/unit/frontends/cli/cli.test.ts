@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
 import { loadSettings } from "../../../../src/core/settings/settings.ts";
@@ -453,6 +453,13 @@ describe("runSetup", () => {
     rmSync(join(home, ".pi"), { recursive: true });
     await setup({});
     expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
+    // A Claude Code login of its own counts as much as a token.
+    rmSync(join(home, "secrets.json"));
+    mkdirSync(join(home, ".claude"));
+    writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+    piLogin();
+    await setup({});
+    expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
   });
 
   describe("the harness install (#136)", () => {
@@ -466,6 +473,7 @@ describe("runSetup", () => {
     /** A fake pi release; `broken` serves no files. */
     function serveRelease(broken = false): string {
       const hash = createHash("sha256").update(archive).digest("hex");
+      void server?.stop(true);
       server = Bun.serve({
         port: 0,
         hostname: "127.0.0.1",
@@ -511,7 +519,9 @@ describe("runSetup", () => {
       expect(asked).not.toContain("engine");
       const text = lines.join("\n");
       expect(text).toContain("Installed Claude Code: claude.");
-      expect(text).toContain(`Installed pi: ${join(home, ".local", "lib", "pi", "pi")}.`);
+      // Setup runs as Linux here, so the path has forward slashes on every machine.
+      expect(text).toContain(`Installed pi: ${posix.join(home, ".local", "lib", "pi", "pi")}.`);
+      expect(text).toContain("and type /login");
       expect(text).toContain("run `claude setup-token`");
     });
 
@@ -523,6 +533,37 @@ describe("runSetup", () => {
       asked.length = 0;
       await setup({}, { runner: scriptedRunner([]), asked });
       expect(asked).not.toContain("installEngines");
+    });
+
+    test("a failed Claude Code install does not stop the pi install", async () => {
+      const lines: string[] = [];
+      await setup({}, { runner: installRunner([], true), lines, piReleasesBaseUrl: serveRelease() });
+      const text = lines.join("\n");
+      expect(text).toContain("bash failed: the installer broke. Run `curl");
+      expect(text).toContain("Setup goes on without it.");
+      expect(text).toContain("Installed pi:");
+    });
+
+    test("only the missing harness installs", async () => {
+      const commands: string[][] = [];
+      const installing = installRunner(commands);
+      const runner: ProcessRunner = {
+        run: (command, runOptions) =>
+          command[0] === "claude" ? okRunner.run(command, runOptions) : installing.run(command, runOptions),
+      };
+      await setup({}, { runner, piReleasesBaseUrl: serveRelease() });
+      expect(commands.some((command) => command[0] === "bash")).toBe(false);
+      expect(commands.some((command) => command[0] === "tar")).toBe(true);
+    });
+
+    test("a script answers yes or no to the installs, and nothing else", async () => {
+      let caught: unknown;
+      try {
+        await setup({ installEngines: "false" }, { interactive: false, runner: scriptedRunner([]) });
+      } catch (error) {
+        caught = error;
+      }
+      expect(isEvaError(caught, "config_invalid")).toBe(true);
     });
 
     test("an installed harness stays as it is", async () => {

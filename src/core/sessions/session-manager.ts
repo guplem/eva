@@ -178,8 +178,8 @@ export class SessionManager {
 
   /**
    * Gives a chat the person's title. A running turn keeps it, because its end reads the record
-   * again. A first message names only a chat whose title is still the default, so a chat renamed
-   * to exactly the default title still takes its first message as its title.
+   * again. A first message names only a chat that still has the default title. A chat renamed to
+   * exactly the default title also takes its first message as its title.
    */
   rename(sessionId: string, title: string): SessionRecord {
     const session = this.get(sessionId);

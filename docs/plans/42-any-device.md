@@ -30,4 +30,21 @@ A new person goes from a fresh server to a shareable link by following Eva's own
 
 ## Decisions
 
-(Filled in after the gap review.)
+Three review agents read the gaps. Their answers agreed, so no gap needs the owner.
+
+1. **Web section:** the top of Settings, always shown while `remoteAccess` is not null. No notice on the main page: a missing Tailscale is an optional feature, not a problem (#13 moves remote access into Settings).
+2. **QR code:** the `uqr` package, pinned. It has no dependencies, and it renders both SVG (web page) and text (terminal). The terminal always prints the plain address too.
+3. **Installs:** `winget` on Windows. The userspace install on Linux, only when no `tailscale` program exists, so Eva never starts a second daemon. Never `sudo`. macOS and other systems get the steps only. The Windows installer can ask for administrator rights on the desktop; the step says so, and the run has a long timeout.
+4. **Install and sign-in from the web page:** allowed for a token login only, as fixed actions with no arguments. The POST starts the work, and the page polls the status, as the engine update does. Telegram `/link` offers the same buttons, because before Tailscale works, Telegram is the only way to Eva from a phone.
+5. **`RemoteAccess`:** add `step`, `link`, `account` and `busy`. Keep `url` and `problem`. A reader that gets no `step` (an older running Eva) derives it from `url`. `remoteAccess` is null now only when `tailscaleServe` is off; the PR says so.
+6. **Live hosts and identities:** the local API reads the host name and the owner from one snapshot of the watcher on each request. The configured lists stay as they are. Before Tailscale is ready, only the loopback and configured hosts get in.
+7. **Step text:** a pure module in `src/core/remote-access/`, with no Node imports, so the web bundle can use it. Each front end renders the buttons and the QR code.
+
+Traps to handle:
+
+- Find `tailscale` at `%ProgramFiles%\Tailscale\tailscale.exe` and at Eva's userspace install: Eva's PATH does not change after an install.
+- Run the userspace build directly with `--socket=…`, not through the wrapper script.
+- A root `tailscaled` refuses a normal user: show `sudo tailscale set --operator=$USER` as its own problem.
+- The sign-in button runs `tailscale up --timeout=…` again for a fresh link.
+- Remove the "restart Eva" text: the watcher reads the state every 30 seconds while the address is missing.
+- `eva doctor` names `eva setup` as the way to install Tailscale.

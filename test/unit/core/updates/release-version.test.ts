@@ -3,6 +3,7 @@ import {
   commitChange,
   isConventionalSubject,
   latestVersionTag,
+  mergedPullRequest,
   nextReleaseVersion,
   releaseNotes,
 } from "../../../../src/core/updates/release-version.ts";
@@ -104,8 +105,59 @@ describe("next release version", () => {
   });
 });
 
+describe("merged pull request", () => {
+  test("a GitHub merge subject names its pull request", () => {
+    expect(mergedPullRequest("Merge pull request #146 from owner/some-branch")).toBe(146);
+  });
+
+  test("another subject names none", () => {
+    expect(mergedPullRequest("Merge branch 'main' into some-branch")).toBeNull();
+    expect(mergedPullRequest("fix: a bug (#12)")).toBeNull();
+  });
+});
+
 describe("release notes", () => {
-  test("notes group the commits by the size of their change", () => {
+  const pullRequest = (number: number, title: string): { number: number; title: string } => ({ number, title });
+
+  test("notes list each pull request under its largest change, then the commits in a detail view", () => {
+    const voice = pullRequest(7, "feat: voice notes");
+    const notes = releaseNotes([
+      { ...commit("fix: a bug"), hash: "aaaaaaa" },
+      { ...commit("docs: a guide"), hash: "bbbbbbb", pullRequest: pullRequest(5, "docs: a guide") },
+      { ...commit("feat: record a voice note"), hash: "ccccccc", pullRequest: voice },
+      { ...commit("fix: trim the silence"), hash: "ddddddd", pullRequest: voice },
+      { ...commit("test: cover voice notes"), hash: "eeeeeee", pullRequest: voice },
+      { ...commit("refactor!: drop Node"), hash: "fffffff", pullRequest: pullRequest(6, "refactor!: drop Node") },
+    ]);
+    expect(notes).toBe(
+      [
+        "## Breaking changes",
+        "",
+        "- refactor!: drop Node (#6)",
+        "",
+        "## New features",
+        "",
+        "- feat: voice notes (#7)",
+        "",
+        "## Fixes and other changes",
+        "",
+        "- fix: a bug",
+        "",
+        "<details>",
+        "<summary>Commits</summary>",
+        "",
+        "- fix: a bug (aaaaaaa)",
+        "- feat: record a voice note (ccccccc)",
+        "- fix: trim the silence (ddddddd)",
+        "- refactor!: drop Node (fffffff)",
+        "",
+        "</details>",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("commits with no pull request or hash keep their own lines, by the size of their change", () => {
     const notes = releaseNotes([
       commit("fix: a bug"),
       commit("docs: a guide"),
@@ -113,7 +165,7 @@ describe("release notes", () => {
       commit("feat: voice notes"),
       commit("Update README.md"),
     ]);
-    expect(notes).toBe(
+    expect(notes.split("<details>")[0]).toBe(
       [
         "## Breaking changes",
         "",
@@ -127,6 +179,7 @@ describe("release notes", () => {
         "",
         "- fix: a bug",
         "- Update README.md",
+        "",
         "",
       ].join("\n"),
     );

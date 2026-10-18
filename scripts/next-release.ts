@@ -8,6 +8,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import {
   latestVersionTag,
+  mergedPullRequest,
   nextReleaseVersion,
   releaseNotes,
   type ReleaseCommit,
@@ -29,21 +30,45 @@ function git(args: string[]): string {
 }
 
 const lastVersion = latestVersionTag(git(["tag", "--list", "v*", "--merged", "HEAD"]).split(/\r?\n/));
-// Unit and record separators keep a commit body with blank lines in one piece.
-const log = git([
-  "log",
-  "--no-merges",
-  "--format=%s%x1f%b%x1e",
-  lastVersion === null ? "HEAD" : `v${lastVersion}..HEAD`,
-]);
-const commits: ReleaseCommit[] = log
-  .split("\x1e")
-  .map((record) => record.trim())
-  .filter((record) => record.length > 0)
-  .map((record) => {
-    const [subject = "", body = ""] = record.split("\x1f");
-    return { subject, body };
-  });
+
+interface LoggedCommit {
+  readonly hash: string;
+  readonly parents: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+}
+
+function log(args: string[]): LoggedCommit[] {
+  // Unit and record separators keep a commit body with blank lines in one piece.
+  return git(["log", "--format=%h%x1f%p%x1f%s%x1f%b%x1e", ...args])
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter((record) => record.length > 0)
+    .map((record) => {
+      const [hash = "", parents = "", subject = "", body = ""] = record.split("\x1f");
+      return { hash, parents: parents.split(" ").filter((parent) => parent.length > 0), subject, body };
+    });
+}
+
+// Each commit on the first-parent line of main is a pull request merge or a direct commit.
+// A merge brings the commits between its first parent and its other parents.
+const commits: ReleaseCommit[] = [];
+for (const entry of log(["--first-parent", lastVersion === null ? "HEAD" : `v${lastVersion}..HEAD`])) {
+  const [mainParent, ...mergedParents] = entry.parents;
+  if (mainParent === undefined || mergedParents.length === 0) {
+    commits.push({ subject: entry.subject, body: entry.body, hash: entry.hash });
+    continue;
+  }
+  const merged = log(["--no-merges", ...mergedParents, `^${mainParent}`]);
+  const number = mergedPullRequest(entry.subject);
+  // GitHub writes the pull request title as the first line of the merge body.
+  const firstBodyLine = entry.body.split(/\r?\n/)[0]?.trim() ?? "";
+  const title = firstBodyLine === "" ? (merged.at(-1)?.subject ?? entry.subject) : firstBodyLine;
+  const pullRequest = number === null ? undefined : { number, title };
+  for (const { subject, body, hash } of merged) {
+    commits.push(pullRequest === undefined ? { subject, body, hash } : { subject, body, hash, pullRequest });
+  }
+}
 
 const packageVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version;
 const version = nextReleaseVersion({ lastVersion, packageVersion, commits });

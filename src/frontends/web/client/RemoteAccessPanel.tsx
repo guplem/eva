@@ -96,25 +96,28 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
           <div>Tailscale, a free private network of your own devices, opens Eva on your phone and other computers.</div>
           <h3>On this machine</h3>
           <ol>
-            {setupSteps(access).map((step) => (
-              <li key={step.text}>
-                <StepText step={step} />
-                {step.action !== null && (
-                  <>
-                    {" "}
-                    <button onClick={() => run(step.action ?? "sign_in")}>{actionLabel(step.action)}</button>
-                  </>
-                )}
-              </li>
-            ))}
+            {setupSteps(access).map((step, index) => {
+              const action = step.action;
+              return (
+                <li key={index}>
+                  <StepText step={step} />
+                  {action !== null && (
+                    <>
+                      {" "}
+                      <button onClick={() => run(action)}>{actionLabel(action)}</button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ol>
           <div className="hint">Eva finds each change by herself within a minute.</div>
         </>
       )}
       <h3>On each phone or computer</h3>
       <ol>
-        {deviceSteps(access).map((step) => (
-          <li key={step.text}>
+        {deviceSteps(access).map((step, index) => (
+          <li key={index}>
             <StepText step={step} />
           </li>
         ))}

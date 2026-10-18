@@ -36,7 +36,7 @@ export function accessLines(input: {
   return [
     ...lines.slice(0, 1),
     "Scan this code on a phone that has Tailscale:",
-    renderUnicodeCompact(url),
+    renderUnicodeCompact(url, { border: 2 }),
     ...lines.slice(1),
   ];
 }

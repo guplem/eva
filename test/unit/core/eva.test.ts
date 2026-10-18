@@ -127,12 +127,37 @@ describe("Eva", () => {
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
   });
 
-  test("an extra instance on the same OS user gets its own Claude and gh config folders (lesson 111)", async () => {
+  test("an extra instance on the same OS user gets its own Claude, pi and gh config folders (lesson 111)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBe(join(home, "engines", "pi-agent"));
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+  });
+
+  test("Eva's own gh calls in an extra instance use its gh folder, not the first person's login", async () => {
+    const ghEnvironments: Record<string, string>[] = [];
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command, options) => {
+          if (command[0] === "gh") ghEnvironments.push({ ...options.environment });
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      defaultHome: join(home, "..", "default-eva-home"),
+    });
+    await eva.runCheck("github");
+    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
+    // Only gh needs its folder; git and the Google tools get no engine folder.
+    expect(ghEnvironments[0]?.["CLAUDE_CONFIG_DIR"]).toBeUndefined();
   });
 
   test("the instance in the default home uses the OS user's own engine config folders", async () => {
@@ -140,6 +165,7 @@ describe("Eva", () => {
     const instance = start(engine, {}, { defaultHome: join(home, ".") });
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBeUndefined();
+    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBeUndefined();
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBeUndefined();
   });
 

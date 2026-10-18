@@ -4,15 +4,11 @@
  * device. Each step that needs the person shows a link and waits; nothing here needs root.
  */
 import { renderUnicodeCompact } from "uqr";
-import type { RemoteAccess, RemoteAccessStep } from "../../core/remote-access/remote-access.ts";
-import { describeAccess, remoteAccessStep, setupSteps } from "../../core/remote-access/steps.ts";
+import type { RemoteAccess, RemoteAccessControl, RemoteAccessStep } from "../../core/remote-access/remote-access.ts";
+import { describeAccess, remoteAccessStep, setupSteps, stepLine } from "../../core/remote-access/steps.ts";
 
 export interface NetworkSetupOptions {
-  readonly access: {
-    refresh(): Promise<RemoteAccess>;
-    install(): Promise<RemoteAccess>;
-    signIn(): Promise<RemoteAccess>;
-  };
+  readonly access: RemoteAccessControl;
   readonly localUrl: string;
   readonly write: (line: string) => void;
   /** Answers a yes or no question; an empty answer means the default. */
@@ -62,7 +58,8 @@ export async function runNetworkSetup(options: NetworkSetupOptions): Promise<str
   for (const line of accessLines({
     remoteAccess: access,
     localUrl: options.localUrl,
-    actionHint: "Run `eva setup` to let Eva do these steps.",
+    // Inside setup, a hint to run setup points back to itself.
+    ...(options.interactive ? {} : { actionHint: "Run `eva setup` in a terminal to let Eva do these steps." }),
   }))
     options.write(line);
   return remoteAccessStep(access) === "ready" ? access.url : null;
@@ -93,7 +90,7 @@ async function handleStep(
 }
 
 function writeSteps(options: NetworkSetupOptions, access: RemoteAccess): void {
-  for (const step of setupSteps(access)) options.write(step.link === null ? step.text : `${step.text} ${step.link}`);
+  for (const step of setupSteps(access)) options.write(stepLine(step));
 }
 
 async function waitForChange(options: NetworkSetupOptions, step: RemoteAccessStep): Promise<RemoteAccess> {

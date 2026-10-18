@@ -996,7 +996,7 @@ describe("describeRemoteAccess", () => {
       "Phone access: not ready. Install Tailscale on this machine. Eva can install it for you. Run `eva link` for every step.",
     ]);
     expect(describeRemoteAccess({ url: null, problem: null })).toEqual([
-      "Phone access: not ready. Run `eva link` for every step.",
+      "Phone access: not ready. Eva cannot publish her page. See the warnings in her log. Run `eva link` for every step.",
     ]);
   });
 });

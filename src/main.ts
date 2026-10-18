@@ -134,8 +134,8 @@ async function main(argv: readonly string[]): Promise<number> {
         platform: process.platform,
       };
       const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
-        // Only the running Eva publishes her page.
-        access: remoteAccessWatcher(port, false),
+        // Setup publishes too, so the address that it prints works as soon as Eva runs.
+        access: remoteAccessWatcher(port),
         localUrl: `http://127.0.0.1:${String(port)}`,
         write: writeLine,
         sleep: (ms: number) => Bun.sleep(ms),
@@ -282,7 +282,7 @@ async function serve(paths: HomePaths): Promise<number> {
   if (hubClaimed) logger.log("info", "No machine was the hub yet, so this machine claimed it.");
   // The first read happens before the local API starts, so a ready tailnet's host is known at once.
   const remoteAccess = config.remoteAccess.tailscaleServe
-    ? remoteAccessWatcher(config.port, true, (access) => {
+    ? remoteAccessWatcher(config.port, (access) => {
         logger.log(access.step === "failed" ? "warn" : "info", "Tailscale access.", { ...access });
       })
     : null;
@@ -772,19 +772,14 @@ function childEnvironment(): Record<string, string> {
   return buildChildEnvironment(process.env, baseEnvironmentAllowlist);
 }
 
-/** Phone access through Tailscale on this machine. Only the running Eva publishes. */
-function remoteAccessWatcher(
-  port: number,
-  publish: boolean,
-  onChange?: (access: RemoteAccess) => void,
-): RemoteAccessWatcher {
+/** Phone access through Tailscale on this machine. */
+function remoteAccessWatcher(port: number, onChange?: (access: RemoteAccess) => void): RemoteAccessWatcher {
   const environment = childEnvironment();
   const platform = process.platform;
   return new RemoteAccessWatcher({
     runner: systemProcessRunner,
     environment,
     port,
-    publish,
     program: () =>
       findTailscale({
         platform,

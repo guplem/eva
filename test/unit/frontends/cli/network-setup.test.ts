@@ -51,7 +51,6 @@ function harness(
     environment: {},
     port: 7420,
     program: () => ["tailscale"],
-    publish: false,
     install: script.install ?? null,
   });
   return {
@@ -83,13 +82,15 @@ describe("the network step of eva setup", () => {
     expect(text).toContain("owner@example.com");
     expect(text).toContain("▀");
     expect(text).toContain("On this machine only (advanced): http://127.0.0.1:7420");
-    expect(run.commands).not.toContain(expect.stringContaining("serve"));
+    // Setup publishes too, so the printed address works as soon as Eva runs.
+    expect(run.commands).toContain("serve --bg --https=443 http://127.0.0.1:7420");
   });
 
   test("no Tailscale where Eva can install it: she asks, installs, then signs the machine in", async () => {
     let installs = 0;
     const run = harness({
-      statuses: [missing, needsLogin, needsLogin, loggedIn(true)],
+      // The install reads once more first: Eva installs only where no Tailscale exists.
+      statuses: [missing, missing, needsLogin, needsLogin, loggedIn(true)],
       upOutput: "To authenticate, visit:\n\n\thttps://login.tailscale.com/a/abc123\n",
       install: () => {
         installs += 1;

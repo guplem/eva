@@ -116,6 +116,10 @@ export async function requestHub(options: ClientOptions): Promise<string> {
   return `${status.machine} is now the hub. ${describeSync(status.vaultSync)}`;
 }
 
+/** The warning before an update across a major version, in every front end. */
+export const majorUpdateWarning =
+  "This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
+
 /** One line about Eva's version and her updates. */
 export function describeUpdate(update: UpdateStatus): string {
   const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
@@ -132,7 +136,9 @@ export function describeUpdate(update: UpdateStatus): string {
     update.heldBack === null ? "" : `; ${update.heldBack} is held back by the update policy (${update.install})`;
   return update.available
     ? `Updates: ${next} is available (this is ${update.current})${heldBack}; ${automatic}`
-    : `Updates: ${update.current} is ${heldBack === "" ? "the latest" : "installed"}${heldBack}; ${automatic}`;
+    : heldBack === ""
+      ? `Updates: ${update.current} is the latest; ${automatic}`
+      : `Updates: this is ${update.current}${heldBack}; ${automatic}`;
 }
 
 /** One line about the engine update of the settings page. */

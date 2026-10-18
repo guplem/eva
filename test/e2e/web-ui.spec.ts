@@ -680,9 +680,9 @@ test("Settings: Update to a version shows each newer release, warns on a major o
 test("Settings: the major update policy shows a warning", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByText("Eva installs a major update by herself.")).toHaveCount(0);
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
   await page.getByLabel("Eva installs by herself").selectOption("major");
-  await expect(page.getByText("Eva installs a major update by herself.")).toBeVisible();
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toBeVisible();
   await page.getByLabel("Eva installs by herself").selectOption("minor");
 });
 

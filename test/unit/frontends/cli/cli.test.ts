@@ -807,6 +807,7 @@ repos:
   test("update, sync and settings commands go through the running Eva", async () => {
     const options = { baseUrl: api.url, token: "chat-token" };
     expect(String(await requestUpdate(options, true).catch((caught: unknown) => caught))).toContain("409");
+    expect(String(await requestUpdate(options, false, "1.0.0").catch((caught: unknown) => caught))).toContain("409");
     expect(await requestSync(options)).toStartWith("Vault sync: ");
     expect(await requestHub(options)).toContain("is now the hub.");
     expect((await requestStatus(options)).localUrl).toStartWith("http://127.0.0.1:");
@@ -930,6 +931,19 @@ describe("describeUpdate and describeSync", () => {
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
       "Updates: bbb2222 is installed; Eva restarts when no chat runs",
+    );
+  });
+
+  test("a release, the policy's pick and a held-back version each read clearly", () => {
+    const release = { ...base, kind: "executable" as const, current: "1.2.0", latest: "2.0.0" };
+    expect(describeUpdate({ ...release, available: true, target: "1.3.0", heldBack: "2.0.0" })).toBe(
+      "Updates: 1.3.0 is available (this is 1.2.0); 2.0.0 is held back by the update policy (minor); checks daily",
+    );
+    expect(describeUpdate({ ...release, heldBack: "2.0.0", install: "patch" })).toBe(
+      "Updates: this is 1.2.0; 2.0.0 is held back by the update policy (patch); checks daily",
+    );
+    expect(describeUpdate({ ...release, target: "1.3.0", phase: "waiting_for_idle" })).toBe(
+      "Updates: 1.3.0 installs when the running chats end",
     );
   });
 

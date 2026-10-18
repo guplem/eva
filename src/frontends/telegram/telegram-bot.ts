@@ -13,6 +13,7 @@ import {
   describeStatusLines,
   describeSync,
   describeUpdate,
+  majorUpdateWarning,
 } from "../cli/client.ts";
 import { describeAccess } from "../cli/network-setup.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
@@ -152,8 +153,6 @@ const deviceExpiredText = "This request expired.";
 const maxDownloadBytes = 20 * 1024 * 1024;
 /** Telegram refuses a keyboard of more than 100 buttons. */
 const buttonsPerMessage = 50;
-const majorUpdateWarning =
-  "⚠️ This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
 /** A short Telegram outage heals by itself; only a long one needs the owner. */
 const pollFailingAlertMs = 15 * 60_000;
 const pollProblemKey = "telegram_poll";
@@ -611,7 +610,7 @@ export class TelegramBot {
       await this.send(chatId, topicId, `${version} is not a newer release. Send /update to check again.`);
       return;
     }
-    const warning = release.level === "major" ? `\n\n${majorUpdateWarning}` : "";
+    const warning = release.level === "major" ? `\n\n⚠️ ${majorUpdateWarning}` : "";
     const text = `Eva ${update.current ?? "?"} → ${version}${warning}\n\n${release.summary}`;
     const parts = splitForTelegram(text, messageLimit);
     for (const [index, part] of parts.entries()) {

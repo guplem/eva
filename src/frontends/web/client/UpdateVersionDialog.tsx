@@ -4,9 +4,7 @@
  */
 import { useState, type ReactElement } from "react";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
-
-export const majorUpdateWarning =
-  "This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
+import { majorUpdateWarning } from "../../cli/client.ts";
 
 export function UpdateVersionDialog(props: {
   update: UpdateStatus;

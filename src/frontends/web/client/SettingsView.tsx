@@ -15,7 +15,7 @@ import {
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
-import { majorUpdateWarning, UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
+import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
   { value: "null", label: "Only before each Assistant turn" },
@@ -498,7 +498,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             </label>
           </div>
           {config.updates.install === "major" && (
-            <div className="update-warning">{majorUpdateWarning} Eva installs a major update by herself.</div>
+            <div className="update-warning">
+              A major update can break things that work today. With this choice, Eva installs it by herself.
+            </div>
           )}
           <div className="check-row">
             <button disabled={update === null} onClick={() => void updateNow()}>

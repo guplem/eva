@@ -58,6 +58,15 @@ export type TelegramPollState =
   /** Another program polls this bot; Eva pauses the poll loop, and the core runs on. */
   | { readonly kind: "conflict"; readonly since: string };
 
+/** What the running turn of a chat already sent. */
+interface AnswerState {
+  readonly attached: Set<string>;
+  /** Offered at the turn end, because a later block can still attach the same file. */
+  readonly offered: Set<string>;
+  /** True after the first block, which alone makes the phone ring. */
+  rang: boolean;
+}
+
 interface TopicEntry {
   readonly sessionId: string;
   readonly openedByEva: boolean;
@@ -179,8 +188,8 @@ export class TelegramBot {
   private allowedUserId: number | null;
   /** The sends of each chat, in event order: `onEvent` runs unawaited, so a later block could overtake an earlier one. */
   private readonly outbox: Map<string, Promise<void>>;
-  /** The files that the running turn of each chat attached, and the ones it offers at its end. A file goes once per answer. */
-  private readonly turnFiles: Map<string, { attached: Set<string>; offered: Set<string> }>;
+  /** The running turn of each chat. A file goes once per answer. */
+  private readonly answers: Map<string, AnswerState>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
@@ -215,7 +224,7 @@ export class TelegramBot {
     this.stoppedSessions = new Set();
     this.tooLongCards = new Map();
     this.outbox = new Map();
-    this.turnFiles = new Map();
+    this.answers = new Map();
     this.state = loadState(options.statePath);
     this.offers = new OfferStore(join(dirname(options.statePath), "telegram-offers.json"));
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
@@ -862,10 +871,10 @@ export class TelegramBot {
         this.stopTyping(event.sessionId);
         const stopped = this.stoppedSessions.delete(event.sessionId);
         await this.inOrder(event.sessionId, async () => {
-          const files = this.turnFiles.get(event.sessionId);
-          this.turnFiles.delete(event.sessionId);
+          const answer = this.answers.get(event.sessionId);
+          this.answers.delete(event.sessionId);
           // A file named twice goes once, and attach wins over offer, also across blocks.
-          const offers = [...(files?.offered ?? [])].filter((path) => files?.attached.has(path) !== true);
+          const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
           if (offers.length > 0) await this.offerFiles(target.chatId, target.topicId, offers);
           if (event.kind === "turn_failed")
             await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
@@ -899,18 +908,22 @@ export class TelegramBot {
     event: Extract<SessionEvent, { kind: "text" }>,
   ): Promise<void> {
     const markers = extractFileMarkers(event.text);
-    let files = this.turnFiles.get(event.sessionId);
-    if (files === undefined) {
-      files = { attached: new Set(), offered: new Set() };
-      this.turnFiles.set(event.sessionId, files);
+    let answer = this.answers.get(event.sessionId);
+    if (answer === undefined) {
+      answer = { attached: new Set(), offered: new Set(), rang: false };
+      this.answers.set(event.sessionId, answer);
     }
-    if (markers.text.length > 0) await this.sendAnswer(chatId, topicId, markers.text);
+    if (markers.text.length > 0) {
+      // A turn can write a short block before each tool call, and a ring for each would be noise.
+      await this.sendAnswer(chatId, topicId, markers.text, answer.rang);
+      answer.rang = true;
+    }
     for (const path of markers.attach) {
-      if (files.attached.has(path)) continue;
-      files.attached.add(path);
+      if (answer.attached.has(path)) continue;
+      answer.attached.add(path);
       await this.sendVaultFile(chatId, topicId, path);
     }
-    for (const path of markers.offer) files.offered.add(path);
+    for (const path of markers.offer) answer.offered.add(path);
   }
 
   private async sendApproval(
@@ -965,7 +978,7 @@ export class TelegramBot {
   }
 
   /** Sends Markdown as Telegram HTML, split under the limit; a part with refused HTML goes again as plain text (lesson 58). */
-  private async sendAnswer(chatId: number, topicId: number | null, markdown: string): Promise<void> {
+  private async sendAnswer(chatId: number, topicId: number | null, markdown: string, quiet = false): Promise<void> {
     for (const chunk of keepFencesWhole(splitForTelegram(markdown, messageLimit))) {
       try {
         await this.callWithRetry("sendMessage", {
@@ -973,6 +986,7 @@ export class TelegramBot {
           text: toTelegramHtml(chunk),
           parse_mode: "HTML",
           ...threadOf(topicId),
+          ...(quiet ? { disable_notification: true } : {}),
         });
       } catch (error) {
         if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk);

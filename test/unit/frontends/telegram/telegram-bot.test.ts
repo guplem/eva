@@ -253,6 +253,24 @@ describe("chats", () => {
     await settle(bot, () => telegram.sentTexts().includes("Second part."));
   });
 
+  test("only the first block of an answer makes the phone ring", async () => {
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Let me look.", messageId: "m1" },
+        { kind: "text", text: "Found it.", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Found it."));
+    const quiet = (text: string): unknown =>
+      telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
+    expect(quiet("Let me look.")).toBeUndefined();
+    expect(quiet("Found it.")).toBe(true);
+  });
+
   test("a failed turn says so after the blocks it already sent", async () => {
     createEva(() => [
       { kind: "text", text: "Working on it.", messageId: "m1" },

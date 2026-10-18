@@ -60,7 +60,7 @@ function ChatDetails({ tree, tasks }: ChatProps): ReactElement {
             {tree.length > 1 ? `, with ${String(tree.length - 1)} fork${tree.length === 2 ? "" : "s"}` : ""}
           </dd>
           <dt>Context</dt>
-          <dd>{context === null ? "Not known yet" : formatTokens(context)}</dd>
+          <dd>{context === null ? "Not known" : formatTokens(context)}</dd>
         </dl>
       )}
       <h3>Background tasks</h3>

@@ -605,6 +605,10 @@ test("a new message of a running turn replaces the shown one, and the older one 
   await expect(page.getByText("second thought")).toBeVisible();
   await expect(page.getByText("first thought")).toHaveCount(0);
   await expect(page.locator('.step-badge[title="Message: first thought"]')).toHaveCount(1);
+  // A badge keeps a short text, so the whole answer is one tap away.
+  await page.getByRole("button", { name: "Show the whole answer" }).click();
+  await expect(page.getByText("first thought")).toBeVisible();
+  await expect(page.getByText("second thought")).toBeVisible();
 });
 
 test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {

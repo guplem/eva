@@ -2,7 +2,7 @@
  * A conversation as a tree: the chat and each of its forks in a
  * column of its own, each with its own input, and retry and fork on every answer.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
@@ -124,7 +124,7 @@ function Branch({
         <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
           <div className="message user">{turn.userText}</div>
           <div className="message answer">
-            <AnswerBody steps={turn.steps} omitted={turn.omittedSteps} fallback={turn.answerText} />
+            <AnswerBody steps={turn.steps} omitted={turn.omittedSteps} wholeAnswer={turn.answerText} />
             {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
               {activityOf(turn) !== "" && <span className="chip">{activityOf(turn)}</span>}
@@ -184,33 +184,53 @@ function Branch({
 function AnswerBody({
   steps,
   omitted,
-  fallback,
+  wholeAnswer,
   live = false,
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted: number;
-  readonly fallback: string;
+  /** Every message in full. A badge keeps only 200 characters, so this is the way to read an earlier message. */
+  readonly wholeAnswer: string;
   readonly live?: boolean;
 }): ReactElement {
+  const [showWhole, setShowWhole] = useState(false);
   const { before, lastMessage, after } = splitSteps(steps);
+  const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
+  const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // The steps not kept came first. With no badge before the message, the later row says how many there were.
+  const omittedBefore = before.length > 0 ? omitted : 0;
   return (
     <>
-      <StepRow steps={before} omitted={omitted} />
+      <StepRow steps={before} omitted={omittedBefore} noun={after.length > 0 ? "earlier step" : "step"} />
       {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
       <div
         className="answer-body"
         aria-live={live ? "polite" : undefined}
-        dangerouslySetInnerHTML={{ __html: toWebHtml(lastMessage?.text ?? fallback) }}
+        dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
       />
-      <StepRow steps={after} noun="later step" />
+      {canShowWhole && (
+        <button className="whole-answer" onClick={() => setShowWhole((shown) => !shown)}>
+          {showWhole ? "Show the last message only" : "Show the whole answer"}
+        </button>
+      )}
+      <StepRow steps={after} omitted={omitted - omittedBefore} noun="later step" />
     </>
   );
 }
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same badges. */
 function LiveAnswerBody({ steps }: { readonly steps: readonly TurnStep[] }): ReactElement {
-  const shown = storedSteps(steps);
-  return <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} fallback="" live />;
+  // A keystroke in the composer renders the branch again, so compute this only when a step arrives.
+  const shown = useMemo(() => storedSteps(steps), [steps]);
+  const wholeAnswer = useMemo(
+    () =>
+      steps
+        .filter((step) => step.kind === "message")
+        .map((step) => step.text)
+        .join("\n\n"),
+    [steps],
+  );
+  return <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} wholeAnswer={wholeAnswer} live />;
 }
 
 function isTouchScreen(): boolean {

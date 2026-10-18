@@ -485,6 +485,18 @@ textarea {
   margin-bottom: 8px;
 }
 
+.answer-body + .steps,
+.whole-answer + .steps,
+.whole-answer {
+  margin-top: 8px;
+}
+
+.whole-answer {
+  display: block;
+  padding: 2px 10px;
+  font-size: 13px;
+}
+
 .steps-toggle {
   display: flex;
   flex-wrap: wrap;

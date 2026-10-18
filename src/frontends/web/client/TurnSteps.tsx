@@ -34,12 +34,12 @@ export function StepRow({
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted?: number;
-  /** "later step" for the steps after the answer's last message. */
+  /** Names the row: "earlier step" or "later step" when the answer has a row on each side of its last message. */
   readonly noun?: string;
 }): ReactElement | null {
   const [open, setOpen] = useState(false);
   const listId = useId();
-  if (steps.length === 0) return null;
+  if (steps.length === 0 && omitted === 0) return null;
   return (
     <div className="steps">
       <button
@@ -54,8 +54,8 @@ export function StepRow({
         ))}
       </button>
       {open && (
-        <ol className="step-list" id={listId} aria-label="Steps">
-          {omitted > 0 && <li className="muted">{counted(omitted, "earlier step")} not kept.</li>}
+        <ol className="step-list" id={listId} aria-label={`${noun.charAt(0).toUpperCase()}${noun.slice(1)}s`}>
+          {omitted > 0 && <li className="muted">{counted(omitted, "step")} not kept.</li>}
           {steps.map((step, index) => (
             <li key={`${step.id ?? ""}-${String(index)}`}>
               <Badge step={step} hidden />

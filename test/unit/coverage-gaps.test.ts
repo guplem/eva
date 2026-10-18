@@ -81,6 +81,7 @@ describe("describeEvent", () => {
         lastMessageId: null,
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
+        contextTokens: null,
       },
     ];
     expect(events.map(describeEvent)).toEqual([

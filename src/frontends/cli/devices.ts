@@ -13,6 +13,7 @@ import { runningClient } from "./local-commands.ts";
 /** The terminal can always answer: the person types the code there, so it sends no message. */
 export const terminalDeviceApprover: DeviceLoginApprover = {
   name: "terminal",
+  servesThisComputer: true,
   canApprove: () => true,
   ask: () => undefined,
 };

@@ -127,6 +127,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       // A Tailscale identity alone never authenticates: any program on this machine can forge the header.
       if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
+      // The owner's rule: only a person with a shell as Eva's user, who can read the token, allows a device.
+      if (url.pathname === "/api/devices/allow" && !hasValidToken(request, options.token))
+        return json({ error: "Only the token, from a terminal on Eva's computer, can allow a device." }, 403);
       if (url.pathname === "/api/events") {
         return bunServer.upgrade(request, { data: { unsubscribe: [] } })
           ? undefined
@@ -206,8 +209,8 @@ function guardSite(request: Request, options: LocalApiOptions): Response | null 
 
   const identity = request.headers.get("tailscale-user-login");
   const allowed = allowedIdentities(options);
-  // `tailscale serve` adds the identity header. A remote host without one is a tagged device or no Tailscale at all.
-  const remote = host !== "127.0.0.1" && host !== "localhost";
+  // `tailscale serve` adds the identity header. A remote request without one is a tagged device or no Tailscale at all.
+  const remote = !isLocalRequest(request);
   if (allowed.length > 0 && (identity === null ? remote : !allowed.includes(identity))) {
     return json({ error: "This Tailscale identity is not allowed." }, 403);
   }
@@ -252,7 +255,10 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   try {
     if (request.method === "POST" && url.pathname === "/api/login/device") {
       const browser = (request.headers.get("user-agent") ?? "an unknown browser").slice(0, deviceLabelBrowserLength);
-      return json(deviceLogins.request(account, `${account}, ${browser}`), 201);
+      return json(
+        deviceLogins.request(account, `${account}, ${browser}`, { thisComputer: account === localAccount }),
+        201,
+      );
     }
     if (request.method === "GET" && id.length > 0) {
       const found = deviceLogins.check(id, account);
@@ -555,12 +561,25 @@ function errorResponse(error: unknown, eva: Eva): Response {
  */
 /** The account that may ask for a device login: an allowed Tailscale account, or this computer itself. */
 function deviceLoginAccount(request: Request, options: LocalApiOptions): string | null {
-  const host = hostNameOf(request.headers.get("host"));
-  const identity = request.headers.get("tailscale-user-login");
-  const remote = host !== null && host !== "127.0.0.1" && host !== "localhost";
   // Any program here can reach this address, but only a person at Eva's terminal can allow its code.
-  if (!remote) return identity === null ? localAccount : null;
+  if (isLocalRequest(request)) return localAccount;
+  const identity = request.headers.get("tailscale-user-login");
   return identity !== null && allowedIdentities(options).includes(identity) ? identity : null;
+}
+
+/**
+ * A request of a program on this computer. `tailscale serve` passes the Host header through and
+ * adds X-Forwarded-For, so a forwarded request is remote whatever its host. A local program can
+ * forge these headers too, but they only make it look remote, which grants nothing.
+ */
+function isLocalRequest(request: Request): boolean {
+  const host = hostNameOf(request.headers.get("host"));
+  return (
+    (host === "127.0.0.1" || host === "localhost") &&
+    request.headers.get("tailscale-user-login") === null &&
+    request.headers.get("x-forwarded-for") === null &&
+    request.headers.get("x-forwarded-proto") === null
+  );
 }
 
 function allowedHostNames(options: LocalApiOptions): Set<string> {

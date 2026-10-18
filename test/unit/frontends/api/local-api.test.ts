@@ -235,15 +235,51 @@ describe("device login", () => {
     expect(asked).toEqual([]);
   });
 
-  test("the page on Eva's own computer asks too, and only that browser collects the cookie", async () => {
+  test("the page on Eva's own computer asks too, only the terminal answers, and only that browser collects the cookie", async () => {
     attachApprover();
+    // Telegram alone cannot answer: any local program can make this request.
+    expect((await call("/api/login/device", { method: "POST", headers: {} })).status).toBe(409);
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
     const created = await call("/api/login/device", { method: "POST", headers: {} });
     expect(created.status).toBe(201);
     const request = await json<DeviceLoginRequest>(created);
     expect(request.account).toBe("this computer");
+    expect(request.approvers).toEqual(["terminal"]);
+    expect(asked).toEqual([]);
     eva.deviceLogins.answer(request.id, "allow");
     const stolen = await call(`/api/login/device/${request.id}`, { headers: tailnet });
     expect(await json<unknown>(stolen)).toEqual({ state: "expired" });
+  });
+
+  test("a forwarded request is never this computer, even with a local host name", async () => {
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
+    const forwarded = await call("/api/login/device", { method: "POST", headers: { "x-forwarded-for": "100.64.0.9" } });
+    expect(forwarded.status).toBe(403);
+  });
+
+  test("only the token allows a device, never a device login: a lost phone cannot let more in", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const refused = await call("/api/devices/allow", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: { code: request.code },
+    });
+    expect(refused.status).toBe(403);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "pending",
+    });
   });
 
   test("the terminal allows a device with its code, through the token", async () => {

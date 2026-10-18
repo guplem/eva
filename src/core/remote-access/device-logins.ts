@@ -28,6 +28,11 @@ export type DeviceLoginState =
 export interface DeviceLoginApprover {
   /** How the page names it to the person. */
   readonly name: string;
+  /**
+   * True when the person checks the code on their own screen, as in the terminal. Only such an
+   * approver gets a request from this computer: any local program can make one.
+   */
+  readonly servesThisComputer?: boolean;
   /** False while the approver cannot reach the owner, such as a bot with no paired chat. */
   canApprove(): boolean;
   ask(request: DeviceLoginRequest): void;
@@ -63,14 +68,15 @@ export class DeviceLogins {
   private readonly options: DeviceLoginsOptions;
   private readonly pending: Map<string, PendingLogin>;
   private readonly approvers: Set<DeviceLoginApprover>;
-  private requestTimes: number[];
+  /** The recent requests of each account, so one account cannot use up another's. */
+  private requestTimes: Map<string, number[]>;
   private devices: StoredDevice[];
 
   constructor(options: DeviceLoginsOptions) {
     this.options = options;
     this.pending = new Map();
     this.approvers = new Set();
-    this.requestTimes = [];
+    this.requestTimes = new Map();
     this.devices = loadDevices(options.path);
   }
 
@@ -87,18 +93,21 @@ export class DeviceLogins {
   }
 
   /** Starts a request and asks every approver that can reach the owner. */
-  request(account: string, label: string): DeviceLoginRequest {
-    const ready = [...this.approvers].filter((approver) => approver.canApprove());
+  request(account: string, label: string, options: { readonly thisComputer?: boolean } = {}): DeviceLoginRequest {
+    const ready = [...this.approvers].filter(
+      (approver) => approver.canApprove() && (options.thisComputer !== true || approver.servesThisComputer === true),
+    );
     if (ready.length === 0)
       throw new EvaError(
         "device_login_unavailable",
         "Nothing on this machine can confirm a new device. Log in with the token instead.",
       );
     const nowMs = this.options.now().getTime();
-    this.requestTimes = this.requestTimes.filter((time) => nowMs - time < requestWindowMs);
-    if (this.requestTimes.length >= requestsPerWindow)
+    const recent = (this.requestTimes.get(account) ?? []).filter((time) => nowMs - time < requestWindowMs);
+    this.requestTimes.set(account, recent);
+    if (recent.length >= requestsPerWindow)
       throw new EvaError("rate_limited", "Too many device logins in the last 10 minutes. Try again later.");
-    this.requestTimes.push(nowMs);
+    recent.push(nowMs);
     this.removeExpired(nowMs);
     const request: DeviceLoginRequest = {
       id: randomUUID(),

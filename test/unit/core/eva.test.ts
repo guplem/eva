@@ -308,6 +308,71 @@ describe("Eva", () => {
     expect(clones.map((clone) => clone.name).sort()).toEqual(["remote-0", "remote-1"]);
   });
 
+  test("the person changes a project's details and its whole file, and the sweep commits them", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      "---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Example app\n",
+    );
+    const instance = start(new FakeEngine());
+    const read = instance.projectFile(projectId);
+    expect(read.text).toBe("---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n# Example app\n");
+
+    const saved = instance.saveProjectDetails(projectId, read.version, {
+      title: "Better app",
+      status: "paused",
+      tags: ["work"],
+      repos: [],
+    });
+    expect(saved.text).toBe("---\ncreated: 2025-03-02T10:15\nstatus: paused\ntags:\n  - work\n---\n# Better app\n");
+    expect(instance.projects()[0]).toMatchObject({ title: "Better app", frontMatter: { status: "paused" } });
+
+    const written = instance.saveProjectFile(projectId, saved.version, `${saved.text}\nMore notes.\n`);
+    expect(readFileSync(join(vault, "Projects", projectId, "AGENTS.md"), "utf-8")).toEndWith("More notes.\n");
+    expect(written.version).not.toBe(saved.version);
+
+    await instance.sweep();
+    expect(sandbox.git(sandbox.remote, "show", `main:Projects/${projectId}/AGENTS.md`)).toContain("More notes.");
+  });
+
+  test("a project save refuses a stale version, a bad file and an unknown project", () => {
+    const projectId = "2025-03-02-1015-example-app";
+    const path = join(vault, "Projects", projectId, "AGENTS.md");
+    sandbox.write(vault, `Projects/${projectId}/AGENTS.md`, "---\nstatus: active\n---\n# Example app\n");
+    const instance = start(new FakeEngine());
+    const { version } = instance.projectFile(projectId);
+    writeFileSync(path, "---\nstatus: idea\n---\n# Changed elsewhere\n");
+    const details = { title: "Mine", status: "closed" as const, tags: [], repos: [] };
+
+    const codeOf = (action: () => unknown): string | undefined => {
+      try {
+        action();
+        return undefined;
+      } catch (error) {
+        return (error as { code?: string }).code;
+      }
+    };
+    expect(codeOf(() => instance.saveProjectDetails(projectId, version, details))).toBe("project_changed");
+    expect(codeOf(() => instance.saveProjectFile(projectId, version, "---\nstatus: idea\n---\n"))).toBe(
+      "project_changed",
+    );
+    const fresh = instance.projectFile(projectId).version;
+    expect(codeOf(() => instance.saveProjectFile(projectId, fresh, "no front matter\n"))).toBe("project_invalid");
+    expect(readFileSync(path, "utf-8")).toBe("---\nstatus: idea\n---\n# Changed elsewhere\n");
+    expect(codeOf(() => instance.projectFile("2025-01-01-0000-missing"))).toBe("project_not_found");
+  });
+
+  test("a whole-file save from a browser keeps the file's Windows line endings", () => {
+    const projectId = "2025-03-02-1015-example-app";
+    const path = join(vault, "Projects", projectId, "AGENTS.md");
+    sandbox.write(vault, `Projects/${projectId}/AGENTS.md`, "---\r\nstatus: active\r\n---\r\n# Example app\r\n");
+    const instance = start(new FakeEngine());
+    const { version } = instance.projectFile(projectId);
+    instance.saveProjectFile(projectId, version, "---\nstatus: idea\n---\n# Example app\n");
+    expect(readFileSync(path, "utf-8")).toBe("---\r\nstatus: idea\r\n---\r\n# Example app\r\n");
+  });
+
   test("the report names the clone's branch and pull request, and keeps only the end of a long answer", async () => {
     sandbox.write(
       vault,

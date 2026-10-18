@@ -165,8 +165,12 @@ const configSchema = z.object({
     })
     .default({ enabled: true, sweepSeconds: 60, pullIntervalMinutes: 5 }),
   updates: z
-    .object({ frequency: z.enum(["off", "hourly", "daily", "weekly"]).default("daily") })
-    .default({ frequency: "daily" }),
+    .object({
+      frequency: z.enum(["off", "hourly", "daily", "weekly"]).default("daily"),
+      /** The largest step that Eva installs by herself: a fix, a feature, or a breaking change. */
+      install: z.enum(["patch", "minor", "major"]).default("minor"),
+    })
+    .default({ frequency: "daily", install: "minor" }),
   engines: z
     .object({
       default: z.enum(["claude-code", "pi"]).default("claude-code"),

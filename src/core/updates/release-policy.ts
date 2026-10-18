@@ -2,13 +2,12 @@
  * The person's update policy: which releases Eva installs by herself. Each release is labelled by
  * its version numbers only, as the release workflow raises the major number for every break.
  */
+import type { EvaConfig } from "../settings/home.ts";
 import { isNewerVersion } from "./release-verification.ts";
 import { noChangeNotes, releaseNoteSections } from "./release-version.ts";
 
-export const updatePolicies = ["patch", "minor", "major"] as const;
-
 /** The largest step that Eva installs by herself. */
-export type UpdatePolicy = (typeof updatePolicies)[number];
+export type UpdatePolicy = EvaConfig["updates"]["install"];
 
 export type ReleaseLevel = "major" | "minor" | "patch";
 

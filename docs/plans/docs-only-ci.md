@@ -26,5 +26,20 @@ Three agents reviewed the gaps. They agreed on each answer.
 
 ## Extra decisions
 
-- **Runtime Markdown.** `src/core/modes/assistant-base-prompt.md` ships inside the executable. So a `.md` file under `src/`, `test/` or `templates/` is code, unless its name is `AGENTS.md` or `CLAUDE.md`. A file that does not end in `.md` is always code.
+- **Runtime Markdown.** `src/core/modes/assistant-base-prompt.md` ships inside the executable. So a `.md` file under `src/` or `test/` is code, unless its name is `AGENTS.md` or `CLAUDE.md`. Each file under `templates/` is code: the whole vault template ships. A file that does not end in `.md` is always code.
 - **The whisper cache.** When the cache step skips, its `cache-hit` output is empty. The build step must test `code_changed` too, or it runs.
+
+## Review round 1
+
+Five agents reviewed the work. Fixed:
+
+- The dead `templates/` entry in `codeFolders`, and a comment that called every agent file docs.
+- The ruleset fact said twice in the workflow, and a comment that gave the wrong reason for skipping steps.
+- Test cases for `SECURITY.md`, a template skill and an upper-case `.MD`.
+
+Not changed:
+
+- **Job-level `if:` for `web-ui` and `voice`.** One form for every code-only job is easier to read. The issue also asks for step-level skips.
+- **Fail open in both the script and the workflow.** The script keeps the `changes` job green on a git error. The workflow covers a job that cannot start.
+- **A retargeted pull request keeps its old result.** A base change needs the `edited` event, which also reruns all of CI on each title edit. The case needs a stacked pull request, and the owner reviews each retarget.
+- **The pull request runs its own `ci-changes.ts`.** The Ubuntu checks and the owner's review still apply.

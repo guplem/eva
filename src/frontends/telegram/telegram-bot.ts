@@ -186,7 +186,7 @@ const replayedTurns = 3;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
-  { command: "delete", description: "Delete this chat in every front end, with its topic" },
+  { command: "delete", description: "Delete this chat everywhere, with its topic" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "chats", description: "Continue a chat from the web app or the terminal here" },
@@ -518,7 +518,7 @@ export class TelegramBot {
           await this.send(
             chatId,
             null,
-            "Delete the chat of the main chat in every front end? Its messages here stay. The engine keeps its own transcript of the chat.",
+            "Delete this chat everywhere? Its messages here stay. The engine keeps its own copy of the chat.",
             { inline_keyboard: [[{ text: "Delete", callback_data: "d:main" }]] },
           );
           return;
@@ -526,7 +526,9 @@ export class TelegramBot {
         await this.send(
           chatId,
           topicId,
-          "Delete this chat in every front end, and this topic with every message in it? The engine keeps its own transcript of the chat.",
+          this.isScheduleTopic(topicId)
+            ? "Delete the chat of the last firing everywhere? This topic keeps the earlier firings. The engine keeps its own copy of the chat."
+            : "Delete this chat everywhere, and this topic with every message in it? The engine keeps its own copy of the chat.",
           {
             inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
           },
@@ -1062,11 +1064,21 @@ export class TelegramBot {
   /** Deletes the chat in every front end first, so a busy chat keeps its topic. */
   private async deleteTopic(chatId: number, topicId: number): Promise<void> {
     if (!(await this.deleteChatOf(chatId, topicId))) return;
+    // A schedule's topic holds its earlier firings too, so only the firing's chat goes.
+    if (this.isScheduleTopic(topicId)) {
+      await this.send(chatId, topicId, "Deleted. The next firing starts a new chat here.");
+      return;
+    }
     try {
       await this.options.api.call("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
     } catch (error) {
       await this.send(chatId, topicId, `Telegram did not delete the topic: ${this.describeError(error)}`);
     }
+  }
+
+  /** A schedule's topic holds all its firings, so a delete of one firing keeps it. */
+  private isScheduleTopic(topicId: number): boolean {
+    return Object.values(this.state.scheduleTopics).includes(topicId);
   }
 
   /** The main chat has no topic to delete: only its chat goes, and its messages stay. */
@@ -1079,12 +1091,12 @@ export class TelegramBot {
       await this.send(chatId, null, "Deleted. A new message starts a new chat.");
   }
 
-  /** Deletes the chat of a place in the core. False, after a sentence, when the chat still works. */
+  /** Deletes the chat of a topic or of the main chat in the core. False, after a sentence, when it still works. */
   private async deleteChatOf(chatId: number, topicId: number | null): Promise<boolean> {
     const key = keyOf(chatId, topicId);
     const entry = this.state.topics[key];
     if (entry === undefined) return true;
-    // Forget the place first: the delete event of this chat then finds nothing to do here.
+    // Forget the topic or the main chat first: the delete event of this chat then finds nothing to do here.
     Reflect.deleteProperty(this.state.topics, key);
     try {
       if (this.sessionExists(entry.sessionId)) this.options.eva.sessions.delete(entry.sessionId);
@@ -1105,21 +1117,14 @@ export class TelegramBot {
   private async forgetDeletedChat(sessionId: string): Promise<void> {
     this.stopTyping(sessionId);
     this.pendingText.delete(sessionId);
-    // A schedule's topic holds its earlier firings too, so only the firing's chat goes.
-    const scheduleTopics = new Set(Object.values(this.state.scheduleTopics));
     for (const [key, entry] of Object.entries(this.state.topics)) {
       if (entry.sessionId !== sessionId) continue;
       Reflect.deleteProperty(this.state.topics, key);
       this.saveState();
       const { chatId, topicId } = placeOf(key);
-      if (topicId !== null && entry.openedByEva && !scheduleTopics.has(topicId))
+      if (topicId !== null && entry.openedByEva && !this.isScheduleTopic(topicId))
         await this.quietCall("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
-      else
-        await this.send(
-          chatId,
-          topicId,
-          "This chat was deleted in another front end. A new message starts a new chat.",
-        );
+      else await this.send(chatId, topicId, "This chat was deleted elsewhere. A new message starts a new chat.");
     }
   }
 

@@ -1410,6 +1410,23 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 
+  test("/delete in a schedule's topic deletes the firing's chat and keeps the topic", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest."));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    await eva.idle();
+    telegram.sendText(owner, "/delete", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("keeps the earlier firings")));
+    telegram.pressButton(owner, "d:500", 500);
+    await settle(bot, () => eva.sessions.list().length === 0);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Deleted.")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+  });
+
   test("a schedule file sends its file; a changed schedule names the change", async () => {
     sandbox.write(vault(), "Methods/List.md", "- milk\n");
     writeSchedules([{ id: "list", name: "List", at: "10:45", file: "Methods/List.md" }]);

@@ -131,10 +131,13 @@ describe("doctor and setup", () => {
     expect(loadSecrets(paths).localApiToken).toBeString();
   });
 
-  test("an interactive setup asks at the console", async () => {
-    const host = fakeHost({}, []);
+  test("an interactive setup asks at the console, and starts Eva as a service", async () => {
+    const host = fakeHost({ userHome: join(root, "user") }, []);
     expect(await run(host, "setup")).toBe(exitCodes.clean);
     expect(loadSecrets(paths).localApiToken).toBeString();
+    expect(host.commands).toContainEqual(["systemctl", "--user", "enable", "--now", "eva-home.service"]);
+    // The fake runs no real Eva, so she never answers, and setup goes on.
+    expect(printed(host)).toContain("Eva did not start.");
   });
 });
 
@@ -182,7 +185,8 @@ describe("with a running Eva", () => {
     api = startLocalApi({ eva, port: 0, token: "running-token", extraHosts: [], allowedTailscaleIdentities: [] });
     saveConfig(paths, { ...config, port: Number(new URL(api.url).port) });
     saveSecrets(paths, { localApiToken: "running-token" });
-    acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+    // This process holds the lock, so setup, which asks the real system, sees Eva run and keeps her port.
+    acquireInstanceLock(paths.lock, { pid: process.pid, bootId: null, isProcessAlive: () => false });
     host = fakeHost({ isProcessAlive: () => true });
   }, gitHookTimeoutMs);
   afterEach(async () => {
@@ -216,6 +220,15 @@ describe("with a running Eva", () => {
       (error: unknown) => error,
     );
     expect(String(failure)).toContain("no update channel");
+  });
+
+  test("setup restarts a running Eva when it changed her files, so she uses the new answers", async () => {
+    const answering = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland" },
+    });
+    expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
+    expect(printed(answering)).toContain("Restarting Eva, so she uses the new answers.");
   });
 
   test("devices allow lets in the browser that shows the code, and never prints its token", async () => {

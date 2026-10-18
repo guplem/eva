@@ -53,6 +53,7 @@ export type SetupQuestion =
   | "githubRepository"
   | "engine"
   | "installEngines"
+  | "startService"
   | "port"
   | "trustedOwners"
   | "claudeToken"
@@ -76,6 +77,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
   installEngines: "EVA_INSTALL_ENGINES",
+  startService: "EVA_START_SERVICE",
   port: "EVA_PORT",
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",

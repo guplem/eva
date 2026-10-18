@@ -14,7 +14,7 @@ import {
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
-import { loadSettings } from "../../core/settings/settings.ts";
+import { loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
 import { isEvaError } from "../../shared/errors.ts";
@@ -25,7 +25,14 @@ import { Redactor } from "../../shared/redaction.ts";
 import { evaVersion } from "../../shared/version.ts";
 import { parseArguments, usageText, type CliCommand } from "./arguments.ts";
 import { runChat } from "./chat.ts";
-import { describeProjects, describeStatus, startProjectWork } from "./client.ts";
+import {
+  describeProjects,
+  describeStatus,
+  isAnswering,
+  requestDeviceAllow,
+  requestRestart,
+  startProjectWork,
+} from "./client.ts";
 import { allowDevice } from "./devices.ts";
 import { runDoctor } from "./doctor.ts";
 import {
@@ -36,10 +43,11 @@ import {
   writeLine,
   type CliHost,
 } from "./host.ts";
-import { hub, link, settings, sync, update } from "./local-commands.ts";
-import { runNetworkSetup, type NetworkSetupOptions } from "./network-setup.ts";
+import { hub, link, runningClient, settings, sync, update } from "./local-commands.ts";
+import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
-import { runSetup, setupEnvironmentNames, type SetupOptions } from "./setup.ts";
+import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
+import { startAndLetIn } from "./setup-start.ts";
 
 export interface CliWiring {
   /** `eva` and `eva run`: starts Eva and resolves with her exit code when she stops. */
@@ -160,6 +168,8 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
   const write = (text: string): void => {
     writeLine(host, text);
   };
+  const port = (): number => loadSettings(paths).config.port;
+  const localUrl = (): string => `http://127.0.0.1:${String(port())}`;
   const setupOptions = {
     paths,
     write,
@@ -173,31 +183,74 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     installEnvironment: installEnvironment(host),
     arch: host.arch,
   };
-  const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
-    // Setup publishes too, so the address that it prints works as soon as Eva runs.
-    access: remoteAccessWatcher(host, port),
-    localUrl: `http://127.0.0.1:${String(port)}`,
-    write,
-    sleep: host.sleep,
-  });
+  // The files as the running Eva read them, so the end of setup knows whether she must restart.
+  const snapshot: { readByEva: string | null } = { readByEva: null };
+  const start =
+    (interactive: boolean, ask: (question: string) => Promise<string>, script: (key: SetupQuestion) => string) =>
+    async (): Promise<void> => {
+      await startAndLetIn({
+        interactive,
+        // A script never waits for a device code: nobody is there to read the page.
+        ask: (key, question) =>
+          interactive ? ask(question) : Promise.resolve(key === "deviceCode" ? "" : script(key)),
+        write,
+        // Setup publishes too, so the address that it prints works as soon as Eva runs.
+        network: () =>
+          runNetworkSetup({
+            access: remoteAccessWatcher(host, port()),
+            localUrl: localUrl(),
+            write,
+            sleep: host.sleep,
+            interactive,
+            ask,
+          }),
+        localUrl: localUrl(),
+        startService: async () => (await installService(host, paths)) === exitCodes.clean,
+        isRunning: async () => {
+          const client = runningClient(host, paths);
+          return client !== null && (await isAnswering(client));
+        },
+        allow: async (code) => {
+          const client = runningClient(host, paths);
+          return client === null ? null : requestDeviceAllow(client, code);
+        },
+        sleep: host.sleep,
+      });
+      snapshot.readByEva = setupFiles(paths);
+    };
   if (nonInteractive) {
+    const script = (key: SetupQuestion): string => host.environment[setupEnvironmentNames[key]] ?? "";
     await runSetup({
       ...setupOptions,
       interactive: false,
-      ask: (key) => Promise.resolve(host.environment[setupEnvironmentNames[key]] ?? ""),
+      ask: (key) => Promise.resolve(script(key)),
+      afterEssentials: start(false, () => Promise.resolve(""), script),
     });
-    await runNetworkSetup({
-      ...networkOptions(loadSettings(paths).config.port),
-      interactive: false,
-      ask: () => Promise.resolve(""),
+  } else {
+    await host.withPrompt(async (ask) => {
+      await runSetup({
+        ...setupOptions,
+        interactive: true,
+        ask: (_key, question) => ask(question),
+        afterEssentials: start(true, ask, () => ""),
+      });
     });
-    return;
   }
-  await host.withPrompt(async (ask) => {
-    await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
-    // The last step: the address that opens Eva on every other device.
-    await runNetworkSetup({ ...networkOptions(loadSettings(paths).config.port), interactive: true, ask });
-  });
+  const client = runningClient(host, paths);
+  if (client !== null && snapshot.readByEva !== null && snapshot.readByEva !== setupFiles(paths)) {
+    write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");
+    await requestRestart(client);
+  } else if (client === null) {
+    write("Run `eva doctor` to check the tools, then start Eva with `eva service install` or `eva`.");
+  }
+}
+
+/** The files that hold the setup's answers, as one text, to tell whether any changed. */
+function setupFiles(paths: HomePaths): string {
+  const vaultPath = loadSettings(paths).config.vaultPath;
+  return [paths.config, paths.secrets, ...(vaultPath === null ? [] : [vaultSettingsPath(vaultPath)])]
+    .map((path) => readTextTolerant(path) ?? "")
+    .join("\n");
 }
 
 /** `status`, `projects`, `chat` and `work`: these need the running Eva. */

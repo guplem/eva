@@ -243,6 +243,28 @@ export async function requestDeviceAllow(options: ClientOptions, code: string): 
   return ((await response.json()) as { label: string }).label;
 }
 
+/** True when the running Eva's page answers, as it does a few seconds after her start. */
+export async function isAnswering(options: ClientOptions): Promise<boolean> {
+  try {
+    const response = await fetch(`${options.baseUrl}/api/status`, {
+      headers: { authorization: `Bearer ${options.token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Restarts the running Eva, so she reads the files that setup changed. */
+export async function requestRestart(options: ClientOptions): Promise<void> {
+  const response = await fetch(`${options.baseUrl}/api/restart`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}` },
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+}
+
 export async function describeProjects(options: ClientOptions, query: string): Promise<string> {
   const path = query.trim() === "" ? "/api/projects" : `/api/projects?text=${encodeURIComponent(query)}`;
   const projects = await getJson<ProjectBody[]>(options, path);

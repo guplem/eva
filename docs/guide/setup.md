@@ -113,17 +113,20 @@ You can run `bun run eva setup` again at any time. It keeps every answer that yo
 
 The last step of setup connects Eva's computer to Tailscale:
 
-1. Setup shows a sign-in link. Open it on any device, and sign in with your Tailscale account.
-2. A new Tailscale network must turn HTTPS on once. Setup shows the page; press **Enable** there.
-3. Setup prints Eva's address, such as `https://your-computer.your-tailnet.ts.net`.
+1. Without Tailscale, setup offers to install it. Windows installs with `winget`; accept the prompt that asks for administrator rights. Linux gets the userspace build, with no `sudo` (see [Tailscale without root](#tailscale-without-root)). On other systems, install Tailscale from [tailscale.com/download](https://tailscale.com/download).
+2. Setup shows a sign-in link. Open it on any device, and sign in with your Tailscale account.
+3. A new Tailscale network must turn HTTPS on once. Setup shows the page; press **Enable** there.
+4. Setup prints Eva's address, such as `https://your-computer.your-tailnet.ts.net`, and a QR code.
+
+You can also do these steps later, from your phone: send `/link` to your bot in Telegram, and tap the buttons. The **Use Eva from any device** section in Settings shows the same steps. Eva finds each change by herself within a minute, with no restart.
 
 Then, on your phone:
 
 1. Install the **Tailscale** app, sign in with the same account, and switch it on.
-2. Open the address. Send `/link` to your bot in Telegram if you forget it. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device: tap **Allow** when the code matches.
+2. Open the address, or scan the QR code from Settings on another screen. Send `/link` to your bot in Telegram if you forget the address. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device: tap **Allow** when the code matches.
 3. Choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
-Do the same on any other computer: install Tailscale, sign in, open the address.
+Do the same on any other computer: install Tailscale, sign in, open the address. Settings has a **Copy** button for the address, and a **Share** button on a phone.
 
 ## Install Eva on a Linux server
 
@@ -172,7 +175,11 @@ A laptop server must not sleep when its lid closes. Ask the machine's administra
 
 ### Tailscale without root
 
-On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Download the static build from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/#static), and put `tailscale` and `tailscaled` in `~/.local/lib/tailscale/`. Then:
+On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Eva does these steps for you: in `eva setup`, with `/link` in Telegram, or in Settings. Eva installs only when no `tailscale` program exists, so she never starts a second Tailscale beside the system one. The user service keeps running after you log out only with linger on, as for Eva herself (`eva doctor` checks it).
+
+If Tailscale already runs for the administrator, Eva cannot sign in or publish her page with it. Ask the administrator to run `sudo tailscale set --operator=$USER` once.
+
+To do the steps by hand, download the static build from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/#static), and put `tailscale` and `tailscaled` in `~/.local/lib/tailscale/`. Then:
 
 1. Create `~/.local/bin/tailscale`, so that every command finds the user's own socket, and make it executable:
 

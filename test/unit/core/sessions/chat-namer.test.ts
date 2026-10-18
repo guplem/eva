@@ -77,6 +77,10 @@ describe("the chat namer", () => {
     ["“Rome trip.”", "Rome trip"],
     ["Implementing #50", "Implementing #50"],
     ["v2.", "v2."],
+    ['"Budget".', "Budget"],
+    ["**Budget**.", "Budget"],
+    ["Title:\nTrip to Rome", "Trip to Rome"],
+    ["Here is a name:\n\nTrip to Rome", "Trip to Rome"],
   ])("it cleans the model's habits from %p", async (answer, name) => {
     writeRules("Lead with an emoji.");
     const { namer: withRules } = namer((request) => FakeEngine.answer(request, answer));

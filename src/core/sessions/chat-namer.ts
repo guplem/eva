@@ -84,11 +84,15 @@ function cut(text: string): string {
  * The steps run until nothing changes, because the habits nest, such as a label before bold text.
  */
 function cleanName(text: string): string | null {
-  let name = text.split(/\r?\n/).find((candidate) => candidate.trim().length > 0) ?? "";
+  // A line that ends with a colon only introduces the name, as in "Title:" or "Here is a name:".
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  let name = lines.find((line) => !line.trim().endsWith(":")) ?? "";
   for (let previous = ""; previous !== name;) {
     previous = name;
     name = name
       .trim()
+      // A period after a closing mark ends the sentence, not the name.
+      .replace(/(["'`*_“”‘’])\.$/, "$1")
       .replace(/^(chat\s+)?(name|title)\s*:\s*/i, "")
       .replace(/^(#+|[-*])\s+/, "")
       .replace(/^["'`*_“”‘’]+|["'`*_“”‘’]+$/g, "");

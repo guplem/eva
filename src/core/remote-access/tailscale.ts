@@ -42,7 +42,10 @@ const tailscaleTimeoutMs = 10_000;
 const signInWaitSeconds = 15;
 const defaultPort = 7420;
 export const enableHttpsPage = "https://login.tailscale.com/admin/dns";
+/** Finds Tailscale's login link inside a command's output. */
 const loginLinkPattern = /https:\/\/login\.tailscale\.com\/\S+/;
+/** Checks that a whole string is Tailscale's login link, and nothing else. */
+const wholeLoginLinkPattern = /^https:\/\/login\.tailscale\.com\/\S+$/;
 const operatorFix =
   "Tailscale runs for the administrator here and refuses Eva. Run `sudo tailscale set --operator=$USER` once on this machine.";
 
@@ -118,7 +121,7 @@ export async function readTailscaleState(context: TailscaleContext): Promise<Tai
     const link = status.AuthURL;
     return {
       kind: "needs_login",
-      loginUrl: typeof link === "string" && loginLinkPattern.exec(link)?.[0] === link ? link : null,
+      loginUrl: typeof link === "string" && wholeLoginLinkPattern.test(link) ? link : null,
     };
   }
   // `tailscale down` keeps the login; `tailscale up` turns it on again.

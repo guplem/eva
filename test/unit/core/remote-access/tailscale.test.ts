@@ -57,6 +57,14 @@ describe("readTailscaleState", () => {
         context(answering(0, status({ BackendState: "NeedsLogin", AuthURL: "https://attacker.example/a/abc" }))),
       ),
     ).toEqual({ kind: "needs_login", loginUrl: null });
+    for (const link of [
+      "https://attacker.example/?https://login.tailscale.com/a/abc",
+      "https://login.tailscale.com.attacker.example/a/abc",
+      "https://login.tailscale.com/a/abc extra",
+    ])
+      expect(
+        await readTailscaleState(context(answering(0, status({ BackendState: "NeedsLogin", AuthURL: link })))),
+      ).toEqual({ kind: "needs_login", loginUrl: null });
     // `tailscale down` keeps the login, so the step is to turn Tailscale on, not to sign in.
     expect(await readTailscaleState(context(answering(0, status({ BackendState: "Stopped" }))))).toEqual({
       kind: "stopped",

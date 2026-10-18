@@ -36,28 +36,28 @@ export class ClaudeCodeEngine implements EnginePort {
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
     let shown = false;
+    let historyLost = false;
     for await (const event of this.runOnce(request)) {
       // A lost history fails before the engine sends anything else, so the retry never repeats shown events.
-      const historyLost =
+      historyLost =
         !shown &&
         request.history.kind !== "new" &&
         event.kind === "turn_failed" &&
         event.reason.includes(lostHistoryMarker);
-      if (!historyLost) {
-        shown = true;
-        yield event;
-        continue;
-      }
-      // Lesson 46: retry once, in a fresh session, and tell the model the history is gone.
-      yield { kind: "history_lost" };
-      const engineSessionId = (this.options.newSessionId ?? (() => crypto.randomUUID()))();
-      yield* this.runOnce({
-        ...request,
-        history: { kind: "new", engineSessionId },
-        prompt: lostHistoryPreamble + request.prompt,
-      });
-      return;
+      // The break closes the failed run before the retry starts.
+      if (historyLost) break;
+      shown = true;
+      yield event;
     }
+    if (!historyLost) return;
+    // Lesson 46: retry once, in a fresh session, and tell the model the history is gone.
+    yield { kind: "history_lost" };
+    const engineSessionId = (this.options.newSessionId ?? (() => crypto.randomUUID()))();
+    yield* this.runOnce({
+      ...request,
+      history: { kind: "new", engineSessionId },
+      prompt: lostHistoryPreamble + request.prompt,
+    });
   }
 
   /** Runs the SDK once and sends each event as it arrives. A thrown SDK error becomes the turn end. */

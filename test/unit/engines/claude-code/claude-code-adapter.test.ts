@@ -358,6 +358,50 @@ describe("ClaudeCodeEngine", () => {
     expect(calls[1]).not.toHaveProperty("resume");
   });
 
+  test("a lost history after a shown event is a plain failure, so no shown text repeats", async () => {
+    let calls = 0;
+    const text = loadCapture("resumed-turn")
+      .filter(isMessage)
+      .filter((message) => message.type === "assistant");
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () => {
+        calls += 1;
+        return replay([...text, ...loadCapture("missing-session")]);
+      },
+    });
+    const events = await drain(engine.runTurn(request({ history: { kind: "continue", engineSessionId: "s1" } })));
+    expect(events.map((event) => event.kind)).toEqual(["text", "turn_failed"]);
+    expect(calls).toBe(1);
+  });
+
+  test("the failed first run is closed before the retry starts", async () => {
+    const closed: number[] = [];
+    let calls = 0;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      newSessionId: () => "session-2",
+      query: () => {
+        calls += 1;
+        const run = calls;
+        const lines = loadCapture(run === 1 ? "missing-session" : "resumed-turn").filter(isMessage);
+        return (async function* () {
+          try {
+            await Promise.resolve();
+            yield* lines;
+          } finally {
+            closed.push(run);
+          }
+        })();
+      },
+    });
+    const seen: string[] = [];
+    for await (const event of engine.runTurn(request({ history: { kind: "continue", engineSessionId: "s1" } }))) {
+      if (event.kind === "text") seen.push(`text, closed: ${closed.join(",")}`);
+    }
+    expect(seen).toEqual(["text, closed: 1"]);
+  });
+
   test("Assistant mode asks for approval only for actions that reach other people", async () => {
     const asked: string[] = [];
     let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;

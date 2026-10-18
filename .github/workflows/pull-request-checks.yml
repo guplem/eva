@@ -12,79 +12,134 @@ concurrency:
 permissions:
   contents: read
 
+# A pull request that changes only docs skips the code-only work (#103). The merge ruleset requires
+# each job by its name, and a path filter on the workflow would leave those checks unreported. So each
+# code-only job still runs: its steps skip, and a job with skipped steps reports success.
+# The jobs run with `!cancelled()`: a skipped job also counts as a pass, so a failed `changes` job must
+# not skip them. Its output is then empty, and an empty output runs the work.
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code_changed: ${{ steps.diff.outputs.code_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - id: diff
+        run: bun run scripts/ci-changes.ts
+
   # The merge ruleset requires each job by its name. Rename a job only together with the ruleset.
   checks:
+    needs: changes
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Ubuntu always runs in full: the format and public-content checks read the docs too.
+      RUN_CODE_CHECKS: ${{ matrix.os == 'ubuntu-latest' || needs.changes.outputs.code_changed != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun install --frozen-lockfile
       # One umbrella script, the same one Lefthook runs before each push:
       # format, lint, types, architecture, dead code, public content, tests with coverage.
       - if: runner.os == 'Linux'
         run: bun run check
       # The static checks and the coverage give the same result on every system, so Windows runs
       # only the tests: those are what can behave differently there (lessons 76 to 83).
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && env.RUN_CODE_CHECKS == 'true'
         run: bun run test
 
   web-ui:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    env:
+      RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/checkout@v4
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun install --frozen-lockfile
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bunx playwright install --with-deps chromium
       # Browser tests of the web UI, at desktop size and at 375 px.
-      - run: bun run test:e2e
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun run test:e2e
 
   # The single executable, started the way a new person starts it.
   package:
+    needs: changes
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/checkout@v4
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: bun run build:executable
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun install --frozen-lockfile
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun run build:executable
       - name: Smoke test the executable
+        if: env.RUN_CODE_CHECKS == 'true'
         shell: bash
         run: bash scripts/smoke-executable.sh "dist/eva${{ runner.os == 'Windows' && '.exe' || '' }}"
 
   voice:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
       WHISPER_VERSION: v1.7.6
+      RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/checkout@v4
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
-      - uses: actions/cache@v4
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun install --frozen-lockfile
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/cache@v4
         id: whisper-cache
         with:
           path: ${{ runner.temp }}/whisper.cpp
           key: whisper-${{ env.WHISPER_VERSION }}-base.en
+      # A skipped cache step has an empty `cache-hit`, so this step tests the docs-only case too.
       - name: Build whisper.cpp and download a model
-        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        if: env.RUN_CODE_CHECKS == 'true' && steps.whisper-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "$WHISPER_VERSION" https://github.com/ggml-org/whisper.cpp "$RUNNER_TEMP/whisper.cpp"
           cmake -S "$RUNNER_TEMP/whisper.cpp" -B "$RUNNER_TEMP/whisper.cpp"/build -DCMAKE_BUILD_TYPE=Release
@@ -92,16 +147,19 @@ jobs:
           bash "$RUNNER_TEMP/whisper.cpp"/models/download-ggml-model.sh base.en
       # A recorded voice note, as Telegram sends it: Opus audio in an Ogg file.
       - name: Record a voice note
+        if: env.RUN_CODE_CHECKS == 'true'
         run: |
           espeak-ng -w "$RUNNER_TEMP/note.wav" "Please buy milk and bread tomorrow morning."
           ffmpeg -loglevel error -i "$RUNNER_TEMP/note.wav" -c:a libopus "$RUNNER_TEMP/note.ogg"
-      - run: bun test test/unit/core/voice/transcriber-live.test.ts
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun test test/unit/core/voice/transcriber-live.test.ts
         env:
           EVA_VOICE_WHISPER: ${{ runner.temp }}/whisper.cpp/build/bin/whisper-cli
           EVA_VOICE_MODEL: ${{ runner.temp }}/whisper.cpp/models/ggml-base.en.bin
           EVA_VOICE_SAMPLE: ${{ runner.temp }}/note.ogg
           EVA_VOICE_EXPECTED: milk
 
+  # Always in full: it scans every changed file, docs included.
   secrets:
     runs-on: ubuntu-latest
     permissions:

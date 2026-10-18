@@ -108,5 +108,6 @@ function run(options: SourceCheckoutOptions, command: readonly string[], timeout
 }
 
 function gitEnvironment(options: SourceCheckoutOptions): Record<string, string> {
-  return { ...options.environment, GIT_TERMINAL_PROMPT: "0" };
+  // LEFTHOOK=0: the checkout's own git hooks would install and copy files inside the timed merge.
+  return { ...options.environment, GIT_TERMINAL_PROMPT: "0", LEFTHOOK: "0" };
 }

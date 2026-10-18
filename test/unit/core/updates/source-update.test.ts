@@ -57,15 +57,15 @@ afterEach(() => {
 describe("source update channel", () => {
   test("an up-to-date checkout has nothing to install", async () => {
     const head = sandbox.git(checkout, "rev-parse", "--short", "HEAD");
-    expect(await channel().check()).toEqual({ current: head, latest: head, available: false });
-    expect(await channel().apply()).toEqual({ current: head, latest: head, available: false });
+    expect(await channel().check()).toEqual({ current: head, latest: head, available: false, releases: null });
+    expect(await channel().apply()).toEqual({ current: head, latest: head, available: false, releases: null });
   });
 
   test("a new commit is found, then fast-forwarded, with no install when the dependencies stay", async () => {
     const before = sandbox.git(checkout, "rev-parse", "--short", "HEAD");
     const latest = pushFromOther("src/new.ts", "export {};\n");
-    expect(await channel().check()).toEqual({ current: before, latest, available: true });
-    expect(await channel().apply()).toEqual({ current: before, latest, available: false });
+    expect(await channel().check()).toEqual({ current: before, latest, available: true, releases: null });
+    expect(await channel().apply()).toEqual({ current: before, latest, available: false, releases: null });
     expect(sandbox.git(checkout, "rev-parse", "--short", "HEAD")).toBe(latest);
     expect(installs).toEqual([]);
   });

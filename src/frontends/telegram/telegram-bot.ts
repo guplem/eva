@@ -34,6 +34,7 @@ import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit 
 import { loadBotState, saveBotState, type BotState } from "./telegram-state.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
+import { TelegramUpdates } from "./telegram-updates.ts";
 import { approvalAnswerText, fitProjects } from "./telegram-texts.ts";
 
 export interface TelegramBotOptions {
@@ -77,7 +78,7 @@ const commands: readonly { command: string; description: string }[] = [
   { command: "link", description: "The address that opens Eva on any device" },
   { command: "sync", description: "Sync the vault now" },
   { command: "conflicts", description: "Pick a version of each vault note that conflicts" },
-  { command: "update", description: "Install the latest version of Eva" },
+  { command: "update", description: "Check for updates, or pick a version of Eva" },
   { command: "logs", description: "Show the last warnings and errors: /logs [count]" },
   { command: "restart", description: "Restart Eva" },
   { command: "help", description: "Show the commands" },
@@ -96,6 +97,7 @@ export class TelegramBot {
   private readonly files: TelegramFiles;
   private readonly schedules: TelegramSchedules;
   private readonly conflicts: TelegramConflicts;
+  private readonly updates: TelegramUpdates;
   private running = false;
   private readonly sender: TelegramSender;
   private readonly poll: PollHealth;
@@ -140,6 +142,7 @@ export class TelegramBot {
       sender: this.sender,
       offersPath: join(dirname(options.statePath), "telegram-conflicts.json"),
     });
+    this.updates = new TelegramUpdates({ eva: options.eva, sender: this.sender });
     this.schedules = new TelegramSchedules({
       api: options.api,
       sender: this.sender,
@@ -230,7 +233,9 @@ export class TelegramBot {
     await this.send(
       this.allowedChatId,
       null,
-      `${alert.level === "resolved" ? "Resolved" : "Problem"}: ${alert.message}`,
+      alert.level === "news"
+        ? alert.message
+        : `${alert.level === "resolved" ? "Resolved" : "Problem"}: ${alert.message}`,
     );
   }
 
@@ -413,10 +418,7 @@ export class TelegramBot {
         await this.send(chatId, topicId, describeAccess(this.options.eva.status()).join("\n"));
         return;
       case "update":
-        this.runApart(chatId, topicId, "Updating…", async () => {
-          const update = await this.options.eva.updateNow();
-          return update === null ? "This Eva cannot update herself." : describeUpdate(update);
-        });
+        this.inBackground(chatId, topicId, () => this.updates.offer(chatId, topicId));
         return;
       case "logs": {
         const count = Number.parseInt(rest[0] ?? "", 10);
@@ -572,6 +574,16 @@ export class TelegramBot {
     } else if (kind === "c" && first !== undefined && second !== undefined) {
       const topicId = topicOf(query.message);
       this.inBackground(chatId, topicId, () => this.conflicts.pick(chatId, topicId, first, second));
+    } else if (kind === "u" && (first === "next" || /^\d+\.\d+\.\d+$/.test(first ?? ""))) {
+      const topicId = topicOf(query.message);
+      // "next" is what the policy allows: a version, or the newest commit of a source checkout.
+      const version = first === "next" ? undefined : first;
+      if (second !== "go" && version !== undefined) await this.updates.show(chatId, topicId, version);
+      else if (second === "go")
+        this.runApart(chatId, topicId, version === undefined ? "Updating…" : `Updating to ${version}…`, async () => {
+          const update = await this.options.eva.updateNow(version);
+          return update === null ? "This Eva cannot update herself." : describeUpdate(update);
+        });
     } else if (kind === "r" && first === "now") {
       await this.send(chatId, topicOf(query.message), "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();

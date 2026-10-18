@@ -17,6 +17,10 @@ function syncState(status: VaultSyncState["status"], lastError: string | null = 
 const idleUpdate: UpdateStatus = {
   kind: "source",
   frequency: "daily",
+  install: "minor",
+  target: null,
+  heldBack: null,
+  releases: [],
   phase: "idle",
   current: "aaa1111",
   latest: "aaa1111",

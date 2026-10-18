@@ -160,7 +160,7 @@ Eva is written in TypeScript and runs with Bun. [AGENTS.md](AGENTS.md) describes
 | -------------------------------------------------- | --------------------------------------------- |
 | [docs/lessons-from-v1.md](docs/lessons-from-v1.md) | What the previous version, Wall-I v1, learned |
 
-Steps that only the owner can do are GitHub issues with the `owner` label.
+Steps that only a person can do are GitHub issues with the `requires-human-intervention` label.
 
 ## License
 

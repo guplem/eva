@@ -83,7 +83,6 @@
       "mcp__github__update_pull_request",
       "mcp__github__update_pull_request_branch",
       "mcp__github__enable_pr_auto_merge",
-      "mcp__github__merge_pull_request",
       "mcp__github__pull_request_review_write",
       "mcp__github__add_comment_to_pending_review",
       "mcp__github__add_reply_to_pull_request_comment",
@@ -95,7 +94,7 @@
       "mcp__claude-code-remote__send_later",
       "mcp__claude-code-remote__delete_trigger"
     ],
-    "ask": [],
+    "ask": ["mcp__github__merge_pull_request"],
     "deny": [
       "Read(//**/.env)",
       "Read(//**/.env.*)",

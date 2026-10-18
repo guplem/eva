@@ -28,8 +28,11 @@ const allowed = (command: string): boolean => permissions.allow.some((rule) => m
 const denied = (command: string): boolean => permissions.deny.some((rule) => matches(rule, command));
 
 describe("agent permission rules", () => {
-  test("no ask rule: the owner allows push, merge and the GitHub write tools (#89)", () => {
-    expect(permissions.ask).toEqual([]);
+  test("one ask rule: the GitHub merge tool, which merges past the ruleset with the owner's admin rights", () => {
+    // The owner allows push, auto-merge and the other GitHub write tools (#89).
+    expect(permissions.ask).toEqual(["mcp__github__merge_pull_request"]);
+    expect(permissions.allow).not.toContain("mcp__github__merge_pull_request");
+    expect(permissions.allow).toContain("mcp__github__enable_pr_auto_merge");
   });
 
   test.each([

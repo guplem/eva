@@ -1,5 +1,5 @@
 /**
- * Settings: Setup, Updates, Appearance, Projects and Schedules. Dropdowns save at once, each
+ * Settings: Setup, Updates, Appearance and Projects. Dropdowns save at once, each
  * token saves with its own button, and the text fields wait for Save.
  */
 import { useEffect, useState, type ReactElement } from "react";
@@ -14,7 +14,6 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
-import { SchedulesPanel } from "./SchedulesPanel.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
@@ -519,7 +518,6 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
           </label>
         </fieldset>
-        <SchedulesPanel />
         {notice !== null && (
           // Sticky, so a phone shows the result of a control near the top of the page.
           <div className="settings-notice" role="status">

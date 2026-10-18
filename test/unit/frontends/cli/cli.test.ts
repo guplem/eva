@@ -217,6 +217,10 @@ describe("runDoctor", () => {
     const write = (line: string): number => lines.push(line);
     expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, platform: "linux" })).toBe(false);
     expect(lines.join("\n")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    // Eva installs Tailscale herself, with no root.
+    expect(lines.join("\n")).toContain(
+      "missing tailscale (for opening Eva on your phone and other computers): run `eva setup`",
+    );
     expect(lines.indexOf("Optional:")).toBeGreaterThan(lines.findIndex((line) => line.includes("missing claude")));
     expect(await runDoctor({ ...doctorBasics, runner, environment: {}, write, defaultEngine: "pi" })).toBe(false);
     const withPi = finding(["git", "bun", "pi"]);
@@ -1161,12 +1165,20 @@ describe("describeRole", () => {
 });
 
 describe("describeRemoteAccess", () => {
-  test("shows the phone address, the reason there is none, or nothing without Tailscale", () => {
+  test("shows the phone address, the next setup step, or nothing when phone access is off", () => {
     expect(describeRemoteAccess(null)).toEqual([]);
     expect(describeRemoteAccess({ url: "https://server.example-tailnet.ts.net", problem: null })).toEqual([
       "Phone access: https://server.example-tailnet.ts.net",
     ]);
-    expect(describeRemoteAccess({ url: null, problem: "Turn on HTTPS" })).toEqual(["Phone access: Turn on HTTPS"]);
-    expect(describeRemoteAccess({ url: null, problem: null })).toEqual(["Phone access: not available"]);
+    // An older running Eva sends no step: its problem is the reason.
+    expect(describeRemoteAccess({ url: null, problem: "Turn on HTTPS" })).toEqual([
+      "Phone access: not ready. Turn on HTTPS Run `eva link` for every step.",
+    ]);
+    expect(describeRemoteAccess({ url: null, problem: null, step: "install", canInstall: true })).toEqual([
+      "Phone access: not ready. Install Tailscale on this machine. Eva can install it for you. Run `eva link` for every step.",
+    ]);
+    expect(describeRemoteAccess({ url: null, problem: null })).toEqual([
+      "Phone access: not ready. Eva cannot publish her page. See the warnings in her log. Run `eva link` for every step.",
+    ]);
   });
 });

@@ -13,6 +13,7 @@ import { systemProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
+import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 
 export const demoPort = 7499;
@@ -86,8 +87,19 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);
 });
 
+/** A machine without Tailscale, where the Install button makes the address ready. */
+const tailscale = new FakeTailscale();
+const demoRemoteAccess = tailscale.watcher({
+  install: () => {
+    tailscale.status = runningStatus(true, "owner@example.com", "eva.example-tailnet.ts.net");
+    return Promise.resolve();
+  },
+});
+await demoRemoteAccess.refresh();
+
 const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
 const eva = new Eva({
+  remoteAccess: demoRemoteAccess,
   paths: homePaths(home),
   config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
   secrets: { localApiToken: demoToken },

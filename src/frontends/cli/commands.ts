@@ -23,9 +23,9 @@ import { parseArguments, usageText, type CliCommand } from "./arguments.ts";
 import { runChat } from "./chat.ts";
 import { describeProjects, describeStatus, startProjectWork } from "./client.ts";
 import { runDoctor } from "./doctor.ts";
-import { childEnvironment, defaultHomeFolder, writeLine, type CliHost } from "./host.ts";
+import { childEnvironment, defaultHomeFolder, remoteAccessWatcher, writeLine, type CliHost } from "./host.ts";
 import { hub, link, settings, sync, update } from "./local-commands.ts";
-import { runNetworkSetup } from "./network-setup.ts";
+import { runNetworkSetup, type NetworkSetupOptions } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions } from "./setup.ts";
 
@@ -136,7 +136,13 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     platform: host.platform,
     githubLogin: githubBrowserLogin(host, githubClientId),
   };
-  const networkOptions = { runner: host.runner, environment: childEnvironment(host), write, sleep: host.sleep };
+  const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
+    // Setup publishes too, so the address that it prints works as soon as Eva runs.
+    access: remoteAccessWatcher(host, port),
+    localUrl: `http://127.0.0.1:${String(port)}`,
+    write,
+    sleep: host.sleep,
+  });
   if (nonInteractive) {
     await runSetup({
       ...setupOptions,
@@ -144,17 +150,16 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
       ask: (key) => Promise.resolve(host.environment[setupEnvironmentNames[key]] ?? ""),
     });
     await runNetworkSetup({
-      ...networkOptions,
+      ...networkOptions(loadSettings(paths).config.port),
       interactive: false,
       ask: () => Promise.resolve(""),
-      port: loadSettings(paths).config.port,
     });
     return;
   }
   await host.withPrompt(async (ask) => {
     await runSetup({ ...setupOptions, interactive: true, ask: (_key, question) => ask(question) });
     // The last step: the address that opens Eva on every other device.
-    await runNetworkSetup({ ...networkOptions, interactive: true, ask, port: loadSettings(paths).config.port });
+    await runNetworkSetup({ ...networkOptions(loadSettings(paths).config.port), interactive: true, ask });
   });
 }
 

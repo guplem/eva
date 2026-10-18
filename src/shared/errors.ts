@@ -16,6 +16,7 @@ export type EvaErrorCode =
   | "rate_limited"
   | "setting_forbidden"
   | "github_failed"
+  | "tailscale_install_failed"
   | "project_invalid"
   | "project_changed"
   | "title_invalid";

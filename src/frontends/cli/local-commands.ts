@@ -32,7 +32,7 @@ import {
   type ClientOptions,
 } from "./client.ts";
 import { childEnvironment, writeLine, type CliHost } from "./host.ts";
-import { describeAccess } from "./network-setup.ts";
+import { accessLines } from "./network-setup.ts";
 
 /** `eva update`: the running Eva updates and restarts herself; a stopped Eva is updated here. */
 export async function update(
@@ -100,7 +100,15 @@ export async function link(host: CliHost, paths: HomePaths): Promise<number> {
     writeLine(host, "Eva is not running, so she publishes no address. Start her with `eva`, or run `eva setup`.");
     return exitCodes.crash;
   }
-  writeLine(host, describeAccess(await requestStatus(client)).join("\n"));
+  const status = await requestStatus(client);
+  writeLine(
+    host,
+    accessLines({
+      remoteAccess: status.remoteAccess,
+      localUrl: status.localUrl,
+      actionHint: "Run `eva setup`, or open Settings in Eva's web page, to let Eva do these steps.",
+    }).join("\n"),
+  );
   return exitCodes.clean;
 }
 

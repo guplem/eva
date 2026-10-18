@@ -301,6 +301,18 @@ textarea {
   flex: 1;
 }
 
+.rename-form {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rename-form input {
+  flex: 1;
+  min-width: 0;
+}
+
 .badge {
   font-size: 12px;
   padding: 2px 8px;

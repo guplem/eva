@@ -70,11 +70,13 @@ export function engineProgramCandidates(
   const path = platform === "win32" ? win32 : posix;
   if (engine === "claude-code")
     return ["claude", path.join(homeFolder, ".local", "bin", platform === "win32" ? "claude.exe" : "claude")];
+  if (platform === "win32") return ["pi", win32.join(piInstallFolder(platform, homeFolder, environment), "pi.exe")];
+  // The pi.dev launcher counts outside Windows only. On Windows it is a .cmd file, which runs only
+  // through cmd, and cmd breaks a command line that holds more than one quoted path with a space.
   return [
     "pi",
-    path.join(piInstallFolder(platform, homeFolder, environment), platform === "win32" ? "pi.exe" : "pi"),
-    // The launcher of the pi.dev installer.
-    path.join(homeFolder, ".pi", "agent", "bin", platform === "win32" ? "pi.cmd" : "pi"),
+    posix.join(piInstallFolder(platform, homeFolder, environment), "pi"),
+    posix.join(homeFolder, ".pi", "agent", "bin", "pi"),
   ];
 }
 

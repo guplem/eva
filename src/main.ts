@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { locateEngineProgram, runnableCommand } from "./core/engine-install/engine-install.ts";
+import { locateEngineProgram } from "./core/engine-install/engine-install.ts";
 import { Eva } from "./core/eva.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
@@ -98,8 +98,7 @@ function createEngines(
   if (piExecutable !== null) {
     engines.push(
       new PiEngine({
-        // A pi.cmd launcher on Windows starts only through cmd.
-        command: runnableCommand([piExecutable], host.platform),
+        command: [piExecutable],
         workFolder: join(paths.enginesFolder, "pi"),
         models: config.engines.pi.models,
       }),

@@ -80,7 +80,6 @@ describe("engineProgramCandidates", () => {
     expect(engineProgramCandidates("pi", "win32", windowsHome, { LOCALAPPDATA: "E:\\Local" })).toEqual([
       "pi",
       "E:\\Local\\Programs\\pi\\pi.exe",
-      "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd",
     ]);
     expect(piInstallFolder("win32", windowsHome, {})).toBe("D:\\Homes\\example\\AppData\\Local\\Programs\\pi");
   });
@@ -111,18 +110,15 @@ describe("findEngineProgram", () => {
     expect(await findEngineProgram("pi", inputs(runner))).toBeNull();
   });
 
-  test("on Windows, cmd runs a .cmd program, and an .exe runs by itself", async () => {
+  test("on Windows, cmd runs a bare pi, which can be a .cmd file, and Eva's pi.exe runs by itself", async () => {
     const commands: string[][] = [];
-    const runner = fakeRunner(commands, (command) =>
-      command.some((part) => part.endsWith("pi.cmd")) ? {} : "missing",
-    );
+    const runner = fakeRunner(commands, (command) => (command[0]?.endsWith("pi.exe") === true ? {} : "missing"));
     expect(await findEngineProgram("pi", { ...inputs(runner, "win32"), environment: {} })).toBe(
-      "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd",
+      "D:\\Homes\\example\\AppData\\Local\\Programs\\pi\\pi.exe",
     );
     expect(commands).toEqual([
       ["cmd", "/d", "/c", "pi", "--version"],
       ["D:\\Homes\\example\\AppData\\Local\\Programs\\pi\\pi.exe", "--version"],
-      ["cmd", "/d", "/c", "D:\\Homes\\example\\.pi\\agent\\bin\\pi.cmd", "--version"],
     ]);
   });
 });

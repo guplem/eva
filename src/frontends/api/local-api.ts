@@ -50,6 +50,7 @@ const newSessionSchema = z.object({
 const messageSchema = z.object({ text: z.string().min(1) });
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
+const renameSchema = z.object({ title: z.string() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
@@ -292,6 +293,10 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
       const { turnIndex } = retrySchema.parse(await request.json());
       return json(await eva.sessions.retry(sessionId, turnIndex));
     }
+    if (action === "rename") {
+      const { title } = renameSchema.parse(await request.json());
+      return json(eva.sessions.rename(sessionId, title));
+    }
   }
   if (
     method === "POST" &&
@@ -426,7 +431,12 @@ function errorResponse(error: unknown, eva: Eva): Response {
   if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
   const body = { error: eva.redact(error.message) };
   if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
-  if (isEvaError(error, "config_invalid") || isEvaError(error, "schedule_invalid")) return json(body, 400);
+  if (
+    isEvaError(error, "config_invalid") ||
+    isEvaError(error, "schedule_invalid") ||
+    isEvaError(error, "title_invalid")
+  )
+    return json(body, 400);
   if (isEvaError(error, "rate_limited")) return json(body, 429);
   if (isEvaError(error, "setting_forbidden")) return json(body, 403);
   return json(body, 409);

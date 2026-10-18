@@ -11,6 +11,8 @@ import {
   type HomePaths,
 } from "../../core/settings/home.ts";
 import { loadSettings } from "../../core/settings/settings.ts";
+import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
+import { systemClock } from "../../shared/clock.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { readTextTolerant } from "../../shared/files.ts";
@@ -25,7 +27,7 @@ import { childEnvironment, defaultHomeFolder, writeLine, type CliHost } from "./
 import { hub, link, settings, sync, update } from "./local-commands.ts";
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
-import { runSetup, setupEnvironmentNames } from "./setup.ts";
+import { runSetup, setupEnvironmentNames, type SetupOptions } from "./setup.ts";
 
 export interface CliWiring {
   /** `eva` and `eva run`: starts Eva and resolves with her exit code when she stops. */
@@ -132,6 +134,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     environment: childEnvironment(host),
     defaultHome: defaultHomeFolder(host),
     platform: host.platform,
+    githubLogin: githubBrowserLogin(host, githubClientId),
   };
   const networkOptions = { runner: host.runner, environment: childEnvironment(host), write, sleep: host.sleep };
   if (nonInteractive) {
@@ -209,4 +212,10 @@ async function runClientCommand(
     );
     return exitCodes.crash;
   }
+}
+
+/** The browser login of `eva setup`, or null while Eva has no OAuth App (#113). */
+function githubBrowserLogin(host: CliHost, clientId: string | null): SetupOptions["githubLogin"] {
+  if (clientId === null) return null;
+  return (show) => githubDeviceLogin({ clientId, show, sleep: host.sleep, clock: systemClock });
 }

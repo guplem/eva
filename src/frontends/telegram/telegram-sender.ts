@@ -69,7 +69,7 @@ export class TelegramSender {
   }
 
   /** A call that goes again after a 429 or a network error, at most three times. Any other error throws at once. */
-  private async callWithRetry<Result>(method: string, params: Record<string, unknown>): Promise<Result> {
+  async callWithRetry<Result>(method: string, params: Record<string, unknown>): Promise<Result> {
     for (let retry = 0; ; retry += 1) {
       try {
         return await this.options.api.call<Result>(method, params);
@@ -81,7 +81,7 @@ export class TelegramSender {
     }
   }
 
-  private logFailedCall(method: string, error: unknown): void {
+  logFailedCall(method: string, error: unknown): void {
     this.options.logger?.log("warn", "A Telegram call failed.", { method, reason: String(error) });
   }
 }
@@ -103,4 +103,9 @@ function sendRetryMs(error: unknown, retry: number): number | null {
  */
 function isHtmlRefused(error: unknown): boolean {
   return error instanceof TelegramError && error.code === 400 && /can't parse entities/i.test(error.description);
+}
+
+/** True when the topic already has the name. As above, the description is Telegram's only signal. */
+export function isTopicNotModified(error: unknown): boolean {
+  return error instanceof TelegramError && error.code === 400 && error.description.includes("TOPIC_NOT_MODIFIED");
 }

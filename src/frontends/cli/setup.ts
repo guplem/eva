@@ -19,8 +19,9 @@ import {
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/settings/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
+import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
-import { EvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import {
   engineLoginReport,
@@ -39,6 +40,7 @@ export type SetupQuestion =
   | "createVault"
   | "name"
   | "language"
+  | "topics"
   | "githubRepository"
   | "engine"
   | "port"
@@ -60,6 +62,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   createVault: "EVA_CREATE_VAULT",
   name: "EVA_PERSON_NAME",
   language: "EVA_LANGUAGE",
+  topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
   port: "EVA_PORT",
@@ -85,6 +88,8 @@ export interface SetupOptions {
   /** The platform's default home: a setup in any other home sets up an extra instance. */
   readonly defaultHome: string;
   readonly platform: NodeJS.Platform;
+  /** The GitHub browser login, which shows its code through `show`; null when Eva has no OAuth App yet. */
+  readonly githubLogin: ((show: (code: string, link: string) => void) => Promise<string>) | null;
 }
 
 const ghTimeoutMs = 120_000;
@@ -116,20 +121,68 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   const timeZone = await ask("timeZone", `Time zone, such as Europe/Madrid [${config.timeZone ?? detectedTimeZone}]: `);
   if (timeZone !== "") config = { ...config, timeZone };
 
-  const askRepository = async (): Promise<string> => {
+  const saveGithubToken = (token: string): void => {
+    secrets.githubToken = token;
+    // Saved now, so a failed clone never makes the person type the token again.
+    saveSecrets(paths, secrets);
+  };
+  const askGithubToken = async (): Promise<void> => {
     const githubToken = await ask(
       "githubToken",
       `GitHub token, for a private vault over HTTPS (Enter to skip${secrets.githubToken === undefined ? "" : ", one is saved"}): `,
     );
-    if (githubToken !== "") {
-      secrets.githubToken = githubToken;
-      // Saved now, so a failed clone never makes the person type the token again.
-      saveSecrets(paths, secrets);
+    if (githubToken !== "") saveGithubToken(githubToken);
+  };
+  /** `enterLogsIn`: false keeps Enter as "skip" when the vault needs no token, as in a rerun, for a new vault or over SSH. */
+  const askGithubLogin = async (
+    githubLogin: NonNullable<SetupOptions["githubLogin"]>,
+    enterLogsIn: boolean,
+  ): Promise<void> => {
+    options.write(githubLoginAccess);
+    for (;;) {
+      const answer = await ask(
+        "githubToken",
+        secrets.githubToken !== undefined
+          ? "GitHub login, for a private vault and private projects: press Enter to keep the saved one, type login to log in again, or paste a token: "
+          : enterLogsIn
+            ? "GitHub login, for a private vault and private projects: press Enter to log in with your browser, paste a token, or type skip: "
+            : "GitHub login, for a private vault and private projects: type login to log in with your browser, paste a token, or press Enter to skip: ",
+      );
+      const keyword = answer.toLowerCase();
+      if (keyword === "skip" || (answer === "" && (secrets.githubToken !== undefined || !enterLogsIn))) return;
+      if (answer !== "" && keyword !== "login") {
+        saveGithubToken(answer);
+        return;
+      }
+      try {
+        saveGithubToken(
+          await githubLogin((code, link) => {
+            options.write(
+              `Open ${link} and enter the code ${code}. Setup waits until you confirm. Press Ctrl+C to stop setup.`,
+            );
+          }),
+        );
+        options.write("Logged in to GitHub.");
+        return;
+      } catch (error) {
+        if (!isEvaError(error, "github_failed")) throw error;
+        options.write(error.message);
+      }
     }
-    return ask(
+  };
+  const askRepository = async (): Promise<string> => {
+    const repository = await ask(
       "vaultRepository",
       "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
     );
+    // Project clones use the token too, so even a new vault or an SSH address gets the question.
+    // The browser login only gives a github.com token, and a script cannot wait for a person.
+    const onGitHub = /^(https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|$)/i.test(repository);
+    if (options.interactive && options.githubLogin !== null && onGitHub)
+      // Only an HTTPS vault needs the token to clone, so only there does Enter log in.
+      await askGithubLogin(options.githubLogin, /^https:/i.test(repository));
+    else await askGithubToken();
+    return repository;
   };
   let repository = await askRepository();
   // Eva clones the vault herself: with a repository, the folder has a default, so only
@@ -260,11 +313,14 @@ async function offerNewVault(
 ): Promise<void> {
   const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
   if (!/^y(es)?$/i.test(create)) return;
-  const name = (await ask("name", "Your name, for Eva's rules: ")) || "the owner";
+  const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
+  const topics = splitList(
+    await ask("topics", "Your main topics, comma-separated, such as work, family, music (Enter to skip): "),
+  );
   await createVaultFromTemplate({
     folder,
-    answers: { name, language, timeZone },
+    answers: { name, language, timeZone, topics },
     runner: options.runner,
     environment: options.environment,
   });

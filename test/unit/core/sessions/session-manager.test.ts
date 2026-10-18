@@ -211,6 +211,71 @@ describe("models (lesson 41)", () => {
   });
 });
 
+describe("renames (issue 46)", () => {
+  test("a rename saves the title, tells every front end, and survives a restart", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, "  Trip plans  ").title).toBe("Trip plans");
+    expect(events).toMatchObject([{ kind: "session_renamed", sessionId, title: "Trip plans" }]);
+    expect(createManager(new FakeEngine()).get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a renamed chat keeps its title after its first message", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.rename(sessionId, "Trip plans");
+    await manager.send(sessionId, "Hello there, Eva");
+    expect(manager.get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a rename during a turn stays when the turn ends", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const done = manager.send(sessionId, "Hello there, Eva");
+    manager.rename(sessionId, "Trip plans");
+    await done;
+    expect(manager.get(sessionId).title).toBe("Trip plans");
+  });
+
+  test("a title is one line, cut to the title length, and redacted", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-telegram-token-value");
+    const manager = createManager(new FakeEngine(), { redactor });
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, "first\nsecond").title).toBe("first second");
+    expect(manager.rename(sessionId, "x".repeat(80)).title).toBe(`${"x".repeat(59)}…`);
+    expect(manager.rename(sessionId, "key the-telegram-token-value").title).toBe("key [redacted]");
+  });
+
+  test("a cut never splits an emoji", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.rename(sessionId, `${"x".repeat(58)}🙂🙂🙂`).title).toBe(`${"x".repeat(58)}🙂…`);
+  });
+
+  test("the same title again tells the front ends again, so Telegram can retry a refused topic rename", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.rename(sessionId, "Trip plans");
+    expect(manager.rename(sessionId, " Trip plans ").title).toBe("Trip plans");
+    expect(events.filter((event) => event.kind === "session_renamed")).toHaveLength(2);
+  });
+
+  test("an empty title is refused", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    let caught: unknown;
+    try {
+      manager.rename(sessionId, " \n ");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "title_invalid")).toBe(true);
+    expect(manager.get(sessionId).title).toBe("New chat");
+    expect(events).toEqual([]);
+  });
+});
+
 describe("event order", () => {
   test("a turn is in the session list before its turn_finished event goes out", async () => {
     const manager = createManager(new FakeEngine());

@@ -253,7 +253,7 @@ describe("chats", () => {
     await settle(bot, () => telegram.sentTexts().includes("Second part."));
   });
 
-  test("only the first block of an answer makes the phone ring", async () => {
+  test("the blocks of an answer ring the phone once", async () => {
     createEva((request) => {
       const [, end] = FakeEngine.answer(request, "done");
       return [
@@ -269,6 +269,33 @@ describe("chats", () => {
       telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
     expect(quiet("Let me look.")).toBeUndefined();
     expect(quiet("Found it.")).toBe(true);
+  });
+
+  test("a block after a minute with no ring rings again, so a long turn never ends in silence", async () => {
+    let finish: () => void = () => undefined;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    createEva((request) =>
+      (async function* () {
+        const [, end] = FakeEngine.answer(request, "done");
+        yield { kind: "text" as const, text: "Let me look.", messageId: "m1" };
+        await finished;
+        yield { kind: "text" as const, text: "Still on it.", messageId: "m2" };
+        yield { kind: "text" as const, text: "Here is the answer.", messageId: "m3" };
+        if (end !== undefined) yield end;
+      })(),
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Let me look."));
+    clock = new Date(clock.getTime() + 61_000);
+    finish();
+    await settle(bot, () => telegram.sentTexts().includes("Here is the answer."));
+    const quiet = (text: string): unknown =>
+      telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
+    expect(quiet("Still on it.")).toBeUndefined();
+    expect(quiet("Here is the answer.")).toBe(true);
   });
 
   test("a failed turn says so after the blocks it already sent", async () => {

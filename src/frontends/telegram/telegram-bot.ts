@@ -63,8 +63,8 @@ interface AnswerState {
   readonly attached: Set<string>;
   /** Offered at the turn end, because a later block can still attach the same file. */
   readonly offered: Set<string>;
-  /** True after the first block, which alone makes the phone ring. */
-  rang: boolean;
+  /** When a block of this answer last made the phone ring, in ms; null before the first block. */
+  lastRingMs: number | null;
 }
 
 interface TopicEntry {
@@ -139,6 +139,8 @@ const firstRetryMs = 1_000;
 const maxPollRetryMs = 60_000;
 const sendRetries = 3;
 const maxSendRetryMs = 30_000;
+/** The shortest time between two rings of one answer. */
+const answerRingGapMs = 60_000;
 const confirmAttempts = 3;
 /**
  * Message contents that Eva cannot read yet: the Telegram field, then its name in the reply.
@@ -910,13 +912,16 @@ export class TelegramBot {
     const markers = extractFileMarkers(event.text);
     let answer = this.answers.get(event.sessionId);
     if (answer === undefined) {
-      answer = { attached: new Set(), offered: new Set(), rang: false };
+      answer = { attached: new Set(), offered: new Set(), lastRingMs: null };
       this.answers.set(event.sessionId, answer);
     }
     if (markers.text.length > 0) {
       // A turn can write a short block before each tool call, and a ring for each would be noise.
-      await this.sendAnswer(chatId, topicId, markers.text, answer.rang);
-      answer.rang = true;
+      // A long turn still rings again, so its last answer never arrives in silence.
+      const now = this.clock.now().getTime();
+      const ring = answer.lastRingMs === null || now - answer.lastRingMs >= answerRingGapMs;
+      if (ring) answer.lastRingMs = now;
+      await this.sendAnswer(chatId, topicId, markers.text, !ring);
     }
     for (const path of markers.attach) {
       if (answer.attached.has(path)) continue;

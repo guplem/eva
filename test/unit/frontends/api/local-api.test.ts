@@ -658,6 +658,16 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
   });
 
+  test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {
+    expect(await json(await call("/api/chat-names"))).toEqual({ rules: "" });
+    const saved = await call("/api/chat-names", { method: "PUT", body: { rules: "Lead with an emoji." } });
+    expect(await json(saved)).toEqual({ rules: "Lead with an emoji." });
+    expect(await json(await call("/api/chat-names"))).toEqual({ rules: "Lead with an emoji." });
+    expect((await call("/api/chat-names", { method: "PUT", body: { rules: "x".repeat(5_000) } })).status).toBe(400);
+    expect((await call("/api/chat-names", { method: "PUT", body: {} })).status).toBe(400);
+    expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
+  });
+
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     await call("/api/schedules", { method: "POST", body: entry });
@@ -738,6 +748,8 @@ describe("without a vault", () => {
     try {
       const response = await fetch(`${bareApi.url}/api/schedules`, { headers: headers() });
       expect(response.status).toBe(409);
+      const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
+      expect(chatNames.status).toBe(409);
     } finally {
       bareApi.stop();
     }

@@ -146,4 +146,22 @@ export function matchFileStyle(edited: string, onDisk: string): string {
 export interface ProjectFile {
   readonly text: string;
   readonly version: string;
+  /** The form's values, or null when Eva cannot read the front matter. */
+  readonly details: (ProjectDetails & { readonly created: string | null }) | null;
+}
+
+export function projectFileOf(text: string): ProjectFile {
+  const withoutBom = text.replace(/^\uFEFF/, "");
+  const { frontMatter } = parseFrontMatter(withoutBom);
+  const details =
+    frontMatter === null
+      ? null
+      : {
+          title: readTitle(withoutBom.replace(frontMatterPattern, "")) ?? "",
+          status: frontMatter.status,
+          tags: frontMatter.tags,
+          repos: frontMatter.repos,
+          created: frontMatter.created,
+        };
+  return { text, version: fileVersion(text), details };
 }

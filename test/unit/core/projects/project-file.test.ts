@@ -5,6 +5,7 @@ import {
   checkProjectFile,
   fileVersion,
   matchFileStyle,
+  projectFileOf,
   type ProjectDetails,
 } from "../../../../src/core/projects/project-file.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -162,5 +163,26 @@ describe("applyProjectDetails and the title", () => {
     const text = "---\nstatus: idea\n---\n# Old\n\nText.\n\n# Second\n";
     const result = applyProjectDetails(text, { title: "New", status: "idea", tags: [], repos: [] });
     expect(result).toBe("---\nstatus: idea\n---\n# New\n\nText.\n\n# Second\n");
+  });
+});
+
+describe("projectFileOf", () => {
+  test("gives the text, its version and the details that the form shows", () => {
+    expect(projectFileOf(file)).toEqual({
+      text: file,
+      version: fileVersion(file),
+      details: { ...unchanged, created: "2026-01-31T09:15" },
+    });
+  });
+
+  test("gives no details for a file with no front matter, and an empty title for no heading", () => {
+    expect(projectFileOf("Just text.\n").details).toBeNull();
+    expect(projectFileOf("\uFEFF---\nstatus: wrong\n---\n").details).toEqual({
+      title: "",
+      status: null,
+      tags: [],
+      repos: [],
+      created: null,
+    });
   });
 });

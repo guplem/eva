@@ -60,8 +60,8 @@ import { discoverProjects, searchProjects, type Project, type ProjectQuery } fro
 import {
   applyProjectDetails,
   checkProjectFile,
-  fileVersion,
   matchFileStyle,
+  projectFileOf,
   type ProjectDetails,
   type ProjectFile,
 } from "./projects/project-file.ts";
@@ -750,7 +750,7 @@ export class Eva {
   projectFile(projectId: string): ProjectFile {
     const text = readTextTolerant(this.projectFilePath(projectId));
     if (text === null) throw new EvaError("project_not_found", `Eva cannot read the AGENTS.md of ${projectId}.`);
-    return { text, version: fileVersion(text) };
+    return projectFileOf(text);
   }
 
   /** Sets the status, tags, repositories and title. The idle sweep commits the change. */
@@ -776,7 +776,7 @@ export class Eva {
     const text = change(current.text);
     checkProjectFile(text);
     if (text !== current.text) writeFileAtomic(path, text);
-    return { text, version: fileVersion(text) };
+    return projectFileOf(text);
   }
 
   /** The path comes from the project list, never from the id, so an id cannot point outside it. */

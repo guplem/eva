@@ -53,16 +53,6 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.locator(".branch")).toHaveCount(2);
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
-
-  // Another chat's tasks stay out of view.
-  await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
-      "Nothing runs in the background.",
-    );
-  }
 });
 
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
@@ -120,6 +110,15 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   // Project mode shows the same activity as Assistant mode.
   await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
   await expectBackgroundTasks(page);
+
+  // Another chat's tasks stay out of view. A project chat keeps the Assistant chat list unchanged.
+  await openList(page);
+  await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+      "Nothing runs in the background.",
+    );
+  }
 });
 
 test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {

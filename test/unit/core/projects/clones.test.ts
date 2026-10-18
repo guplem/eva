@@ -98,6 +98,45 @@ describe("clone folders", () => {
     expect(isEvaError(error, "git_failed")).toBe(true);
     expect(existsSync(join(sandbox.root, "clone-origins.json"))).toBe(false);
   });
+
+  test("refuses a repository URL that git would read as an option, and runs nothing", async () => {
+    const commands: (readonly string[])[] = [];
+    const error: unknown = await createClone({
+      projectPath: project,
+      repositoryUrl: "--upload-pack=touch pwned",
+      runner: {
+        run: (command) => {
+          commands.push(command);
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    }).catch((caught: unknown) => caught);
+    expect(isEvaError(error, "project_invalid")).toBe(true);
+    expect(commands).toEqual([]);
+  });
+
+  test("ends the options before the URL and the folder", async () => {
+    const commands: (readonly string[])[] = [];
+    await createClone({
+      projectPath: project,
+      repositoryUrl: "https://github.com/owner/example-app",
+      runner: {
+        run: (command) => {
+          commands.push(command);
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    expect(commands[0]?.slice(-3)).toEqual([
+      "--",
+      "https://github.com/owner/example-app",
+      join(project, "repos", "example-app-0"),
+    ]);
+  });
 });
 
 describe("trust", () => {

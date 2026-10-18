@@ -413,6 +413,21 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
+test("Settings: Use Eva from any device installs Tailscale, then shares the address", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const section = page.getByRole("group", { name: "Use Eva from any device" });
+  await expect(section).toContainText("Install Tailscale on the phone or computer.");
+  // The demo is shared by every browser of the run, so another one may have installed it already.
+  const install = section.getByRole("button", { name: "Install Tailscale" });
+  // A short click try: the button is gone once the install ends, and the page reads the status every 3 seconds.
+  await install.click({ timeout: 2_000 }).catch(() => undefined);
+  await expect(section.getByRole("link", { name: "https://eva.example-tailnet.ts.net" })).toBeVisible();
+  await expect(section.getByRole("img", { name: "QR code of https://eva.example-tailnet.ts.net" })).toBeVisible();
+  await expect(section).toContainText("owner@example.com");
+  await expect(section.getByRole("button", { name: "Copy" })).toBeVisible();
+});
+
 test("Settings: Log out every device ends this login too", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

@@ -1,5 +1,6 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
+import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
@@ -99,10 +100,12 @@ export function describeRole(status: Pick<EvaStatus, "role" | "machine" | "hub">
   return `satellite: the hub is ${status.hub ?? "unknown"}; this machine is ${status.machine}`;
 }
 
-/** The web UI's address for the phone, or why there is none; nothing without Tailscale. */
+/** The web UI's address for the phone, or the next setup step; nothing when phone access is off. */
 export function describeRemoteAccess(remote: EvaStatus["remoteAccess"]): string[] {
   if (remote === null) return [];
-  return [remote.url === null ? `Phone access: ${remote.problem ?? "not available"}` : `Phone access: ${remote.url}`];
+  if (remote.url !== null) return [`Phone access: ${remote.url}`];
+  const next = setupSteps(remote)[0];
+  return [`Phone access: not ready.${next === undefined ? "" : ` ${next.text}`} Run \`eva link\` for every step.`];
 }
 
 /** The running Eva's status. */

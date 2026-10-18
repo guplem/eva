@@ -16,13 +16,12 @@ import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { hardExitGraceMs, shutdownDeadlineMs, stopSequence } from "./core/instance/shutdown.ts";
 import { prepareStart } from "./core/instance/startup.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
-import { allowedTailscaleIdentities, TailscalePublisher } from "./core/remote-access/tailscale.ts";
 import { createHomeFolders, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
-import { childEnvironment, defaultHomeFolder, evaCommand, writeLine, type CliHost } from "./frontends/cli/host.ts";
+import { defaultHomeFolder, evaCommand, remoteAccessWatcher, writeLine, type CliHost } from "./frontends/cli/host.ts";
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
@@ -34,7 +33,8 @@ import { Redactor } from "./shared/redaction.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
 import { evaVersion } from "./shared/version.ts";
 
-const tailscaleRetryMs = 60_000;
+/** Within the minute that the person waits for the address; `tailscale status` is a cheap read. */
+const tailscaleReadMs = 30_000;
 
 const host: CliHost = {
   environment: process.env,
@@ -128,12 +128,6 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => new Date(),
     newToken: () => randomBytes(24).toString("base64url"),
   });
-  const tailscale = await TailscalePublisher.start({
-    enabled: config.remoteAccess.tailscaleServe,
-    runner: systemProcessRunner,
-    environment: childEnvironment(host),
-    port: config.port,
-  });
   const lock = acquireInstanceLock(paths.lock, { pid: host.pid, bootId: host.bootId, isProcessAlive });
   const startedAfterUncleanExit = startRunMarker(paths.runningMarker, new Date());
 
@@ -141,8 +135,13 @@ async function serve(paths: HomePaths): Promise<number> {
   for (const secret of Object.values(secrets)) redactor.addSecret(secret);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor, now: () => new Date() });
   for (const note of notes) logger.log(note.level, note.message, note.fields);
-  const access = tailscale.access();
-  if (access !== null) logger.log(access.url === null ? "warn" : "info", "Tailscale access.", { ...access });
+  // The first read happens before the local API starts, so a ready tailnet's host is known at once.
+  const remoteAccess = config.remoteAccess.tailscaleServe
+    ? remoteAccessWatcher(host, config.port, (access) => {
+        logger.log(access.step === "failed" ? "warn" : "info", "Tailscale access.", { ...access });
+      })
+    : null;
+  await remoteAccess?.refresh();
 
   let stop: (exitCode: number) => void = () => undefined;
   const { engines, claudeExecutable } = createEngines(config, paths, logger);
@@ -165,14 +164,11 @@ async function serve(paths: HomePaths): Promise<number> {
       stop(exitCodes.update);
     },
     claudeExecutable,
-    remoteAccess: () => tailscale.access(),
+    remoteAccess,
     defaultHome: defaultHomeFolder(host),
   });
-  const publishRetry = setInterval(() => {
-    void tailscale.retry().then((published) => {
-      if (published) logger.log("info", "Tailscale access.", { ...tailscale.access() });
-    });
-  }, tailscaleRetryMs);
+  // Tailscale can arrive, sign in or turn HTTPS on after the start: the person never needs a restart.
+  remoteAccess?.watch(tailscaleReadMs);
   // A promise that nobody awaits must never end Eva silently (lesson 50).
   process.on("unhandledRejection", (reason: unknown) => {
     logger.log("error", "A background task failed.", {
@@ -186,16 +182,13 @@ async function serve(paths: HomePaths): Promise<number> {
     process.exit(exitCodes.crash);
   });
   eva.startBackgroundWork();
-  const tailnetHost = tailscale.hostName();
   const api = startLocalApi({
     eva,
     port: config.port,
     token: secrets.localApiToken,
-    extraHosts: [...config.remoteAccess.hostNames, ...(tailnetHost === null ? [] : [tailnetHost])],
-    allowedTailscaleIdentities: allowedTailscaleIdentities(
-      config.remoteAccess.allowedTailscaleIdentities,
-      tailscale.ownerLogin(),
-    ),
+    extraHosts: config.remoteAccess.hostNames,
+    allowedTailscaleIdentities: config.remoteAccess.allowedTailscaleIdentities,
+    tailnet: () => remoteAccess?.tailnet() ?? null,
   });
   logger.log("info", "Eva started.", { version: evaVersion, url: api.url });
   writeLine(
@@ -210,7 +203,7 @@ async function serve(paths: HomePaths): Promise<number> {
   if (startedAfterUncleanExit) eva.reportUncleanExit();
   const stopEva = stopSequence({
     stopParts: async () => {
-      clearInterval(publishRetry);
+      remoteAccess?.stop();
       eva.stop();
       await telegram.stop();
       api.stop();

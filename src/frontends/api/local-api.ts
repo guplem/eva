@@ -11,6 +11,7 @@ import { checkNames } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
+import type { TailnetSnapshot } from "../../core/remote-access/remote-access.ts";
 import { changedFields } from "../../core/schedules/schedule-definitions.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
@@ -28,6 +29,11 @@ export interface LocalApiOptions {
   readonly extraHosts: readonly string[];
   /** When not empty, a request that `tailscale serve` marks with an identity must carry one of these. */
   readonly allowedTailscaleIdentities: readonly string[];
+  /**
+   * This machine's tailnet name and owner, read on each request: Tailscale can become ready
+   * after the start. With no configured identities, only the owner gets in (plug and play).
+   */
+  readonly tailnet?: () => TailnetSnapshot | null;
 }
 
 export interface LocalApi {
@@ -89,8 +95,6 @@ const deviceCookie = "eva_device";
 const deviceLabelBrowserLength = 120;
 
 export function startLocalApi(options: LocalApiOptions): LocalApi {
-  const allowedHostNames = new Set(["127.0.0.1", "localhost", ...options.extraHosts.map((host) => host.toLowerCase())]);
-
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
@@ -107,7 +111,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     // such as a new clone or a setup report, so allow Bun's maximum.
     idleTimeout: 255,
     fetch: async (request, bunServer) => {
-      const siteRefusal = guardSite(request, options, allowedHostNames);
+      const siteRefusal = guardSite(request, options);
       if (siteRefusal !== null) return siteRefusal;
       const url = new URL(request.url);
       if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options);
@@ -177,9 +181,9 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
 }
 
 /** Host, Origin and Tailscale identity checks. Returns a refusal, or null to go on. */
-function guardSite(request: Request, options: LocalApiOptions, allowedHostNames: ReadonlySet<string>): Response | null {
+function guardSite(request: Request, options: LocalApiOptions): Response | null {
   const host = hostNameOf(request.headers.get("host"));
-  if (host === null || !allowedHostNames.has(host)) return json({ error: "Unknown host." }, 403);
+  if (host === null || !allowedHostNames(options).has(host)) return json({ error: "Unknown host." }, 403);
 
   // The whole origin must match, port included: a page on another local port shares the
   // host name and the SameSite cookie, but it is another site.
@@ -189,7 +193,7 @@ function guardSite(request: Request, options: LocalApiOptions, allowedHostNames:
   }
 
   const identity = request.headers.get("tailscale-user-login");
-  const allowed = options.allowedTailscaleIdentities;
+  const allowed = allowedIdentities(options);
   // `tailscale serve` adds the identity header. A remote host without one is a tagged device or no Tailscale at all.
   const remote = host !== "127.0.0.1" && host !== "localhost";
   if (allowed.length > 0 && (identity === null ? remote : !allowed.includes(identity))) {
@@ -396,6 +400,15 @@ async function route(request: Request, url: URL, eva: Eva, tokenLogin: boolean):
     }
   }
   if (method === "POST" && url.pathname === "/api/hub") return json(await eva.becomeHub());
+  if (method === "POST" && url.pathname.startsWith("/api/remote-access/")) {
+    // These run programs on the machine, so a device login, which may change only the page, cannot.
+    if (!tokenLogin) return json({ error: "Only a login with the token can set up Tailscale." }, 403);
+    const action = url.pathname.slice("/api/remote-access/".length);
+    const access =
+      action === "install" ? eva.installTailscale() : action === "sign-in" ? await eva.signInToTailscale() : undefined;
+    if (access === null) return json({ error: "Phone access is off on this machine." }, 409);
+    if (access !== undefined) return json(access);
+  }
   if (url.pathname === "/api/update/engine") {
     if (method === "GET") return json(eva.engineUpdateStatus());
     if (method === "POST") {
@@ -509,7 +522,22 @@ function allowedTailscaleAccount(request: Request, options: LocalApiOptions): st
   const host = hostNameOf(request.headers.get("host"));
   const identity = request.headers.get("tailscale-user-login");
   const remote = host !== null && host !== "127.0.0.1" && host !== "localhost";
-  return remote && identity !== null && options.allowedTailscaleIdentities.includes(identity) ? identity : null;
+  return remote && identity !== null && allowedIdentities(options).includes(identity) ? identity : null;
+}
+
+function allowedHostNames(options: LocalApiOptions): Set<string> {
+  const tailnetHost = options.tailnet?.()?.hostName ?? null;
+  return new Set(
+    ["127.0.0.1", "localhost", ...options.extraHosts, ...(tailnetHost === null ? [] : [tailnetHost])].map((host) =>
+      host.toLowerCase(),
+    ),
+  );
+}
+
+function allowedIdentities(options: LocalApiOptions): readonly string[] {
+  if (options.allowedTailscaleIdentities.length > 0) return options.allowedTailscaleIdentities;
+  const owner = options.tailnet?.()?.ownerLogin ?? null;
+  return owner === null ? [] : [owner];
 }
 
 function hasValidToken(request: Request, token: string): boolean {

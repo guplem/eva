@@ -37,7 +37,7 @@ A change to one of these goals needs the owner.
 - **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
 - **Comment the why, never the what.**
 - **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
-- **A step that only the owner can do** becomes a GitHub issue with the `owner` label. Then continue with fakes.
+- **A step that only a person can do** becomes a GitHub issue with the `requires-human-intervention` label. Then continue with fakes.
 
 ## Checks
 
@@ -72,7 +72,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Never push to a person's vault.
 - One owner per branch. Agent worktrees live in `.claude/worktrees/`, which git ignores.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
-- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To implement an issue, follow `.agents/skills/implement-issue/SKILL.md`.
+- Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To implement an issue, follow `.agents/skills/implement-issue/SKILL.md`.
 
 ## Shell commands
 

@@ -136,16 +136,16 @@ export function heldBackNews(status: UpdateStatus): string | null {
  * acts on the hub, so the alert points to the web page of the machine with the problem.
  */
 export function relayedProblem(machine: string, reportFile: string, problem: OpenAlert): AlertProblem {
-  // A message such as vault_ahead names the machine already.
-  const named = (line: string): string => (line.includes(machine) ? line : `On ${machine}: ${line}`);
+  // A message such as vault_ahead starts with the machine name already.
+  const named = (line: string): string => (line.startsWith(`${machine} `) ? line : `On ${machine}: ${line}`);
   return {
     level: problem.level,
     message: [
       named(problem.message),
-      `A Telegram command acts on the hub, so use the web page of ${machine}.`,
+      `A Telegram command acts on the hub, so open Eva's web page on ${machine}.`,
       `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
     ].join(" "),
     resolvedMessage:
-      problem.resolvedMessage === "" ? `The problem on ${machine} cleared.` : named(problem.resolvedMessage),
+      problem.resolvedMessage === "" ? `${machine} no longer reports this problem.` : named(problem.resolvedMessage),
   };
 }

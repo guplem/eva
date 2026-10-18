@@ -118,7 +118,7 @@ describe("relayedProblem", () => {
     });
     expect(relayed.level).toBe("error");
     expect(relayed.message).toBe(
-      "On laptop: The update install failed. A Telegram command acts on the hub, so use the web page of laptop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+      "On laptop: The update install failed. A Telegram command acts on the hub, so open Eva's web page on laptop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
     );
     expect(relayed.resolvedMessage).toBe("On laptop: Updates work again.");
   });
@@ -131,6 +131,16 @@ describe("relayedProblem", () => {
       resolvedMessage: "",
     });
     expect(relayed.message.startsWith("laptop runs Eva 1.0.0. ")).toBe(true);
-    expect(relayed.resolvedMessage).toBe("The problem on laptop cleared.");
+    expect(relayed.resolvedMessage).toBe("laptop no longer reports this problem.");
+  });
+
+  test("a short name inside a word is no name: the prefix stays", () => {
+    const relayed = relayedProblem("pc", ".eva/machines/pc.json", {
+      key: "update",
+      level: "warn",
+      message: "The update check failed: no specification.",
+      resolvedMessage: "Updates work again.",
+    });
+    expect(relayed.message.startsWith("On pc: The update check failed")).toBe(true);
   });
 });

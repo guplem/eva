@@ -17,7 +17,7 @@ Everything stays plain text, so one search finds it and almost any device opens 
 
 **`.eva/schedules.json` is not a note.** Change it only through the `schedule` skill, because Eva reads it every minute and skips an entry that she cannot read.
 
-**Eva writes `.eva/machines/` by herself.** Do not change these files. Delete the file of a computer that no longer runs Eva, when the person asks.
+**Eva writes `.eva/machines/` by herself.** Do not edit these files. Delete one only when the person asks, for a computer that no longer runs Eva.
 
 **Every path in this file starts at the vault root.**
 

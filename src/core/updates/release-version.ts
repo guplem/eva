@@ -7,6 +7,18 @@ import { isNewerVersion } from "./release-verification.ts";
 export interface ReleaseCommit {
   readonly subject: string;
   readonly body: string;
+  /** The short commit hash. GitHub links it in a release body. */
+  readonly hash?: string;
+  /** The pull request that merged this commit, if any. */
+  readonly pullRequest?: { readonly number: number; readonly title: string };
+}
+
+const pullRequestMerge = /^Merge pull request #(\d+) from /;
+
+/** The number of the pull request that a GitHub merge commit merges, or null. */
+export function mergedPullRequest(subject: string): number | null {
+  const number = pullRequestMerge.exec(subject)?.[1];
+  return number === undefined ? null : Number(number);
 }
 
 /** How much a commit changes the executable. `null` means it changes nothing in it. */
@@ -79,12 +91,53 @@ export const releaseNoteSections: readonly { change: ReleaseChange; title: strin
 
 export const noChangeNotes = "No change to the executable.";
 
-/** The release notes: each commit that changes the executable, under the size of its change. */
+/** The commit list sits in this block. Its lines are details, not changes to summarize. */
+export const detailsStart = "<details>";
+export const detailsEnd = "</details>";
+
+const changeRank: Readonly<Record<ReleaseChange, number>> = { fix: 0, feature: 1, breaking: 2 };
+
+/** One line of the notes: a pull request, or a commit that came with none. */
+interface ReleaseNoteEntry {
+  text: string;
+  change: ReleaseChange;
+}
+
+/**
+ * The release notes: each pull request that changes the executable, under its largest change,
+ * then each such commit in a collapsed detail view.
+ */
 export function releaseNotes(commits: readonly ReleaseCommit[]): string {
+  const changed = commits.flatMap((commit) => {
+    const change = commitChange(commit);
+    return change === null ? [] : [{ commit, change }];
+  });
+  if (changed.length === 0) return `${noChangeNotes}\n`;
+  const entries: ReleaseNoteEntry[] = [];
+  const byPullRequest = new Map<number, ReleaseNoteEntry>();
+  for (const { commit, change } of changed) {
+    const pullRequest = commit.pullRequest;
+    if (pullRequest === undefined) {
+      entries.push({ text: commit.subject, change });
+      continue;
+    }
+    const entry = byPullRequest.get(pullRequest.number);
+    if (entry === undefined) {
+      const created = { text: `${pullRequest.title} (#${String(pullRequest.number)})`, change };
+      byPullRequest.set(pullRequest.number, created);
+      entries.push(created);
+    } else if (changeRank[change] > changeRank[entry.change]) {
+      entry.change = change;
+    }
+  }
   const parts: string[] = [];
   for (const { change, title } of releaseNoteSections) {
-    const subjects = commits.filter((commit) => commitChange(commit) === change).map((commit) => commit.subject);
-    if (subjects.length > 0) parts.push(`## ${title}\n\n${subjects.map((subject) => `- ${subject}`).join("\n")}\n`);
+    const lines = entries.filter((entry) => entry.change === change).map((entry) => `- ${entry.text}`);
+    if (lines.length > 0) parts.push(`## ${title}\n\n${lines.join("\n")}\n`);
   }
-  return parts.length === 0 ? `${noChangeNotes}\n` : parts.join("\n");
+  const commitLines = changed.map(({ commit }) =>
+    commit.hash === undefined ? `- ${commit.subject}` : `- ${commit.subject} (${commit.hash})`,
+  );
+  parts.push(`${detailsStart}\n<summary>Commits</summary>\n\n${commitLines.join("\n")}\n\n${detailsEnd}\n`);
+  return parts.join("\n");
 }

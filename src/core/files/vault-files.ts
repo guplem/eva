@@ -42,7 +42,7 @@ const secretScanBytes = 2 * 1024 * 1024;
 const secretNamePattern =
   /^\.env(\..*)?$|\.(pem|key|p12|pfx)$|^(\.npmrc|\.pypirc|\.netrc|secrets?\.json|credentials\.json|client_secret.*\.json)$/i;
 
-/** Reads the marker lines of a whole answer. A marker inside a code fence stays text. */
+/** Reads the marker lines of an answer block. A marker inside a code fence stays text. */
 export function extractFileMarkers(answer: string): FileMarkers {
   const kept: string[] = [];
   const attach: string[] = [];

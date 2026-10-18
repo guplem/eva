@@ -35,24 +35,33 @@ export class ClaudeCodeEngine implements EnginePort {
   }
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {
-    const first = await this.runOnce(request);
-    if (!first.historyLost) {
-      yield* first.events;
-      return;
+    let shown = false;
+    let historyLost = false;
+    for await (const event of this.runOnce(request)) {
+      // A lost history fails before the engine sends anything else, so the retry never repeats shown events.
+      historyLost =
+        !shown &&
+        request.history.kind !== "new" &&
+        event.kind === "turn_failed" &&
+        event.reason.includes(lostHistoryMarker);
+      // The break closes the failed run before the retry starts.
+      if (historyLost) break;
+      shown = true;
+      yield event;
     }
+    if (!historyLost) return;
     // Lesson 46: retry once, in a fresh session, and tell the model the history is gone.
     yield { kind: "history_lost" };
     const engineSessionId = (this.options.newSessionId ?? (() => crypto.randomUUID()))();
-    const retry = await this.runOnce({
+    yield* this.runOnce({
       ...request,
       history: { kind: "new", engineSessionId },
       prompt: lostHistoryPreamble + request.prompt,
     });
-    yield* retry.events;
   }
 
-  /** Runs the SDK once and buffers its events, so a lost history can still be retried before anything is shown. */
-  private async runOnce(request: TurnRequest): Promise<{ events: EngineEventPayload[]; historyLost: boolean }> {
+  /** Runs the SDK once and sends each event as it arrives. A thrown SDK error becomes the turn end. */
+  private async *runOnce(request: TurnRequest): AsyncIterable<EngineEventPayload> {
     const options: Options = {
       ...buildQueryOptions(request, this.options.executable),
       canUseTool: async (toolName, input) => {
@@ -62,17 +71,12 @@ export class ClaudeCodeEngine implements EnginePort {
           : { behavior: "deny", message: "The person did not allow this action." };
       },
     };
-    const events: EngineEventPayload[] = [];
     try {
       const messages = (this.options.query ?? sdkQuery)({ prompt: request.prompt, options });
-      for await (const event of mapSdkMessages(messages)) events.push(event);
+      yield* mapSdkMessages(messages);
     } catch (error) {
-      events.push({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
+      yield { kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) };
     }
-    const last = events[events.length - 1];
-    const historyLost =
-      request.history.kind !== "new" && last?.kind === "turn_failed" && last.reason.includes(lostHistoryMarker);
-    return { events, historyLost };
   }
 }
 

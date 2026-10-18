@@ -27,7 +27,7 @@ export class TelegramSender {
   }
 
   /** Sends Markdown as Telegram HTML, split under the limit; a part with refused HTML goes again as plain text (lesson 58). */
-  async sendAnswer(chatId: number, topicId: number | null, markdown: string): Promise<void> {
+  async sendAnswer(chatId: number, topicId: number | null, markdown: string, quiet = false): Promise<void> {
     for (const chunk of keepFencesWhole(splitForTelegram(markdown, messageLimit))) {
       try {
         await this.callWithRetry("sendMessage", {
@@ -35,22 +35,30 @@ export class TelegramSender {
           text: toTelegramHtml(chunk),
           parse_mode: "HTML",
           ...threadOf(topicId),
+          ...(quiet ? { disable_notification: true } : {}),
         });
       } catch (error) {
-        if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk);
+        if (isHtmlRefused(error)) await this.send(chatId, topicId, chunk, undefined, quiet);
         else this.logFailedCall("sendMessage", error);
       }
     }
   }
 
   /** Sends plain text. Returns the id of the message, or null when Telegram did not take it. */
-  async send(chatId: number, topicId: number | null, text: string, replyMarkup?: unknown): Promise<number | null> {
+  async send(
+    chatId: number,
+    topicId: number | null,
+    text: string,
+    replyMarkup?: unknown,
+    quiet = false,
+  ): Promise<number | null> {
     try {
       const sent = await this.callWithRetry<{ message_id: number }>("sendMessage", {
         chat_id: chatId,
         text: text.slice(0, telegramMessageLimit),
         ...threadOf(topicId),
         ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }),
+        ...(quiet ? { disable_notification: true } : {}),
       });
       return sent.message_id;
     } catch (error) {

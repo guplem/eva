@@ -15,6 +15,13 @@ import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 const owner = 4242;
+const readNote = {
+  kind: "tool_started",
+  toolUseId: "t1",
+  name: "Read",
+  category: "tool",
+  summary: "Read Methods/Plan.md",
+} as const;
 let sandbox: GitSandbox;
 let home: string;
 let telegram: FakeTelegram;
@@ -231,6 +238,83 @@ describe("chats", () => {
     const session = eva.sessions.list()[0];
     expect(session).toMatchObject({ mode: "assistant", source: "telegram" });
     expect(telegram.callsTo("sendMessage").at(-1)?.params).toMatchObject({ chat_id: owner, parse_mode: "HTML" });
+  });
+
+  test("each answer block goes out while the turn still runs (issue #40)", async () => {
+    let finish: () => void = () => undefined;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    createEva((request) =>
+      (async function* () {
+        const [, end] = FakeEngine.answer(request, "Second part.");
+        yield { kind: "text" as const, text: "First part.", messageId: "m1" };
+        yield readNote;
+        await finished;
+        yield { kind: "text" as const, text: "Second part.", messageId: "m2" };
+        if (end !== undefined) yield end;
+      })(),
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "Tell me");
+    await settle(bot, () => telegram.sentTexts().includes("First part."));
+    expect(telegram.sentTexts()).not.toContain("Second part.");
+    finish();
+    await settle(bot, () => telegram.sentTexts().includes("Second part."));
+  });
+
+  test("only the block that ends the turn rings the phone, as the whole answer did", async () => {
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Let me look.", messageId: "m1" },
+        readNote,
+        { kind: "text", text: "Still on it.", messageId: "m2" },
+        { kind: "tool_finished", toolUseId: "t1", isError: false },
+        { kind: "text", text: "Here is the answer.", messageId: "m3" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Here is the answer."));
+    const quiet = (text: string): unknown =>
+      telegram.callsTo("sendMessage").find((call) => call.params["text"] === text)?.params["disable_notification"];
+    expect(quiet("Let me look.")).toBe(true);
+    expect(quiet("Still on it.")).toBe(true);
+    expect(quiet("Here is the answer.")).toBeUndefined();
+  });
+
+  test("a quiet block stays quiet when Telegram refuses its HTML (lesson 58)", async () => {
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Let me look.", messageId: "m1" },
+        readNote,
+        { kind: "text", text: "Done.", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: can't parse entities");
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Done."));
+    const plain = telegram
+      .callsTo("sendMessage")
+      .find((call) => call.params["text"] === "Let me look." && call.params["parse_mode"] === undefined);
+    expect(plain?.params["disable_notification"]).toBe(true);
+  });
+
+  test("a failed turn says so after the blocks it already sent", async () => {
+    createEva(() => [
+      { kind: "text", text: "Working on it.", messageId: "m1" },
+      { kind: "turn_failed", reason: "boom" },
+    ]);
+    const bot = createBot();
+    telegram.sendText(owner, "Try");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("boom")));
+    const texts = telegram.sentTexts();
+    expect(texts.indexOf("Working on it.")).toBeLessThan(texts.indexOf("The turn failed: boom"));
   });
 
   test("a second message continues the same chat", async () => {
@@ -728,6 +812,35 @@ describe("/chats while a turn runs (#9)", () => {
       "Eva is working on a message from the web app or the terminal. Her answer comes here.",
     );
   });
+
+  test("a chat that opens after the first answer block gets the whole answer once, at the turn end", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let firstBlock: () => void = () => undefined;
+    const firstBlockSent = new Promise<void>((resolve) => (firstBlock = resolve));
+    createEva(async function* (request) {
+      const [, end] = FakeEngine.answer(request, "done");
+      yield { kind: "text" as const, text: "Part one.", messageId: "m1" };
+      firstBlock();
+      await held;
+      yield readNote;
+      yield { kind: "text" as const, text: "Part two.", messageId: "m2" };
+      if (end !== undefined) yield end;
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await firstBlockSent;
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    release();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Part two.")));
+    await eva.idle();
+    const answers = telegram.sentTexts().filter((text) => text.includes("Part"));
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toContain("Part one.");
+  });
 });
 
 describe("/delete in the main chat (#9)", () => {
@@ -850,6 +963,26 @@ describe("approvals and commands", () => {
     await settle(bot, () => answers.length === 1);
     expect(answers).toEqual(["allow"]);
     expect(telegram.callsTo("answerCallbackQuery")[0]?.params["text"]).toBe("Allowed");
+  });
+
+  test("an approval never overtakes the answer block before it, even during a 429 wait", async () => {
+    createEva(async function* (request) {
+      yield { kind: "text", text: "I will push the branch.", messageId: "m1" };
+      const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, answer);
+    });
+    const bot = createBot(owner, { sleep: () => Bun.sleep(50) });
+    telegram.failNext("sendMessage", 429, "Too Many Requests", 1, 1);
+    telegram.sendText(owner, "push it");
+    await settle(bot, () => telegram.callsTo("sendMessage").some((call) => call.params["reply_markup"] !== undefined));
+    const texts = telegram.sentTexts();
+    expect(texts.lastIndexOf("I will push the branch.")).toBeLessThan(
+      texts.findIndex((text) => text.startsWith("Eva wants to run Bash")),
+    );
+    const question = telegram.callsTo("sendMessage").find((call) => call.params["reply_markup"] !== undefined);
+    const requestId = /"a:([^:"]+):deny"/.exec(JSON.stringify(question?.params["reply_markup"]))?.[1] ?? "";
+    telegram.pressButton(owner, `a:${requestId}:deny`);
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
   });
 
   test("an answered approval edits its message to show the answer, and drops the buttons", async () => {
@@ -1542,6 +1675,41 @@ describe("files (lessons 72, 74, 124)", () => {
       bot,
       () => uploads().length === 1 && telegram.sentTexts().includes("That file is no longer available."),
     );
+  });
+
+  test("a file named in two blocks of one answer goes once", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    // The turn ends with a failure: its message goes out after the turn's offers, so the checks see every send.
+    createEva(() => [
+      { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m1" },
+      { kind: "text", text: "Again.\n[[offer: Methods/Plan.md]]\n[[attach: Methods/Plan.md]]", messageId: "m2" },
+      { kind: "turn_failed", reason: "end" },
+    ]);
+    const bot = createBot();
+    telegram.sendText(owner, "send the plan");
+    await settle(bot, () => telegram.sentTexts().includes("The turn failed: end"));
+    expect(uploads()).toEqual(["Plan.md"]);
+    expect(telegram.sentTexts()).not.toContain("Files you can open:");
+  });
+
+  test("an attach in a later block beats an offer in an earlier one", async () => {
+    sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
+    sandbox.write(vault(), "Methods/Other.md", "# Other\n");
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text", text: "Maybe.\n[[offer: Methods/Plan.md]]\n[[offer: Methods/Other.md]]", messageId: "m1" },
+        { kind: "text", text: "Here.\n[[attach: Methods/Plan.md]]", messageId: "m2" },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "send the plan");
+    await settle(bot, () => telegram.sentTexts().includes("Files you can open:"));
+    expect(uploads()).toEqual(["Plan.md"]);
+    const markup = JSON.stringify(telegram.callsTo("sendMessage").at(-1)?.params["reply_markup"]);
+    expect(markup).toContain("Other.md");
+    expect(markup).not.toContain("Plan.md");
   });
 
   test("a file outside the vault gets a sentence instead of an upload", async () => {

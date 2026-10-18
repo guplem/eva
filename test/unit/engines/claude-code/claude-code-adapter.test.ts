@@ -317,6 +317,28 @@ describe("ClaudeCodeEngine", () => {
     expect(seen[0]).toMatchObject({ prompt: "Hello", options: { cwd: "/demo-vault" } });
   });
 
+  test("each event arrives while the turn still runs, not at its end (issue #40)", async () => {
+    const lines = loadCapture("resumed-turn").filter(isMessage);
+    const result = lines.find((message) => message.type === "result");
+    let finish: () => void = () => undefined;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () =>
+        (async function* () {
+          yield* lines.filter((message) => message.type !== "result");
+          await finished;
+          if (result !== undefined) yield result;
+        })(),
+    });
+    const events = engine.runTurn(request())[Symbol.asyncIterator]();
+    expect((await events.next()).value).toMatchObject({ kind: "text" });
+    finish();
+    expect((await events.next()).value).toMatchObject({ kind: "turn_finished" });
+  });
+
   test("a thrown SDK error becomes one turn_failed", async () => {
     const engine = new ClaudeCodeEngine({
       executable: "/bin/claude",
@@ -353,6 +375,50 @@ describe("ClaudeCodeEngine", () => {
     ]);
     expect(calls[1]).toMatchObject({ sessionId: "session-2" });
     expect(calls[1]).not.toHaveProperty("resume");
+  });
+
+  test("a lost history after a shown event is a plain failure, so no shown text repeats", async () => {
+    let calls = 0;
+    const text = loadCapture("resumed-turn")
+      .filter(isMessage)
+      .filter((message) => message.type === "assistant");
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () => {
+        calls += 1;
+        return replay([...text, ...loadCapture("missing-session")]);
+      },
+    });
+    const events = await drain(engine.runTurn(request({ history: { kind: "continue", engineSessionId: "s1" } })));
+    expect(events.map((event) => event.kind)).toEqual(["text", "turn_failed"]);
+    expect(calls).toBe(1);
+  });
+
+  test("the failed first run is closed before the retry starts", async () => {
+    const closed: number[] = [];
+    let calls = 0;
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      newSessionId: () => "session-2",
+      query: () => {
+        calls += 1;
+        const run = calls;
+        const lines = loadCapture(run === 1 ? "missing-session" : "resumed-turn").filter(isMessage);
+        return (async function* () {
+          try {
+            await Promise.resolve();
+            yield* lines;
+          } finally {
+            closed.push(run);
+          }
+        })();
+      },
+    });
+    const seen: string[] = [];
+    for await (const event of engine.runTurn(request({ history: { kind: "continue", engineSessionId: "s1" } }))) {
+      if (event.kind === "text") seen.push(`text, closed: ${closed.join(",")}`);
+    }
+    expect(seen).toEqual(["text, closed: 1"]);
   });
 
   test("Assistant mode asks for approval only for actions that reach other people", async () => {

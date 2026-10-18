@@ -62,7 +62,14 @@ export interface TelegramBotOptions {
   readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
+/** What the running turn of a chat already sent. */
+interface AnswerState {
+  readonly attached: Set<string>;
+  /** Offered at the turn end, because a later block can still attach the same file. */
+  readonly offered: Set<string>;
+}
 const confirmAttempts = 3;
+
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const deviceExpiredText = "This request expired.";
 const pollProblemKey = "telegram_poll";
@@ -91,7 +98,16 @@ export class TelegramBot {
   private readonly state: BotState;
   private allowedChatId: number | null;
   private allowedUserId: number | null;
-  private readonly pendingText = new Map<string, string[]>();
+  /** The sends of each chat, in event order: `onEvent` runs unawaited, so a later block could overtake an earlier one. */
+  private readonly outbox: Map<string, Promise<void>>;
+  /** The running turn of each chat. A file goes once per answer. */
+  private readonly answers: Map<string, AnswerState>;
+  /** The newest answer block of each chat, until the next event of its turn. */
+  private readonly heldBlocks: Map<string, Extract<SessionEvent, { kind: "text" }>>;
+  /** The chats whose topic opened during a turn, after its first blocks: they get the whole answer at the turn end. */
+  private readonly lateTopics: Set<string>;
+  /** The blocks of such a turn after its topic opened, for a turn end with no recorded answer. */
+  private readonly pendingText: Map<string, string[]>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
@@ -133,6 +149,11 @@ export class TelegramBot {
     });
     this.approvalMessages = new Map();
     this.stoppedSessions = new Set();
+    this.outbox = new Map();
+    this.answers = new Map();
+    this.heldBlocks = new Map();
+    this.lateTopics = new Set();
+    this.pendingText = new Map();
     this.state = loadBotState(options.statePath);
     this.files = new TelegramFiles({
       api: options.api,
@@ -182,6 +203,9 @@ export class TelegramBot {
       forgetLive: (sessionId) => {
         this.stopTyping(sessionId);
         this.pendingText.delete(sessionId);
+        this.lateTopics.delete(sessionId);
+        this.heldBlocks.delete(sessionId);
+        this.answers.delete(sessionId);
       },
       dispatch: (event, waitedAnswer) => this.dispatch(event, waitedAnswer),
     });
@@ -637,7 +661,8 @@ export class TelegramBot {
 
   private async onEvent(event: SessionEvent): Promise<void> {
     if (event.kind === "approval_resolved") {
-      await this.closeQuestion(event.requestId, approvalAnswerText(event));
+      // After the card, which can still wait in the chat's order.
+      await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));
       return;
     }
     if (event.kind === "session_deleted") {
@@ -657,19 +682,38 @@ export class TelegramBot {
   private async dispatch(event: SessionEvent, waitedAnswer: string | null): Promise<void> {
     const target = targetOf(this.state, event.sessionId);
     if (target === null) {
+      // A topic that opens later in this turn missed these blocks, so it shows the whole answer at the turn end.
+      if (event.kind === "text") this.lateTopics.add(event.sessionId);
+      if (event.kind === "turn_finished" || event.kind === "turn_failed") this.lateTopics.delete(event.sessionId);
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
       if (event.kind === "approval_needed" && this.allowedChatId !== null) {
+        const chatId = this.allowedChatId;
         const title = this.options.eva.sessions.list().find((session) => session.id === event.sessionId)?.title;
-        await this.sendApproval(this.allowedChatId, null, event, title ?? "another chat");
+        // In the same order as its close, which then always finds the card.
+        await this.inOrder(event.sessionId, () => this.sendApproval(chatId, null, event, title ?? "another chat"));
       }
       return;
     }
+    // A block waits for the next event of its turn, which tells whether the answer goes on. Only
+    // the block that ends the turn rings the phone, as the whole answer did before (issue #40).
+    // A tool call follows its text at once, so the wait is short.
+    const held = this.heldBlocks.get(event.sessionId);
+    if (held !== undefined) {
+      this.heldBlocks.delete(event.sessionId);
+      const quiet = event.kind !== "turn_finished" && event.kind !== "turn_failed";
+      void this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, held, quiet));
+    }
     switch (event.kind) {
       case "text":
-        this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
+        if (this.lateTopics.has(event.sessionId)) {
+          this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
+        } else {
+          this.heldBlocks.set(event.sessionId, event);
+        }
         return;
       case "approval_needed":
-        await this.sendApproval(target.chatId, target.topicId, event, null);
+        // In the chat's order, so the card never comes before the text that explains it.
+        await this.inOrder(event.sessionId, () => this.sendApproval(target.chatId, target.topicId, event, null));
         return;
       case "message_received":
         // Its turn starts now, so Telegram shows that Eva works.
@@ -680,7 +724,9 @@ export class TelegramBot {
         await this.sender.sendPlain(target.chatId, target.topicId, `Message: ${event.text}`);
         return;
       case "history_lost":
-        await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
+        await this.inOrder(event.sessionId, async () => {
+          await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");
+        });
         return;
       case "session_renamed":
         await this.renameTopic(target.chatId, target.topicId, event.title);
@@ -688,25 +734,74 @@ export class TelegramBot {
       case "turn_finished":
       case "turn_failed": {
         this.stopTyping(event.sessionId);
-        // A topic can open while a turn runs, after its first text events. The record holds a
-        // finished turn before its end event, so the whole answer comes from there.
-        const recorded =
-          event.kind === "turn_finished" ? (waitedAnswer ?? this.chats.lastAnswerOf(event.sessionId)) : null;
-        const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
-        this.pendingText.delete(event.sessionId);
-        // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).
-        const markers = extractFileMarkers(answer);
-        if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
-        for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
-        if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
         const stopped = this.stoppedSessions.delete(event.sessionId);
-        if (event.kind === "turn_failed")
-          await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+        if (this.lateTopics.delete(event.sessionId)) {
+          // The record holds a finished turn before its end event, so the whole answer comes from there.
+          const recorded =
+            event.kind === "turn_finished" ? (waitedAnswer ?? this.chats.lastAnswerOf(event.sessionId)) : null;
+          const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
+          this.pendingText.delete(event.sessionId);
+          await this.inOrder(event.sessionId, async () => {
+            const markers = extractFileMarkers(answer);
+            if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
+            for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
+            if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
+            if (event.kind === "turn_failed")
+              await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+          });
+          return;
+        }
+        await this.inOrder(event.sessionId, async () => {
+          const answer = this.answers.get(event.sessionId);
+          this.answers.delete(event.sessionId);
+          // A file named twice goes once, and attach wins over offer, also across blocks.
+          const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
+          if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
+          if (event.kind === "turn_failed")
+            await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+        });
         return;
       }
       default:
         return;
     }
+  }
+
+  /** Runs a send after every earlier send of the same chat. A failed send never blocks the next one. */
+  private inOrder(sessionId: string, send: () => Promise<void>): Promise<void> {
+    const next = (this.outbox.get(sessionId) ?? Promise.resolve()).then(send).catch((error: unknown) => {
+      this.sender.logFailedCall("send", error);
+    });
+    this.outbox.set(sessionId, next);
+    return next.then(() => {
+      if (this.outbox.get(sessionId) === next) this.outbox.delete(sessionId);
+    });
+  }
+
+  /**
+   * Sends one answer block and its attachments. A marker is one whole line, and a block holds
+   * whole lines, so a marker is never shown half written (lesson 124). Offers wait for the turn
+   * end, because a later block can still attach the same file.
+   */
+  private async sendBlock(
+    chatId: number,
+    topicId: number | null,
+    event: Extract<SessionEvent, { kind: "text" }>,
+    quiet: boolean,
+  ): Promise<void> {
+    const markers = extractFileMarkers(event.text);
+    let answer = this.answers.get(event.sessionId);
+    if (answer === undefined) {
+      answer = { attached: new Set(), offered: new Set() };
+      this.answers.set(event.sessionId, answer);
+    }
+    if (markers.text.length > 0) await this.sender.sendAnswer(chatId, topicId, markers.text, quiet);
+    for (const path of markers.attach) {
+      if (answer.attached.has(path)) continue;
+      answer.attached.add(path);
+      await this.files.sendVaultFile(chatId, topicId, path);
+    }
+    for (const path of markers.offer) answer.offered.add(path);
   }
 
   /**

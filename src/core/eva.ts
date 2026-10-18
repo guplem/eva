@@ -174,8 +174,9 @@ export class Eva {
   private backgroundTicking: boolean;
   private lastHousekeepingAt: Date | null;
   private readonly alerts: AlertCenter;
-  /** The keys of the other machines' problems that this hub relays now. */
-  private relayedKeys = new Set<string>();
+  /** The keys of the problems that this hub relays now, by report file. */
+  private relayed = new Map<string, ReadonlySet<string>>();
+  private reportNameTaken = false;
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -791,31 +792,56 @@ export class Eva {
   }
 
   /**
-   * Writes this machine's open problems to the vault, and on the hub raises those of the other
-   * machines, because only the hub runs Telegram (#126). The next save pushes the report.
+   * Writes this machine's open problems to the vault, and the next save pushes them. Only the hub
+   * runs Telegram, so the hub raises the problems of the other machines (#126).
    */
   private exchangeMachineReports(): void {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
     const problems = this.alerts
       .openAlerts()
-      // A sync problem cannot travel through the sync that it breaks: it would arrive only once it cleared.
-      .filter((alert) => alert.key !== "vault_sync" && !this.relayedKeys.has(alert.key));
-    writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
+      // A sync problem would travel through the sync that it breaks, so it arrives only after it clears.
+      .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"));
+    const written = writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
+    if (written === "no_vault") return;
+    this.noticeReportName(written === "name_taken");
 
-    // The role reads hub.json now: this hook runs before the tick notices a role change.
-    const reports = this.role() === "hub" ? readMachineReports(vaultPath) : [];
-    const relayed = new Set<string>();
-    for (const report of reports) {
+    // The role reads hub.json now, because this hook runs before the tick notices a role change.
+    if (this.role() !== "hub") {
+      // The new hub sends these problems, so a "resolved" line from here would be false.
+      for (const keys of this.relayed.values()) for (const key of keys) this.alerts.dismiss(key);
+      this.relayed = new Map();
+      return;
+    }
+    const relayed = new Map<string, ReadonlySet<string>>();
+    for (const { file, report } of readMachineReports(vaultPath)) {
+      if (report === null) {
+        // A broken file, such as one in a sync conflict, keeps its problems until it reads again.
+        const kept = this.relayed.get(file);
+        if (kept !== undefined) relayed.set(file, kept);
+        continue;
+      }
       if (report.machine === this.machine) continue;
+      const keys = new Set<string>();
       for (const problem of report.problems) {
         const key = `machine:${report.machine}:${problem.key}`;
-        relayed.add(key);
+        keys.add(key);
         this.alerts.report(key, relayedProblem(report.machine, machineReportFile(report.machine), problem));
       }
+      relayed.set(file, keys);
     }
-    for (const key of this.relayedKeys) if (!relayed.has(key)) this.alerts.report(key, null);
-    this.relayedKeys = relayed;
+    for (const [file, keys] of this.relayed)
+      for (const key of keys) if (relayed.get(file)?.has(key) !== true) this.alerts.report(key, null);
+    this.relayed = relayed;
+  }
+
+  /** Logs once when another machine's report holds the file of this machine's name. */
+  private noticeReportName(taken: boolean): void {
+    if (taken && !this.reportNameTaken)
+      this.options.logger?.log("warn", "Another machine's report uses the file of this machine's name.", {
+        file: machineReportFile(this.machine),
+      });
+    this.reportNameTaken = taken;
   }
 
   private assistantBusy(): boolean {

@@ -85,6 +85,14 @@ export class AlertCenter {
     this.emit(key, problem.level, problem.message);
   }
 
+  /**
+   * Forgets one problem with no resolved alert, such as a relayed problem on a hub that moved away.
+   * The new hub sends it, so a "resolved" line here would be false.
+   */
+  dismiss(key: string): void {
+    this.open.delete(key);
+  }
+
   /** A one-off alert, such as a start after an unclean exit, or news. It never stays open. */
   notify(key: string, level: AlertLevel | "news", message: string): void {
     this.emit(key, level, message);

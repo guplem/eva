@@ -1406,7 +1406,7 @@ describe("machine reports (#126)", () => {
     const alerts = collectAlerts(instance);
     await instance.syncVault();
     expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["machine:laptop:vault_ahead", "warn"]]);
-    expect(alerts[0]?.message).toContain("laptop: Update Eva on laptop.");
+    expect(alerts[0]?.message.startsWith("Update Eva on laptop. ")).toBe(true);
     expect(alerts[0]?.message).toContain(".eva/machines/laptop.json");
     expect(instance.status().problems).toHaveLength(1);
     // The hub's own report never carries the problems that it relays.
@@ -1417,10 +1417,22 @@ describe("machine reports (#126)", () => {
       ["machine:laptop:vault_ahead", "warn"],
       ["machine:laptop:vault_ahead", "resolved"],
     ]);
-    expect(alerts[1]?.message).toBe("laptop: Fixed.");
+    expect(alerts[1]?.message).toBe("On laptop: Fixed.");
   });
 
-  test("a satellite relays nothing, and a hub that becomes a satellite clears what it relayed", async () => {
+  test("a broken report keeps its alerts until it reads again", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    writeFileSync(join(vault, ".eva", "machines", "laptop.json"), "<<<<<<< ours\n");
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+    expect(instance.status().problems).toHaveLength(1);
+  });
+
+  test('a hub that becomes a satellite drops what it relayed with no false "resolved" line', async () => {
     sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
     sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
     const instance = start(new FakeEngine(), { machineName: "example-pc" });
@@ -1429,7 +1441,7 @@ describe("machine reports (#126)", () => {
     expect(alerts).toHaveLength(1);
     sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
     await instance.syncVault();
-    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
     expect(instance.status().problems).toEqual([]);
   });
 });

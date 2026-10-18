@@ -1,8 +1,8 @@
 /**
  * Finds and installs the program of an engine, for `eva setup`. Neither install needs an
  * administrator. Claude Code uses its official installer. pi uses the standalone build of its
- * GitHub release, which needs no Node.js or npm: the Eva executable has neither. When Eva cannot
- * install, the error gives the exact steps instead.
+ * GitHub release, which needs no Node.js or npm. The Eva executable holds neither of them. When
+ * Eva cannot install, the error gives the exact steps instead.
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";

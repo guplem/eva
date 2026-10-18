@@ -56,8 +56,7 @@ const tools: readonly ToolCheck[] = [
     install: "https://pi.dev, or run `eva setup`",
     installOnLinux: "eva setup",
     // Setup installs only a missing pi, so a new copy needs the old one gone.
-    update:
-      "with the installer that installed it. For the copy from `eva setup`, delete ~/.local/lib/pi, or %LOCALAPPDATA%\\Programs\\pi on Windows, then run `eva setup`",
+    update: "delete ~/.local/lib/pi (on Windows, %LOCALAPPDATA%\\Programs\\pi), then run `eva setup`",
   },
   {
     program: "gh",

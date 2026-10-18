@@ -51,16 +51,17 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 **Claude Code**, for a Claude subscription:
 
 1. When setup asks for the Claude token, open another terminal.
-2. Run `claude setup-token`, and sign in when the browser opens. If the terminal does not find `claude`, run the command that setup shows after the install.
+2. Run `claude setup-token`, and sign in when the browser opens.
+   If the terminal does not find `claude`, run the command that setup showed after the install.
 3. Copy the token that it prints, and paste it into setup.
 
 **pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
 
 1. After setup installs pi, open another terminal.
-2. Run the command that setup shows after the install, or `pi`. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
+2. Run `pi`. On Windows, a terminal does not find `pi`: run the command that setup showed after the install instead. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
 3. In setup, press Enter at "Claude token". If you log in to pi after setup ends, run `eva setup` again, or choose pi in Settings in the web app.
 
-Claude Code is the default harness at first. Setup changes the default only when the default harness has no login and the other one has one. To change the default harness, open Settings in the web app. You can also choose the harness for each chat.
+Claude Code is the default engine at first: the harness that a new chat uses. Setup changes the default only when it has no login and the other harness has one. To change the default engine, open Settings in the web app. You can also choose the harness for each chat.
 
 When an install fails, setup says why, and gives the command to install the harness by hand. `eva doctor` shows a missing harness too.
 
@@ -204,7 +205,7 @@ These steps work over SSH too. They install Eva for your own user.
 
 5. Pair your Telegram chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default harness, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`.
+**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive

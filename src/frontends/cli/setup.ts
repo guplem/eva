@@ -240,10 +240,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (engine === "claude-code" || engine === "pi")
     config = { ...config, engines: { ...config.engines, default: engine } };
   else if (engine !== "") throw new EvaError("config_invalid", "The engine must be claude-code or pi.");
-  // Only a script skips the installs, such as a test or a machine image that brings its own harnesses.
-  const install = options.interactive ? "" : await ask("installEngines", "Install the missing harnesses? [Y/n]: ");
+  // Only a script skips the installs, such as a test or a machine image that brings its own engines.
+  const install = options.interactive ? "" : await ask("installEngines", "Install the missing engines? [Y/n]: ");
   if (install !== "" && !/^(y(es)?|no?)$/i.test(install))
-    throw new EvaError("config_invalid", "The answer to install the harnesses must be yes or no.");
+    throw new EvaError("config_invalid", "The answer to install the engines must be yes or no.");
   // Before the token question, so the person can run `claude setup-token` with the new program.
   if (!/^no?$/i.test(install)) await installEngines(options, config);
 

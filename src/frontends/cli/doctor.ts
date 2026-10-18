@@ -2,6 +2,7 @@
  * `eva doctor`: checks each tool that Eva uses, grouped by feature, so a missing optional
  * tool never blocks the core (lesson 94).
  */
+import type { CheckResult } from "../../core/checks.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
@@ -116,6 +117,11 @@ export interface DoctorOptions {
   readonly userName: string;
   /** The default engine's program is required: without it, no chat works. */
   readonly defaultEngine: EngineName;
+  /**
+   * The Google check without the service reads, or null when Google is not set up. Google is
+   * optional, so its state never fails the doctor.
+   */
+  readonly google: () => Promise<CheckResult | null>;
 }
 
 /** Prints one line per tool. Returns false when a required tool is missing. */
@@ -140,8 +146,16 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
       }
     }
   }
+  options.write(await describeGoogle(options));
   if (options.platform === "linux") options.write(await describeLinger(options));
   return healthy;
+}
+
+/** Google is set up on the web app, in Settings, so every line points there. */
+async function describeGoogle(options: DoctorOptions): Promise<string> {
+  const result = await options.google();
+  if (result === null) return "  off     Google: not set up. To set it up, open Settings in the web app.";
+  return result.ok ? `  ok      Google: ${result.detail}` : `  failed  Google: ${result.detail}`;
 }
 
 /** Without linger, systemd stops the user's services, Eva too, when the user logs out (lesson 85). */

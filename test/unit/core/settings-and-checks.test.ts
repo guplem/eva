@@ -15,6 +15,8 @@ import { fakeGithub } from "../../support/fake-github.ts";
 import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
+import { fakeGoogle } from "../../support/fake-google.ts";
+import { googleScopes } from "../../../src/core/google/google-scopes.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -174,6 +176,8 @@ describe("settings", () => {
       claudeOauthToken: false,
       githubToken: false,
       localApiToken: false,
+      googleOauthClientId: false,
+      googleOauthClientSecret: false,
     });
     expect(JSON.stringify(settings)).not.toContain("abc-telegram-token-value");
   });
@@ -261,9 +265,56 @@ describe("runCheck", () => {
       redact: (text) => text.replaceAll("secret-value", "[redacted]"),
       telegramToken: null,
       githubToken: null,
+      google: { config: defaultConfig.google, client: null, credentialsFolder: home, readServices: true },
       ...overrides,
     };
   }
+
+  test("the Google check asks for uv, which runs the Google tools in chats", async () => {
+    const google = fakeGoogle();
+    try {
+      const folder = join(home, "engines", "google");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(
+        join(folder, "person@example.com.json"),
+        JSON.stringify({
+          refresh_token: "r",
+          client_id: "id",
+          client_secret: "s",
+          scopes: googleScopes(defaultConfig.google),
+        }),
+      );
+      const googleInputs = {
+        config: { ...defaultConfig.google, email: "person@example.com" },
+        client: { clientId: "id", clientSecret: "s" },
+        credentialsFolder: folder,
+        baseUrl: google.url,
+        readServices: false,
+      };
+      expect(await runCheck("google", inputs({ google: googleInputs }))).toEqual({
+        ok: true,
+        detail: "The Google login of person@example.com works.",
+      });
+      const withoutUv = await runCheck("google", inputs({ google: googleInputs, runner: failingRunner }));
+      expect(withoutUv.ok).toBe(false);
+      expect(withoutUv.detail).toContain("no uv");
+    } finally {
+      google.stop();
+    }
+  });
+
+  test("the Google check names the missing step, redacted", async () => {
+    const google = {
+      config: { ...defaultConfig.google, email: "secret-value@example.com" },
+      client: { clientId: "id", clientSecret: "secret" },
+      credentialsFolder: home,
+      readServices: true,
+    };
+    expect(await runCheck("google", inputs({ google }))).toEqual({
+      ok: false,
+      detail: "No Google login for [redacted]@example.com on this machine. Log in to Google (step 4).",
+    });
+  });
 
   test("the vault check proves push access, and pushes nothing (lesson 98)", async () => {
     expect(
@@ -536,5 +587,82 @@ describe("the hub", () => {
     claimHub(vault, "another-machine", new Date());
     await eva.backgroundTick();
     expect(changes).toEqual([]);
+  });
+});
+
+describe("the Google setup", () => {
+  // The Google check runs `uvx --version`; CI has no uv.
+  const uvRunner: ProcessRunner = {
+    run: (command, options) =>
+      command[0] === "uvx"
+        ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
+        : systemProcessRunner.run(command, options),
+  };
+
+  test("a pasted login sets the account, and the Test reads each service", async () => {
+    const google = fakeGoogle();
+    google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+    const withGoogle = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      engines: [engine],
+      runner: uvRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      googleBaseUrl: google.url,
+    });
+    try {
+      const { url } = withGoogle.startGoogleLogin();
+      const state = new URL(url).searchParams.get("state") ?? "";
+      expect(await withGoogle.finishGoogleLogin(`http://127.0.0.1/eva-google-login?state=${state}&code=c`)).toEqual({
+        email: "person@example.com",
+        restartNeeded: true,
+      });
+      expect(loadSettings(homePaths(home)).config.google.email).toBe("person@example.com");
+      expect(await withGoogle.runCheck("google")).toEqual({
+        ok: true,
+        detail:
+          "Eva can read Calendar, Drive, Contacts and Tasks of person@example.com. Press Restart Eva so that chats use these Google settings.",
+      });
+    } finally {
+      withGoogle.stop();
+      google.stop();
+    }
+  });
+
+  test("a login with the settings of the start needs no restart; a change of access does", async () => {
+    const google = fakeGoogle();
+    google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+    const started = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, google: { ...defaultConfig.google, email: "person@example.com" } },
+      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      engines: [engine],
+      runner: uvRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      googleBaseUrl: google.url,
+    });
+    try {
+      started.startGoogleLogin();
+      expect(await started.finishGoogleLogin("the-code")).toEqual({
+        email: "person@example.com",
+        restartNeeded: false,
+      });
+      started.updateSettings({ google: { readOnly: false } });
+      google.grantedScope = googleScopes({ ...defaultConfig.google, readOnly: false }).join(" ");
+      started.startGoogleLogin();
+      expect(await started.finishGoogleLogin("the-code")).toEqual({ email: "person@example.com", restartNeeded: true });
+    } finally {
+      started.stop();
+      google.stop();
+    }
+  });
+
+  test("the login waits for an OAuth client", () => {
+    expect(() => eva.startGoogleLogin()).toThrow("step 3");
   });
 });

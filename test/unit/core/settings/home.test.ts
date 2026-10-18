@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   createHomeFolders,
   defaultConfig,
   engineFolders,
   engineFolderVariables,
+  engineGitConfig,
   homePaths,
   isExtraInstance,
   loadConfig,
@@ -32,12 +33,63 @@ describe("engine folders of an extra instance (lesson 111)", () => {
       claude: join(home, "eva-partner", "engines", "claude"),
       piAgent: join(home, "eva-partner", "engines", "pi-agent"),
       gh: join(home, "eva-partner", "engines", "gh"),
+      git: join(home, "eva-partner", "engines", "git"),
     });
     expect(engineFolderVariables(folders)).toEqual({
       CLAUDE_CONFIG_DIR: folders.claude,
       PI_CODING_AGENT_DIR: folders.piAgent,
       GH_CONFIG_DIR: folders.gh,
     });
+  });
+
+  test("the instance's git config asks gh for GitHub and keeps the person's other git settings", () => {
+    const userHome = join(home, "user");
+    const xdg = join(home, "xdg");
+    const bin = join(home, "bin");
+    mkdirSync(join(xdg, "git"), { recursive: true });
+    mkdirSync(userHome);
+    mkdirSync(bin);
+    writeFileSync(join(xdg, "git", "config"), "[user]\n\tname = Kept Name\n");
+    const firstHelper = '"!f() { echo username=first; echo password=first; }; f"';
+    writeFileSync(join(userHome, ".gitconfig"), `[credential]\n\thelper = ${firstHelper}\n`);
+    // A stand-in for gh that shows which login folder it was given.
+    writeFileSync(join(bin, "gh"), '#!/bin/sh\necho username=second\necho "password=$GH_CONFIG_DIR"\n', {
+      mode: 0o755,
+    });
+    const gitConfig = join(home, "eva-partner", "engines", "git", "gitconfig");
+    mkdirSync(join(gitConfig, ".."), { recursive: true });
+    writeFileSync(gitConfig, engineGitConfig({ XDG_CONFIG_HOME: xdg }, gitConfig));
+    const environment = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"))),
+      PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`,
+      HOME: userHome,
+      XDG_CONFIG_HOME: xdg,
+      GH_CONFIG_DIR: "partner-gh",
+      GIT_CONFIG_GLOBAL: gitConfig,
+      GIT_TERMINAL_PROMPT: "0",
+    };
+    const git = (stdin: string, ...arguments_: string[]): string =>
+      Bun.spawnSync(["git", ...arguments_], {
+        cwd: home,
+        env: environment,
+        stdin: Buffer.from(stdin),
+      }).stdout.toString();
+    const fill = (host: string): string => git(`protocol=https\nhost=${host}\n\n`, "credential", "fill");
+
+    expect(fill("github.com")).toContain("password=partner-gh");
+    expect(fill("gitlab.example.com")).toContain("password=first");
+    expect(git("", "config", "user.name").trim()).toBe("Kept Name");
+  });
+
+  test("the instance's git config includes the person's GIT_CONFIG_GLOBAL when it is set", () => {
+    const config = engineGitConfig({ GIT_CONFIG_GLOBAL: 'D:\\git\\my "global"' }, "D:\\eva\\gitconfig");
+    expect(config).toContain('path = "D:\\\\git\\\\my \\"global\\""');
+    expect(config).not.toContain("~/.gitconfig");
+  });
+
+  test("the instance's git config never includes itself, which would break every git command", () => {
+    const gitConfig = join(home, "engines", "git", "gitconfig");
+    expect(engineGitConfig({ GIT_CONFIG_GLOBAL: gitConfig }, gitConfig)).toContain('path = "~/.gitconfig"');
   });
 
   test("a home that is not the default one is an extra instance", () => {

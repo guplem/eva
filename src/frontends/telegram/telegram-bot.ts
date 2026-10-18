@@ -19,6 +19,7 @@ import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile }
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 import type { ScheduleCard, ScheduleEvent } from "../../core/schedules/scheduler.ts";
+import type { SessionRecord } from "../../core/sessions/session-store.ts";
 import type { ModelAlias } from "../../shared/engine-port.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
@@ -157,12 +158,17 @@ const buttonsPerMessage = 50;
 const pollFailingAlertMs = 15 * 60_000;
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
+/** At most this many chats in one /chats answer; the web app lists the rest. */
+const chatListLimit = 10;
+/** The turns that a topic shows when it opens for a chat that has a history. */
+const replayedTurns = 3;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this chat in every front end, with its topic" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
+  { command: "chats", description: "Continue a chat from the web app or the terminal here" },
   { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
   { command: "schedules", description: "List the schedules" },
   { command: "link", description: "The address that opens Eva on any device" },
@@ -542,6 +548,9 @@ export class TelegramBot {
         });
         return;
       }
+      case "chats":
+        await this.listChats(chatId, topicId);
+        return;
       case "projects": {
         const projects = this.options.eva.projects(parseProjectQuery(rest.join(" ")));
         await this.send(chatId, topicId, fitProjects(projects));
@@ -662,6 +671,9 @@ export class TelegramBot {
       const path = this.offers.pathFor(first);
       if (path === null) await this.send(chatId, topicId, "That file is no longer available.");
       else await this.sendVaultFile(chatId, topicId, path);
+    } else if (kind === "c" && first !== undefined) {
+      const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
+      await this.continueChat(chatId, topicId, first);
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
@@ -670,6 +682,102 @@ export class TelegramBot {
       await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");
       this.options.eva.restart();
     }
+  }
+
+  /** /chats: the newest chats of every front end. A schedule's chats live in its own topic. */
+  private async listChats(chatId: number, topicId: number | null): Promise<void> {
+    const chats = this.options.eva.sessions
+      .list()
+      .filter((session) => session.parentId === null && session.source !== "schedule")
+      .sort((first, second) => lastActivityOf(second).localeCompare(lastActivityOf(first)))
+      .slice(0, chatListLimit);
+    if (chats.length === 0) {
+      await this.send(chatId, topicId, "No chats yet. Write a message to start one.");
+      return;
+    }
+    await this.send(chatId, topicId, "Pick a chat to continue it here:", {
+      inline_keyboard: chats.map((chat) => [
+        { text: `${chat.mode === "project" ? "Project: " : ""}${chat.title}`, callback_data: `c:${chat.id}` },
+      ]),
+    });
+  }
+
+  /**
+   * Binds a chat of any front end to a topic of its own, with its last turns. Without topics,
+   * the main chat continues it instead, as /new does (lesson 61).
+   */
+  private async continueChat(chatId: number, topicId: number | null, sessionId: string): Promise<void> {
+    const session = this.options.eva.sessions.list().find((candidate) => candidate.id === sessionId);
+    if (session === undefined) {
+      await this.send(chatId, topicId, "That chat no longer exists.");
+      return;
+    }
+    const bound = this.targetOf(sessionId);
+    if (bound !== null) {
+      await this.send(
+        chatId,
+        topicId,
+        bound.topicId === null
+          ? "This chat already continues in the main chat."
+          : `This chat already has its topic: ${this.topicName(bound.chatId, bound.topicId, session.title)}.`,
+      );
+      return;
+    }
+    const opened = await this.openTopicFor(chatId, session);
+    if (opened !== null) {
+      await this.send(chatId, topicId, `This chat continues in ${this.topicName(chatId, opened, session.title)}.`);
+      return;
+    }
+    const main = this.state.topics[keyOf(chatId, null)];
+    if (main !== undefined && this.options.eva.sessions.isActive(main.sessionId)) {
+      // Never take the main chat from a turn that runs (lesson 49).
+      await this.send(chatId, null, "Eva is still working in this chat. Press the chat again when she finishes.");
+      return;
+    }
+    this.state.topics[keyOf(chatId, null)] = { sessionId, openedByEva: false, renamed: true };
+    this.saveState();
+    await this.send(
+      chatId,
+      null,
+      `The main chat now continues “${session.title}”. The chat before it stays in the web app and in /chats.`,
+    );
+    await this.replayTurns(chatId, null, session);
+  }
+
+  /** Opens a topic for a chat, binds it, and shows its last turns. Null when Telegram has no topics here. */
+  private async openTopicFor(chatId: number, session: SessionRecord): Promise<number | null> {
+    let topicId: number;
+    try {
+      const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
+        chat_id: chatId,
+        name: titleOf(session.title),
+      });
+      topicId = topic.message_thread_id;
+    } catch {
+      return null;
+    }
+    // Eva named the topic after the chat, so the first message keeps that name (lesson 125).
+    this.state.topics[keyOf(chatId, topicId)] = { sessionId: session.id, openedByEva: true, renamed: true };
+    this.saveState();
+    await this.replayTurns(chatId, topicId, session);
+    return topicId;
+  }
+
+  /** The last turns of a chat, so a topic and its web chat show the same history. */
+  private async replayTurns(chatId: number, topicId: number | null, session: SessionRecord): Promise<void> {
+    if (session.turns.length > replayedTurns)
+      await this.send(chatId, topicId, `Earlier turns: ${String(session.turns.length)}. The web chat has all of them.`);
+    for (const turn of session.turns.slice(-replayedTurns)) {
+      await this.send(chatId, topicId, `Message: ${turn.userText}`);
+      if (turn.answerText.length > 0) await this.sendAnswer(chatId, topicId, extractFileMarkers(turn.answerText).text);
+      if (turn.failure !== null) await this.send(chatId, topicId, `The turn failed: ${turn.failure}`);
+    }
+  }
+
+  /** A topic's name, as a link in a supergroup: only there does Telegram give topics an address. */
+  private topicName(chatId: number, topicId: number, title: string): string {
+    const link = topicLink(chatId, topicId);
+    return link === null ? `the topic “${title}”` : `the topic “${title}” (${link})`;
   }
 
   /** /schedules: every schedule with its next run, a remove button each, and the file's problems. */
@@ -1075,6 +1183,16 @@ function loadState(path: string): BotState {
 
 function keyOf(chatId: number, topicId: number | null): string {
   return `${String(chatId)}:${topicId === null ? "main" : String(topicId)}`;
+}
+
+/** A supergroup's id is -100 and then its own id; a topic link needs that own id. */
+function topicLink(chatId: number, topicId: number): string | null {
+  const id = String(chatId);
+  return id.startsWith("-100") ? `https://t.me/c/${id.slice(4)}/${String(topicId)}` : null;
+}
+
+function lastActivityOf(session: SessionRecord): string {
+  return session.lastTurnAt ?? session.createdAt;
 }
 
 /** The chat and the topic that a key of the topic map names. */

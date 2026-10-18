@@ -429,6 +429,116 @@ describe("topics", () => {
   });
 });
 
+describe("/chats: every chat of the instance (#9)", () => {
+  function chatButtons(): { text: string; callback_data: string }[] {
+    const call = telegram
+      .callsTo("sendMessage")
+      .findLast((sent) => String(sent.params["text"]).startsWith("Pick a chat"));
+    const keyboard = call?.params["reply_markup"] as { inline_keyboard: { text: string; callback_data: string }[][] };
+    return keyboard.inline_keyboard.flat();
+  }
+
+  async function webChat(text: string): Promise<string> {
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    await eva.sessions.send(session.id, text);
+    return session.id;
+  }
+
+  test("lists the chats newest first, without forks and schedule chats", async () => {
+    const older = await webChat("Plan the garden");
+    clock = new Date("2026-10-14T11:00:00Z");
+    const newer = await webChat("Write the letter");
+    eva.sessions.fork(newer, eva.sessions.get(newer).turns[0]!.lastMessageId!);
+    eva.createAssistantSession({ source: "schedule", model: "default", title: "Morning summary" });
+    const bot = createBot();
+    telegram.sendText(owner, "/chats");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat")));
+    expect(chatButtons()).toEqual([
+      { text: "Write the letter", callback_data: `c:${newer}` },
+      { text: "Plan the garden", callback_data: `c:${older}` },
+    ]);
+  });
+
+  test("a press opens a topic with the last turns, and the topic continues the web chat", async () => {
+    const sessionId = await webChat("one");
+    for (const text of ["two", "three", "four"]) await eva.sessions.send(sessionId, text);
+    const bot = createBot();
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("answer 4")));
+    expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("one");
+    const inTopic = telegram
+      .callsTo("sendMessage")
+      .filter((call) => call.params["message_thread_id"] === 500)
+      .map((call) => String(call.params["text"]));
+    expect(inTopic).toEqual([
+      "Earlier turns: 4. The web chat has all of them.",
+      "Message: two",
+      "answer 2",
+      "Message: three",
+      "answer 3",
+      "Message: four",
+      "answer 4",
+    ]);
+
+    telegram.sendText(owner, "five", 500);
+    await settle(bot, () => telegram.sentTexts().includes("answer 5"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(5);
+    expect(eva.sessions.list()).toHaveLength(1);
+    // Eva named the topic after the chat, so the first message keeps that name (lesson 125).
+    expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
+  test("a press on a chat that has its topic opens no second topic", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already has its topic")));
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
+  });
+
+  test("in a supergroup, the answer to a press links to the topic", async () => {
+    const group = -1009876;
+    const sessionId = await webChat("one");
+    const bot = createBot(group);
+    telegram.pressButton(group, `c:${sessionId}`, undefined, owner);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://t.me/c/9876/500")));
+  });
+
+  test("without topics, a press makes the main chat continue that chat", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `c:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    telegram.sendText(owner, "two");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(2);
+  });
+
+  test("without topics, a press waits while the main chat works (lesson 49)", async () => {
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const other = eva.createAssistantSession({ source: "web", model: "default" });
+    const bot = createBot();
+    telegram.sendText(owner, "long work");
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `c:${other.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    for (const session of eva.sessions.list()) eva.sessions.stop(session.id);
+  });
+
+  test("a press on a deleted chat says so", async () => {
+    const bot = createBot();
+    telegram.pressButton(owner, "c:gone");
+    await settle(bot, () => telegram.sentTexts().includes("That chat no longer exists."));
+  });
+});
+
 describe("approvals and commands", () => {
   test("an approval becomes buttons, and the press answers the turn", async () => {
     const answers: string[] = [];

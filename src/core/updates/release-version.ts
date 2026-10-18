@@ -70,18 +70,21 @@ export function nextReleaseVersion(inputs: NextReleaseInputs): string | null {
   return null;
 }
 
-const sections: readonly { change: ReleaseChange; title: string }[] = [
+/** The sections of the release notes, in the order that a reader needs them. */
+export const releaseNoteSections: readonly { change: ReleaseChange; title: string }[] = [
   { change: "breaking", title: "Breaking changes" },
   { change: "feature", title: "New features" },
   { change: "fix", title: "Fixes and other changes" },
 ];
 
+export const noChangeNotes = "No change to the executable.";
+
 /** The release notes: each commit that changes the executable, under the size of its change. */
 export function releaseNotes(commits: readonly ReleaseCommit[]): string {
   const parts: string[] = [];
-  for (const { change, title } of sections) {
+  for (const { change, title } of releaseNoteSections) {
     const subjects = commits.filter((commit) => commitChange(commit) === change).map((commit) => commit.subject);
     if (subjects.length > 0) parts.push(`## ${title}\n\n${subjects.map((subject) => `- ${subject}`).join("\n")}\n`);
   }
-  return parts.length === 0 ? "No change to the executable.\n" : parts.join("\n");
+  return parts.length === 0 ? `${noChangeNotes}\n` : parts.join("\n");
 }

@@ -518,7 +518,10 @@ describe("/chats: every chat of the instance (#9)", () => {
     const sessionId = await webChat("one");
     const bot = createBot(group);
     telegram.pressButton(group, `c:${sessionId}`, undefined, owner);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://t.me/c/9876/500")));
+    // The whole sentence, not a part of it: a test that looks for a URL inside a text reads as a weak URL check.
+    await settle(bot, () =>
+      telegram.sentTexts().includes("This chat continues in the topic “one” (https://t.me/c/9876/500)."),
+    );
   });
 
   test("without topics, a press makes the main chat continue that chat", async () => {

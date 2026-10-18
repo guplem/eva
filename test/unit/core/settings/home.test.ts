@@ -60,7 +60,10 @@ describe("engine folders of an extra instance (lesson 111)", () => {
     mkdirSync(join(gitConfig, ".."), { recursive: true });
     writeFileSync(gitConfig, engineGitConfig({ XDG_CONFIG_HOME: xdg }, gitConfig));
     const environment = {
-      ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"))),
+      // Windows names it `Path`. A second key would hide the fake gh from git.
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && name.toUpperCase() !== "PATH"),
+      ),
       PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`,
       HOME: userHome,
       XDG_CONFIG_HOME: xdg,

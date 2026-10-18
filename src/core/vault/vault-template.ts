@@ -33,7 +33,7 @@ const gitTimeoutMs = 20_000;
 
 /** The template's files, by path from the vault root, with the answers filled in. */
 export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string, string> {
-  // "None yet." keeps the section from looking broken, and tells the person to fill it.
+  // "None yet." shows that the section is empty on purpose, not broken.
   const topicList = answers.topics.length === 0 ? "None yet." : answers.topics.map((topic) => `- ${topic}`).join("\n");
   const fill = (text: string): string =>
     text

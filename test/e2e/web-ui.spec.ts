@@ -1324,3 +1324,47 @@ test("Settings: the device list marks this device, and Remove logs out another o
   await expect(list.getByRole("listitem")).toHaveCount(1);
   expect(removed).toEqual(["DELETE"]);
 });
+
+test("a page whose login ended shows the login view when its socket drops", async ({ page }) => {
+  let events: WebSocketRoute | null = null;
+  let ended = false;
+  await page.routeWebSocket("**/api/events*", (route) => {
+    // A removed device can never open the socket again.
+    if (ended) {
+      void route.close();
+      return;
+    }
+    route.connectToServer();
+    events = route;
+  });
+  await logIn(page);
+  await expect.poll(() => events !== null).toBe(true);
+  // Another device removed this one: the server closes the socket, and each call gets 401.
+  ended = true;
+  await page.route("**/api/sessions", (route) =>
+    route.fulfill({ status: 401, json: { error: "A valid token is required." } }),
+  );
+  await (events as WebSocketRoute | null)?.close();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: removing this device logs this browser out", async ({ page }) => {
+  await page.route("**/api/devices", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "cccccccccccccccc",
+          label: "owner@example.com, this browser",
+          createdAt: "2026-10-17T10:00:00.000Z",
+          current: true,
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/devices/cccccccccccccccc", (route) => route.fulfill({ status: 204 }));
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});

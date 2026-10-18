@@ -162,6 +162,9 @@ function EvaApp(): ReactElement {
     const onConnectionChange = (connected: boolean): void => {
       setIsConnected(connected);
       if (connected) void recover();
+      // The server closes the socket of a removed device. A WebSocket never sees the 401 that follows,
+      // so ask over HTTP: a 401 there shows the login page and ends the retries.
+      else void refreshSessions();
     };
     return subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
       if (event.kind === "device_login_request") {

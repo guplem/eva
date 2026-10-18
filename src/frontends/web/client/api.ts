@@ -203,6 +203,8 @@ export function subscribeToEvents(
   let socket: WebSocket | null = null;
   let closed = false;
   const connect = (): void => {
+    // A retry that the timer started can run after the page closed the stream, such as at a logout.
+    if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
     socket.addEventListener("open", () => {

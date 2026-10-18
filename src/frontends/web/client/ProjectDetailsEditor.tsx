@@ -138,7 +138,8 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
         {file.details === null ? (
           <div className="chip">Eva cannot read the front matter. Fix it in the file below.</div>
         ) : (
-          <fieldset>
+          // One part waits while the other has a change: a save loads the new file into both parts.
+          <fieldset disabled={busy || textChanged}>
             <legend>Details</legend>
             <div className="muted">
               Created {file.details.created ?? "(not set)"}. The folder name holds this date, so it stays.
@@ -181,16 +182,16 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
               onChange={(repos) => edit(() => setDetails({ ...details, repos }))}
             />
             <div className="muted">Removing a repository keeps its clones.</div>
-            {/* A save loads the new file into both parts, so the other part's edits would be lost. */}
-            {textChanged && <div className="muted">Save or load again the whole file first.</div>}
+
+            {textChanged && <div className="muted">The details wait until you save or load again the whole file.</div>}
             <div>
-              <button className="primary" disabled={busy || textChanged} onClick={() => void saveDetails()}>
+              <button className="primary" onClick={() => void saveDetails()}>
                 Save details
               </button>
             </div>
           </fieldset>
         )}
-        <fieldset>
+        <fieldset disabled={busy || formChanged}>
           <legend>Whole file</legend>
           <label>
             AGENTS.md
@@ -202,12 +203,9 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
               onChange={(event) => edit(() => setText(event.target.value))}
             />
           </label>
-          {formChanged && <div className="muted">Save or load again the details first.</div>}
+          {formChanged && <div className="muted">The file waits until you save or load again the details.</div>}
           <div>
-            <button
-              disabled={busy || formChanged}
-              onClick={() => void save((version) => api.saveProjectFile(projectId, version, text))}
-            >
+            <button onClick={() => void save((version) => api.saveProjectFile(projectId, version, text))}>
               Save the file
             </button>
           </div>

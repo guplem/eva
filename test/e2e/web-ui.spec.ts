@@ -844,6 +844,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   // The whole file waits while the form has a change, so a save cannot drop that change.
   await page.getByLabel("Title").fill(`Renamed ${run} again`);
   await expect(page.getByRole("button", { name: "Save the file" })).toBeDisabled();
+  await expect(page.getByLabel("AGENTS.md")).toBeDisabled();
   await page.getByLabel("Title").fill(`Renamed ${run}`);
   await expect(page.getByRole("button", { name: "Save the file" })).toBeEnabled();
 

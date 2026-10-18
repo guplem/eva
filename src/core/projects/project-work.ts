@@ -7,6 +7,7 @@ import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
+import type { Logger } from "../../shared/logger.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { evaRepository } from "../../shared/version.ts";
 import type { SessionManager } from "../sessions/session-manager.ts";
@@ -68,6 +69,7 @@ export interface ProjectWorkOptions {
   readonly inBackground: (what: string, task: () => Promise<unknown>) => void;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  readonly logger?: Logger;
 }
 
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
@@ -128,6 +130,13 @@ export class ProjectWork {
       projectId: project.id,
       clone: clone.name,
     });
+    // Before the work starts, so a front end can show the Project chat with its first message.
+    if (input.reportToSessionId !== null)
+      sessions.announceProjectWork(input.reportToSessionId, {
+        projectId: project.id,
+        projectSessionId: session.id,
+        request: input.request,
+      });
     this.options.inBackground("Project work", async () => {
       try {
         await sessions.send(session.id, input.request);
@@ -135,16 +144,25 @@ export class ProjectWork {
         this.reservedClones.delete(clone.path);
       }
       if (input.reportToSessionId === null) return;
-      const last = sessions.get(session.id).turns.at(-1);
+      const reportTo = input.reportToSessionId;
+      // The person may delete either chat while the work runs: the Project chat then keeps the result.
+      const exists = (id: string): boolean => sessions.list().some((candidate) => candidate.id === id);
+      const last = exists(session.id) ? sessions.get(session.id).turns.at(-1) : undefined;
       const result = last?.failure === null ? last.answerText : `It failed: ${last?.failure ?? "no answer"}`;
       const details = await describeClone(clone, this.options.runner, this.options.gitEnvironment);
+      if (!exists(reportTo)) {
+        this.options.logger?.log("info", "The project work ended, but its asking chat is gone.", {
+          projectChat: session.id,
+        });
+        return;
+      }
       const place = [
         `clone ${clone.name}`,
         ...(details.branch === null ? [] : [`branch ${details.branch}`]),
         ...(details.pullRequest === null ? [] : [`pull request #${String(details.pullRequest)}`]),
       ].join(", ");
       await sessions.send(
-        input.reportToSessionId,
+        reportTo,
         `[Project work finished: ${project.id}, ${place}, chat ${session.id}]\n\n${capReportText(result)}`,
       );
     });

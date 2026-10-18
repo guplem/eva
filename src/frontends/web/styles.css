@@ -320,6 +320,11 @@ textarea {
   min-width: 0;
 }
 
+/* The buttons beside the title keep their size, so a long title wraps instead. */
+.main-header > button {
+  flex-shrink: 0;
+}
+
 .badge {
   font-size: 12px;
   padding: 2px 8px;

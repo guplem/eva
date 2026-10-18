@@ -113,6 +113,8 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
   retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/retry`, { turnIndex }),
+  deleteChat: (sessionId: string): Promise<{ deleted: string[] }> =>
+    request("DELETE", `/api/sessions/${encodeURIComponent(sessionId)}`),
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),

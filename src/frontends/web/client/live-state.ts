@@ -15,6 +15,9 @@ const historyLostNote = "The earlier history of this chat is lost.";
 
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
+  // The core's own events are no step of a turn: the list shows their effect after a reload.
+  if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
+    return state;
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     if (!(event.sessionId in state.steps)) return state;
     const steps = { ...state.steps };

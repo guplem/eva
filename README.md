@@ -71,9 +71,13 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 
 Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation.
 
+Any conversation can continue in Telegram. Send `/chats` to pick one from the web page or the terminal: it opens in its own topic, with its last messages. When Eva gives work to a project from Telegram, its conversation opens in a topic too.
+
 | Command      | What it does                                  |
 | ------------ | --------------------------------------------- |
 | `/new`       | Start a new conversation                      |
+| `/chats`     | Pick any conversation to continue here        |
+| `/delete`    | Delete this conversation everywhere           |
 | `/rename`    | Give this conversation a new name             |
 | `/stop`      | Stop what Eva is doing in this conversation   |
 | `/status`    | Show whether everything is all right          |

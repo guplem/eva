@@ -13,7 +13,13 @@ import type {
   TurnHistory,
 } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
-import { isTurnEnd, type EngineEventPayload, type SessionEvent } from "../../shared/events.ts";
+import {
+  isTurnEnd,
+  type CoreEventPayload,
+  type EngineEventPayload,
+  type MessageOrigin,
+  type SessionEvent,
+} from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import type { Redactor } from "../../shared/redaction.ts";
 import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
@@ -92,6 +98,8 @@ type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
   readonly texts: string[];
+  /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
+  readonly messages: { readonly text: string; readonly origin: MessageOrigin }[];
   readonly done: Promise<void>;
   readonly resolve: () => void;
 }
@@ -218,12 +226,13 @@ export class SessionManager {
   }
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
-  send(sessionId: string, text: string): Promise<void> {
+  send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
     this.get(sessionId);
     const runtime = this.runtimeOf(sessionId);
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
     batch.texts.push(text);
+    batch.messages.push({ text, origin });
     if (!runtime.busy && runtime.timer === null) {
       runtime.timer = setTimeout(() => {
         runtime.timer = null;
@@ -231,6 +240,35 @@ export class SessionManager {
       }, this.options.gatherMs);
     }
     return batch.done;
+  }
+
+  /**
+   * Deletes a chat and every fork of it, and returns their ids. A fork left behind would point
+   * at a parent that is gone. The engine keeps its own transcript.
+   */
+  delete(sessionId: string): string[] {
+    this.get(sessionId);
+    const ids = [sessionId];
+    // The loop also visits the ids that it adds, so it walks the whole tree.
+    for (const parentId of ids) {
+      for (const session of this.list()) if (session.parentId === parentId) ids.push(session.id);
+    }
+    // A queued message would run on a deleted record, so a gathered one refuses the delete too.
+    if (ids.some((id) => this.isActive(id)))
+      throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
+    for (const id of ids) {
+      this.options.store.delete(id);
+      this.runtimes.delete(id);
+      this.lastFailure.delete(id);
+    }
+    // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
+    for (const id of ids) this.emit(id, { kind: "session_deleted" });
+    return ids;
+  }
+
+  /** Tells the front ends that a chat gave work to a project, and which Project chat runs it. */
+  announceProjectWork(sessionId: string, work: { projectId: string; projectSessionId: string; request: string }): void {
+    this.emit(sessionId, { kind: "project_work_started", ...work });
   }
 
   /** A new branch of a conversation, up to and including one message. Its first message starts it. */
@@ -330,6 +368,9 @@ export class SessionManager {
         const batch = runtime.pending;
         runtime.pending = null;
         handled.push(batch);
+        // When the turn starts, not at the send: a message sent during a turn joins the next one
+        // (lesson 114), so a front end shows each message just before its own answer.
+        for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
         if (followUp !== null && followUps < maxFollowUps) {
           followUps += 1;
@@ -548,7 +589,7 @@ ${prompt}`,
     });
   }
 
-  private emit(sessionId: string, payload: EngineEventPayload): void {
+  private emit(sessionId: string, payload: EngineEventPayload | CoreEventPayload): void {
     const event = redactPayload(payload, this.options.redactor);
     if (event.kind === "turn_failed") this.lastFailure.set(sessionId, event.reason);
     const stamped: SessionEvent = {
@@ -575,7 +616,7 @@ function createBatch(): PendingBatch {
   const done = new Promise<void>((settle) => {
     resolve = settle;
   });
-  return { texts: [], done, resolve };
+  return { texts: [], messages: [], done, resolve };
 }
 
 function titleOf(prompt: string): string {
@@ -589,11 +630,19 @@ function cutTitle(title: string): string {
   return characters.length > titleLength ? `${characters.slice(0, titleLength - 1).join("")}…` : title;
 }
 
-function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload {
+function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload;
+function redactPayload(
+  payload: EngineEventPayload | CoreEventPayload,
+  redactor: Redactor,
+): EngineEventPayload | CoreEventPayload;
+function redactPayload(
+  payload: EngineEventPayload | CoreEventPayload,
+  redactor: Redactor,
+): EngineEventPayload | CoreEventPayload {
   switch (payload.kind) {
     case "text":
-      return { ...payload, text: redactor.redact(payload.text) };
     case "notice":
+    case "message_received":
       return { ...payload, text: redactor.redact(payload.text) };
     case "turn_failed":
       return { ...payload, reason: redactor.redact(payload.reason) };
@@ -608,6 +657,9 @@ function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineE
     case "history_lost":
     case "approval_resolved":
     case "turn_finished":
+    case "session_deleted":
       return payload;
+    case "project_work_started":
+      return { ...payload, request: redactor.redact(payload.request) };
   }
 }

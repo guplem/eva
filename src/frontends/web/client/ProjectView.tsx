@@ -6,7 +6,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
@@ -18,6 +18,9 @@ interface ProjectViewProps {
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  /** The chat that the address names; its project and clone open with it. */
+  readonly linkedChat: SessionRecord | null;
+  readonly onLinkedChatOpened: () => void;
 }
 
 /**
@@ -38,7 +41,15 @@ interface Panel {
   readonly project: Project;
 }
 
-export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate }: ProjectViewProps): ReactElement {
+export function ProjectView({
+  sessions,
+  live,
+  sidebarOpen,
+  onChanged,
+  onNavigate,
+  linkedChat,
+  onLinkedChatOpened,
+}: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
   const [tag, setTag] = useState("");
@@ -66,6 +77,38 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
   useEffect(() => {
     api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
   }, [listVersion, showError]);
+
+  // A linked Project chat opens in its clone, whatever the search and the filters show.
+  const linkedId = linkedChat?.mode === "project" ? linkedChat.id : null;
+  const linkedProjectId = linkedChat?.projectId ?? null;
+  const linkedClone = linkedChat?.clone ?? null;
+  useEffect(() => {
+    if (linkedId === null) return;
+    if (linkedProjectId === null || linkedClone === null) {
+      showError(new Error("The linked chat has no project or clone."));
+      onLinkedChatOpened();
+      return;
+    }
+    void (async (): Promise<void> => {
+      try {
+        const project = (await api.projects("", "")).find((candidate) => candidate.id === linkedProjectId);
+        const details = project === undefined ? [] : await api.clones(project.id);
+        const clone = details.find((candidate) => candidate.name === linkedClone);
+        if (project === undefined || clone === undefined) {
+          showError(new Error("The linked chat's project or clone is not on this computer any more."));
+        } else {
+          setOpenProject(project.id);
+          setClones(details);
+          setSelection({ project, clone });
+          setSelectedChatId(linkedId);
+          setPanel(null);
+        }
+      } catch (caught) {
+        showError(caught);
+      }
+      onLinkedChatOpened();
+    })();
+  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened]);
 
   const openClones = async (project: Project): Promise<void> => {
     setOpenProject(project.id === openProject ? null : project.id);
@@ -254,6 +297,7 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
               {selection.clone.branch !== null && <span className="badge">{selection.clone.branch}</span>}
               {selection.clone.pullRequest !== null && <span className="badge">PR #{selection.clone.pullRequest}</span>}
               {chat !== undefined && <ChatInfoButton {...chatDetails} />}
+              {chat !== undefined && <DeleteChatButton chat={chat} onChanged={onChanged} />}
             </div>
             {chat === undefined ? (
               <div className="empty">

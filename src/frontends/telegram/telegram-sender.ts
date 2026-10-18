@@ -67,6 +67,11 @@ export class TelegramSender {
     }
   }
 
+  /** Plain text of any length, in parts: `send` would cut it at Telegram's limit with no sign. */
+  async sendPlain(chatId: number, topicId: number | null, text: string): Promise<void> {
+    for (const part of splitForTelegram(text, messageLimit)) await this.send(chatId, topicId, part);
+  }
+
   /** A call that only logs its failure. */
   async quietCall(method: string, params: Record<string, unknown>): Promise<void> {
     try {

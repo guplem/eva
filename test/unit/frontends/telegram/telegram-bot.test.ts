@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
+import type { RemoteAccess, RemoteAccessControl } from "../../../../src/core/remote-access/remote-access.ts";
 import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
 import type { LogLevel } from "../../../../src/shared/logger.ts";
@@ -543,8 +544,400 @@ describe("topics", () => {
     );
     telegram.pressButton(owner, "d:500", 500);
     await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    // The chat is gone from every front end, not only from Telegram (#9).
+    expect(eva.sessions.list()).toEqual([]);
+    // The main chat has no chat of its own yet, so its delete has nothing to do.
+    telegram.pressButton(owner, "d:main");
+    await settle(bot, () => telegram.sentTexts().includes("There is no chat here to delete."));
+  });
+
+  test("/delete of a chat that works deletes nothing", async () => {
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "long work", 500);
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.pressButton(owner, "d:500", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+    expect(eva.sessions.list()).toHaveLength(1);
+    eva.sessions.stop(eva.sessions.list()[0]!.id);
+  });
+
+  test("a chat deleted in another front end loses its topic, and the main chat starts a new chat", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "hello from the main chat");
+    await settle(bot, () => engine.requests.length === 1);
+    await eva.idle();
+    const topicChat = eva.sessions.list().find((session) => session.telegramTopicId === 500)!;
+    const mainChat = eva.sessions.list().find((session) => session.telegramTopicId === null)!;
+
+    eva.sessions.delete(topicChat.id);
+    await settle(bot, () => telegram.callsTo("deleteForumTopic").length === 1);
+    expect(telegram.callsTo("deleteForumTopic")[0]?.params["message_thread_id"]).toBe(500);
+
+    eva.sessions.delete(mainChat.id);
+    telegram.sendText(owner, "a new start");
+    await settle(bot, () => engine.requests.length === 2);
+    expect(eva.sessions.list().map((session) => session.id)).not.toContain(mainChat.id);
+    expect(eva.sessions.list()).toHaveLength(1);
+    expect(telegram.callsTo("deleteForumTopic")).toHaveLength(1);
+  });
+});
+
+describe("/chats: every chat of the instance (#9)", () => {
+  function chatButtons(): { text: string; callback_data: string }[] {
+    const call = telegram
+      .callsTo("sendMessage")
+      .findLast((sent) => String(sent.params["text"]).startsWith("Pick a chat"));
+    const keyboard = call?.params["reply_markup"] as { inline_keyboard: { text: string; callback_data: string }[][] };
+    return keyboard.inline_keyboard.flat();
+  }
+
+  async function webChat(text: string): Promise<string> {
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    await eva.sessions.send(session.id, text);
+    return session.id;
+  }
+
+  test("lists the chats newest first, without forks and schedule chats", async () => {
+    const older = await webChat("Plan the garden");
+    clock = new Date("2026-10-14T11:00:00Z");
+    const newer = await webChat("Write the letter");
+    eva.sessions.fork(newer, eva.sessions.get(newer).turns[0]!.lastMessageId!);
+    eva.createAssistantSession({ source: "schedule", model: "default", title: "Morning summary" });
+    const bot = createBot();
+    telegram.sendText(owner, "/chats");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat")));
+    expect(chatButtons()).toEqual([
+      { text: "Write the letter", callback_data: `o:${newer}` },
+      { text: "Plan the garden", callback_data: `o:${older}` },
+    ]);
+  });
+
+  test("a press opens a topic with the last turns, and the topic continues the web chat", async () => {
+    const sessionId = await webChat("one");
+    for (const text of ["two", "three", "four"]) await eva.sessions.send(sessionId, text);
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("answer 4")));
+    expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("one");
+    const inTopic = telegram
+      .callsTo("sendMessage")
+      .filter((call) => call.params["message_thread_id"] === 500)
+      .map((call) => String(call.params["text"]));
+    expect(inTopic).toEqual([
+      "Earlier turns: 4. The web chat has all of them.",
+      "Message: two",
+      "answer 2",
+      "Message: three",
+      "answer 3",
+      "Message: four",
+      "answer 4",
+    ]);
+
+    telegram.sendText(owner, "five", 500);
+    await settle(bot, () => telegram.sentTexts().includes("answer 5"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(5);
+    expect(eva.sessions.list()).toHaveLength(1);
+    // Eva named the topic after the chat, so the first message keeps that name (lesson 125).
+    expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
+  test("a message from another front end shows in the topic, and a Telegram message shows once", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    const before = telegram.sentTexts().length;
+
+    telegram.sendText(owner, "from the phone", 500);
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    void eva.sessions.send(sessionId, "from the web", "api");
+    await settle(bot, () => telegram.sentTexts().includes("answer 3"));
+    expect(telegram.sentTexts().slice(before)).toEqual(["answer 2", "Message: from the web", "answer 3"]);
+  });
+
+  test("a press on a chat that has its topic opens no second topic", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.callsTo("createForumTopic").length === 1);
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already has its topic")));
+    expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
+  });
+
+  test("in a supergroup, the answer to a press links to the topic", async () => {
+    const group = -1009876;
+    const sessionId = await webChat("one");
+    const bot = createBot(group);
+    telegram.pressButton(group, `o:${sessionId}`, undefined, owner);
+    // The whole sentence, not a part of it: a test that looks for a URL inside a text reads as a weak URL check.
+    await settle(bot, () =>
+      telegram.sentTexts().includes("This chat continues in the topic “one” (https://t.me/c/9876/500)."),
+    );
+  });
+
+  test("without topics, a press makes the main chat continue that chat", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    telegram.sendText(owner, "two");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(2);
+  });
+
+  test("without topics, a press waits while the main chat works (lesson 49)", async () => {
+    createEva(async function* (request) {
+      await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve()));
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const other = eva.createAssistantSession({ source: "web", model: "default" });
+    const bot = createBot();
+    telegram.sendText(owner, "long work");
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${other.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("still working")));
+    for (const session of eva.sessions.list()) eva.sessions.stop(session.id);
+  });
+
+  test("a press on a deleted chat says so", async () => {
+    const bot = createBot();
+    telegram.pressButton(owner, "o:gone");
+    await settle(bot, () => telegram.sentTexts().includes("That chat no longer exists."));
+  });
+
+  test("a topic that Telegram fails to open leaves the main chat as it was", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.sendText(owner, "the main chat's own message");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    await eva.idle();
+    telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 1", 1, 4);
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    telegram.sendText(owner, "still the main chat");
+    await settle(bot, () => telegram.sentTexts().includes("answer 3"));
+    expect(eva.sessions.get(sessionId).turns).toHaveLength(1);
+  });
+
+  test("a long message from another front end arrives whole, in parts", async () => {
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    const long = `${"word ".repeat(1_500)}END`;
+    void eva.sessions.send(sessionId, long, "api");
+    await settle(bot, () => telegram.sentTexts().includes("answer 2"));
+    const parts = telegram.sentTexts().filter((text) => text.includes("word"));
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.at(-1)).toEndWith("END");
+  });
+
+  test("a message from another front end during a turn shows after that turn's answer (lesson 114)", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      if (request.prompt.endsWith("slow")) await held;
+      yield* FakeEngine.answer(request, `answer to ${request.prompt.split("\n").at(-1) ?? ""}`);
+    });
+    const sessionId = await webChat("one");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("answer to one"));
+    const before = telegram.sentTexts().length;
+    telegram.sendText(owner, "slow", 500);
+    await settle(bot, () => engine.requests.length === 2);
+    void eva.sessions.send(sessionId, "from the web", "api");
+    await Bun.sleep(50);
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("answer to from the web"));
+    expect(telegram.sentTexts().slice(before)).toEqual([
+      "answer to slow",
+      "Message: from the web",
+      "answer to from the web",
+    ]);
+  });
+
+  test("a press on a chat that works says so, and its answer reaches the new topic", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "done at last");
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.pressButton(owner, `o:${session.id}`);
+    await settle(bot, () =>
+      telegram.sentTexts().some((text) => text.startsWith("Eva is working on a message from the web app")),
+    );
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("done at last"));
+    const answer = telegram.callsTo("sendMessage").find((call) => call.params["text"] === "done at last");
+    expect(answer?.params["message_thread_id"]).toBe(500);
+  });
+});
+
+describe("/chats while a turn runs (#9)", () => {
+  test("without topics, the answer of a running chat reaches the main chat", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    createEva(async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "done at last");
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await settle(bot, () => engine.requests.length === 1);
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    release();
+    await settle(bot, () => telegram.sentTexts().includes("done at last"));
+    expect(telegram.sentTexts()).toContain(
+      "Eva is working on a message from the web app or the terminal. Her answer comes here.",
+    );
+  });
+
+  test("a chat that opens after the first answer block gets the whole answer once, at the turn end", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let firstBlock: () => void = () => undefined;
+    const firstBlockSent = new Promise<void>((resolve) => (firstBlock = resolve));
+    createEva(async function* (request) {
+      const [, end] = FakeEngine.answer(request, "done");
+      yield { kind: "text" as const, text: "Part one.", messageId: "m1" };
+      firstBlock();
+      await held;
+      yield readNote;
+      yield { kind: "text" as const, text: "Part two.", messageId: "m2" };
+      if (end !== undefined) yield end;
+    });
+    const session = eva.createAssistantSession({ source: "web", model: "default" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await firstBlockSent;
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    release();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Part two.")));
+    await eva.idle();
+    const answers = telegram.sentTexts().filter((text) => text.includes("Part"));
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toContain("Part one.");
+  });
+});
+
+describe("/delete in the main chat (#9)", () => {
+  test("deletes the main chat's chat everywhere, after a confirm", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("answer 1"));
+    await eva.idle();
     telegram.sendText(owner, "/delete");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("only inside a topic")));
+    await settle(bot, () =>
+      telegram
+        .callsTo("sendMessage")
+        .some((call) => JSON.stringify(call.params["reply_markup"] ?? "").includes("d:main")),
+    );
+    telegram.pressButton(owner, "d:main");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Deleted.")));
+    expect(eva.sessions.list()).toEqual([]);
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+  });
+});
+
+/** A Tailscale address that stays as it is, for a test that only reads it. */
+function fixedRemoteAccess(access: RemoteAccess): RemoteAccessControl {
+  return {
+    current: () => access,
+    refresh: () => Promise.resolve(access),
+    install: () => Promise.resolve(access),
+    signIn: () => Promise.resolve(access),
+  };
+}
+
+describe("project work from a Telegram chat (#9)", () => {
+  const projectId = "2025-03-02-1015-example-app";
+
+  function writeProject(): void {
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+  }
+
+  test("opens a topic for the Project chat, and links to it and to the web chat", async () => {
+    writeProject();
+    const group = -1001234;
+    createEva(
+      (request) => FakeEngine.answer(request, request.mode === "project" ? "Fixed it." : "Noted."),
+      systemProcessRunner,
+      { remoteAccess: fixedRemoteAccess({ url: "https://eva.example.ts.net", problem: null }) },
+    );
+    eva.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") eva.sessions.answerApproval(event.requestId, "deny");
+    });
+    const bot = createBot(group);
+    telegram.sendText(group, "hello", undefined, owner);
+    await settle(bot, () => telegram.sentTexts().includes("Noted."));
+    const asking = eva.sessions.list()[0]!;
+
+    const work = await eva.startProjectWork({ projectId, request: "Fix the login bug.", reportToSessionId: asking.id });
+    await settle(bot, () => telegram.sentTexts().includes("Fixed it."));
+    expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("Example app: Fix the login bug.");
+    const started = telegram.sentTexts().find((text) => text.startsWith("Project work started"));
+    expect(started).toBe(
+      [
+        "Project work started in Example app. Follow it in the topic “Example app: Fix the login bug.” (https://t.me/c/1234/500).",
+        `Web: https://eva.example.ts.net/#/chat/${work.id}`,
+      ].join("\n"),
+    );
+    const inTopic = telegram
+      .callsTo("sendMessage")
+      .filter((call) => call.params["message_thread_id"] === 500)
+      .map((call) => String(call.params["text"]));
+    // The Project chat asks for trust in its own topic, where the person follows the work.
+    expect(inTopic).toHaveLength(3);
+    expect(inTopic[0]).toBe("Message: Fix the login bug.");
+    expect(inTopic[1]).toStartWith("Eva wants to run Trust this repository");
+    expect(inTopic[2]).toBe("Fixed it.");
+    await settle(bot, () => telegram.sentTexts().filter((text) => text === "Noted.").length === 2);
+    await eva.idle();
+  });
+
+  test("without topics or Tailscale, the asking chat learns where to find the work", async () => {
+    writeProject();
+    createEva((request) => FakeEngine.answer(request, "ok"));
+    eva.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") eva.sessions.answerApproval(event.requestId, "deny");
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("ok"));
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    await eva.startProjectWork({ projectId, request: "Fix it.", reportToSessionId: eva.sessions.list()[0]!.id });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Project work started")));
+    expect(telegram.sentTexts()).toContain(
+      "Project work started in Example app. Follow it in the web app, in Project mode.",
+    );
+    await eva.idle();
   });
 });
 
@@ -1455,6 +1848,8 @@ describe("schedules (lessons 66, 70, 126)", () => {
     const answer = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Your day"));
     expect(answer?.params["message_thread_id"]).toBe(500);
     expect(telegram.sentTexts()).toContain("Drink water.");
+    // The setup card showed the prompt already, so a firing does not repeat it.
+    expect(telegram.sentTexts()).not.toContain("Message: Plan my day.");
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
 
@@ -1462,6 +1857,37 @@ describe("schedules (lessons 66, 70, 126)", () => {
     eva.sessions.rename(eva.sessions.list()[0]!.id, "Tuesday plan");
     await bot.pollOnce();
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
+  test("a deleted firing chat leaves the schedule's topic, with the earlier firings in it", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest."));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    await eva.idle();
+    eva.sessions.delete(eva.sessions.list()[0]!.id);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("This chat was deleted")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
+  });
+
+  test("/delete in a schedule's topic deletes the firing's chat and keeps the topic", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest."));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    await eva.idle();
+    telegram.sendText(owner, "/delete", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("keeps the earlier firings")));
+    telegram.pressButton(owner, "d:500", 500);
+    await settle(bot, () => eva.sessions.list().length === 0);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Deleted.")));
+    expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 
   test("a schedule file sends its file; a changed schedule names the change", async () => {

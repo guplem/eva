@@ -12,7 +12,7 @@ import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 
 import type { ModelAlias } from "../../shared/engine-port.ts";
-import { isTurnEnd, type SessionEvent } from "../../shared/events.ts";
+import type { SessionEvent } from "../../shared/events.ts";
 import { type Clock, systemClock } from "../../shared/clock.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { TelegramApi } from "./telegram-api.ts";
@@ -30,7 +30,8 @@ import {
 } from "./telegram-messages.ts";
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
 import { isTopicNotModified, messageLimit, TelegramSender, telegramMessageLimit } from "./telegram-sender.ts";
-import { loadBotState, saveBotState, type BotState } from "./telegram-state.ts";
+import { isScheduleTopic, loadBotState, saveBotState, targetOf, type BotState } from "./telegram-state.ts";
+import { TelegramChats } from "./telegram-chats.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
 import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
@@ -76,8 +77,9 @@ const defaultLogCount = 20;
 
 const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
-  { command: "delete", description: "Delete this topic and forget its chat" },
+  { command: "delete", description: "Delete this chat everywhere, with its topic" },
   { command: "rename", description: "Rename this chat and its topic: /rename <title>" },
+  { command: "chats", description: "Continue a chat from the web app or the terminal here" },
   { command: "stop", description: "Stop Eva's work in this chat" },
   { command: "status", description: "Show Eva's state" },
   { command: "projects", description: "Search the projects: /projects [words] [status:active] [#tag]" },
@@ -102,6 +104,10 @@ export class TelegramBot {
   private readonly answers: Map<string, AnswerState>;
   /** The newest answer block of each chat, until the next event of its turn. */
   private readonly heldBlocks: Map<string, Extract<SessionEvent, { kind: "text" }>>;
+  /** The chats whose topic opened during a turn, after its first blocks: they get the whole answer at the turn end. */
+  private readonly lateTopics: Set<string>;
+  /** The blocks of such a turn after its topic opened, for a turn end with no recorded answer. */
+  private readonly pendingText: Map<string, string[]>;
   private readonly typingTimers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly unsubscribe: () => void;
   private readonly unsubscribeSchedules: () => void;
@@ -109,6 +115,7 @@ export class TelegramBot {
   private readonly files: TelegramFiles;
   private readonly schedules: TelegramSchedules;
   private readonly conflicts: TelegramConflicts;
+  private readonly chats: TelegramChats;
   private readonly remoteAccess: TelegramRemoteAccess;
   private readonly updates: TelegramUpdates;
   private running = false;
@@ -145,6 +152,8 @@ export class TelegramBot {
     this.outbox = new Map();
     this.answers = new Map();
     this.heldBlocks = new Map();
+    this.lateTopics = new Set();
+    this.pendingText = new Map();
     this.state = loadBotState(options.statePath);
     this.files = new TelegramFiles({
       api: options.api,
@@ -178,6 +187,27 @@ export class TelegramBot {
       startTyping: (chatId, topicId, sessionId) => {
         this.startTyping(chatId, topicId, sessionId);
       },
+    });
+    this.chats = new TelegramChats({
+      api: options.api,
+      sender: this.sender,
+      eva: options.eva,
+      state: this.state,
+      saveState: () => {
+        this.saveState();
+      },
+      describeError: (error) => this.describeError(error),
+      startTyping: (chatId, topicId, sessionId) => {
+        this.startTyping(chatId, topicId, sessionId);
+      },
+      forgetLive: (sessionId) => {
+        this.stopTyping(sessionId);
+        this.pendingText.delete(sessionId);
+        this.lateTopics.delete(sessionId);
+        this.heldBlocks.delete(sessionId);
+        this.answers.delete(sessionId);
+      },
+      dispatch: (event, waitedAnswer) => this.dispatch(event, waitedAnswer),
     });
     this.unsubscribe = options.eva.sessions.subscribe((event) => {
       void this.onEvent(event);
@@ -390,17 +420,28 @@ export class TelegramBot {
         return;
       case "delete":
         if (topicId === null) {
-          await this.send(chatId, null, "/delete works only inside a topic.");
+          // A chat without topics has only the main chat, so it must be able to delete that one.
+          await this.send(
+            chatId,
+            null,
+            "Delete this chat everywhere? Its messages here stay. The engine keeps its own copy of the chat.",
+            { inline_keyboard: [[{ text: "Delete", callback_data: "d:main" }]] },
+          );
           return;
         }
         await this.send(
           chatId,
           topicId,
-          "Delete this topic and every message in it? The engine keeps its own transcript of the chat.",
+          isScheduleTopic(this.state, topicId)
+            ? "Delete the chat of the last firing everywhere? This topic keeps the earlier firings. The engine keeps its own copy of the chat."
+            : "Delete this chat everywhere, and this topic with every message in it? The engine keeps its own copy of the chat.",
           {
             inline_keyboard: [[{ text: "Delete", callback_data: `d:${String(topicId)}` }]],
           },
         );
+        return;
+      case "chats":
+        await this.chats.list(chatId, topicId);
         return;
       case "stop": {
         const entry = this.state.topics[keyOf(chatId, topicId)];
@@ -559,7 +600,7 @@ export class TelegramBot {
       });
     }
     this.startTyping(chatId, topicId, entry.sessionId);
-    void this.options.eva.sessions.send(entry.sessionId, text);
+    void this.options.eva.sessions.send(entry.sessionId, text, "telegram");
   }
 
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
@@ -587,7 +628,10 @@ export class TelegramBot {
         // The chat already started; its model stays.
       }
     } else if (kind === "d" && first !== undefined) {
-      await this.deleteTopic(chatId, Number(first));
+      if (first === "main") await this.chats.deleteMainChat(chatId);
+      else await this.chats.deleteTopic(chatId, Number(first));
+    } else if (kind === "o" && first !== undefined) {
+      await this.chats.continueChat(chatId, topicOf(query.message), first);
     } else if (kind === "f" && first !== undefined) {
       await this.files.sendOffered(chatId, topicOf(query.message), first);
     } else if (kind === "s" && first !== undefined) {
@@ -615,31 +659,32 @@ export class TelegramBot {
     }
   }
 
-  private async deleteTopic(chatId: number, topicId: number): Promise<void> {
-    const key = keyOf(chatId, topicId);
-    const entry = this.state.topics[key];
-    if (entry !== undefined && this.options.eva.sessions.isBusy(entry.sessionId)) {
-      await this.send(chatId, topicId, "Eva is still working in this topic. Try again when she finishes.");
-      return;
-    }
-    try {
-      await this.options.api.call("deleteForumTopic", { chat_id: chatId, message_thread_id: topicId });
-    } catch (error) {
-      await this.send(chatId, topicId, `Telegram did not delete the topic: ${this.describeError(error)}`);
-      return;
-    }
-    Reflect.deleteProperty(this.state.topics, key);
-    this.saveState();
-  }
-
   private async onEvent(event: SessionEvent): Promise<void> {
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));
       return;
     }
-    const target = this.targetOf(event.sessionId);
+    if (event.kind === "session_deleted") {
+      await this.chats.forgetDeletedChat(event.sessionId);
+      return;
+    }
+    if (event.kind === "project_work_started") {
+      await this.chats.showProjectWork(event);
+      return;
+    }
+    // A topic opens for this chat: its events wait, so the topic shows them in order.
+    if (this.chats.wait(event)) return;
+    await this.dispatch(event, null);
+  }
+
+  /** Shows one event of a chat where the chat lives. */
+  private async dispatch(event: SessionEvent, waitedAnswer: string | null): Promise<void> {
+    const target = targetOf(this.state, event.sessionId);
     if (target === null) {
+      // A topic that opens later in this turn missed these blocks, so it shows the whole answer at the turn end.
+      if (event.kind === "text") this.lateTopics.add(event.sessionId);
+      if (event.kind === "turn_finished" || event.kind === "turn_failed") this.lateTopics.delete(event.sessionId);
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
       if (event.kind === "approval_needed" && this.allowedChatId !== null) {
         const chatId = this.allowedChatId;
@@ -655,16 +700,28 @@ export class TelegramBot {
     const held = this.heldBlocks.get(event.sessionId);
     if (held !== undefined) {
       this.heldBlocks.delete(event.sessionId);
-      const quiet = !isTurnEnd(event);
+      const quiet = event.kind !== "turn_finished" && event.kind !== "turn_failed";
       void this.inOrder(event.sessionId, () => this.sendBlock(target.chatId, target.topicId, held, quiet));
     }
     switch (event.kind) {
       case "text":
-        this.heldBlocks.set(event.sessionId, event);
+        if (this.lateTopics.has(event.sessionId)) {
+          this.pendingText.set(event.sessionId, [...(this.pendingText.get(event.sessionId) ?? []), event.text]);
+        } else {
+          this.heldBlocks.set(event.sessionId, event);
+        }
         return;
       case "approval_needed":
         // In the chat's order, so the card never comes before the text that explains it.
         await this.inOrder(event.sessionId, () => this.sendApproval(target.chatId, target.topicId, event, null));
+        return;
+      case "message_received":
+        // Its turn starts now, so Telegram shows that Eva works.
+        this.startTyping(target.chatId, target.topicId, event.sessionId);
+        // The web chat shows every message, so the topic shows the ones that Telegram did not send.
+        // A schedule's setup card showed its prompt already.
+        if (event.origin === "telegram" || event.origin === "schedule") return;
+        await this.sender.sendPlain(target.chatId, target.topicId, `Message: ${event.text}`);
         return;
       case "history_lost":
         await this.inOrder(event.sessionId, async () => {
@@ -678,6 +735,22 @@ export class TelegramBot {
       case "turn_failed": {
         this.stopTyping(event.sessionId);
         const stopped = this.stoppedSessions.delete(event.sessionId);
+        if (this.lateTopics.delete(event.sessionId)) {
+          // The record holds a finished turn before its end event, so the whole answer comes from there.
+          const recorded =
+            event.kind === "turn_finished" ? (waitedAnswer ?? this.chats.lastAnswerOf(event.sessionId)) : null;
+          const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
+          this.pendingText.delete(event.sessionId);
+          await this.inOrder(event.sessionId, async () => {
+            const markers = extractFileMarkers(answer);
+            if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
+            for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
+            if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
+            if (event.kind === "turn_failed")
+              await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
+          });
+          return;
+        }
         await this.inOrder(event.sessionId, async () => {
           const answer = this.answers.get(event.sessionId);
           this.answers.delete(event.sessionId);
@@ -737,7 +810,7 @@ export class TelegramBot {
    * holds every run of the schedule, so a rename of one run keeps the schedule's name.
    */
   private async renameTopic(chatId: number, topicId: number | null, title: string): Promise<void> {
-    if (topicId === null || Object.values(this.state.scheduleTopics).includes(topicId)) return;
+    if (topicId === null || isScheduleTopic(this.state, topicId)) return;
     const entry = this.state.topics[keyOf(chatId, topicId)];
     // The first message must not replace the name that the person chose.
     if (entry !== undefined && !entry.renamed) {
@@ -821,15 +894,6 @@ export class TelegramBot {
     const timer = this.typingTimers.get(sessionId);
     if (timer !== undefined) clearInterval(timer);
     this.typingTimers.delete(sessionId);
-  }
-
-  private targetOf(sessionId: string): { chatId: number; topicId: number | null } | null {
-    for (const [key, entry] of Object.entries(this.state.topics)) {
-      if (entry.sessionId !== sessionId) continue;
-      const [chat, topic] = key.split(":");
-      return { chatId: Number(chat), topicId: topic === "main" ? null : Number(topic) };
-    }
-    return null;
   }
 
   private isAllowedSender(userId: number | undefined): boolean {

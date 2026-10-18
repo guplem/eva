@@ -139,10 +139,13 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
 /** Maps SDK messages to Eva's events. The stream ends with one turn end when the SDK sends a result. */
 export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
   let lastMessageId: string | null = null;
+  let contextTokens: number | null = null;
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
         if (message.parent_tool_use_id !== null) break;
+        // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
+        contextTokens = contextOf(message.message.usage) ?? contextTokens;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -181,6 +184,7 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
             lastMessageId,
             usage: usageOf(message.usage),
             costUsd: message.total_cost_usd,
+            contextTokens,
           };
         } else {
           yield { kind: "turn_failed", reason: message.errors.join("; ") || message.subtype };
@@ -202,6 +206,16 @@ function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEven
     return { kind: "task_changed", taskId: message.task_id, description: message.summary, state };
   }
   return null;
+}
+
+/** Null for a message with no usage, such as the synthetic message after an API error. */
+function contextOf(usage: {
+  input_tokens: number;
+  cache_read_input_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+}): number | null {
+  const total = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+  return total > 0 ? total : null;
 }
 
 function usageOf(usage: {

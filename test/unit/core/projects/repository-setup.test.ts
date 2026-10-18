@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   evaluateSetup,
-  gitBlobSha,
   type RepositoryFacts,
   type SetupItem,
   type SetupReport,
 } from "../../../../src/core/projects/repository-setup.ts";
-
-const shim = gitBlobSha("@AGENTS.md\n");
 
 /** The reference: every item is green. */
 const reference: RepositoryFacts = {
@@ -21,9 +18,7 @@ const reference: RepositoryFacts = {
   deleteBranchOnMerge: true,
   files: {
     "AGENTS.md": "agents",
-    "CLAUDE.md": shim,
     "src/AGENTS.md": "nested",
-    "src/CLAUDE.md": shim,
     ".agents/skills/write-commit/SKILL.md": "commit-v2",
     ".agents/skills/rename-symbol/SKILL.md": "rename-v1",
     ".agents/skills/rename-symbol/notes.md": "notes-v1",
@@ -57,12 +52,6 @@ function item(report: SetupReport, label: string): SetupItem {
 function lights(report: SetupReport): string[] {
   return report.sections.flatMap((section) => section.items.map((entry) => entry.light));
 }
-
-describe("gitBlobSha", () => {
-  test("matches git hash-object", () => {
-    expect(shim).toBe("43c994c2d3617f947bcb5adf1933e21dabe46bb5");
-  });
-});
 
 describe("evaluateSetup", () => {
   test("a repository with the reference's setup is all green, apart from malware alerts", () => {
@@ -190,17 +179,22 @@ describe("evaluateSetup", () => {
         },
       }),
     );
-    expect(item(report, "CLAUDE.md points to AGENTS.md")).toMatchObject({ light: "red" });
-    expect(item(report, "CLAUDE.md points to AGENTS.md").detail).toContain("CLAUDE.md");
+    expect(item(report, "No CLAUDE.md")).toMatchObject({ light: "red", detail: "Found CLAUDE.md." });
     expect(item(report, "No harness-only rule files")).toMatchObject({ light: "red", detail: "Found .cursorrules." });
     expect(item(report, "Skills in the open folder").light).toBe("yellow");
     expect(item(report, "AGENTS.md at the root").light).toBe("green");
     expect(report.sections.find((section) => section.title === "Harness agnostic")?.score).toBe(25);
   });
 
-  test("an AGENTS.md with no root CLAUDE.md is yellow: Claude Code reads only CLAUDE.md", () => {
-    const report = evaluateSetup(reference, target({ files: { "AGENTS.md": "agents" } }));
-    expect(item(report, "CLAUDE.md points to AGENTS.md").light).toBe("yellow");
+  test("any CLAUDE.md is red, a shim too: Claude Code reads AGENTS.md only when no CLAUDE.md exists", () => {
+    const report = evaluateSetup(
+      reference,
+      target({ files: { "AGENTS.md": "agents", "src/AGENTS.md": "nested", "src/CLAUDE.md": "@AGENTS.md" } }),
+    );
+    const claudeMd = item(report, "No CLAUDE.md");
+    expect(claudeMd).toMatchObject({ light: "red", detail: "Found src/CLAUDE.md." });
+    expect(claudeMd.fixRequest).toContain("delete each `CLAUDE.md`");
+    expect(claudeMd.fixRequest).toContain("https://github.com/guplem/eva/blob/main/lefthook.yml");
     expect(item(evaluateSetup(reference, target({ files: {} })), "AGENTS.md at the root").light).toBe("red");
   });
 
@@ -258,9 +252,9 @@ function withoutUndefined(files: Record<string, string | undefined>): Record<str
 }
 
 describe("evaluateSetup, edge cases", () => {
-  test("no AGENTS.md leaves the CLAUDE.md item grey, not a false green", () => {
-    const report = evaluateSetup(reference, target({ files: {} }));
-    expect(item(report, "CLAUDE.md points to AGENTS.md").light).toBe("grey");
+  test("unread files leave the CLAUDE.md item grey, not a false green", () => {
+    const report = evaluateSetup(reference, target({ files: null }));
+    expect(item(report, "No CLAUDE.md").light).toBe("grey");
   });
 
   test("a CodeQL workflow alone is not CI, and any Lefthook config counts as hooks", () => {

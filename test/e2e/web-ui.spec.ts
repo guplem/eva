@@ -257,7 +257,8 @@ test("Settings: Use Eva from any device installs Tailscale, then shares the addr
   await expect(section).toContainText("Install Tailscale on the phone or computer.");
   // The demo is shared by every browser of the run, so another one may have installed it already.
   const install = section.getByRole("button", { name: "Install Tailscale" });
-  if (await install.isVisible()) await install.click();
+  // A short click try: the button is gone once the install ends, and the page reads the status every 3 seconds.
+  await install.click({ timeout: 2_000 }).catch(() => undefined);
   await expect(section.getByRole("link", { name: "https://eva.example-tailnet.ts.net" })).toBeVisible();
   await expect(section.getByRole("img", { name: "QR code of https://eva.example-tailnet.ts.net" })).toBeVisible();
   await expect(section).toContainText("owner@example.com");

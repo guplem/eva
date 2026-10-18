@@ -3,13 +3,21 @@
  * address with Copy, Share and a QR code. The page reads the status until the address works.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import { deviceSteps, remoteAccessStep, setupSteps, type GuideStep } from "../../../core/remote-access/steps.ts";
+import {
+  actionLabel,
+  deviceSteps,
+  remoteAccessStep,
+  setupSteps,
+  type GuideStep,
+} from "../../../core/remote-access/steps.ts";
 import { api, type RemoteAccess } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import { qrCodeShape } from "./qr-code.ts";
 
-/** A step that waits for the person ends soon after; Eva herself reads Tailscale every 30 seconds. */
+/** An action, such as an install, shows its progress soon after. */
 const waitingPollMs = 3_000;
+/** A ready address can still break, such as when Tailscale stops. Eva reads Tailscale every 30 seconds. */
+const readyPollMs = 30_000;
 
 export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess }): ReactElement {
   const [access, setAccess] = useState<RemoteAccess>(initial);
@@ -19,27 +27,34 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
   const ready = url !== null;
 
   useEffect(() => {
-    if (ready) return undefined;
     // A failed read on a weak phone connection is quiet: the next read follows soon.
-    const timer = setInterval(() => {
-      api
-        .status()
-        .then((status) => {
-          if (status.remoteAccess !== null) setAccess(status.remoteAccess);
-        })
-        .catch(() => undefined);
-    }, waitingPollMs);
+    const timer = setInterval(
+      () => {
+        api
+          .status()
+          .then((status) => {
+            if (status.remoteAccess !== null) setAccess(status.remoteAccess);
+          })
+          .catch(() => undefined);
+      },
+      ready ? readyPollMs : waitingPollMs,
+    );
     return () => {
       clearInterval(timer);
     };
   }, [ready]);
 
-  const run = (action: GuideStep["action"]): void => {
+  const run = (action: NonNullable<GuideStep["action"]>): void => {
     const call = action === "install" ? api.installTailscale() : api.signInToTailscale();
     call.then(setAccess).catch(showError);
   };
 
   const copy = (text: string): void => {
+    // The clipboard exists only on a secure page; a page through a plain http host name has none.
+    if (typeof navigator.clipboard === "undefined") {
+      showError(new Error("This browser cannot copy here. Copy the address by hand."));
+      return;
+    }
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -87,15 +102,13 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
                 {step.action !== null && (
                   <>
                     {" "}
-                    <button onClick={() => run(step.action)}>
-                      {step.action === "install" ? "Install Tailscale" : "Sign in to Tailscale"}
-                    </button>
+                    <button onClick={() => run(step.action ?? "sign_in")}>{actionLabel(step.action)}</button>
                   </>
                 )}
               </li>
             ))}
           </ol>
-          <div className="hint">Eva finds each change by herself. This page shows it within a few seconds.</div>
+          <div className="hint">Eva finds each change by herself within a minute.</div>
         </>
       )}
       <h3>On each phone or computer</h3>

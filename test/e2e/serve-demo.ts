@@ -8,12 +8,12 @@ import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
-import type { RemoteAccess } from "../../src/core/remote-access/remote-access.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
+import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 
 export const demoPort = 7499;
@@ -80,28 +80,14 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
 });
 
 /** A machine without Tailscale, where the Install button makes the address ready. */
-let remoteAccess: RemoteAccess = {
-  url: null,
-  problem: null,
-  step: "install",
-  link: null,
-  account: null,
-  canInstall: true,
-  busy: null,
-};
-const demoRemoteAccess = {
-  current: () => remoteAccess,
+const tailscale = new FakeTailscale();
+const demoRemoteAccess = tailscale.watcher({
   install: () => {
-    remoteAccess = {
-      ...remoteAccess,
-      url: "https://eva.example-tailnet.ts.net",
-      step: "ready",
-      account: "owner@example.com",
-    };
-    return Promise.resolve(remoteAccess);
+    tailscale.status = runningStatus(true, "owner@example.com", "eva.example-tailnet.ts.net");
+    return Promise.resolve();
   },
-  signIn: () => Promise.resolve(remoteAccess),
-};
+});
+await demoRemoteAccess.refresh();
 
 const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
 const eva = new Eva({

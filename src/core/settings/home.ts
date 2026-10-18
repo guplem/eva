@@ -31,7 +31,7 @@ export interface HomePaths {
   readonly config: string;
   readonly secrets: string;
   /** The ids of the machine migrations that ran. */
-  readonly migrations: string;
+  readonly migrationRecord: string;
   readonly lock: string;
   readonly stateFolder: string;
   readonly sessions: string;
@@ -54,7 +54,7 @@ export function homePaths(root: string): HomePaths {
     root,
     config: join(root, "config.json"),
     secrets: join(root, "secrets.json"),
-    migrations: join(root, "migrations.json"),
+    migrationRecord: join(root, "migrations.json"),
     lock: join(root, "eva.lock"),
     stateFolder,
     sessions: join(stateFolder, "sessions.json"),

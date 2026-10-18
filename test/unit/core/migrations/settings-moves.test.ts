@@ -91,11 +91,11 @@ describe("moveSharedSettingsToVault (machine)", () => {
 
   test("a fresh install, a config without a vault, or one without shared keys has nothing to move", () => {
     expect(migrate(moveSharedSettingsToVault)).toBe("done");
-    rmSync(paths.migrations);
+    rmSync(paths.migrationRecord);
     writeJson(paths.config, { timeZone: "Europe/Madrid" });
     expect(migrate(moveSharedSettingsToVault)).toBe("done");
     expect(readJson(paths.config)).toEqual({ timeZone: "Europe/Madrid" });
-    rmSync(paths.migrations);
+    rmSync(paths.migrationRecord);
     writeJson(paths.config, { vaultPath: vault, port: 4000 });
     expect(migrate(moveSharedSettingsToVault)).toBe("done");
   });
@@ -180,13 +180,13 @@ describe("copySecuritySettingsFromVault (machine)", () => {
 
   test("nothing to copy without a config file, a vault, a vault file, or a security key in it", () => {
     expect(migrate(copySecuritySettingsFromVault)).toBe("done");
-    rmSync(paths.migrations);
+    rmSync(paths.migrationRecord);
     writeJson(paths.config, { port: 4000 });
     expect(migrate(copySecuritySettingsFromVault)).toBe("done");
-    rmSync(paths.migrations);
+    rmSync(paths.migrationRecord);
     writeJson(paths.config, { vaultPath: vault });
     expect(migrate(copySecuritySettingsFromVault)).toBe("done");
-    rmSync(paths.migrations);
+    rmSync(paths.migrationRecord);
     writeJson(vaultSettings, { timeZone: "UTC" });
     expect(migrate(copySecuritySettingsFromVault)).toBe("done");
     expect(readJson(paths.config)).toEqual({ vaultPath: vault });

@@ -56,12 +56,12 @@ describe("runMigrations", () => {
     const result = run([appending("2026-10-21-b"), appending("2026-10-20-a")]);
     expect(result).toEqual({ kind: "done", applied: ["2026-10-20-a", "2026-10-21-b"], later: [] });
     expect(readFileSync(join(paths.root, "order.txt"), "utf-8")).toBe("2026-10-20-a\n2026-10-21-b\n");
-    expect(appliedIds(paths.migrations)).toEqual(["2026-10-20-a", "2026-10-21-b"]);
+    expect(appliedIds(paths.migrationRecord)).toEqual(["2026-10-20-a", "2026-10-21-b"]);
   });
 
   test("the record keeps when and with which version each migration ran", () => {
     run([appending("2026-10-20-a")]);
-    const record = JSON.parse(readFileSync(paths.migrations, "utf-8")) as unknown;
+    const record = JSON.parse(readFileSync(paths.migrationRecord, "utf-8")) as unknown;
     expect(record).toEqual({ applied: [{ id: "2026-10-20-a", at: "2026-10-20T08:00:00.000Z", version: "0.4.0" }] });
   });
 
@@ -85,7 +85,7 @@ describe("runMigrations", () => {
     const migrations = [appending("2026-10-20-machine"), appending("2026-10-20-vault", "vault")];
     expect(run(migrations, "vault")).toEqual({ kind: "done", applied: ["2026-10-20-vault"], later: [] });
     expect(appliedIds(vaultMigrationRecordPath(vault))).toEqual(["2026-10-20-vault"]);
-    expect(existsSync(paths.migrations)).toBe(false);
+    expect(existsSync(paths.migrationRecord)).toBe(false);
   });
 
   test("without a vault, the vault store runs nothing", () => {
@@ -141,7 +141,7 @@ describe("runMigrations", () => {
       applied: ["2026-10-21-b"],
       later: ["2026-10-20-a"],
     });
-    expect(appliedIds(paths.migrations)).toEqual(["2026-10-21-b"]);
+    expect(appliedIds(paths.migrationRecord)).toEqual(["2026-10-21-b"]);
   });
 
   test("a machine migration cannot write a vault file", () => {
@@ -175,7 +175,7 @@ describe("runMigrations", () => {
     expect(result).toEqual({ kind: "failed", applied: ["2026-10-20-a"], id: "2026-10-21-b", reason: "disk is full" });
     expect(readFileSync(file, "utf-8")).toBe("old\n");
     expect(existsSync(created)).toBe(false);
-    expect(appliedIds(paths.migrations)).toEqual(["2026-10-20-a"]);
+    expect(appliedIds(paths.migrationRecord)).toEqual(["2026-10-20-a"]);
     expect(readFileSync(join(paths.root, "order.txt"), "utf-8")).toBe("2026-10-20-a\n");
   });
 
@@ -223,7 +223,7 @@ describe("runMigrations", () => {
   });
 
   test("a broken record runs nothing and says so", () => {
-    writeFileSync(paths.migrations, "{ not json");
+    writeFileSync(paths.migrationRecord, "{ not json");
     const result = run([appending("2026-10-20-a")]);
     expect(result).toMatchObject({ kind: "failed", applied: [], id: null });
     expect(existsSync(join(paths.root, "order.txt"))).toBe(false);
@@ -249,12 +249,30 @@ describe("migrationsAhead", () => {
     });
   });
 
-  test("is null when every recorded id is known, or the record is missing or broken", () => {
+  test("is null when every recorded id is known, or the record is missing", () => {
     const record = join(vault, ".eva", "migrations.json");
     expect(migrationsAhead(record, [])).toBeNull();
     writeFileSync(record, JSON.stringify({ applied: [{ id: "2026-10-20-a", at: "", version: "0.4.0" }] }));
     expect(migrationsAhead(record, ["2026-10-20-a"])).toBeNull();
-    writeFileSync(record, "{ broken");
-    expect(migrationsAhead(record, [])).toBeNull();
+  });
+
+  test("a record in a shape that this Eva cannot read counts as ahead: a newer Eva may have changed it", () => {
+    const record = join(vault, ".eva", "migrations.json");
+    for (const broken of ["{ broken", JSON.stringify({ applied: [{ name: "2099-01-01-renamed-field" }] })]) {
+      writeFileSync(record, broken);
+      expect(migrationsAhead(record, [])).toEqual({ unknown: [], version: null });
+    }
+  });
+});
+
+describe("the record", () => {
+  test("a rewrite keeps the fields that a newer Eva added to an entry", () => {
+    writeFileSync(
+      paths.migrationRecord,
+      JSON.stringify({ applied: [{ id: "2026-10-20-a", at: "", version: "0.4.0", note: "from a newer Eva" }] }),
+    );
+    run([appending("2026-10-20-a"), appending("2026-10-21-b")]);
+    const record = JSON.parse(readFileSync(paths.migrationRecord, "utf-8")) as { applied: unknown[] };
+    expect(record.applied[0]).toEqual({ id: "2026-10-20-a", at: "", version: "0.4.0", note: "from a newer Eva" });
   });
 });

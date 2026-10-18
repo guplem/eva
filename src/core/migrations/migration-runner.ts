@@ -67,20 +67,21 @@ export function vaultMigrationRecordPath(vaultPath: string): string {
  */
 export function runMigrations(options: RunMigrationsOptions): MigrationRun {
   const { store, paths, vaultPath } = options;
-  if (store === "vault" && vaultPath === null) return { kind: "done", applied: [], later: [] };
-  const storeRoot = store === "machine" ? paths.root : (vaultPath ?? "");
-  const recordPath = store === "machine" ? paths.migrations : vaultMigrationRecordPath(storeRoot);
+  const storeRoot = store === "machine" ? paths.root : vaultPath;
+  if (storeRoot === null) return { kind: "done", applied: [], later: [] };
+  const recordPath = store === "machine" ? paths.migrationRecord : vaultMigrationRecordPath(storeRoot);
   const record = readRecord(recordPath);
-  if (record === null) return { kind: "failed", applied: [], id: null, reason: `${recordPath} is not valid JSON.` };
+  if (record === null)
+    return { kind: "failed", applied: [], id: null, reason: `${recordPath} is not a record that this Eva can read.` };
   const own = options.migrations.filter((migration) => migration.store === store);
   const knownIds = new Set(own.map((migration) => migration.id));
-  const unknown = record.map((entry) => entry.id).filter((id) => !knownIds.has(id));
+  const unknown = record.entries.map((entry) => entry.id).filter((id) => !knownIds.has(id));
   if (unknown.length > 0) return { kind: "ahead", unknown };
-  const done = new Set(record.map((entry) => entry.id));
+  const done = new Set(record.entries.map((entry) => entry.id));
   const missing = own.filter((migration) => !done.has(migration.id)).sort((a, b) => a.id.localeCompare(b.id));
   const applied: string[] = [];
   const later: string[] = [];
-  let entries = record;
+  let entries = record.raw;
   for (const migration of missing) {
     const outcome = runOne(migration, storeRoot, paths, vaultPath);
     if (outcome.kind === "failed") return { kind: "failed", applied, id: migration.id, reason: outcome.reason };
@@ -90,7 +91,12 @@ export function runMigrations(options: RunMigrationsOptions): MigrationRun {
     }
     // Each id goes in the record at once, so a run that stops halfway repeats only the unrecorded ones.
     entries = [...entries, { id: migration.id, at: options.now().toISOString(), version: options.version }];
-    writeFileAtomic(recordPath, JSON.stringify({ applied: entries }, null, 2) + "\n");
+    try {
+      writeFileAtomic(recordPath, JSON.stringify({ applied: entries }, null, 2) + "\n");
+    } catch (error) {
+      // The migration is idempotent, so the next start runs it again.
+      return { kind: "failed", applied, id: migration.id, reason: reasonOf(error) };
+    }
     applied.push(migration.id);
   }
   return { kind: "done", applied, later };
@@ -98,16 +104,17 @@ export function runMigrations(options: RunMigrationsOptions): MigrationRun {
 
 /**
  * The ids in a store's record that this Eva does not know, with the version that recorded the newest
- * one. Null when there are none, or the record is missing or broken.
+ * one. Null when there are none, or the record is missing. A record in a shape that this Eva cannot
+ * read counts as ahead too: a newer Eva may have changed the shape.
  */
 export function migrationsAhead(
   recordPath: string,
   knownIds: readonly string[],
 ): { unknown: string[]; version: string | null } | null {
   const record = readRecord(recordPath);
-  if (record === null) return null;
+  if (record === null) return { unknown: [], version: null };
   const known = new Set(knownIds);
-  const unknown = record.filter((entry) => !known.has(entry.id)).sort((a, b) => a.id.localeCompare(b.id));
+  const unknown = record.entries.filter((entry) => !known.has(entry.id)).sort((a, b) => a.id.localeCompare(b.id));
   if (unknown.length === 0) return null;
   const newest = unknown.at(-1)?.version ?? "";
   return { unknown: unknown.map((entry) => entry.id), version: newest === "" ? null : newest };
@@ -124,10 +131,11 @@ export function migrationBackupPath(paths: HomePaths, migration: Migration, path
 
 type OneRun = { kind: "done" | "later" } | { kind: "failed"; reason: string };
 
-/** Runs one migration. On a failure, it puts back each file it changed. */
+/** Runs one migration. On a failure, it puts back each file as it was before this run. */
 function runOne(migration: Migration, storeRoot: string, paths: HomePaths, vaultPath: string | null): OneRun {
-  // Each file that the migration wrote, with its copy, or null when the file did not exist before.
-  const touched = new Map<string, string | null>();
+  // The content of each file before this run's first write, or null for a new file. The copy on disk
+  // can be older, from a run that stopped halfway, so the restore never uses it.
+  const before = new Map<string, string | null>();
   const context: MigrationContext = {
     paths,
     vaultPath,
@@ -135,11 +143,12 @@ function runOne(migration: Migration, storeRoot: string, paths: HomePaths, vault
       const inside = relative(storeRoot, path);
       if (inside === "" || inside.startsWith("..") || isAbsolute(inside))
         throw new Error(`A ${migration.store} migration cannot write ${path}.`);
-      if (!touched.has(path)) {
+      if (!before.has(path)) {
+        const old = existsSync(path) ? readFileSync(path, "utf-8") : null;
         const backup = migrationBackupPath(paths, migration, inside);
         // A copy from a run that stopped halfway holds the original file, so it stays.
-        if (existsSync(path) && !existsSync(backup)) writeFileAtomic(backup, readFileSync(path, "utf-8"));
-        touched.set(path, existsSync(backup) ? backup : null);
+        if (old !== null && !existsSync(backup)) writeFileAtomic(backup, old);
+        before.set(path, old);
       }
       writeFileAtomic(path, content);
     },
@@ -147,24 +156,40 @@ function runOne(migration: Migration, storeRoot: string, paths: HomePaths, vault
   try {
     return { kind: migration.run(context) };
   } catch (error) {
-    for (const [path, backup] of touched) {
-      if (backup === null) rmSync(path, { force: true });
-      else writeFileAtomic(path, readFileSync(backup, "utf-8"));
+    try {
+      for (const [path, old] of before) {
+        if (old === null) rmSync(path, { force: true });
+        else writeFileAtomic(path, old);
+      }
+    } catch (restoreError) {
+      return { kind: "failed", reason: `${reasonOf(error)}; the restore failed too: ${reasonOf(restoreError)}` };
     }
-    return { kind: "failed", reason: error instanceof Error ? error.message : String(error) };
+    return { kind: "failed", reason: reasonOf(error) };
   }
 }
 
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** The applied migrations, an empty list for a missing file, or null for a broken one. */
-function readRecord(path: string): AppliedMigration[] | null {
+interface MigrationRecord {
+  /** The entries as the file holds them, so a rewrite keeps the fields of a newer Eva. */
+  readonly raw: readonly unknown[];
+  readonly entries: readonly AppliedMigration[];
+}
+
+/** The record, an empty one for a missing file, or null for a file in a shape that this Eva cannot read. */
+function readRecord(path: string): MigrationRecord | null {
   const read = readJsonTolerant(path);
-  if (!read.ok) return read.reason === "missing" ? [] : null;
-  const applied = (read.value as { applied?: unknown } | null)?.applied;
-  if (!Array.isArray(applied)) return null;
-  return applied.flatMap((entry: unknown): AppliedMigration[] => {
-    if (entry === null || typeof entry !== "object") return [];
-    const { id, at, version } = entry as Partial<Record<keyof AppliedMigration, unknown>>;
-    if (typeof id !== "string" || id === "") return [];
-    return [{ id, at: typeof at === "string" ? at : "", version: typeof version === "string" ? version : "" }];
-  });
+  if (!read.ok) return read.reason === "missing" ? { raw: [], entries: [] } : null;
+  const raw = (read.value as { applied?: unknown } | null)?.applied;
+  if (!Array.isArray(raw)) return null;
+  const entries: AppliedMigration[] = [];
+  for (const entry of raw as unknown[]) {
+    const { id, at, version } = (entry ?? {}) as Partial<Record<keyof AppliedMigration, unknown>>;
+    if (typeof id !== "string" || id === "") return null;
+    entries.push({ id, at: typeof at === "string" ? at : "", version: typeof version === "string" ? version : "" });
+  }
+  return { raw, entries };
 }

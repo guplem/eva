@@ -29,11 +29,15 @@ const denied = (command: string): boolean => permissions.deny.some((rule) => mat
 
 describe("agent permission rules", () => {
   test("no ask rule: the owner allows push, merge and the GitHub write tools (#89)", () => {
-    expect(permissions.ask ?? []).toEqual([]);
+    expect(permissions.ask).toEqual([]);
   });
 
   test.each([
     "git push -u origin claude/issue-89",
+    "git push origin main --follow-tags",
+    "git push -q -u origin feature",
+    "git rm -r src/old-features",
+    "git diff --stat origin/main",
     "git push -q",
     "git push",
     "git commit -q -m subject",
@@ -83,6 +87,27 @@ describe("agent permission rules", () => {
     "git fetch --upload-pack=x .",
     "git fetch -f origin main:main",
     "git fetch origin +main:main",
+    "git fetch -pf origin main:main",
+    "git push -qf origin main",
+    "git push -qd origin main",
+    "git push --mirror",
+    "git push origin --del main",
+    "git push origin main --follow-tags --forc",
+    "git commit -q --am -m two",
+    "git commit -n -m subject",
+    "git restore --staged --wor src/main.ts",
+    "git show HEAD --output=src/main.ts",
+    "git diff --output=src/main.ts",
+    "git log -1 --output=../vault/note.md",
+    "git reset --merge",
+    "git branch -D old",
+    "git switch -C main",
+    "git switch --disc main",
+    "git checkout .",
+    "git add -f .env",
+    "git stash clear",
+    "git update-ref -d refs/heads/main",
+    "git filter-branch --force",
   ])("denies %p", (command) => {
     expect(denied(command)).toBe(true);
   });
@@ -122,7 +147,7 @@ describe("agent permission rules", () => {
     expect(permissions.deny).toContain(rule);
   });
 
-  test("allows no tool or server as a whole", () => {
+  test("allows no whole shell, git command or MCP server", () => {
     const banned = [
       "Bash",
       "Bash(*)",

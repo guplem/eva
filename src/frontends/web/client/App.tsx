@@ -324,7 +324,7 @@ function EvaApp(): ReactElement {
           </div>
         </div>
       )}
-      {/* An approval holds a running turn, so it comes first. A new device waits for a person at its door. */}
+      {/* An approval holds a running turn, so it comes first. A device request comes next. */}
       {approval === undefined && deviceRequest !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="New device">

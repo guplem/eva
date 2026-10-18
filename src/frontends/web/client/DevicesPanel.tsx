@@ -22,7 +22,6 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
     }
   };
 
-  // Read the list once when Settings opens.
   useEffect(() => {
     void reload();
   }, []);

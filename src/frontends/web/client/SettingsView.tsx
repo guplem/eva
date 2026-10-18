@@ -10,13 +10,14 @@ import {
   type EngineUpdateStatus,
   type EvaStatus,
   type PublicSettings,
-  type SetupState,
+  type EvaSetupState,
   type UpdateStatus,
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
+import { SetupProgress } from "./SetupProgress.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 
@@ -63,7 +64,7 @@ const restartPollLimit = 60;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
-  const [setup, setSetup] = useState<SetupState | null>(null);
+  const [setup, setSetup] = useState<EvaSetupState | null>(null);
   const [timeZone, setTimeZone] = useState("");
   const [sweepSeconds, setSweepSeconds] = useState("");
   const [projectRoots, setProjectRoots] = useState("");
@@ -343,6 +344,17 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   return (
     <div className="main">
       <div className="settings">
+        {setup !== null && (
+          <SetupProgress
+            steps={setup.progress}
+            onChanged={() => {
+              api
+                .setupState()
+                .then(setSetup)
+                .catch(() => undefined);
+            }}
+          />
+        )}
         {remote !== null && <RemoteAccessPanel initial={remote} />}
         <fieldset>
           <legend>Setup</legend>

@@ -27,6 +27,7 @@ import { parseArguments, usageText, type CliCommand } from "./arguments.ts";
 import { runChat } from "./chat.ts";
 import {
   describeProjects,
+  describeSetupProgress,
   describeStatus,
   isAnswering,
   requestDeviceAllow,
@@ -237,6 +238,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     });
   }
   const client = runningClient(host, paths);
+  if (client !== null) for (const line of await describeSetupProgress(client)) write(line);
   if (client !== null && snapshot.readByEva !== null && snapshot.readByEva !== setupFiles(paths)) {
     write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");
     await requestRestart(client);

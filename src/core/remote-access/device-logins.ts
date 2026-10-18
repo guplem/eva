@@ -156,6 +156,11 @@ export class DeviceLogins {
     return login.answer;
   }
 
+  /** How many browsers may open Eva with a device login. */
+  count(): number {
+    return this.devices.length;
+  }
+
   isValidToken(token: string): boolean {
     const hash = hashOf(token);
     return this.devices.some((device) => device.hash === hash);

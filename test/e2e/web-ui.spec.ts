@@ -630,6 +630,18 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 
+test("Settings: the progress list shows each step, and keeps the last Test result", async ({ page }) => {
+  await logIn(page);
+  // The demo has no allowed device yet, so at least that step is left.
+  await expect(page.getByRole("button", { name: /Settings/ })).toContainText("to set up");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("group", { name: "Progress list" });
+  await expect(list).toContainText("Your devices");
+  await expect(list).toContainText("eva devices allow");
+  await list.getByRole("button", { name: "Test Your notebook" }).click();
+  await expect(list).toContainText("Last test:");
+});
+
 test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();

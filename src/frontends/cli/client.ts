@@ -1,5 +1,6 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
 import type { EvaStatus } from "../../core/eva.ts";
+import type { ProgressStep } from "../../core/setup/progress.ts";
 import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
@@ -33,6 +34,11 @@ export function describeStatusLines(status: EvaStatus): string[] {
     count === 0 ? "All good" : `${String(count)} ${count === 1 ? "problem" : "problems"}`,
     ...status.problems.map((problem) => `• ${problem}`),
     `Eva ${status.version}, ${describeRole(status)}`,
+    ...(status.setupMissing > 0
+      ? [
+          `Setup: ${String(status.setupMissing)} ${status.setupMissing === 1 ? "step" : "steps"} left. Open Settings on Eva's page to see them.`,
+        ]
+      : []),
     `Vault: ${status.vaultPath ?? "not configured"}`,
     describeSync(status.vaultSync),
     // Over JSON the date arrives as text; new Date reads both forms.
@@ -241,6 +247,13 @@ export async function requestDeviceAllow(options: ClientOptions, code: string): 
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
   return ((await response.json()) as { label: string }).label;
+}
+
+/** The setup progress list of the running Eva, one line per step, as the page shows it. */
+export async function describeSetupProgress(options: ClientOptions): Promise<string[]> {
+  const state = await getJson<{ progress: readonly ProgressStep[] }>(options, "/api/settings/setup");
+  const marks = { done: "✓", missing: "✗", optional: "○" } as const;
+  return ["Setup progress:", ...state.progress.map((step) => `${marks[step.state]} ${step.title}: ${step.detail}`)];
 }
 
 /** True when the running Eva's page answers, as it does a few seconds after her start. */

@@ -1450,6 +1450,7 @@ describe("describeStatusLines", () => {
     remoteAccess: null,
     localUrl: "http://127.0.0.1:7420",
     problems: [],
+    setupMissing: 0,
   };
 
   test("starts with All good when nothing is wrong", () => {
@@ -1460,6 +1461,13 @@ describe("describeStatusLines", () => {
     const lines = describeStatusLines({ ...status, problems: ["The vault sync failed.", "The update failed."] });
     expect(lines.slice(0, 3)).toEqual(["2 problems", "• The vault sync failed.", "• The update failed."]);
     expect(describeStatusLines({ ...status, problems: ["The vault sync failed."] })[0]).toBe("1 problem");
+  });
+
+  test("names the setup steps left, which are not problems", () => {
+    const lines = describeStatusLines({ ...status, setupMissing: 2 });
+    expect(lines[0]).toBe("All good");
+    expect(lines).toContain("Setup: 2 steps left. Open Settings on Eva's page to see them.");
+    expect(describeStatusLines(status).join("\n")).not.toContain("Setup:");
   });
 });
 

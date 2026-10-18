@@ -22,6 +22,7 @@ import {
   installEngine,
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
+import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
@@ -35,7 +36,6 @@ import {
   engineLoginState,
   engineLoginSteps,
   loginToGitHub,
-  piLoginState,
   quoteForShell,
   withVariable,
   type EngineLoginState,
@@ -210,10 +210,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   }
   if (engine === "") {
     const piFolder = engineFolders?.piAgent ?? join(options.userHome, ".pi", "agent");
-    // Without a token, Claude Code uses its own login. macOS keeps that login in the keychain, out of sight.
+    // Without a token, Claude Code uses its own login.
     const claudeFolder = engineFolders?.claude ?? join(options.userHome, ".claude");
     const logins = {
-      "claude-code": secrets().claudeOauthToken !== undefined || existsSync(join(claudeFolder, ".credentials.json")),
+      "claude-code": secrets().claudeOauthToken !== undefined || claudeLoggedIn(claudeFolder),
       pi: piLoginState(piFolder) === "ok",
     };
     const moved = loggedInEngine(config().engines.default, logins);

@@ -45,6 +45,7 @@ beforeEach(() => {
     now: () => new Date(),
     basePrompt: "Base.",
     gatherMs: 5,
+    userHome: home,
   });
 }, gitHookTimeoutMs);
 afterEach(() => {
@@ -212,7 +213,7 @@ describe("settings", () => {
   });
 
   test("the setup state names the vault's remote, the Telegram pairing and the engines found", async () => {
-    expect(await eva.setupState()).toEqual({
+    expect(await eva.setupState()).toMatchObject({
       vaultRemote: sandbox.remote,
       telegram: { paired: false, pairingCode: null },
       engines: ["claude-code"],
@@ -225,6 +226,39 @@ describe("settings", () => {
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: null });
     sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
     expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
+  });
+
+  test("the setup progress reads what Eva knows, and keeps the last result of each Test", async () => {
+    const steps = (await eva.setupState()).progress;
+    expect(steps.find((step) => step.key === "vault")?.state).toBe("done");
+    expect(steps.find((step) => step.key === "engine")?.state).toBe("missing");
+    expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
+    eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+    eva.saveSecret("telegramBotToken", null);
+    await eva.runCheck("telegram");
+    const after = (await eva.setupState()).progress;
+    expect(after.find((step) => step.key === "engine")?.state).toBe("done");
+    expect(after.find((step) => step.key === "telegram")?.lastCheck).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining("No Telegram bot token") as string,
+    });
+  });
+
+  test("a step that `eva setup` saves in the files shows as done at once, with no restart", async () => {
+    const engineStep = async (): Promise<string | undefined> =>
+      (await eva.setupState()).progress.find((step) => step.key === "engine")?.state;
+    expect(await engineStep()).toBe("missing");
+    writeFileSync(homePaths(home).secrets, JSON.stringify({ claudeOauthToken: "sk-ant-oat-from-the-terminal" }));
+    expect(await engineStep()).toBe("done");
+  });
+
+  test("Claude Code's own login and a pi login count as an engine login", async () => {
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    writeFileSync(join(home, ".pi", "agent", "auth.json"), JSON.stringify({ openai: {} }));
+    expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("missing");
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+    expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("done");
   });
 
   test("a settings change keeps a Telegram pairing that the bot saved meanwhile", () => {

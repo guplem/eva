@@ -63,8 +63,8 @@ export function nextReleaseVersion(inputs: NextReleaseInputs): string | null {
   if (lastVersion === null || isNewerVersion(packageVersion, lastVersion)) return packageVersion;
   const changes = inputs.commits.map(commitChange);
   const [major = 0, minor = 0, patch = 0] = lastVersion.split(".").map(Number);
-  // Before 1.0, semantic versioning lets a breaking change raise only the middle number.
-  if (changes.includes("breaking") && major > 0) return `${String(major + 1)}.0.0`;
+  // Even before 1.0, a break raises the major number: the update policy reads only the numbers (issue 97).
+  if (changes.includes("breaking")) return `${String(major + 1)}.0.0`;
   if (changes.includes("breaking") || changes.includes("feature")) return `${String(major)}.${String(minor + 1)}.0`;
   if (changes.includes("fix")) return `${String(major)}.${String(minor)}.${String(patch + 1)}`;
   return null;

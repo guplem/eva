@@ -22,7 +22,7 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 | `lefthook.yml`                   | The git hooks.                                                                |
 | `.github/workflows/`             | The CI checks on each pull request.                                           |
 
-- **No `CLAUDE.md` anywhere.** A `CLAUDE.md` in a folder or a parent folder stops Claude Code from reading `AGENTS.md`. A pre-commit hook refuses a `CLAUDE.md`.
+- **No `CLAUDE.md` anywhere.** A `CLAUDE.md` in a folder or a parent folder stops Claude Code from reading `AGENTS.md`. A pre-commit hook and a CI test refuse a `CLAUDE.md`.
 - **Organize the code by modules.** A module holds one concern. An architecture check enforces the allowed imports between modules.
 
 ## Documentation
@@ -38,7 +38,7 @@ Eva follows it and is the reference repository. Eva's repository setup report ch
 - A skill is a workflow for a task that repeats: write a commit, rename a symbol, create an issue, implement an issue.
 - A skill is not a template and not a code of behavior. Behavior rules go in `AGENTS.md`.
 - A skill states the goal and the steps that an agent can get wrong. It does not list commands that an agent already knows.
-- Skills live in `.agents/skills/`. A git hook copies them to the git-ignored `.claude/skills/`, because Claude Code finds skills only there.
+- Skills live in `.agents/skills/`. The dependency install and the git hooks copy them to the git-ignored `.claude/skills/`, because Claude Code finds skills only there.
 
 ## Tests
 
@@ -48,6 +48,7 @@ Work red-green: write a failing test first, then the smallest code that passes i
 
 - **One umbrella script** (for example `check`) runs every check. CI runs it, and a developer can run it by hand.
 - **The script runs:** format, lint, types, architecture, dead code, tests with coverage, and commit messages. A secret scan runs in the script or in its own CI job.
+- **A check that matters runs in CI.** A git hook only gives early feedback: a cloud agent commits with no git hooks.
 
 ### Fast checks (recommended)
 
@@ -71,13 +72,13 @@ When the project uses environment variables:
 
 ## Git hooks
 
-Lefthook installs the hooks with the dependency install. The hooks are harness-agnostic, so they replace agent hooks.
+Lefthook installs the hooks with the dependency install. The hooks are harness-agnostic, so they replace agent hooks. A cloud agent runs no git hooks, so CI repeats each hook check.
 
-| Hook                      | Work                                                                                                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| pre-commit                | Format and lint the staged files. Refuse a `CLAUDE.md`.                                                                                                                     |
-| pre-push                  | Run the fast checks (format, lint, types), and the checks that exist only on the local machine, such as a private denylist. Never the tests: CI runs them before the merge. |
-| post-merge, post-checkout | Install the dependencies when the lockfile changed. Run the code generation when its sources changed. Copy the skills to `.claude/skills/`.                                 |
+| Hook                      | Work                                                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| pre-commit                | Format and lint the staged files. Refuse a `CLAUDE.md`.                                                                                     |
+| pre-push                  | Run every check but the tests, with the parts that exist only on the local machine, such as a private denylist. CI runs the tests.          |
+| post-merge, post-checkout | Install the dependencies when the lockfile changed. Run the code generation when its sources changed. Copy the skills to `.claude/skills/`. |
 
 ## Pull requests and merge
 
@@ -92,7 +93,7 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 
 ## Releases
 
-- **Each merge to the default branch makes a release,** after the checks pass there.
+- **Each merge to the default branch that changes the shipped code makes a release,** after the checks pass there.
 - **The commit prefixes pick the version** (`MAJOR.MINOR.PATCH`): `feat:` raises `MINOR`, `fix:` raises `PATCH`, and a `!` raises `MAJOR`.
 - **A check refuses a commit subject without a known prefix.**
 - **`AGENTS.md` defines a breaking change for the project.** In general, a change is breaking when the user must act by hand after the update, or loses something.

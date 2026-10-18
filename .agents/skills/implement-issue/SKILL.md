@@ -8,35 +8,20 @@ description: Implement a GitHub issue from plan to merged PR, with sub-agents to
 ## Pick the issue
 
 - **An issue number or link:** implement that issue. If the link points to another repository, work in that repository.
-- **An issue description:** search for an open issue that matches it. If none exists, create one from the description with the `create-issue` skill.
-- **No input:** find the oldest open issue that has none of the labels `waiting-for-human-check`, `auto-developing` and `requires-human-intervention`.
+- **An issue description:** find the open issue that matches it. If none exists, create one with the `create-issue` skill.
+- **No input:** take the oldest open issue that has none of the labels `waiting-for-human-check`, `auto-developing` and `requires-human-intervention`.
 
-Once you select the issue, add the `auto-developing` label to it and assign the authenticated user as the assignee. For the PR you create, do the same: add the `auto-developing` label and assign the authenticated user as the assignee.
+Add the `auto-developing` label to the issue, and assign yourself. Do the same for the PR when you open it.
 
-## Process
+## Steps
 
-Implement the issue by following this process:
-
-1. Read and understand the issue. Try to fully understand its motivation and its place in the overall project so that the implementation aligns with the reporter's goals, the project's goals, and its architecture.
-
-2. Create a plan, identifying any gaps or missing information. To save the plan, create a draft PR for the issue and push the plan as the first commit.
-
-3. For every gap, spawn 3 sub-agents (2 mid-tier like Sonnet, 1 upper-tier like Opus) to reason about whether there is an obvious way to fill it. For example, the global instructions (such as `AGENTS.md`) might explain how to do something, an established pattern might already exist, a past decision might resolve the question, or the same thing might have already been implemented or solved in a similar way that we can use as inspiration. Update the plan with the decisions made.
-
-4. If a relevant gap has no clear solution, stop and ask me. Update the plan with the final decisions.
-
-5. Work through every step of the plan, making a commit for each new feature or module. Develop using red-green TDD. In each commit message, describe what was implemented and why it was implemented this way, if applicable or not immediately obvious. Include references to any relevant issues or discussions.
-
-6. Once everything has been implemented, spawn 5 agents (3 mid-tier like Sonnet, 2 upper-tier like Opus) to critique the implementation, looking for actual errors or clear misalignment with the plan, architecture, or development philosophy.
-
-7. Evaluate every finding and fix those you consider valid and relevant.
-
-8. Spawn a second round of 3 review agents (2 mid-tier like Sonnet, 1 upper-tier like Opus) to critique the implementation again. Give them the list of findings from the previous review round that you disagreed with, explaining why, so they can take that into account and only raise those findings again if they find new evidence or disagree with your reasoning. They should also look for new issues that were not identified in the previous round.
-
-9. Again, evaluate every finding and fix those you consider valid and relevant.
-
-10. At this point, the entire plan should be implemented, and the relevant findings from the review agents should be fixed. Prepare the PR for review. Make sure the PR description clearly explains what was implemented, why it was implemented this way, and the implications of the changes. Include references to any relevant issues or discussions, and mark the PR as "ready for review".
-
-11. Ensure that all CI checks pass and there are no merge conflicts. Fix any failing CI checks related to this PR's changes. If a check fails for unrelated reasons, or the cause is unclear, try rerunning it.
-
-12. Ensure the PR is merged. Turn on auto-merge. When the PR does not merge, find the cause and fix it: update a branch that is behind `main`, resolve a conflict, or fix a red check. Never bypass the merge ruleset, for example with an admin merge. Remove the `auto-developing` label from the issue and PR once the PR is merged. If the PR is closed without merging, remove the `auto-developing` label from both the issue and PR.
+1. **Understand the motivation.** Find why the reporter wants the change, and where it fits in the project goals and the architecture.
+2. **Write a plan** in `docs/plans/<name>.md`. List each gap: a missing fact or an open decision. Push the plan as the first commit of a draft PR.
+3. **Fill the gaps.** For each gap, start 3 sub-agents (2 mid-tier, 1 top-tier). Each looks for an obvious answer: a rule in `AGENTS.md`, a pattern in the code, a past decision, or a similar solved case. Write the decisions in the plan.
+4. **Stop and ask the person** when a gap that matters has no clear answer. Write the answer in the plan.
+5. **Implement the plan** with red-green TDD. Make one commit for each feature or module. Follow the `write-commit` skill.
+6. **Review the work.** Start 5 sub-agents (3 mid-tier, 2 top-tier). Each looks for real errors, or for a clear mismatch with the plan, the architecture or the project rules. Fix each finding that is valid.
+7. **Review again.** Start 3 new sub-agents (2 mid-tier, 1 top-tier). Give them the findings that you rejected, with your reasons. They raise a rejected finding again only with new evidence. They also look for new problems. Fix each finding that is valid.
+8. **Prepare the PR.** Delete the plan file: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review.
+9. **Merge the PR.** Turn on auto-merge. When the PR does not merge, find the cause and fix it: update a branch that is behind `main`, resolve a conflict, or fix a red check. Run a check again only when it fails for a cause outside this PR. Never bypass the merge ruleset, for example with an admin merge.
+10. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes.

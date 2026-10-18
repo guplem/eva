@@ -34,6 +34,9 @@ A change to one of these goals needs the owner.
   Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
+- **Redact the text of each event with `Redactor`** before it leaves the core.
+- **Order events by `seq`,** never by `at` (lesson 83).
+- **Import a file in `src/` either as code or `with { type: "text" }`,** never both: the bundler keeps one form, and the executable breaks.
 - **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
 - **Comment the why, never the what.**
 - **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
@@ -42,12 +45,12 @@ A change to one of these goals needs the owner.
 ## Checks
 
 - `bun run check` is exactly what the Ubuntu CI job runs. The Windows CI job runs only `bun run test`.
-- The pre-push hook runs `bun run check:static`: every check but the tests. `bun install` installs the hooks.
+- The pre-push hook runs `bun run check:static`: every check but the tests.
 - The public-content check reads tracked files only (`git add` a new file first). The private denylist lives outside the repository: never copy an entry from it.
-- After `bun run build:executable`, run `bash scripts/smoke-executable.sh dist/eva`.
 
-## Renames
+## Renames and breaking changes
 
+- **A change is breaking** when the person must act by hand after the update, or loses something. Mark it with `!` in the commit subject.
 - **Stored and sent names are a schema:** config keys, session record fields, event `kind` values and `EvaErrorCode` values. Change a stored format only with a dated migration in `src/core/migrations/`, or mark the change as breaking with `!`. Read an old sent name tolerantly. Say so in the PR.
 - **Change the registration points together:** `.dependency-cruiser.cjs`, `knip.json`, `bunfig.toml`, `package.json`, and the command lists in `src/frontends/cli/arguments.ts` and `src/frontends/telegram/telegram-bot.ts`.
 - Rename a CLI command, a Telegram command or a setting key only with the owner.
@@ -55,7 +58,8 @@ A change to one of these goals needs the owner.
 ## Architecture
 
 - Layers: `src/shared/` (types, seams), `src/core/`, `src/engines/<engine>/`, `src/frontends/`, and `src/main.ts` (wiring only). `bun run arch` enforces the imports.
-- `templates/vault/` is runtime content that each new vault gets, not rules for agents. It never gets a `CLAUDE.md` (lesson 112).
+- `templates/vault/` is runtime content that each new vault gets, not rules for agents.
+- These folders have their own `AGENTS.md`: `src/core/instance/`, `src/core/migrations/`, `src/core/modes/`, `src/core/remote-access/`, `src/core/settings/`, `src/core/updates/`, `src/core/vault/`, `src/engines/`, `src/frontends/api/` and `test/`.
 
 ## Windows
 
@@ -71,7 +75,7 @@ A commit that changes `src/` with no test change says why in its message.
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
 - Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. When the branch is behind `main`, run `gh pr update-branch`.
 - Never push to a person's vault.
-- One owner per branch. Agent worktrees live in `.claude/worktrees/`, which git ignores.
+- One owner per branch. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
 - Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`. To create an issue, follow `.agents/skills/create-issue/SKILL.md`. To implement an issue, follow `.agents/skills/implement-issue/SKILL.md`.
 
@@ -90,7 +94,7 @@ Follow these rules in Claude Code. `.claude/settings.json` cannot allow the othe
 
 - Eva follows `docs/vibe-coded-standard.md`, and her setup report checks other repositories against it. Keep Eva, the document and the report aligned.
 - Rules live only in `AGENTS.md` files. The nearest folder's file applies first.
-- Skills live in `.agents/skills/`. The git hooks copy them to the git-ignored `.claude/skills/`, where Claude Code finds them.
+- Skills live in `.agents/skills/`. The dependency install and the git hooks copy them to the git-ignored `.claude/skills/`, where Claude Code finds them.
 - Never write a rule that a check enforces, or a fact that the code shows.
 - When you learn a hard-won trap, add one line to the nearest `AGENTS.md`.
 - Keep each instruction short, with one home per fact. Delete a contradiction when you find one.

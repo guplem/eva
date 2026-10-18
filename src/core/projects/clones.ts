@@ -11,6 +11,8 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
+const gitTimeoutMs = 20_000;
+
 export interface Clone {
   readonly name: string;
   readonly path: string;
@@ -108,6 +110,35 @@ export async function describeClone(
     // No git or no gh: the clone still shows, without the missing detail.
   }
   return { ...clone, branch, pullRequest };
+}
+
+/** The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102). */
+export async function readOriginUrl(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  const result = await runner.run(["git", "remote", "get-url", "origin"], {
+    cwd: folder,
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: gitTimeoutMs,
+  });
+  const url = result.stdout.trim();
+  return result.exitCode === 0 && url.length > 0 ? url : null;
+}
+
+/** Whether a git folder has no change, staged or not, and no untracked file. */
+export async function isCleanFolder(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  const result = await runner.run(["git", "status", "--porcelain"], {
+    cwd: folder,
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: gitTimeoutMs,
+  });
+  return result.exitCode === 0 && result.stdout.trim().length === 0;
 }
 
 /** `owner/name` of a GitHub repository URL, or null for any other URL. */

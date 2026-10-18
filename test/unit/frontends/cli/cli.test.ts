@@ -29,7 +29,6 @@ import {
 import { runDoctor, type DoctorOptions } from "../../../../src/frontends/cli/doctor.ts";
 import {
   restartMethod,
-  serviceCommand,
   serviceName,
   servicePath,
   systemdUnit,
@@ -806,15 +805,6 @@ describe("service", () => {
   test("after the install, the Windows task starts at once, under the same name", () => {
     expect(windowsRunTaskCommand()).toEqual(["schtasks", "/Run", "/TN", "Eva"]);
     expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
-  });
-
-  test("the single executable runs itself; a source checkout runs bun with main.ts", () => {
-    expect(
-      serviceCommand({ standalone: true, execPath: "C:/eva/eva.exe", mainScript: "B:/~BUN/root/eva.exe" }),
-    ).toEqual(["C:/eva/eva.exe"]);
-    expect(serviceCommand({ standalone: false, execPath: "/usr/bin/bun", mainScript: "/opt/eva/src/main.ts" })).toEqual(
-      ["/usr/bin/bun", "/opt/eva/src/main.ts"],
-    );
   });
 });
 

@@ -23,6 +23,7 @@ import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
+import { terminalDeviceApprover } from "./frontends/cli/devices.ts";
 import { defaultHomeFolder, evaCommand, remoteAccessWatcher, writeLine, type CliHost } from "./frontends/cli/host.ts";
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
@@ -178,6 +179,8 @@ async function serve(paths: HomePaths): Promise<number> {
     remoteAccess,
     defaultHome: defaultHomeFolder(host),
   });
+  // A person at Eva's terminal can always allow a new browser, with or without Telegram.
+  eva.deviceLogins.attachApprover(terminalDeviceApprover);
   // Tailscale can arrive, sign in or turn HTTPS on after the start: the person never needs a restart.
   remoteAccess?.watch(tailscaleReadMs);
   // A promise that nobody awaits must never end Eva silently (lesson 50).

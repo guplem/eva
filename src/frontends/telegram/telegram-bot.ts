@@ -230,6 +230,7 @@ export class TelegramBot {
     this.unsubscribeAlerts = options.eva.onAlert((alert) => this.sendAlert(alert));
     // The paired chat confirms each new browser of the web UI.
     this.detachDeviceApprover = options.eva.deviceLogins.attachApprover({
+      name: "Telegram",
       canApprove: () => this.allowedChatId !== null,
       ask: (request) => {
         void this.askDeviceLogin(request);

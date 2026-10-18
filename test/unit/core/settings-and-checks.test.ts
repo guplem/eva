@@ -371,6 +371,19 @@ describe("runCheck", () => {
     });
   });
 
+  test("the engine check runs its turn with the engine environment, never the git one (lesson 96)", async () => {
+    const engine = new FakeEngine();
+    await runCheck(
+      "claude-code",
+      inputs({
+        engines: [engine],
+        environment: { GITHUB_TOKEN: "github-token-value" },
+        engineEnvironment: { CLAUDE_CONFIG_DIR: "/engines/claude" },
+      }),
+    );
+    expect(engine.requests[0]?.environment).toEqual({ CLAUDE_CONFIG_DIR: "/engines/claude" });
+  });
+
   test("the Telegram check asks Telegram who the bot is, and never shows the token", async () => {
     const telegram = new FakeTelegram();
     try {

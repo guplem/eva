@@ -3,9 +3,10 @@
  * token saves with its own button, and the text fields wait for Save.
  */
 import { useEffect, useState, type ReactElement } from "react";
-import { describeUpdate } from "../../cli/client.ts";
+import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
 import {
   api,
+  type EngineUpdateStatus,
   type EvaStatus,
   type PublicSettings,
   type SetupState,
@@ -46,7 +47,7 @@ const modelChoices: readonly {
   { value: "haiku", label: "Haiku" },
 ];
 
-const restartPollMs = 3_000;
+const statusPollMs = 3_000;
 const restartPollLimit = 60;
 
 export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
@@ -61,6 +62,11 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   const [updateNote, setUpdateNote] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
   const [syncing, setSyncing] = useState(false);
+  /** Null when no claude program was found. */
+  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
+  const [engineUpdateNote, setEngineUpdateNote] = useState<string | null>(null);
+  /** Counts the failed status reads, so a failed read asks again. */
+  const [engineReadFailures, setEngineReadFailures] = useState(0);
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
@@ -96,8 +102,25 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       .catch(showProblem);
     api.updateStatus().then(setUpdate).catch(showProblem);
     api.setupState().then(setSetup).catch(showProblem);
+    api.engineUpdateStatus().then(setEngineUpdate, () => {
+      setEngineReadFailures((count) => count + 1);
+    });
     loadSettings();
   }, []);
+
+  // The engine update can wait for a long turn, then download for minutes. The page asks
+  // until it ends, also after a reload or a failed read on a weak phone connection.
+  useEffect(() => {
+    if (engineUpdate === null || (engineUpdate !== "loading" && engineUpdate.phase === "idle")) return;
+    const timer = setTimeout(() => {
+      api.engineUpdateStatus().then(setEngineUpdate, () => {
+        setEngineReadFailures((count) => count + 1);
+      });
+    }, statusPollMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [engineUpdate, engineReadFailures]);
 
   const remote = status?.remoteAccess ?? null;
   if (settings === null)
@@ -141,11 +164,15 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       setUpdate(status);
       setUpdateNote(null);
       if (status.phase === "restarting") {
-        setUpdateNote("Eva restarts with the new version…");
+        setUpdateNote("Eva restarts with the new version when no chat runs…");
+        // The old Eva answers "restarting" until she stops; only the new one answers otherwise.
+        const result = await waitForRestart((answer) => answer?.phase !== "restarting");
         setUpdateNote(
-          (await waitForRestart())
+          result === "restarted"
             ? "Eva restarted with the new version."
-            : "Eva did not answer after the update. Check her log.",
+            : result === "waiting"
+              ? "Eva restarts with the new version when no chat runs."
+              : "Eva did not answer after the update. Check her log.",
         );
       }
     } catch (error) {
@@ -153,18 +180,36 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     }
   };
 
-  /** Eva stops for a moment at a restart; the page asks again until she answers. */
-  const waitForRestart = async (): Promise<boolean> => {
+  /** Starts `claude update`; an effect asks for its status until it ends. */
+  const updateEngine = async (): Promise<void> => {
+    setEngineUpdateNote(null);
+    try {
+      setEngineUpdate(await api.updateEngine());
+    } catch (error) {
+      setEngineUpdateNote(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /**
+   * Eva stops for a moment at a restart; the page asks again until she answers as the new Eva.
+   * "waiting" means that the old Eva still answers at the end.
+   */
+  const waitForRestart = async (
+    isNewEva: (answer: UpdateStatus | null) => boolean = () => true,
+  ): Promise<"restarted" | "waiting" | "silent"> => {
+    let answered = false;
     for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, restartPollMs));
+      await new Promise((resolve) => setTimeout(resolve, statusPollMs));
       try {
-        setUpdate(await api.updateStatus());
-        return true;
+        const answer = await api.updateStatus();
+        setUpdate(answer);
+        if (isNewEva(answer)) return "restarted";
+        answered = true;
       } catch {
-        // Eva is still starting.
+        answered = false;
       }
     }
-    return false;
+    return answered ? "waiting" : "silent";
   };
 
   /** Restarts Eva after a confirm that names the running chats, which the restart stops. */
@@ -179,7 +224,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       await api.restart();
       setRestartNote("Eva restarts…");
       setRestartNote(
-        (await waitForRestart()) ? "Eva restarted." : "Eva did not answer after the restart. Check her log.",
+        (await waitForRestart()) === "restarted"
+          ? "Eva restarted."
+          : "Eva did not answer after the restart. Check her log.",
       );
     } catch (error) {
       setRestartNote(error instanceof Error ? error.message : String(error));
@@ -412,6 +459,22 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             </button>
           </div>
           {updateNote !== null && <div role="status">{updateNote}</div>}
+          <div className="check-row">
+            <span style={{ flex: 1 }} role="status">
+              {engineUpdate === "loading"
+                ? "Claude Code: reading the update status…"
+                : engineUpdate === null
+                  ? "No claude program was found."
+                  : describeEngineUpdate(engineUpdate)}
+            </span>
+            <button
+              disabled={engineUpdate === "loading" || engineUpdate?.phase !== "idle"}
+              onClick={() => void updateEngine()}
+            >
+              Update Claude Code
+            </button>
+          </div>
+          {engineUpdateNote !== null && <div role="status">{engineUpdateNote}</div>}
           <div className="check-row">
             <span style={{ flex: 1 }}>Restart Eva, for example after a settings change.</span>
             <button onClick={() => void restartNow()}>Restart Eva</button>

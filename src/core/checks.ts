@@ -22,11 +22,11 @@ export interface CheckResult {
 export interface CheckInputs {
   readonly vaultPath: string | null;
   readonly runner: ProcessRunner;
-  /** The environment of the git and gh checks. */
+  /** Eva's git environment, with the GitHub token. */
   readonly environment: Readonly<Record<string, string>>;
   /** The engines that Eva found on this machine. */
   readonly engines: readonly EnginePort[];
-  /** The environment of a real turn, with the engine's login (lesson 96). */
+  /** The environment of a real turn: the engine's login, and no GitHub token (lesson 96). */
   readonly engineEnvironment: Readonly<Record<string, string>>;
   readonly redact: (text: string) => string;
   readonly telegramToken: string | null;
@@ -57,6 +57,7 @@ export async function runCheck(name: CheckName, inputs: CheckInputs): Promise<Ch
   return runProgram(
     ["git", "push", "--dry-run", "origin", "HEAD:refs/heads/eva-access-check"],
     inputs.vaultPath,
+    inputs.environment,
     inputs,
     "Eva can push to the vault's remote.",
   );
@@ -134,13 +135,14 @@ function removeFolder(folder: string): void {
 async function runProgram(
   command: readonly string[],
   cwd: string,
+  environment: Readonly<Record<string, string>>,
   inputs: CheckInputs,
   okDetail: string | null,
 ): Promise<CheckResult> {
   try {
     const result = await inputs.runner.run(command, {
       cwd,
-      environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
+      environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: checkTimeoutMs,
     });
     const output = (result.stdout.trim() || result.stderr.trim()).split(/\r?\n/)[0] ?? "";
@@ -155,7 +157,7 @@ async function runProgram(
 /** Eva's git commands use the saved token, not gh's login, so the token itself is what to check. */
 async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
   if (inputs.githubToken === null)
-    return runProgram(["gh", "auth", "status"], process.cwd(), inputs, "gh is logged in.");
+    return runProgram(["gh", "auth", "status"], process.cwd(), inputs.environment, inputs, "gh is logged in.");
   try {
     const response = await fetch(`${inputs.githubBaseUrl ?? "https://api.github.com"}/user`, {
       headers: { authorization: `Bearer ${inputs.githubToken}`, accept: "application/vnd.github+json" },

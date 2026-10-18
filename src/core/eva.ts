@@ -15,7 +15,13 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
-import { scheduleFiringProblem, uncleanExitMessage, updateProblem, vaultSyncProblem } from "./alerts/problem-rules.ts";
+import {
+  engineUpdateProblem,
+  scheduleFiringProblem,
+  uncleanExitMessage,
+  updateProblem,
+  vaultSyncProblem,
+} from "./alerts/problem-rules.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import { loadSecrets, saveSecrets, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
@@ -49,6 +55,7 @@ import {
 import { SessionManager } from "./sessions/session-manager.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { VaultSync, type VaultSyncState } from "./vault/vault-sync.ts";
+import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -62,6 +69,8 @@ export interface EvaOptions {
   readonly now: () => Date;
   readonly basePrompt: string;
   readonly gatherMs?: number;
+  /** The claude program, for the engine update. Null: no engine update. */
+  readonly claudeExecutable?: string | null;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
   /** Deletes the log files past their retention; the background tick calls it once a day. */
@@ -196,6 +205,8 @@ export class Eva {
   /** The saved secrets. A new value reaches the checks at once, and the rest at a restart. */
   private secrets: EvaSecrets;
   private readonly updater: Updater | null;
+  /** Null when no claude program was found. */
+  private readonly engineUpdater: EngineUpdater | null;
   private readonly machine: string;
   private lastRole: MachineRole;
   private readonly roleListeners = new Set<(role: MachineRole) => void>();
@@ -334,8 +345,23 @@ export class Eva {
         : new Updater({
             channel,
             frequency: () => this.settings.updates.frequency,
-            isIdle: () => !this.sessions.list().some((session) => this.sessions.isBusy(session.id)),
+            // A waiting engine update runs first: the restart would lose it, as it lives in memory.
+            isIdle: () => !this.workRuns() && this.engineUpdater?.status().phase !== "waiting_for_idle",
             restart: options.restartForUpdate ?? ((): void => undefined),
+            now: options.now,
+            ...(options.logger === undefined ? {} : { logger: options.logger }),
+          });
+    const claudeExecutable = options.claudeExecutable ?? null;
+    this.engineUpdater =
+      claudeExecutable === null
+        ? null
+        : new EngineUpdater({
+            executable: claudeExecutable,
+            runner: options.runner,
+            environment: this.engineToolEnvironment(),
+            // A restart would cut `claude update` off, so it waits for Eva's own download. Once the
+            // new version is in place, her restart waits for this update instead.
+            isIdle: () => !this.workRuns() && !this.downloadsOwnUpdate(),
             now: options.now,
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -370,6 +396,10 @@ export class Eva {
       await this.pullIfDue();
       this.noticeRoleChange();
       this.cleanUpIfDue();
+      // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
+      // its download can take minutes, and the next ticks must still fetch the vault.
+      const engineUpdater = this.engineUpdater;
+      if (engineUpdater !== null) this.runEngineUpdate(() => engineUpdater.tick());
       await this.updater?.tick();
       this.noticeUpdateProblem();
     } finally {
@@ -433,6 +463,26 @@ export class Eva {
     return status;
   }
 
+  engineUpdateStatus(): EngineUpdateStatus | null {
+    if (this.engineUpdater === null) return null;
+    const status = this.engineUpdater.status();
+    if (status.last === null) return status;
+    // The detail is the output of `claude update`, which a page shows.
+    const detail = status.last.detail === null ? null : this.redact(status.last.detail);
+    return { ...status, last: { ...status.last, detail } };
+  }
+
+  /**
+   * Starts `claude update` as soon as no chat runs a turn, and answers at once: the update can
+   * outlast an HTTP request. Null when no claude program was found.
+   */
+  updateEngine(): EngineUpdateStatus | null {
+    const updater = this.engineUpdater;
+    if (updater === null) return null;
+    this.runEngineUpdate(() => updater.updateNow());
+    return this.engineUpdateStatus();
+  }
+
   /**
    * Restarts Eva at once, through the same path as an update (exit code 4 under systemd, a new
    * copy elsewhere). A running turn stops; the front end asks the person to confirm first.
@@ -466,13 +516,26 @@ export class Eva {
     return readRecentLogEntries(this.options.paths.logsFolder, { minimumLevel: query.minimumLevel, limit });
   }
 
-  /** Resolves when no chat runs a turn, including its save after the turn. */
+  /** Resolves when no work runs (see `workRuns`), or after the timeout. */
   async idle(timeoutMs = 60_000): Promise<void> {
     const started = Date.now();
-    while (this.sessions.list().some((session) => this.sessions.isBusy(session.id))) {
+    while (this.workRuns()) {
       if (Date.now() - started > timeoutMs) return;
       await Bun.sleep(20);
     }
+  }
+
+  /**
+   * True while a chat runs a turn or holds a gathered message, a schedule fires, or `claude
+   * update` runs. A firing schedule has a moment between its new chat and its first message
+   * (lesson 92). Eva's own update must not restart her during `claude update`.
+   */
+  private workRuns(): boolean {
+    return (
+      this.engineUpdater?.status().phase === "updating" ||
+      this.schedules?.isFiring() === true ||
+      this.sessions.list().some((session) => this.sessions.isActive(session.id))
+    );
   }
 
   stop(): void {
@@ -756,6 +819,7 @@ export class Eva {
       runner: this.options.runner,
       environment: gitEnvironmentOf(this.options.processEnvironment, this.secrets),
       engines: this.options.engines,
+      // A real turn needs the engine's login, as a chat has it; never the GitHub token (lesson 96).
       engineEnvironment: this.engineEnvironment(),
       redact: (text) => this.redactor.redact(text),
       telegramToken: this.secrets.telegramBotToken ?? null,
@@ -872,6 +936,24 @@ export class Eva {
     });
   }
 
+  private downloadsOwnUpdate(): boolean {
+    return this.updater?.status().phase === "updating";
+  }
+
+  /**
+   * Runs one step of the engine update apart, then reports its result, so a failure reaches the
+   * phone also when the page has stopped asking.
+   */
+  private runEngineUpdate(step: () => Promise<unknown>): void {
+    const previous = this.engineUpdater?.status().last ?? null;
+    this.inBackground("The engine update", async () => {
+      await step();
+      // A step that ran nothing keeps the old result; reporting it again would repeat its alert.
+      const last = this.engineUpdater?.status().last ?? null;
+      if (last !== null && last !== previous) this.alerts.report("engine_update", engineUpdateProblem(last));
+    });
+  }
+
   private noticeUpdateProblem(): void {
     const status = this.updater?.status();
     if (status !== undefined) this.alerts.report("update", updateProblem(status));
@@ -922,10 +1004,35 @@ export class Eva {
     return folder;
   }
 
+  /**
+   * The environment of Eva's own `claude` runs, such as `claude update`: the turns' config
+   * folder, so the run acts on the same install, and no token, which such a run never needs.
+   */
+  private engineToolEnvironment(): Record<string, string> {
+    const claudeFolder = this.claudeConfigFolder();
+    return buildChildEnvironment(
+      this.options.processEnvironment,
+      baseEnvironmentAllowlist,
+      claudeFolder === null ? {} : { CLAUDE_CONFIG_DIR: claudeFolder },
+    );
+  }
+
+  /** The instance's own Claude config folder, or null for the OS user's own one. */
+  private claudeConfigFolder(): string | null {
+    return this.isExtraInstance() || this.options.config.engines.claudeCode.ownConfigFolder
+      ? join(this.options.paths.enginesFolder, "claude")
+      : null;
+  }
+
+  /** An instance whose home is not the platform default (lesson 111). */
+  private isExtraInstance(): boolean {
+    const defaultHome = this.options.defaultHome;
+    return defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
+  }
+
   /** The engine's environment: the allowlist, the Claude token, and own config folders for an extra instance. */
   private engineEnvironment(): Record<string, string> {
-    const defaultHome = this.options.defaultHome;
-    const isExtraInstance = defaultHome !== undefined && resolve(defaultHome) !== resolve(this.options.paths.root);
+    const isExtraInstance = this.isExtraInstance();
     const extra: Record<string, string> = { EVA_HOME: this.options.paths.root };
     const scripts = this.writeEvaScripts();
     if (scripts !== null) {
@@ -935,9 +1042,8 @@ export class Eva {
     }
     const token = this.secrets.claudeOauthToken;
     if (token !== undefined) extra["CLAUDE_CODE_OAUTH_TOKEN"] = token;
-    if (isExtraInstance || this.options.config.engines.claudeCode.ownConfigFolder) {
-      extra["CLAUDE_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "claude");
-    }
+    const claudeFolder = this.claudeConfigFolder();
+    if (claudeFolder !== null) extra["CLAUDE_CONFIG_DIR"] = claudeFolder;
     // pi's folder is left out on purpose: pi has no documented variable for it yet.
     if (isExtraInstance) extra["GH_CONFIG_DIR"] = join(this.options.paths.enginesFolder, "gh");
     return buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist, extra);

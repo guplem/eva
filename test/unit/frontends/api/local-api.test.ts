@@ -594,6 +594,13 @@ describe("updates and the vault sync", () => {
     expect((await call("/api/update/check", { method: "POST", body: {} })).status).toBe(409);
   });
 
+  test("without a claude program, the engine update status is null and an update is refused", async () => {
+    expect(await json<unknown>(await call("/api/update/engine"))).toBeNull();
+    const refused = await call("/api/update/engine", { method: "POST", body: {} });
+    expect(refused.status).toBe(409);
+    expect(await json<unknown>(refused)).toEqual({ error: "No claude program was found." });
+  });
+
   test("Make this machine the hub answers with the new status", async () => {
     const response = await call("/api/hub", { method: "POST", body: {} });
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
@@ -638,6 +645,53 @@ describe("an Eva with an update channel", () => {
       expect(await json<unknown>(await post("/api/update/check"))).toMatchObject({ available: true, latest: "0.2.0" });
       expect(await json<unknown>(await post("/api/update"))).toMatchObject({ phase: "restarting" });
       expect(restarts).toEqual(["restart"]);
+    } finally {
+      updatingApi.stop();
+      updating.stop();
+    }
+  });
+});
+
+describe("an Eva with a claude program", () => {
+  test("the API updates the engine and gives the result", async () => {
+    let version = "2.1.0";
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) => {
+          if (command[1] === "update") version = "2.2.0";
+          return Promise.resolve({ exitCode: 0, stdout: `${version} (Claude Code)\n`, stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const engineUpdate = `${updatingApi.url}/api/update/engine`;
+      expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toEqual({
+        phase: "idle",
+        last: null,
+      });
+      const response = await fetch(engineUpdate, { method: "POST", headers: headers(), body: "{}" });
+      expect(await json<unknown>(response)).toMatchObject({ phase: "updating" });
+      for (let round = 0; round < 200 && updating.engineUpdateStatus()?.phase !== "idle"; round += 1)
+        await Bun.sleep(10);
+      expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toMatchObject({
+        phase: "idle",
+        last: { outcome: "updated", before: "2.1.0", after: "2.2.0" },
+      });
     } finally {
       updatingApi.stop();
       updating.stop();

@@ -990,7 +990,9 @@ export class TelegramBot {
         return;
       case "message_received":
         // The web chat shows every message, so the topic shows the ones that Telegram did not send.
-        if (event.origin !== "telegram") await this.send(target.chatId, target.topicId, `Message: ${event.text}`);
+        // A schedule's setup card showed its prompt already.
+        if (event.origin !== "telegram" && event.origin !== "schedule")
+          await this.send(target.chatId, target.topicId, `Message: ${event.text}`);
         return;
       case "history_lost":
         await this.send(target.chatId, target.topicId, "The earlier history of this chat is lost.");

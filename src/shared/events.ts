@@ -54,9 +54,9 @@ export type EngineEventPayload =
 
 /**
  * Who sent a message to a chat: Telegram, a client of the local API (the web app or `eva chat`),
- * or Eva herself (a schedule, project work and its report).
+ * a schedule's prompt, or Eva herself (project work and its report).
  */
-export type MessageOrigin = "telegram" | "api" | "eva";
+export type MessageOrigin = "telegram" | "api" | "schedule" | "eva";
 
 /** What the core itself says about a chat. No engine sends these, so they stay off the engine port. */
 export type CoreEventPayload =

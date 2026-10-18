@@ -340,7 +340,7 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt),
+              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(

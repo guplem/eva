@@ -1205,6 +1205,8 @@ describe("schedules (lessons 66, 70, 126)", () => {
     const answer = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("Your day"));
     expect(answer?.params["message_thread_id"]).toBe(500);
     expect(telegram.sentTexts()).toContain("Drink water.");
+    // The setup card showed the prompt already, so a firing does not repeat it.
+    expect(telegram.sentTexts()).not.toContain("Message: Plan my day.");
     expect(telegram.callsTo("createForumTopic")).toHaveLength(1);
     expect(eva.sessions.list()[0]).toMatchObject({ title: "Morning", source: "schedule" });
   });

@@ -40,6 +40,19 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
 });
 
+test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("show me a list");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator("li")).toHaveText(["first", "second"]);
+  await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
+});
+
 test("an approval opens a dialog, and Allow answers the turn", async ({ page }) => {
   await logIn(page);
   await openList(page);

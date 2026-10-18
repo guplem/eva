@@ -3,10 +3,10 @@
  * column of its own, each with its own input, and retry and fork on every answer.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
-import { toTelegramHtml } from "../../telegram/telegram-format.ts";
 import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
+import { toWebHtml } from "./web-format.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -116,8 +116,8 @@ function Branch({
         <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
           <div className="message user">{turn.userText}</div>
           <div className="message answer">
-            {/* toTelegramHtml escapes all text and adds only its own tags, so the HTML is safe. */}
-            <div dangerouslySetInnerHTML={{ __html: toTelegramHtml(turn.answerText) }} />
+            {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
+            <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(turn.answerText) }} />
             {turn.failure !== null && <div className="failed">The turn failed: {turn.failure}</div>}
             <div className="message-actions">
               {turn.toolCount > 0 && <span className="chip">{turn.toolCount} tools</span>}
@@ -132,7 +132,7 @@ function Branch({
       {pending !== null && <div className="message user">{pending}</div>}
       {streaming !== undefined && (
         <div className="message answer" aria-live="polite">
-          <div dangerouslySetInnerHTML={{ __html: toTelegramHtml(streaming) }} />
+          <div className="answer-body" dangerouslySetInnerHTML={{ __html: toWebHtml(streaming) }} />
         </div>
       )}
       <div className="composer">

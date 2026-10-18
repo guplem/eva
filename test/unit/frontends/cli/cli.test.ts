@@ -450,7 +450,9 @@ describe("runSetup", () => {
       );
       const text = lines.join("\n");
       expect(text).toContain("read and write all your GitHub repositories");
-      expect(text).toContain("Open https://github.com/login/device and enter the code ABCD-1234.");
+      expect(text).toContain(
+        "Open https://github.com/login/device and enter the code ABCD-1234. Setup waits until you confirm. Press Ctrl+C to stop setup.",
+      );
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
       expect(tokens.every((token) => token === "gho_browser_token_1")).toBe(true);
@@ -495,22 +497,30 @@ describe("runSetup", () => {
       expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
     });
 
-    test("a script, another host and an SSH address get the token question, never the login", async () => {
+    test("a script and another host get the token question, never the login", async () => {
       const logins: string[] = [];
       const githubLogin = browserLogin(logins);
       const lines: string[] = [];
       await setup({ githubToken: "", vaultRepository: githubVault }, { interactive: false, githubLogin, lines });
-      expect(lines.join("\n")).not.toContain("The login lets Eva");
       rmSync(join(home, "vault"), { recursive: true, force: true });
-      await setup({ vaultRepository: "https://git.example.com/you/vault" }, { githubLogin });
-      rmSync(join(home, "vault"), { recursive: true, force: true });
-      // Project clones use the token too, so an SSH address still gets the question.
       await setup(
-        { vaultRepository: "git@github.com:example/vault.git", githubToken: "a-pasted-token" },
-        { githubLogin },
+        { vaultRepository: "https://git.example.com/you/vault", githubToken: "a-pasted-token" },
+        { githubLogin, lines },
       );
+      expect(lines.join("\n")).not.toContain("The login lets Eva");
       expect(logins).toEqual([]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+    });
+
+    test("a github.com SSH address offers the login for private projects, with Enter to skip", async () => {
+      const logins: string[] = [];
+      const githubLogin = browserLogin(logins);
+      const lines: string[] = [];
+      await setup({ vaultRepository: "git@github.com:example/vault.git" }, { githubLogin, lines });
+      expect(lines.join("\n")).toContain("The login lets Eva");
+      expect(logins).toEqual([]);
+      await setup({ vaultRepository: "ssh://git@github.com/example/vault.git", githubToken: "login" }, { githubLogin });
+      expect(logins).toEqual(["login"]);
     });
 
     test("with no address, as in a rerun or for a new vault, Enter skips the login and login starts it", async () => {

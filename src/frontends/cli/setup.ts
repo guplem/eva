@@ -133,7 +133,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     );
     if (githubToken !== "") saveGithubToken(githubToken);
   };
-  /** `enterLogsIn`: false keeps Enter as "skip" when no address needs a token yet, as in a rerun or for a new vault. */
+  /** `enterLogsIn`: false keeps Enter as "skip" when the vault needs no token, as in a rerun, for a new vault or over SSH. */
   const askGithubLogin = async (
     githubLogin: NonNullable<SetupOptions["githubLogin"]>,
     enterLogsIn: boolean,
@@ -157,7 +157,9 @@ export async function runSetup(options: SetupOptions): Promise<void> {
       try {
         saveGithubToken(
           await githubLogin((code, link) => {
-            options.write(`Open ${link} and enter the code ${code}. Setup waits until you confirm.`);
+            options.write(
+              `Open ${link} and enter the code ${code}. Setup waits until you confirm. Press Ctrl+C to stop setup.`,
+            );
           }),
         );
         options.write("Logged in to GitHub.");
@@ -175,8 +177,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     );
     // Project clones use the token too, so even a new vault or an SSH address gets the question.
     // The browser login only gives a github.com token, and a script cannot wait for a person.
-    if (options.interactive && options.githubLogin !== null && /^(https:\/\/github\.com\/|$)/i.test(repository))
-      await askGithubLogin(options.githubLogin, repository !== "");
+    const onGitHub = /^(https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|$)/i.test(repository);
+    if (options.interactive && options.githubLogin !== null && onGitHub)
+      // Only an HTTPS vault needs the token to clone, so only there does Enter log in.
+      await askGithubLogin(options.githubLogin, /^https:/i.test(repository));
     else await askGithubToken();
     return repository;
   };

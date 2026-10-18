@@ -10,7 +10,9 @@ import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner } from "../../src/shared/process-runner.ts";
+import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
+import { fakeGithub } from "../support/fake-github.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 
 export const demoPort = 7499;
@@ -23,7 +25,7 @@ sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${appRemote.remote}\n---\n# Example app\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n`,
 );
 sandbox.write(vault, "Projects/2019-03-old-tool/AGENTS.md", "---\ncreated: 2019-03\nstatus: closed\n---\n# Old tool\n");
 sandbox.git(vault, "add", "-A");
@@ -60,6 +62,23 @@ const eva = new Eva({
   now: () => new Date(),
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
+  // The reference has a skill that the project's repository lacks, and auto-merge is off there.
+  githubGet: fakeGithub({
+    [evaRepository]: {
+      repository: { allow_auto_merge: true },
+      files: {
+        "AGENTS.md": "# Rules\n",
+        ".agents/skills/write-commit/SKILL.md": "# Commits\n",
+        ".claude/settings.json": '{"permissions":{"allow":["Read"]}}',
+      },
+      labels: ["bug"],
+    },
+    "example-owner/example-app": {
+      repository: { allow_auto_merge: false },
+      files: { "AGENTS.md": "# Rules\n" },
+      labels: ["bug"],
+    },
+  }),
 });
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.

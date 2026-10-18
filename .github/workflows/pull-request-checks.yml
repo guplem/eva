@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  # No ruleset requires this job: the agent that merges checks that it is green on both systems.
+  # The merge ruleset requires each job by its name. Rename a job only together with the ruleset.
   checks:
     strategy:
       fail-fast: false

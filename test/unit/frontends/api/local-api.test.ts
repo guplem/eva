@@ -278,6 +278,47 @@ describe("device login", () => {
     expect((await call("/api/status", { headers: { cookie } })).status).toBe(401);
   });
 
+  test("a device login changes the page's settings, but never a machine trust setting", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const device = { cookie, "content-type": "application/json" };
+    const page = await call("/api/settings", {
+      method: "PUT",
+      headers: device,
+      body: { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
+    });
+    expect(page.status).toBe(200);
+    for (const change of [
+      { remoteAccess: { allowedTailscaleIdentities: ["stranger@example.com"] } },
+      { telegram: { allowedChatId: 42 } },
+      { trust: { trustedRepositoryOwners: ["stranger"] } },
+      { engines: { claudeCode: { executable: "/tmp/other" } } },
+      { vaultPath: "/tmp/other-vault" },
+    ]) {
+      const refused = await call("/api/settings", { method: "PUT", headers: device, body: change });
+      expect(refused.status).toBe(403);
+    }
+    expect(eva.publicSettings().config.remoteAccess.allowedTailscaleIdentities).toEqual([]);
+    const withToken = await call("/api/settings", {
+      method: "PUT",
+      body: { trust: { trustedRepositoryOwners: ["me"] } },
+    });
+    expect(withToken.status).toBe(200);
+  });
+
+  test("a device login can neither replace nor remove a token", async () => {
+    attachApprover();
+    const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
+    const replaced = await call("/api/secrets/claudeOauthToken", {
+      method: "PUT",
+      headers: device,
+      body: { value: "sk-ant-oat-stranger-token" },
+    });
+    expect(replaced.status).toBe(403);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE", headers: device })).status).toBe(403);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
+  });
+
   test("Log out every device ends every device login, and needs a login itself", async () => {
     attachApprover();
     const first = deviceCookieOf(await allowedCookie());
@@ -451,6 +492,11 @@ describe("web routes", () => {
     expect((await call("/api/projects/missing/work", { method: "POST", body: {} })).status).toBe(400);
   });
 
+  test("a project's repository setup; an unknown project is a 404", async () => {
+    expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/setup"))).toEqual([]);
+    expect((await call("/api/projects/missing/setup")).status).toBe(404);
+  });
+
   test("a project's clones, and a new clone", async () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
@@ -466,12 +512,42 @@ describe("web routes", () => {
     const saved = await call("/api/settings", { method: "PUT", body: { timeZone: "Europe/Madrid" } });
     expect(await json<{ saved: boolean; restartNeeded: boolean }>(saved)).toEqual({ saved: true, restartNeeded: true });
     expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
+    const setup = await json<{ engines: string[]; telegram: { paired: boolean } }>(await call("/api/settings/setup"));
+    expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
   });
+
+  test("secrets: write-only, only the three that the page may change", async () => {
+    const saved = await call("/api/secrets/githubToken", { method: "PUT", body: { value: "ghp_example-token-value" } });
+    expect(await saved.text()).not.toContain("example-token-value");
+    expect(saved.status).toBe(200);
+    const settings = await json<{ secretsSet: Record<string, boolean> }>(await call("/api/settings"));
+    expect(settings.secretsSet["githubToken"]).toBe(true);
+    expect((await call("/api/secrets/githubToken", { method: "DELETE" })).status).toBe(200);
+    expect(eva.publicSettings().secretsSet.githubToken).toBe(false);
+    expect((await call("/api/secrets/localApiToken", { method: "PUT", body: { value: "x" } })).status).toBe(404);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: {} })).status).toBe(400);
+    expect((await call("/api/secrets/githubToken", { method: "PUT", body: { value: " " } })).status).toBe(400);
+  });
+
+  test("an engine check may take longer than Bun's 10 s idle timeout", async () => {
+    // A cold start of a real engine often takes more than 10 s.
+    turnScript = async function* (request) {
+      await Bun.sleep(14_000);
+      yield* FakeEngine.answer(request, "OK");
+    };
+    // With no body, Bun counts the wait as idle: the case that closed the socket.
+    const result = await json<{ ok: boolean }>(await call("/api/checks/claude-code", { method: "POST" }));
+    expect(result.ok).toBe(true);
+  }, 30_000);
 
   test("a check runs by name, and an unknown check is a 404", async () => {
     const result = await json<{ ok: boolean }>(await call("/api/checks/vault", { method: "POST", body: {} }));
     expect(result.ok).toBe(true);
     expect((await call("/api/checks/everything", { method: "POST", body: {} })).status).toBe(404);
+    const engineCheck = await json<{ ok: boolean }>(
+      await call("/api/checks/claude-code", { method: "POST", body: {} }),
+    );
+    expect(engineCheck.ok).toBe(true);
   });
 
   test("schedules: add, list, refuse an invalid one, and remove", async () => {
@@ -581,6 +657,13 @@ describe("updates and the vault sync", () => {
     expect((await call("/api/update/check", { method: "POST", body: {} })).status).toBe(409);
   });
 
+  test("without a claude program, the engine update status is null and an update is refused", async () => {
+    expect(await json<unknown>(await call("/api/update/engine"))).toBeNull();
+    const refused = await call("/api/update/engine", { method: "POST", body: {} });
+    expect(refused.status).toBe(409);
+    expect(await json<unknown>(refused)).toEqual({ error: "No claude program was found." });
+  });
+
   test("Make this machine the hub answers with the new status", async () => {
     const response = await call("/api/hub", { method: "POST", body: {} });
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });
@@ -625,6 +708,53 @@ describe("an Eva with an update channel", () => {
       expect(await json<unknown>(await post("/api/update/check"))).toMatchObject({ available: true, latest: "0.2.0" });
       expect(await json<unknown>(await post("/api/update"))).toMatchObject({ phase: "restarting" });
       expect(restarts).toEqual(["restart"]);
+    } finally {
+      updatingApi.stop();
+      updating.stop();
+    }
+  });
+});
+
+describe("an Eva with a claude program", () => {
+  test("the API updates the engine and gives the result", async () => {
+    let version = "2.1.0";
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) => {
+          if (command[1] === "update") version = "2.2.0";
+          return Promise.resolve({ exitCode: 0, stdout: `${version} (Claude Code)\n`, stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      const engineUpdate = `${updatingApi.url}/api/update/engine`;
+      expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toEqual({
+        phase: "idle",
+        last: null,
+      });
+      const response = await fetch(engineUpdate, { method: "POST", headers: headers(), body: "{}" });
+      expect(await json<unknown>(response)).toMatchObject({ phase: "updating" });
+      for (let round = 0; round < 200 && updating.engineUpdateStatus()?.phase !== "idle"; round += 1)
+        await Bun.sleep(10);
+      expect(await json<unknown>(await fetch(engineUpdate, { headers: headers() }))).toMatchObject({
+        phase: "idle",
+        last: { outcome: "updated", before: "2.1.0", after: "2.2.0" },
+      });
     } finally {
       updatingApi.stop();
       updating.stop();

@@ -48,7 +48,10 @@ async function installWithWinget(inputs: InstallInputs): Promise<void> {
     "--id",
     "Tailscale.Tailscale",
     "--exact",
+    "--source",
+    "winget",
     "--silent",
+    "--disable-interactivity",
     "--accept-package-agreements",
     "--accept-source-agreements",
   ];
@@ -98,9 +101,10 @@ async function installUserspace(inputs: InstallInputs): Promise<void> {
   const wrapper = posix.join(inputs.homeFolder, ".local", "bin", "tailscale");
   if (!existsSync(wrapper)) {
     mkdirSync(posix.dirname(wrapper), { recursive: true });
+    // $HOME, not the path itself: a quote or a `$` in a home path would break out of the script's quotes.
     writeFileAtomic(
       wrapper,
-      `#!/bin/sh\nexec "${posix.join(folders.lib, "tailscale")}" --socket="${folders.socket}" "$@"\n`,
+      '#!/bin/sh\nexec "$HOME/.local/lib/tailscale/tailscale" --socket="$HOME/.local/share/tailscale/tailscaled.sock" "$@"\n',
     );
     chmodSync(wrapper, 0o755);
   }
@@ -114,7 +118,8 @@ async function installUserspace(inputs: InstallInputs): Promise<void> {
       "After=network-online.target",
       "",
       "[Service]",
-      `ExecStart=${posix.join(folders.lib, "tailscaled")} --tun=userspace-networking --statedir=${folders.state} --socket=${folders.socket}`,
+      // systemd's %h, not the path itself: a space or a `%` in a home path would split or change the line.
+      "ExecStart=%h/.local/lib/tailscale/tailscaled --tun=userspace-networking --statedir=%h/.local/share/tailscale --socket=%h/.local/share/tailscale/tailscaled.sock",
       "Restart=on-failure",
       "",
       "[Install]",

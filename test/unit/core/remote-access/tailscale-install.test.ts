@@ -15,7 +15,7 @@ interface FakePackages {
   stop(): void;
 }
 
-function servePackages(options: { hash?: string; missingArch?: boolean } = {}): FakePackages {
+function servePackages(options: { hash?: string; missingArch?: boolean; name?: unknown } = {}): FakePackages {
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -24,7 +24,7 @@ function servePackages(options: { hash?: string; missingArch?: boolean } = {}): 
       if (path === "/stable/")
         return Response.json({
           TarballsVersion: "1.90.1",
-          Tarballs: options.missingArch === true ? {} : { amd64: "tailscale_1.90.1_amd64.tgz" },
+          Tarballs: options.missingArch === true ? {} : { amd64: options.name ?? "tailscale_1.90.1_amd64.tgz" },
         });
       if (path === "/stable/tailscale_1.90.1_amd64.tgz") return new Response(tarball);
       if (path === "/stable/tailscale_1.90.1_amd64.tgz.sha256") return new Response(`${options.hash ?? tarballHash}\n`);
@@ -124,9 +124,12 @@ describe("installTailscale", () => {
     expect(commands[0]?.[0]).toBe("tar");
     const unit = readFileSync(join(home, ".config", "systemd", "user", "tailscaled.service"), "utf8");
     expect(unit).toContain("--tun=userspace-networking");
-    expect(unit).toContain(`--socket=${join(home, ".local", "share", "tailscale", "tailscaled.sock")}`);
+    // The same socket that Eva's own commands use (findTailscale), through systemd's %h for the home folder.
+    expect(unit).toContain("--socket=%h/.local/share/tailscale/tailscaled.sock");
+    expect(unit).not.toContain(home);
     const wrapper = join(home, ".local", "bin", "tailscale");
-    expect(readFileSync(wrapper, "utf8")).toContain("--socket=");
+    expect(readFileSync(wrapper, "utf8")).toContain('--socket="$HOME/.local/share/tailscale/tailscaled.sock"');
+    expect(readFileSync(wrapper, "utf8")).not.toContain(home);
     expect(statSync(wrapper).mode & 0o111).not.toBe(0);
     expect(commands.slice(1)).toEqual([
       ["systemctl", "--user", "daemon-reload"],
@@ -194,6 +197,25 @@ describe("installTailscale", () => {
       packagesBaseUrl: "http://127.0.0.1:1",
     }).catch((caught: unknown) => caught);
     expect(isEvaError(offline, "tailscale_install_failed")).toBe(true);
+  });
+
+  test("a build name that could leave the package folder installs nothing", async () => {
+    for (const name of ["../x.tgz", "a/b.tgz", 42]) {
+      packages = servePackages({ name });
+      const commands: string[][] = [];
+      const error = await installTailscale({
+        runner: fakeRunner(commands),
+        environment: {},
+        platform: "linux",
+        arch: "x64",
+        homeFolder: home,
+        packagesBaseUrl: packages.url,
+      }).catch((caught: unknown) => caught);
+      expect((error as Error).message).toContain("lists no Linux build");
+      expect(commands).toEqual([]);
+      packages.stop();
+      packages = null;
+    }
   });
 
   test("macOS gets no install", async () => {

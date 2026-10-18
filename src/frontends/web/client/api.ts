@@ -10,13 +10,21 @@ import type { PendingApproval } from "../../../core/sessions/session-manager.ts"
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
-import type { VaultSyncState } from "../../../core/vault/vault-sync.ts";
+import type {
+  ConflictChoice,
+  ConflictResolution,
+  VaultConflict,
+  VaultConflictReport,
+  VaultSyncState,
+} from "../../../core/vault/vault-sync.ts";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type {
   CheckResult,
   CloneDetails,
+  ConflictChoice,
+  ConflictResolution,
   DeviceLoginRequest,
   EngineUpdateStatus,
   EvaStatus,
@@ -31,6 +39,8 @@ export type {
   SetupItem,
   SetupReport,
   UpdateStatus,
+  VaultConflict,
+  VaultConflictReport,
   VaultSyncState,
 };
 
@@ -121,6 +131,9 @@ export const api = {
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
+  vaultConflicts: (): Promise<VaultConflictReport> => request("GET", "/api/vault/conflicts"),
+  resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
+    request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),

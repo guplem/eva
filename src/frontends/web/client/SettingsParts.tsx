@@ -1,6 +1,13 @@
 /** The small parts of the settings page: a Test row, a write-only secret field, and the vault sync state. */
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
-import { api, type CheckResult, type PageSecretName, type VaultSyncState } from "./api.ts";
+import {
+  api,
+  type CheckResult,
+  type ConflictChoice,
+  type PageSecretName,
+  type VaultConflict,
+  type VaultSyncState,
+} from "./api.ts";
 
 /**
  * One Test button and its result. The check runs on the server, with the saved settings. The
@@ -113,8 +120,14 @@ const withheldReasons: Readonly<Record<VaultSyncState["withheldFiles"][number]["
   too_large: "larger than 50 MB",
 };
 
-/** The last sync result, a conflict included, and the files that the secret scan held back. */
-export function VaultSyncView({ state }: { state: VaultSyncState }): ReactElement {
+/** The last sync result, a conflict with its picks included, and the files that the secret scan held back. */
+export function VaultSyncView({
+  state,
+  onState,
+}: {
+  state: VaultSyncState;
+  onState: (state: VaultSyncState) => void;
+}): ReactElement {
   const label = statusLabels[state.status];
   return (
     <section className="sync-state" aria-label="Vault sync">
@@ -122,6 +135,7 @@ export function VaultSyncView({ state }: { state: VaultSyncState }): ReactElemen
       <div className="hint">
         Last commit: {formatTime(state.lastCommitAt)}. Last push: {formatTime(state.lastPushAt)}.
       </div>
+      {state.status === "conflict" && <VaultConflicts onState={onState} />}
       {state.withheldFiles.length > 0 && (
         <div>
           These files stay out of the vault&apos;s commits. Move the secret out of the file, or make it smaller:
@@ -135,6 +149,67 @@ export function VaultSyncView({ state }: { state: VaultSyncState }): ReactElemen
         </div>
       )}
     </section>
+  );
+}
+
+const pickLabels: Readonly<Record<ConflictChoice, string>> = {
+  mine: "Keep mine",
+  theirs: "Keep theirs",
+  both: "Keep both",
+};
+
+/** Each conflicted note with its three picks. The last pick pushes, and the new state goes up. */
+function VaultConflicts({ onState }: { onState: (state: VaultSyncState) => void }): ReactElement {
+  const [conflicts, setConflicts] = useState<readonly VaultConflict[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .vaultConflicts()
+      .then((report) => setConflicts(report.conflicts))
+      .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)));
+  }, []);
+
+  const pick = async (path: string, choice: ConflictChoice): Promise<void> => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const result = await api.resolveVaultConflict(path, choice);
+      setConflicts(result.conflicts);
+      if (!result.found) setNote(result.state.lastError ?? "That note has no conflict anymore.");
+      onState(result.state);
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="hint">
+        &quot;Mine&quot; is this machine&apos;s version, &quot;theirs&quot; is the remote&apos;s. &quot;Keep both&quot;
+        keeps mine and puts theirs in a copy beside the note. Git keeps both versions either way.
+      </p>
+      {conflicts === null && note === null && <div>Loading the conflicts…</div>}
+      <ul>
+        {conflicts?.map((conflict) => (
+          <li key={conflict.path}>
+            {conflict.path}
+            {conflict.picked !== null && ` (picked: ${pickLabels[conflict.picked].toLowerCase()})`}
+            <div className="check-row">
+              {(["mine", "theirs", "both"] as const).map((choice) => (
+                <button key={choice} disabled={busy} onClick={() => void pick(conflict.path, choice)}>
+                  {pickLabels[choice]}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {note !== null && <div role="alert">{note}</div>}
+    </div>
   );
 }
 

@@ -10,7 +10,7 @@ A new person goes from a fresh server to a shareable link by following Eva's own
 
 1. **Read every Tailscale state.** `readTailscale` returns only "running" or null today. Return a state instead: missing, stopped, needs a sign-in (with the sign-in link from `AuthURL`), or running. Find the `tailscale` program also where Eva's own install puts it.
 2. **One remote access state for every front end.** Add a step to `RemoteAccess`: install, start, sign in, HTTPS, ready or failed, with the link that the step needs. `remoteAccess` is null only when `remoteAccess.tailscaleServe` is off.
-3. **A watcher in the core.** It reads the state, publishes with `tailscale serve` when it can, and reads again on a timer while the address is missing. It replaces the start-time read and `publishRetry` in `src/main.ts`.
+3. **A watcher in the core.** It reads the state, publishes with `tailscale serve` when it can, and reads again every 30 seconds, also while ready. It replaces the start-time read and `publishRetry` in `src/main.ts`.
 4. **Dynamic hosts in the local API.** The Tailscale host name and the owner's login can arrive after the start. The host and identity guards read them on each request.
 5. **Install Tailscale.** Windows: `winget`. Linux: the userspace install from the guide (static build, a user service, no root). Elsewhere: the steps only. `eva setup` offers it, and the web page has a button for it.
 6. **Sign in from the web page.** A button runs `tailscale up` and shows the link. The page reads the status every few seconds until the step is done.
@@ -46,5 +46,31 @@ Traps to handle:
 - Run the userspace build directly with `--socket=…`, not through the wrapper script.
 - A root `tailscaled` refuses a normal user: show `sudo tailscale set --operator=$USER` as its own problem.
 - The sign-in button runs `tailscale up --timeout=…` again for a fresh link.
-- Remove the "restart Eva" text: the watcher reads the state every 30 seconds while the address is missing.
+- Remove the "restart Eva" text: the watcher reads the state every 30 seconds.
 - `eva doctor` names `eva setup` as the way to install Tailscale.
+
+## Review round 1
+
+Five agents reviewed the work. Fixed:
+
+- Install only after a fresh read says that no Tailscale exists. An old Telegram button or a direct POST could start a second daemon.
+- Keep a failed install's cause on the start step too: a partial Linux install leaves a program but no daemon.
+- Read fresh after an install or a sign-in, never a read that began before it ended.
+- `tailscale down` is the start step, not a sign-in. A `null` status never crashes Eva. A sign-in link must be Tailscale's own login page.
+- Publish a ready address again about every 10 minutes: a lost serve setting shows no change in the status.
+- Keep the last known owner when a read fails, so the identity check stays on.
+- Write the wrapper with `$HOME` and the unit with `%h`, so no home path lands in a shell or unit line.
+- `eva setup` publishes too, so the address that it prints works as soon as Eva runs. The `publish` option is gone.
+- Telegram runs the sign-in apart from its poll loop, checks for phone access that is off, and starts no second wait on a second tap.
+- The web page keeps a slow read while ready, says "within a minute", and handles a browser with no clipboard.
+- Setup no longer tells the person to run setup.
+- Tests use the real watcher over a shared fake `tailscale` program (`test/support/fake-tailscale.ts`), not a hand-made control.
+- Shared helpers: `stepLine`, `actionLabel` and `RemoteAccessBusy`.
+
+Not changed, with the reason:
+
+- **Each commit compiles on its own:** the commits are pushed already, and AGENTS.md forbids a force-push. Later commits keep one concern each.
+- **Hide the Install button from a device login:** a device login exists only once Tailscale works, so it never sees the setup steps. The API refuses it anyway.
+- **A new sign-in link when setup's wait times out:** the wait lasts 10 minutes. The person runs `eva link` or taps Sign in in Telegram or Settings for a fresh link.
+- **Drop the `tailscale_install_failed` code:** the watcher branches on it to word a failure that is not Eva's own.
+- **The macOS app path in `findTailscale`:** macOS gets the steps only, by decision 3.

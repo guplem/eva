@@ -113,7 +113,7 @@ You can run `bun run eva setup` again at any time. It keeps every answer that yo
 
 The last step of setup connects Eva's computer to Tailscale:
 
-1. Without Tailscale, setup offers to install it. Windows installs with `winget`; accept the prompt that asks for administrator rights. Linux gets the userspace build, with no `sudo` (see [Tailscale without root](#tailscale-without-root)). On other systems, install Tailscale from [tailscale.com/download](https://tailscale.com/download).
+1. Without Tailscale, setup offers to install it. On Windows, Eva uses `winget`, the Windows package tool. Accept the prompt that asks for administrator rights. Linux gets the userspace build, with no `sudo` (see [Tailscale without root](#tailscale-without-root)). On other systems, install Tailscale from [tailscale.com/download](https://tailscale.com/download).
 2. Setup shows a sign-in link. Open it on any device, and sign in with your Tailscale account.
 3. A new Tailscale network must turn HTTPS on once. Setup shows the page; press **Enable** there.
 4. Setup prints Eva's address, such as `https://your-computer.your-tailnet.ts.net`, and a QR code.
@@ -175,7 +175,7 @@ A laptop server must not sleep when its lid closes. Ask the machine's administra
 
 ### Tailscale without root
 
-On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Eva does these steps for you: in `eva setup`, with `/link` in Telegram, or in Settings. Eva installs only when no `tailscale` program exists, so she never starts a second Tailscale beside the system one. The user service keeps running after you log out only with linger on, as for Eva herself (`eva doctor` checks it).
+On a Linux server without `sudo`, Tailscale runs as a normal user in its userspace mode. Eva does these steps for you: in `eva setup`, with `/link` in Telegram, or in Settings. Eva installs only when no `tailscale` program exists, so she never starts a second Tailscale beside the system one. Linger is a systemd setting that keeps your services running after you log out. Tailscale needs it, as Eva does. Run `eva doctor` to check it.
 
 If Tailscale already runs for the administrator, Eva cannot sign in or publish her page with it. Ask the administrator to run `sudo tailscale set --operator=$USER` once.
 

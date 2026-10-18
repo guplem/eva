@@ -72,6 +72,7 @@ export interface EngineFolders {
   readonly claude: string;
   readonly piAgent: string;
   readonly gh: string;
+  readonly git: string;
 }
 
 export function engineFolders(paths: HomePaths): EngineFolders {
@@ -80,7 +81,37 @@ export function engineFolders(paths: HomePaths): EngineFolders {
     // Not `engines/pi`: pi reads `<agent folder>/prompts/` as templates, and Eva writes her prompts there.
     piAgent: join(paths.enginesFolder, "pi-agent"),
     gh: join(paths.enginesFolder, "gh"),
+    git: join(paths.enginesFolder, "git"),
   };
+}
+
+/**
+ * The global git config of an extra instance's agents. With `GIT_CONFIG_GLOBAL`, git reads only
+ * this file, so it includes the person's own global config first. Then it resets the GitHub
+ * helpers: without this, a push asks the OS user's helper and goes out as the first person.
+ * Other hosts keep the person's helpers.
+ */
+export function engineGitConfig(environment: Readonly<Record<string, string | undefined>>, file: string): string {
+  // Git expands `~/` in an include path itself, on Windows too.
+  // An Eva started from this instance's own agent gets this file; including it again would loop.
+  const fromEnvironment = environment["GIT_CONFIG_GLOBAL"];
+  const ownGlobal =
+    fromEnvironment === undefined || resolve(fromEnvironment) === resolve(file) ? undefined : fromEnvironment;
+  const xdgConfig = environment["XDG_CONFIG_HOME"];
+  const includes =
+    ownGlobal !== undefined
+      ? [ownGlobal]
+      : [xdgConfig === undefined ? "~/.config/git/config" : join(xdgConfig, "git", "config"), "~/.gitconfig"];
+  const quote = (value: string): string => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  return [
+    "# Written by Eva at each start. Edits here get lost.",
+    "[include]",
+    ...includes.map((path) => `\tpath = ${quote(path)}`),
+    '[credential "https://github.com"]',
+    "\thelper =",
+    "\thelper = !gh auth git-credential",
+    "",
+  ].join("\n");
 }
 
 /** The variables that point each engine at its folder. */

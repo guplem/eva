@@ -60,7 +60,7 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 ## 4. Change or remove one
 
-To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
+To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 
 ## 5. Reply
 

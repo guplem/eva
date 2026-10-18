@@ -178,7 +178,11 @@ function VaultConflicts({
   const load = (): void => {
     api
       .vaultConflicts()
-      .then((report) => setConflicts(report.conflicts))
+      .then((report) => {
+        setConflicts(report.conflicts);
+        // The conflict can end elsewhere: a sync on another path, or a fix by hand. The parent then shows the new state.
+        if (report.state.status !== "conflict") onState(report.state);
+      })
       .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)));
   };
   useEffect(load, [state.lastError, state.lastCommitAt]);
@@ -213,6 +217,7 @@ function VaultConflicts({
         keeps mine and puts theirs in a copy beside the note. Git keeps both versions either way.
       </p>
       {conflicts === null && note === null && <div>Loading the conflicts…</div>}
+      {conflicts?.length === 0 && <div>No note conflicts now.</div>}
       <ul>
         {conflicts?.map((conflict) => (
           <li key={conflict.path}>

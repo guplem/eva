@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { SessionRecord } from "./api.ts";
+import { formatTokens, latestContext } from "./chat-details.ts";
 import type { LiveState } from "./live-state.ts";
 
 type Tasks = LiveState["tasks"];
@@ -17,21 +18,6 @@ export function tasksOf(tasks: Tasks, sessionIds: readonly string[]): Tasks {
 /** The number of tasks that still run. */
 export function runningCount(tasks: Tasks): number {
   return Object.values(tasks).filter((task) => task.state === "running").length;
-}
-
-/** "25.4k tokens": short enough for the panel. */
-function formatTokens(count: number): string {
-  if (count < 1000) return `${String(count)} tokens`;
-  return `${(count / 1000).toFixed(1).replace(/\.0$/, "")}k tokens`;
-}
-
-/** The context after the newest answer of the chat and its branches, or null when no engine said. */
-function latestContext(branches: readonly SessionRecord[]): number | null {
-  const turns = branches
-    .flatMap((branch) => branch.turns)
-    .filter((turn) => turn.contextTokens !== null)
-    .sort((first, second) => second.at.localeCompare(first.at));
-  return turns[0]?.contextTokens ?? null;
 }
 
 function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: string }): ReactElement {
@@ -50,14 +36,14 @@ function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: str
 }
 
 interface ChatProps {
-  /** The chat first, then each of its branches. Empty when no chat is open. */
-  readonly branches: readonly SessionRecord[];
+  /** The chat first, then each of its forks. Empty when no chat is open. */
+  readonly tree: readonly SessionRecord[];
   readonly tasks: Tasks;
 }
 
-function ChatDetails({ branches, tasks }: ChatProps): ReactElement {
-  const root = branches[0];
-  const context = latestContext(branches);
+function ChatDetails({ tree, tasks }: ChatProps): ReactElement {
+  const root = tree[0];
+  const context = latestContext(tree);
   return (
     <>
       {root !== undefined && (
@@ -70,8 +56,8 @@ function ChatDetails({ branches, tasks }: ChatProps): ReactElement {
           <dd>{root.mode}</dd>
           <dt>Answers</dt>
           <dd>
-            {branches.reduce((sum, branch) => sum + branch.turns.length, 0)}
-            {branches.length > 1 ? ` in ${String(branches.length)} branches` : ""}
+            {tree.reduce((sum, session) => sum + session.turns.length, 0)}
+            {tree.length > 1 ? `, with ${String(tree.length - 1)} fork${tree.length === 2 ? "" : "s"}` : ""}
           </dd>
           <dt>Context</dt>
           <dd>{context === null ? "Not known yet" : formatTokens(context)}</dd>

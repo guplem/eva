@@ -290,6 +290,8 @@ textarea {
 .main-header {
   display: flex;
   align-items: center;
+  /* A long branch name and the Chat info button must not push the page wider than a phone. */
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border);
@@ -854,7 +856,8 @@ textarea {
     min-height: 44px;
   }
 
-  .icon-button {
+  .icon-button,
+  .steps-toggle {
     min-width: 44px;
   }
 

@@ -32,12 +32,12 @@ export function AssistantView({
   const [model, setModel] = useState<ModelAlias>("default");
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
-  const branches = selected === undefined ? [] : chatTree(selected, sessions);
+  const tree = selected === undefined ? [] : chatTree(selected, sessions);
   const chat = {
-    branches,
+    tree,
     tasks: tasksOf(
       live.tasks,
-      branches.map((branch) => branch.id),
+      tree.map((session) => session.id),
     ),
   };
   const listRef = useRef<HTMLDivElement>(null);

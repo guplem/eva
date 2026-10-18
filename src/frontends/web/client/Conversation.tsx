@@ -7,9 +7,9 @@ import { api, type SessionRecord } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import type { LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
-import { splitSteps, StepRow } from "./TurnSteps.tsx";
+import { StepRow } from "./TurnSteps.tsx";
 import { toWebHtml } from "./web-format.ts";
-import type { TurnStep } from "../../../shared/turn-steps.ts";
+import { splitSteps, storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 
 /** Closer to the bottom than this counts as "at the bottom", so a new message scrolls into view. */
 const stickToBottomPx = 80;
@@ -142,7 +142,7 @@ function Branch({
       {pending !== null && <div className="message user">{pending}</div>}
       {liveSteps !== undefined && (
         <div className="message answer">
-          <AnswerBody steps={liveSteps} omitted={0} fallback="" live />
+          <LiveAnswerBody steps={liveSteps} />
         </div>
       )}
       {running > 0 && (
@@ -177,9 +177,9 @@ function Branch({
 }
 
 /**
- * The badges of the earlier steps, then the last message in full. A new message in a running
- * turn replaces the shown one, and the older one becomes a badge. A turn stored before steps
- * existed has none, so it shows its whole answer text.
+ * The badges of the steps before the last message, the last message in full, then the badges
+ * of the steps after it. A new message in a running turn replaces the shown one, and the older
+ * one becomes a badge. A turn stored before steps existed has none, so it shows its whole answer text.
  */
 function AnswerBody({
   steps,
@@ -192,18 +192,25 @@ function AnswerBody({
   readonly fallback: string;
   readonly live?: boolean;
 }): ReactElement {
-  const { earlier, lastMessage } = splitSteps(steps);
+  const { before, lastMessage, after } = splitSteps(steps);
   return (
     <>
-      <StepRow steps={earlier} omitted={omitted} />
+      <StepRow steps={before} omitted={omitted} />
       {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
       <div
         className="answer-body"
         aria-live={live ? "polite" : undefined}
         dangerouslySetInnerHTML={{ __html: toWebHtml(lastMessage?.text ?? fallback) }}
       />
+      <StepRow steps={after} noun="later step" />
     </>
   );
+}
+
+/** A running turn keeps the same window of steps as a stored one, so both show the same badges. */
+function LiveAnswerBody({ steps }: { readonly steps: readonly TurnStep[] }): ReactElement {
+  const shown = storedSteps(steps);
+  return <AnswerBody steps={shown.steps} omitted={shown.omittedSteps} fallback="" live />;
 }
 
 function isTouchScreen(): boolean {

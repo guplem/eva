@@ -103,12 +103,12 @@ export function ProjectView({ sessions, live, sidebarOpen, onChanged, onNavigate
     selection === null ? [] : rootChats(sessions.filter((session) => session.startFolder === selection.clone.path));
   // The newest chat opens first, as in Assistant mode.
   const chat = cloneChats.find((candidate) => candidate.id === selectedChatId) ?? cloneChats[0];
-  const branches = chat === undefined ? [] : chatTree(chat, sessions);
+  const tree = chat === undefined ? [] : chatTree(chat, sessions);
   const chatDetails = {
-    branches,
+    tree,
     tasks: tasksOf(
       live.tasks,
-      branches.map((branch) => branch.id),
+      tree.map((session) => session.id),
     ),
   };
 

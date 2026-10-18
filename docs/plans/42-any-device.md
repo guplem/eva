@@ -74,3 +74,19 @@ Not changed, with the reason:
 - **A new sign-in link when setup's wait times out:** the wait lasts 10 minutes. The person runs `eva link` or taps Sign in in Telegram or Settings for a fresh link.
 - **Drop the `tailscale_install_failed` code:** the watcher branches on it to word a failure that is not Eva's own.
 - **The macOS app path in `findTailscale`:** macOS gets the steps only, by decision 3.
+
+## Review round 2
+
+Three agents reviewed the work again. None raised a decided item again. Fixed:
+
+- The busy state now ends after the last read of an install or a sign-in, so no reader sees the old step without it.
+- The Linux install unpacks in its own staging folder. When the user service does not start, Eva takes the programs out again, so the Install step comes back.
+- The local API keeps the last known host name too: one failed `tailscale status` no longer locks every phone out for 30 seconds.
+- Telegram starts a sign-in before its first message, answers an old Install tap with the current steps, and promises nothing it does not do.
+- A rejected install promise is logged, and only an install or start problem counts as an install failure.
+- The terminal QR code has a wider light border.
+- Tests: the Windows job skips the execute-bit check, the fake reaches the `up` and `serve` branches, and no test loops without a bound.
+
+Not changed, with the reason:
+
+- **Show a second problem on the HTTPS step:** the only problem on that path repeats the step's own text.

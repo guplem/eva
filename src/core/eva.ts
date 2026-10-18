@@ -16,6 +16,7 @@ import { Redactor } from "../shared/redaction.ts";
 import { evaRepository, evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
 import {
+  scheduleCardProblem,
   engineUpdateProblem,
   scheduleFiringProblem,
   uncleanExitMessage,
@@ -40,6 +41,7 @@ import type { RemoteAccess } from "./remote-access/tailscale.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
 import {
+  CloneOriginStore,
   createClone,
   describeClone,
   githubSlug,
@@ -206,6 +208,7 @@ export class Eva {
   private readonly redactor: Redactor;
   private readonly vaultSync: VaultSync | null;
   private readonly gitEnvironment: Record<string, string>;
+  private readonly cloneOrigins: CloneOriginStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -239,6 +242,7 @@ export class Eva {
     this.lastHousekeepingAt = null;
     this.vaultOfflineSince = null;
     this.settings = options.config;
+    this.cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
     this.machine = options.config.machineName ?? hostname();
     const vaultPath = options.config.vaultPath;
     this.secrets = options.secrets;
@@ -295,6 +299,7 @@ export class Eva {
         }),
         project: new ProjectPreparer({
           trustStore: new TrustStore(options.paths.trust),
+          cloneOrigins: this.cloneOrigins,
           trustedOwners: options.config.trust.trustedRepositoryOwners,
           environment: engineEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, this.gitEnvironment),
@@ -341,6 +346,10 @@ export class Eva {
                 `schedule:${schedule.id}`,
                 failure === null ? null : scheduleFiringProblem(schedule.name, failure),
               );
+            },
+            reportCard: (scheduleId, name, waiting) => {
+              // Its own key: a good firing clears `schedule:<id>`, but must not clear this one.
+              this.alerts.report(`schedule_card:${scheduleId}`, waiting ? scheduleCardProblem(name) : null);
             },
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
@@ -852,12 +861,19 @@ export class Eva {
       repositoryUrl: url,
       runner: this.options.runner,
       environment: this.gitEnvironment,
+      origins: this.cloneOrigins,
     });
   }
 
   /** Call it only inside `oneCloneChoiceAtATime`, or two callers can get the same clone. */
   private async freeOrNewClone(project: Project): Promise<Clone> {
-    for (const clone of listClones(project.path)) {
+    // A clone with a record goes first: one with none asks a trust question, and work may run with nobody to answer it.
+    const clones = listClones(project.path);
+    const recorded = clones.filter((clone) => {
+      const kind = this.cloneOrigins.origin(clone.path)?.kind;
+      return kind === "cloned" || kind === "answered";
+    });
+    for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
       const busy =
         this.reservedClones.has(clone.path) ||
         this.sessions.list().some((session) => session.startFolder === clone.path && this.sessions.isBusy(session.id));
@@ -999,7 +1015,8 @@ export class Eva {
       config: this.options.config.google,
       secrets: this.secrets,
       credentialsFolder: join(this.options.paths.enginesFolder, "google"),
-      environment: this.gitEnvironment,
+      // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
+      environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
     return google === null ? {} : { google };
   }

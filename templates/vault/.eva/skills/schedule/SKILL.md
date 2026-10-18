@@ -60,8 +60,8 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 ## 4. Change or remove one
 
-To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
+To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 
 ## 5. Reply
 
-Say in one sentence what will be sent, when, and in which topic. A schedule created after its time today first runs on its next day. Tell them that within a minute Eva opens the chat and posts a setup card there, with every field and the next run. Ask them to check that card. If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.
+Say in one sentence what will be sent, when, and in which topic. A schedule created after its time today first runs on its next day. Tell them that within a minute Eva opens the chat and posts a setup card there, with every field and the next run. Ask them to check that card. Without Telegram, the web app shows the card in a dialog. The schedule runs only after a card reaches them: in the web app, after they tap "Got it". If the main chat says "Schedules file problems" instead, the entry was skipped, so fix it. `/schedules` lists every schedule, with a button to remove each one.

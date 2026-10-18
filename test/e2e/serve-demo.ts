@@ -25,9 +25,18 @@ sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n`,
 );
-sandbox.write(vault, "Projects/2019-03-old-tool/AGENTS.md", "---\ncreated: 2019-03\nstatus: closed\n---\n# Old tool\n");
+sandbox.write(
+  vault,
+  "Projects/2019-03-old-tool/AGENTS.md",
+  "---\ncreated: 2019-03\nstatus: closed\ntags: [legacy]\n---\n# Old tool\n",
+);
+sandbox.write(
+  vault,
+  "Projects/2024-06-01-0900-broken-notes/AGENTS.md",
+  "---\ncreated: 2024-06-01T09:00\nstatus: active\nrepos: nope\n---\n# Broken notes\n",
+);
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");
@@ -40,14 +49,32 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     description: "Search the notes",
     state: "running",
   };
-  yield { kind: "tool_started", toolUseId: `tool-${String(turnNumber)}`, name: "Grep", summary: "Grep notes" };
+  yield {
+    kind: "tool_started",
+    toolUseId: `tool-${String(turnNumber)}`,
+    name: "Grep",
+    category: "tool",
+    summary: "Grep notes",
+  };
   yield { kind: "tool_finished", toolUseId: `tool-${String(turnNumber)}`, isError: false };
+  yield {
+    kind: "tool_started",
+    toolUseId: `command-${String(turnNumber)}`,
+    name: "Bash",
+    category: "command",
+    summary: "ls",
+  };
+  yield { kind: "tool_finished", toolUseId: `command-${String(turnNumber)}`, isError: false };
   if (lastLine.includes("approve")) {
     const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "gh issue create" });
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);
     return;
   }
   yield { kind: "task_changed", taskId: `task-${String(turnNumber)}`, description: "Search the notes", state: "done" };
+  if (lastLine.includes("list")) {
+    yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
+    return;
+  }
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);
 });
 
@@ -80,5 +107,8 @@ const eva = new Eva({
     },
   }),
 });
+// No front end confirms a card here, so each new schedule's card waits for the web UI. A short
+// check keeps the browser tests fast; Eva itself checks every 30 seconds.
+setInterval(() => void eva.schedules?.tick(), 300);
 startLocalApi({ eva, port: demoPort, token: demoToken, extraHosts: [], allowedTailscaleIdentities: [] });
 process.stdout.write(`Eva demo ready on http://127.0.0.1:${String(demoPort)}\n`);

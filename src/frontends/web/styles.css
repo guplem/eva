@@ -95,6 +95,11 @@ button.primary {
   border-color: var(--accent);
 }
 
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -207,6 +212,20 @@ textarea {
   margin: 12px 0 4px;
 }
 
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon-button {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 8px;
+  line-height: 1;
+}
+
 .list-item {
   text-align: left;
   width: 100%;
@@ -258,6 +277,32 @@ textarea {
   border: 1px solid var(--border);
 }
 
+.badge.warning {
+  margin-left: 6px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.running-tasks {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+.clone-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
 .branches {
   display: flex;
   gap: 16px;
@@ -297,11 +342,92 @@ textarea {
   white-space: pre-wrap;
 }
 
-.message.answer pre {
+/* The answer's Markdown, as block HTML: compact spacing that fits a chat bubble on a phone. */
+.answer-body > :first-child {
+  margin-top: 0;
+}
+
+.answer-body > :last-child {
+  margin-bottom: 0;
+}
+
+.answer-body :is(p, ul, ol, pre, blockquote, table) {
+  margin: 0 0 10px;
+}
+
+.answer-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 14px 0 6px;
+  line-height: 1.3;
+}
+
+.answer-body h1 {
+  font-size: 1.3em;
+}
+
+.answer-body h2 {
+  font-size: 1.15em;
+}
+
+.answer-body :is(h3, h4, h5, h6) {
+  font-size: 1em;
+}
+
+.answer-body :is(ul, ol) {
+  padding-left: 22px;
+}
+
+/* A paragraph in a loose item keeps its full margin, so a blank line between items still shows. */
+.answer-body li > :is(ul, ol, pre) {
+  margin: 4px 0;
+}
+
+/* The browser's default link blue is hard to read in dark mode. */
+.answer-body a {
+  color: var(--accent);
+}
+
+.answer-body pre {
   overflow-x: auto;
   background: var(--surface-muted);
   padding: 8px;
   border-radius: 6px;
+}
+
+.answer-body code {
+  font-size: 0.9em;
+}
+
+.answer-body :not(pre) > code {
+  background: var(--surface-muted);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.answer-body blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* A wide table scrolls inside the bubble, so the page never scrolls sideways on a phone. The
+   bubble lets a word break anywhere, so the table resets that, or its words would break instead. */
+.answer-body table {
+  display: block;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  border-collapse: collapse;
+}
+
+.answer-body :is(th, td) {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.answer-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
 }
 
 .message-actions {
@@ -407,6 +533,11 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.settings h1 {
+  font-size: 18px;
+  margin: 0;
 }
 
 .settings fieldset {
@@ -599,6 +730,10 @@ textarea {
     min-height: 44px;
   }
 
+  .icon-button {
+    min-width: 44px;
+  }
+
   .tasks {
     display: none;
   }
@@ -610,4 +745,28 @@ textarea {
   .branch {
     min-width: calc(100vw - 40px);
   }
+}
+
+/* A pushed prompt can be long, so the card scrolls and never pushes the buttons off a phone screen. */
+.schedule-card {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.card-fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-fields dt {
+  font-weight: 600;
+}
+
+.card-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

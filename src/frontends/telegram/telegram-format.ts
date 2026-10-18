@@ -5,6 +5,8 @@
  * `<`, `>` and `&`. Telegram has no headings, lists or tables: a heading becomes a bold line,
  * a bullet a dot, and a table aligned columns in a monospace block.
  */
+import { closesFence } from "../markdown-fence.ts";
+import { escapeHtml, inlineHtml } from "../markdown-inline.ts";
 
 const fencePattern = /^\s*(`{3,}|~{3,})\s*([\w+#.-]*)/;
 const headingPattern = /^#{1,6}\s+(.*?)\s*#*\s*$/;
@@ -13,14 +15,6 @@ const quotePattern = /^>\s?(.*)$/;
 const rulePattern = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const tableRowPattern = /^\s*\|.*\|\s*$/;
 const tableSeparatorPattern = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
-const codeSpanPattern = /(`+)(.+?)\1/g;
-const linkPattern = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g;
-const boldPattern = /\*\*(?=\S)(.+?)(?<=\S)\*\*/g;
-const strikePattern = /~~(?=\S)(.+?)(?<=\S)~~/g;
-const starItalicPattern = /(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])/g;
-const underscoreItalicPattern = /(?<![\w_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w_])/g;
-/** Code and links are set aside before emphasis runs; the marker is a character no reply carries. */
-const heldPattern = /(\d+)/g;
 const ruleText = "──────";
 
 export function toTelegramHtml(markdown: string): string {
@@ -31,10 +25,10 @@ export function toTelegramHtml(markdown: string): string {
     const line = lines[index] ?? "";
     const fence = fencePattern.exec(line);
     if (fence) {
-      const closing = (fence[1] ?? "```").charAt(0).repeat(3);
+      const opening = fence[1] ?? "```";
       const body: string[] = [];
       index += 1;
-      while (index < lines.length && !(lines[index] ?? "").trim().startsWith(closing)) {
+      while (index < lines.length && !closesFence(lines[index] ?? "", opening)) {
         body.push(lines[index] ?? "");
         index += 1;
       }
@@ -56,7 +50,7 @@ export function toTelegramHtml(markdown: string): string {
       const quoted: string[] = [];
       let found = quotePattern.exec(lines[index] ?? "");
       while (index < lines.length && found) {
-        quoted.push(inline(found[1] ?? ""));
+        quoted.push(inlineHtml(found[1] ?? ""));
         index += 1;
         found = quotePattern.exec(lines[index] ?? "");
       }
@@ -75,14 +69,20 @@ export function toTelegramHtml(markdown: string): string {
  */
 export function keepFencesWhole(chunks: readonly string[]): string[] {
   const whole: string[] = [];
-  let openFence: string | null = null;
+  // The open block's first line, to reopen it, and its fence, to close it with the same length.
+  let open: { line: string; fence: string } | null = null;
   for (const original of chunks) {
-    const reopened = openFence;
+    const reopened = open;
     for (const line of original.split("\n")) {
-      if (fencePattern.test(line)) openFence = openFence === null ? line.trim() : null;
+      if (open === null) {
+        const fence = fencePattern.exec(line);
+        if (fence) open = { line: line.trim(), fence: fence[1] ?? "```" };
+      } else if (closesFence(line, open.fence)) {
+        open = null;
+      }
     }
-    let chunk = reopened === null ? original : `${reopened}\n${original}`;
-    if (openFence !== null) chunk += `\n${openFence.charAt(0).repeat(3)}`;
+    let chunk = reopened === null ? original : `${reopened.line}\n${original}`;
+    if (open !== null) chunk += `\n${open.fence}`;
     whole.push(chunk);
   }
   return whole;
@@ -116,31 +116,11 @@ function hardCut(line: string, limit: number): string[] {
 
 function blockLine(line: string): string {
   const heading = headingPattern.exec(line);
-  if (heading) return `<b>${inline(heading[1] ?? "")}</b>`;
+  if (heading) return `<b>${inlineHtml(heading[1] ?? "")}</b>`;
   if (rulePattern.test(line)) return ruleText;
   const bullet = bulletPattern.exec(line);
-  if (bullet) return `${bullet[1] ?? ""}• ${inline(bullet[2] ?? "")}`;
-  return inline(line);
-}
-
-function inline(source: string): string {
-  const held: string[] = [];
-  const hold = (markup: string): string => {
-    held.push(markup);
-    return `${String(held.length - 1)}`;
-  };
-  let text = source.replace(codeSpanPattern, (_match, _ticks: string, code: string) =>
-    hold(`<code>${escapeHtml(code)}</code>`),
-  );
-  text = text.replace(linkPattern, (_match, label: string, url: string) =>
-    hold(`<a href="${escapeAttribute(url)}">${escapeHtml(label)}</a>`),
-  );
-  text = escapeHtml(text);
-  text = text.replace(boldPattern, "<b>$1</b>");
-  text = text.replace(strikePattern, "<s>$1</s>");
-  text = text.replace(starItalicPattern, "<i>$1</i>");
-  text = text.replace(underscoreItalicPattern, "<i>$1</i>");
-  return text.replace(heldPattern, (_match, position: string) => held[Number(position)] ?? "");
+  if (bullet) return `${bullet[1] ?? ""}• ${inlineHtml(bullet[2] ?? "")}`;
+  return inlineHtml(line);
 }
 
 function aligned(rows: readonly string[]): string {
@@ -171,12 +151,4 @@ function pre(text: string, language: string): string {
   if (language.length > 0)
     return `<pre><code class="language-${escapeHtml(language)}">${escapeHtml(text)}</code></pre>`;
   return `<pre>${escapeHtml(text)}</pre>`;
-}
-
-function escapeHtml(text: string): string {
-  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
-function escapeAttribute(text: string): string {
-  return escapeHtml(text).replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 }

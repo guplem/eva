@@ -4,9 +4,8 @@
  * engine once more for it. Setup prints each step and never runs a login itself: a login
  * reads the terminal, and the process seam captures the child's input and output.
  */
-import { join } from "node:path";
 import type { EngineFolders } from "../../core/settings/home.ts";
-import { readJsonTolerant } from "../../shared/files.ts";
+import { piLoginState, type PiLogin } from "../../core/setup/logins.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 const ghTimeoutMs = 30_000;
@@ -15,7 +14,7 @@ export interface EngineLoginState {
   /** A saved token, which says nothing about whose Claude account it belongs to. */
   readonly claudeToken: boolean;
   /** "claude": pi holds an Anthropic login, which Eva never uses through pi. */
-  readonly pi: "ok" | "missing" | "claude";
+  readonly pi: PiLogin;
   readonly gh: boolean;
 }
 
@@ -122,15 +121,6 @@ function piStep(login: "missing" | "claude", folders: EngineFolders, platform: N
 
 function runPi(folders: EngineFolders, platform: NodeJS.Platform): string {
   return withVariable("PI_CODING_AGENT_DIR", folders.piAgent, ["pi"], platform);
-}
-
-/** The pi login in an agent folder: "claude" is an Anthropic login, which Eva never uses through pi. */
-export function piLoginState(agentFolder: string): EngineLoginState["pi"] {
-  const file = readJsonTolerant(join(agentFolder, "auth.json"));
-  if (!file.ok || typeof file.value !== "object" || file.value === null) return "missing";
-  const providers = Object.keys(file.value);
-  if (providers.includes("anthropic")) return "claude";
-  return providers.length > 0 ? "ok" : "missing";
 }
 
 async function ghLoggedIn(options: EngineLoginStateOptions): Promise<boolean> {

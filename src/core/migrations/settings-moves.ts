@@ -136,7 +136,11 @@ function isValidConfig(value: unknown): boolean {
 function merge(base: unknown, change: unknown): unknown {
   if (!isObject(base) || !isObject(change)) return change;
   const merged: JsonObject = { ...base };
-  for (const [key, value] of Object.entries(change)) merged[key] = merge(base[key], value);
+  for (const [key, value] of Object.entries(change)) {
+    // config.json is raw JSON, so a key such as __proto__ must never reach an assignment.
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    merged[key] = merge(base[key], value);
+  }
   return merged;
 }
 

@@ -171,6 +171,16 @@ describe("copySecuritySettingsFromVault (machine)", () => {
     expect(readJson(vaultSettings)).toEqual({ ...vaultSecurity, timeZone: "Asia/Tokyo" });
   });
 
+  test("a __proto__ key in config.json changes no prototype", () => {
+    writeFileSync(paths.config, `{"vaultPath":${JSON.stringify(vault)},"__proto__":{"polluted":true}}`);
+    writeJson(vaultSettings, { trust: { trustedRepositoryOwners: ["example-owner"] } });
+    expect(migrate(copySecuritySettingsFromVault)).toBe("done");
+    const written = readJson(paths.config);
+    expect(Object.getPrototypeOf(written)).toBe(Object.prototype);
+    expect(written["polluted"]).toBeUndefined();
+    expect(written).toMatchObject({ trust: { trustedRepositoryOwners: ["example-owner"] } });
+  });
+
   test("a key that config.json has keeps its value", () => {
     writeJson(paths.config, { vaultPath: vault, trust: { trustedRepositoryOwners: ["machine-owner"] } });
     writeJson(vaultSettings, { trust: { trustedRepositoryOwners: ["other"] } });

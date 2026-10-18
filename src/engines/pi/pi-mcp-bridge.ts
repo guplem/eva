@@ -107,10 +107,11 @@ export async function startBridge(pi: BridgePi, options: BridgeOptions): Promise
     problems.push(line);
     options.report(line);
   };
-  // pi binds the RPC client to the context before `session_start`, and after this start ends.
-  pi.on("session_start", async (_event, context) => {
+  // pi sends no `notify` before it binds the UI. pi waits for this start, then binds the UI and
+  // emits `session_start`. So each problem is known when this handler runs.
+  pi.on("session_start", (_event, context) => {
     for (const line of problems) context.ui.notify(`${mcpNoticePrefix}${line}`, "error");
-    await Promise.resolve();
+    return Promise.resolve();
   });
   // pi waits for this handler, so the servers stop before pi exits.
   pi.on("session_shutdown", async () => {

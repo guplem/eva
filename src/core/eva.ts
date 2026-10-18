@@ -24,8 +24,10 @@ import {
   scheduleFiringProblem,
   uncleanExitMessage,
   updateProblem,
+  relayedProblem,
   vaultAheadProblem,
 } from "./alerts/problem-rules.ts";
+import { machineReportFile, readMachineReports, writeMachineReport } from "./alerts/machine-reports.ts";
 import { runMigrations, type MigrationRun, type MigrationStore } from "./migrations/migration-runner.ts";
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
@@ -180,6 +182,9 @@ export class Eva {
   private backgroundTicking: boolean;
   private lastHousekeepingAt: Date | null;
   private readonly alerts: AlertCenter;
+  /** The keys of the problems that this hub relays now, by report file. */
+  private relayed = new Map<string, ReadonlySet<string>>();
+  private reportNameTaken = false;
 
   constructor(options: EvaOptions) {
     this.options = options;
@@ -222,6 +227,14 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        // A full disk or a reserved file name must not stop the sync step.
+        try {
+          this.exchangeMachineReports();
+        } catch (error) {
+          options.logger?.log("warn", "The machine report failed.", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
       },
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -807,6 +820,63 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return;
     this.alerts.report("vault_ahead", vaultAheadProblem(vaultAhead(vaultPath), this.machine, evaVersion));
+  }
+
+  /**
+   * Writes this machine's open problems to the vault, and the next save pushes them. Only the hub
+   * runs Telegram, so the hub raises the problems of the other machines (#126).
+   */
+  private exchangeMachineReports(): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return;
+    // The role reads hub.json now, because this hook runs before the tick notices a role change.
+    const isHub = this.role() === "hub";
+    if (!isHub) {
+      // The new hub sends these problems, so a "resolved" line from here would be false.
+      for (const keys of this.relayed.values()) for (const key of keys) this.alerts.dismiss(key);
+      this.relayed = new Map();
+      // A satellite fires no schedule, so nothing would clear the firing problems of its time as hub.
+      for (const alert of this.alerts.openAlerts())
+        if (alert.key.startsWith("schedule:")) this.alerts.dismiss(alert.key);
+    }
+    const problems = this.alerts
+      .openAlerts()
+      // A sync problem would travel through the sync that it breaks, so it arrives only after it clears.
+      .filter((alert) => alert.key !== "vault_sync" && !alert.key.startsWith("machine:"));
+    const written = writeMachineReport(vaultPath, { machine: this.machine, version: evaVersion, problems });
+    if (written === "no_vault") return;
+    this.noticeReportName(written === "name_taken");
+
+    if (!isHub) return;
+    const relayed = new Map<string, ReadonlySet<string>>();
+    for (const { file, report } of readMachineReports(vaultPath)) {
+      if (report === null) {
+        // A broken file, such as one in a sync conflict, keeps its problems until it reads again.
+        const kept = this.relayed.get(file);
+        if (kept !== undefined) relayed.set(file, kept);
+        continue;
+      }
+      if (report.machine === this.machine) continue;
+      const keys = new Set<string>();
+      for (const problem of report.problems) {
+        const key = `machine:${report.machine}:${problem.key}`;
+        keys.add(key);
+        this.alerts.report(key, relayedProblem(report.machine, machineReportFile(report.machine), problem));
+      }
+      relayed.set(file, keys);
+    }
+    for (const [file, keys] of this.relayed)
+      for (const key of keys) if (relayed.get(file)?.has(key) !== true) this.alerts.report(key, null);
+    this.relayed = relayed;
+  }
+
+  /** Logs once when another machine's report holds the file of this machine's name. */
+  private noticeReportName(taken: boolean): void {
+    if (taken && !this.reportNameTaken)
+      this.options.logger?.log("warn", "Another machine's report uses the file of this machine's name.", {
+        file: machineReportFile(this.machine),
+      });
+    this.reportNameTaken = taken;
   }
 
   private assistantBusy(): boolean {

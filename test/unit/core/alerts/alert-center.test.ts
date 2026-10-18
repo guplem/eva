@@ -112,6 +112,28 @@ describe("AlertCenter", () => {
     expect(run.center.openProblems()).toEqual(["git said [redacted]"]);
   });
 
+  test("a dismissed problem leaves no resolved alert, and a later report is new", () => {
+    const run = harness();
+    run.center.report("update", offline);
+    run.center.dismiss("update");
+    expect(run.center.openProblems()).toEqual([]);
+    run.center.report("update", null);
+    run.center.report("update", offline);
+    expect(run.alerts.map((alert) => alert.level)).toEqual(["warn", "warn"]);
+  });
+
+  test("lists each open problem with its key, both lines redacted, for the machine report", () => {
+    const redactor = new Redactor();
+    redactor.addSecret("secret-value-for-tests");
+    const run = harness(redactor);
+    run.center.report("update", { ...offline, resolvedMessage: "secret-value-for-tests works" });
+    run.center.report("vault_ahead", { ...offline, level: "error" });
+    run.center.report("vault_ahead", null);
+    expect(run.center.openAlerts()).toEqual([
+      { key: "update", level: "warn", message: offline.message, resolvedMessage: "[redacted] works" },
+    ]);
+  });
+
   test("a listener that throws or rejects never stops the others or the caller", async () => {
     const run = harness();
     run.center.onAlert(() => {

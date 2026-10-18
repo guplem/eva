@@ -132,6 +132,9 @@ export class VaultSync {
       if (branch === null) return this.state;
       const unmerged = unmergedPaths(await this.statusEntries());
       if (unmerged.length > 0) return this.reportConflictMarkers(unmerged);
+      // A merge has no autostash, so an edit that is not committed could block it. The next
+      // save commits that edit first, then merges.
+      if (await this.hasUnpushedMerge(branch)) return this.state;
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0) return this.update({ status: "offline", lastError: "Could not reach the remote." });
       await this.rebaseOnto(branch);
@@ -150,7 +153,10 @@ export class VaultSync {
 
   /** The notes that conflict now, from git itself, so the list survives a restart. */
   conflicts(): Promise<VaultConflictReport> {
-    return this.serialize(async () => ({ state: this.state, conflicts: await this.listConflicts() }));
+    return this.serialize(async () => {
+      const conflicts = await this.listConflicts();
+      return { state: this.state, conflicts };
+    });
   }
 
   /**
@@ -161,7 +167,8 @@ export class VaultSync {
   resolve(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
     return this.serialize(async () => {
       const found = await this.applyPick(path, choice);
-      return { state: this.state, conflicts: await this.listConflicts(), found };
+      const conflicts = await this.listConflicts();
+      return { state: this.state, conflicts, found };
     });
   }
 
@@ -181,7 +188,8 @@ export class VaultSync {
     if (branch === null) return [];
     const unmerged = unmergedPaths(await this.statusEntries());
     if (unmerged.length > 0) return unmerged.map((path) => ({ path, kind: "uncommitted", picked: null }));
-    const plan = await this.mergePlan(branch);
+    // A read reports a merge-tree failure only while a conflict is open: a clean vault raises no alert.
+    const plan = await this.mergePlan(branch, this.state.status === "conflict");
     if (plan === null) return [];
     this.dropStalePicks(plan);
     return plan.paths.map(({ path }) => ({ path, kind: "committed", picked: this.picks.get(path)?.choice ?? null }));
@@ -215,8 +223,18 @@ export class VaultSync {
    */
   private async resolveUncommitted(path: string, choice: ConflictChoice): Promise<boolean> {
     const listed = await this.git(["ls-files", "-u", "-z", "--", path], localTimeoutMs);
-    const stages = new Map(parseStageEntries(listed.stdout).map((entry) => [entry.stage, entry.version]));
+    if (listed.exitCode !== 0) return this.failStep("ls-files", listed);
+    const stages = new Map(
+      parseStageEntries(listed.stdout)
+        .filter((entry) => entry.path === path)
+        .map((entry) => [entry.stage, entry.version]),
+    );
     const entry = { path, mine: stages.get("3") ?? null, theirs: stages.get("2") ?? null };
+    // With neither version listed, a pick would delete the note.
+    if (entry.mine === null && entry.theirs === null) {
+      this.update({ status: "error", lastError: `Git lists no version of ${path}.` });
+      return false;
+    }
     const written = await this.writePick(entry, choice, "HEAD", {});
     if (written === null) return false;
     for (const removed of written.removed) rmSync(join(this.options.vaultPath, removed), { force: true });
@@ -331,16 +349,18 @@ export class VaultSync {
    * What a merge of the remote into HEAD gives, from `git merge-tree`, which touches no file.
    * In its output, stage 2 is HEAD (this machine) and stage 3 is the remote.
    */
-  private async mergePlan(branch: string): Promise<MergePlan | null> {
+  private async mergePlan(branch: string, reportFailure = true): Promise<MergePlan | null> {
     const merged = await this.git(
       ["merge-tree", "-z", "--write-tree", "--no-messages", "HEAD", `origin/${branch}`],
       localTimeoutMs,
     );
     if (merged.exitCode !== 0 && merged.exitCode !== 1) {
-      this.update({
-        status: "error",
-        lastError: `git merge-tree failed, and Eva needs it to name the conflicts (git 2.38 or newer): ${firstLine(merged.stderr)}`,
-      });
+      if (reportFailure) {
+        this.update({
+          status: "error",
+          lastError: `git merge-tree failed: ${firstLine(merged.stderr)} To resolve a conflict from the phone, Eva needs git 2.38 or newer on this machine.`,
+        });
+      }
       return null;
     }
     const [tree = "", ...fields] = merged.stdout.split("\0");
@@ -374,8 +394,14 @@ export class VaultSync {
     return result.exitCode === 0 || this.failStep(arguments_[0] ?? "", result);
   }
 
+  /** Keeps every line of git's reason: a refused fast-forward names the blocking files on the lines after the first. */
   private failStep(name: string, result: GitResult): false {
-    this.update({ status: "error", lastError: `git ${name} failed: ${firstLine(result.stderr)}` });
+    const reason = result.stderr
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join(" ");
+    this.update({ status: "error", lastError: `git ${name} failed: ${reason.slice(0, 500) || "git gave no reason."}` });
     return false;
   }
 
@@ -495,7 +521,11 @@ export class VaultSync {
         return false;
       }
       const plan = await this.mergePlan(branch);
-      if (plan !== null) this.reportCommittedConflict(plan);
+      if (plan === null) return false;
+      // A rebase replays each commit, so it can stop on a change that a later commit undid.
+      // The merge of the two tips is then clean, and the phone would have no note to pick.
+      if (plan.paths.length === 0) return this.mergeRemote(branch);
+      this.reportCommittedConflict(plan);
       return false;
     }
     const unmerged = unmergedPaths(await this.statusEntries());
@@ -520,10 +550,11 @@ export class VaultSync {
       this.reportConflictMarkers(unmerged);
       return false;
     }
+    // No note conflicts here, so the phone has nothing to pick: this is an error, not a conflict.
     if (applied.exitCode !== 0) {
       this.update({
-        status: "conflict",
-        lastError: "Local edits clash with the remote. Git keeps them in the stash: see git stash list.",
+        status: "error",
+        lastError: `Local edits clash with the remote, and git stash apply failed: ${firstLine(applied.stderr)} Git keeps the edits in the stash.`,
       });
       return false;
     }

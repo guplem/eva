@@ -182,7 +182,7 @@ describe("VaultSync.pull", () => {
     expect(sandbox.git(vault, "status", "--porcelain")).toContain("UU AGENTS.md");
   });
 
-  test("reports a conflict when the autostash stays in the stash with no conflicted file", async () => {
+  test("reports an error when the autostash stays in the stash and cannot apply again", async () => {
     pushFromOther("other.md", "news\n");
     let rebased = false;
     const leavesStash: ProcessRunner = {
@@ -194,7 +194,7 @@ describe("VaultSync.pull", () => {
       },
     };
     const state = await createSync(vault, { runner: leavesStash }).pull();
-    expect(state.status).toBe("conflict");
+    expect(state.status).toBe("error");
     expect(state.lastError).toContain("stash");
   });
 });
@@ -524,5 +524,66 @@ describe("VaultSync conflict edge cases", () => {
       { path: "a.md", kind: "committed", picked: null },
       { path: "b.md", kind: "committed", picked: "mine" },
     ]);
+  });
+});
+
+describe("VaultSync conflict review fixes", () => {
+  test("merges when the rebase stops on a change that a later commit undid, as the merge itself is clean", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Undone\n");
+    sandbox.git(vault, "commit", "-q", "-am", "edit");
+    sandbox.write(vault, "AGENTS.md", "# Vault\n");
+    sandbox.git(vault, "commit", "-q", "-am", "undo");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Theirs");
+  });
+
+  test("never deletes a note when git cannot list its versions", async () => {
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const failsToList: ProcessRunner = {
+      run(command, options) {
+        return command[1] === "ls-files"
+          ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "fatal: index file corrupt" })
+          : systemProcessRunner.run(command, options);
+      },
+    };
+    const sync = createSync(vault, { runner: failsToList });
+    await sync.pull();
+    const result = await sync.resolve("AGENTS.md", "mine");
+    expect(result.state.status).toBe("error");
+    expect(result.state.lastError).toContain("index file corrupt");
+    expect(existsSync(join(vault, "AGENTS.md"))).toBe(true);
+  });
+
+  test("listing the conflicts of a clean vault never raises an error, even with git older than 2.38", async () => {
+    const sync = createSync(vault, {
+      runner: {
+        run(command, options) {
+          return command[1] === "merge-tree"
+            ? Promise.resolve({ exitCode: 129, stdout: "", stderr: "error: unknown option `write-tree'" })
+            : systemProcessRunner.run(command, options);
+        },
+      },
+    });
+    const report = await sync.conflicts();
+    expect(report.conflicts).toEqual([]);
+    expect(report.state.status).toBe("ok");
+  });
+
+  test("a pull leaves an unpushed merge to the next save, so an edit that is not committed never blocks it", async () => {
+    const sync = createSync(vault);
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    await sync.save();
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    await sync.resolve("AGENTS.md", "mine");
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    pushFromOther("news.md", "news\n");
+    sandbox.git(vault, "fetch", "-q", "origin");
+    sandbox.write(vault, "news.md", "a draft here\n");
+    expect((await sync.pull()).status).not.toBe("error");
+    expect(readFileSync(join(vault, "news.md"), "utf-8")).toBe("a draft here\n");
   });
 });

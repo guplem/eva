@@ -553,6 +553,75 @@ describe("/chats: every chat of the instance (#9)", () => {
   });
 });
 
+describe("project work from a Telegram chat (#9)", () => {
+  const projectId = "2025-03-02-1015-example-app";
+
+  function writeProject(): void {
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+  }
+
+  test("opens a topic for the Project chat, and links to it and to the web chat", async () => {
+    writeProject();
+    const group = -1001234;
+    createEva(
+      (request) => FakeEngine.answer(request, request.mode === "project" ? "Fixed it." : "Noted."),
+      systemProcessRunner,
+      { remoteAccess: () => ({ url: "https://eva.example.ts.net", problem: null }) },
+    );
+    eva.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") eva.sessions.answerApproval(event.requestId, "deny");
+    });
+    const bot = createBot(group);
+    telegram.sendText(group, "hello", undefined, owner);
+    await settle(bot, () => telegram.sentTexts().includes("Noted."));
+    const asking = eva.sessions.list()[0]!;
+
+    const work = await eva.startProjectWork({ projectId, request: "Fix the login bug.", reportToSessionId: asking.id });
+    await settle(bot, () => telegram.sentTexts().includes("Fixed it."));
+    expect(telegram.callsTo("createForumTopic")[0]?.params["name"]).toBe("Example app: Fix the login bug.");
+    const started = telegram.sentTexts().find((text) => text.startsWith("Project work started"));
+    expect(started).toBe(
+      [
+        "Project work started in Example app. Follow it in the topic “Example app: Fix the login bug.” (https://t.me/c/1234/500).",
+        `Web: https://eva.example.ts.net/#/chat/${work.id}`,
+      ].join("\n"),
+    );
+    const inTopic = telegram
+      .callsTo("sendMessage")
+      .filter((call) => call.params["message_thread_id"] === 500)
+      .map((call) => String(call.params["text"]));
+    // The Project chat asks for trust in its own topic, where the person follows the work.
+    expect(inTopic).toHaveLength(3);
+    expect(inTopic[0]).toBe("Message: Fix the login bug.");
+    expect(inTopic[1]).toStartWith("Eva wants to run Trust this repository");
+    expect(inTopic[2]).toBe("Fixed it.");
+    await settle(bot, () => telegram.sentTexts().filter((text) => text === "Noted.").length === 2);
+    await eva.idle();
+  });
+
+  test("without topics or Tailscale, the asking chat learns where to find the work", async () => {
+    writeProject();
+    createEva((request) => FakeEngine.answer(request, "ok"));
+    eva.sessions.subscribe((event) => {
+      if (event.kind === "approval_needed") eva.sessions.answerApproval(event.requestId, "deny");
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "hello");
+    await settle(bot, () => telegram.sentTexts().includes("ok"));
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    await eva.startProjectWork({ projectId, request: "Fix it.", reportToSessionId: eva.sessions.list()[0]!.id });
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Project work started")));
+    expect(telegram.sentTexts()).toContain(
+      "Project work started in Example app. Follow it in the web app, in Project mode.",
+    );
+    await eva.idle();
+  });
+});
+
 describe("approvals and commands", () => {
   test("an approval becomes buttons, and the press answers the turn", async () => {
     const answers: string[] = [];

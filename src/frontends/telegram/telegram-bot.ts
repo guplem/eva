@@ -723,7 +723,7 @@ export class TelegramBot {
       );
       return;
     }
-    const opened = await this.openTopicFor(chatId, session);
+    const opened = await this.openTopicFor(chatId, session, session.title);
     if (opened !== null) {
       await this.send(chatId, topicId, `This chat continues in ${this.topicName(chatId, opened, session.title)}.`);
       return;
@@ -745,12 +745,12 @@ export class TelegramBot {
   }
 
   /** Opens a topic for a chat, binds it, and shows its last turns. Null when Telegram has no topics here. */
-  private async openTopicFor(chatId: number, session: SessionRecord): Promise<number | null> {
+  private async openTopicFor(chatId: number, session: SessionRecord, name: string): Promise<number | null> {
     let topicId: number;
     try {
       const topic = await this.options.api.call<{ message_thread_id: number }>("createForumTopic", {
         chat_id: chatId,
-        name: titleOf(session.title),
+        name: titleOf(name),
       });
       topicId = topic.message_thread_id;
     } catch {
@@ -761,6 +761,40 @@ export class TelegramBot {
     this.saveState();
     await this.replayTurns(chatId, topicId, session);
     return topicId;
+  }
+
+  /**
+   * A Telegram chat gave work to a project: the Project chat gets a topic, and the asking chat
+   * gets a link to it, and to the web chat when Tailscale gives Eva an address.
+   */
+  private async showProjectWork(event: Extract<SessionEvent, { kind: "project_work_started" }>): Promise<void> {
+    const asking = this.targetOf(event.sessionId);
+    const work = this.options.eva.sessions.list().find((session) => session.id === event.projectSessionId);
+    if (asking === null || work === undefined) return;
+    const project =
+      this.options.eva.projects().find((candidate) => candidate.id === event.projectId)?.title ?? event.projectId;
+    const name = titleOf(`${project}: ${event.request}`);
+    const topicId = await this.openTopicFor(asking.chatId, work, name);
+    // The request went out before the topic existed, so the topic shows it here.
+    if (topicId !== null) await this.send(asking.chatId, topicId, `Message: ${event.request}`);
+    const url = this.options.eva.status().remoteAccess?.url ?? null;
+    const lines = [
+      topicId === null
+        ? `Project work started in ${project}.${url === null ? " Follow it in the web app, in Project mode." : ""}`
+        : `Project work started in ${project}. Follow it in ${this.topicName(asking.chatId, topicId, name)}.`,
+      ...(url === null ? [] : [`Web: ${url}/#/chat/${encodeURIComponent(work.id)}`]),
+    ];
+    await this.send(asking.chatId, asking.topicId, lines.join("\n"));
+  }
+
+  /** The answer of a chat's last turn, or null when the chat has none. */
+  private lastAnswerOf(sessionId: string): string | null {
+    return (
+      this.options.eva.sessions
+        .list()
+        .find((session) => session.id === sessionId)
+        ?.turns.at(-1)?.answerText ?? null
+    );
   }
 
   /** The last turns of a chat, so a topic and its web chat show the same history. */
@@ -972,6 +1006,10 @@ export class TelegramBot {
       await this.forgetDeletedChat(event.sessionId);
       return;
     }
+    if (event.kind === "project_work_started") {
+      await this.showProjectWork(event);
+      return;
+    }
     const target = this.targetOf(event.sessionId);
     if (target === null) {
       // Every attached front end shows an approval, also for a chat that lives elsewhere.
@@ -1000,7 +1038,10 @@ export class TelegramBot {
       case "turn_finished":
       case "turn_failed": {
         this.stopTyping(event.sessionId);
-        const answer = (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
+        // A topic can open while a turn runs, after its first text events. The record holds a
+        // finished turn before its end event, so the whole answer comes from there.
+        const recorded = event.kind === "turn_finished" ? this.lastAnswerOf(event.sessionId) : null;
+        const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
         this.pendingText.delete(event.sessionId);
         // Markers are read from the whole answer, so a marker is never shown half written (lesson 124).
         const markers = extractFileMarkers(answer);

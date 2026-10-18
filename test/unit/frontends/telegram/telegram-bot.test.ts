@@ -449,6 +449,30 @@ describe("topics", () => {
     });
   });
 
+  test("a model's chat name renames only a topic that Eva opened (issue 50, lesson 125)", async () => {
+    mkdirSync(join(sandbox.root, "vault", ".eva"), { recursive: true });
+    writeFileSync(join(sandbox.root, "vault", ".eva", "chat-names.md"), "Lead with an emoji.\n");
+    createEva((request, turnNumber) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "🇮🇹 Rome trip" : `answer ${String(turnNumber)}`),
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    telegram.sendText(owner, "Plan the trip to Rome", 500);
+    await settle(bot, () => telegram.callsTo("editForumTopic").length === 2);
+    expect(telegram.callsTo("editForumTopic").map((call) => call.params["name"])).toEqual([
+      "Plan the trip to Rome",
+      "🇮🇹 Rome trip",
+    ]);
+
+    // A topic that the person opened keeps the person's name; only the chat takes the model's.
+    telegram.sendText(owner, "Plan the trip to Paris", 600);
+    await settle(bot, () =>
+      eva.sessions.list().some((session) => session.telegramTopicId === 600 && session.title === "🇮🇹 Rome trip"),
+    );
+    expect(telegram.callsTo("editForumTopic")).toHaveLength(2);
+  });
+
   test("/rename renames the chat and its topic, and the first message keeps that name (issue 46)", async () => {
     const bot = createBot();
     telegram.sendText(owner, "/new");

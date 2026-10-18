@@ -50,6 +50,7 @@ import {
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
+import { scriptedRunner } from "../../../support/fake-host.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
 describe("parseArguments", () => {
@@ -331,6 +332,8 @@ describe("runSetup", () => {
       defaultHome: extra.defaultHome ?? home,
       githubLogin: extra.githubLogin ?? null,
       platform: "linux",
+      userHome: home,
+      installEnvironment: gitEnvironment,
     });
   }
 
@@ -420,6 +423,84 @@ describe("runSetup", () => {
     expect(isEvaError(caught, "config_invalid")).toBe(true);
   });
 
+  describe("the harness install (#136)", () => {
+    /** No engine program answers until its installer ran; `failInstall` makes the installer fail. */
+    const installRunner = (commands: string[][], failInstall = false): ProcessRunner => {
+      let installed = false;
+      return {
+        run: (command) => {
+          commands.push([...command]);
+          if (command[0] === "bash" || command.includes("install")) {
+            if (failInstall) return Promise.resolve({ exitCode: 1, stdout: "", stderr: "the installer broke\n" });
+            installed = true;
+          } else if (!installed && command.at(-1) === "--version" && command[0] !== "npm") {
+            return Promise.reject(new EvaError("process_failed", "Could not start it."));
+          }
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      };
+    };
+
+    test("a missing Claude Code is offered; Enter installs it, then the token question comes", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      const asked: SetupQuestion[] = [];
+      await setup({}, { runner: installRunner(commands), lines, asked });
+      expect(commands).toContainEqual(["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]);
+      expect(asked.indexOf("installEngine")).toBeGreaterThan(asked.indexOf("engine"));
+      expect(asked.indexOf("claudeToken")).toBeGreaterThan(asked.indexOf("installEngine"));
+      expect(lines.join("\n")).toContain("Installed Claude Code: claude.");
+      expect(lines.join("\n")).toContain("run `claude setup-token`");
+    });
+
+    test("no installs nothing, and setup gives the steps", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      await setup({ installEngine: "n" }, { runner: installRunner(commands), lines });
+      expect(commands.some((command) => command[0] === "bash")).toBe(false);
+      expect(lines.join("\n")).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    });
+
+    test("an installed harness asks nothing and installs nothing", async () => {
+      const commands: string[][] = [];
+      const asked: SetupQuestion[] = [];
+      await setup({}, { runner: scriptedRunner(commands), asked });
+      expect(asked).not.toContain("installEngine");
+      expect(commands.some((command) => command[0] === "bash")).toBe(false);
+    });
+
+    test("with pi chosen, setup installs pi", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      await setup({ engine: "pi" }, { runner: installRunner(commands), lines });
+      expect(commands.some((command) => command[0] === "npm" && command[1] === "install")).toBe(true);
+      expect(commands.some((command) => command[0] === "bash")).toBe(false);
+      expect(lines.join("\n")).toContain("Installed pi");
+    });
+
+    test("a failed install gives a person the steps, and setup goes on", async () => {
+      const lines: string[] = [];
+      await setup({ claudeToken: "a-claude-setup-token-value" }, { runner: installRunner([], true), lines });
+      expect(lines.join("\n")).toContain("the installer broke");
+      expect(lines.join("\n")).toContain("Run `curl -fsSL https://claude.ai/install.sh | bash`");
+      expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe("a-claude-setup-token-value");
+    });
+
+    test("a script installs the missing harness, or stops with the steps", async () => {
+      const commands: string[][] = [];
+      await setup({}, { interactive: false, runner: installRunner(commands) });
+      expect(commands.some((command) => command[0] === "bash")).toBe(true);
+      let caught: unknown;
+      try {
+        await setup({}, { interactive: false, runner: installRunner([], true) });
+      } catch (error) {
+        caught = error;
+      }
+      expect(isEvaError(caught, "engine_install_failed")).toBe(true);
+      expect(String(caught)).toContain("curl -fsSL https://claude.ai/install.sh | bash");
+    });
+  });
+
   test("a port that another program uses is not suggested", async () => {
     const taken = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     try {
@@ -498,8 +579,8 @@ describe("runSetup", () => {
   describe("the GitHub login", () => {
     const githubVault = "https://github.com/example/vault";
     const tokenRunner = (tokens: (string | undefined)[]): ProcessRunner => ({
-      run: (_command, options) => {
-        tokens.push(options.environment["EVA_GITHUB_TOKEN"]);
+      run: (command, options) => {
+        if (command[0] === "git") tokens.push(options.environment["EVA_GITHUB_TOKEN"]);
         return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
       },
     });

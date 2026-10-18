@@ -7,7 +7,12 @@ import { RemoteAccessWatcher, type RemoteAccess } from "../../core/remote-access
 import { findTailscale } from "../../core/remote-access/tailscale.ts";
 import { canInstallTailscale, installTailscale } from "../../core/remote-access/tailscale-install.ts";
 import { resolveHomeFolder } from "../../core/settings/home.ts";
-import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
+import {
+  baseEnvironmentAllowlist,
+  buildChildEnvironment,
+  proxyEnvironmentAllowlist,
+  type EnvironmentMap,
+} from "../../shared/environment.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 export interface CliHost {
@@ -50,6 +55,11 @@ export function writeLine(host: CliHost, text: string): void {
 /** The environment of a child process that needs no secret. */
 export function childEnvironment(host: CliHost): Record<string, string> {
   return buildChildEnvironment(host.environment, baseEnvironmentAllowlist);
+}
+
+/** The environment of an engine installer, which downloads through the person's proxy. */
+export function installEnvironment(host: CliHost): Record<string, string> {
+  return buildChildEnvironment(host.environment, [...baseEnvironmentAllowlist, ...proxyEnvironmentAllowlist]);
 }
 
 /**

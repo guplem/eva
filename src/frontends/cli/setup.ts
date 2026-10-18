@@ -16,6 +16,13 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../../core/settings/home.ts";
+import {
+  engineInstallSteps,
+  engineProgramNames,
+  findEngineProgram,
+  installEngine,
+  type EngineInstallInputs,
+} from "../../core/engine-install/engine-install.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadSettings, saveSettings, vaultSettingsPath, withVaultSettings } from "../../core/settings/settings.ts";
 import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
@@ -43,6 +50,7 @@ export type SetupQuestion =
   | "topics"
   | "githubRepository"
   | "engine"
+  | "installEngine"
   | "port"
   | "trustedOwners"
   | "claudeToken"
@@ -65,6 +73,7 @@ export const setupEnvironmentNames: Readonly<Record<SetupQuestion, string>> = {
   topics: "EVA_TOPICS",
   githubRepository: "EVA_GITHUB_REPOSITORY",
   engine: "EVA_ENGINE",
+  installEngine: "EVA_INSTALL_ENGINE",
   port: "EVA_PORT",
   trustedOwners: "EVA_TRUSTED_OWNERS",
   claudeToken: "EVA_CLAUDE_TOKEN",
@@ -90,6 +99,10 @@ export interface SetupOptions {
   readonly platform: NodeJS.Platform;
   /** The GitHub browser login, which shows its code through `show`; null when Eva has no OAuth App yet. */
   readonly githubLogin: ((show: (code: string, link: string) => void) => Promise<string>) | null;
+  /** The OS user's home folder, where the engine installers put their programs. */
+  readonly userHome: string;
+  /** The environment of an engine installer: the child environment plus the person's proxy settings. */
+  readonly installEnvironment: Readonly<Record<string, string>>;
 }
 
 const ghTimeoutMs = 120_000;
@@ -226,6 +239,8 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     if (!options.interactive) throw new EvaError("config_invalid", problem);
     options.write(`${problem} The engine stays ${config.engines.default}.`);
   }
+  // Before the token question, so the person can run `claude setup-token` with the new program.
+  await offerEngineInstall(options, config, ask);
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
@@ -306,6 +321,48 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     ...(config.vaultPath !== null && existsSync(config.vaultPath) ? [vaultSettingsPath(config.vaultPath)] : []),
   ];
   options.write(`Saved ${files.join(", ")}. Run \`eva doctor\`, then \`eva\`.`);
+}
+
+/**
+ * Installs the default engine's program when it is missing. Enter means yes, so a script
+ * installs too. A failed install stops a script, and gives a person the steps.
+ */
+async function offerEngineInstall(
+  options: SetupOptions,
+  config: EvaConfig,
+  ask: (key: SetupQuestion, question: string) => Promise<string>,
+): Promise<void> {
+  const engine = config.engines.default;
+  const inputs: EngineInstallInputs = {
+    runner: options.runner,
+    environment: options.installEnvironment,
+    platform: options.platform,
+    homeFolder: options.userHome,
+    configured: engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable,
+  };
+  if ((await findEngineProgram(engine, inputs)) !== null) return;
+  const name = engineProgramNames[engine];
+  const answer = await ask("installEngine", `${name} is not installed. Install it now? [Y/n]: `);
+  if (/^n(o)?$/i.test(answer)) {
+    options.write(`Setup installs nothing. To install ${name} later: ${engineInstallSteps(engine, options.platform)}`);
+    return;
+  }
+  options.write(`Installing ${name}. This can take a few minutes.`);
+  let program: string;
+  try {
+    program = await installEngine(engine, inputs);
+  } catch (error) {
+    if (!options.interactive || !isEvaError(error, "engine_install_failed")) throw error;
+    options.write(error.message);
+    return;
+  }
+  options.write(`Installed ${name}: ${program}.`);
+  if (engine === "claude-code") {
+    const command = program === "claude" ? "claude" : quoteForShell(program, options.platform);
+    // PowerShell runs a quoted path only after its call operator.
+    const run = options.platform === "win32" && program !== "claude" ? `& ${command}` : command;
+    options.write(`To make the token for the next question, run \`${run} setup-token\` in another terminal.`);
+  }
 }
 
 /** A missing or empty vault folder: Eva can start a vault there from her template. */

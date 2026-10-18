@@ -27,7 +27,14 @@ import { parseArguments, usageText, type CliCommand } from "./arguments.ts";
 import { runChat } from "./chat.ts";
 import { describeProjects, describeStatus, startProjectWork } from "./client.ts";
 import { runDoctor } from "./doctor.ts";
-import { childEnvironment, defaultHomeFolder, remoteAccessWatcher, writeLine, type CliHost } from "./host.ts";
+import {
+  childEnvironment,
+  defaultHomeFolder,
+  installEnvironment,
+  remoteAccessWatcher,
+  writeLine,
+  type CliHost,
+} from "./host.ts";
 import { hub, link, settings, sync, update } from "./local-commands.ts";
 import { runNetworkSetup, type NetworkSetupOptions } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
@@ -158,6 +165,8 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     defaultHome: defaultHomeFolder(host),
     platform: host.platform,
     githubLogin: githubBrowserLogin(host, githubClientId),
+    userHome: host.userHome,
+    installEnvironment: installEnvironment(host),
   };
   const networkOptions = (port: number): Omit<NetworkSetupOptions, "interactive" | "ask"> => ({
     // Setup publishes too, so the address that it prints works as soon as Eva runs.

@@ -52,7 +52,7 @@ import { googleMcpServer } from "./google/google-mcp.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { githubTokenVariable } from "./vault/vault-clone.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
-import { ghApiGet, readRepositoryFacts, type GithubGet } from "./projects/repository-facts.ts";
+import { ghApiRequest, readRepositoryFacts, type GithubRequest } from "./projects/repository-facts.ts";
 import {
   evaluateSetup,
   unreadableReport,
@@ -99,7 +99,7 @@ export interface EvaOptions {
    */
   readonly defaultHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
-  readonly githubGet?: GithubGet;
+  readonly githubRequest?: GithubRequest;
 }
 
 export interface ProjectWorkInput {
@@ -677,7 +677,7 @@ export class Eva {
     const project = this.projects().find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new EvaError("project_not_found", `No project ${projectId} in the vault.`);
     if (project.frontMatter.repos.length === 0) return [];
-    const get = this.options.githubGet ?? ghApiGet(this.options.runner, this.gitEnvironment);
+    const get = this.options.githubRequest ?? ghApiRequest(this.options.runner, this.gitEnvironment);
     const read = async (slug: string): Promise<RepositoryFacts | string> => {
       try {
         return await readRepositoryFacts(slug, get);

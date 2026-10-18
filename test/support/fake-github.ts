@@ -2,7 +2,7 @@
  * A fake GitHub API for the setup report: each repository answers its main address, its tree,
  * its labels and its file contents. Every other address answers 404.
  */
-import type { GithubAnswer, GithubGet } from "../../src/core/projects/repository-facts.ts";
+import type { GithubAnswer, GithubRequest } from "../../src/core/projects/repository-facts.ts";
 import { gitBlobSha } from "../../src/core/projects/repository-setup.ts";
 
 export interface FakeRepository {
@@ -13,7 +13,7 @@ export interface FakeRepository {
   readonly labels: readonly string[];
 }
 
-export function fakeGithub(repositories: Readonly<Record<string, FakeRepository>>): GithubGet {
+export function fakeGithub(repositories: Readonly<Record<string, FakeRepository>>): GithubRequest {
   return (path, raw = false) => {
     for (const [slug, fake] of Object.entries(repositories)) {
       const answer = answerFor(`repos/${slug}`, fake, path, raw);

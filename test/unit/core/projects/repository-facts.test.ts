@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { ghApiGet, readRepositoryFacts, type GithubAnswer } from "../../../../src/core/projects/repository-facts.ts";
+import {
+  ghApiRequest,
+  readRepositoryFacts,
+  type GithubAnswer,
+} from "../../../../src/core/projects/repository-facts.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
@@ -180,7 +184,7 @@ describe("readRepositoryFacts", () => {
   });
 });
 
-describe("ghApiGet", () => {
+describe("ghApiRequest", () => {
   test("reads the HTTP status and the body from gh's --include output", async () => {
     const commands: (readonly string[])[] = [];
     const runner: ProcessRunner = {
@@ -193,7 +197,7 @@ describe("ghApiGet", () => {
         });
       },
     };
-    const get = ghApiGet(runner, { PATH: "x" });
+    const get = ghApiRequest(runner, { PATH: "x" });
     expect(await get("repos/a/b")).toEqual({ status: 404, body: '{"message":"Not Found"}' });
     await get("repos/a/b/contents/x", true);
     expect(commands[0]).toEqual(["gh", "api", "--include", "repos/a/b"]);
@@ -209,7 +213,7 @@ describe("ghApiGet", () => {
 
   test("gh that does not start, or answers with no status, is an error that names gh", async () => {
     const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
-    expect(String(await failure(ghApiGet(failing, {})("repos/a/b")))).toContain("gh auth login");
+    expect(String(await failure(ghApiRequest(failing, {})("repos/a/b")))).toContain("gh auth login");
     const loggedOut: ProcessRunner = {
       run: () =>
         Promise.resolve({
@@ -218,7 +222,7 @@ describe("ghApiGet", () => {
           stderr: "To get started with GitHub CLI, please run: gh auth login",
         }),
     };
-    expect(String(await failure(ghApiGet(loggedOut, {})("repos/a/b")))).toContain("please run: gh auth login");
+    expect(String(await failure(ghApiRequest(loggedOut, {})("repos/a/b")))).toContain("please run: gh auth login");
   });
 });
 
@@ -260,6 +264,6 @@ describe("readRepositoryFacts, failed reads", () => {
 
   test("a gh call that times out says that GitHub was slow, not that gh is missing", async () => {
     const slow: ProcessRunner = { run: () => Promise.reject(new EvaError("process_timeout", "timed out")) };
-    expect(String(await failure(ghApiGet(slow, {})("repos/a/b")))).toContain("did not answer in time");
+    expect(String(await failure(ghApiRequest(slow, {})("repos/a/b")))).toContain("did not answer in time");
   });
 });

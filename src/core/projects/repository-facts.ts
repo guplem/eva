@@ -14,7 +14,7 @@ export interface GithubAnswer {
 }
 
 /** One GET of the GitHub REST API. `raw`: the file content of a `contents` address, not JSON. */
-export type GithubGet = (path: string, raw?: boolean) => Promise<GithubAnswer>;
+export type GithubRequest = (path: string, raw?: boolean) => Promise<GithubAnswer>;
 
 const ghTimeoutMs = 30_000;
 const workflowPattern = /^\.github\/workflows\/[^/]+\.ya?ml$/;
@@ -23,8 +23,8 @@ const labelsPerPage = 100;
 /** A limit for the label pages, so a broken answer never loops for ever. */
 const labelPageLimit = 10;
 
-/** A GithubGet over `gh api --include`, which prints the status line before the body. */
-export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubGet {
+/** A GithubRequest over `gh api --include`, which prints the status line before the body. */
+export function ghApiRequest(runner: ProcessRunner, environment: Readonly<Record<string, string>>): GithubRequest {
   return async (path, raw = false) => {
     const accept = raw ? ["-H", "Accept: application/vnd.github.raw"] : [];
     let output: { stdout: string; stderr: string };
@@ -51,7 +51,7 @@ export function ghApiGet(runner: ProcessRunner, environment: Readonly<Record<str
   };
 }
 
-export async function readRepositoryFacts(slug: string, get: GithubGet): Promise<RepositoryFacts> {
+export async function readRepositoryFacts(slug: string, get: GithubRequest): Promise<RepositoryFacts> {
   const repository = await get(`repos/${slug}`);
   const info = repository.status === 200 ? asRecord(parseJson(repository.body)) : null;
   if (info === null) {
@@ -116,7 +116,7 @@ export async function readRepositoryFacts(slug: string, get: GithubGet): Promise
 /** A file's text, "absent" when GitHub has no such file, or null when GitHub did not answer. */
 type FileRead = { readonly text: string } | "absent" | null;
 
-async function readFiles(get: GithubGet, path: string): Promise<Record<string, string> | null> {
+async function readFiles(get: GithubRequest, path: string): Promise<Record<string, string> | null> {
   const tree = asRecord(await readJson(get, path));
   // A truncated tree would make present files look missing.
   if (tree?.["truncated"] !== false || !Array.isArray(tree["tree"])) return null;
@@ -130,7 +130,7 @@ async function readFiles(get: GithubGet, path: string): Promise<Record<string, s
 }
 
 /** Every label name, page by page. Null when a page does not answer. */
-async function readLabels(get: GithubGet, path: string): Promise<string[] | null> {
+async function readLabels(get: GithubRequest, path: string): Promise<string[] | null> {
   const names: string[] = [];
   for (let page = 1; page <= labelPageLimit; page += 1) {
     const labels = await readJson(get, `${path}?per_page=${String(labelsPerPage)}&page=${String(page)}`);
@@ -203,7 +203,7 @@ function featureStatus(security: Record<string, unknown> | null, name: string): 
   return status === null ? null : status === "enabled";
 }
 
-async function readJson(get: GithubGet, path: string): Promise<unknown> {
+async function readJson(get: GithubRequest, path: string): Promise<unknown> {
   const answer = await get(path);
   return answer.status === 200 ? parseJson(answer.body) : null;
 }

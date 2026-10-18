@@ -12,7 +12,7 @@ import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGithub } from "../../support/fake-github.ts";
-import type { GithubGet } from "../../../src/core/projects/repository-facts.ts";
+import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
 import { FakeTelegram } from "../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
@@ -83,15 +83,17 @@ describe("repository setup", () => {
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
-      githubGet: (path, raw) => {
+      githubRequest: (path, raw, fields) => {
         asked.push(path);
-        return github(path, raw);
+        return github(path, raw, fields);
       },
     });
     const reports = await withGithub.repositorySetup("2025-04-01-0900-other-app");
     withGithub.stop();
     expect(reports.map((report) => report.slug)).toEqual(["owner/other-app", null]);
     expect(reports[0]?.sections.map((section) => section.title)).toContain("Security");
+    const security = reports[0]?.sections.find((section) => section.title === "Security")?.items ?? [];
+    expect(security.find((entry) => entry.label === "Dependabot alerts")?.light).toBe("green");
     expect(reports[1]?.problem).toBe("Only a repository on GitHub has a setup report.");
     expect(asked).toContain("repos/guplem/eva");
     expect(String(await withGithub.repositorySetup("missing").catch((error: unknown) => error))).toContain(
@@ -105,7 +107,7 @@ describe("repository setup", () => {
       "Projects/2025-04-01-0900-other-app/AGENTS.md",
       "---\ncreated: 2025-04-01T09:00\nstatus: active\nrepos:\n  - https://github.com/owner/other-app\n---\n",
     );
-    const reportFor = async (github: GithubGet): Promise<SetupReport | undefined> => {
+    const reportFor = async (github: GithubRequest): Promise<SetupReport | undefined> => {
       const instance = new Eva({
         paths: homePaths(home),
         config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
@@ -115,7 +117,7 @@ describe("repository setup", () => {
         processEnvironment: gitEnvironment,
         now: () => new Date(),
         basePrompt: "Base.",
-        githubGet: github,
+        githubRequest: github,
       });
       const reports = await instance.repositorySetup("2025-04-01-0900-other-app");
       instance.stop();
@@ -126,8 +128,10 @@ describe("repository setup", () => {
       "guplem/eva": { files: referenceFiles, labels: ["bug"] },
       "owner/other-app": target,
     });
-    const noLabels: GithubGet = (path, raw) =>
-      path.startsWith("repos/guplem/eva/labels") ? Promise.resolve({ status: 500, body: "" }) : complete(path, raw);
+    const noLabels: GithubRequest = (path, raw, fields) =>
+      path.startsWith("repos/guplem/eva/labels")
+        ? Promise.resolve({ status: 500, body: "" })
+        : complete(path, raw, fields);
     expect((await reportFor(noLabels))?.problem).toContain("could not read all of her reference repository");
 
     const archived = fakeGithub({

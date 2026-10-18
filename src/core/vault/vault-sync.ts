@@ -358,7 +358,7 @@ export class VaultSync {
       if (reportFailure) {
         this.update({
           status: "error",
-          lastError: `git merge-tree failed: ${firstLine(merged.stderr)} To resolve a conflict from the phone, Eva needs git 2.38 or newer on this machine.`,
+          lastError: `git merge-tree failed: ${firstLine(merged.stderr)}${/unknown option|usage:/i.test(merged.stderr) ? " To resolve a conflict from the phone, Eva needs git 2.38 or newer on this machine." : ""}`,
         });
       }
       return null;
@@ -463,8 +463,9 @@ export class VaultSync {
       return false;
     }
     const plural = kept.length === 1 ? "file" : "files";
-    // git refuses a full commit while a file has conflict markers; --only commits the other files.
-    const onlyKept = unmerged.length === 0 ? [] : ["--only", "--", ...kept];
+    // git refuses a full commit while a file has conflict markers, and a pick can stage a withheld
+    // file: --only commits just the kept files.
+    const onlyKept = unmerged.length === 0 && withheld.length === 0 ? [] : ["--only", "--", ...kept];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
       ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(kept.length)} ${plural})`, ...onlyKept],

@@ -587,3 +587,51 @@ describe("VaultSync conflict review fixes", () => {
     expect(readFileSync(join(vault, "news.md"), "utf-8")).toBe("a draft here\n");
   });
 });
+
+describe("VaultSync conflict picks and the secret scan", () => {
+  const token = "token ghp_" + "a".repeat(36) + "\n";
+
+  async function secretConflict(sync: VaultSync): Promise<void> {
+    pushFromOther("a.md", "base\n");
+    sandbox.git(vault, "pull", "-q");
+    pushFromOther("a.md", "theirs\n");
+    sandbox.write(vault, "a.md", token);
+    expect((await sync.pull()).status).toBe("conflict");
+  }
+
+  test("keep mine never pushes an edit that holds a secret, even when another note is committed", async () => {
+    const sync = createSync(vault);
+    await secretConflict(sync);
+    sandbox.write(vault, "other.md", "innocent\n");
+    const result = await sync.resolve("a.md", "mine");
+    expect(result.state.withheldFiles).toEqual([{ path: "a.md", reason: "secret" }]);
+    expect(sandbox.git(sandbox.remote, "show", "main:a.md")).toBe("theirs");
+    expect(sandbox.git(sandbox.remote, "show", "main:other.md")).toBe("innocent");
+    expect(readFileSync(join(vault, "a.md"), "utf-8")).toBe(token);
+  });
+
+  test("keep both pushes the copy but never the note that holds a secret", async () => {
+    const sync = createSync(vault);
+    await secretConflict(sync);
+    await sync.resolve("a.md", "both");
+    expect(sandbox.git(sandbox.remote, "show", "main:a.md")).toBe("theirs");
+    expect(sandbox.git(sandbox.remote, "show", "main:a (conflict copy).md")).toBe("theirs");
+  });
+
+  test("names git's own reason for a merge-tree failure that is not an old git", async () => {
+    const sync = createSync(vault, {
+      runner: {
+        run(command, options) {
+          return command[1] === "merge-tree"
+            ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "fatal: refusing to merge unrelated histories" })
+            : systemProcessRunner.run(command, options);
+        },
+      },
+    });
+    pushFromOther("AGENTS.md", "# Theirs\n");
+    sandbox.write(vault, "AGENTS.md", "# Mine\n");
+    const state = await sync.save();
+    expect(state.lastError).toContain("unrelated histories");
+    expect(state.lastError).not.toContain("2.38");
+  });
+});

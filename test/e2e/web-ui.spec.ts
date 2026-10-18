@@ -14,6 +14,20 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
+/** The task chip under the answer opens the chat's background tasks, also on a phone. */
+async function expectBackgroundTasks(page: Page): Promise<void> {
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText("Search the notes");
+  }
+  await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Background tasks" });
+  await expect(dialog).toContainText("Search the notes");
+  await expect(dialog).toContainText("done");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+}
+
 test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("wrong");
@@ -33,7 +47,8 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await expect(page.getByText("1 tools").first()).toBeVisible();
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
 
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.locator(".branch")).toHaveCount(2);
@@ -63,6 +78,8 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await composer.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Approval" });
   await expect(dialog).toContainText("gh issue create");
+  // While the turn waits, its running task shows under the conversation, also on a phone.
+  await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
 });
@@ -90,6 +107,38 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
     await trustQuestion.getByRole("button", { name: "Deny" }).click();
   }
   await expect(answer).toContainText("Fix the bug");
+  // Project mode shows the same activity as Assistant mode.
+  await expect(page.getByText("1 command, 1 tool").first()).toBeVisible();
+  await expectBackgroundTasks(page);
+
+  // Another chat's tasks stay out of view. A project chat keeps the Assistant chat list unchanged.
+  await openList(page);
+  await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
+  if (test.info().project.name === "desktop") {
+    await expect(page.getByRole("complementary", { name: "Background tasks" })).toContainText(
+      "Nothing runs in the background.",
+    );
+  }
+});
+
+test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await page.getByRole("button", { name: "New clone" }).click();
+  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  await openList(page);
+  const chats = page.getByRole("group", { name: "Chats in this clone" });
+  await expect(chats.locator(".list-item")).toHaveCount(1);
+  await chats.getByRole("button", { name: "New chat", exact: true }).click();
+  await openList(page);
+  await expect(chats.locator(".list-item")).toHaveCount(2);
+  await expect(chats.locator(".list-item").first()).toHaveAttribute("aria-current", "true");
+  await chats.locator(".list-item").last().click();
+  await openList(page);
+  await expect(chats.locator(".list-item").last()).toHaveAttribute("aria-current", "true");
 });
 
 test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
@@ -125,6 +174,38 @@ test("the status filter hides a closed project until Any status", async ({ page 
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
   await page.getByLabel("Status").selectOption("");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A status word typed in the search wins over the select.
+  await page.getByLabel("Status").selectOption("active");
+  await page.getByLabel("Search projects").fill("status:closed");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+});
+
+test("the tag filter shows only the projects with that tag", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await page.getByLabel("Tag").selectOption("web");
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
+  await page.getByLabel("Tag").selectOption("");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  // A tag word typed in the search wins over the select.
+  await page.getByLabel("Tag").selectOption("web");
+  await page.getByLabel("Search projects").fill("#legacy");
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+});
+
+test("a project with a bad front matter field shows its warnings", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  const project = page.getByRole("button", { name: /Broken notes/ });
+  await expect(project).toContainText("1 warning");
+  await project.click();
+  await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
 });
 
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {

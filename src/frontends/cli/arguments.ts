@@ -51,6 +51,8 @@ Commands:
       --model <default|opus|sonnet|haiku>
       --engine <claude-code|pi>
   projects [words]  Search the projects
+      status:<idea|active|paused|closed|any>  only projects with this status
+      tag:<tag>                               only projects with this tag ("#<tag>" needs the quotes)
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
   service install   Start Eva by herself, and again after a crash (systemd on Linux, a logon task on Windows)
   supervise         Run Eva, and start her again after a crash (the Windows logon task runs this)

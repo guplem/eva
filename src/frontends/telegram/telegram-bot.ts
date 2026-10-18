@@ -600,7 +600,7 @@ export class TelegramBot {
           topicId,
           update.releases.length === 0 || rows.length === 0
             ? describeUpdate(update)
-            : `${describeUpdate(update)}\n\nPick a version to see what it brings:`,
+            : `${describeUpdate(update)}\n\n${update.target === null ? "Pick" : "Install now, or pick"} a version to see what it brings:`,
           rows.length === 0 ? undefined : { inline_keyboard: rows },
         );
       } catch (error) {

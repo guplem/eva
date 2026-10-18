@@ -101,20 +101,14 @@ describe("a model call", () => {
   });
 
   test("a temporary folder that cannot be made is a failure, not a throw", async () => {
-    const saved = { TMPDIR: process.env["TMPDIR"], TEMP: process.env["TEMP"], TMP: process.env["TMP"] };
-    const missing = join(tmpdir(), "eva-no-such-folder", "deeper");
-    process.env["TMPDIR"] = missing;
-    process.env["TEMP"] = missing;
-    process.env["TMP"] = missing;
-    try {
-      const result = await calls([new FakeEngine()]).ask(question);
-      expect(result).toMatchObject({ ok: false, failure: "failed" });
-    } finally {
-      for (const [name, value] of Object.entries(saved)) {
-        if (value === undefined) Reflect.deleteProperty(process.env, name);
-        else process.env[name] = value;
-      }
-    }
+    const missingRoot = new ModelCalls({
+      engines: [new FakeEngine()],
+      environment: {},
+      redact: (text) => text,
+      timeoutMs: 5_000,
+      temporaryRoot: join(tmpdir(), "eva-no-such-folder", "deeper"),
+    });
+    expect(await missingRoot.ask(question)).toMatchObject({ ok: false, failure: "failed" });
   });
 
   test("names a missing engine, a failed turn, a thrown error and a stream with no end", async () => {

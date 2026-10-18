@@ -39,6 +39,8 @@ export interface ModelCallsOptions {
   readonly environment: Readonly<Record<string, string>>;
   readonly redact: (text: string) => string;
   readonly timeoutMs: number;
+  /** Where each call makes its empty folder. A test points it at a folder that does not exist. */
+  readonly temporaryRoot?: string;
 }
 
 /** Claude Code's smallest model. pi maps each alias to a model of the person's choice, so it keeps the chat's. */
@@ -78,7 +80,7 @@ export class ModelCalls {
     let folder: string | null = null;
     try {
       // An empty folder gives the engine no file to read and no project settings to load.
-      folder = mkdtempSync(join(tmpdir(), "eva-model-call-"));
+      folder = mkdtempSync(join(this.options.temporaryRoot ?? tmpdir(), "eva-model-call-"));
       const parts: string[] = [];
       const stream = engine.runTurn({
         mode: "model-call",

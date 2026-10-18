@@ -38,11 +38,14 @@ export interface PollHealthOptions {
 export class PollHealth {
   private readonly options: PollHealthOptions;
   /** The times (ms) of the recent 409 conflicts, inside the conflict window. */
-  private conflictTimes: number[] = [];
-  private nextPollRetryMs = firstRetryMs;
-  private currentState: TelegramPollState = { kind: "polling" };
+  private conflictTimes: number[];
+  private nextPollRetryMs: number;
+  private currentState: TelegramPollState;
 
   constructor(options: PollHealthOptions) {
+    this.conflictTimes = [];
+    this.nextPollRetryMs = firstRetryMs;
+    this.currentState = { kind: "polling" };
     this.options = options;
   }
 

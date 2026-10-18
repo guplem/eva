@@ -64,11 +64,13 @@ const reportTextLimit = 3_000;
 export class ProjectWork {
   private readonly options: ProjectWorkOptions;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
-  private readonly reservedClones = new Set<string>();
+  private readonly reservedClones: Set<string>;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
-  private readonly cloneChoices = new Map<string, Promise<unknown>>();
+  private readonly cloneChoices: Map<string, Promise<unknown>>;
 
   constructor(options: ProjectWorkOptions) {
+    this.reservedClones = new Set();
+    this.cloneChoices = new Map();
     this.options = options;
   }
 

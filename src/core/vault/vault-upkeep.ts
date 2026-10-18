@@ -28,13 +28,16 @@ export interface VaultUpkeepOptions {
 
 export class VaultUpkeep {
   private readonly options: VaultUpkeepOptions;
-  private lastPullAt: Date | null = null;
+  private lastPullAt: Date | null;
   /** A slow git step can outlast a timer period; this flag keeps the sweep from running twice at once. */
-  private sweeping = false;
+  private sweeping: boolean;
   /** When the vault sync went offline, for the 30-minute alert; null while it is not offline. */
-  private offlineSince: Date | null = null;
+  private offlineSince: Date | null;
 
   constructor(options: VaultUpkeepOptions) {
+    this.lastPullAt = null;
+    this.sweeping = false;
+    this.offlineSince = null;
     this.options = options;
   }
 

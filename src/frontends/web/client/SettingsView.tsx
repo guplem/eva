@@ -14,6 +14,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
@@ -290,6 +291,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   return (
     <div className="main">
       <div className="settings">
+        {remote !== null && <RemoteAccessPanel initial={remote} />}
         <fieldset>
           <legend>Setup</legend>
           {status !== null && (
@@ -418,12 +420,6 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             Time zone
             <input value={timeZone} placeholder="Europe/Madrid" onChange={(event) => setTimeZone(event.target.value)} />
           </label>
-          {remote !== null && (
-            <div>
-              Phone access:{" "}
-              {remote.url === null ? (remote.problem ?? "not available") : <a href={remote.url}>{remote.url}</a>}
-            </div>
-          )}
           <div>
             Tailscale accounts that may ask for a device login:{" "}
             {identities.length === 0 ? "Only the Tailscale account that owns this machine." : identities.join(", ")}

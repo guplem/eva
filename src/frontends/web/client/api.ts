@@ -2,6 +2,7 @@
 import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaStatus, PageSecretName, PublicSettings, SetupState } from "../../../core/eva.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
+import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
@@ -24,6 +25,7 @@ export type {
   PendingApproval,
   Project,
   PublicSettings,
+  RemoteAccess,
   ScheduleCard,
   SetupState,
   SessionEvent,
@@ -119,6 +121,8 @@ export const api = {
   updateNow: (): Promise<UpdateStatus> => request("POST", "/api/update", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
+  installTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/install", {}),
+  signInToTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/sign-in", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),

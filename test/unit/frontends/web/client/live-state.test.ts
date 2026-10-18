@@ -37,6 +37,17 @@ describe("applyEvent", () => {
     expect(state.steps["s1"]?.[0]?.text).toContain("lost");
   });
 
+  test("a notice is a message step, so the person sees it while the turn runs", () => {
+    const state = run([
+      { kind: "notice", text: 'Eva could not start the MCP server "google": no uvx' },
+      { kind: "text", text: "No calendar today.", messageId: "m1" },
+    ]);
+    expect(state.steps["s1"]?.map((step) => step.text)).toEqual([
+      'Eva could not start the MCP server "google": no uvx',
+      "No calendar today.",
+    ]);
+  });
+
   test("a usage limit outlives its turn and the next one, until a newer limit or a delete (issue #67)", () => {
     const limit = {
       kind: "usage_limit",
@@ -81,6 +92,6 @@ describe("applyEvent", () => {
 
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
-    expect(applyEvent(state, event({ kind: "notice", text: "x" }))).toBe(state);
+    expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
   });
 });

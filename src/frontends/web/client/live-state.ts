@@ -49,10 +49,12 @@ export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
         }
       : state.tasks;
   const current = state.steps[event.sessionId] ?? [];
+  // A note is no stored step: the list shows only its turn's answer after a reload.
+  const note = event.kind === "history_lost" ? historyLostNote : event.kind === "notice" ? event.text : null;
   const next =
-    event.kind === "history_lost"
-      ? [...current, { kind: "message" as const, text: historyLostNote, isError: false, id: null }]
-      : addStep(current, event);
+    note === null
+      ? addStep(current, event)
+      : [...current, { kind: "message" as const, text: note, isError: false, id: null }];
   if (next === current && tasks === state.tasks) return state;
   return { ...state, tasks, steps: next === current ? state.steps : { ...state.steps, [event.sessionId]: next } };
 }

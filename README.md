@@ -2,15 +2,7 @@
 
 **Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone (Telegram, or a web page), and she remembers everything in a private notebook that only you own.
 
-Some things you can ask her:
-
-- "Remind me every Monday at 9 to pay the rent."
-- "What did I write about the car insurance?"
-- "Save this photo of the receipt with my expenses."
-- "Send me my notes about the trip as a PDF."
-- "In the website project, fix the broken contact form and open a pull request."
-
-**Status:** Eva works and runs every day for her author, but she is young. Expect rough edges, and read [Problems and answers](#problems-and-answers).
+**Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. One program gives you one chat, one notebook and one list of projects, whichever harness does the work.
 
 ## How Eva works, in one picture
 

@@ -130,15 +130,20 @@ function ChatTitle({
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
   const [draft, setDraft] = useState<string | null>(null);
+  // A second Enter while the request runs must not send it again.
+  const [saving, setSaving] = useState(false);
   const showError = useShowError();
 
   const save = async (title: string): Promise<void> => {
+    setSaving(true);
     try {
       await api.rename(chat.id, title);
       await onChanged();
       setDraft(null);
     } catch (caught) {
       showError(caught);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -162,19 +167,21 @@ function ChatTitle({
       className="rename-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void save(draft);
+        if (!saving) void save(draft);
       }}
     >
       <input
         aria-label="Chat title"
         value={draft}
         autoFocus
+        // Selected, so the person can type a new title at once.
+        onFocus={(event) => event.target.select()}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") setDraft(null);
         }}
       />
-      <button className="primary" type="submit" disabled={draft.trim() === ""}>
+      <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
         Save
       </button>
       <button type="button" onClick={() => setDraft(null)}>

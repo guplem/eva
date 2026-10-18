@@ -60,3 +60,28 @@ Other decisions from the review:
 - Removing a repository from `repos` never deletes a clone. The form says so.
 - `project_invalid` answers 400 and `project_changed` answers 409.
 - Out of scope: a project whose front matter Eva cannot read is not listed today, so the editor cannot reach it.
+
+## Review round 1
+
+Five reviewers. Fixed:
+
+- A status that the form cannot show was deleted; now None keeps it.
+- An unchanged list with a bad tag blocked every save; now only changed lists are checked.
+- A file that ends right after `---` got `---# Title`.
+- A heading inside a code fence counted as the title, in the list and in the form.
+- Plain `null`, `true` or `12` tags now get quotes, for other YAML readers.
+- The answer now carries the `EvaErrorCode`, and the page branches on `project_changed`. A bad `%` escape answers 400.
+- A save looked the project up twice.
+- The page: no lost edits across the two parts, no double save, a retry after a failed load, an announced "Saved.", and no Add on an IME Enter.
+
+Not fixed, with the reason:
+
+- A save during a vault sync rebase can lose the write. `.eva/schedules.json` has the same window, and lesson 30 accepts it. A fix belongs in `VaultSync` for every writer, not here.
+- `writeFileAtomic` makes the note 0600. Git keeps only the executable bit, so other machines see no change.
+- A file with mixed line endings becomes all CRLF on a whole-file save. This is rare, and the result is still valid.
+- A blank line before a trailing comment, and YAML anchors. Both are rare and harmless.
+- A scalar `tags: work` reads as no tags, so adding a tag replaces it. The project list already warns about that file.
+- The title in the clone header and the setup page stays old until the next selection. The list and the details page update at once.
+- Body size: Bun reads the whole body before the 1 MB check. This holds for every route, and only a logged-in client can send it.
+- `docs/guide/reference.md` lists commands and settings, not API routes or web pages. The README's web page section got the line instead.
+- The commit trailer names the model that this session runs on, as the session asks.

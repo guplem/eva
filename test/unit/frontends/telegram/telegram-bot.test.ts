@@ -989,6 +989,16 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(eva.schedules?.waitingCards()).toEqual([]);
   });
 
+  test("a card too long for one message waits for the web app: a cut card would hide the prompt (lesson 67)", async () => {
+    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
+    createBot();
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toContain("too long for Telegram");
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().filter((text) => text.includes("too long"))).toHaveLength(1);
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+  });
+
   test("before pairing, a card waits instead of counting as shown", async () => {
     writeSchedules([morning]);
     createBot(null);

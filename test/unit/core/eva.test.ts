@@ -78,6 +78,7 @@ describe("Eva", () => {
     const instance = start(engine);
     instance.startBackgroundWork();
     instance.startBackgroundWork();
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     clock = new Date("2026-10-14T10:45:00Z");
     await instance.schedules?.tick();
@@ -809,8 +810,8 @@ describe("Eva", () => {
     // The first check sends the setup card; a slow card send keeps the check running.
     const unsubscribe = instance.schedules?.subscribe(
       () =>
-        new Promise<void>((resolve) => {
-          releaseGate.open = resolve;
+        new Promise<boolean>((resolve) => {
+          releaseGate.open = () => resolve(true);
         }),
     );
     const check = instance.schedules?.tick();
@@ -978,6 +979,7 @@ describe("Eva alerts", () => {
     );
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
     await instance.schedules?.tick();
     // The chat list cannot be saved, so the firing's chat cannot start.
     mkdirSync(join(home, "state", "sessions.json"), { recursive: true });
@@ -985,6 +987,22 @@ describe("Eva alerts", () => {
     await instance.schedules?.tick();
     expect(alerts.map((alert) => alert.key)).toEqual(["schedule:lunch"]);
     expect(alerts[0]?.message).toContain("Lunch");
+  });
+
+  test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine());
+    const alerts = collectAlerts(instance);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([expect.stringContaining("Lunch")]);
+    expect(alerts.map((alert) => alert.key)).toEqual(["schedule_card:lunch"]);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    expect(instance.status().problems).toEqual([]);
   });
 
   test("a front end reports its own problem, and the status carries it", () => {

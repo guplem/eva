@@ -84,6 +84,38 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
 });
 
+test("a new schedule's setup card waits in a dialog, and Got it lets it run (lesson 66)", async ({ page }, info) => {
+  await logIn(page);
+  const id = `card-${info.project.name}`;
+  const created = await page.request.post("/api/schedules", {
+    data: { id, name: `Card ${info.project.name}`, at: "07:30", text: "Drink water." },
+  });
+  expect(created.status()).toBe(201);
+  const dialog = page.getByRole("dialog", { name: "Setup card" });
+  await expect(dialog).toContainText(`New schedule: Card ${info.project.name}`);
+  await expect(dialog).toContainText("Drink water.");
+  await dialog.getByRole("button", { name: "Got it" }).click();
+  await expect(dialog).toHaveCount(0);
+  const waiting = (await (await page.request.get("/api/schedule-cards")).json()) as { scheduleId: string }[];
+  expect(waiting.map((card) => card.scheduleId)).not.toContain(id);
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
+test("a setup card's Remove button removes the schedule", async ({ page }, info) => {
+  await logIn(page);
+  const id = `unknown-${info.project.name}`;
+  await page.request.post("/api/schedules", { data: { id, name: "Pushed by someone", at: "07:30", text: "Hi." } });
+  const dialog = page.getByRole("dialog", { name: "Setup card" });
+  await expect(dialog).toContainText("New schedule: Pushed by someone");
+  page.once("dialog", (question) => void question.accept());
+  await dialog.getByRole("button", { name: "Remove schedule" }).click();
+  await expect(dialog).toHaveCount(0);
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string } }[];
+  };
+  expect(listed.schedules.map((view) => view.schedule.id)).not.toContain(id);
+});
+
 test("Project mode: search, a new clone with its branch, and a chat in it", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Project" }).click();
@@ -390,6 +422,8 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await expect(page.getByRole("status").last()).toContainText("no valid time");
   await page.getByLabel("Time (HH:MM)").fill("07:30");
   await page.getByRole("button", { name: "Add schedule" }).click();
+  // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
+  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
   const row = page.locator(".check-row", { hasText: `Walk ${id}` });
   await expect(row).toContainText("next:");
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();

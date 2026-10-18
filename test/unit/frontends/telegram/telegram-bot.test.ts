@@ -563,8 +563,11 @@ describe("approvals and commands", () => {
     gateOpen = false;
     telegram.sendText(owner, "/sync");
     telegram.sendText(owner, "/help");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("/new")));
-    expect(telegram.sentTexts()[0]).toBe("Syncing…");
+    // "Syncing…" goes out apart from the poll loop, so it can reach Telegram after the /help answer.
+    await settle(
+      bot,
+      () => telegram.sentTexts().includes("Syncing…") && telegram.sentTexts().some((text) => text.includes("/new")),
+    );
     expect(telegram.sentTexts().some((text) => text.startsWith("Vault sync:"))).toBe(false);
     releaseSync();
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Vault sync:")));
@@ -1066,6 +1069,46 @@ describe("schedules (lessons 66, 70, 126)", () => {
     telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
     await eva.schedules?.tick();
     expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBeUndefined();
+  });
+
+  test("a card that Telegram fails to send waits, and goes out again at the next check (lesson 66)", async () => {
+    writeSchedules([morning]);
+    createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
+    await eva.schedules?.tick();
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toContain("New schedule: Morning");
+    expect(eva.schedules?.waitingCards()).toEqual([]);
+  });
+
+  test("a card too long for one message waits for the web app: a cut card would hide the prompt (lesson 67)", async () => {
+    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
+    createBot();
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toContain("too long for Telegram");
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().filter((text) => text.includes("too long"))).toHaveLength(1);
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
+  });
+
+  test("a too-long notice that fails to go out goes out at the next check", async () => {
+    writeSchedules([{ ...morning, text: "filler ".repeat(700) }]);
+    createBot();
+    telegram.failNext("sendMessage", 400, "Bad Request: chat not found");
+    const notices = (): number => telegram.sentTexts().filter((text) => text.includes("too long")).length;
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    // The fake records the failed call too: one failed try, then one notice that went out.
+    expect(notices()).toBe(2);
+  });
+
+  test("before pairing, a card waits instead of counting as shown", async () => {
+    writeSchedules([morning]);
+    createBot(null);
+    await eva.schedules?.tick();
+    expect(eva.schedules?.waitingCards().map((card) => card.scheduleId)).toEqual(["morning"]);
   });
 
   test("file problems go to the main chat; nothing goes out before pairing", async () => {

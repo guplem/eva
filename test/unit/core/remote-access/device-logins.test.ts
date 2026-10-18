@@ -179,7 +179,11 @@ describe("DeviceLogins", () => {
 });
 
 describe("DeviceLogins for the web page", () => {
-  function pageApprover(logins: DeviceLogins, settled: [string, string][], open = { value: true }): DeviceLoginApprover {
+  function pageApprover(
+    logins: DeviceLogins,
+    settled: [string, string][],
+    open = { value: true },
+  ): DeviceLoginApprover {
     const approver: DeviceLoginApprover = {
       canApprove: () => open.value,
       ask: (request) => asked.push(request),
@@ -254,6 +258,10 @@ describe("DeviceLogins for the web page", () => {
     expect(logins.forgetById(phoneId)).toBe(true);
     expect(logins.isValidToken(phone)).toBe(false);
     expect(logins.isValidToken(laptop)).toBe(true);
-    expect(createLogins().list(null).map((device) => device.label)).toEqual(["a laptop"]);
+    expect(
+      createLogins()
+        .list(null)
+        .map((device) => device.label),
+    ).toEqual(["a laptop"]);
   });
 });

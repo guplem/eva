@@ -527,6 +527,29 @@ describe("web routes", () => {
     socket.close();
     expect(eva.schedules?.waitingCards()).toHaveLength(1);
   });
+
+  test("the WebSocket holds back a changed card until it waits, so a tap never meets an older card", async () => {
+    const events: { kind: string; fields?: { at?: string } }[] = [];
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "07:30", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as { kind: string }));
+    await call("/api/schedules", {
+      method: "POST",
+      body: { id: "morning", name: "Morning", at: "08:00", text: "Hi." },
+    });
+    await eva.schedules?.tick();
+    await eva.schedules?.tick();
+    while (events.length === 0) await Bun.sleep(10);
+    socket.close();
+    expect(events.map((event) => event.fields?.at)).toEqual(["08:00"]);
+  });
 });
 
 describe("without a vault", () => {

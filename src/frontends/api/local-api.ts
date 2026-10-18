@@ -9,6 +9,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import type { CheckName } from "../../core/checks.ts";
 import type { Eva } from "../../core/eva.ts";
+import { changedFields } from "../../core/schedules/schedule-definitions.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -115,9 +116,15 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         if (schedules !== null) {
           socket.data.unsubscribe.push(
             schedules.subscribe((event) => {
-              // Only a card that already waits: a card that Telegram shows at once never opens the dialog.
               if (event.kind !== "schedule_card") return false;
-              const waits = schedules.waitingCards().some((card) => card.scheduleId === event.scheduleId);
+              // Only a card that already waits, with these fields: a card that Telegram shows at once
+              // never opens the dialog, and a tap never meets an older card. The page drops repeats.
+              const waits = schedules
+                .waitingCards()
+                .some(
+                  (card) =>
+                    card.scheduleId === event.scheduleId && changedFields(card.fields, event.fields).length === 0,
+                );
               if (waits) socket.send(JSON.stringify(event));
               // A socket is no proof that anyone saw the card: a sleeping phone keeps a dead
               // socket open. The card counts when the person confirms it over HTTP.

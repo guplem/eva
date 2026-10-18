@@ -19,9 +19,9 @@ An allowed device can do almost everything. Today the page can only log out ever
 
 - `PendingLogin` keeps the approvers that were asked.
 - `waitingFor(approver)` lists the requests that still wait and that this approver was asked. The page reads this list after a dead socket.
-- `DeviceLoginApprover.settled?(id)`: optional. `answer()` calls it on each approver that was asked. The page then closes the dialog when another approver answered.
+- `DeviceLoginApprover.settled?(id, answer)`: optional. `answer()` calls it on each approver that was asked. The page closes its dialog, and Telegram edits its question to "Allowed" or "Denied", whoever answered.
 - `list(currentToken)` returns `{ id, label, createdAt, current }` for each device. The `id` is the first 16 hex digits of the stored hash. It needs no new stored field and no migration.
-- `forgetById(id)` removes one device. It returns false for an unknown id.
+- `forgetById(id)` removes one device. It returns false when no single device has the id.
 
 ### Local API: `src/frontends/api/local-api.ts`
 
@@ -41,12 +41,14 @@ An allowed device can do almost everything. Today the page can only log out ever
 
 ## Gaps and decisions
 
-1. **When can the page approve?** Decision: while a logged-in page has its socket open. The socket is how the page hears of a request. With no open page, the page cannot answer, so `request()` must not count it. Same as Telegram with no paired chat.
-2. **Can a device login approve and remove devices, or only the token?** Decision: both logins. The issue says "a device that is already allowed". The lost-phone case needs removal from another device, which may also be a device login. `DELETE /api/devices` already works for a device login. PR #145 makes `POST /api/devices/allow` (the typed code) token only. That rule is about typing a code, which can allow a request that another program made. The page answers one request by id, after the person compares the code, as in Telegram.
+1. **When can the page approve?** Decision: while a logged-in page has its socket open. A sleeping phone can keep a dead socket open, so a request can wait 5 minutes for nobody. Telegram and the terminal still get the request too. A "seen lately" rule adds state for a small gain. The socket is how the page hears of a request. With no open page, the page cannot answer, so `request()` must not count it. Same as Telegram with no paired chat.
+2. **Can a device login approve and remove devices, or only the token?** Decision: both logins. The issue says "a device that is already allowed". The lost-phone case needs removal from another device, which may also be a device login. The review of #137 (commit 5e3f44d) made the typed code token only, and said "Approving from the page stays for #147". This issue then asks for it in words: "approves a new browser from the page of a device that is already allowed". Accepted risk: a lost phone that is still logged in can allow more devices until the person removes it. The PR says so. `DELETE /api/devices` already works for a device login. PR #145 makes `POST /api/devices/allow` (the typed code) token only. That rule is about typing a code, which can allow a request that another program made. The page answers one request by id, after the person compares the code, as in Telegram.
 3. **A request from Eva's own computer (PR #145).** Only the terminal may answer it. The web approver does not set `servesThisComputer`, so `DeviceLogins` never asks it. `waitingFor(approver)` then hides such a request from the page too.
 4. **Device id.** Decision: the first 16 hex digits of the token hash. A new stored `id` field would need a migration. The hash prefix is stable, and it cannot log anyone in.
-5. **Redaction.** The events carry an account and a 4-letter code, no free text from an engine or a person. The Telegram question shows the same fields. Decision: send them as they are.
-6. **Expiry.** A request expires after 5 minutes. The page drops it on the next read, or when an answer gets a 404. No timer on the page: the clocks of the phone and the server can differ.
+5. **Redaction.** The account comes from a header, and the label holds the user agent, which the requester controls. Decision: pass both through `eva.redact` in the events and the device list. It costs one call, and it keeps the root rule simple.
+6. **Expiry.** A request expires after 5 minutes. The page drops it on the next read, or when an answer gets a 404. No timer on the page: the clocks of the phone and the server can differ. A failed answer drops the dialog too, with "This request no longer waits". Telegram keeps an expired question until someone presses a button, as today.
+7. **Event schema.** The two new kinds travel beside `SessionEvent`, as `schedule_card` does. They have no `seq`: they are not session events. The client widens its event type.
+8. **PR #145.** It makes `DeviceLoginApprover.name` required and adds `request.approvers`. Whichever PR merges second sets the web approver's name and lets `LoginView` read `approvers`.
 
 ## Tests
 

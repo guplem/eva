@@ -37,6 +37,7 @@ import {
   loginToGitHub,
   piLoginState,
   quoteForShell,
+  withVariable,
   type EngineLoginState,
 } from "./engine-logins.ts";
 
@@ -245,7 +246,7 @@ export async function runSetup(options: SetupOptions): Promise<void> {
   if (install !== "" && !/^(y(es)?|no?)$/i.test(install))
     throw new EvaError("config_invalid", "The answer to install the engines must be yes or no.");
   // Before the token question, so the person can run `claude setup-token` with the new program.
-  if (!/^no?$/i.test(install)) await installEngines(options, config);
+  if (!/^no?$/i.test(install)) await installEngines(options, config, engineFolders);
 
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
@@ -342,7 +343,11 @@ export async function runSetup(options: SetupOptions): Promise<void> {
  * Installs each engine's missing program, with no question: one path is simpler than a choice.
  * A failed install gives the steps, and setup goes on.
  */
-async function installEngines(options: SetupOptions, config: EvaConfig): Promise<void> {
+async function installEngines(
+  options: SetupOptions,
+  config: EvaConfig,
+  engineFolders: EngineFolders | null,
+): Promise<void> {
   for (const engine of ["claude-code", "pi"] as const) {
     const inputs: EngineInstallInputs = {
       runner: options.runner,
@@ -369,7 +374,7 @@ async function installEngines(options: SetupOptions, config: EvaConfig): Promise
     options.write(
       engine === "claude-code"
         ? `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`
-        : `For another provider, run \`${run}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
+        : `For another provider, run \`${piLogin(run, engineFolders, options.platform)}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
     );
   }
 }
@@ -488,4 +493,9 @@ function commandLine(program: string, platform: NodeJS.Platform): string {
   if (!/[\\/]/.test(program)) return program;
   // PowerShell runs a quoted path only after its call operator.
   return platform === "win32" ? `& ${quoteForShell(program, platform)}` : quoteForShell(program, platform);
+}
+
+/** The pi command for a login. An extra instance keeps its pi login in its own folder. */
+function piLogin(run: string, engineFolders: EngineFolders | null, platform: NodeJS.Platform): string {
+  return engineFolders === null ? run : withVariable("PI_CODING_AGENT_DIR", engineFolders.piAgent, [run], platform);
 }

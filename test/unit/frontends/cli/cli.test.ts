@@ -544,6 +544,20 @@ describe("runSetup", () => {
       expect(text).toContain("Installed pi:");
     });
 
+    test("an extra instance logs in to pi in its own folder", async () => {
+      const lines: string[] = [];
+      await setup(
+        {},
+        {
+          runner: installRunner([]),
+          lines,
+          piReleasesBaseUrl: serveRelease(),
+          defaultHome: join(home, "default-home"),
+        },
+      );
+      expect(lines.join("\n")).toContain(`PI_CODING_AGENT_DIR='${join(home, "engines", "pi-agent")}' '`);
+    });
+
     test("only the missing harness installs", async () => {
       const commands: string[][] = [];
       const installing = installRunner(commands);

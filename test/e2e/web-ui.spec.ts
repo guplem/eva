@@ -810,3 +810,37 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.answer").first()).toContainText("second line");
   });
 });
+
+test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
+  const run = test.info().project.name;
+  await logIn(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Status").selectOption("");
+  await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
+  await page.getByRole("button", { name: "Project details" }).click();
+  await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
+  await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+
+  await page.getByLabel("Title").fill(`Renamed ${run}`);
+  await page.getByLabel("Project status").selectOption("active");
+  await page.getByLabel("Add a tag").fill("ideas");
+  await page.getByRole("button", { name: "Add the tag" }).click();
+  await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  const file = page.getByLabel("AGENTS.md");
+  await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
+  await expect(file).toHaveValue(/# Renamed/);
+
+  await page.getByRole("button", { name: "Remove the tag ideas" }).click();
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await expect(file).not.toHaveValue(/ideas/);
+
+  await file.fill(`${await file.inputValue()}\nMore notes.\n`);
+  await page.getByRole("button", { name: "Save the file" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await openList(page);
+  await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
+});

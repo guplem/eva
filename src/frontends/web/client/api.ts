@@ -4,6 +4,7 @@ import type { EvaStatus, PageSecretName, PublicSettings, SetupState } from "../.
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
@@ -23,6 +24,8 @@ export type {
   PageSecretName,
   PendingApproval,
   Project,
+  ProjectDetails,
+  ProjectFile,
   PublicSettings,
   ScheduleCard,
   SetupState,
@@ -104,6 +107,13 @@ export const api = {
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/clones`),
   repositorySetup: (projectId: string): Promise<SetupReport[]> =>
     request("GET", `/api/projects/${encodeURIComponent(projectId)}/setup`),
+  projectFile: (projectId: string): Promise<ProjectFile> =>
+    request("GET", `/api/projects/${encodeURIComponent(projectId)}/file`),
+  /** A file that changed since `version` answers 409. */
+  saveProjectDetails: (projectId: string, version: string, details: ProjectDetails): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/details`, { version, ...details }),
+  saveProjectFile: (projectId: string, version: string, text: string): Promise<ProjectFile> =>
+    request("PUT", `/api/projects/${encodeURIComponent(projectId)}/file`, { version, text }),
   newClone: (projectId: string): Promise<CloneDetails> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),

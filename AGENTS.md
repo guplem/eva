@@ -74,6 +74,16 @@ A commit that changes `src/` with no test change says why in its message.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.
 - Before each commit, follow `.agents/skills/write-commit/SKILL.md`. Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`.
 
+## Shell commands
+
+`.claude/settings.json` cannot allow these forms, so each one stops for a prompt:
+
+- Do not put `&&` before a heredoc, or text after `<<'EOF'` on its line. Join the next command after `EOF` with a new line.
+- Quote each heredoc delimiter: `<<'EOF'`, never `<<EOF`.
+- Write literal paths. Do not put a `$VAR` in a path or a redirect target.
+- Run git in the clone root. Do not use `cd <folder> && git` or `git -C`.
+- Use the Write and Edit tools to write files. Do not use `python3`.
+
 ## Agent files
 
 - Rules live only in `AGENTS.md` files. The nearest folder's file applies first. Each `CLAUDE.md` holds only `@AGENTS.md`.

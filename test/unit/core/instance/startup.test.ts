@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readHubClaim } from "../../../../src/core/instance/hub.ts";
@@ -93,25 +93,30 @@ describe("prepareStart with a vault", () => {
     );
   });
 
-  test("moves the shared settings to the vault, and says so", async () => {
+  test("runs the migrations after the pull: the hub starts the vault's settings file (#119)", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid" });
     const prepared = await start();
     expect(prepared.config.timeZone).toBe("Europe/Madrid");
-    expect(prepared.notes).toContainEqual({
-      level: "info",
-      message: "Moved the shared settings from config.json to the vault.",
-    });
+    expect(prepared.migrations.vault).toMatchObject({ kind: "done" });
+    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).toMatchObject({ timeZone: "Europe/Madrid" });
   });
 
-  test("moves a security setting out of the vault, and says so", async () => {
+  test("the hub drops a security setting from the vault (#119)", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     mkdirSync(join(vault, ".eva"), { recursive: true });
     writeFileSync(vaultSettingsPath(vault), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
+    await start();
+    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).not.toHaveProperty("trust");
+  });
+
+  test("a satellite runs no vault migration (#119)", async () => {
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    mkdirSync(join(vault, ".eva"), { recursive: true });
+    writeFileSync(join(vault, ".eva", "hub.json"), JSON.stringify({ machine: "laptop", since: "" }));
+    writeFileSync(vaultSettingsPath(vault), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
     const prepared = await start();
-    expect(prepared.notes).toContainEqual({
-      level: "info",
-      message: "Moved the security settings from the vault to config.json; the vault's copy is ignored now.",
-    });
+    expect(prepared.migrations.vault).toBeNull();
+    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).toHaveProperty("trust");
   });
 
   test("names a vault settings file that it could not use", async () => {

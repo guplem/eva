@@ -9,6 +9,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { defaultConfig, parseConfig, saveConfig, type EvaConfig, type HomePaths } from "./home.ts";
 import { withMachineDefaults } from "./machine-defaults.ts";
+import { assertVaultWritable, vaultAhead } from "../migrations/migrations.ts";
 
 /** The settings that the vault holds, as dotted keys. Every other key belongs to the machine. */
 export const sharedSettingKeys: readonly string[] = [
@@ -21,17 +22,6 @@ export const sharedSettingKeys: readonly string[] = [
   "engines.pi.models",
   "google.email",
   "voice.language",
-];
-
-/**
- * Settings that decide who gets in and what an agent may do. The Assistant agent edits the vault
- * as normal work, and the vault syncs from other machines, so these stay in `config.json`.
- */
-const securitySettingKeys: readonly string[] = [
-  "remoteAccess.allowedTailscaleIdentities",
-  "trust",
-  "google.readOnly",
-  "google.services",
 ];
 
 /**
@@ -77,15 +67,26 @@ export function withVaultSettings(config: EvaConfig): LoadedSettings {
   }
 }
 
-/** Writes the vault's part to the vault and the rest to `config.json`. Without a vault, all of it goes to `config.json`. */
+/**
+ * Writes the vault's part to the vault and the rest to `config.json`. Without a vault, all of it goes
+ * to `config.json`. A change to the vault's part fails with `vault_ahead` when a newer Eva migrated the vault.
+ */
 export function saveSettings(paths: HomePaths, config: EvaConfig): void {
   const vaultPath = config.vaultPath;
   if (vaultPath === null || !existsSync(vaultPath)) {
     saveConfig(paths, config);
     return;
   }
-  writeFileAtomic(paths.config, toJson(omitKeys(config, sharedSettingKeys)));
-  writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
+  const machine = omitKeys(config, sharedSettingKeys);
+  const ahead = vaultAhead(vaultPath) !== null;
+  if (ahead) {
+    // A newer Eva migrated the vault, so its file stays as it is. A save that would need a change to it fails.
+    const shared = (settings: EvaConfig): string => JSON.stringify(pickKeys(settings, sharedSettingKeys));
+    const after = withVaultSettings(parseConfig(machine, paths.config)).config;
+    if (shared(after) !== shared(config)) assertVaultWritable(vaultPath);
+  }
+  writeFileAtomic(paths.config, toJson(machine));
+  if (!ahead) writeFileAtomic(vaultSettingsPath(vaultPath), toJson(pickKeys(config, sharedSettingKeys)));
 }
 
 /** A config with a change, such as `{ updates: { frequency: "weekly" } }`, on top. Throws on a bad value. */
@@ -98,45 +99,6 @@ export function changeSettings(paths: HomePaths, change: Readonly<SettingsObject
   const changed = applySettingsChange(loadSettings(paths).config, change);
   saveSettings(paths, changed);
   return changed;
-}
-
-/**
- * Moves the vault's settings out of an older `config.json`. When the vault has no settings file
- * yet, this machine's values start it; when it has one, the vault wins. Returns true on a change.
- */
-export function moveSettingsToVault(paths: HomePaths): boolean {
-  const read = readJsonTolerant(paths.config);
-  if (!read.ok || !isObject(read.value)) return false;
-  const config = parseConfig(read.value, paths.config);
-  if (config.vaultPath === null || !existsSync(config.vaultPath)) return false;
-  if (Object.keys(pickKeys(read.value, sharedSettingKeys)).length === 0) return false;
-  const file = vaultSettingsPath(config.vaultPath);
-  if (!existsSync(file)) writeFileAtomic(file, toJson(pickKeys(config, sharedSettingKeys)));
-  writeFileAtomic(paths.config, toJson(omitKeys(read.value, sharedSettingKeys)));
-  return true;
-}
-
-/**
- * Moves the security settings out of the vault file, once, for a vault from before they stayed on
- * the machine. The owner or an earlier migration wrote those values, so a key that `config.json`
- * lacks takes the vault's value. The vault file loses every security key. Returns true on a change.
- */
-export function moveSecuritySettingsFromVault(paths: HomePaths): boolean {
-  const machineRead = readJsonTolerant(paths.config);
-  if (!machineRead.ok || !isObject(machineRead.value)) return false;
-  const machine = machineRead.value;
-  const vaultPath = parseConfig(machine, paths.config).vaultPath;
-  if (vaultPath === null) return false;
-  const file = vaultSettingsPath(vaultPath);
-  const vaultRead = readJsonTolerant(file);
-  if (!vaultRead.ok || !isObject(vaultRead.value)) return false;
-  if (Object.keys(pickKeys(vaultRead.value, securitySettingKeys)).length === 0) return false;
-  const missingKeys = securitySettingKeys.filter((key) => Object.keys(pickKeys(machine, [key])).length === 0);
-  const moved = mergeSettings(pickKeys(vaultRead.value, missingKeys), machine);
-  // A bad value in config.json would stop Eva at every start, so a bad vault value is dropped instead.
-  if (isValidConfig(moved)) writeFileAtomic(paths.config, toJson(moved));
-  writeFileAtomic(file, toJson(omitKeys(vaultRead.value, securitySettingKeys)));
-  return true;
 }
 
 /** True for a dotted key that names a setting, such as `updates.frequency`. */
@@ -223,15 +185,6 @@ function removeKey(parent: unknown, parts: readonly string[]): void {
   removeKey(parent[first], rest);
   const child = parent[first];
   if (isObject(child) && Object.keys(child).length === 0) Reflect.deleteProperty(parent, first);
-}
-
-function isValidConfig(value: unknown): boolean {
-  try {
-    parseConfig(value, "config.json");
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isObject(value: unknown): value is SettingsObject {

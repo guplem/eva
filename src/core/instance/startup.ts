@@ -1,5 +1,5 @@
 /**
- * The start steps before the core runs: the settings moves after a pull, the hub claim and the
+ * The start steps before the core runs: the vault pull, the hub claim, the migrations and the
  * local token. The logger does not exist yet, so the steps return what they did as notes.
  */
 import { existsSync } from "node:fs";
@@ -14,10 +14,13 @@ import {
   type EvaSecrets,
   type HomePaths,
 } from "../settings/home.ts";
-import { loadSettings, moveSecuritySettingsFromVault, moveSettingsToVault } from "../settings/settings.ts";
+import { evaVersion } from "../../shared/version.ts";
+import { runStartMigrations, type StartMigrations } from "../migrations/migrations.ts";
+import { withMachineDefaults } from "../settings/machine-defaults.ts";
+import { loadSettings } from "../settings/settings.ts";
 import { VaultSync } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
-import { claimHubIfUnclaimed } from "./hub.ts";
+import { claimHubIfUnclaimed, machineRole } from "./hub.ts";
 
 export interface StartNote {
   readonly level: LogLevel;
@@ -30,6 +33,8 @@ export interface PreparedStart {
   /** The secrets, with a local token in them. */
   readonly secrets: EvaSecrets & { readonly localApiToken: string };
   readonly notes: readonly StartNote[];
+  /** Eva reports them after the Telegram bot starts, so that a failure reaches the phone. */
+  readonly migrations: StartMigrations;
 }
 
 export interface PrepareStartOptions {
@@ -46,43 +51,50 @@ export async function prepareStart(options: PrepareStartOptions): Promise<Prepar
   const { paths } = options;
   const secrets: EvaSecrets = { ...loadSecrets(paths) };
   const notes: StartNote[] = [];
-  const moved = await moveSettingsAfterPull(options, secrets);
-  if (moved.toVault) notes.push({ level: "info", message: "Moved the shared settings from config.json to the vault." });
-  if (moved.toMachine)
-    notes.push({
-      level: "info",
-      message: "Moved the security settings from the vault to config.json; the vault's copy is ignored now.",
-    });
+  const migrations = await migrateAfterPull(options, secrets, notes);
   const loaded = loadSettings(paths);
   const config = loaded.config;
   if (loaded.problem !== null)
     notes.push({ level: "warn", message: "The vault's settings were not used.", fields: { problem: loaded.problem } });
-  if (
-    config.vaultPath !== null &&
-    claimHubIfUnclaimed(config.vaultPath, config.machineName ?? options.hostName, options.now())
-  )
-    notes.push({ level: "info", message: "No machine was the hub yet, so this machine claimed it." });
   const localApiToken = secrets.localApiToken ?? options.newToken();
   if (secrets.localApiToken === undefined) saveSecrets(paths, { ...secrets, localApiToken });
-  return { config, secrets: { ...secrets, localApiToken }, notes };
+  return { config, secrets: { ...secrets, localApiToken }, notes, migrations };
 }
 
 /**
- * Pulls the vault before the settings move to it, so this machine never starts a settings file
- * that another machine already pushed (a conflict that would stop the vault's pushes). Then the
- * security settings move the other way, out of the vault.
+ * Pulls the vault, claims the hub when no machine has it, then runs the missing migrations: the
+ * machine's on every computer, the vault's on the hub only. The pull comes first, so the hub never
+ * starts a file that another machine already pushed (a conflict that would stop the vault's pushes).
  */
-async function moveSettingsAfterPull(
+async function migrateAfterPull(
   options: PrepareStartOptions,
   secrets: EvaSecrets,
-): Promise<{ toVault: boolean; toMachine: boolean }> {
-  const vaultPath = loadConfig(options.paths).vaultPath;
-  if (vaultPath === null || !existsSync(vaultPath)) return { toVault: false, toMachine: false };
-  await new VaultSync({
-    vaultPath,
-    runner: options.runner,
-    environment: gitEnvironmentWithToken(options.processEnvironment, secrets),
+  notes: StartNote[],
+): Promise<StartMigrations> {
+  // The machine defaults find the vault in the home folder when config.json names none.
+  const machineConfig = withMachineDefaults(loadConfig(options.paths), {
+    homeRoot: options.paths.root,
+    exists: existsSync,
+  });
+  const machine = machineConfig.machineName ?? options.hostName;
+  const configuredVault = machineConfig.vaultPath;
+  const vaultPath = configuredVault !== null && existsSync(configuredVault) ? configuredVault : null;
+  if (vaultPath !== null) {
+    await new VaultSync({
+      vaultPath,
+      runner: options.runner,
+      environment: gitEnvironmentWithToken(options.processEnvironment, secrets),
+      now: options.now,
+    }).pull();
+    if (claimHubIfUnclaimed(vaultPath, machine, options.now()))
+      notes.push({ level: "info", message: "No machine was the hub yet, so this machine claimed it." });
+  }
+  return runStartMigrations({
+    paths: options.paths,
+    // A machine migration waits for a vault that is not cloned yet; the vault store runs only on a clone.
+    vaultPath: configuredVault,
+    isHub: () => vaultPath !== null && machineRole(vaultPath, machine, "satellite") === "hub",
+    version: evaVersion,
     now: options.now,
-  }).pull();
-  return { toVault: moveSettingsToVault(options.paths), toMachine: moveSecuritySettingsFromVault(options.paths) };
+  });
 }

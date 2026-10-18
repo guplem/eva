@@ -120,7 +120,9 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => Date.now(),
     sleep: (ms) => Bun.sleep(ms),
   });
-  const { config, secrets, notes } = await prepareStart({
+  // Before the migrations, so a second start never changes the files under a running Eva.
+  const lock = acquireInstanceLock(paths.lock, { pid: host.pid, bootId: host.bootId, isProcessAlive });
+  const { config, secrets, notes, migrations } = await prepareStart({
     paths,
     runner: systemProcessRunner,
     processEnvironment: process.env,
@@ -128,7 +130,6 @@ async function serve(paths: HomePaths): Promise<number> {
     now: () => new Date(),
     newToken: () => randomBytes(24).toString("base64url"),
   });
-  const lock = acquireInstanceLock(paths.lock, { pid: host.pid, bootId: host.bootId, isProcessAlive });
   const startedAfterUncleanExit = startRunMarker(paths.runningMarker, new Date());
 
   const redactor = new Redactor();
@@ -201,6 +202,7 @@ async function serve(paths: HomePaths): Promise<number> {
   );
   // After the bot starts, so that the alert reaches Telegram too.
   if (startedAfterUncleanExit) eva.reportUncleanExit();
+  eva.reportStartMigrations(migrations);
   const stopEva = stopSequence({
     stopParts: async () => {
       remoteAccess?.stop();

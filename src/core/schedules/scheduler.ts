@@ -16,6 +16,7 @@ import {
   type Schedule,
   type ScheduleFieldName,
 } from "./schedule-definitions.ts";
+import { assertVaultWritable } from "../migrations/migrations.ts";
 import { ScheduleStateStore } from "./schedule-state.ts";
 import { dueSlot, nextSlot, wallClockOf } from "./schedule-timing.ts";
 
@@ -115,10 +116,12 @@ export class Scheduler {
   }
 
   save(entry: Readonly<Record<string, unknown>>): Schedule {
+    assertVaultWritable(this.options.vaultPath);
     return saveScheduleDefinition(this.definitionsPath, entry);
   }
 
   remove(scheduleId: string): boolean {
+    assertVaultWritable(this.options.vaultPath);
     const removed = removeScheduleDefinition(this.definitionsPath, scheduleId);
     if (removed) {
       this.state.forget(scheduleId);

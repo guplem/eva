@@ -57,6 +57,8 @@ export interface UpdaterOptions {
   readonly channel: UpdateChannel;
   readonly frequency: () => UpdateFrequency;
   readonly policy: () => UpdatePolicy;
+  /** The version that a vault from a newer Eva needs, or "newest". Eva installs at least that. */
+  readonly requiredVersion?: () => string | undefined;
   /** True when no chat runs a turn. */
   readonly isIdle: () => boolean;
   /** Stops Eva so that the new version starts. */
@@ -98,7 +100,10 @@ export class Updater {
   status(): UpdateStatus {
     const policy = this.options.policy();
     const releases = this.last?.releases ?? null;
-    const pick = releases === null || this.last === null ? null : pickUpdate(this.last.current, releases, policy);
+    const pick =
+      releases === null || this.last === null
+        ? null
+        : pickUpdate(this.last.current, releases, policy, this.options.requiredVersion?.());
     const target = this.target();
     return {
       kind: this.options.channel.kind,
@@ -199,7 +204,7 @@ export class Updater {
     const last = this.last;
     if (last === null) return null;
     if (last.releases === null) return last.available ? last.latest : null;
-    return pickUpdate(last.current, last.releases, this.options.policy()).install;
+    return pickUpdate(last.current, last.releases, this.options.policy(), this.options.requiredVersion?.()).install;
   }
 
   /** A version that the person chose is not held back, and neither is an older one. */

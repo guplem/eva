@@ -64,6 +64,27 @@ describe("pick update", () => {
   });
 });
 
+describe("a vault that needs a newer Eva (#119)", () => {
+  const releases = [release("1.4.3"), release("2.0.0"), release("1.5.0"), release("1.4.1")];
+
+  test("installs at least the version that the vault needs, whatever the policy says", () => {
+    expect(pickUpdate("1.4.2", releases, "patch", "1.5.0")).toMatchObject({ install: "1.5.0", heldBack: "2.0.0" });
+    expect(pickUpdate("1.4.2", releases, "patch", "1.4.4")).toMatchObject({ install: "1.5.0" });
+  });
+
+  test("keeps the policy's pick when it is newer than the version that the vault needs", () => {
+    expect(pickUpdate("1.4.2", releases, "major", "1.5.0")).toMatchObject({ install: "2.0.0", heldBack: null });
+  });
+
+  test("installs the newest release when the vault does not say which version it needs", () => {
+    expect(pickUpdate("1.4.2", releases, "patch", "newest")).toMatchObject({ install: "2.0.0", heldBack: null });
+  });
+
+  test("installs the newest release when no release reaches the version that the vault needs", () => {
+    expect(pickUpdate("1.4.2", releases, "patch", "3.0.0")).toMatchObject({ install: "2.0.0", heldBack: null });
+  });
+});
+
 describe("release summary", () => {
   test("a jump of several versions puts every breaking change first, then features, then fixes", () => {
     const summary = releaseSummary([

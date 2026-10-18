@@ -15,7 +15,7 @@ import {
   describeUpdate,
 } from "../cli/client.ts";
 import type { RemoteAccess } from "../../core/remote-access/remote-access.ts";
-import { describeAccess, setupSteps } from "../../core/remote-access/steps.ts";
+import { actionLabel, describeAccess, setupSteps } from "../../core/remote-access/steps.ts";
 import { extractFileMarkers, OfferStore, resolveSendableFile, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -670,15 +670,7 @@ export class TelegramBot {
       await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
     } else if (kind === "t" && (first === "install" || first === "sign_in")) {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
-      const eva = this.options.eva;
-      if (first === "install") {
-        await this.send(chatId, topicId, "Installing Tailscale… Eva answers here when it ends.");
-        eva.installTailscale();
-        // An install can take minutes; the bot keeps answering other messages meanwhile.
-        void this.waitForInstall().then((access) => this.sendAccess(chatId, topicId, access));
-      } else {
-        await this.sendAccess(chatId, topicId, await eva.signInToTailscale());
-      }
+      void this.runRemoteAccessAction(chatId, topicId, first);
     } else if (kind === "r" && first === "now") {
       const topicId = query.message?.is_topic_message === true ? (query.message.message_thread_id ?? null) : null;
       await this.send(chatId, topicId, "Restarting… Eva answers again in a moment.");
@@ -694,10 +686,7 @@ export class TelegramBot {
     const localUrl = this.options.eva.status().localUrl;
     const actions =
       access === null ? [] : setupSteps(access).flatMap((step) => (step.action === null ? [] : [step.action]));
-    const buttons = actions.map((action) => ({
-      text: action === "install" ? "Install Tailscale" : "Sign in to Tailscale",
-      callback_data: `t:${action}`,
-    }));
+    const buttons = actions.map((action) => ({ text: actionLabel(action), callback_data: `t:${action}` }));
     await this.send(
       chatId,
       topicId,
@@ -706,9 +695,41 @@ export class TelegramBot {
     );
   }
 
+  /**
+   * Runs apart from the poll loop: an install takes minutes, and `tailscale up` waits for its
+   * link. The bot keeps answering other messages meanwhile.
+   */
+  private async runRemoteAccessAction(
+    chatId: number,
+    topicId: number | null,
+    action: "install" | "sign_in",
+  ): Promise<void> {
+    const eva = this.options.eva;
+    try {
+      // A second tap must not start a second wait, which would post a second answer.
+      if ((eva.status().remoteAccess?.busy ?? null) !== null) {
+        await this.send(chatId, topicId, "Eva is on it already. She answers here when it ends.");
+        return;
+      }
+      if (action === "sign_in") {
+        await this.send(chatId, topicId, "Asking Tailscale for a sign-in link…");
+        await this.sendAccess(chatId, topicId, await eva.signInToTailscale());
+        return;
+      }
+      if (eva.installTailscale() === null) {
+        await this.send(chatId, topicId, "Phone access is off on this machine.");
+        return;
+      }
+      await this.send(chatId, topicId, "Installing Tailscale… Eva answers here when it ends.");
+      await this.sendAccess(chatId, topicId, await this.waitForInstall());
+    } catch (error) {
+      await this.send(chatId, topicId, `The command failed: ${this.describeError(error)}`);
+    }
+  }
+
   /** Waits until the install ends, reading the status as the web page does. */
   private async waitForInstall(): Promise<RemoteAccess | null> {
-    for (let waited = 0; waited < installWaitLimitMs && this.isRunning(); waited += installPollMs) {
+    for (let waited = 0; waited < installWaitLimitMs && !this.stopping.signal.aborted; waited += installPollMs) {
       const access = this.options.eva.status().remoteAccess;
       if (access?.busy !== "installing") return access;
       await this.sleep(installPollMs);

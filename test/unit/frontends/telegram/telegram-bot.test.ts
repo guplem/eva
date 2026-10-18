@@ -3,13 +3,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../../src/core/eva.ts";
-import type { RemoteAccess } from "../../../../src/core/remote-access/remote-access.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { HttpTelegramApi, TelegramError, type TelegramApi } from "../../../../src/frontends/telegram/telegram-api.ts";
 import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/telegram/telegram-bot.ts";
 import type { LogLevel } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
+import { FakeTailscale, needsLoginStatus } from "../../../support/fake-tailscale.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -520,46 +520,65 @@ describe("approvals and commands", () => {
   });
 
   test("/link shows the setup steps, and its buttons install Tailscale and sign the machine in", async () => {
-    const actions: string[] = [];
-    let access: RemoteAccess = {
-      url: null,
-      problem: null,
-      step: "install",
-      link: null,
-      account: null,
-      canInstall: true,
-      busy: null,
-    };
-    createEva(undefined, systemProcessRunner, {
-      remoteAccess: {
-        current: () => access,
-        install: () => {
-          actions.push("install");
-          access = { ...access, step: "sign_in" };
-          return Promise.resolve(access);
-        },
-        signIn: () => {
-          actions.push("sign_in");
-          access = { ...access, link: "https://login.tailscale.com/a/x" };
-          return Promise.resolve(access);
-        },
+    const tailscale = new FakeTailscale();
+    let release = (): void => undefined;
+    let installs = 0;
+    const watcher = tailscale.watcher({
+      install: () => {
+        installs += 1;
+        return new Promise<void>((resolve) => {
+          release = () => {
+            tailscale.status = needsLoginStatus;
+            resolve();
+          };
+        });
       },
     });
-    const bot = createBot();
+    await watcher.refresh();
+    createEva(undefined, systemProcessRunner, { remoteAccess: watcher });
+    // A sleep that takes real time, so the install wait is still running when the install ends.
+    const waits: number[] = [];
+    const bot = createBot(owner, {
+      sleep: (ms) => {
+        waits.push(ms);
+        return Bun.sleep(1);
+      },
+    });
     telegram.sendText(owner, "/link");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     expect(telegram.sentTexts()[0]).toContain("Install Tailscale on this machine");
     expect(JSON.stringify(telegram.callsTo("sendMessage")[0]?.params["reply_markup"])).toContain("t:install");
+
+    // The install takes a while: the bot waits apart, and a second tap starts no second wait.
     telegram.pressButton(owner, "t:install");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Installing Tailscale")));
+    while (installs === 0) await Bun.sleep(1);
+    telegram.pressButton(owner, "t:install");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("on it already")));
+    expect(waits).toContain(3_000);
+    release();
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Sign in to Tailscale on this machine")));
+    expect(installs).toBe(1);
     const signInMessage = telegram.callsTo("sendMessage").at(-1);
     expect(JSON.stringify(signInMessage?.params["reply_markup"])).toContain("t:sign_in");
+
     telegram.pressButton(owner, "t:sign_in");
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://login.tailscale.com/a/x")));
-    expect(actions).toEqual(["install", "sign_in"]);
-    telegram.pressButton(owner + 1, "t:install");
-    await settle(bot, () => telegram.callsTo("answerCallbackQuery").length >= 3);
-    expect(actions).toEqual(["install", "sign_in"]);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("https://login.tailscale.com/a/fresh")));
+    expect(telegram.sentTexts()).toContain("Asking Tailscale for a sign-in link…");
+
+    // Only the paired owner may press the buttons.
+    const upCalls = tailscale.commands.filter((verb) => verb === "up").length;
+    telegram.pressButton(owner + 1, "t:sign_in");
+    await settle(bot, () => telegram.callsTo("answerCallbackQuery").length >= 4);
+    expect(tailscale.commands.filter((verb) => verb === "up")).toHaveLength(upCalls);
+  });
+
+  test("an install button does nothing when phone access is off", async () => {
+    createEva();
+    const bot = createBot();
+    telegram.pressButton(owner, "t:install");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toBe("Phone access is off on this machine.");
   });
 
   test("/update installs a newer Eva and restarts her, after the running chat ends (lesson 92)", async () => {

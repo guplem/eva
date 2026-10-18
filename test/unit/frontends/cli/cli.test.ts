@@ -96,8 +96,21 @@ describe("parseArguments", () => {
     expect(parseArguments(["work", "only-a-project"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", home: undefined, engine: "pi" });
     expect(parseArguments(["chat", "--engine", "codex"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false });
-    expect(parseArguments(["update", "--check"])).toEqual({ command: "update", home: undefined, checkOnly: true });
+    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false, version: null });
+    expect(parseArguments(["update", "--check"])).toEqual({
+      command: "update",
+      home: undefined,
+      checkOnly: true,
+      version: null,
+    });
+    expect(parseArguments(["update", "1.2.0"])).toEqual({
+      command: "update",
+      home: undefined,
+      checkOnly: false,
+      version: "1.2.0",
+    });
+    expect(parseArguments(["update", "v1.2.0"])).toMatchObject({ version: "1.2.0" });
+    expect(parseArguments(["update", "latest"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
     expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
     expect(parseArguments(["link"])).toEqual({ command: "link", home: undefined });

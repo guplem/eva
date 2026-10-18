@@ -152,9 +152,17 @@ export function describeSync(state: VaultSyncState): string {
   return `Vault sync: ${state.status}${state.lastError === null ? "" : ` (${state.lastError})`}`;
 }
 
-/** `eva update` and `eva update --check` while Eva runs: the running Eva does the work. */
-export async function requestUpdate(options: ClientOptions, checkOnly: boolean): Promise<string> {
-  return describeUpdate(await postJson<UpdateStatus>(options, checkOnly ? "/api/update/check" : "/api/update", {}));
+/**
+ * `eva update [version]` and `eva update --check` while Eva runs: the running Eva does the work.
+ * Without a version, she installs what the update policy allows.
+ */
+export async function requestUpdate(
+  options: ClientOptions,
+  checkOnly: boolean,
+  version: string | null = null,
+): Promise<string> {
+  if (checkOnly) return describeUpdate(await postJson<UpdateStatus>(options, "/api/update/check", {}));
+  return describeUpdate(await postJson<UpdateStatus>(options, "/api/update", version === null ? {} : { version }));
 }
 
 /** `eva sync` while Eva runs. */

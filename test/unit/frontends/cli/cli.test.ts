@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets, saveSecrets } from "../../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings } from "../../../../src/core/settings/settings.ts";
@@ -320,6 +321,45 @@ describe("runSetup", () => {
     rmSync(home, { recursive: true, force: true });
   }, gitHookTimeoutMs);
 
+  /**
+   * A fake GitHub API for every setup test, so none reaches github.com. The list holds no
+   * repository unless a test says so. A created repository's address is a local bare repository.
+   */
+  const githubApi: {
+    server: ReturnType<typeof Bun.serve> | null;
+    list: { status: number; body: unknown };
+    create: (name: string) => { status: number; body: unknown };
+    created: string[];
+  } = { server: null, list: { status: 200, body: [] }, create: () => ({ status: 500, body: {} }), created: [] };
+  beforeAll(() => {
+    githubApi.server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        if (request.method === "GET") return Response.json(githubApi.list.body, { status: githubApi.list.status });
+        const { name } = (await request.json()) as { name: string };
+        githubApi.created.push(name);
+        const reply = githubApi.create(name);
+        return Response.json(reply.body, { status: reply.status });
+      },
+    });
+  });
+  afterAll(async () => {
+    await githubApi.server?.stop(true);
+  });
+  beforeEach(() => {
+    githubApi.list = { status: 200, body: [] };
+    githubApi.create = () => ({ status: 500, body: { message: "No create in this test." } });
+    githubApi.created = [];
+  });
+  /** A local bare repository that stands for a new, empty GitHub repository. */
+  function emptyRepository(name: string): string {
+    const bare = join(home, `${name}.git`);
+    mkdirSync(bare);
+    Bun.spawnSync(["git", "init", "-q", "--bare", "--initial-branch=main"], { cwd: bare, env: gitEnvironment });
+    return bare;
+  }
+
   const okRunner: ProcessRunner = { run: () => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }) };
   /** Real git; every other program, such as an engine or its installer, answers at once and installs nothing. */
   const gitRunner: ProcessRunner = {
@@ -355,6 +395,7 @@ describe("runSetup", () => {
       environment: gitEnvironment,
       defaultHome: extra.defaultHome ?? home,
       githubLogin: extra.githubLogin ?? null,
+      githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.server?.port)}`,
       platform: "linux",
       userHome: home,
       installEnvironment: gitEnvironment,
@@ -764,40 +805,124 @@ describe("runSetup", () => {
       expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
     });
 
-    test("a script and another host get the token question, never the login", async () => {
+    test("a script gets the token question, never the login", async () => {
       const logins: string[] = [];
-      const githubLogin = browserLogin(logins);
       const lines: string[] = [];
-      await setup({ githubToken: "", vaultRepository: githubVault }, { interactive: false, githubLogin, lines });
-      rmSync(join(home, "vault"), { recursive: true, force: true });
       await setup(
-        { vaultRepository: "https://git.example.com/you/vault", githubToken: "a-pasted-token" },
-        { githubLogin, lines },
+        { githubToken: "", vaultRepository: githubVault },
+        { interactive: false, githubLogin: browserLogin(logins), lines },
       );
       expect(lines.join("\n")).not.toContain("The login lets Eva");
       expect(logins).toEqual([]);
-      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
     });
 
-    test("a github.com SSH address offers the login for private projects, with Enter to skip", async () => {
+    test("a token pasted at the login question serves a vault on another host", async () => {
+      const logins: string[] = [];
+      await setup(
+        { vaultRepository: "https://git.example.com/you/vault", githubToken: "a-pasted-token" },
+        { githubLogin: browserLogin(logins) },
+      );
+      expect(logins).toEqual([]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("a-pasted-token");
+      expect(loadSettings(homePaths(home)).config.vaultPath).toBe(join(home, "vault"));
+    });
+
+    test("the login comes before the vault question: Enter logs in, and skip leaves an SSH vault without it", async () => {
       const logins: string[] = [];
       const githubLogin = browserLogin(logins);
-      const lines: string[] = [];
-      await setup({ vaultRepository: "git@github.com:example/vault.git" }, { githubLogin, lines });
-      expect(lines.join("\n")).toContain("The login lets Eva");
+      const asked: SetupQuestion[] = [];
+      await setup({ githubToken: "skip", vaultRepository: "git@github.com:example/vault.git" }, { githubLogin, asked });
       expect(logins).toEqual([]);
-      await setup({ vaultRepository: "ssh://git@github.com/example/vault.git", githubToken: "login" }, { githubLogin });
+      expect(asked.indexOf("githubToken")).toBeLessThan(asked.indexOf("vaultRepository"));
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      await setup({ vaultRepository: "ssh://git@github.com/example/vault.git" }, { githubLogin });
       expect(logins).toEqual(["login"]);
     });
 
-    test("with no address, as in a rerun or for a new vault, Enter skips the login and login starts it", async () => {
+    test("with a ready vault, as in a rerun, Enter skips the login and login starts it", async () => {
       const logins: string[] = [];
       const githubLogin = browserLogin(logins);
+      await setup({ githubToken: "skip", vault: existingVault }, { githubLogin });
       await setup({}, { githubLogin });
       expect(logins).toEqual([]);
       await setup({ githubToken: "login" }, { githubLogin });
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
+    });
+  });
+
+  describe("the list of repositories after the login", () => {
+    const listed = (fullName: string, cloneUrl: string, extra: Record<string, unknown> = {}): unknown => ({
+      full_name: fullName,
+      clone_url: cloneUrl,
+      private: true,
+      archived: false,
+      ...extra,
+    });
+
+    test("the person picks the vault by its number or its name, and a wrong number is asked again", async () => {
+      const remote = createGitSandbox();
+      try {
+        githubApi.list = {
+          status: 200,
+          body: [listed("you/notes", "https://github.com/you/notes.git"), listed("you/vault", remote.remote)],
+        };
+        const lines: string[] = [];
+        const asked: SetupQuestion[] = [];
+        await setup(
+          { githubToken: "a-pasted-token", vaultRepository: ["7", "2"] },
+          { runner: gitRunner, lines, asked },
+        );
+        const text = lines.join("\n");
+        expect(text).toContain("  0. Create a new vault\n  1. you/notes (private)\n  2. you/vault (private)");
+        expect(text).toContain("No repository has the number 7.");
+        expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
+        expect(asked).not.toContain("vault");
+        rmSync(join(home, "vault"), { recursive: true, force: true });
+        await setup({ vaultRepository: "Vault" }, { runner: gitRunner });
+        expect(readFileSync(join(home, "vault", "AGENTS.md"), "utf8")).toContain("# Vault");
+      } finally {
+        remote.dispose();
+      }
+    });
+
+    test("only the 15 repositories pushed most recently are shown, and a name reaches the others", async () => {
+      githubApi.list = {
+        status: 200,
+        body: Array.from({ length: 20 }, (_, index) =>
+          listed(`you/repository-${String(index + 1)}`, `https://github.com/you/repository-${String(index + 1)}.git`),
+        ),
+      };
+      const commands: string[][] = [];
+      const recording: ProcessRunner = {
+        run: (command, options) => {
+          commands.push([...command]);
+          return okRunner.run(command, options);
+        },
+      };
+      const lines: string[] = [];
+      await setup({ githubToken: "a-pasted-token", vaultRepository: "repository-20" }, { runner: recording, lines });
+      expect(lines.join("\n")).toContain("15. you/repository-15");
+      expect(lines.join("\n")).not.toContain("16. you/repository-16");
+      expect(commands.find((command) => command.includes("clone"))).toContain(
+        "https://github.com/you/repository-20.git",
+      );
+    });
+
+    test("a token that cannot list the repositories gets the address question instead", async () => {
+      githubApi.list = { status: 403, body: { message: "Resource not accessible by personal access token" } };
+      const lines: string[] = [];
+      const asked: SetupQuestion[] = [];
+      await setup(
+        { githubToken: "a-fine-grained-token", vaultRepository: "https://github.com/you/vault" },
+        { lines, asked },
+      );
+      const text = lines.join("\n");
+      expect(text).toContain("Eva could not list your GitHub repositories.");
+      expect(text).toContain("Resource not accessible by personal access token");
+      expect(text).not.toContain("a-fine-grained-token");
+      expect(text).not.toContain("0. Create a new vault");
+      expect(loadSettings(homePaths(home)).config.vaultPath).toBe(join(home, "vault"));
     });
   });
 
@@ -1016,55 +1141,100 @@ describe("runSetup", () => {
     expect(isEvaError(caught, "config_invalid")).toBe(true);
   });
 
-  test("an empty vault folder can become a new vault from the template, with a private GitHub repository", async () => {
+  test("Create a new vault makes a private repository through the GitHub API and pushes the template, with no gh", async () => {
+    const bare = emptyRepository("my-vault");
+    githubApi.create = (name) => ({
+      status: 201,
+      body: { full_name: `you/${name}`, clone_url: bare, private: true },
+    });
     const commands: string[][] = [];
     const recordingRunner: ProcessRunner = {
       run: (command, options) => {
         commands.push([...command]);
-        return gitRunner.run(command[0] === "gh" ? ["git", "--version"] : command, options);
+        return gitRunner.run(command, options);
       },
     };
     const lines: string[] = [];
-    const newVault = join(home, "new-vault");
+    const asked: SetupQuestion[] = [];
     await setup(
-      { vault: newVault, createVault: "yes", name: "Alex", topics: "Work, music", githubRepository: "my-vault" },
-      { runner: recordingRunner, lines },
+      {
+        githubToken: "a-pasted-token",
+        vaultRepository: "0",
+        name: "Alex",
+        topics: "Work, music",
+        githubRepository: "my-vault",
+      },
+      { runner: recordingRunner, lines, asked },
     );
+    const newVault = join(home, "vault");
     const assistant = readFileSync(join(newVault, ".eva", "assistant.md"), "utf8");
     expect(assistant).toContain("- **Name:** Alex");
     expect(assistant).toContain("- Work\n- music\n");
-    expect(commands.find((command) => command[0] === "gh")).toEqual([
-      "gh",
-      "repo",
-      "create",
-      "my-vault",
-      "--private",
-      "--source",
-      newVault,
-      "--remote",
-      "origin",
-      "--push",
-    ]);
-    expect(lines.join("\n")).toContain("Created the private repository my-vault");
+    // "0" already answers both questions: a new vault, in Eva's home.
+    expect(asked).not.toContain("createVault");
+    expect(asked).not.toContain("vault");
+    expect(githubApi.created).toEqual(["my-vault"]);
+    expect(commands.some((command) => command[0] === "gh")).toBe(false);
+    expect(lines.join("\n")).toContain("Created the private repository you/my-vault.");
+    const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
+    expect(pushed.stdout.toString()).toContain("Start the vault");
   });
 
-  test("a refused new vault leaves the folder empty, and a failed gh call says what to do", async () => {
+  test("a refused new vault leaves the folder empty, and a name that exists asks again, or takes an address", async () => {
     const emptyFolder = join(home, "empty");
     await setup({ vault: emptyFolder, createVault: "no" });
     expect(existsSync(join(emptyFolder, "AGENTS.md"))).toBe(false);
-    const ghEnvironments: Readonly<Record<string, string>>[] = [];
-    const ghFails: ProcessRunner = {
-      run: (command, options) => {
-        if (command[0] !== "gh") return gitRunner.run(command, options);
-        ghEnvironments.push(options.environment);
-        return Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" });
-      },
-    };
+    githubApi.create = () => ({
+      status: 422,
+      body: { message: "Repository creation failed.", errors: [{ message: "name already exists on this account" }] },
+    });
+    const bare = emptyRepository("made-by-hand");
     const lines: string[] = [];
-    await setup({ vault: emptyFolder, createVault: "y", githubRepository: "my-vault" }, { runner: ghFails, lines });
-    expect(lines.join("\n")).toContain("gh could not create the repository: not logged in. Run `gh auth login`");
-    // The first instance uses the OS user's own gh login.
-    expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBeUndefined();
+    await setup(
+      {
+        githubToken: "a-pasted-token",
+        vault: emptyFolder,
+        createVault: "y",
+        githubRepository: ["vault", pathToFileURL(bare).href],
+      },
+      { runner: gitRunner, lines },
+    );
+    const text = lines.join("\n");
+    expect(text).toContain("name already exists on this account");
+    expect(text).toContain("create an empty private repository on github.com, and paste its address");
+    expect(text).toContain(`Pushed the vault to ${pathToFileURL(bare).href}.`);
+    expect(githubApi.created).toEqual(["vault"]);
+  });
+
+  test("a new vault with no GitHub login stays local, and a rerun offers the push again", async () => {
+    const lines: string[] = [];
+    await setup({ githubToken: "", vault: join(home, "local"), createVault: "y" }, { runner: gitRunner, lines });
+    expect(lines.join("\n")).toContain("To keep the vault in a private GitHub repository, log in to GitHub");
+    const bare = emptyRepository("later");
+    const asked: SetupQuestion[] = [];
+    await setup(
+      { githubToken: "a-pasted-token", githubRepository: pathToFileURL(bare).href },
+      { runner: gitRunner, asked },
+    );
+    expect(asked).toContain("githubRepository");
+    const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
+    expect(pushed.stdout.toString()).toContain("Start the vault");
+    // Once pushed, a rerun asks no more.
+    asked.length = 0;
+    await setup({}, { runner: gitRunner, asked });
+    expect(asked).not.toContain("githubRepository");
+  });
+
+  test("a script with a token makes the new vault's repository through the GitHub API too", async () => {
+    const bare = emptyRepository("scripted");
+    githubApi.create = (name) => ({ status: 201, body: { full_name: `you/${name}`, clone_url: bare, private: true } });
+    await setup(
+      { githubToken: "a-script-token", vault: join(home, "scripted"), createVault: "y", githubRepository: "scripted" },
+      { interactive: false, runner: gitRunner },
+    );
+    expect(githubApi.created).toEqual(["scripted"]);
+    const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
+    expect(pushed.stdout.toString()).toContain("Start the vault");
   });
 
   test("an extra instance hears about its own engine logins first, and gets a login report at the end", async () => {
@@ -1086,8 +1256,7 @@ describe("runSetup", () => {
     expect(firstStep).toBeGreaterThan(-1);
     expect(firstStep).toBeLessThan(lines.findIndex((line) => line.startsWith("Created a new vault")));
     expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
-    expect(lines.join("\n")).toContain(`gh could not create the repository: not logged in. Run \`GH_CONFIG_DIR=`);
-    // gh repo create and the login check both use this instance's gh folder.
+    // The gh login check uses this instance's gh folder.
     expect(ghEnvironments.length).toBeGreaterThan(0);
     expect(ghEnvironments.every((environment) => environment["GH_CONFIG_DIR"] === ghFolder)).toBe(true);
     expect(lines.join("\n")).toContain("- Claude: token saved.");

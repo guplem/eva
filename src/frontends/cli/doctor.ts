@@ -61,7 +61,7 @@ const tools: readonly ToolCheck[] = [
   {
     program: "gh",
     versionArguments: ["--version"],
-    feature: "a new notebook's GitHub repository, and pull request numbers",
+    feature: "pull request numbers",
     required: false,
     install: "https://cli.github.com",
     update: "with the installer or package manager that installed gh",

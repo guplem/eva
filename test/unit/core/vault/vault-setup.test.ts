@@ -58,6 +58,7 @@ function setup(baseUrl = "http://127.0.0.1:1", token: string | null = "a-token")
   return new VaultSetup({
     paths,
     runner: systemProcessRunner,
+    savedVaultPath: () => loadConfig(paths).vaultPath,
     gitEnvironment: () => gitEnvironment,
     githubToken: () => token ?? undefined,
     githubApiBaseUrl: baseUrl,

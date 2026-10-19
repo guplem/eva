@@ -709,3 +709,69 @@ describe("the Google setup", () => {
     expect(() => eva.startGoogleLogin()).toThrow("step 3");
   });
 });
+
+describe("the vault step on the page", () => {
+  const withoutVault = (githubApiBaseUrl?: string): Eva =>
+    new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
+    });
+  const vaultStep = async (instance: Eva): Promise<string | undefined> =>
+    (await instance.setupState()).progress.find((step) => step.key === "vault")?.state;
+
+  test("a token saved on the page lists the repositories, and a clone shows the step as done", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer a-page-token"
+          ? Response.json([{ full_name: "you/vault", clone_url: sandbox.remote, private: true }])
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    const instance = withoutVault(`http://127.0.0.1:${String(github.port)}`);
+    try {
+      expect(await vaultStep(instance)).toBe("missing");
+      instance.saveSecret("githubToken", "a-page-token");
+      const [repository] = await instance.vaultRepositories();
+      expect(repository?.fullName).toBe("you/vault");
+      const result = await instance.cloneVault(repository?.cloneUrl ?? "");
+      expect(result.folder).toBe(join(home, "vault"));
+      expect(existsSync(join(home, "vault", "AGENTS.md"))).toBe(true);
+      const state = await instance.setupState();
+      expect(state.progress.find((step) => step.key === "vault")?.state).toBe("done");
+      // The running Eva keeps the vault of her start.
+      expect(state.restartNeeded).toBe(true);
+      expect(state.vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
+  test("an empty saved folder shows the step as missing, and a new local vault asks for its push", async () => {
+    const instance = withoutVault();
+    try {
+      mkdirSync(join(home, "notes"));
+      writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
+      expect(await vaultStep(instance)).toBe("missing");
+      const result = await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      expect(result).toMatchObject({ folder: join(home, "notes"), repository: null });
+      expect(await vaultStep(instance)).toBe("done");
+      expect((await instance.setupState()).vaultNeedsPush).toBe(true);
+      const bare = join(sandbox.root, "empty.git");
+      mkdirSync(bare);
+      sandbox.git(bare, "init", "-q", "--bare");
+      expect((await instance.pushVault(bare)).repository).toBe(bare);
+      expect((await instance.setupState()).vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+    }
+  });
+});

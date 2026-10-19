@@ -16,6 +16,8 @@ import { createVaultFromTemplate } from "./vault-template.ts";
 export interface VaultSetupOptions {
   readonly paths: HomePaths;
   readonly runner: ProcessRunner;
+  /** The vault folder as saved now, with the machine default, or null. */
+  readonly savedVaultPath: () => string | null;
   /** Eva's git environment, with the GitHub token as it is saved now. */
   readonly gitEnvironment: () => Readonly<Record<string, string>>;
   /** The saved GitHub token: one that the page saved since the start works at once. */
@@ -98,7 +100,7 @@ export class VaultSetup {
   /** Puts a local vault with no remote in a private GitHub repository, such as after a failed push. */
   push(repository: string): Promise<VaultSetupResult> {
     return this.once(async () => {
-      const folder = loadConfig(this.options.paths).vaultPath;
+      const folder = this.options.savedVaultPath();
       if (folder === null || !(await this.needsPush()))
         throw new EvaError("config_invalid", "The vault needs no push: it has a repository, or no commit yet.");
       const result = await this.pushTo(folder, repository);
@@ -109,7 +111,7 @@ export class VaultSetup {
 
   /** True for a saved vault with a commit and no remote, which the page offers to push. */
   async needsPush(): Promise<boolean> {
-    const folder = loadConfig(this.options.paths).vaultPath;
+    const folder = this.options.savedVaultPath();
     if (folder === null) return false;
     return vaultNeedsPush({ folder, runner: this.options.runner, environment: this.options.gitEnvironment() });
   }
@@ -144,7 +146,7 @@ export class VaultSetup {
   }
 
   private freeFolder(): string {
-    const folder = loadConfig(this.options.paths).vaultPath ?? join(this.options.paths.root, "vault");
+    const folder = this.options.savedVaultPath() ?? join(this.options.paths.root, "vault");
     if (existsSync(folder) && readdirSync(folder).length > 0)
       throw new EvaError("vault_not_found", `${folder} holds files already, so Eva does not put a new vault there.`);
     return folder;

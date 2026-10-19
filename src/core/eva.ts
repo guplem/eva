@@ -2,7 +2,7 @@
  * One Eva instance: the core that every front end talks to. It joins the vault sync, the
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { hostname } from "node:os";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
@@ -31,7 +31,8 @@ import { runMigrations, type MigrationRun, type MigrationStore } from "./migrati
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import { engineFolders, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
+import { engineFolders, loadConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
+import { withMachineDefaults } from "./settings/machine-defaults.ts";
 import {
   LiveSettings,
   pageSecretNames,
@@ -81,6 +82,8 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import type { GitHubRepository } from "./vault/github-repositories.ts";
+import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/release-verification.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
@@ -117,6 +120,8 @@ export interface EvaOptions {
   readonly githubRequest?: GithubRequest;
   /** Google's address for the Google login and check; a test points it at a fake server. */
   readonly googleBaseUrl?: string;
+  /** The GitHub API, which the vault step uses to list and create repositories; a test points it at a fake server. */
+  readonly githubApiBaseUrl?: string;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -150,8 +155,10 @@ export interface EvaStatus {
 /** The Setup section: the settings' state, and the progress list. */
 export interface EvaSetupState extends SetupState {
   readonly progress: readonly ProgressStep[];
-  /** True when the files hold a token that Eva does not use yet, such as one that `eva setup` saved. */
+  /** True when the files hold a token or a vault folder that Eva does not use yet, such as one that `eva setup` saved. */
   readonly restartNeeded: boolean;
+  /** True for a new vault with a commit and no remote: the vault step offers its push. */
+  readonly vaultNeedsPush: boolean;
 }
 
 const approvalTimeoutMs = 10 * 60_000;
@@ -187,6 +194,7 @@ export class Eva {
   private readonly vault: VaultUpkeep;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
+  private readonly vaultSetup: VaultSetup;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -335,6 +343,16 @@ export class Eva {
       },
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+
+    this.vaultSetup = new VaultSetup({
+      paths: options.paths,
+      runner: options.runner,
+      savedVaultPath: () => this.savedVaultPath(),
+      // From the files, so a token that the page or `eva setup` saved since the start works at once.
+      gitEnvironment: () => gitEnvironment(this.facts, this.settings.saved().secrets),
+      githubToken: () => this.settings.saved().secrets.githubToken,
+      ...(options.githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl: options.githubApiBaseUrl }),
     });
 
     const voice = options.config.voice;
@@ -746,8 +764,50 @@ export class Eva {
   async setupState(): Promise<EvaSetupState> {
     const saved = this.settings.saved().secrets;
     // The engines, git and Telegram read the tokens at start, so a token saved since then waits for a restart.
-    const restartNeeded = pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]);
-    return { ...(await this.settings.setupState()), progress: this.setupProgress(), restartNeeded };
+    // The vault folder too: sync, the schedules and the Assistant read it at start.
+    const restartNeeded =
+      pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]) ||
+      this.savedVaultPath() !== this.options.config.vaultPath;
+    return {
+      ...(await this.settings.setupState()),
+      progress: this.setupProgress(),
+      restartNeeded,
+      vaultNeedsPush: await this.vaultSetup.needsPush(),
+    };
+  }
+
+  /** The person's GitHub repositories, for the vault step; see `VaultSetup`. */
+  vaultRepositories(): Promise<GitHubRepository[]> {
+    return this.vaultSetup.repositories();
+  }
+
+  /** Clones the vault that the person picked on the page; a restart starts to use it. */
+  cloneVault(repository: string): Promise<VaultSetupResult> {
+    return this.vaultSetup.clone(repository);
+  }
+
+  /** Starts a new vault from the template, and pushes it to a new private repository. */
+  createVault(answers: NewVaultAnswers): Promise<VaultSetupResult> {
+    return this.vaultSetup.create(answers);
+  }
+
+  /** Pushes a new local vault to a new private repository, or to an empty one. */
+  pushVault(repository: string): Promise<VaultSetupResult> {
+    return this.vaultSetup.push(repository);
+  }
+
+  /**
+   * The vault folder in `config.json` now, with the machine default. It skips the vault's own
+   * settings file: a broken one there must not hide a vault that the page just cloned.
+   */
+  private savedVaultPath(): string | null {
+    const paths = this.options.paths;
+    if (!existsSync(paths.config)) return this.settings.config.vaultPath;
+    try {
+      return withMachineDefaults(loadConfig(paths), { homeRoot: paths.root, exists: existsSync }).vaultPath;
+    } catch {
+      return this.settings.config.vaultPath;
+    }
   }
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
@@ -758,6 +818,9 @@ export class Eva {
       githubToken: secrets.githubToken !== undefined,
       telegramBotToken: secrets.telegramBotToken !== undefined,
     };
+    const vaultPath = this.savedVaultPath();
+    // A saved but empty folder holds no vault yet, as after a failed clone: the step offers it again.
+    const vaultReady = vaultPath !== null && holdsFiles(vaultPath);
     const folders = engineFolders(this.options.paths);
     const found = new Set(this.options.engines.map((engine) => engine.name));
     const loggedIn = {
@@ -771,7 +834,7 @@ export class Eva {
         loggedIn: loggedIn[name],
       })),
       defaultEngine: config.engines.default,
-      vaultPath: config.vaultPath,
+      vaultPath: vaultReady ? vaultPath : null,
       githubToken: secretsSet.githubToken,
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       devices: this.deviceLogins.count(),
@@ -1057,5 +1120,14 @@ export class Eva {
       // The agent's engine starts this server, so it gets no GitHub token (lesson 96).
       environment: buildChildEnvironment(this.options.processEnvironment, baseEnvironmentAllowlist),
     });
+  }
+}
+
+/** A file in place of the folder, or a folder that Eva cannot read, holds no vault. */
+function holdsFiles(folder: string): boolean {
+  try {
+    return readdirSync(folder).length > 0;
+  } catch {
+    return false;
   }
 }

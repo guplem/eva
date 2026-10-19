@@ -10,13 +10,13 @@ import {
   type EvaSetupState,
   type EvaStatus,
   type PageSecretName,
-  type ProgressStep,
   type PublicSettings,
   type VaultConflict,
   type VaultSyncState,
 } from "./api.ts";
-import { Icon } from "./icons.tsx";
+import { Icon, type IconName } from "./icons.tsx";
 import { cardId, type SettingsRoute } from "./settings-routes.ts";
+import type { StepMark } from "./setup-summary.ts";
 
 /** What each Settings page gets from the shell around it. */
 export interface SettingsContext {
@@ -32,7 +32,8 @@ export interface SettingsContext {
   readonly noteAndReload: (note: string) => void;
   readonly reloadSettings: () => void;
   readonly setStatus: (status: EvaStatus) => void;
-  readonly restartNow: () => Promise<void>;
+  /** Opens the restart question, which names the running chats. */
+  readonly askRestart: () => void;
   readonly navigate: (route: SettingsRoute) => void;
   readonly onLoggedOut: () => void;
 }
@@ -66,10 +67,19 @@ export function Card({
   );
 }
 
-const stateLabels: Readonly<Record<ProgressStep["state"], string>> = {
+const stateLabels: Readonly<Record<StepMark, string>> = {
   done: "Done",
   missing: "Needs you",
   optional: "Optional",
+  failed: "Failed",
+};
+
+// The marks of the EVE design: a step to do shows `alert`, and an optional step matches its "Add" button.
+const iconOfMark: Readonly<Record<StepMark, IconName>> = {
+  done: "check",
+  missing: "alert",
+  optional: "plus",
+  failed: "x",
 };
 
 /** The result of a test: a named mark, so a screen reader also hears whether it passed. */
@@ -81,16 +91,15 @@ export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail
   );
 }
 
-/** A round mark: a green check, a red "!", or a grey dash. The label names it for a screen reader. */
+/** A round mark: a green check, a red "!", a red "x" or a grey plus. The label names it for a screen reader. */
 export function StatusIcon({
   state,
   size = "medium",
 }: {
-  readonly state: ProgressStep["state"];
+  readonly state: StepMark;
   readonly size?: "medium" | "large";
 }): ReactElement {
-  // The marks of the EVE design: a step to do shows `alert`, and an optional step matches its "Add" button.
-  const name = state === "done" ? "check" : state === "missing" ? "alert" : "plus";
+  const name = iconOfMark[state];
   return (
     <span className={`status-icon ${state} ${size}`} role="img" aria-label={stateLabels[state]}>
       <Icon name={name} />
@@ -98,7 +107,7 @@ export function StatusIcon({
   );
 }
 
-export function StatusPill({ state }: { readonly state: ProgressStep["state"] }): ReactElement {
+export function StatusPill({ state }: { readonly state: StepMark }): ReactElement {
   return <span className={`pill ${state}`}>{stateLabels[state]}</span>;
 }
 
@@ -443,5 +452,37 @@ export function SelectField<T extends string>({
       </select>
       {hint !== undefined && <span className="field-hint">{hint}</span>}
     </label>
+  );
+}
+
+/** A choice of few values as a row of chips that saves at once. The pressed chip is the current value. */
+export function ChoiceChips<T extends string>({
+  label,
+  value,
+  choices,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: T;
+  readonly choices: readonly { readonly value: T; readonly label: string; readonly icon?: IconName }[];
+  readonly onChange: (value: T) => void;
+}): ReactElement {
+  return (
+    <div className="field">
+      <span className="field-label">{label}</span>
+      <div className="choice-chips" role="group" aria-label={label}>
+        {choices.map((choice) => (
+          <button
+            key={choice.value}
+            className="choice-chip"
+            aria-pressed={choice.value === value}
+            onClick={() => onChange(choice.value)}
+          >
+            {choice.icon !== undefined && <Icon name={choice.icon} />}
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

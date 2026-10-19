@@ -48,6 +48,28 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Eva does not start after a second install.' }
   $count = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -eq (Split-Path $target) }).Count
   if ($count -ne 1) { throw "The user PATH holds the Eva folder $count times." }
+
+  # With no git, the script asks winget for an install for this user first, and for every user
+  # only when that fails. A stand-in records each call: under `iex`, a function wins over winget.exe.
+  # Git stays installed on the computer, so the PATH refresh after winget finds it again.
+  $fullPath = $env:Path
+  foreach ($userInstallFails in $false, $true) {
+    $env:Path = ($fullPath -split ';' | Where-Object { $_ -notmatch '\\Git\\' }) -join ';'
+    if (Get-Command git -ErrorAction SilentlyContinue) { throw 'The test could not hide git.' }
+    $global:wingetCalls = @()
+    $global:userInstallFails = $userInstallFails
+    function global:winget {
+      $global:wingetCalls += , ($args -join ' ')
+      $global:LASTEXITCODE = if ($global:userInstallFails -and ($args -contains '--scope')) { 1 } else { 0 }
+    }
+    irm 'http://127.0.0.1:8765/release/install.ps1' | iex
+    Remove-Item function:global:winget
+    $expected = if ($userInstallFails) { 2 } else { 1 }
+    if ($global:wingetCalls.Count -ne $expected) { throw "winget ran $($global:wingetCalls.Count) times: $($global:wingetCalls -join ' | ')" }
+    if ($global:wingetCalls[0] -notmatch 'install --id Git\.Git .*--scope user$') { throw "The first winget call was: $($global:wingetCalls[0])" }
+    if ($userInstallFails -and $global:wingetCalls[1] -match '--scope') { throw "The second winget call was: $($global:wingetCalls[1])" }
+  }
+  $env:Path = $fullPath
   Write-Host 'The install script passed the smoke test.'
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue

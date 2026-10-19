@@ -1361,8 +1361,11 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
     await expect(page.getByRole("group", { name: "Setup" })).toBeVisible();
     await tabs.getByRole("button", { name: "Projects", exact: true }).click();
-    // The project list stays one tap away in its drawer.
-    await openList(page);
+    // The project list stays one tap away in its drawer. Wait for the menu button: openList only
+    // checks it once, and the Projects page may not have drawn it yet.
+    const menu = page.getByRole("button", { name: "Show the list" });
+    await expect(menu).toBeVisible();
+    await menu.click();
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
   });
 

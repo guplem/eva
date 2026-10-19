@@ -1,7 +1,7 @@
 /*
  * The fonts come from the Fontsource packages. The bundler puts each file into this stylesheet,
- * so the page needs no network. Only the Latin subsets in woff2 are here, because the bundle holds
- * every file it finds: other scripts use the fallback fonts.
+ * so the page needs no network. The stylesheet holds every font file that it names, so only the
+ * Latin subsets in woff2 are here. Other scripts use the fallback fonts.
  */
 @font-face {
   font-family: "Quicksand";
@@ -908,8 +908,8 @@ textarea {
 }
 
 .seed-swatch {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: 50%;

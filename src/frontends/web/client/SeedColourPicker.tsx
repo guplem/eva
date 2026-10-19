@@ -4,7 +4,7 @@ import { seedColours, seedName } from "./appearance.ts";
 
 export function SeedColourPicker({ seed, onPick }: { seed: string; onPick: (seed: string) => void }): ReactElement {
   return (
-    <div className="seed-picker">
+    <>
       <div className="seed-swatches" role="group" aria-label="Colour">
         {seedColours.map((colour) => (
           <button
@@ -26,6 +26,6 @@ export function SeedColourPicker({ seed, onPick }: { seed: string; onPick: (seed
         </label>
         <span className="seed-name">{seedName(seed)}</span>
       </div>
-    </div>
+    </>
   );
 }

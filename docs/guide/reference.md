@@ -6,38 +6,38 @@ Every command and setting, for when the [README](../../README.md) is not enough.
 
 Run these on the computer where Eva runs. `eva status`, `eva chat`, `eva projects` and `eva work` need Eva to run. The other commands also work when Eva is stopped.
 
-| Command                          | What it does                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------- |
-| `eva setup`                      | Asks each question again. Enter keeps the current answer.                                 |
-| `eva setup --non-interactive`    | Reads each answer from an `EVA_*` variable, for scripts.                                  |
-| `eva doctor`                     | Checks the tools that each feature needs, and says how to install each one.               |
-| `eva`                            | Runs Eva in this terminal (the service does this for you).                                |
-| `eva service install`            | Starts Eva now, by herself each time you log in, and again after a crash.                 |
-| `eva supervise`                  | Runs Eva, and starts her again after a crash (the Windows service does this for you).     |
-| `eva status`                     | Starts with "All good" or the problems, then the sync, updates and phone address.         |
-| `eva link`                       | Shows the address that opens Eva on your phone and other computers.                       |
-| `eva chat`                       | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave. |
-| `eva chat --project <id>`        | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.           |
-| `eva chat --model <model>`       | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                  |
-| `eva chat --engine <engine>`     | Picks the engine: `claude-code` or `pi`.                                                  |
-| `eva projects [words]`           | Searches your projects. `status:active` and `tag:work` filter them.                       |
-| `eva work <project> <request>`   | Gives work to a project; a coding agent does it in a free copy of the code.               |
-| `eva sync`                       | Brings in other computers' notes, then saves and pushes this computer's notes.            |
-| `eva update [version] [--check]` | Installs what the policy allows, or the version given. `--check` only looks.              |
-| `eva hub`                        | Makes this computer the hub, which runs Telegram and the reminders.                       |
-| `eva settings`                   | Lists every setting; `(vault)` marks the settings that every computer shares.             |
-| `eva settings get <key>`         | Shows one setting, such as `updates.frequency`.                                           |
-| `eva settings set <key> <value>` | Changes one setting, such as `eva settings set updates.frequency weekly`.                 |
-| `eva version`                    | Shows Eva's version.                                                                      |
-| `eva help`                       | Shows every command.                                                                      |
-| `eva --home <folder> <command>`  | Runs the command for another Eva on the same computer.                                    |
+| Command                           | What it does                                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `eva setup`                       | Asks each question again. Enter keeps the current answer.                                            |
+| `eva setup --non-interactive`     | Reads each answer from an `EVA_*` variable, for scripts.                                             |
+| `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                          |
+| `eva`                             | Runs Eva in this terminal (the service does this for you).                                           |
+| `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                            |
+| `eva supervise`                   | Runs Eva, and starts her again after a crash (the Windows service does this for you).                |
+| `eva status`                      | Starts with "All good" or the problems, then the sync, updates and phone address.                    |
+| `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                  |
+| `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.            |
+| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                      |
+| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                             |
+| `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                             |
+| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                  |
+| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                          |
+| `eva sync`                        | Brings in other computers' notes, then saves and pushes this computer's notes.                       |
+| `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                         |
+| `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                  |
+| `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                        |
+| `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                      |
+| `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                            |
+| `eva version`                     | Shows Eva's version.                                                                                 |
+| `eva help`                        | Shows every command.                                                                                 |
+| `eva --instance <name> <command>` | Runs the command for the Eva with this name. Without it, `eva` asks which Eva, or uses the only one. |
 
 ## Settings
 
 Eva keeps two kinds of settings:
 
 - **Your settings live in your notebook,** in `.eva/settings.json`, so every computer with the notebook uses the same ones.
-- **This computer's settings live in Eva's home folder** (`~/.config/eva` on Linux, `%APPDATA%\eva` on Windows), in `config.json`.
+- **This computer's settings live in Eva's home folder** (`~/.config/eva-<name>` on Linux, `%APPDATA%\eva-<name>` on Windows, where `<name>` is the name of this Eva), in `config.json`.
 - **Settings that decide who gets in, and what an agent may do, stay on each computer.** The table marks them "(security)". Eva's AI agent edits the notebook as part of its work, so these never live there.
 - **Tokens live in `secrets.json`** in Eva's home folder, never in the notebook: `githubToken`, `telegramBotToken`, `claudeOauthToken`, `localApiToken`, `googleOauthClientId` and `googleOauthClientSecret`.
 
@@ -66,7 +66,6 @@ On this computer:
 | `projectRoots`                                       | `[]`                                       | More folders of projects, beside `Projects/` in the notebook.                                  |
 | `sync.enabled`                                       | `true`                                     | `false` stops the notebook sync on this computer.                                              |
 | `engines.claudeCode.executable`                      | `null`                                     | The program that starts Claude Code. `null`: `claude`.                                         |
-| `engines.claudeCode.ownConfigFolder`                 | `false`                                    | `true`: Claude Code keeps its login and settings in Eva's home folder, not in yours.           |
 | `engines.pi.executable`                              | `null`                                     | The program that starts pi. `null`: `pi`.                                                      |
 | `telegram.allowedChatId`, `telegram.allowedUserId`   | Set when you pair the chat                 | The Telegram chat, and the person in it who may act.                                           |
 | `trust.trustedRepositoryOwners` (security)           | `[]`                                       | GitHub owners whose repositories Eva trusts at once, so their own agent settings apply.        |
@@ -97,7 +96,7 @@ Eva works on several computers with one notebook, with no role to set.
 - **Problems on a satellite** reach Telegram through the hub. Each computer writes its open problems to `.eva/machines/<computer>.json` in the notebook, and the hub sends them. A notebook sync problem cannot travel this way: it shows on that computer only.
 - **A computer that no longer runs Eva** leaves its file behind, and the hub keeps its alerts. Ask the Assistant to delete the file.
 - **Move the hub** with **Make this machine the hub** on the Settings page, or `eva hub` on the new hub. The old hub stops its bot and reminders at its next fetch (5 minutes by default).
-- **Two Evas on one computer** work too, one for each person: see [A second person on the same computer](setup.md#a-second-person-on-the-same-computer).
+- **Two Evas on one computer** work too, one for each person: see [More than one Eva on a computer](setup.md#more-than-one-eva-on-a-computer).
 
 ## Updates
 

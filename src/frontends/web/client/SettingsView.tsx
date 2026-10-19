@@ -1,68 +1,33 @@
 /**
- * Settings: Setup, Updates, Appearance and Projects. Dropdowns save at once, each
- * token saves with its own button, and the text fields wait for Save.
+ * Settings, in sections like a browser's settings: a home page with a card per section, a side
+ * list on a wide screen, a search, and a page per section and per setup step. The address names
+ * the page (`#/settings/<section>/<item>`), so Back works and a reload stays on the page.
  */
-import { useEffect, useState, type ReactElement } from "react";
-import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { AccessSection } from "./AccessSection.tsx";
+import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
+import { ConnectionsSection } from "./ConnectionsSection.tsx";
+import { EnginesSection } from "./EnginesSection.tsx";
+import { Icon, type IconName } from "./icons.tsx";
+import { PersonalizeSection } from "./PersonalizeSection.tsx";
 import {
-  api,
-  ApiError,
-  type EngineUpdateStatus,
-  type EvaStatus,
-  type PublicSettings,
-  type EvaSetupState,
-  type UpdateStatus,
-  type VaultSyncState,
-} from "./api.ts";
-import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
-import { DevicesPanel } from "./DevicesPanel.tsx";
-import { GooglePanel } from "./GooglePanel.tsx";
-import { Icon } from "./icons.tsx";
-import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
-import { SeedColourPicker } from "./SeedColourPicker.tsx";
-import { SetupProgress } from "./SetupProgress.tsx";
-import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
-import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
-
-const pullChoices: readonly { value: string; label: string }[] = [
-  { value: "null", label: "Only before each Assistant turn" },
-  { value: "1", label: "Every minute" },
-  { value: "5", label: "Every 5 minutes" },
-  { value: "15", label: "Every 15 minutes" },
-  { value: "60", label: "Every hour" },
-];
-
-const updateChoices: readonly { value: PublicSettings["config"]["updates"]["frequency"]; label: string }[] = [
-  { value: "off", label: "Never" },
-  { value: "hourly", label: "Every hour" },
-  { value: "daily", label: "Every day" },
-  { value: "weekly", label: "Every week" },
-];
-
-const installChoices: readonly { value: PublicSettings["config"]["updates"]["install"]; label: string }[] = [
-  { value: "patch", label: "Fixes only" },
-  { value: "minor", label: "Fixes and new features" },
-  { value: "major", label: "Every release, even major ones" },
-];
-
-const engineChoices: readonly { value: PublicSettings["config"]["engines"]["default"]; label: string }[] = [
-  { value: "claude-code", label: "Claude Code" },
-  { value: "pi", label: "pi" },
-];
-
-const modelChoices: readonly {
-  value: PublicSettings["config"]["engines"]["claudeCode"]["defaultModel"];
-  label: string;
-}[] = [
-  { value: "default", label: "Claude Code's default" },
-  { value: "opus", label: "Opus" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "haiku", label: "Haiku" },
-];
+  cardId,
+  parentRoute,
+  parseSettingsHash,
+  searchSettings,
+  settingsHash,
+  settingsHome,
+  settingsSections,
+  type SectionId,
+  type SettingsRoute,
+  type SettingsSection,
+} from "./settings-routes.ts";
+import { errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { nextMissing, SetupOverview, SetupStepPage } from "./SetupPages.tsx";
+import { UpdatesSection } from "./UpdatesSection.tsx";
+import { VaultSection } from "./VaultSection.tsx";
 
 const statusPollMs = 3_000;
-/** The server refuses longer rules, because they go to a model with each new chat. */
-const chatNameRulesLength = 4_000;
 const restartPollLimit = 60;
 
 /** `onSetupChanged` lets the page around it count the setup steps again, as for the badge on Settings. */
@@ -75,91 +40,64 @@ export function SettingsView({
 }): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [setup, setSetup] = useState<EvaSetupState | null>(null);
-  const [timeZone, setTimeZone] = useState("");
-  const [sweepSeconds, setSweepSeconds] = useState("");
-  const [projectRoots, setProjectRoots] = useState("");
-  /** Null until loaded, and when no vault holds the rules. */
-  const [chatNameRules, setChatNameRules] = useState<string | null>(null);
-  /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
-  const [savedChatNameRules, setSavedChatNameRules] = useState<string | null>(null);
-  const [piModel, setPiModel] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [update, setUpdate] = useState<UpdateStatus | null>(null);
-  const [updateNote, setUpdateNote] = useState<string | null>(null);
-  const [pickingVersion, setPickingVersion] = useState(false);
-  const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  /** Null when no claude program was found. */
-  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
-  const [engineUpdateNote, setEngineUpdateNote] = useState<string | null>(null);
-  /** Counts the failed status reads, so a failed read asks again. */
-  const [engineReadFailures, setEngineReadFailures] = useState(0);
-  const [restartNote, setRestartNote] = useState<string | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
-  const [appearance, setAppearance] = useState<Appearance>(readAppearance);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [route, setRoute] = useState<SettingsRoute>(() => parseSettingsHash(window.location.hash));
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const onHashChange = (): void => setRoute(parseSettingsHash(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // A card that a search result or a link names scrolls into view, and shows for a moment.
+  useEffect(() => {
+    if (route.item === null || route.section === "setup") {
+      document.querySelector(".settings-content")?.scrollTo({ top: 0 });
+      return;
+    }
+    const card = document.getElementById(cardId(route.item));
+    if (card === null) return;
+    card.scrollIntoView({ block: "start" });
+    card.classList.add("flash");
+    const timer = setTimeout(() => card.classList.remove("flash"), 1_600);
+    return () => clearTimeout(timer);
+  }, [route, settings]);
+
+  const notify = useCallback((note: string): void => setNotice(note), []);
 
   // A failed load must reach the person, because every problem must reach the phone.
-  const loadSettings = (): void => {
+  const loadSettings = useCallback((): void => {
     setLoadError(null);
     api
       .settings()
-      .then((loaded) => {
-        setSettings(loaded);
-        setTimeZone(loaded.config.timeZone ?? "");
-        setSweepSeconds(String(loaded.config.sync.sweepSeconds));
-        setProjectRoots(loaded.config.projectRoots.join("\n"));
-        setPiModel(loaded.config.engines.pi.models.default ?? "");
-      })
-      .catch((error: unknown) => {
-        setLoadError(errorText(error));
-      });
-  };
-
-  useEffect(() => {
-    const showProblem = (error: unknown): void => {
-      setNotice(errorText(error));
-    };
-    api
-      .status()
-      .then((loaded) => {
-        setStatus(loaded);
-        setSyncState(loaded.vaultSync);
-      })
-      .catch(showProblem);
-    api.updateStatus().then(setUpdate).catch(showProblem);
-    api.setupState().then(setSetup).catch(showProblem);
-    api
-      .chatNameRules()
-      .then((loaded) => {
-        setChatNameRules(loaded.rules);
-        setSavedChatNameRules(loaded.rules);
-      })
-      .catch((error: unknown) => {
-        // Without a vault, the page shows no field for the rules.
-        if (!(error instanceof ApiError && error.status === 409)) showProblem(error);
-      });
-    api.engineUpdateStatus().then(setEngineUpdate, () => {
-      setEngineReadFailures((count) => count + 1);
-    });
-    loadSettings();
+      .then(setSettings)
+      .catch((error: unknown) => setLoadError(errorText(error)));
   }, []);
 
-  // The engine update can wait for a long turn, then download for minutes. The page asks
-  // until it ends, also after a reload or a failed read on a weak phone connection.
-  useEffect(() => {
-    if (engineUpdate === null || (engineUpdate !== "loading" && engineUpdate.phase === "idle")) return;
-    const timer = setTimeout(() => {
-      api.engineUpdateStatus().then(setEngineUpdate, () => {
-        setEngineReadFailures((count) => count + 1);
-      });
-    }, statusPollMs);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [engineUpdate, engineReadFailures]);
+  /** A save can finish a setup step, so the list and the badge read the state again. */
+  const reloadSetup = useCallback((): void => {
+    api
+      .setupState()
+      .then(setSetup)
+      .catch(() => undefined);
+    onSetupChanged?.();
+  }, [onSetupChanged]);
 
-  const remote = status?.remoteAccess ?? null;
+  useEffect(() => {
+    api
+      .status()
+      .then(setStatus)
+      .catch((error: unknown) => notify(errorText(error)));
+    api
+      .setupState()
+      .then(setSetup)
+      .catch((error: unknown) => notify(errorText(error)));
+    loadSettings();
+  }, [loadSettings, notify]);
+
   if (settings === null)
     return loadError === null ? (
       <div className="empty">Loading the settings…</div>
@@ -168,22 +106,7 @@ export function SettingsView({
         The settings did not load: {loadError} <button onClick={loadSettings}>Try again</button>
       </div>
     );
-  const config = settings.config;
 
-  /** A save can finish a setup step, so the list and the badge read the state again. */
-  const reloadSetup = (): void => {
-    api
-      .setupState()
-      .then(setSetup)
-      .catch(() => undefined);
-    onSetupChanged?.();
-  };
-  const noteAndReload = (note: string): void => {
-    setNotice(note);
-    reloadSetup();
-  };
-
-  /** A dropdown saves its own value at once. True when the save worked. */
   const saveNow = async (change: Record<string, unknown>): Promise<boolean> => {
     let result: { restartNeeded: boolean };
     try {
@@ -196,89 +119,13 @@ export function SettingsView({
     reloadSetup();
     try {
       setSettings(await api.settings());
-      setUpdate(await api.updateStatus());
     } catch (error) {
       setNotice(`Saved, but the page did not reload the settings: ${errorText(error)}`);
     }
     return true;
   };
 
-  const changeAppearance = (change: Partial<Appearance>): void => {
-    const next = { ...appearance, ...change };
-    setAppearance(next);
-    saveAppearance(next);
-  };
-
-  /** Installs `version`, or what the update policy allows when it is undefined. */
-  const updateNow = async (version?: string): Promise<void> => {
-    setPickingVersion(false);
-    setUpdateNote(version === undefined ? "Checking…" : `Installing ${version}…`);
-    try {
-      const status = await api.updateNow(version);
-      setUpdate(status);
-      setUpdateNote(null);
-      if (status.phase === "restarting") {
-        setUpdateNote("Eva restarts with the new version when no chat runs…");
-        // The old Eva answers "restarting" until she stops; only the new one answers otherwise.
-        const result = await waitForRestart((answer) => answer?.phase !== "restarting");
-        setUpdateNote(
-          result === "restarted"
-            ? "Eva restarted with the new version."
-            : result === "waiting"
-              ? "Eva restarts with the new version when no chat runs."
-              : "Eva did not answer after the update. Check her log.",
-        );
-      }
-    } catch (error) {
-      setUpdateNote(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  /** Checks first, so the dialog lists the releases of now. */
-  const pickVersion = async (): Promise<void> => {
-    setUpdateNote("Checking…");
-    try {
-      setUpdate(await api.checkForUpdate());
-      setUpdateNote(null);
-      setPickingVersion(true);
-    } catch (error) {
-      setUpdateNote(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  /** Starts `claude update`; an effect asks for its status until it ends. */
-  const updateEngine = async (): Promise<void> => {
-    setEngineUpdateNote(null);
-    try {
-      setEngineUpdate(await api.updateEngine());
-    } catch (error) {
-      setEngineUpdateNote(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  /**
-   * Eva stops for a moment at a restart; the page asks again until she answers as the new Eva.
-   * "waiting" means that the old Eva still answers at the end.
-   */
-  const waitForRestart = async (
-    isNewEva: (answer: UpdateStatus | null) => boolean = () => true,
-  ): Promise<"restarted" | "waiting" | "silent"> => {
-    let answered = false;
-    for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, statusPollMs));
-      try {
-        const answer = await api.updateStatus();
-        setUpdate(answer);
-        if (isNewEva(answer)) return "restarted";
-        answered = true;
-      } catch {
-        answered = false;
-      }
-    }
-    return answered ? "waiting" : "silent";
-  };
-
-  /** Restarts Eva after a confirm that names the running chats, which the restart stops. */
+  /** Eva stops for a moment at a restart; the page asks again until she answers. */
   const restartNow = async (): Promise<void> => {
     try {
       const running = (await api.status()).busySessionIds.length;
@@ -288,391 +135,293 @@ export function SettingsView({
           : `${String(running)} ${running === 1 ? "chat is" : "chats are"} running. A restart stops ${running === 1 ? "it" : "them"}. `;
       if (!window.confirm(`${warning}Restart Eva now?`)) return;
       await api.restart();
-      setRestartNote("Eva restarts…");
-      setRestartNote(
-        (await waitForRestart()) === "restarted"
-          ? "Eva restarted."
-          : "Eva did not answer after the restart. Check her log.",
-      );
-    } catch (error) {
-      setRestartNote(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const becomeHub = async (): Promise<void> => {
-    try {
-      setStatus(await api.becomeHub());
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const syncNow = async (): Promise<void> => {
-    setSyncing(true);
-    try {
-      setSyncState(await api.syncVault());
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const save = async (): Promise<void> => {
-    const seconds = Number(sweepSeconds);
-    if (!Number.isInteger(seconds) || seconds < 10) {
-      setNotice("The sync interval must be a whole number of seconds, 10 or more.");
-      return;
-    }
-    // The rules save on their own, so a vault that Eva cannot write still lets the other settings save.
-    let rulesProblem = "";
-    if (chatNameRules !== null && chatNameRules !== savedChatNameRules) {
-      try {
-        const saved = (await api.saveChatNameRules(chatNameRules)).rules;
-        setChatNameRules(saved);
-        setSavedChatNameRules(saved);
-      } catch (error) {
-        rulesProblem = ` The rules for chat names were not saved: ${errorText(error)}`;
+      setNotice("Eva restarts…");
+      for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, statusPollMs));
+        try {
+          await api.updateStatus();
+          setNotice("Eva restarted.");
+          reloadSetup();
+          return;
+        } catch {
+          // Eva is still down; ask again.
+        }
       }
-    }
-    try {
-      const result = await api.saveSettings({
-        timeZone: timeZone.trim() === "" ? null : timeZone.trim(),
-        sync: { sweepSeconds: seconds },
-        projectRoots: projectRoots
-          .split("\n")
-          .map((root) => root.trim())
-          .filter((root) => root.length > 0),
-        engines: { pi: { models: { default: piModel.trim() === "" ? null : piModel.trim() } } },
-      });
-      setNotice((result.restartNeeded ? "Saved. Press Restart Eva to use the new settings." : "Saved.") + rulesProblem);
-      reloadSetup();
+      setNotice("Eva did not answer after the restart. Check her log.");
     } catch (error) {
-      setNotice(errorText(error) + rulesProblem);
+      setNotice(errorText(error));
     }
   };
 
-  const identities = config.remoteAccess.allowedTailscaleIdentities;
-  const found = (engine: string): boolean => setup === null || setup.engines.some((name) => name === engine);
+  const navigate = (next: SettingsRoute): void => {
+    setQuery("");
+    window.location.hash = settingsHash(next);
+  };
+
+  const context: SettingsContext = {
+    settings,
+    setup,
+    status,
+    saveNow,
+    notify,
+    noteAndReload: (note) => {
+      setNotice(note);
+      reloadSetup();
+    },
+    reloadSettings: () => {
+      api
+        .settings()
+        .then(setSettings)
+        .catch((error: unknown) => setNotice(errorText(error)));
+    },
+    setStatus,
+    restartNow,
+    navigate,
+    onLoggedOut,
+  };
+
+  const steps = setup?.progress ?? [];
+  const section = settingsSections.find((each) => each.id === route.section) ?? null;
+  const atHome = section === null;
 
   return (
-    <div className="main">
-      <div className="settings">
-        {setup !== null && (
-          <SetupProgress steps={setup.progress} restartNeeded={setup.restartNeeded} onChanged={reloadSetup} />
-        )}
-        {remote !== null && <RemoteAccessPanel initial={remote} />}
-        <fieldset>
-          <legend>Setup</legend>
-          {status !== null && (
-            <div className="check-row">
-              <span style={{ flex: 1 }}>
-                {status.role === "hub"
-                  ? `This machine (${status.machine}) is the hub: it runs Telegram and the schedules.`
-                  : `This machine (${status.machine}) is a satellite. The hub is ${status.hub ?? "unknown"}.`}
-              </span>
-              {status.role === "satellite" && (
-                <button onClick={() => void becomeHub()}>Make this machine the hub</button>
-              )}
-            </div>
-          )}
-
-          <h3>GitHub</h3>
-          <SecretField
-            name="githubToken"
-            label="GitHub token"
-            saved={settings.secretsSet.githubToken}
-            help="Eva's git commands use it for a private vault over HTTPS."
-            check="github"
-            onChanged={noteAndReload}
-          />
-
-          <h3>Vault</h3>
-          <div>Folder: {config.vaultPath ?? "not configured. Run `eva setup` on this machine."}</div>
-          <div>Repository: {setup?.vaultRemote ?? "no remote"}</div>
-          <CheckRow name="vault" label="Test the vault repository" />
-          <div className="check-row">
-            <label style={{ flex: 1 }}>
-              Fetch the vault&apos;s changes
-              <select
-                value={String(config.sync.pullIntervalMinutes)}
-                onChange={(event) =>
-                  void saveNow({
-                    sync: { pullIntervalMinutes: event.target.value === "null" ? null : Number(event.target.value) },
-                  })
-                }
-              >
-                {pullChoices.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button disabled={syncing} onClick={() => void syncNow()}>
-              {syncing ? "Syncing…" : "Sync now"}
-            </button>
-          </div>
-          {syncState !== null && <VaultSyncView state={syncState} onState={setSyncState} />}
-          <label>
-            Vault save interval (seconds)
-            <input inputMode="numeric" value={sweepSeconds} onChange={(event) => setSweepSeconds(event.target.value)} />
-          </label>
-
-          <h3>Telegram</h3>
-          <SecretField
-            name="telegramBotToken"
-            label="Telegram bot token"
-            saved={settings.secretsSet.telegramBotToken}
-            help="Make a bot with @BotFather in Telegram, then paste its token."
-            check="telegram"
-            onChanged={noteAndReload}
-          />
-          <div className="hint">
-            {setup === null
-              ? ""
-              : setup.telegram.paired
-                ? "Telegram is paired with your chat."
-                : setup.telegram.pairingCode !== null
-                  ? `Telegram is not paired yet. Send ${setup.telegram.pairingCode} to your bot.`
-                  : "Telegram is not set up: save a bot token, then restart Eva."}
-          </div>
-
-          <h3>Engines</h3>
-          <label>
-            Engine for new chats
-            <select
-              value={config.engines.default}
-              onChange={(event) => void saveNow({ engines: { default: event.target.value } })}
-            >
-              {engineChoices.map((choice) => (
-                <option key={choice.value} value={choice.value}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Claude Code model
-            <select
-              value={config.engines.claudeCode.defaultModel}
-              onChange={(event) => void saveNow({ engines: { claudeCode: { defaultModel: event.target.value } } })}
-            >
-              {modelChoices.map((choice) => (
-                <option key={choice.value} value={choice.value}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SecretField
-            name="claudeOauthToken"
-            label="Claude Code token"
-            saved={settings.secretsSet.claudeOauthToken}
-            help="Run `claude setup-token` on any computer with your Claude subscription, then paste the token."
-            check="claude-code"
-            onChanged={noteAndReload}
-          />
-          {!found("claude-code") && <div className="hint">Eva did not find the claude program on this machine.</div>}
-          <label>
-            pi model, such as openai/gpt-5 (empty: pi&apos;s own default)
-            <input value={piModel} onChange={(event) => setPiModel(event.target.value)} />
-          </label>
-          <div className="hint">
-            {found("pi")
-              ? "pi keeps its own login on this machine. To log in, run `pi`, then `/login`."
-              : "Eva did not find the pi program on this machine."}
-          </div>
-          <CheckRow name="pi" label="Test pi" />
-
-          <GooglePanel
-            settings={settings}
-            saveNow={saveNow}
-            onChanged={noteAndReload}
-            reload={() => {
-              api
-                .settings()
-                .then(setSettings)
-                .catch((error: unknown) => {
-                  setNotice(errorText(error));
-                });
-            }}
-          />
-
-          <h3>Time and remote access</h3>
-          <label>
-            Time zone
-            <input value={timeZone} placeholder="Europe/Madrid" onChange={(event) => setTimeZone(event.target.value)} />
-          </label>
-          <div>
-            Tailscale accounts that may ask for a device login:{" "}
-            {identities.length === 0 ? "Only the Tailscale account that owns this machine." : identities.join(", ")}
-          </div>
-          <div className="hint">
-            To change the list, run this on the machine, with every account that may ask:{" "}
-            <code>
-              eva settings set remoteAccess.allowedTailscaleIdentities &apos;[&quot;you@example.com&quot;]&apos;
-            </code>
-          </div>
-        </fieldset>
-        <DevicesPanel onChanged={setNotice} onLoggedOut={onLoggedOut} />
-        <fieldset>
-          <legend>Updates</legend>
-          <div>{update === null ? "This Eva cannot update herself." : describeUpdate(update)}</div>
-          <div className="check-row">
-            <label style={{ flex: 1 }}>
-              Install updates automatically
-              <select
-                value={config.updates.frequency}
-                onChange={(event) => void saveNow({ updates: { frequency: event.target.value } })}
-              >
-                {updateChoices.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="check-row">
-            <label style={{ flex: 1 }}>
-              Eva installs by herself
-              <select
-                value={config.updates.install}
-                onChange={(event) => void saveNow({ updates: { install: event.target.value } })}
-              >
-                {installChoices.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {config.updates.install === "major" && (
-            <div className="update-warning">
-              A major update can break things that work today. With this choice, Eva installs it by herself.
-            </div>
-          )}
-          <div className="check-row">
-            <button disabled={update === null} onClick={() => void updateNow()}>
-              Check and install
-            </button>
-            <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
-              Update to a version…
-            </button>
-          </div>
-          {update?.kind === "source" && (
-            <div className="hint">This Eva runs from a git checkout, so she follows the main branch.</div>
-          )}
-          {updateNote !== null && <div role="status">{updateNote}</div>}
-          {pickingVersion && update !== null && (
-            <UpdateVersionDialog
-              update={update}
-              onInstall={(version) => void updateNow(version)}
-              onClose={() => setPickingVersion(false)}
-            />
-          )}
-          <div className="check-row">
-            <span style={{ flex: 1 }} role="status">
-              {engineUpdate === "loading"
-                ? "Claude Code: reading the update status…"
-                : engineUpdate === null
-                  ? "No claude program was found."
-                  : describeEngineUpdate(engineUpdate)}
-            </span>
+    <div className="main settings-main">
+      <div className="settings-shell" data-at-home={atHome}>
+        <nav className="settings-nav" aria-label="Settings sections">
+          <button
+            className="nav-item"
+            aria-current={atHome ? "page" : undefined}
+            onClick={() => navigate(settingsHome)}
+          >
+            <Icon name="gear" />
+            Overview
+          </button>
+          {settingsSections.map((each) => (
             <button
-              disabled={engineUpdate === "loading" || engineUpdate?.phase !== "idle"}
-              onClick={() => void updateEngine()}
+              key={each.id}
+              className="nav-item"
+              aria-current={each.id === route.section ? "page" : undefined}
+              onClick={() => navigate({ section: each.id, item: null })}
             >
-              Update Claude Code
+              <Icon name={sectionIcons[each.id]} />
+              <span className="settings-nav-label">{each.title}</span>
+              <SectionMark section={each} steps={steps} />
             </button>
-          </div>
-          {engineUpdateNote !== null && <div role="status">{engineUpdateNote}</div>}
-          <div className="check-row">
-            <span style={{ flex: 1 }}>Restart Eva, for example after a settings change.</span>
-            <button onClick={() => void restartNow()}>Restart Eva</button>
-          </div>
-          {restartNote !== null && <div role="status">{restartNote}</div>}
-          <div className="chip">
-            Eva installs an update only when no chat is running, then restarts. These settings live in your vault, so
-            every machine uses them: the time zone, updates, vault fetch, engines, Google account and voice language.
-            These stay on each machine: the tokens, the allowed Tailscale accounts, the trusted repository owners and
-            Google access.
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Appearance</legend>
-          <div className="hint">Pick a colour. Eva builds the whole palette from it.</div>
-          <SeedColourPicker seed={appearance.seed} onPick={(seed) => changeAppearance({ seed })} />
-          <label>
-            Theme
-            <select
-              value={appearance.theme}
-              onChange={(event) => changeAppearance({ theme: event.target.value as Appearance["theme"] })}
-            >
-              <option value="system">Use the system setting</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-          <label>
-            Density
-            <select
-              value={appearance.density}
-              onChange={(event) => changeAppearance({ density: event.target.value as Appearance["density"] })}
-            >
-              <option value="comfortable">Comfortable</option>
-              <option value="compact">Compact</option>
-            </select>
-          </label>
-          <div className="hint">This browser keeps its own colour, theme and density.</div>
-        </fieldset>
-        <fieldset>
-          <legend>Projects</legend>
-          <label>
-            Extra project folders (one per line)
-            <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
-          </label>
-        </fieldset>
-        {chatNameRules !== null && (
-          <fieldset>
-            <legend>Chat names</legend>
-            <label>
-              Rules for chat names
-              <textarea
-                value={chatNameRules}
-                maxLength={chatNameRulesLength}
-                placeholder={"Lead every name with an emoji.\nName an issue chat “Implementing #N”."}
-                onChange={(event) => setChatNameRules(event.target.value)}
+          ))}
+        </nav>
+        <div className="settings-content">
+          <header className="settings-header">
+            {!atHome && (
+              <button className="ghost back-button" aria-label="Back" onClick={() => navigate(parentRoute(route))}>
+                <Icon name="back" />
+              </button>
+            )}
+            <h1>{section === null ? "Settings" : section.title}</h1>
+            <label className="search-field">
+              <Icon name="search" />
+              <input
+                type="search"
+                aria-label="Search settings"
+                placeholder="Search settings"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
               />
             </label>
-            <div className="hint">
-              After the first answer in a chat, a small model call names the chat by these rules. Leave the rules empty
-              to name each chat by its first line. The rules live in your vault, in .eva/chat-names.md.
-            </div>
-          </fieldset>
-        )}
-        {notice !== null && (
-          // Sticky, so a phone shows the result of a control near the top of the page.
-          <div className="settings-notice" role="status">
-            <span>{notice}</span>
-            <button aria-label="Close the notice" onClick={() => setNotice(null)}>
-              <Icon name="x" />
-            </button>
+          </header>
+          <div className="settings-page">
+            {query.trim() !== "" ? (
+              <SearchResults query={query} navigate={navigate} />
+            ) : section === null ? (
+              <SettingsHome context={context} />
+            ) : (
+              <SectionPage id={section.id} item={route.item} context={context} />
+            )}
           </div>
-        )}
-        <div className="message-actions">
-          <button className="primary" onClick={() => void save()}>
-            Save
-          </button>
-          <button onClick={() => void api.logout().then(onLoggedOut)}>Log out</button>
+          {notice !== null && (
+            // Sticky, so a phone shows the result of a control near the bottom of the screen.
+            <div className="settings-notice" role="status">
+              <span>{notice}</span>
+              <button className="ghost" aria-label="Close the notice" onClick={() => setNotice(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+const sectionIcons: Readonly<Record<SectionId, IconName>> = {
+  setup: "check",
+  engines: "term",
+  vault: "folder",
+  connections: "globe",
+  access: "phone",
+  personalize: "sun",
+  updates: "download",
+};
+
+/** The state of a section's setup steps: a red count when a step needs the person, a green check when all are done. */
+function sectionState(section: SettingsSection, steps: readonly ProgressStep[]): "missing" | "done" | null {
+  const own = section.id === "setup" ? steps : steps.filter((step) => section.steps.some((key) => key === step.key));
+  if (own.length === 0) return null;
+  if (own.some((step) => step.state === "missing")) return "missing";
+  return own.every((step) => step.state === "done") ? "done" : null;
+}
+
+function SectionMark({
+  section,
+  steps,
+}: {
+  readonly section: SettingsSection;
+  readonly steps: readonly ProgressStep[];
+}): ReactElement | null {
+  const state = sectionState(section, steps);
+  if (state === null) return null;
+  if (state === "done")
+    return (
+      <span className="nav-mark done" role="img" aria-label="Done">
+        <Icon name="check" />
+      </span>
+    );
+  const missing = steps.filter(
+    (step) => step.state === "missing" && (section.id === "setup" || section.steps.includes(step.key)),
+  ).length;
+  return (
+    <span className="nav-mark missing" aria-label={`${String(missing)} to set up`}>
+      {missing}
+    </span>
+  );
+}
+
+function SettingsHome({ context }: { readonly context: SettingsContext }): ReactElement {
+  const steps = context.setup?.progress ?? [];
+  const missing = steps.filter((step) => step.state === "missing").length;
+  const next = nextMissing(steps);
+  return (
+    <>
+      {context.setup !== null && (
+        <section className={`card hero ${missing === 0 ? "done" : "missing"}`} aria-label="Setup">
+          <div className="hero-text">
+            <h2>{missing === 0 ? "Eva is set up" : "Finish setting up Eva"}</h2>
+            <p>
+              {missing === 0
+                ? "Every needed step is done. Optional steps can add Telegram, GitHub and Google."
+                : `${String(missing)} ${missing === 1 ? "step needs" : "steps need"} you. Each one has a page that shows what to do.`}
+            </p>
+            <div className="progress-bar" aria-hidden="true">
+              {steps.map((step) => (
+                <span key={step.key} className={`progress-segment ${step.state}`} />
+              ))}
+            </div>
+          </div>
+          <div className="button-row">
+            {next !== undefined ? (
+              <button className="primary large" onClick={() => context.navigate({ section: "setup", item: next.key })}>
+                Continue: {next.title}
+                <Icon name="back" className="flip" />
+              </button>
+            ) : null}
+            <button onClick={() => context.navigate({ section: "setup", item: null })}>See every step</button>
+          </div>
+        </section>
+      )}
+      <div className="section-grid">
+        {settingsSections
+          .filter((each) => each.id !== "setup")
+          .map((each) => (
+            <button
+              key={each.id}
+              className="section-card"
+              onClick={() => context.navigate({ section: each.id, item: null })}
+            >
+              <span className="section-icon">
+                <Icon name={sectionIcons[each.id]} />
+              </span>
+              <span className="section-card-text">
+                <span className="section-card-title">
+                  {each.title}
+                  <SectionMark section={each} steps={steps} />
+                </span>
+                <span className="field-hint">{each.summary}</span>
+              </span>
+              <Icon name="back" className="chevron flip" />
+            </button>
+          ))}
+      </div>
+      <section className="card" aria-label="About these settings">
+        <p className="card-description">
+          These settings live in your vault, so every machine uses them: the time zone, updates, vault fetch, engines,
+          Google account and voice language. These stay on each machine: the tokens, the allowed Tailscale accounts, the
+          trusted repository owners and Google access.
+        </p>
+        <div className="button-row">
+          <button onClick={() => void api.logout().then(context.onLoggedOut)}>
+            <Icon name="key" />
+            Log out
+          </button>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function SectionPage({
+  id,
+  item,
+  context,
+}: {
+  readonly id: SectionId;
+  readonly item: string | null;
+  readonly context: SettingsContext;
+}): ReactElement {
+  switch (id) {
+    case "setup":
+      return item === null ? <SetupOverview context={context} /> : <SetupStepPage context={context} stepKey={item} />;
+    case "engines":
+      return <EnginesSection context={context} />;
+    case "vault":
+      return <VaultSection context={context} />;
+    case "connections":
+      return <ConnectionsSection context={context} />;
+    case "access":
+      return <AccessSection context={context} />;
+    case "personalize":
+      return <PersonalizeSection context={context} />;
+    case "updates":
+      return <UpdatesSection context={context} />;
+  }
+}
+
+function SearchResults({
+  query,
+  navigate,
+}: {
+  readonly query: string;
+  readonly navigate: (route: SettingsRoute) => void;
+}): ReactElement {
+  const results = searchSettings(query);
+  if (results.length === 0) return <div className="empty">No setting matches “{query.trim()}”.</div>;
+  return (
+    <ul className="search-results" aria-label="Search results">
+      {results.map((result) => {
+        const section = settingsSections.find((each) => each.id === result.section);
+        return (
+          <li key={`${result.section}/${result.item}`}>
+            <button className="section-card" onClick={() => navigate({ section: result.section, item: result.item })}>
+              <span className="section-icon">
+                <Icon name={sectionIcons[result.section]} />
+              </span>
+              <span className="section-card-text">
+                <span className="section-card-title">{result.title}</span>
+                <span className="field-hint">{section?.title}</span>
+              </span>
+              <Icon name="back" className="chevron flip" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }

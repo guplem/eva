@@ -2,42 +2,42 @@
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 
 export type CliCommand =
-  | { readonly command: "run"; readonly home: string | undefined }
-  | { readonly command: "setup"; readonly home: string | undefined; readonly nonInteractive: boolean }
-  | { readonly command: "doctor"; readonly home: string | undefined }
-  | { readonly command: "status"; readonly home: string | undefined }
-  | { readonly command: "help"; readonly home: string | undefined }
-  | { readonly command: "version"; readonly home: string | undefined }
+  | { readonly command: "run"; readonly instance: string | undefined }
+  | { readonly command: "setup"; readonly instance: string | undefined; readonly nonInteractive: boolean }
+  | { readonly command: "doctor"; readonly instance: string | undefined }
+  | { readonly command: "status"; readonly instance: string | undefined }
+  | { readonly command: "help"; readonly instance: string | undefined }
+  | { readonly command: "version"; readonly instance: string | undefined }
   | {
       readonly command: "update";
-      readonly home: string | undefined;
+      readonly instance: string | undefined;
       readonly checkOnly: boolean;
       /** A newer version to install past the update policy, or null. */
       readonly version: string | null;
     }
-  | { readonly command: "sync"; readonly home: string | undefined }
-  | { readonly command: "hub"; readonly home: string | undefined }
-  | { readonly command: "link"; readonly home: string | undefined }
+  | { readonly command: "sync"; readonly instance: string | undefined }
+  | { readonly command: "hub"; readonly instance: string | undefined }
+  | { readonly command: "link"; readonly instance: string | undefined }
   | {
       readonly command: "settings";
-      readonly home: string | undefined;
+      readonly instance: string | undefined;
       readonly action: "list" | "get" | "set";
       readonly key?: string;
       readonly value?: string;
     }
-  | { readonly command: "devices-allow"; readonly home: string | undefined; readonly code: string }
-  | { readonly command: "service-install"; readonly home: string | undefined }
-  | { readonly command: "supervise"; readonly home: string | undefined }
-  | { readonly command: "projects"; readonly home: string | undefined; readonly query: string }
+  | { readonly command: "devices-allow"; readonly instance: string | undefined; readonly code: string }
+  | { readonly command: "service-install"; readonly instance: string | undefined }
+  | { readonly command: "supervise"; readonly instance: string | undefined }
+  | { readonly command: "projects"; readonly instance: string | undefined; readonly query: string }
   | {
       readonly command: "work";
-      readonly home: string | undefined;
+      readonly instance: string | undefined;
       readonly projectId: string;
       readonly request: string;
     }
   | {
       readonly command: "chat";
-      readonly home: string | undefined;
+      readonly instance: string | undefined;
       readonly projectId?: string;
       readonly clone?: string;
       readonly model?: ModelAlias;
@@ -45,7 +45,9 @@ export type CliCommand =
     }
   | { readonly command: "usage-error"; readonly message: string };
 
-export const usageText = `Usage: eva [--home <folder>] [command]
+export const usageText = `Usage: eva [--instance <name>] [command]
+
+Each Eva on this computer has a name. Without --instance or EVA_INSTANCE, eva asks which one, or uses the only one.
 
 Commands:
   (none)            Run Eva in the foreground
@@ -80,6 +82,8 @@ const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const engines: readonly EngineName[] = ["claude-code", "pi"];
 /** Options that take no value. */
 const switches: readonly string[] = ["--non-interactive", "--check"];
+/** Options that take a value. */
+const valueOptions: readonly string[] = ["--instance", "--project", "--clone", "--model", "--engine"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];
@@ -90,6 +94,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     if (switches.includes(word)) {
       switchesSeen.add(word);
     } else if (word.startsWith("--")) {
+      if (!valueOptions.includes(word)) return usageError(`Unknown option ${word}.`);
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) return usageError(`${word} needs a value.`);
       options.set(word.slice(2), value);
@@ -98,14 +103,14 @@ export function parseArguments(argv: readonly string[]): CliCommand {
       words.push(word);
     }
   }
-  const home = options.get("home");
+  const instance = options.get("instance");
   const [name, ...rest] = words;
 
   switch (name) {
     case undefined:
-      return { command: "run", home };
+      return { command: "run", instance };
     case "setup":
-      return { command: "setup", home, nonInteractive: switchesSeen.has("--non-interactive") };
+      return { command: "setup", instance, nonInteractive: switchesSeen.has("--non-interactive") };
     case "doctor":
     case "status":
     case "help":
@@ -114,24 +119,24 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "hub":
     case "link":
     case "supervise":
-      return { command: name, home };
+      return { command: name, instance };
     case "update":
-      return updateCommand(home, switchesSeen.has("--check"), rest);
+      return updateCommand(instance, switchesSeen.has("--check"), rest);
     case "settings":
-      return settingsCommand(home, rest);
+      return settingsCommand(instance, rest);
     case "devices":
       return rest[0] === "allow" && rest[1] !== undefined && rest.length === 2
-        ? { command: "devices-allow", home, code: rest[1] }
+        ? { command: "devices-allow", instance, code: rest[1] }
         : usageError("Use: eva devices allow <code>");
     case "projects":
-      return { command: "projects", home, query: rest.join(" ") };
+      return { command: "projects", instance, query: rest.join(" ") };
     case "work": {
       const [projectId, ...request] = rest;
       if (projectId === undefined || request.length === 0) return usageError("Use: eva work <project> <request>");
-      return { command: "work", home, projectId, request: request.join(" ") };
+      return { command: "work", instance, projectId, request: request.join(" ") };
     }
     case "service":
-      return rest[0] === "install" ? { command: "service-install", home } : usageError("Use: eva service install");
+      return rest[0] === "install" ? { command: "service-install", instance } : usageError("Use: eva service install");
     case "chat": {
       const model = options.get("model");
       if (model !== undefined && !models.includes(model as ModelAlias)) return usageError(`Unknown model ${model}.`);
@@ -142,7 +147,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
       const clone = options.get("clone");
       return {
         command: "chat",
-        home,
+        instance,
         ...(projectId === undefined ? {} : { projectId }),
         ...(clone === undefined ? {} : { clone }),
         ...(model === undefined ? {} : { model: model as ModelAlias }),
@@ -154,12 +159,13 @@ export function parseArguments(argv: readonly string[]): CliCommand {
   }
 }
 
-function settingsCommand(home: string | undefined, rest: readonly string[]): CliCommand {
+function settingsCommand(instance: string | undefined, rest: readonly string[]): CliCommand {
   const [action, key, ...value] = rest;
-  if (action === undefined) return { command: "settings", home, action: "list" };
-  if (action === "get" && key !== undefined && value.length === 0) return { command: "settings", home, action, key };
+  if (action === undefined) return { command: "settings", instance, action: "list" };
+  if (action === "get" && key !== undefined && value.length === 0)
+    return { command: "settings", instance, action, key };
   if (action === "set" && key !== undefined && value.length > 0)
-    return { command: "settings", home, action, key, value: value.join(" ") };
+    return { command: "settings", instance, action, key, value: value.join(" ") };
   return usageError("Use: eva settings, eva settings get <key>, or eva settings set <key> <value>");
 }
 
@@ -167,11 +173,11 @@ function usageError(message: string): CliCommand {
   return { command: "usage-error", message };
 }
 
-function updateCommand(home: string | undefined, checkOnly: boolean, rest: readonly string[]): CliCommand {
+function updateCommand(instance: string | undefined, checkOnly: boolean, rest: readonly string[]): CliCommand {
   const [word, ...extra] = rest;
-  if (word === undefined) return { command: "update", home, checkOnly, version: null };
+  if (word === undefined) return { command: "update", instance, checkOnly, version: null };
   const version = word.replace(/^v/, "");
   if (extra.length > 0 || !/^\d+\.\d+\.\d+$/.test(version))
     return usageError("Use: eva update [version], such as 1.2.0");
-  return { command: "update", home, checkOnly, version };
+  return { command: "update", instance, checkOnly, version };
 }

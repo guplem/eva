@@ -39,6 +39,7 @@ export class FakeEngine implements EnginePort {
         usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
         contextTokens: 15,
+        contextWindow: 200_000,
       },
     ];
   }

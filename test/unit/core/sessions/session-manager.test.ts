@@ -110,6 +110,7 @@ describe("a conversation", () => {
         steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
         omittedSteps: 0,
         contextTokens: 15,
+        contextWindow: 200_000,
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -262,6 +263,29 @@ describe("a conversation", () => {
     release();
     await Promise.all([firstTurn, secondTurn, thirdTurn]);
     expect(engine.requests.map((request) => request.prompt)).toEqual(["first", "second\n\nthird"]);
+  });
+
+  test("a turn runs until its end event, though the chat stays busy for the work after the turn", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    // A front end reads the list again on the end event, so the list must say the turn ended.
+    const atEnd: boolean[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "turn_finished") atEnd.push(manager.isTurnRunning(sessionId), manager.isBusy(sessionId));
+    });
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => engine.requests.length > 0);
+    expect(manager.isTurnRunning(sessionId)).toBe(true);
+    release();
+    await turn;
+    expect(atEnd).toEqual([false, true]);
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
   });
 
   test("a chat with a gathered message is active before its turn starts, so an update waits (lesson 92)", async () => {
@@ -566,6 +590,7 @@ describe("exactly one end event (lesson 47)", () => {
         { kind: "task", text: "look" },
       ],
       contextTokens: null,
+      contextWindow: null,
     });
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });

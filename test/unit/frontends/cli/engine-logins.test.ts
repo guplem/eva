@@ -102,7 +102,7 @@ describe("engineLoginSteps", () => {
   test("explains why, and gives one step for each missing login, GitHub first", () => {
     const steps = engineLoginSteps(nothing, folders, "linux");
     const text = steps.join("\n");
-    expect(text).toContain("second Eva on this computer");
+    expect(text).toContain("keeps her own logins");
     expect(text).toContain("keeps going");
     expect(text.indexOf("- GitHub")).toBeLessThan(text.indexOf("- Claude"));
     expect(text).toContain(`GH_CONFIG_DIR='${folders.gh}' gh auth login --insecure-storage`);

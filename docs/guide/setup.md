@@ -48,17 +48,19 @@ A bot is a Telegram account that a program controls. Eva talks to you through yo
 
 Eva does not think by herself. She runs a harness: a program that runs an AI agent with your login. Eva knows two harnesses, Claude Code and pi. `eva setup` installs both when they are missing, so you install nothing yourself. You give the login of the harness that you use.
 
+Each Eva keeps the logins and settings of her harnesses in her own folder. Your own Claude Code and pi, with their logins, settings and `CLAUDE.md`, stay apart from hers.
+
 **Claude Code**, for a Claude subscription:
 
 1. Run `claude setup-token` on any computer with a browser, such as your laptop. Sign in when the browser opens.
    On Eva's computer, if the terminal does not find `claude`, run the command that setup showed after the install.
 2. Copy the token that it prints. It lasts a year.
-3. Paste it into setup at "Claude token", or into **Engines** in Settings on Eva's page.
+3. Paste it into setup at "Claude token", or into **AI engines** in Settings on Eva's page.
 
 **pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
 
 1. After setup installs pi, open another terminal.
-2. Run `pi`. On Windows, a terminal does not find `pi`: run the command that setup showed after the install instead. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
+2. Run the pi command that setup showed. It points pi at this Eva's own folder, so your own pi login stays apart. Type `/login`, and choose your provider. Never choose Anthropic: a Claude login in pi bills as extra usage.
 3. In setup, press Enter at "Claude token". If you log in to pi after setup ends, run `eva setup` again, or choose pi in Settings in the web app.
 
 Claude Code is the default engine at first: the harness that a new chat uses. Setup changes the default only when it has no login and the other harness has one. To change the default engine, open Settings in the web app. You can also choose the harness for each chat.
@@ -137,6 +139,7 @@ Setup asks each question only when its step is not done yet. Press Enter to keep
 
 | Question                     | What to answer                                                                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name of this Eva             | A short name, such as your first name. Enter keeps `eva`. See [More than one Eva on a computer](#more-than-one-eva-on-a-computer).                                    |
 | Claude Code and pi           | No question. Setup installs each harness that is missing. See [Connect your AI](#connect-your-ai).                                                                    |
 | Tailscale                    | Enter installs it, then Enter signs in. Open the link that it shows. See [Open Eva on your phone](#open-eva-on-your-phone).                                           |
 | Start Eva                    | Enter starts Eva now, and each time the computer starts.                                                                                                              |
@@ -179,7 +182,7 @@ These steps work over SSH too. They install Eva for your own user.
 
    When setup starts Eva, it also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator. If you said no, run `eva service install` later.
 
-2. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
+2. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva-<name>/logs/`, where `<name>` is the name of this Eva.
 
 **Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh). Or do its steps yourself:
 
@@ -230,18 +233,26 @@ eva doctor
 
 It lists each missing tool, the feature that needs it, and how to install it. [The optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
 
-## A second person on the same computer
+## More than one Eva on a computer
 
-Each person gets their own Eva, with their own notebook, bot and AI login. The computer has Eva already, so skip the one command. Give the second Eva her own home folder:
+Each Eva has a name, such as `eva` or `ana`. Each one has her own notebook, bot, settings, harness logins and port. Each person who shares a computer can have their own Eva, or you can have two Evas for yourself.
 
-```bash
-eva --home ~/eva-partner setup
-```
+To make another Eva, run setup again. The computer has Eva already, so skip the one command:
 
 ```bash
-eva --home ~/eva-partner service install
+eva setup
 ```
 
-Setup picks a free port for her. Her Claude Code, pi and GitHub logins stay in the `engines` folder of her home, so two people never share a login or a subscription. Setup prints one command for each login that is missing. Run each command in another terminal while setup goes on. Run `eva --home ~/eva-partner setup` again to check the logins later.
+Setup lists the Evas on this computer. Type a new name, such as `ana`. Then answer setup as for the first Eva. Setup picks a free port for her, and starts her as a service of her own.
 
-Her commits carry the name and email of your global git settings, unless her clone sets its own with `git config user.name` and `git config user.email`. For hosts other than GitHub, git uses your own login. To keep everything apart, give her a separate computer user.
+Each command works the same for every Eva. When the computer has only one Eva, a command uses her. With more than one, the command asks which Eva. To skip the question, name the Eva:
+
+```bash
+eva --instance ana status
+```
+
+`EVA_INSTANCE=ana` does the same for each command in a terminal or a script.
+
+Each Eva lives in her own folder, `eva-<name>`, in `~/.config` on Linux, or in `%APPDATA%` on Windows. Her Claude Code, pi and GitHub logins stay in the `engines` folder there, so two people never share a login or a subscription. Setup prints one command for each login that is missing. Run each command in another terminal while setup goes on. Run `eva --instance ana setup` again to check the logins later.
+
+The commits of each Eva carry the name and email of your global git settings, unless her clone sets its own with `git config user.name` and `git config user.email`. For hosts other than GitHub, git uses your own login. To keep everything apart, give each person a separate computer user.

@@ -4,10 +4,12 @@
  * an environment variable instead (`setupEnvironmentNames`), and a bad answer stops setup.
  */
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   homePaths,
-  isExtraInstance,
+  instanceHome,
+  instanceNameOf,
+  listInstances,
   loadConfig,
   saveConfig,
   engineFolders as engineFoldersOf,
@@ -112,8 +114,6 @@ export interface SetupOptions {
   readonly interactive: boolean;
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
-  /** The platform's default home: a setup in any other home sets up an extra instance. */
-  readonly defaultHome: string;
   readonly platform: NodeJS.Platform;
   /** The GitHub browser login, which shows its code through `show`; null when Eva has no OAuth App yet. */
   readonly githubLogin: ((show: (code: string, link: string) => void) => Promise<string>) | null;
@@ -164,7 +164,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   const done = (isDone: boolean): boolean => options.interactive && isDone;
   options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
   // First, so the person knows every login that this instance still needs before the questions.
-  const engineFolders = isExtraInstance(paths, options.defaultHome, options.platform) ? engineFoldersOf(paths) : null;
+  const engineFolders = engineFoldersOf(paths);
   const loginState = (folders: EngineFolders): Promise<EngineLoginState> =>
     engineLoginState({
       folders,
@@ -173,7 +173,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
       environment: options.environment,
     });
   // A script gets no steps: setup ends at once, and the report at the end says what to run.
-  if (engineFolders !== null && options.interactive) {
+  if (options.interactive) {
     for (const line of engineLoginSteps(await loginState(engineFolders), engineFolders, options.platform)) {
       options.write(line);
     }
@@ -193,7 +193,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   // The running Eva of this home holds her own port, so a rerun of setup keeps it.
   const freePort =
     runningInstancePid(paths.lock, { bootId: readBootId(process.platform), isProcessAlive }) === null
-      ? await firstFreePort(config().port)
+      ? await firstFreePort(config().port, otherInstancePorts(paths))
       : config().port;
   // Only a script (EVA_PORT) picks the port; a person gets the free one, and `eva settings` changes it.
   saveSetting({ port: options.interactive ? freePort : await readPort(ask, freePort) });
@@ -256,9 +256,9 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     if (claudeToken !== "") saveSecret("claudeOauthToken", claudeToken);
   }
   if (engine === "") {
-    const piFolder = engineFolders?.piAgent ?? join(options.userHome, ".pi", "agent");
-    // Without a token, Claude Code uses its own login.
-    const claudeFolder = engineFolders?.claude ?? join(options.userHome, ".claude");
+    const piFolder = engineFolders.piAgent;
+    // Without a token, Claude Code uses the login in this instance's folder.
+    const claudeFolder = engineFolders.claude;
     const logins = {
       "claude-code": secrets().claudeOauthToken !== undefined || claudeLoggedIn(claudeFolder),
       pi: piLoginState(piFolder) === "ok",
@@ -321,14 +321,12 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   }
 
   if (refusal.error !== null) throw refusal.error;
-  if (engineFolders !== null) {
-    const state = await loginState(engineFolders);
-    const claudeTokenHint = options.interactive
-      ? `run \`eva --home ${quoteForShell(paths.root, options.platform)} setup\` again, and give it the token`
-      : `run setup again with the token in ${setupEnvironmentNames.claudeToken}`;
-    for (const line of engineLoginReport(state, engineFolders, claudeTokenHint, options.platform)) {
-      options.write(line);
-    }
+  const state = await loginState(engineFolders);
+  const claudeTokenHint = options.interactive
+    ? `run \`eva --instance ${instanceNameOf(paths)} setup\` again, and give it the token`
+    : `run setup again with the token in ${setupEnvironmentNames.claudeToken}`;
+  for (const line of engineLoginReport(state, engineFolders, claudeTokenHint, options.platform)) {
+    options.write(line);
   }
   const vaultPath = config().vaultPath;
   const files = [
@@ -548,11 +546,7 @@ async function pickRepository(
  * Installs each engine's missing program, then uv, with no question: one path is simpler than a choice.
  * A failed install gives the steps, and setup goes on.
  */
-async function installEngines(
-  options: SetupOptions,
-  config: EvaConfig,
-  engineFolders: EngineFolders | null,
-): Promise<void> {
+async function installEngines(options: SetupOptions, config: EvaConfig, engineFolders: EngineFolders): Promise<void> {
   for (const engine of ["claude-code", "pi"] as const) {
     const inputs: EngineInstallInputs = {
       runner: options.runner,
@@ -718,15 +712,30 @@ async function readPort(
 }
 
 /**
- * The first port from `start` up that nothing listens on, so a second instance on one machine
- * gets its own port. A running instance's own port counts as taken too, so the
- * caller skips this check for the home whose Eva runs now.
+ * The first port from `start` up that nothing listens on and that is not `taken`, so each
+ * instance on one machine gets its own port. A running instance's own port counts as taken
+ * too, so the caller skips this check for the home whose Eva runs now.
  */
-export async function firstFreePort(start: number): Promise<number> {
+export async function firstFreePort(start: number, taken: ReadonlySet<number> = new Set()): Promise<number> {
   for (let port = start; port < Math.min(start + 50, 65_536); port += 1) {
-    if (await isPortFree(port)) return port;
+    if (!taken.has(port) && (await isPortFree(port))) return port;
   }
   return start;
+}
+
+/** The ports of the other Evas on this computer. A stopped Eva listens on no port, but she takes hers at her start. */
+function otherInstancePorts(paths: HomePaths): Set<number> {
+  const folder = dirname(paths.root);
+  const ports = new Set<number>();
+  for (const name of listInstances(folder)) {
+    if (name === instanceNameOf(paths)) continue;
+    try {
+      ports.add(loadConfig(homePaths(instanceHome(folder, name))).port);
+    } catch {
+      // A broken config of another Eva is hers to fix; this setup goes on.
+    }
+  }
+  return ports;
 }
 
 async function isPortFree(port: number): Promise<boolean> {
@@ -757,7 +766,7 @@ function commandLine(program: string, platform: NodeJS.Platform): string {
   return platform === "win32" ? `& ${quoteForShell(program, platform)}` : quoteForShell(program, platform);
 }
 
-/** The pi command for a login. An extra instance keeps its pi login in its own folder. */
-function piLogin(run: string, engineFolders: EngineFolders | null, platform: NodeJS.Platform): string {
-  return engineFolders === null ? run : withVariable("PI_CODING_AGENT_DIR", engineFolders.piAgent, [run], platform);
+/** The pi command for a login. Each instance keeps its pi login in its own folder. */
+function piLogin(run: string, engineFolders: EngineFolders, platform: NodeJS.Platform): string {
+  return withVariable("PI_CODING_AGENT_DIR", engineFolders.piAgent, [run], platform);
 }

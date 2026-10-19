@@ -18,13 +18,13 @@ import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { hardExitGraceMs, shutdownDeadlineMs, stopSequence } from "./core/instance/shutdown.ts";
 import { prepareStart } from "./core/instance/startup.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
-import { createHomeFolders, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
+import { createHomeFolders, instanceNameOf, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "./frontends/cli/devices.ts";
-import { defaultHomeFolder, evaCommand, remoteAccessWatcher, writeLine, type CliHost } from "./frontends/cli/host.ts";
+import { evaCommand, remoteAccessWatcher, writeLine, type CliHost } from "./frontends/cli/host.ts";
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
@@ -54,6 +54,7 @@ const host: CliHost = {
   runner: systemProcessRunner,
   write: (text) => process.stdout.write(text),
   writeError: (text) => process.stderr.write(text),
+  interactive: process.stdin.isTTY,
   withPrompt: async (work) => {
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
     try {
@@ -109,11 +110,12 @@ function createEngines(
 }
 
 /** After an update without a supervisor, the new copy starts first and waits for this one. */
-function startNewCopy(): void {
+function startNewCopy(paths: HomePaths): void {
   const launch = newCopyLaunch({
     evaCommand: evaCommand(host),
     arguments: process.argv.slice(2),
     environment: process.env,
+    instance: instanceNameOf(paths),
     pid: host.pid,
   });
   const [program = process.execPath, ...arguments_] = launch.command;
@@ -177,7 +179,6 @@ async function serve(paths: HomePaths): Promise<number> {
     },
     claudeExecutable,
     remoteAccess,
-    defaultHome: defaultHomeFolder(host),
   });
   // A person at Eva's terminal can always allow a new browser, with or without Telegram.
   eva.deviceLogins.attachApprover(terminalDeviceApprover);
@@ -234,7 +235,7 @@ async function serve(paths: HomePaths): Promise<number> {
     },
     startNewCopy: () => {
       if (restartMethodNow(host) !== "new-copy") return false;
-      startNewCopy();
+      startNewCopy(paths);
       return true;
     },
   });

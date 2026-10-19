@@ -12,7 +12,7 @@ A change to one of these goals needs the owner.
 - **Eva works from a phone.** Every problem must reach the phone. A fix that needs a terminal is a gap to close.
 - **Plug and play.** Keep settings and setup questions few. Each machine setting has a default that Eva finds on the machine.
 - **Each setting has one home.** The person's settings live in the vault. The machine's settings and every security setting stay on the machine. Secrets never go in the vault or this repository.
-- **Project mode is a transparent wrapper.** Eva opening a clone equals the person opening it in the harness by hand: Eva adds no prompt and no skills. Assistant mode is Eva's prompt plus the vault's `.eva/` skills.
+- **Project mode is a transparent wrapper.** Eva opening a clone equals the person opening it by hand in the harness of that instance: Eva adds no prompt and no skills. Each instance has its own harness config folder. Assistant mode is Eva's prompt plus the vault's `.eva/` skills.
 - **Eva runs existing harnesses** and depends on no single AI vendor. Each person uses their own engine login: a subscription token, never an API key. Never a Claude login through pi.
 - **Remote access only through Tailscale.** Never a public tunnel.
 - **One core process per instance,** and any number of instances.
@@ -60,7 +60,7 @@ A change to one of these goals needs the owner.
 - Layers: `src/shared/` (types, seams), `src/core/`, `src/engines/<engine>/`, `src/frontends/`, and `src/main.ts` (wiring only). `bun run arch` enforces the imports.
 - `templates/vault/` is runtime content that each new vault gets, not rules for agents.
 - `install/` holds the one-command install scripts. Each release publishes them, and `scripts/smoke-install.sh` and `scripts/smoke-install.ps1` check them in CI. Give a change to them a `feat` or `fix` commit: only those make a release, so only those publish the change.
-- These folders have their own `AGENTS.md`: `src/core/instance/`, `src/core/migrations/`, `src/core/modes/`, `src/core/remote-access/`, `src/core/settings/`, `src/core/updates/`, `src/core/vault/`, `src/engines/`, `src/frontends/api/` and `test/`.
+- These folders have their own `AGENTS.md`: `src/core/instance/`, `src/core/migrations/`, `src/core/modes/`, `src/core/remote-access/`, `src/core/settings/`, `src/core/updates/`, `src/core/vault/`, `src/engines/`, `src/frontends/api/`, `src/frontends/web/` and `test/`.
 
 ## Windows
 

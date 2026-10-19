@@ -9,6 +9,7 @@ import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { PhoneListHeader, ShowListButton } from "./MainNav.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 
@@ -16,6 +17,7 @@ interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
+  readonly onShowList: () => void;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
   /** The chat that the address names; its project and clone open with it. */
@@ -47,6 +49,7 @@ export function ProjectView({
   sessions,
   live,
   sidebarOpen,
+  onShowList,
   onChanged,
   onNavigate,
   linkedChat,
@@ -281,6 +284,8 @@ export function ProjectView({
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
+        {/* The project pages have their own title, so their phone header holds only the menu button. */}
+        {panel !== null && <PhoneListHeader onShowList={onShowList} />}
         {notices}
         {panel?.kind === "details" ? (
           <ProjectDetailsEditor
@@ -291,10 +296,14 @@ export function ProjectView({
         ) : panel?.kind === "setup" ? (
           <RepositorySetup key={panel.project.id} projectId={panel.project.id} title={panel.project.title} />
         ) : selection === null ? (
-          <div className="empty">Pick a project and one of its clones.</div>
+          <>
+            <PhoneListHeader title="Projects" onShowList={onShowList} />
+            <div className="empty">Pick a project and one of its clones.</div>
+          </>
         ) : (
           <>
             <div className="main-header">
+              <ShowListButton onClick={onShowList} />
               <h1>
                 {selection.project.title} · {selection.clone.name}
               </h1>

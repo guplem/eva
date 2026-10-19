@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ApiError } from "./api.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { addressOf, destinationOf } from "./navigation.ts";
 
 /** A toast hides itself after this time; the person can close it sooner. */
 const toastVisibleMs = 8_000;
@@ -38,17 +39,15 @@ export function useShowError(): ShowError {
   return useContext(ShowErrorContext);
 }
 
-export function ErrorToastProvider({
-  children,
-  onOpenSettings,
-  settingsIsOpen,
-}: {
-  readonly children: ReactNode;
-  readonly onOpenSettings: () => void;
-  /** On the Settings page, a button to it would do nothing. */
-  readonly settingsIsOpen: boolean;
-}): ReactElement {
+export function ErrorToastProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const [toast, setToast] = useState<Toast | null>(null);
+  // On the Settings page, a button to it would do nothing.
+  const [settingsIsOpen, setSettingsIsOpen] = useState(() => destinationOf(window.location.hash) === "settings");
+  useEffect(() => {
+    const onHashChange = (): void => setSettingsIsOpen(destinationOf(window.location.hash) === "settings");
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const showError = useCallback((caught: unknown): void => {
     setToast(describeError(caught));
   }, []);
@@ -71,7 +70,7 @@ export function ErrorToastProvider({
               className="primary"
               onClick={() => {
                 setToast(null);
-                onOpenSettings();
+                window.location.hash = addressOf("settings");
               }}
             >
               Open Settings

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EVE's faces</title>
+    <link rel="stylesheet" href="../../src/frontends/web/styles.css" />
+    <link rel="stylesheet" href="../../src/frontends/web/visor.css" />
+    <style>
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr));
+        gap: 16px;
+        padding: 16px;
+      }
+      figure {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 22px;
+        margin: 0;
+        padding: 26px 16px 18px;
+        background: var(--surface);
+        border-radius: 22px;
+      }
+      figcaption {
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./visor-gallery.tsx"></script>
+  </body>
+</html>

@@ -83,12 +83,12 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 ## Pull requests and merge
 
 - **A ruleset named "Requirements for merge"** on the default branch: every CI check passes, no deletion, no force-push.
-- **The ruleset does not require an up-to-date branch.** That rule makes each PR wait for the others and run its checks again. CI on the default branch catches two PRs that break each other.
+- **The ruleset does not require an up-to-date branch.** That rule makes each PR wait for the others and run its checks again. CI on the default branch catches two PRs that break each other. When CI fails on the default branch, fix it first: a red default branch stops releases.
 - **Repository settings:** auto-merge on, the update-branch button on, and head branches deleted after merge.
 - **Squash merge off.** A squash merge loses the commit prefixes that pick the version.
 - **The repository admin can bypass the ruleset for pull requests only.** Direct pushes to the default branch still follow the rules.
 - **A large change starts with a plan** in `docs/plans/<name>.md`, pushed to a draft PR. Delete the plan before the merge: the branch history keeps it.
-- **An agent merges its own PR** with auto-merge. First it updates a branch that is behind, so the checks run on the newest code. GitHub merges the PR when the checks pass.
+- **An agent merges its own PR** with auto-merge. First it updates a branch that is behind, once, so the checks run on the newest code. It does not update the branch again when other PRs merge. GitHub merges the PR when the checks pass.
 - **When the PR does not merge, the agent finds the cause and fixes it:** it resolves a conflict or fixes a red check.
 - **An agent never bypasses the ruleset.** A deny or ask rule stops each merge with admin rights, such as `gh pr merge --admin` or a GitHub merge tool.
 

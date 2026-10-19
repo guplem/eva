@@ -42,7 +42,14 @@ function createEva(
   eva = new Eva({
     ...extra,
     paths: homePaths(home),
-    config: { ...defaultConfig, vaultPath: sandbox.root + "/vault", timeZone: "UTC" },
+    // The turn sync runs git many times, and git is slow on Windows (#203).
+    // The sync tests of the bot use /sync and /conflicts, which run with the setting off too.
+    config: {
+      ...defaultConfig,
+      vaultPath: sandbox.root + "/vault",
+      timeZone: "UTC",
+      sync: { ...defaultConfig.sync, enabled: false },
+    },
     secrets: {},
     engines: [engine],
     runner,

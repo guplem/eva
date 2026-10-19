@@ -16,8 +16,12 @@ let home: string;
 let eva: Eva | null;
 let clock: Date;
 
+// The turn sync runs git many times, and git is slow on Windows (#203). A test of the sync turns it on.
+const syncOff = { ...defaultConfig.sync, enabled: false };
+const syncOn = { ...defaultConfig.sync, enabled: true };
+
 function config(overrides: Partial<EvaConfig> = {}): EvaConfig {
-  return { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid", ...overrides };
+  return { ...defaultConfig, vaultPath: vault, timeZone: "Europe/Madrid", sync: syncOff, ...overrides };
 }
 
 function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: Partial<EvaOptions> = {}): Eva {
@@ -99,7 +103,7 @@ describe("Eva", () => {
       return FakeEngine.answer(request, "Stored it.");
     });
     mkdirSync(join(vault, "Methods"));
-    const instance = start(engine);
+    const instance = start(engine, { sync: syncOn });
     const session = instance.createAssistantSession({ source: "cli", model: "default" });
     await instance.sessions.send(session.id, "Store a note.");
 
@@ -120,7 +124,7 @@ describe("Eva", () => {
     sandbox.git(other, "add", "-A");
     sandbox.git(other, "commit", "-q", "-m", "remote note");
     sandbox.git(other, "push", "-q", "origin", "main");
-    const instance = start(engine, { sync: { ...defaultConfig.sync, enabled: false } });
+    const instance = start(engine, { sync: syncOff });
     const session = instance.createAssistantSession({ source: "cli", model: "default" });
     await instance.sessions.send(session.id, "Store a note.");
 
@@ -669,7 +673,7 @@ describe("Eva", () => {
     let logCleanups = 0;
     eva = new Eva({
       paths: homePaths(home),
-      config: config({ sync: { ...defaultConfig.sync, enabled: false } }),
+      config: config({ sync: syncOff }),
       secrets: {},
       engines: [new FakeEngine()],
       runner: systemProcessRunner,
@@ -698,7 +702,7 @@ describe("Eva", () => {
       await new Promise<void>((resolve) => (release = resolve));
       yield* FakeEngine.answer(request, "ok");
     });
-    const instance = start(engine, { sync: { ...defaultConfig.sync, enabled: false } });
+    const instance = start(engine, { sync: syncOff });
     const session = instance.createAssistantSession({ source: "cli", model: "default" });
     const turn = instance.sessions.send(session.id, "go");
     await waitFor(() => engine.requests.length >= 1);
@@ -723,7 +727,7 @@ describe("Eva", () => {
     let checks = 0;
     eva = new Eva({
       paths: homePaths(home),
-      config: config(),
+      config: config({ sync: syncOn }),
       secrets: {},
       engines: [new FakeEngine()],
       runner: systemProcessRunner,

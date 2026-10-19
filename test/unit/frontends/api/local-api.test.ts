@@ -61,7 +61,9 @@ beforeEach(() => {
   );
   eva = new Eva({
     paths: homePaths(home),
-    config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+    // The turn sync runs git many times, and git is slow on Windows (#203).
+    // The sync tests of the API use its sync route, which runs with the setting off too.
+    config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [engine],
     runner: systemProcessRunner,

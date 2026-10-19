@@ -369,7 +369,7 @@ function requiredChecksItem(context: Context): SetupItem {
     label,
     light: "red",
     detail: "Nothing stops a merge while the checks fail.",
-    fixRequest: `In ${context.target.slug}, add a branch ruleset for the default branch. It requires each CI job to pass on an up-to-date branch, and blocks force pushes and deletion. Use \`gh api repos/${context.target.slug}/rulesets --method POST\`, which needs admin rights. Or use Settings > Rules > Rulesets.`,
+    fixRequest: `In ${context.target.slug}, add a branch ruleset for the default branch. It requires each CI job to pass, and blocks force pushes and deletion. Use \`gh api repos/${context.target.slug}/rulesets --method POST\`, which needs admin rights. Or use Settings > Rules > Rulesets.`,
   };
 }
 

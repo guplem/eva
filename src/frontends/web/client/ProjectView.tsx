@@ -60,8 +60,7 @@ export function ProjectView({
   const [allTags, setAllTags] = useState<string[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [page, setPage] = useState<Page | null>(null);
-  // Null while the clones of the open project load, so the page never says "No clones yet" too early.
-  const [clones, setClones] = useState<CloneDetails[] | null>(null);
+  const [loaded, setLoaded] = useState<{ readonly projectId: string; readonly clones: CloneDetails[] } | null>(null);
   const [listVersion, setListVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const showError = useShowError();
@@ -81,21 +80,21 @@ export function ProjectView({
   }, [listVersion, showError]);
 
   const openProjectId = page?.project.id ?? null;
+  // Null while the clones of the open project load, so the page never says "No clones yet" too early,
+  // and never shows the cards of the project that was open before.
+  const clones = loaded !== null && loaded.projectId === openProjectId ? loaded.clones : null;
   const [cloneVersion, setCloneVersion] = useState(0);
-  useEffect(() => {
-    setClones(null);
-  }, [openProjectId]);
   useEffect(() => {
     if (openProjectId === null) return;
     // A slow answer for another project must not land on this page.
     let current = true;
     api.clones(openProjectId).then(
       (details) => {
-        if (current) setClones(details);
+        if (current) setLoaded({ projectId: openProjectId, clones: details });
       },
       (caught: unknown) => {
         if (!current) return;
-        setClones([]);
+        setLoaded({ projectId: openProjectId, clones: [] });
         showError(caught);
       },
     );
@@ -184,8 +183,14 @@ export function ProjectView({
   };
 
   const chat = page?.kind === "chat" ? roots.find((candidate) => candidate.id === page.chatId) : undefined;
-  // The open chat is gone, for example deleted: its project page shows again.
-  const chatIsGone = page?.kind === "chat" && chat === undefined;
+  // The open chat is gone, for example deleted: its project page shows again. Only a chat that was
+  // on the page counts: a new chat can be missing from a session list that is late or failed.
+  const [shownChatId, setShownChatId] = useState<string | null>(null);
+  const shownId = chat?.id ?? null;
+  useEffect(() => {
+    if (shownId !== null) setShownChatId(shownId);
+  }, [shownId]);
+  const chatIsGone = page?.kind === "chat" && chat === undefined && shownChatId === page.chatId;
   useEffect(() => {
     if (chatIsGone) setPage((current) => (current === null ? null : { kind: "project", project: current.project }));
   }, [chatIsGone]);

@@ -223,13 +223,15 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     }
   }
   const readyVault = config().vaultPath;
-  // A new vault whose push failed, or that had no GitHub login yet, gets the push again.
+  // A new vault that had no GitHub login yet gets the push now. One with a remote has its push from sync.
   if (
     vaultWasReady &&
     readyVault !== null &&
     (await vaultNeedsPush({ folder: readyVault, runner: options.runner, environment: options.environment }))
-  )
+  ) {
+    options.write(`The vault in ${readyVault} is in no GitHub repository yet.`);
     await offerVaultPush(options, readyVault, ask);
+  }
   // A vault brings the person's settings from another machine; a script's engine answer still wins.
   if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
   // A cloned vault brings the person's settings from another machine; an answer above still wins.
@@ -419,7 +421,9 @@ async function askVault(
     );
     return { repository, create: false };
   };
-  let { repository, create } = await askRepository();
+  const first = await askRepository();
+  if (first.skip === true) return;
+  let { repository, create } = first;
   // Eva clones the vault herself: with a repository, the folder has a default, so only
   // a script (EVA_VAULT_PATH) picks another one.
   const current = loadSettings(paths).config.vaultPath;
@@ -431,7 +435,11 @@ async function askVault(
   const folder = answer === "" ? defaultFolder : answer;
   if (folder === null) return;
   saveVaultPath(folder);
-  if (!isEmptyFolder(folder)) return;
+  if (!isEmptyFolder(folder)) {
+    if (create)
+      options.write(`${folder} is not empty, so Eva does not put a new vault there. It is your vault folder now.`);
+    return;
+  }
   const gitEnvironment = (): Record<string, string> => {
     const token = githubToken();
     return { ...options.environment, ...(token === undefined ? {} : { [githubTokenVariable]: token }) };
@@ -457,6 +465,8 @@ async function askVault(
 interface VaultChoice {
   readonly repository: string;
   readonly create: boolean;
+  /** Enter at the list: no vault now. "0" creates one, so Enter does not ask about it again. */
+  readonly skip?: boolean;
 }
 
 // Enough to find a vault at a glance on a phone screen; a name or an address reaches the others.
@@ -498,7 +508,7 @@ async function pickRepository(
       "vaultRepository",
       "Your vault: type its number, its name, or its address (Enter to skip): ",
     );
-    if (answer === "") return { repository: "", create: false };
+    if (answer === "") return { repository: "", create: false, skip: true };
     if (answer === "0") return { repository: "", create: true };
     if (/^\d+$/.test(answer)) {
       const repository = shown[Number(answer) - 1];
@@ -513,7 +523,18 @@ async function pickRepository(
         repository.fullName.toLowerCase() === name || repository.fullName.toLowerCase().split("/")[1] === name,
     );
     const only = named.length === 1 ? named[0] : undefined;
-    return { repository: only === undefined ? answer : only.cloneUrl, create: false };
+    if (only !== undefined) return { repository: only.cloneUrl, create: false };
+    if (named.length > 1) {
+      options.write(
+        `Several repositories are named ${answer}: ${named.map((each) => each.fullName).join(", ")}. Type the full name.`,
+      );
+      continue;
+    }
+    if (isAddress(answer)) return { repository: answer, create: false };
+    // A repository that is not in the list, such as one of the oldest.
+    if (/^[\w.-]+\/[\w.-]+$/.test(answer)) return { repository: `https://github.com/${answer}.git`, create: false };
+    // Never a bare word to git, which would read it as a folder on this computer.
+    options.write(`No repository is named ${answer}. Type a number, a name such as you/vault, or an address.`);
   }
 }
 
@@ -612,6 +633,8 @@ async function offerVaultPush(
     );
     return;
   }
+  // A push can fail after GitHub made the repository; a retry with the same name then pushes to it again.
+  const created = new Map<string, string>();
   for (;;) {
     const answer = await ask(
       "githubRepository",
@@ -619,15 +642,16 @@ async function offerVaultPush(
     );
     if (answer === "") return;
     try {
-      let repository = answer;
-      if (!isAddress(answer)) {
-        const created = await createGitHubRepository({
+      let repository = isAddress(answer) ? answer : (created.get(answer) ?? "");
+      if (repository === "") {
+        const made = await createGitHubRepository({
           token,
           name: answer,
           ...(options.githubApiBaseUrl === undefined ? {} : { baseUrl: options.githubApiBaseUrl }),
         });
-        options.write(`Created the private repository ${created.fullName}.`);
-        repository = created.cloneUrl;
+        options.write(`Created the private repository ${made.fullName}.`);
+        created.set(answer, made.cloneUrl);
+        repository = made.cloneUrl;
       }
       await pushNewVault({
         repository,
@@ -640,18 +664,20 @@ async function offerVaultPush(
     } catch (error) {
       if (!isEvaError(error, "github_failed") && !isEvaError(error, "git_failed")) throw error;
       options.write(error.message);
-      // A script goes on with the local vault; its next run offers the push again.
+      // A script goes on with the local vault, and says why above.
       if (!options.interactive) return;
       options.write(
-        "Type another name. Or create an empty private repository on github.com, and paste its address here.",
+        created.size > 0
+          ? "Type the same name to push again, or type another name, or paste the address of an empty repository."
+          : "Type another name. Or create an empty private repository on github.com, and paste its address here.",
       );
     }
   }
 }
 
-/** A git address, not a bare repository name such as `vault`. */
+/** A git address or a folder on this computer, not a bare repository name such as `vault`. */
 function isAddress(text: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:/i.test(text);
+  return /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:|^[a-z]:[\\/]|^\.{0,2}[\\/]/i.test(text);
 }
 
 async function readPort(

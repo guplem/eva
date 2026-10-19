@@ -48,3 +48,16 @@ Three sub-agents (two mid-tier, one top-tier) read the code and PR #145.
 - **G6.** No new key. `vaultRepository` takes a number, a name or an address; a script sends an address. `githubRepository` keeps its meaning: the name of the new private repository. Only the tool that makes it changes, so a script with a token no longer needs `gh`.
 - **G7.** Build the core now: PR #145 changes no file in `src/core/vault/`. Wire `setup.ts`, `cli.test.ts` and `docs/guide/setup.md` after PR #145 merges, on top of its `askVault`.
 - **Requests.** Send `authorization: Bearer`, `accept: application/vnd.github+json`, `x-github-api-version` and a `user-agent`. Never put the token in an error text. Errors use the existing `github_failed` code.
+
+## Decisions after the first review
+
+Five sub-agents (three mid-tier, two top-tier) reviewed the work. Each finding below was valid and is fixed.
+
+- A push that fails after the create: a retry with the same name pushes to the repository that setup made, instead of a 422.
+- `vaultNeedsPush` is true only for a vault with a commit and no remote. Eva never replaces a remote that the person chose. Sync pushes a vault that has a remote.
+- The push sends `HEAD`, so a vault on `master` works.
+- The credential helper step adds Eva's lines only when they are missing. It removes no helper that the person set.
+- At the list, a name that matches no repository or several is asked again. `owner/name` maps to its github.com address. A bare word never goes to git, which would read it as a local folder. A local path counts as an address.
+- Enter at the list means no vault now. "0" in a folder that is not empty says so.
+- An empty list still shows "0. Create a new vault": a new GitHub account has no repository, and needs that choice most. This replaces the "empty list" part of G4.
+- A script's failed push is not offered again on its next run: a script answers every question each time, and its vault folder is then not empty. The wrong comment is fixed.

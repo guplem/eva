@@ -909,6 +909,40 @@ describe("runSetup", () => {
       );
     });
 
+    test("an unknown or shared name is asked again, owner/name reaches any repository, and Enter skips", async () => {
+      githubApi.list = {
+        status: 200,
+        body: [
+          listed("you/vault", "https://github.com/you/vault.git"),
+          listed("team/vault", "https://github.com/team/vault.git"),
+        ],
+      };
+      const commands: string[][] = [];
+      const recording: ProcessRunner = {
+        run: (command, options) => {
+          commands.push([...command]);
+          return okRunner.run(command, options);
+        },
+      };
+      const lines: string[] = [];
+      await setup(
+        { githubToken: "a-pasted-token", vaultRepository: ["vualt", "vault", "old/notes"] },
+        { runner: recording, lines },
+      );
+      const text = lines.join("\n");
+      expect(text).toContain("No repository is named vualt.");
+      expect(text).toContain("Several repositories are named vault: you/vault, team/vault.");
+      expect(commands.find((command) => command.includes("clone"))).toContain("https://github.com/old/notes.git");
+      expect(commands.some((command) => command.includes("vualt"))).toBe(false);
+      rmSync(join(home, "vault"), { recursive: true, force: true });
+      rmSync(homePaths(home).config);
+      const asked: SetupQuestion[] = [];
+      await setup({}, { asked });
+      expect(asked).not.toContain("vault");
+      expect(asked).not.toContain("createVault");
+      expect(loadSettings(homePaths(home)).config.vaultPath).toBeNull();
+    });
+
     test("a token that cannot list the repositories gets the address question instead", async () => {
       githubApi.list = { status: 403, body: { message: "Resource not accessible by personal access token" } };
       const lines: string[] = [];
@@ -1193,8 +1227,7 @@ describe("runSetup", () => {
     await setup(
       {
         githubToken: "a-pasted-token",
-        vault: emptyFolder,
-        createVault: "y",
+        vaultRepository: "0",
         githubRepository: ["vault", pathToFileURL(bare).href],
       },
       { runner: gitRunner, lines },
@@ -1204,6 +1237,31 @@ describe("runSetup", () => {
     expect(text).toContain("create an empty private repository on github.com, and paste its address");
     expect(text).toContain(`Pushed the vault to ${pathToFileURL(bare).href}.`);
     expect(githubApi.created).toEqual(["vault"]);
+  });
+
+  test("a push that fails after the create pushes to the same repository on a retry with the same name", async () => {
+    const bare = emptyRepository("vault");
+    githubApi.create = (name) => ({
+      status: 201,
+      body: { full_name: `you/${name}`, clone_url: pathToFileURL(bare).href, private: true },
+    });
+    let pushes = 0;
+    const firstPushFails: ProcessRunner = {
+      run: (command, options) => {
+        if (command.includes("push") && (pushes += 1) === 1)
+          return Promise.resolve({ exitCode: 128, stdout: "", stderr: "network down" });
+        return gitRunner.run(command, options);
+      },
+    };
+    const lines: string[] = [];
+    await setup(
+      { githubToken: "a-pasted-token", vaultRepository: "0", githubRepository: ["vault", "vault"] },
+      { runner: firstPushFails, lines },
+    );
+    expect(lines.join("\n")).toContain("Type the same name to push again");
+    expect(githubApi.created).toEqual(["vault"]);
+    const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
+    expect(pushed.stdout.toString()).toContain("Start the vault");
   });
 
   test("a new vault with no GitHub login stays local, and a rerun offers the push again", async () => {

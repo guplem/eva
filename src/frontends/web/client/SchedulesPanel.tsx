@@ -1,12 +1,24 @@
-/** The schedules of `.eva/schedules.json`: list, remove, and "Add schedule". */
+/**
+ * The schedules of `.eva/schedules.json`: a day line of today, one card per schedule with its
+ * repeat, next run and last result, and "Add schedule".
+ */
 import { useEffect, useState, type ReactElement } from "react";
-import { api, type ScheduleList } from "./api.ts";
+import { AddScheduleDialog } from "./AddScheduleDialog.tsx";
+import { api, type ScheduleList, type ScheduleView } from "./api.ts";
+import { Icon } from "./icons.tsx";
+import { dayLine, lastRunWords, nextRunWords, repeatWords } from "./schedule-words.ts";
+import { Visor } from "./Visor.tsx";
+import { stateFaces } from "./visor-faces.ts";
 
-const emptyForm = { id: "", name: "", at: "", days: "", text: "", prompt: "" };
+/** Another part of the page, such as a setup card, fires this after it changes a schedule. */
+export const schedulesChangedEvent = "eva:schedules-changed";
+
+/** The day line moves on and the last results change, so the page asks again each minute. */
+const reloadMs = 60_000;
 
 export function SchedulesPanel(): ReactElement {
   const [list, setList] = useState<ScheduleList | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const reload = (): void => {
@@ -14,72 +26,182 @@ export function SchedulesPanel(): ReactElement {
       setNotice(error instanceof Error ? error.message : String(error));
     });
   };
-  useEffect(reload, []);
+  useEffect(() => {
+    reload();
+    const timer = setInterval(reload, reloadMs);
+    window.addEventListener(schedulesChangedEvent, reload);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(schedulesChangedEvent, reload);
+    };
+  }, []);
 
-  const add = async (): Promise<void> => {
-    const days = form.days
-      .split(",")
-      .map((day) => day.trim())
-      .filter((day) => day.length > 0);
-    const entry: Record<string, unknown> = { id: form.id.trim(), name: form.name.trim(), at: form.at.trim() };
-    if (days.length > 0) entry["days"] = days;
-    if (form.text.trim() !== "") entry["text"] = form.text.trim();
-    if (form.prompt.trim() !== "") entry["prompt"] = form.prompt.trim();
+  const remove = async (scheduleId: string): Promise<void> => {
     try {
-      await api.saveSchedule(entry);
-      setForm(emptyForm);
-      setNotice("Saved. Within a minute Eva shows its setup card. The schedule runs only after you see the card.");
-      reload();
+      await api.removeSchedule(scheduleId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
-  };
-
-  const remove = async (scheduleId: string): Promise<void> => {
-    await api.removeSchedule(scheduleId);
     reload();
   };
 
-  const field = (name: keyof typeof emptyForm, label: string, placeholder: string): ReactElement => (
-    <label>
-      {label}
-      <input
-        value={form[name]}
-        placeholder={placeholder}
-        onChange={(event) => setForm({ ...form, [name]: event.target.value })}
-      />
-    </label>
-  );
+  const schedules = list?.schedules ?? [];
+  const failed = schedules.filter((view) => view.lastRun?.failed === true).length;
 
   return (
-    <fieldset>
-      <legend>Your schedules</legend>
-      {list?.schedules.length === 0 && <div className="chip">No schedules yet.</div>}
-      {list?.schedules.map(({ schedule, nextRun }) => (
-        <div key={schedule.id} className="check-row">
-          <span style={{ flex: 1 }}>
-            {schedule.name} ({schedule.at}) · next: {nextRun?.replace("T", " ") ?? "never"}
+    <div className="schedules-page">
+      <div className="schedules-header">
+        <div className="schedules-title">
+          <h1>Schedules</h1>
+          {list !== null && (
+            <div className="schedules-subtitle">{subtitle(schedules.length, failed + list.problems.length)}</div>
+          )}
+        </div>
+        <button className="primary schedules-add" aria-label="Add schedule" onClick={() => setAdding(true)}>
+          <Icon name="plus" />
+          <span className="schedules-add-text">Add schedule</span>
+        </button>
+      </div>
+      <div className="schedules-column">
+        {notice !== null && (
+          <div role="status" className="schedules-notice">
+            {notice}
+          </div>
+        )}
+        {list?.problems.map((problem) => (
+          <div key={problem} className="schedule-problem">
+            {problem}
+          </div>
+        ))}
+        {list !== null && schedules.length === 0 && (
+          <div className="schedule-panel schedules-empty">
+            <Visor size={76} face={stateFaces.resting} />
+            <strong>Nothing is scheduled.</strong>
+            <p>Add a schedule here, or ask Eva in a chat, such as “Every Friday at 18:00, plan my weekend.”</p>
+          </div>
+        )}
+        {list !== null && schedules.length > 0 && <DayLine list={list} />}
+        {schedules.length > 0 && list !== null && (
+          <ul className="schedule-list" aria-label="Your schedules">
+            {schedules.map((view) => (
+              <ScheduleRow
+                key={view.schedule.id}
+                view={view}
+                now={list.now}
+                onRemove={() => void remove(view.schedule.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+      {adding && (
+        <AddScheduleDialog
+          onClose={() => setAdding(false)}
+          onSaved={() => {
+            setAdding(false);
+            setNotice("Saved. Eva shows its setup card. The schedule runs only after you confirm it.");
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function subtitle(count: number, needsLook: number): string {
+  const schedules = `${String(count)} ${count === 1 ? "schedule" : "schedules"}`;
+  if (needsLook === 0) return schedules;
+  return `${schedules} · ${String(needsLook)} ${needsLook === 1 ? "needs" : "need"} a look`;
+}
+
+const hours = [0, 6, 12, 18, 24];
+
+function DayLine({ list }: { list: ScheduleList }): ReactElement {
+  const line = dayLine(
+    list.schedules.map((view) => view.schedule),
+    list.now,
+  );
+  return (
+    <section className="schedule-panel" aria-label="Today">
+      <div className="schedule-panel-heading">
+        <strong>Today</strong>
+        <span className="schedule-small">{list.timeZone}</span>
+      </div>
+      <div className="day-line">
+        {line.runs.map((run) => (
+          <span
+            key={run.title}
+            className="day-line-run"
+            title={run.title}
+            // A pill near midnight would leave the bar, so it keeps the room of about one time.
+            style={{
+              left: `min(${percent(run.position)}, calc(100% - 4.5em))`,
+              maxWidth: `max(4.5em, calc(${percent(run.width)} - 4px))`,
+            }}
+          >
+            {run.label}
           </span>
-          <button aria-label={`Remove ${schedule.name}`} onClick={() => void remove(schedule.id)}>
+        ))}
+        <span className="day-line-now" style={{ left: percent(line.now) }} aria-hidden="true" />
+        {hours.map((hour) => (
+          <span
+            key={hour}
+            className="day-line-hour"
+            aria-hidden="true"
+            // The first and last labels hold to the ends, so a narrow bar never cuts them.
+            style={
+              hour === 0
+                ? { left: "8px", transform: "none" }
+                : hour === 24
+                  ? { right: "8px", transform: "none" }
+                  : { left: percent(hour / 24) }
+            }
+          >
+            {`${String(hour).padStart(2, "0")}:00`}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function percent(share: number): string {
+  return `${String(share * 100)}%`;
+}
+
+function ScheduleRow(props: { view: ScheduleView; now: string; onRemove: () => void }): ReactElement {
+  const { schedule, nextRun, lastRun } = props.view;
+  const [asking, setAsking] = useState(false);
+  const result = lastRunWords(lastRun, props.now);
+  return (
+    <li className="schedule-panel schedule-row" aria-label={schedule.name}>
+      <span className="schedule-row-icon">
+        <Icon name="clock" />
+      </span>
+      <div>
+        <div className="schedule-row-name">{schedule.name}</div>
+        <div className="schedule-small">
+          {repeatWords(schedule.at, schedule.days)} · next {nextRunWords(nextRun, props.now)}
+        </div>
+      </div>
+      {!asking && (
+        <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
+          <Icon name="x" />
+        </button>
+      )}
+      {asking && <span />}
+      <div className="schedule-row-result">
+        <span className={`status-pill ${result.tone}`}>{result.text}</span>
+      </div>
+      {asking && (
+        <div className="schedule-row-question" role="group" aria-label={`Remove ${schedule.name}?`}>
+          <span>Remove {schedule.name}? It stops for good.</span>
+          <button className="danger" onClick={props.onRemove}>
             Remove
           </button>
+          <button onClick={() => setAsking(false)}>Keep</button>
         </div>
-      ))}
-      {list?.problems.map((problem) => (
-        <div key={problem} className="failed">
-          {problem}
-        </div>
-      ))}
-      {field("id", "Id (never change it later)", "morning")}
-      {field("name", "Name", "Morning")}
-      {field("at", "Time (HH:MM)", "07:30")}
-      {field("days", "Days (empty for every day)", "mon, tue, wed")}
-      {field("text", "Fixed text", "Drink water.")}
-      {field("prompt", "Prompt for Eva", "Summarise my calendar for today.")}
-      {notice !== null && <div role="status">{notice}</div>}
-      <div className="message-actions">
-        <button onClick={() => void add()}>Add schedule</button>
-      </div>
-    </fieldset>
+      )}
+    </li>
   );
 }

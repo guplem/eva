@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   CloneOriginStore,
   cloneFolderName,
+  countChanges,
   createClone,
   describeClone,
   githubSlug,
@@ -150,7 +151,7 @@ describe("clone folders", () => {
     ]);
   });
 
-  test("describes a clone with its branch and the number of changed files", async () => {
+  test("describes a clone with its branch, and counts its changed files apart", async () => {
     const clone = await createClone({
       projectPath: project,
       repositoryUrl: sandbox.remote,
@@ -158,13 +159,26 @@ describe("clone folders", () => {
       environment: gitEnvironment,
       origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
     });
-    expect(await describeClone(clone, systemProcessRunner, gitEnvironment)).toMatchObject({
-      branch: "main",
-      changes: 0,
-    });
+    expect(await describeClone(clone, systemProcessRunner, gitEnvironment)).toMatchObject({ branch: "main" });
+    expect(await countChanges(clone, systemProcessRunner, gitEnvironment)).toBe(0);
     writeFileSync(join(clone.path, "new.txt"), "new\n");
     writeFileSync(join(clone.path, "other.txt"), "other\n");
-    expect((await describeClone(clone, systemProcessRunner, gitEnvironment)).changes).toBe(2);
+    expect(await countChanges(clone, systemProcessRunner, gitEnvironment)).toBe(2);
+  });
+
+  test("describing a clone runs no git status, so the work report stays fast", async () => {
+    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
+    const [clone] = listClones(project);
+    if (clone === undefined) throw new Error("The test needs one clone.");
+    const commands: (readonly string[])[] = [];
+    const recording = {
+      run: (command: readonly string[]) => {
+        commands.push(command);
+        return Promise.resolve({ exitCode: 0, stdout: "main\n", stderr: "" });
+      },
+    };
+    await describeClone(clone, recording, gitEnvironment);
+    expect(commands.some((command) => command.includes("status"))).toBe(false);
   });
 
   test("a clone whose git fails has no branch and no change count", async () => {
@@ -172,11 +186,8 @@ describe("clone folders", () => {
     const [clone] = listClones(project);
     if (clone === undefined) throw new Error("The test needs one clone.");
     const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
-    expect(await describeClone(clone, failing, gitEnvironment)).toMatchObject({
-      branch: null,
-      pullRequest: null,
-      changes: null,
-    });
+    expect(await describeClone(clone, failing, gitEnvironment)).toMatchObject({ branch: null, pullRequest: null });
+    expect(await countChanges(clone, failing, gitEnvironment)).toBeNull();
   });
 });
 

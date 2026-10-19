@@ -268,7 +268,7 @@ export class SessionManager {
     return this.runtimes.get(sessionId)?.busy ?? false;
   }
 
-  /** A front end reads the list again on a turn end event, so this is false before that event goes out. */
+  /** A front end reads the list again on a turn end event, so this is already false when that event goes out. */
   isTurnRunning(sessionId: string): boolean {
     return this.runtimes.get(sessionId)?.turnRunning ?? false;
   }

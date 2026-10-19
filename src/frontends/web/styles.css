@@ -464,7 +464,9 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 4px;
+  /* The list has a 12 px padding. The header covers it, so it does not move up when it sticks. */
+  margin-top: -12px;
+  padding: 12px 0 4px;
   background: var(--side);
 }
 
@@ -526,7 +528,7 @@ textarea {
   color: var(--muted);
 }
 
-/* The grid of the EVE design: the title and the time, then the preview and the state. */
+/* A grid keeps the time and the pill in one column, whatever the length of the title. */
 .chat-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -535,7 +537,7 @@ textarea {
   border-radius: var(--radius-card);
 }
 
-/* Not the pill: its dot glows outside its box. */
+/* Only the text is cut. A cut pill would also cut the glow of its dot. */
 .chat-item-title,
 .chat-item-preview {
   overflow: hidden;

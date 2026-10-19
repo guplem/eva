@@ -180,7 +180,7 @@ button.device-log-out {
   max-width: 460px;
   background: var(--panel);
   border-radius: var(--radius-dialog);
-  box-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
+  box-shadow: var(--dialog-shadow);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -235,7 +235,7 @@ button.device-log-out {
 /* Allow is the main action, so it takes the width that Deny leaves. */
 .device-actions button.primary {
   flex: 1;
-  box-shadow: 0 6px 18px -6px var(--glow);
+  box-shadow: var(--button-glow);
 }
 
 .device-actions button.danger {
@@ -252,7 +252,7 @@ button.device-log-out {
     max-width: none;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
     padding: 10px 20px max(24px, env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+    box-shadow: var(--sheet-shadow);
     align-items: center;
     text-align: center;
     gap: 12px;

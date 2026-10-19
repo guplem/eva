@@ -9,10 +9,13 @@ import {
   engineFolderVariables,
   engineGitConfig,
   homePaths,
-  isExtraInstance,
+  instanceHome,
+  instanceNameOf,
+  instanceNameProblem,
+  instancesFolder,
+  listInstances,
   loadConfig,
   loadSecrets,
-  resolveHomeFolder,
   saveConfig,
   saveSecrets,
 } from "../../../../src/core/settings/home.ts";
@@ -26,7 +29,7 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe("engine folders of an extra instance (lesson 111)", () => {
+describe("engine folders of an instance (lesson 111)", () => {
   test("each engine has its own folder in the engines folder of the home", () => {
     const folders = engineFolders(homePaths(join(home, "eva-partner")));
     expect(folders).toEqual({
@@ -94,48 +97,48 @@ describe("engine folders of an extra instance (lesson 111)", () => {
     const gitConfig = join(home, "engines", "git", "gitconfig");
     expect(engineGitConfig({ GIT_CONFIG_GLOBAL: gitConfig }, gitConfig)).toContain('path = "~/.gitconfig"');
   });
-
-  test("a home that is not the default one is an extra instance", () => {
-    expect(isExtraInstance(homePaths(join(home, "eva-partner")), join(home, "eva"), "linux")).toBe(true);
-  });
-
-  test("the default home is the first instance, even with a trailing separator", () => {
-    expect(isExtraInstance(homePaths(join(home, "eva")), join(home, "eva") + "/", "linux")).toBe(false);
-  });
-
-  test("on Windows, a home that differs only in letter case is the default home", () => {
-    expect(isExtraInstance(homePaths("D:\\Eva-Homes\\Eva"), "d:\\eva-homes\\EVA\\", "win32")).toBe(false);
-  });
-
-  test("without a known default home, the instance counts as the first one", () => {
-    expect(isExtraInstance(homePaths(join(home, "eva")), undefined, "linux")).toBe(false);
-  });
 });
 
-describe("resolveHomeFolder", () => {
-  test("the --home flag wins over EVA_HOME", () => {
-    expect(
-      resolveHomeFolder({ flag: "/flag", environment: { EVA_HOME: "/env" }, platform: "linux", userHome: "/u" }),
-    ).toBe("/flag");
+describe("instances", () => {
+  test("Linux keeps the instances in XDG_CONFIG_HOME, or ~/.config", () => {
+    expect(instancesFolder({ environment: { XDG_CONFIG_HOME: "/x" }, platform: "linux", userHome: "/u" })).toBe("/x");
+    expect(instancesFolder({ environment: {}, platform: "linux", userHome: "/u" })).toBe(join("/u", ".config"));
   });
 
-  test("EVA_HOME wins over the default", () => {
-    expect(resolveHomeFolder({ environment: { EVA_HOME: "/env" }, platform: "linux", userHome: "/u" })).toBe("/env");
-  });
-
-  test("Linux uses XDG_CONFIG_HOME, or ~/.config", () => {
-    expect(resolveHomeFolder({ environment: { XDG_CONFIG_HOME: "/x" }, platform: "linux", userHome: "/u" })).toBe(
-      join("/x", "eva"),
-    );
-    expect(resolveHomeFolder({ environment: {}, platform: "linux", userHome: "/u" })).toBe(
-      join("/u", ".config", "eva"),
+  test("Windows keeps the instances in APPDATA", () => {
+    expect(instancesFolder({ environment: { APPDATA: "C:/AppData" }, platform: "win32", userHome: "C:/u" })).toBe(
+      "C:/AppData",
     );
   });
 
-  test("Windows uses APPDATA", () => {
-    expect(resolveHomeFolder({ environment: { APPDATA: "C:/AppData" }, platform: "win32", userHome: "C:/u" })).toBe(
-      join("C:/AppData", "eva"),
-    );
+  test("the home of an instance is eva-<name>, and the name comes back from it", () => {
+    const paths = homePaths(instanceHome("/x", "ana"));
+    expect(paths.root).toBe(join("/x", "eva-ana"));
+    expect(instanceNameOf(paths)).toBe("ana");
+  });
+
+  test("a name has lower-case letters, digits and single dashes", () => {
+    for (const name of ["eva", "ana-2", "x"]) expect(instanceNameProblem(name)).toBeNull();
+    for (const name of ["", "Ana", "ana bob", "-ana", "ana-", "a--b", "a/b", "x".repeat(33)])
+      expect(instanceNameProblem(name)).not.toBeNull();
+  });
+
+  test("the list holds each eva-<name> folder with a config, sorted", () => {
+    for (const name of ["eva-zoe", "eva-ana"]) {
+      mkdirSync(join(home, name));
+      writeFileSync(join(home, name, "config.json"), "{}");
+    }
+    // Not an instance: no config, a bad name, another program's folder, a file.
+    mkdirSync(join(home, "eva-empty"));
+    mkdirSync(join(home, "eva-Bad"));
+    writeFileSync(join(home, "eva-Bad", "config.json"), "{}");
+    mkdirSync(join(home, "other"));
+    writeFileSync(join(home, "eva-file"), "");
+    expect(listInstances(home)).toEqual(["ana", "zoe"]);
+  });
+
+  test("a missing folder holds no instance", () => {
+    expect(listInstances(join(home, "missing"))).toEqual([]);
   });
 });
 

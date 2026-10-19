@@ -45,7 +45,6 @@ beforeEach(() => {
     now: () => new Date(),
     basePrompt: "Base.",
     gatherMs: 5,
-    userHome: home,
   });
 }, gitHookTimeoutMs);
 afterEach(() => {
@@ -262,12 +261,12 @@ describe("settings", () => {
     expect(await engineStep()).toBe("done");
   });
 
-  test("Claude Code's own login and a pi login count as an engine login", async () => {
-    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
-    writeFileSync(join(home, ".pi", "agent", "auth.json"), JSON.stringify({ openai: {} }));
+  test("the instance's own Claude Code login and pi login count as an engine login", async () => {
+    mkdirSync(join(home, "engines", "pi-agent"), { recursive: true });
+    writeFileSync(join(home, "engines", "pi-agent", "auth.json"), JSON.stringify({ openai: {} }));
     expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("missing");
-    mkdirSync(join(home, ".claude"), { recursive: true });
-    writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+    mkdirSync(join(home, "engines", "claude"), { recursive: true });
+    writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
     expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("done");
   });
 

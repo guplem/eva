@@ -192,7 +192,7 @@ export function updateChannel(host: CliHost, secrets: EvaSecrets): UpdateChannel
   return sourceUpdateChannel({
     folder: host.sourceFolder,
     runner: host.runner,
-    // Eva's own git commands, before or without a running core: the token, but not an extra instance's gh folder.
+    // Eva's own git commands, before or without a running core: the token, but not the instance's gh folder.
     environment: gitEnvironmentWithToken(host.environment, secrets),
     bunExecutable: host.execPath,
   });

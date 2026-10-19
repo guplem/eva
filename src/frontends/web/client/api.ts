@@ -17,6 +17,7 @@ import type { SetupItem, SetupReport } from "../../../core/projects/repository-s
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type {
@@ -53,6 +54,7 @@ export type {
   EvaSetupState,
   ProgressStep,
   SessionEvent,
+  ListedSession,
   SessionRecord,
   SetupItem,
   SetupReport,
@@ -113,7 +115,7 @@ export const api = {
   answerDeviceRequest: (id: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
-  sessions: (): Promise<SessionRecord[]> => request("GET", "/api/sessions"),
+  sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
   newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "assistant", model }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>

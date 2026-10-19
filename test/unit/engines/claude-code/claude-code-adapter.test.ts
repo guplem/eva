@@ -200,6 +200,7 @@ describe("mapSdkMessages", () => {
         costUsd: 0.013937600000000001,
         // The context of the last call (8 + 25,062 + 295), not the sum over the turn's two calls.
         contextTokens: 25_365,
+        contextWindow: 200_000,
       },
     ]);
   });
@@ -219,6 +220,51 @@ describe("mapSdkMessages", () => {
   test("a turn with no usage at all has no context", async () => {
     const events = await collect([resultOf("new-turn-with-tool")]);
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: null });
+  });
+
+  test("the context window is the one of the model that answered, not of a helper model", async () => {
+    const lines = loadCapture("new-turn-with-tool").filter(isMessage);
+    const result = lines.find((line) => line.type === "result")!;
+    const main = result.modelUsage["claude-haiku-4-5-20251001"]!;
+    lines.splice(lines.indexOf(result), 1, {
+      ...result,
+      modelUsage: { "claude-helper": { ...main, contextWindow: 50_000 }, "claude-haiku-4-5-20251001": main },
+    });
+    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
+  });
+
+  test("a synthetic message with no usage keeps the model of the last real call", async () => {
+    const lines = loadCapture("new-turn-with-tool").filter(isMessage);
+    const lastAssistant = lines.findLast((line) => line.type === "assistant")!;
+    const result = lines.find((line) => line.type === "result")!;
+    const main = result.modelUsage["claude-haiku-4-5-20251001"]!;
+    const noUsage = { ...lastAssistant.message.usage, input_tokens: 0, cache_read_input_tokens: 0 };
+    lines.splice(lines.indexOf(lastAssistant) + 1, 0, {
+      ...lastAssistant,
+      uuid: "00000000-0000-0000-0000-000000000000",
+      message: {
+        ...lastAssistant.message,
+        model: "<synthetic>",
+        content: [],
+        usage: { ...noUsage, cache_creation_input_tokens: 0 },
+      },
+    });
+    lines.splice(lines.indexOf(result), 1, {
+      ...result,
+      modelUsage: { "claude-helper": { ...main, contextWindow: 50_000 }, "claude-haiku-4-5-20251001": main },
+    });
+    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
+  });
+
+  test("a turn whose model the usage does not name has no context window, so Eva guesses no limit", async () => {
+    const result = resultOf("new-turn-with-tool");
+    if (result.type !== "result") throw new Error("The capture has no result.");
+    const main = result.modelUsage["claude-haiku-4-5-20251001"]!;
+    const two = { ...result, modelUsage: { a: main, b: { ...main, contextWindow: 50_000 } } };
+    expect((await collect([two])).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: null });
+    // With one model only, that model answered.
+    const one = { ...result, modelUsage: { a: main } };
+    expect((await collect([one])).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
   });
 
   test("an error result becomes one turn_failed with the engine's own errors", async () => {
@@ -311,6 +357,7 @@ describe("mapSdkMessages", () => {
         // The cost is a running total, so the last result holds the whole turn.
         costUsd: 0.003285575,
         contextTokens: 18_853,
+        contextWindow: 1_000_000,
       },
     ]);
   });

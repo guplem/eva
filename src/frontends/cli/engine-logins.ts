@@ -1,5 +1,5 @@
 /**
- * The engine logins of an extra instance, for `eva setup`. An extra instance keeps its
+ * The engine logins of an instance, for `eva setup`. Each instance keeps its
  * Claude, pi and gh logins in its own folders (lesson 111), so the person logs in to each
  * engine once more for it. Setup prints each step and never runs a login itself: a login
  * reads the terminal, and the process seam captures the child's input and output.
@@ -47,9 +47,8 @@ export function engineLoginSteps(state: EngineLoginState, folders: EngineFolders
   ];
   if (steps.length === 0) return [];
   return [
-    "This Eva is not in the default home. So it is a second Eva on this computer, for another person.",
-    "It keeps its own logins for its engines: the AI tools Claude Code and pi, and the GitHub tool gh.",
-    "So it never uses another person's account or subscription.",
+    "This Eva keeps her own logins for her engines: the AI tools Claude Code and pi, and the GitHub tool gh.",
+    "So she never uses your own logins, or another Eva's account or subscription.",
     `Open another ${platform === "win32" ? "PowerShell window" : "terminal"}, and log in there. Setup keeps going while you do:`,
     ...steps,
   ];

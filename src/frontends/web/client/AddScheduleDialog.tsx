@@ -55,10 +55,8 @@ export function AddScheduleDialog(props: { onClose: () => void; onSaved: () => v
   );
 
   return (
-    <div
-      className="dialog-backdrop schedule-backdrop"
-      onClick={(event) => event.target === event.currentTarget && onClose()}
-    >
+    // A tap beside the sheet does not close it, so a slip never loses a half-written schedule.
+    <div className="dialog-backdrop schedule-backdrop">
       <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Add schedule">
         <h2>Add schedule</h2>
         <form

@@ -38,3 +38,7 @@ The vault step of the web page's progress list only says to run `eva setup`. A p
 - **The result text** goes through the redactor, since a result is not an error.
 - **The GitHub browser login** stays in `eva setup`. The issue accepts a pasted token on the page.
 - **A token saved in the vault card** reloads the settings, so the list shows at once.
+- **The cleanup** removes only the entries that a failed git step added. A refused folder that holds files is never touched: those files belong to someone else, such as `eva setup` in a terminal.
+- **The push offer** stays hidden while a vault setup runs: a new vault has a commit and no remote for a moment before its own push.
+- **A typed address** loses its login part in a result, since a password of another service has no shape that the redactor knows.
+- **A list that fails** links to the GitHub step, where the person replaces a wrong token.

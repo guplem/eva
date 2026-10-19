@@ -1521,7 +1521,8 @@ test.describe("on a phone", () => {
   test("the composer sits at the bottom of the screen, just above the tab bar", async ({ page }) => {
     await logIn(page);
     await newChat(page);
-    const box = await page.getByLabel("Message").first().boundingBox();
+    // The whole composer card, not only its text box: the chips and the Send button sit under the text.
+    const box = await page.locator(".composer-box").first().boundingBox();
     const tabs = await page.getByRole("navigation", { name: "Main" }).boundingBox();
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBeGreaterThan((tabs?.y ?? 0) - 40);
   });

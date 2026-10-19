@@ -729,21 +729,38 @@ test("the page brings its own fonts, so it needs no other server", async ({ page
   await expect(page.locator("html")).toHaveCSS("font-family", /^Quicksand/);
 });
 
-test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
-  let polls = 0;
-  // The demo server has no Tailscale, so the browser plays the server's side of the device login.
-  await page.route("**/api/login/device", (route) =>
-    route.fulfill({
+/**
+ * The demo server has no Tailscale, so the browser plays the server's side of the device login.
+ * Returns the number of requests that the page made.
+ */
+async function routeDeviceLogin(
+  page: Page,
+  request: { id: string; code: string; approvers: string[]; state?: "pending" | "denied" | "expired" },
+): Promise<() => number> {
+  let asked = 0;
+  await page.route("**/api/login/device", (route) => {
+    asked += 1;
+    return route.fulfill({
       status: 201,
       json: {
-        id: "request-1",
-        code: "K7QX",
+        id: request.id,
+        code: request.code,
         account: "owner@example.com",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        approvers: ["Telegram", "terminal", "Eva page"],
+        approvers: request.approvers,
       },
-    }),
-  );
+    });
+  });
+  if (request.state !== undefined) {
+    const state = request.state;
+    await page.route(`**/api/login/device/${request.id}`, (route) => route.fulfill({ json: { state } }));
+  }
+  return () => asked;
+}
+
+test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
+  let polls = 0;
+  await routeDeviceLogin(page, { id: "request-1", code: "K7QX", approvers: ["Telegram", "terminal", "Eva page"] });
   await page.route("**/api/login/device/request-1", async (route) => {
     polls += 1;
     if (polls < 2) {
@@ -755,10 +772,63 @@ test("device login: a browser shows its code and how to allow it, then opens", a
     await route.fulfill({ json: { state: "allowed" } });
   });
   await page.goto("/");
-  await expect(page.getByText("Confirm this device")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Confirm this device" })).toBeVisible();
+  await expect(page.getByText("K7QX", { exact: true })).toBeVisible();
   await expect(page.getByText("eva devices allow K7QX")).toBeVisible();
   await expect(page.getByText("Or tap Allow in your Telegram chat")).toBeVisible();
   await expect(page.getByText("Or tap Allow on an Eva page")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Waiting. This page opens by itself.");
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+});
+
+test("device login: the page lists only the ways that can allow the code", async ({ page }) => {
+  await routeDeviceLogin(page, { id: "request-3", code: "T4NB", approvers: ["terminal"], state: "pending" });
+  await page.goto("/");
+  await expect(page.getByText("eva devices allow T4NB")).toBeVisible();
+  await expect(page.getByText(/Telegram/)).toHaveCount(0);
+  await expect(page.getByText(/another device/)).toHaveCount(0);
+});
+
+test("device login: Copy code puts the code on the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await routeDeviceLogin(page, { id: "request-4", code: "H8RW", approvers: ["Telegram"], state: "pending" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Copy code" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("H8RW");
+});
+
+test("device login: the token form opens from a quiet link, and the code comes back", async ({ page }) => {
+  const asked = await routeDeviceLogin(page, {
+    id: "request-5",
+    code: "W2KD",
+    approvers: ["terminal"],
+    state: "pending",
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Log in with the token instead" }).click();
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+  await page.getByRole("button", { name: "Use the code instead" }).click();
+  await expect(page.getByText("eva devices allow W2KD")).toBeVisible();
+  // The page goes back to the same request, so the code that the person may have typed stays valid.
+  expect(asked()).toBe(1);
+});
+
+test("device login: the page still opens by itself while the token form shows", async ({ page, context, baseURL }) => {
+  let allowed = false;
+  await routeDeviceLogin(page, { id: "request-7", code: "F6GJ", approvers: ["Telegram"] });
+  await page.route("**/api/login/device/request-7", async (route) => {
+    if (!allowed) {
+      await route.fulfill({ json: { state: "pending" } });
+      return;
+    }
+    await context.addCookies([{ name: "eva_token", value: token, url: baseURL ?? "" }]);
+    await route.fulfill({ json: { state: "allowed" } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Log in with the token instead" }).click();
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+  allowed = true;
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
 
@@ -771,23 +841,26 @@ test("device login: with no approver, the page says why and asks for the token",
   await expect(page.getByLabel(/Token/)).toBeVisible();
 });
 
-test("device login: a denied request offers to ask again", async ({ page }) => {
-  await page.route("**/api/login/device", (route) =>
-    route.fulfill({
-      status: 201,
-      json: {
-        id: "request-2",
-        code: "M3PT",
-        account: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-        approvers: ["terminal"],
-      },
-    }),
-  );
-  await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
+test("device login: a denied request looks sad, and offers to ask again", async ({ page }) => {
+  await routeDeviceLogin(page, { id: "request-2", code: "M3PT", approvers: ["terminal"], state: "denied" });
   await page.goto("/");
   await expect(page.getByRole("status")).toHaveText("The request was denied.");
+  await expect(page.locator(".mk")).toHaveClass(/e-sad/);
   await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
+});
+
+test("device login: an expired request looks skeptical, and Ask again asks for a new code", async ({ page }) => {
+  const asked = await routeDeviceLogin(page, {
+    id: "request-6",
+    code: "P9LC",
+    approvers: ["terminal"],
+    state: "expired",
+  });
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("The request expired. Ask again, or log in with the token.");
+  await expect(page.locator(".mk")).toHaveClass(/e-skeptic/);
+  await page.getByRole("button", { name: "Ask again" }).click();
+  await expect.poll(asked).toBe(2);
 });
 
 test("Settings: the progress list shows each step, and keeps the last Test result", async ({ page }) => {

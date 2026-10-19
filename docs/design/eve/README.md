@@ -312,7 +312,6 @@ The reference shows some things that the web client does not have today. Each im
 | Copy action on answers                                                              | None.                                                                                                        |
 | Context ring with a share of the limit                                              | A token count only.                                                                                          |
 | Permission card inside the chat, with "Allow in this chat"                          | A global dialog with Allow and Deny, which does not say which chat asks.                                     |
-| Project clones as cards with branch and change state                                | Clone names in an accordion. The branch shows in the header.                                                 |
 | Schedules with a day line, words for repeats, last result and an on/off toggle      | One text line per schedule. No toggle, no last result.                                                       |
 | Settings with a section list                                                        | One long page.                                                                                               |
 | Messages that wait while offline                                                    | A failed send puts the text back in the composer.                                                            |

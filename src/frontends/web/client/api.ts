@@ -10,7 +10,7 @@ import type {
   DeviceSummary,
 } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
-import type { CloneDetails } from "../../../core/projects/clones.ts";
+import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
@@ -159,7 +159,7 @@ export const api = {
     request("PUT", `/api/projects/${encodeURIComponent(projectId)}/details`, { version, ...details }),
   saveProjectFile: (projectId: string, version: string, text: string): Promise<ProjectFile> =>
     request("PUT", `/api/projects/${encodeURIComponent(projectId)}/file`, { version, text }),
-  newClone: (projectId: string): Promise<CloneDetails> =>
+  newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>

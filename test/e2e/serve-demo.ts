@@ -31,7 +31,7 @@ sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
 sandbox.write(
   vault,
   "Projects/2025-03-02-1015-example-app/AGENTS.md",
-  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n`,
+  `---\ncreated: 2025-03-02T10:15\nstatus: active\ntags: [web]\nrepos:\n  - ${appRemote.remote}\n  - https://github.com/example-owner/example-app\n---\n# Example app\n\nA web app for the client portal.\n`,
 );
 sandbox.write(
   vault,

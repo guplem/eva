@@ -145,10 +145,11 @@ function EvaApp({
     })();
   }, [linkIsMissing, linkedChatId, showError, onLinkedChatOpened]);
 
-  // The conflict can end elsewhere, such as a pick from Telegram: the dialog then has nothing to show.
+  // The conflict can end elsewhere, such as with a pick from Telegram: the dialog then has nothing to show.
   const syncStatus = syncState?.status;
   useEffect(() => {
-    if (syncStatus !== "conflict") setConflictsOpen(false);
+    // Not on "offline": a failed pull leaves the conflict open, and the picks still work.
+    if (syncStatus === "ok") setConflictsOpen(false);
   }, [syncStatus]);
 
   const hasDialogOnTop = approvals.length > 0 || deviceRequests.length > 0;

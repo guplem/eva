@@ -695,6 +695,31 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("the composer's chips set the engine and model of a chat before its first message only", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const model = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "haiku" } });
+    expect(model.status).toBe(200);
+    expect((await json<{ modelAlias: string }>(model)).modelAlias).toBe("haiku");
+    const engine = await call(`/api/sessions/${session.id}/engine`, {
+      method: "POST",
+      body: { engine: "claude-code" },
+    });
+    expect(engine.status).toBe(200);
+    expect((await json<{ engine: string }>(engine)).engine).toBe("claude-code");
+    // The demo has no pi program.
+    const missingEngine = await call(`/api/sessions/${session.id}/engine`, { method: "POST", body: { engine: "pi" } });
+    expect(missingEngine.status).toBe(409);
+    const badModel = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "big" } });
+    expect(badModel.status).toBe(400);
+
+    await eva.sessions.send(session.id, "one");
+    const late = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "opus" } });
+    expect(late.status).toBe(409);
+    expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+  });
+
   test("searches projects", async () => {
     const projects = await json<{ id: string }[]>(await call("/api/projects?text=example&status=active"));
     expect(projects.map((project) => project.id)).toEqual(["2025-03-02-1015-example-app"]);

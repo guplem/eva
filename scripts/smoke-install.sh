@@ -34,5 +34,6 @@ docker run --rm -v "$release:/release:ro" -v "$bad:/bad:ro" ubuntu:24.04 bash -e
   # A second run finds git and Eva, and installs Eva again.
   curl -fsSL file:///release/install.sh | sh
   test "$(grep -c "Added by the Eva installer" "$HOME/.profile")" = 1
+  test "$(grep -c "Added by the Eva installer" "$HOME/.bashrc")" = 1
 '
 echo "The install script passed the smoke test."

@@ -17,6 +17,10 @@ Copy-Item (Join-Path $release 'eva-windows-x64.exe'), (Join-Path $release 'insta
 Set-Content -Path (Join-Path $bad 'SHA256SUMS') -Value ('0' * 64 + '  eva-windows-x64.exe')
 
 $target = Join-Path $root 'local\Programs\Eva\eva.exe'
+$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+$originalPath = $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$originalKind = if ($null -ne $originalPath) { $key.GetValueKind('Path') } else { $null }
+$key.Close()
 $server = Start-Process python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', $root -PassThru -WindowStyle Hidden
 try {
   Start-Sleep -Seconds 3
@@ -26,7 +30,9 @@ try {
   $env:EVA_INSTALL_SKIP_SETUP = '1'
 
   $env:EVA_INSTALL_BASE_URL = 'http://127.0.0.1:8765/bad'
-  irm 'http://127.0.0.1:8765/bad/install.ps1' | iex
+  # The script prints its errors instead of throwing them, so the test reads what it printed.
+  $output = irm 'http://127.0.0.1:8765/bad/install.ps1' | iex 6>&1 | Out-String
+  if ($output -notmatch 'does not match its checksum') { throw "The bad release did not stop on its checksum: $output" }
   if (Test-Path $target) { throw 'The install went on with a wrong checksum.' }
 
   $env:EVA_INSTALL_BASE_URL = 'http://127.0.0.1:8765/release'
@@ -45,8 +51,9 @@ try {
   Write-Host 'The install script passed the smoke test.'
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
-  # The runner keeps no user PATH change after the job, but a local run should not keep one.
-  $cleaned = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne (Split-Path $target) }) -join ';'
-  [Environment]::SetEnvironmentVariable('Path', $cleaned, 'User')
+  # A local run gives back the user PATH exactly as it was, with its registry kind.
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  if ($null -eq $originalPath) { $key.DeleteValue('Path', $false) } else { $key.SetValue('Path', $originalPath, $originalKind) }
+  $key.Close()
   Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

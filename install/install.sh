@@ -33,36 +33,44 @@ asset_name() {
   esac
 }
 
+# Under `curl | sh`, the input is the rest of this script: a package manager that reads its
+# input would eat it. sudo asks for the password on the terminal, not on the input.
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then
-    "$@"
+    "$@" </dev/null
   elif command -v sudo >/dev/null 2>&1; then
-    sudo "$@"
+    sudo "$@" </dev/null
   else
     fail "git needs an administrator to install. Install git, then run this command again."
   fi
 }
 
-install_git() {
-  if command -v git >/dev/null 2>&1; then
-    return 0
-  fi
-  say "Installing git. It needs administrator rights, so it can ask for your password."
+# Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl.
+install_tools() {
+  missing=""
+  for tool in git curl; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  [ -n "$missing" ] || return 0
+  say "Installing$missing. It needs administrator rights, so it can ask for your password."
+  # $missing is a list of words on purpose.
   if command -v apt-get >/dev/null 2>&1; then
-    as_root apt-get update -qq
-    as_root apt-get install -y -qq git
+    as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $missing
   elif command -v dnf >/dev/null 2>&1; then
-    as_root dnf install -y git
+    as_root dnf install -y $missing
   elif command -v pacman >/dev/null 2>&1; then
-    as_root pacman -S --noconfirm --needed git
+    as_root pacman -S --noconfirm --needed $missing
   elif command -v zypper >/dev/null 2>&1; then
-    as_root zypper --non-interactive install git
+    as_root zypper --non-interactive install $missing
   elif command -v apk >/dev/null 2>&1; then
-    as_root apk add git
+    as_root apk add $missing
   else
-    fail "this system has no package manager that the script knows. Install git, then run this command again."
+    fail "this system has no package manager that the script knows. Install$missing, then run this command again."
   fi
-  command -v git >/dev/null 2>&1 || fail "git did not install."
+  for tool in $missing; do
+    command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
+  done
 }
 
 download() {
@@ -87,7 +95,9 @@ sha256_of() {
 
 install_eva() {
   asset="$(asset_name)"
-  temp="$(mktemp -d)"
+  mkdir -p "$bin_folder"
+  # The download folder sits beside eva, so the last move is a rename on one file system.
+  temp="$(mktemp -d "$bin_folder/.eva-install.XXXXXX")"
   trap 'rm -rf "$temp"' EXIT
   download "$base_url/SHA256SUMS" "$temp/SHA256SUMS"
   download "$base_url/$asset" "$temp/$asset"
@@ -96,9 +106,8 @@ install_eva() {
   [ -n "$expected" ] || fail "the release lists no $asset."
   [ "$(sha256_of "$temp/$asset")" = "$expected" ] ||
     fail "the download does not match its checksum, so nothing was installed."
-  mkdir -p "$bin_folder"
   chmod +x "$temp/$asset"
-  # A running Eva keeps her old file open, so the move is safe while she runs.
+  # A rename swaps the file in one step, and a running Eva keeps her old file open.
   mv -f "$temp/$asset" "$bin_folder/eva"
 }
 
@@ -110,10 +119,15 @@ add_to_path() {
   PATH="$bin_folder:$PATH"
   export PATH
   path_added="yes"
-  # Ubuntu's ~/.profile already adds ~/.local/bin at login. Other systems get one line.
-  if ! grep -qs '\.local/bin' "$HOME/.profile"; then
-    printf '\n# Added by the Eva installer.\nexport PATH="$HOME/.local/bin:$PATH"\n' >>"$HOME/.profile"
-  fi
+  # Ubuntu's ~/.profile already adds ~/.local/bin at login. zsh reads no ~/.profile, and a
+  # ~/.bash_profile makes bash skip it, so each file that a shell reads gets one line.
+  for file in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ "$file" = "$HOME/.profile" ] || [ -e "$file" ]; then
+      if ! grep -qs '\.local/bin' "$file"; then
+        printf '\n# Added by the Eva installer.\nexport PATH="$HOME/.local/bin:$PATH"\n' >>"$file"
+      fi
+    fi
+  done
 }
 
 run_setup() {
@@ -131,7 +145,7 @@ run_setup() {
 
 main() {
   say "Installing Eva."
-  install_git
+  install_tools
   install_eva
   add_to_path
   say "Installed Eva $("$bin_folder/eva" version) in $bin_folder."

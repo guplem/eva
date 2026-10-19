@@ -25,7 +25,11 @@ function Install-Eva {
       throw 'git is missing, and this computer has no winget to install it. Install git from https://git-scm.com/downloads, then run this command again.'
     }
     Write-Host 'Installing git. Windows can ask for permission.'
-    winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
+    $wingetArguments = @('install', '--id', 'Git.Git', '-e', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements')
+    # An install for this user needs no administrator, so it also works over SSH. When the package
+    # has no such install, winget fails, and the install for every user follows.
+    winget @wingetArguments --scope user
+    if ($LASTEXITCODE -ne 0) { winget @wingetArguments }
     # This window keeps its old PATH, so read the new one.
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -51,19 +55,35 @@ function Install-Eva {
       throw 'The download does not match its checksum, so nothing was installed.'
     }
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
-    # A running Eva holds her file. Windows cannot overwrite it, but it can rename it.
-    Remove-Item -Force "$target.old" -ErrorAction SilentlyContinue
-    if (Test-Path $target) { Move-Item -Force $target "$target.old" }
+    # A running Eva holds her file. Windows cannot overwrite it, but it can rename it. Her
+    # supervisor can still run `.old` from her last update: then the old file gets a unique name,
+    # which her next update removes (asideName in src/core/updates/self-update.ts).
+    if (Test-Path $target) {
+      $aside = "$target.old"
+      try { Remove-Item -Force $aside -ErrorAction Stop } catch [System.Management.Automation.ItemNotFoundException] { } catch {
+        $aside = "$target.old-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+      }
+      Move-Item -Force $target $aside
+    }
     Move-Item $download $target
   } finally {
     Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
   }
 
   # Setup starts the service with this PATH, so the service finds eva, uv and the harnesses.
-  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-  if (-not $userPath) { $userPath = '' }
-  if (($userPath -split ';') -notcontains $folder) {
-    [Environment]::SetEnvironmentVariable('Path', (($userPath.TrimEnd(';') + ';' + $folder).TrimStart(';')), 'User')
+  # The raw registry value keeps entries such as %USERPROFILE%\bin as they are.
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  try {
+    $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    if (($userPath -split ';') -notcontains $folder) {
+      $kind = if ($null -ne $key.GetValue('Path')) { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+      $key.SetValue('Path', (($userPath.TrimEnd(';') + ';' + $folder).TrimStart(';')), $kind)
+      # A change through .NET tells open programs, such as Explorer, to read the new PATH.
+      [Environment]::SetEnvironmentVariable('EVA_INSTALL_PATH_CHANGED', '1', 'User')
+      [Environment]::SetEnvironmentVariable('EVA_INSTALL_PATH_CHANGED', $null, 'User')
+    }
+  } finally {
+    $key.Close()
   }
   if (($env:Path -split ';') -notcontains $folder) { $env:Path = "$env:Path;$folder" }
 

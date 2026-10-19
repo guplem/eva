@@ -952,10 +952,14 @@ describe("web routes", () => {
   test("schedules: add, list, refuse an invalid one, and remove", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     expect((await call("/api/schedules", { method: "POST", body: entry })).status).toBe(201);
-    const listed = await json<{ schedules: { schedule: { id: string }; nextRun: string }[] }>(
-      await call("/api/schedules"),
-    );
-    expect(listed.schedules.map((view) => [view.schedule.id, view.nextRun])).toEqual([["morning", "2026-10-15T07:30"]]);
+    const listed = await json<{
+      schedules: { schedule: { id: string }; nextRun: string; lastRun: unknown }[];
+      timeZone: string;
+    }>(await call("/api/schedules"));
+    expect(listed.schedules.map((view) => [view.schedule.id, view.nextRun, view.lastRun])).toEqual([
+      ["morning", "2026-10-15T07:30", null],
+    ]);
+    expect(listed.timeZone).toBe("UTC");
     const invalid = await call("/api/schedules", { method: "POST", body: { id: "x" } });
     expect(invalid.status).toBe(400);
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(204);

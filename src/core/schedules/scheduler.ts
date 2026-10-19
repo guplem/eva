@@ -74,6 +74,17 @@ export interface SchedulerOptions {
 export interface ScheduleView {
   readonly schedule: Schedule;
   readonly nextRun: string | null;
+  /** The slot of the last firing and whether it failed, or null before the first firing. */
+  readonly lastRun: { readonly slot: string; readonly failed: boolean } | null;
+}
+
+export interface ScheduleList {
+  readonly schedules: ScheduleView[];
+  readonly problems: readonly string[];
+  /** The zone of every slot, so a front end can draw today in the instance's time. */
+  readonly timeZone: string;
+  /** The wall-clock time now, as a slot. */
+  readonly now: string;
 }
 
 const modelAliases: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
@@ -105,13 +116,19 @@ export class Scheduler {
     return () => this.listeners.delete(listener);
   }
 
-  /** Every valid schedule with its next run, and the problems of the file. */
-  list(): { schedules: ScheduleView[]; problems: readonly string[] } {
+  /** Every valid schedule with its next and last run, and the problems of the file. */
+  list(): ScheduleList {
     const now = wallClockOf(this.options.now(), this.options.timeZone);
     const definitions = readScheduleDefinitions(this.definitionsPath);
     return {
-      schedules: definitions.schedules.map((schedule) => ({ schedule, nextRun: nextSlot(schedule, now) })),
+      schedules: definitions.schedules.map((schedule) => ({
+        schedule,
+        nextRun: nextSlot(schedule, now),
+        lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
+      })),
       problems: definitions.problems,
+      timeZone: this.options.timeZone,
+      now,
     };
   }
 
@@ -259,8 +276,14 @@ export class Scheduler {
   private async fire(schedule: Schedule, slot: string): Promise<void> {
     const model = modelAliases.find((alias) => alias === schedule.model) ?? "default";
     // The chat comes first: when it cannot start, the slot does not count as fired, and the next check tries again.
-    const sessionId = schedule.prompt === null ? null : this.options.chats.createChat(schedule.name, model);
-    this.state.update(schedule.id, { lastFired: slot });
+    let sessionId: string | null;
+    try {
+      sessionId = schedule.prompt === null ? null : this.options.chats.createChat(schedule.name, model);
+    } catch (error) {
+      this.recordResult(schedule.id, slot, true);
+      throw error;
+    }
+    this.state.update(schedule.id, { lastFired: slot, lastResult: { slot, failed: false } });
     await this.emit({
       kind: "schedule_fired",
       scheduleId: schedule.id,
@@ -277,9 +300,17 @@ export class Scheduler {
           scheduleId: schedule.id,
           reason: errorText(error),
         });
+        this.recordResult(schedule.id, slot, true);
         this.options.reportFiring?.(schedule, errorText(error));
       });
     }
+  }
+
+  private recordResult(scheduleId: string, slot: string, failed: boolean): void {
+    const current = this.state.peek(scheduleId)?.lastResult;
+    // A chat that cannot start fails at every check, so the file is written only on a change.
+    if (current?.slot === slot && current.failed === failed) return;
+    this.state.update(scheduleId, { lastResult: { slot, failed } });
   }
 
   /** True when a listener showed the event to the person. A listener that throws showed nothing. */

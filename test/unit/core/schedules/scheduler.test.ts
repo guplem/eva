@@ -261,9 +261,12 @@ describe("Scheduler", () => {
             model: null,
           },
           nextRun: "2026-07-01T07:30",
+          lastRun: null,
         },
       ],
       problems: [],
+      timeZone: "Europe/Madrid",
+      now: "2026-07-01T07:00",
     });
     await scheduler.tick();
     expect(scheduler.remove("morning")).toBe(true);
@@ -337,6 +340,73 @@ describe("Scheduler", () => {
       { name: "Morning", failure: null },
       { name: "Morning", failure: "the engine is gone" },
     ]);
+  });
+
+  describe("the last run in the list", () => {
+    const lastRun = (scheduler: Scheduler): unknown => scheduler.list().schedules[0]?.lastRun;
+
+    test("is null until the schedule runs, and a good run gives its slot", async () => {
+      writeSchedules([morning]);
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      expect(lastRun(scheduler)).toBeNull();
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(lastRun(scheduler)).toEqual({ slot: "2026-07-01T07:30", failed: false });
+    });
+
+    test("a slot that the setup card skips is not a run", async () => {
+      writeSchedules([morning]);
+      clock = new Date("2026-07-01T04:00:00Z");
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:00:00Z"); // 07:00 in Madrid
+      writeSchedules([{ ...morning, at: "06:59" }]);
+      await scheduler.tick();
+      await scheduler.tick();
+      expect(chats).toEqual([]);
+      expect(lastRun(scheduler)).toBeNull();
+    });
+
+    test("a chat that does not start is a failed run, and the next good run replaces it", async () => {
+      writeSchedules([morning]);
+      failingChats.add("Morning");
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      expect(lastRun(scheduler)).toEqual({ slot: "2026-07-01T07:30", failed: true });
+      failingChats.clear();
+      await scheduler.tick();
+      expect(lastRun(scheduler)).toEqual({ slot: "2026-07-01T07:30", failed: false });
+    });
+
+    test("a prompt that fails after its chat started is a failed run, and it survives a restart", async () => {
+      writeSchedules([morning]);
+      failingSends = true;
+      const scheduler = createScheduler();
+      await scheduler.tick();
+      clock = new Date("2026-07-01T05:30:00Z");
+      await scheduler.tick();
+      await Bun.sleep(0);
+      expect(lastRun(scheduler)).toEqual({ slot: "2026-07-01T07:30", failed: true });
+      expect(lastRun(createScheduler())).toEqual({ slot: "2026-07-01T07:30", failed: true });
+    });
+
+    test("a state file from before the last run reads as no run yet", () => {
+      writeSchedules([morning]);
+      mkdirSync(join(folder, "state"), { recursive: true });
+      writeFileSync(
+        join(folder, "state", "schedules-state.json"),
+        JSON.stringify({
+          version: 1,
+          schedules: {
+            morning: { firstSeen: "2026-06-01T00:00", lastFired: "2026-06-30T07:30", announced: null },
+          },
+        }),
+      );
+      expect(lastRun(createScheduler())).toBeNull();
+    });
   });
 
   test("a prompt that fails after the chat started goes to the log, and the slot counts as fired", async () => {

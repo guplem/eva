@@ -83,6 +83,7 @@ describe("describeEvent", () => {
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
         contextTokens: null,
+        contextWindow: null,
       },
       { ...base, kind: "message_received", text: "Hi", origin: "api" },
       { ...base, kind: "session_deleted" },

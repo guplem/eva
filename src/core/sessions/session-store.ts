@@ -32,6 +32,8 @@ const turnSchema = z.object({
   omittedSteps: z.number().int().min(0).catch(0),
   /** How full the context was after the turn, or null when the engine did not say. */
   contextTokens: z.number().int().min(0).nullable().catch(null),
+  /** The size of the context window of the model that answered, or null when the engine did not say. */
+  contextWindow: z.number().int().positive().nullable().catch(null),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),

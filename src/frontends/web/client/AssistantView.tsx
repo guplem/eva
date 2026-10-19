@@ -52,6 +52,7 @@ export function AssistantView({
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   const chat = {
     tree,
+    onChanged,
     tasks: tasksOf(
       live.tasks,
       tree.map((session) => session.id),

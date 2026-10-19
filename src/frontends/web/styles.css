@@ -1003,53 +1003,9 @@ textarea {
   resize: vertical;
 }
 
-.tasks {
-  width: 300px;
-  box-shadow: inset 1px 0 0 var(--line);
-  padding: 12px;
-  overflow-y: auto;
-  background: var(--side);
-}
-
-.tasks h2 {
-  font-size: 13px;
-  margin-top: 0;
-}
-
-.tasks h3,
 .dialog h3 {
   font-size: 13px;
   margin: 12px 0 8px;
-}
-
-.chat-details {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 14px;
-}
-
-.chat-details dt {
-  color: var(--muted);
-}
-
-.chat-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.task {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.task .state {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .empty {
@@ -1461,10 +1417,6 @@ textarea {
   .seed-swatch {
     width: 44px;
     height: 44px;
-  }
-
-  .tasks {
-    display: none;
   }
 
   .menu-button,

@@ -556,7 +556,13 @@ ${prompt}`,
           // Record first: a front end that reloads the list on this event must find the turn in it.
           const firstLineTitle = this.recordTurn(
             session,
-            { ...recorded, ...activity, ...storedSteps(steps), contextTokens: payload.contextTokens },
+            {
+              ...recorded,
+              ...activity,
+              ...storedSteps(steps),
+              contextTokens: payload.contextTokens,
+              contextWindow: payload.contextWindow,
+            },
             payload,
             lastText,
           );
@@ -607,7 +613,12 @@ ${prompt}`,
   /** Returns the first-line title when this turn named the chat, or null. */
   private recordTurn(
     session: SessionRecord,
-    turn: { userText: string; answerText: string; contextTokens: number | null } & TurnActivity,
+    turn: {
+      userText: string;
+      answerText: string;
+      contextTokens: number | null;
+      contextWindow: number | null;
+    } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
   ): string | null {
@@ -654,6 +665,7 @@ ${prompt}`,
           answerText: answerParts.join("\n\n"),
           ...activity,
           contextTokens: null,
+          contextWindow: null,
           failure: last,
           lastMessageId: null,
           at,

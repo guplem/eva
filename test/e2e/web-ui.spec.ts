@@ -16,7 +16,11 @@ async function openList(page: Page): Promise<void> {
 
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
-  await page.getByRole("button", { name: "Settings" }).click();
+  // Only the top bar: a chat or a project in the list may also have "Settings" in its name.
+  await page
+    .locator(".topbar")
+    .getByRole("button", { name: /^Settings/ })
+    .click();
   if (section === "Setup") await page.getByRole("button", { name: "See every step" }).click();
   else if (section !== undefined) await page.locator(".section-card", { hasText: section }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
@@ -432,7 +436,7 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await openSettings(page, "Vault and sync");
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
-  await expect(vaultRow).toContainText("✓");
+  await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
   // Log out sits on the Settings home page.
   await openSettings(page);
   await page.getByRole("button", { name: "Log out", exact: true }).click();
@@ -511,11 +515,13 @@ test("Settings: each engine has a Test that runs a tiny real prompt", async ({ p
   await openSettings(page, "AI engines");
   const claudeRow = page.locator(".check-row", { hasText: "Test the Claude Code token" });
   await claudeRow.getByRole("button", { name: "Test" }).click();
-  await expect(claudeRow).toContainText("✓ Claude Code answered:");
+  await expect(claudeRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(claudeRow).toContainText("Claude Code answered:");
   const piRow = page.locator(".check-row", { hasText: "Test pi" });
   await piRow.getByRole("button", { name: "Test" }).click();
   // The demo server has only the scripted Claude Code engine.
-  await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
+  await expect(piRow.getByRole("img", { name: "Failed" })).toBeVisible();
+  await expect(piRow).toContainText("Eva did not find pi on this machine.");
   await openSettings(page, "Connections");
   await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
   await openSettings(page, "Access");
@@ -581,6 +587,51 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+});
+
+test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
+  await logIn(page);
+  const accent = (): Promise<string> =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent"));
+  const before = await accent();
+  await openSettings(page, "Personalize");
+  const colours = page.getByRole("group", { name: "Colour" });
+  await expect(colours.getByRole("button")).toHaveCount(15);
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "true");
+  await colours.getByRole("button", { name: "Violet" }).click();
+  await expect(colours.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "false");
+  expect(await accent()).not.toBe(before);
+  await page.getByLabel("Any colour").fill("#123abc");
+  await expect(page.getByText("#123ABC")).toBeVisible();
+  // The address keeps the page, so the reload opens Personalize again.
+  await page.reload();
+  await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");
+});
+
+test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
+  await page.route("**/*", (route) =>
+    route
+      .request()
+      .url()
+      .startsWith(baseURL ?? "")
+      ? route.continue()
+      : route.abort(),
+  );
+  await page.goto("/");
+  // `document.fonts.check` is also true when no face matches, so the test reads each face's status.
+  const loaded = await page.evaluate(async () => {
+    await Promise.all(
+      ["500 14px Quicksand", "400 14px 'IBM Plex Mono'", "500 14px 'IBM Plex Mono'"].map((font) =>
+        document.fonts.load(font),
+      ),
+    );
+    return [...document.fonts]
+      .filter((face) => face.status === "loaded")
+      .map((face) => `${face.family.replaceAll('"', "")} ${face.weight}`);
+  });
+  expect(loaded).toEqual(expect.arrayContaining(["Quicksand 300 700", "IBM Plex Mono 400", "IBM Plex Mono 500"]));
+  await expect(page.locator("html")).toHaveCSS("font-family", /^Quicksand/);
 });
 
 test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
@@ -1369,7 +1420,36 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await expect(page.getByText("Account: person@example.com")).toBeVisible();
   const googleRow = page.locator(".check-row", { hasText: "Test Google" });
   await googleRow.getByRole("button", { name: "Test" }).click();
-  await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+  await expect(googleRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(googleRow).toContainText("Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+});
+
+// Emoji and symbol marks look different on each system and ignore the theme colours (#164).
+const symbolMark = /[\p{Extended_Pictographic}\u2190-\u21ff\u2300-\u23ff\u2460-\u27bf\u2b00-\u2bff]/u;
+
+async function expectNoSymbolMarks(page: Page): Promise<void> {
+  expect(await page.locator("body").innerText()).not.toMatch(symbolMark);
+}
+
+test("each page shows line icons, never an emoji or a symbol mark", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await expect(page.getByRole("button", { name: "Open schedules" }).locator("svg.icon")).toBeVisible();
+  await expectNoSymbolMarks(page);
+  await page.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
+  await expectNoSymbolMarks(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await expect(page.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
+  await expectNoSymbolMarks(page);
+  await openSettings(page, "Setup");
+  await expect(page.getByRole("region", { name: "Progress list" })).toBeVisible();
+  await expectNoSymbolMarks(page);
+  await openSettings(page, "Vault and sync");
+  const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
+  await vaultRow.getByRole("button", { name: "Test" }).click();
+  await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expectNoSymbolMarks(page);
 });
 
 test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {

@@ -118,7 +118,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "devices", section: "access", title: "Devices", words: "browsers log out remove lost phone" },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
-  { item: "appearance", section: "personalize", title: "Appearance", words: "theme dark light density compact" },
+  {
+    item: "appearance",
+    section: "personalize",
+    title: "Appearance",
+    words: "theme dark light density compact colour color seed",
+  },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   { item: "project-folders", section: "personalize", title: "Project folders", words: "roots projects" },

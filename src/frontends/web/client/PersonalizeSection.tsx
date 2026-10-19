@@ -5,6 +5,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, ApiError } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
@@ -38,7 +39,12 @@ function AppearanceCard(): ReactElement {
     saveAppearance(merged);
   };
   return (
-    <Card item="appearance" title="Appearance" description="This browser keeps its own theme and density.">
+    <Card item="appearance" title="Appearance" description="This browser keeps its own colour, theme and density.">
+      <div className="field">
+        <span className="field-label">Colour</span>
+        <span className="field-hint">Pick a colour. Eva builds the whole palette from it.</span>
+        <SeedColourPicker seed={appearance.seed} onPick={(seed) => change({ seed })} />
+      </div>
       <SelectField
         label="Theme"
         value={appearance.theme}

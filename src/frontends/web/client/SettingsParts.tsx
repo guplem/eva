@@ -72,6 +72,15 @@ const stateLabels: Readonly<Record<ProgressStep["state"], string>> = {
   optional: "Optional",
 };
 
+/** The result of a test: a named mark, so a screen reader also hears whether it passed. */
+export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail: string }): ReactElement {
+  return (
+    <>
+      <Icon name={ok ? "check" : "x"} label={ok ? "Passed" : "Failed"} /> {detail}
+    </>
+  );
+}
+
 /** A round mark: a green check, a red "!", or a grey dash. The label names it for a screen reader. */
 export function StatusIcon({
   state,
@@ -80,7 +89,8 @@ export function StatusIcon({
   readonly state: ProgressStep["state"];
   readonly size?: "medium" | "large";
 }): ReactElement {
-  const name = state === "done" ? "check" : state === "missing" ? "alert" : "optional";
+  // The marks of the EVE design: a step to do shows `alert`, and an optional step matches its "Add" button.
+  const name = state === "done" ? "check" : state === "missing" ? "alert" : "plus";
   return (
     <span className={`status-icon ${state} ${size}`} role="img" aria-label={stateLabels[state]}>
       <Icon name={name} />
@@ -161,7 +171,7 @@ export function CheckRow({ name, label }: { name: string; label: string }): Reac
         className={result === null ? "" : result === "running" ? "check-result" : `check-result ${resultClass(result)}`}
       >
         {result === "running" && "Testing…"}
-        {result !== null && result !== "running" && `${result.ok ? "✓" : "✗"} ${result.detail}`}
+        {result !== null && result !== "running" && <TestMark ok={result.ok} detail={result.detail} />}
       </span>
     </div>
   );

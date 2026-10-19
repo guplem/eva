@@ -1,89 +1,172 @@
 /**
- * Small line icons drawn on a 24 px grid. Each takes the text color, so it follows the theme.
- * An icon is decoration: the text beside it carries the meaning, so a screen reader skips it.
+ * The line icons of the web page, copied from the EVE design reference (`const P`).
+ * Emoji look different on each system and ignore the theme, so the page draws its own icons.
  */
 import type { ReactElement } from "react";
 
-export type IconName =
-  | "check"
-  | "alert"
-  | "optional"
-  | "chevron-right"
-  | "chevron-left"
-  | "search"
-  | "setup"
-  | "engines"
-  | "vault"
-  | "connections"
-  | "access"
-  | "personalize"
-  | "updates"
-  | "copy"
-  | "logout"
-  | "home";
-
-const paths: Readonly<Record<IconName, ReactElement>> = {
-  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
-  alert: <path d="M12 6.5v7M12 17v.5" />,
-  optional: <path d="M8 12h8" />,
-  "chevron-right": <path d="M9.5 6l6 6-6 6" />,
-  "chevron-left": <path d="M14.5 6l-6 6 6 6" />,
+const drawings = {
+  chat: <path d="M20.5 12a8 8 0 0 1-11.7 7.1L4 20l1-4.4A8 8 0 1 1 20.5 12z" />,
+  folder: <path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  ),
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />
-      <path d="M16 16l4.5 4.5" />
+      <path d="M20 20l-4.2-4.2" />
     </>
   ),
-  setup: (
+  send: <path d="M12 19V5M6 11l6-6 6 6" />,
+  clip: <path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6" />,
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  x: <path d="M6 6l12 12M18 6L6 18" />,
+  file: (
     <>
-      <path d="M4 6.5l1.5 1.5 3-3M4 12.5l1.5 1.5 3-3" />
-      <path d="M11.5 6.5h8.5M11.5 12.5h8.5M11.5 18.5h8.5" />
-      <circle cx="6" cy="18.5" r="1.5" />
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
     </>
   ),
-  engines: (
+  pen: <path d="M4 20h4L19 9l-4-4L4 16z" />,
+  term: (
     <>
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-      <path d="M10 2.5v3.5M14 2.5v3.5M10 18v3.5M14 18v3.5M2.5 10H6M2.5 14H6M18 10h3.5M18 14h3.5" />
+      <rect x="3" y="4.5" width="18" height="15" rx="3" />
+      <path d="M7 10l3 2.5L7 15M12.5 15H17" />
     </>
   ),
-  vault: <path d="M3.5 7.5a2 2 0 0 1 2-2H10l2 2.5h6.5a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />,
-  connections: (
+  fork: (
     <>
-      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
-      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+      <circle cx="6" cy="5.5" r="2" />
+      <circle cx="18" cy="5.5" r="2" />
+      <circle cx="12" cy="18.5" r="2" />
+      <path d="M6 7.5v1.5a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7.5M12 12v4.5" />
     </>
   ),
-  access: (
+  branch: (
+    <>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="8" r="2" />
+      <path d="M6 8v8M18 10a6 6 0 0 1-6 6H8" />
+    </>
+  ),
+  sync: (
+    <>
+      <path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3" />
+      <path d="M18 3v4h-4M6 21v-4h4" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.3" />
+      <circle cx="12" cy="12" r="1.3" />
+      <circle cx="19" cy="12" r="1.3" />
+    </>
+  ),
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  back: <path d="M15 5l-7 7 7 7" />,
+  bolt: <path d="M13 3L5 13.5h6L10 21l8-10.5h-6z" />,
+  shield: (
+    <>
+      <path d="M12 3l7.5 3v6c0 4.5-3.2 7.8-7.5 9-4.3-1.2-7.5-4.5-7.5-9V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  phone: (
     <>
       <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
-      <path d="M11 18h2" />
+      <path d="M11 18.5h2" />
     </>
   ),
-  personalize: <path d="M12 3.5l2.1 5.4 5.4 2.1-5.4 2.1-2.1 5.4-2.1-5.4-5.4-2.1 5.4-2.1z" />,
-  updates: (
+  laptop: (
     <>
-      <path d="M19.5 12a7.5 7.5 0 0 1-13.2 4.9" />
-      <path d="M4.5 12a7.5 7.5 0 0 1 13.2-4.9" />
-      <path d="M18 3.5v4h-4M6 20.5v-4h4" />
+      <rect x="4.5" y="5" width="15" height="10" rx="1.5" />
+      <path d="M2.5 19h19" />
     </>
   ),
+  alert: (
+    <>
+      <path d="M12 4l9 16H3z" />
+      <path d="M12 10v4M12 17v.01" />
+    </>
+  ),
+  "wifi-off": (
+    <path d="M3 3l18 18M8.5 16a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 5-2.6M14.5 10a10 10 0 0 1 4.5 2.5M2 9a15 15 0 0 1 4-2.6M11 5.6A15 15 0 0 1 22 9" />
+  ),
+  download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
   copy: (
     <>
-      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
-      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
+      <rect x="8" y="8" width="12" height="12" rx="2.5" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
     </>
   ),
-  home: <path d="M4 11l8-7 8 7v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" />,
-  logout: (
+  sun: (
     <>
-      <path d="M14 4.5H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h7" />
-      <path d="M10.5 12h10M17 8.5l3.5 3.5-3.5 3.5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
     </>
   ),
-};
+  moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />,
+  bell: (
+    <>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12l8-8M16 7l2 2M14 9l2 2" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15" rx="3" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </>
+  ),
+  down: <path d="M6 9l6 6 6-6" />,
+  restart: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.3-5.6" />
+      <path d="M4 4v4h4" />
+    </>
+  ),
+} satisfies Record<string, ReactElement>;
 
-export function Icon({ name, className }: { readonly name: IconName; readonly className?: string }): ReactElement {
+export type IconName = keyof typeof drawings;
+
+export const iconNames = Object.keys(drawings) as readonly IconName[];
+
+/**
+ * One line icon in the colour of the text around it.
+ * Give a `label` only when the icon says something that no text next to it says.
+ */
+export function Icon({
+  name,
+  label,
+  className,
+}: {
+  readonly name: IconName;
+  readonly label?: string;
+  readonly className?: string;
+}): ReactElement {
+  const naming = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
   return (
     <svg
       className={className === undefined ? "icon" : `icon ${className}`}
@@ -93,10 +176,9 @@ export function Icon({ name, className }: { readonly name: IconName; readonly cl
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
+      {...naming}
     >
-      {paths[name]}
+      {drawings[name]}
     </svg>
   );
 }

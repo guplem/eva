@@ -1,5 +1,6 @@
 /** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { Icon } from "./icons.tsx";
 import {
   api,
   ApiError,
@@ -20,6 +21,8 @@ import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { isSettingsHash } from "./settings-routes.ts";
 import { SettingsView } from "./SettingsView.tsx";
+import { Visor } from "./Visor.tsx";
+import { stateFaces } from "./visor-faces.ts";
 
 type Screen = "assistant" | "project" | "settings" | "schedules";
 
@@ -278,6 +281,7 @@ function EvaApp(): ReactElement {
   return (
     <div className="app">
       <header className="topbar">
+        <Visor size={28} face={isConnected ? stateFaces.idle : stateFaces.offline} />
         {/* Hidden, not removed, so the mode switch does not move on a phone. */}
         <button
           className="menu-button"
@@ -285,7 +289,7 @@ function EvaApp(): ReactElement {
           style={hasSidebar ? undefined : { visibility: "hidden" }}
           onClick={() => setSidebarOpen((open) => !open)}
         >
-          ☰
+          <Icon name="menu" />
         </button>
         <div className="mode-switch" role="group" aria-label="Mode">
           {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}

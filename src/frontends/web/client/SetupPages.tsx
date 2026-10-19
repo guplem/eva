@@ -10,7 +10,7 @@ import { GitHubCard, TelegramCard } from "./ConnectionsSection.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { DevicesGuide, PhoneAccess } from "./AccessSection.tsx";
 import { Icon } from "./icons.tsx";
-import { RichText, StatusIcon, StatusPill, type SettingsContext } from "./SettingsParts.tsx";
+import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
 import { VaultFolderCard } from "./VaultSection.tsx";
 
 /** Why each step matters, in words for a person who is new to all of this. */
@@ -82,7 +82,7 @@ export function SetupOverview({ context }: { readonly context: SettingsContext }
           <div className="button-row">
             <button className="primary large" onClick={() => context.navigate({ section: "setup", item: next.key })}>
               Continue: {next.title}
-              <Icon name="chevron-right" />
+              <Icon name="back" className="flip" />
             </button>
           </div>
         )}
@@ -125,12 +125,12 @@ function StepLink({
         </span>
         {last !== null && (
           <span className={last.ok ? "check-result ok" : "check-result failed"}>
-            {last.ok ? "✓" : "✗"} Last test: {last.detail}
+            <TestMark ok={last.ok} detail={`Last test: ${last.detail}`} />
           </span>
         )}
       </span>
       <StatusPill state={step.state} />
-      <Icon name="chevron-right" className="chevron" />
+      <Icon name="back" className="chevron flip" />
     </button>
   );
 }
@@ -171,7 +171,7 @@ export function SetupStepPage({
       <div className="step-footer">
         {previous !== undefined ? (
           <button onClick={() => context.navigate({ section: "setup", item: previous.key })}>
-            <Icon name="chevron-left" />
+            <Icon name="back" />
             Back
           </button>
         ) : (
@@ -180,7 +180,7 @@ export function SetupStepPage({
         {next !== undefined ? (
           <button className="primary" onClick={() => context.navigate({ section: "setup", item: next.key })}>
             {step.state === "missing" ? "Skip for now" : "Next step"}
-            <Icon name="chevron-right" />
+            <Icon name="back" className="flip" />
           </button>
         ) : (
           <button className="primary" onClick={() => context.navigate({ section: "setup", item: null })}>
@@ -245,7 +245,7 @@ function StepHeader({
         </div>
         {last !== null && (
           <div className={last.ok ? "check-result ok" : "check-result failed"}>
-            {last.ok ? "✓" : "✗"} Last test: {last.detail}
+            <TestMark ok={last.ok} detail={`Last test: ${last.detail}`} />
           </div>
         )}
         {check !== null && (

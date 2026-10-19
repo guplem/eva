@@ -193,7 +193,7 @@ export function SettingsView({
             aria-current={atHome ? "page" : undefined}
             onClick={() => navigate(settingsHome)}
           >
-            <Icon name="home" />
+            <Icon name="gear" />
             Overview
           </button>
           {settingsSections.map((each) => (
@@ -213,7 +213,7 @@ export function SettingsView({
           <header className="settings-header">
             {!atHome && (
               <button className="ghost back-button" aria-label="Back" onClick={() => navigate(parentRoute(route))}>
-                <Icon name="chevron-left" />
+                <Icon name="back" />
               </button>
             )}
             <h1>{section === null ? "Settings" : section.title}</h1>
@@ -242,7 +242,7 @@ export function SettingsView({
             <div className="settings-notice" role="status">
               <span>{notice}</span>
               <button className="ghost" aria-label="Close the notice" onClick={() => setNotice(null)}>
-                ✕
+                <Icon name="x" />
               </button>
             </div>
           )}
@@ -253,13 +253,13 @@ export function SettingsView({
 }
 
 const sectionIcons: Readonly<Record<SectionId, IconName>> = {
-  setup: "setup",
-  engines: "engines",
-  vault: "vault",
-  connections: "connections",
-  access: "access",
-  personalize: "personalize",
-  updates: "updates",
+  setup: "check",
+  engines: "term",
+  vault: "folder",
+  connections: "globe",
+  access: "phone",
+  personalize: "sun",
+  updates: "download",
 };
 
 /** The state of a section's setup steps: a red count when a step needs the person, a green check when all are done. */
@@ -320,7 +320,7 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
             {next !== undefined ? (
               <button className="primary large" onClick={() => context.navigate({ section: "setup", item: next.key })}>
                 Continue: {next.title}
-                <Icon name="chevron-right" />
+                <Icon name="back" className="flip" />
               </button>
             ) : null}
             <button onClick={() => context.navigate({ section: "setup", item: null })}>See every step</button>
@@ -346,7 +346,7 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
                 </span>
                 <span className="field-hint">{each.summary}</span>
               </span>
-              <Icon name="chevron-right" className="chevron" />
+              <Icon name="back" className="chevron flip" />
             </button>
           ))}
       </div>
@@ -358,7 +358,7 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
         </p>
         <div className="button-row">
           <button onClick={() => void api.logout().then(context.onLoggedOut)}>
-            <Icon name="logout" />
+            <Icon name="key" />
             Log out
           </button>
         </div>
@@ -417,7 +417,7 @@ function SearchResults({
                 <span className="section-card-title">{result.title}</span>
                 <span className="field-hint">{section?.title}</span>
               </span>
-              <Icon name="chevron-right" className="chevron" />
+              <Icon name="back" className="chevron flip" />
             </button>
           </li>
         );

@@ -2,12 +2,13 @@
 
 ## Theme
 
-- Take every color, space, radius, font size and shadow from the tokens at the top of `styles.css`. Write no raw color or pixel size in a component rule.
-- Give each new color token a value in all three theme blocks: `:root`, the dark `@media` block and `:root[data-theme="dark"]`. Keep the two dark blocks equal.
-- Use the state colors for one meaning each. Green (`--color-success`) means done. Red (`--color-danger`) means the person must act. Amber (`--color-warning`) means wait, or take care. Grey (`--color-neutral-soft`) means optional.
-- Show a state with a shape or a word too, never with color alone: `StatusIcon` has a check, a "!" or a dash, and `StatusPill` has a word.
+- Follow the EVE design in `docs/design/eve/README.md`. It owns the colour tokens, the radii, the fonts and the icons.
+- Take every colour from the EVE tokens at the top of `styles.css`, such as `--panel`, `--ink`, `--accent` and `--ok`. Write no raw colour in a component rule.
+- Take each space and text size from the `--space-*` and `--text-*` scale in `styles.css`.
+- Use the state colours for one meaning each. `--ok` means done. `--bad` means the person must act. `--warn` means wait, or take care. `--chip` means optional.
+- Show a state with a shape or a word too, never with colour alone: `StatusIcon` has a check, an alert or a plus, and `StatusPill` has a word.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
-- Draw an icon in `client/icons.tsx`, on its 24 px grid. Never load an icon font or an outside image.
+- Take an icon from `client/icons.tsx`. Its set is the design's set, and a test keeps it so.
 
 ## Settings
 

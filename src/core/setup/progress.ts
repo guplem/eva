@@ -133,7 +133,7 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
     "engine",
     "An AI engine",
     "missing",
-    "For a Claude subscription, run `claude setup-token` on any computer with a browser, and paste the token in Settings or in `eva setup`. For another provider, run `pi` on Eva's computer and type /login.",
+    "For a Claude subscription, press Log in to Claude in Settings, AI engines, on Eva's page. Or run `claude setup-token` on any computer with a browser, and paste the token in Settings or in `eva setup`. For another provider, run `pi` on Eva's computer and type /login.",
     input.defaultEngine,
   );
 }

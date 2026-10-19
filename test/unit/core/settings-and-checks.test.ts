@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
-import { defaultConfig, homePaths } from "../../../src/core/settings/home.ts";
+import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
@@ -707,5 +707,60 @@ describe("the Google setup", () => {
 
   test("the login waits for an OAuth client", () => {
     expect(() => eva.startGoogleLogin()).toThrow("step 3");
+  });
+});
+
+describe("the Claude Code login from the page", () => {
+  const address = "https://claude.com/cai/oauth/authorize?code=true&state=example-state";
+  const token = `sk-ant-oat01-${"x".repeat(80)}`;
+
+  test("runs claude setup-token in this Eva's Claude folder, and saves the token", async () => {
+    const started: { command: readonly string[]; environment: Readonly<Record<string, string>> }[] = [];
+    const withClaude = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { claudeOauthToken: "sk-ant-oat01-old-token-value" },
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/example/claude",
+      startTerminal: (command, options) => {
+        started.push({ command, environment: options.environment });
+        let output = `${address}\r\nPaste code here if prompted >`;
+        const listeners: (() => void)[] = [];
+        return {
+          output: () => output,
+          received: () => output.length,
+          onOutput: (listener) => {
+            listeners.push(listener);
+            return () => undefined;
+          },
+          write: () => {
+            output += `\r\n${token}\r\n`;
+            for (const listener of listeners) listener();
+          },
+          exited: new Promise<number>(() => undefined),
+          stop: () => undefined,
+        };
+      },
+    });
+    try {
+      expect(await withClaude.startClaudeLogin()).toEqual({ url: address });
+      expect(started[0]?.command).toEqual(["/opt/example/claude", "setup-token"]);
+      expect(started[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
+      // The old token must not log claude in: the new login may be another account.
+      expect(started[0]?.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBeUndefined();
+      expect(await withClaude.finishClaudeLogin("example-code#example-state")).toEqual({ restartNeeded: true });
+      expect(loadSecrets(homePaths(home)).claudeOauthToken).toBe(token);
+    } finally {
+      withClaude.stop();
+    }
+  });
+
+  test("says so when this machine has no claude program", async () => {
+    const error = await eva.startClaudeLogin().catch((caught: unknown) => caught);
+    expect(String(error)).toContain("did not find the claude program");
   });
 });

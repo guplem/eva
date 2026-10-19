@@ -1,6 +1,6 @@
 /**
- * Whether each engine has a login, read from its own files. Eva never runs a login herself: a
- * login reads the terminal or opens a browser.
+ * Whether each engine has a login, read from its own files. Most logins read the terminal or open
+ * a browser, so Eva reads their files instead. The Claude login from the page is in `claude-login.ts`.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";

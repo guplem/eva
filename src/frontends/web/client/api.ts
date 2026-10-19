@@ -187,6 +187,10 @@ export const api = {
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
+  startClaudeLogin: (): Promise<{ url: string }> => request("POST", "/api/engines/claude-code/login", {}),
+  /** Takes the code that Claude's page shows after the login. */
+  finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>
+    request("POST", "/api/engines/claude-code/login/finish", { code }),
   startGoogleLogin: (): Promise<{ url: string }> => request("POST", "/api/google/login", {}),
   /** Takes the address that Google sent the browser to, or its code alone. */
   finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>

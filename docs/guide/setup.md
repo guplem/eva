@@ -50,7 +50,13 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 
 Each Eva keeps the logins and settings of her harnesses in her own folder. Your own Claude Code and pi, with their logins, settings and `CLAUDE.md`, stay apart from hers.
 
-**Claude Code**, for a Claude subscription:
+**Claude Code**, for a Claude subscription. You can log in from Eva's page, also on a phone, with no terminal:
+
+1. Open **AI engines** in Settings on Eva's page, and press **Log in to Claude**.
+2. Press **Open Claude's page**. Log in with your own Claude account, and allow the access.
+3. Claude's page shows a code. Copy it, paste it into Eva's page, and press **Finish**. Then press **Restart Eva**.
+
+To log in with a terminal instead:
 
 1. Run `claude setup-token` on any computer with a browser, such as your laptop. Sign in when the browser opens.
    On Eva's computer, if the terminal does not find `claude`, run the command that setup showed after the install.

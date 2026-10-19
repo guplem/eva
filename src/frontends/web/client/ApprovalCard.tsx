@@ -1,6 +1,6 @@
 /**
  * A permission request in the chat that asks: an amber card with Eva's firm face beside it.
- * A phone shows the cards as a bottom sheet over the chat, with full-width buttons.
+ * On a phone, the cards form a bottom sheet at the end of the chat, above the composer, with full-width buttons.
  */
 import { useLayoutEffect, useState, type ReactElement } from "react";
 import type { PendingApproval } from "./api.ts";

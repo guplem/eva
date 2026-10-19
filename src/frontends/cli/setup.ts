@@ -21,7 +21,9 @@ import {
 import {
   engineProgramNames,
   findEngineProgram,
+  findUv,
   installEngine,
+  installUv,
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
@@ -182,7 +184,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
   else if (engine !== "") throw new EvaError("config_invalid", "The engine must be claude-code or pi.");
   // Only a script skips the installs, such as a test or a machine image that brings its own engines.
-  const install = options.interactive ? "" : await ask("installEngines", "Install the missing engines? [Y/n]: ");
+  const install = options.interactive ? "" : await ask("installEngines", "Install the missing engines and uv? [Y/n]: ");
   if (install !== "" && !/^(y(es)?|no?)$/i.test(install))
     throw new EvaError("config_invalid", "The answer to install the engines must be yes or no.");
   // Before the token question, so the person can run `claude setup-token` with the new program.
@@ -543,7 +545,7 @@ async function pickRepository(
 }
 
 /**
- * Installs each engine's missing program, with no question: one path is simpler than a choice.
+ * Installs each engine's missing program, then uv, with no question: one path is simpler than a choice.
  * A failed install gives the steps, and setup goes on.
  */
 async function installEngines(
@@ -579,6 +581,26 @@ async function installEngines(
         ? `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`
         : `For another provider, run \`${piLogin(run, engineFolders, options.platform)}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
     );
+  }
+  await installMissingUv(options);
+}
+
+/** The Google tools and pskill run with uv. Its installer needs no administrator, as the harnesses do. */
+async function installMissingUv(options: SetupOptions): Promise<void> {
+  const inputs: EngineInstallInputs = {
+    runner: options.runner,
+    environment: options.installEnvironment,
+    platform: options.platform,
+    arch: options.arch,
+    homeFolder: options.userHome,
+  };
+  if ((await findUv(inputs)) !== null) return;
+  options.write("Installing uv, for the Google tools.");
+  try {
+    options.write(`Installed uv: ${await installUv(inputs)}.`);
+  } catch (error) {
+    if (!isEvaError(error, "engine_install_failed")) throw error;
+    options.write(`${error.message} Setup goes on without it.`);
   }
 }
 

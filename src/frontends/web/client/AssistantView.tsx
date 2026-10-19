@@ -1,7 +1,8 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ListedSession, type SessionRecord } from "./api.ts";
+import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -12,7 +13,7 @@ import { PhoneListHeader, ShowListButton } from "./MainNav.tsx";
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 interface AssistantViewProps {
-  readonly sessions: readonly SessionRecord[];
+  readonly sessions: readonly ListedSession[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
   readonly onShowList: () => void;
@@ -21,6 +22,8 @@ interface AssistantViewProps {
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
+  /** The sessions whose approvals wait for the person. */
+  readonly approvalSessionIds: readonly string[];
 }
 
 export function AssistantView({
@@ -32,11 +35,18 @@ export function AssistantView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
+  approvalSessionIds,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The model comes first in a new chat, and the chat keeps it (lesson 41).
   const [model, setModel] = useState<ModelAlias>("default");
+  const [query, setQuery] = useState("");
+  const shown = chats.filter((chat) => matchesSearch(chat.title, query));
+  const now = new Date();
+  // The list knows the turns that ran before this page loaded. The events know the newer ones.
+  const isRunning = (sessionId: string): boolean =>
+    sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
@@ -73,29 +83,48 @@ export function AssistantView({
     <div className="layout">
       <nav className={`sidebar has-footer${sidebarOpen ? " open" : ""}`} aria-label="Chats">
         <div className="sidebar-list" ref={listRef}>
-          <h2>Chats</h2>
-          {chats.map((chat) => (
-            <button
-              key={chat.id}
-              className="list-item"
-              aria-current={chat.id === selected?.id}
-              onClick={() => {
-                setSelectedId(chat.id);
-                onNavigate();
-              }}
-            >
-              {/* Hidden from a screen reader: the line below the title already says "schedule". */}
-              {chat.source === "schedule" && (
-                <>
-                  <Icon name="clock" />{" "}
-                </>
-              )}
-              {chat.title}
-              <div className="muted">{chat.source}</div>
+          <div className="chat-list-header">
+            <h2>Chats</h2>
+            {/* "New" is short for the header; the name says what it makes. */}
+            <button className="primary" aria-label="New chat" onClick={() => void newChat()}>
+              <Icon name="plus" /> New
             </button>
+          </div>
+          <label className="chat-search">
+            <Icon name="search" />
+            <input
+              type="search"
+              aria-label="Search chats"
+              placeholder="Search chats"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
+          {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
+            <section key={group} className="chat-group" aria-label={group}>
+              <h3>{group}</h3>
+              {inGroup.map((chat) => (
+                <ChatItem
+                  key={chat.id}
+                  chat={chat}
+                  time={chatTime(timeOf(chat), now)}
+                  state={chatState(
+                    chatTree(chat, sessions).map((session) => session.id),
+                    isRunning,
+                    approvalSessionIds,
+                  )}
+                  isSelected={chat.id === selected?.id}
+                  onSelect={() => {
+                    setSelectedId(chat.id);
+                    onNavigate();
+                  }}
+                />
+              ))}
+            </section>
           ))}
         </div>
-        {/* The controls stay at the bottom, in reach of a thumb. The model comes first (lesson 41). */}
+        {/* The model is picked before the chat starts (lesson 41). It stays here until the composer holds it. */}
         <div className="sidebar-footer">
           <label>
             Model for a new chat
@@ -107,9 +136,6 @@ export function AssistantView({
               ))}
             </select>
           </label>
-          <button className="primary" onClick={() => void newChat()}>
-            New chat
-          </button>
         </div>
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
@@ -204,5 +230,39 @@ function ChatTitle({
         Cancel
       </button>
     </form>
+  );
+}
+
+/** The time the list sorts a chat by: its last turn, or its start. */
+function timeOf(chat: SessionRecord): Date {
+  return new Date(chat.lastTurnAt ?? chat.createdAt);
+}
+
+const stateLabels: Record<NonNullable<ChatState>, string> = { "needs-you": "Needs you", working: "Working" };
+
+/** One chat in the list: the title, the time, one line of the last message, and its state. */
+function ChatItem({
+  chat,
+  time,
+  state,
+  isSelected,
+  onSelect,
+}: {
+  readonly chat: SessionRecord;
+  readonly time: string;
+  readonly state: ChatState;
+  readonly isSelected: boolean;
+  readonly onSelect: () => void;
+}): ReactElement {
+  return (
+    <button className="list-item chat-item" aria-current={isSelected} onClick={onSelect}>
+      <span className="chat-item-title">
+        {chat.source === "schedule" && <Icon name="clock" label="Schedule" />}
+        {chat.title}
+      </span>
+      <span className="chat-item-time">{time}</span>
+      <span className="chat-item-preview">{chatPreview(chat, state)}</span>
+      {state !== null && <span className={`status-pill ${state}`}>{stateLabels[state]}</span>}
+    </button>
   );
 }

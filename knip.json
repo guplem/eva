@@ -8,5 +8,6 @@
     "src/frontends/web/client/main.tsx"
   ],
   "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.ts"],
-  "ignoreExportsUsedInFile": true
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": ["@fontsource-variable/quicksand", "@fontsource/ibm-plex-mono"]
 }

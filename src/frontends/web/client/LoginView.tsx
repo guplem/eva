@@ -151,7 +151,7 @@ function TokenForm({
         }}
       />
       {error !== null && (
-        <span role="alert" style={{ color: "var(--danger)", fontSize: 13 }}>
+        <span role="alert" style={{ color: "var(--bad)", fontSize: 13 }}>
           {error}
         </span>
       )}

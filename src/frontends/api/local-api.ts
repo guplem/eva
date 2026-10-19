@@ -363,7 +363,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
   if (method === "GET" && url.pathname === "/api/sessions")
     return json(
-      withRunState(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps), (id) => eva.sessions.isBusy(id)),
+      withRunState(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps), (id) => eva.sessions.isTurnRunning(id)),
     );
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());

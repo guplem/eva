@@ -264,6 +264,29 @@ describe("a conversation", () => {
     expect(engine.requests.map((request) => request.prompt)).toEqual(["first", "second\n\nthird"]);
   });
 
+  test("a turn runs until its end event, though the chat stays busy for the work after the turn", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    // A front end reads the list again on the end event, so the list must say the turn ended.
+    const atEnd: boolean[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "turn_finished") atEnd.push(manager.isTurnRunning(sessionId), manager.isBusy(sessionId));
+    });
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => engine.requests.length > 0);
+    expect(manager.isTurnRunning(sessionId)).toBe(true);
+    release();
+    await turn;
+    expect(atEnd).toEqual([false, true]);
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
+  });
+
   test("a chat with a gathered message is active before its turn starts, so an update waits (lesson 92)", async () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);

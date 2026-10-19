@@ -652,7 +652,7 @@ describe("routes", () => {
     const turn = eva.sessions.send(session.id, "go");
     try {
       const deadline = Date.now() + 5_000;
-      while (!eva.sessions.isBusy(session.id) && Date.now() < deadline) await Bun.sleep(5);
+      while (!eva.sessions.isTurnRunning(session.id) && Date.now() < deadline) await Bun.sleep(5);
       expect(await runningOf()).toBe(true);
     } finally {
       release();

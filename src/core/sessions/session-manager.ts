@@ -139,6 +139,8 @@ interface PendingBatch {
 
 interface SessionRuntime {
   busy: boolean;
+  /** From the start of a turn to its end event. The busy flag also covers the work after the turn, such as the vault sync. */
+  turnRunning: boolean;
   /** Stops the running turn; null when no turn runs. */
   controller: AbortController | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -264,6 +266,11 @@ export class SessionManager {
 
   isBusy(sessionId: string): boolean {
     return this.runtimes.get(sessionId)?.busy ?? false;
+  }
+
+  /** A front end reads the list again on a turn end event, so this is false before that event goes out. */
+  isTurnRunning(sessionId: string): boolean {
+    return this.runtimes.get(sessionId)?.turnRunning ?? false;
   }
 
   /** Busy, or holding a gathered message whose turn has not started yet. */
@@ -463,19 +470,21 @@ export class SessionManager {
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
 
+    const runtime = this.runtimeOf(sessionId);
     const emit = (payload: EngineEventPayload): void => {
       if (turn.ended) return;
       if (isTurnEnd(payload)) {
         turn.ended = true;
+        runtime.turnRunning = false;
         // Before the event: a front end that reads the tasks after it must not get them back.
         this.forgetTasks(sessionId);
       }
       this.emit(sessionId, payload);
     };
 
-    const runtime = this.runtimeOf(sessionId);
     const controller = new AbortController();
     runtime.controller = controller;
+    runtime.turnRunning = true;
     // A stopped turn waits for no answer any more, so its open questions end now.
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
@@ -567,6 +576,7 @@ ${prompt}`,
     } finally {
       clearTimeout(timeout);
       runtime.controller = null;
+      runtime.turnRunning = false;
       this.forgetTasks(sessionId);
     }
     if (finished === null)
@@ -684,7 +694,7 @@ ${prompt}`,
   private runtimeOf(sessionId: string): SessionRuntime {
     let runtime = this.runtimes.get(sessionId);
     if (runtime === undefined) {
-      runtime = { busy: false, controller: null, timer: null, pending: null };
+      runtime = { busy: false, turnRunning: false, controller: null, timer: null, pending: null };
       this.runtimes.set(sessionId, runtime);
     }
     return runtime;

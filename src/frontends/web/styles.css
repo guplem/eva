@@ -288,28 +288,115 @@ textarea {
 }
 
 /* 100dvh follows the visible height when the phone browser shows or hides its address bar. */
+/* A computer: the nav rail, then the content. A phone: the content, then the tab bar. */
 .app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
 }
 
-.app > .layout,
-.app > .main {
+/* The safe-area insets keep the content clear of the notch when Eva runs from the home screen. */
+.app-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0;
+}
+
+.app-body > .layout,
+.app-body > .main {
   flex: 1;
   min-height: 0;
 }
 
-/* The safe-area insets keep the content clear of the notch when Eva runs from the home screen. */
-.topbar {
+.main-nav {
+  background: var(--side);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px
-    max(16px, env(safe-area-inset-left));
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  gap: 6px;
+  padding: max(18px, env(safe-area-inset-top)) 0 max(18px, env(safe-area-inset-bottom)) env(safe-area-inset-left);
+  box-shadow: inset -1px 0 0 var(--line);
+  overflow-y: auto;
+}
+
+.main-nav-visor {
+  display: grid;
+  margin-bottom: 14px;
+}
+
+.nav-button {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: var(--radius-rail);
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.nav-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.nav-button[aria-current="page"] {
+  background: var(--soft);
+  color: var(--accent-ink);
+}
+
+/* The rail shows only the icon. The name stays for a screen reader, and the title shows it on hover. */
+.nav-label,
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The dark ink stays readable on the yellow in both themes. */
+.nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+  color: oklch(0.2 0.03 70);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.online-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 4px var(--ok-bg);
+  margin-bottom: 8px;
+}
+
+.online-dot.offline {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-bg);
 }
 
 .problem-banner {
@@ -336,43 +423,22 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
-.mode-switch {
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.mode-switch button {
-  border: none;
-  border-radius: 0;
-  padding: 6px 16px;
-}
-
-.mode-switch button[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.topbar .spacer {
-  flex: 1;
-}
-
+/* The list (300 px), the main area, and the inspector, as in the EVE layout. */
 .layout {
   display: grid;
-  grid-template-columns: 280px 1fr auto;
+  grid-template-columns: 300px minmax(0, 1fr) auto;
   min-height: 0;
   position: relative;
 }
 
 .sidebar {
-  border-right: 1px solid var(--line);
+  box-shadow: inset -1px 0 0 var(--line);
   overflow-y: auto;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--panel);
+  background: var(--side);
 }
 
 .sidebar h2 {
@@ -413,13 +479,6 @@ textarea {
   gap: 16px;
   padding: 12px 12px max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
-}
-
-.sidebar-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 /* The size of the EVE design. The colour comes from the text, through currentColor. */
@@ -464,6 +523,7 @@ textarea {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  background: var(--main-gradient);
 }
 
 .main-header {
@@ -654,11 +714,11 @@ textarea {
 }
 
 .tasks {
-  width: 260px;
-  border-left: 1px solid var(--line);
+  width: 300px;
+  box-shadow: inset 1px 0 0 var(--line);
   padding: 12px;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--side);
 }
 
 .tasks h2 {
@@ -967,18 +1027,104 @@ textarea {
 
 .menu-button,
 .sidebar-backdrop,
-.chat-info-button {
+.chat-info-button,
+.phone-only {
   display: none;
 }
 
 @media (max-width: 760px) {
-  .layout {
-    grid-template-columns: 1fr;
+  .app {
+    display: flex;
+    flex-direction: column;
   }
 
-  /* A phone's top bar has no room for the brand mark: the mode switch needs it. */
-  .topbar .mk {
+  .app-body {
+    flex: 1;
+    padding-left: env(safe-area-inset-left);
+  }
+
+  /* The tab bar: the same four destinations, under the content, in reach of a thumb. */
+  .main-nav {
+    order: 1;
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    padding: 8px max(6px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
+      max(6px, env(safe-area-inset-left));
+    background: color-mix(in oklch, var(--side) 90%, transparent);
+    box-shadow: inset 0 1px 0 var(--line);
+    overflow: visible;
+  }
+
+  /* The visor and the dot stay on the rail. On a phone, the "Reconnecting…" banner says the same. */
+  .main-nav-visor,
+  .nav-spacer,
+  .online-dot {
     display: none;
+  }
+
+  .nav-button,
+  .nav-button[aria-current="page"] {
+    width: auto;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    border-radius: 0;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .nav-icon {
+    width: 58px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    display: grid;
+    place-items: center;
+  }
+
+  .nav-button[aria-current="page"] .nav-icon {
+    background: var(--soft);
+  }
+
+  .nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .nav-badge {
+    top: -2px;
+    left: 56%;
+    right: auto;
+  }
+
+  .phone-only {
+    display: flex;
+  }
+
+  /* The tab bar holds the bottom inset, so the composer needs none. */
+  .composer {
+    padding-bottom: 12px;
+  }
+
+  /* A toast shows above the tab bar, so it never hides a destination. */
+  .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+
+  /* The menu button and the title share the first line. The actions wrap to the next one. */
+  .main-header .menu-button + h1 {
+    flex-basis: calc(100% - 56px);
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
   }
 
   .sidebar {
@@ -1034,30 +1180,6 @@ textarea {
   .chat-info-button {
     display: inline-block;
   }
-}
-
-/* A pushed prompt can be long, so the card scrolls and never pushes the buttons off a phone screen. */
-.schedule-card {
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-}
-
-.card-fields {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.card-fields dt {
-  font-weight: 600;
-}
-
-.card-fields dd {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .update-warning {

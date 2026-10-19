@@ -24,8 +24,17 @@ The vault step of the web page's progress list only says to run `eva setup`. A p
 - **The template answers:** name, language and topics come from the page. The time zone comes from the saved settings, else from the machine.
 - **Repository name:** the page asks for it, with `vault` as the default.
 - **A failed create or push:** the local vault stays, and `vaultPath` is saved. The step shows done, as in the terminal. The page then offers the push again: a vault with a commit and no remote (`vaultNeedsPush`).
-- **Two clicks at once:** the core runs one vault setup at a time, and refuses a second one (`config_invalid`).
+- **Two clicks at once:** the core runs one vault setup at a time, and refuses a second one with a new code, `vault_setup_busy` (HTTP 409). `config_invalid` gives HTTP 400, which blames the request.
 - **Restart:** the running Eva reads `vaultPath` at start. `restartNeeded` also turns true when the saved `vaultPath` differs from the start's. The restart callout says "Eva uses the changes after a restart."
 - **An empty saved folder** shows the step as missing, so the page offers the clone again.
 - **Routes:** `GET /api/vault/repositories`, `POST /api/vault/clone`, `POST /api/vault/create`, `POST /api/vault/push`. The `/api/vault/` prefix already turns off Bun's idle timeout, which a clone needs.
 - **GitHub API address:** a new `githubApiBaseUrl` option on `EvaOptions`, so a test points it at a fake server.
+
+## Review decisions
+
+- **Option injection:** `isAddress` refuses a leading dash, and git gets `--` before each address. This also fixes `eva setup`.
+- **Local and `file://` addresses stay allowed,** as in `eva setup`. Only the logged-in owner reaches the routes, and that person can already run agents. git refuses `ext::` by default.
+- **A failed clone or template** removes what it wrote, but only in a folder that was empty or missing before. A half `.git` would count as a vault.
+- **The result text** goes through the redactor, since a result is not an error.
+- **The GitHub browser login** stays in `eva setup`. The issue accepts a pasted token on the page.
+- **A token saved in the vault card** reloads the settings, so the list shows at once.

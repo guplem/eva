@@ -259,7 +259,7 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await expect(dialog).toContainText("gh issue create");
   // While the turn waits, its running task shows under the conversation, also on a phone.
   await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
-  // The list shows which chat waits for the person, in a way seen at a glance.
+  // On a phone, the person must see which chat waits for a decision.
   const listed = page.locator(".sidebar .list-item[aria-current='true']");
   await expect(listed.locator(".status-pill")).toHaveText("Needs you");
   await dialog.getByRole("button", { name: "Allow" }).click();
@@ -808,6 +808,9 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
   await openList(page);
   await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
+  // The header stays at the top of the scrolled list, so the click needs no scroll back.
+  expect(await page.locator(".sidebar-list").evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeInViewport();
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
   await page.getByRole("button", { name: "New chat", exact: true }).click();

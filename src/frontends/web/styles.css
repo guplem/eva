@@ -104,6 +104,8 @@
   --ok-bg: oklch(0.95 0.04 150);
   --warn: oklch(0.6 0.14 65);
   --warn-bg: oklch(0.96 0.05 85);
+  /* Darker than --warn: small bold text on --warn-bg needs a contrast of 4.5 to 1. */
+  --warn-ink: oklch(0.45 0.12 65);
   --bad: oklch(0.56 0.19 25);
   --bad-bg: oklch(0.95 0.03 25);
 
@@ -155,6 +157,7 @@
     --ok-bg: oklch(0.3 0.06 150);
     --warn: oklch(0.84 0.13 80);
     --warn-bg: oklch(0.32 0.06 75);
+    --warn-ink: var(--warn);
     --bad: oklch(0.74 0.16 25);
     --bad-bg: oklch(0.32 0.07 25);
     /* A shadow does not show on a dark ground, so dark surfaces get a ring too. */
@@ -183,6 +186,7 @@
   --ok-bg: oklch(0.3 0.06 150);
   --warn: oklch(0.84 0.13 80);
   --warn-bg: oklch(0.32 0.06 75);
+  --warn-ink: var(--warn);
   --bad: oklch(0.74 0.16 25);
   --bad-bg: oklch(0.32 0.07 25);
   --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
@@ -415,13 +419,6 @@ textarea {
   border-top: 1px solid var(--line);
 }
 
-.sidebar-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 /* The size of the EVE design. The colour comes from the text, through currentColor. */
 .icon {
   width: 18px;
@@ -459,10 +456,16 @@ textarea {
   font-size: 12px;
 }
 
+/* The header stays at the top of a long list, so "New" is always in reach. */
 .chat-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-bottom: 4px;
+  background: var(--side);
 }
 
 .sidebar .chat-list-header h2 {
@@ -489,6 +492,15 @@ textarea {
   border-radius: var(--radius-pill);
   padding: 0 14px;
   color: var(--muted);
+}
+
+.chat-search:focus-within {
+  outline: 2px solid var(--accent);
+}
+
+/* The pill around the field shows the focus. */
+.chat-search input:focus {
+  outline: none;
 }
 
 .chat-search input {
@@ -523,12 +535,15 @@ textarea {
   border-radius: var(--radius-card);
 }
 
-.chat-item > span {
+/* Not the pill: its dot glows outside its box. */
+.chat-item-title,
+.chat-item-preview {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .chat-item-title {
+  font-size: 13.5px;
   font-weight: 700;
 }
 
@@ -537,6 +552,7 @@ textarea {
 }
 
 .chat-item-time {
+  align-self: start;
   font-size: 11px;
   color: var(--muted);
 }
@@ -550,7 +566,8 @@ textarea {
 .list-item.chat-item[aria-current="true"] {
   background: var(--panel);
   border-color: transparent;
-  box-shadow: var(--shadow);
+  /* Smaller than --shadow: the list clips a shadow that is wider than its padding. */
+  box-shadow: 0 2px 8px oklch(0.4 0.05 var(--h) / 0.14);
 }
 
 .status-pill {
@@ -585,7 +602,7 @@ textarea {
 
 .status-pill.needs-you {
   background: var(--warn-bg);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .main {

@@ -10,7 +10,7 @@ import {
   type PendingApproval,
   type ScheduleCard,
   type SessionEvent,
-  type SessionRecord,
+  type ListedSession,
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
@@ -45,7 +45,7 @@ export function App(): ReactElement {
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [screen, setScreen] = useState<Screen>("assistant");
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
@@ -314,6 +314,7 @@ function EvaApp(): ReactElement {
           linkedChat={linkedChat}
           onLinkedChatOpened={onLinkedChatOpened}
           onOpenSchedules={() => setScreen("schedules")}
+          approvalSessionIds={approvals.map((approval) => approval.sessionId)}
         />
       )}
       {screen === "project" && (

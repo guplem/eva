@@ -3,30 +3,6 @@
  * docs/design/eve/reference.html, which is the specification: change both together.
  */
 
-/*
- * The visor's colours, from the default seed EVE blue (#2aa8ff). :where() has no specificity,
- * so the seed tokens on :root in styles.css (issue #163) take over with no change here.
- */
-:where(:root) {
-  --h: 245.1;
-  --c: 0.164;
-  --eye: oklch(0.87 min(var(--c), 0.13) var(--h));
-  --glow: oklch(0.74 var(--c) var(--h));
-  --visor: oklch(0.26 0.02 var(--h));
-  --visor2: oklch(0.07 0.01 var(--h));
-  --shell: oklch(1 0 0);
-}
-
-@media (prefers-color-scheme: dark) {
-  :where(:root:not([data-theme="light"])) {
-    --shell: oklch(0.32 0.02 var(--h));
-  }
-}
-
-:where(:root[data-theme="dark"]) {
-  --shell: oklch(0.32 0.02 var(--h));
-}
-
 /* The visor: EVE's black face with two glowing eyes. Sized in em, so one font-size scales it. */
 .mk {
   font-size: 36px;

@@ -1262,9 +1262,12 @@ button.small {
   font-size: 12px;
 }
 
-:is(button.outline, button.soft, button.primary) {
+/* Only the project header keeps its icon and text on one line: other primary buttons, such as the
+   full-width New chat, keep their own look. */
+:is(button.outline, button.soft, .main-header button.primary) {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   font-weight: 600;
 }

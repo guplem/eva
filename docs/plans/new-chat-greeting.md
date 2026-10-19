@@ -24,4 +24,5 @@ A new chat shows only the composer today. The design (`docs/design/eve/`, sectio
 4. **Heading level.** The page title "New chat" is the only `h1`, and the tests rely on it. Decision: the greeting is an `h2` with the size of the design (32 px, 26 px on a phone).
 5. **Time of day.** Decision: "Good morning." from 05:00 to 11:59, "Good afternoon." from 12:00 to 17:59, "Good evening." otherwise. The browser's local time sets it.
 6. **Phone.** The design shows three cards in one column, and a 76 px visor. Decision: CSS hides the fourth card under 760 px, the width where the page becomes the phone layout. Each card is 44 px tall or more.
-7. **Forks.** A fork always starts from an answer, so it never shows the greeting. The greeting shows only in a chat with no parent.
+7. **Project chats.** The suggestions are Assistant work, and Project mode is a plain harness. Decision: only an Assistant chat shows the greeting. A project chat keeps its empty view.
+8. **Forks.** A fork always starts from an answer, so it never shows the greeting. The greeting shows only in a chat with no parent.

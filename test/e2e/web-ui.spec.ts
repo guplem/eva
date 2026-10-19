@@ -304,8 +304,11 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
   await page.request.post("/api/schedules", { data: { id, name: "Pushed by someone", at: "07:30", text: "Hi." } });
   const dialog = page.getByRole("dialog", { name: "Setup card" });
   await expect(dialog).toContainText("New schedule: Pushed by someone");
-  page.once("dialog", (question) => void question.accept());
+  // The card asks in the page, not with a browser question.
   await dialog.getByRole("button", { name: "Remove schedule" }).click();
+  await dialog.getByRole("button", { name: "Keep" }).click();
+  await dialog.getByRole("button", { name: "Remove schedule" }).click();
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const listed = (await (await page.request.get("/api/schedules")).json()) as {
     schedules: { schedule: { id: string } }[];
@@ -907,19 +910,33 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
   // No sidebar shows here, so the list button would do nothing.
   await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
-  await page.getByLabel(/^Id/).fill(id);
-  await page.getByLabel("Name").fill(`Walk ${id}`);
-  await page.getByLabel("Time (HH:MM)").fill("7:30");
-  await page.getByLabel("Fixed text").fill("Go for a walk.");
+  // The form opens in a dialog, so it does not fill the page.
+  await expect(page.getByLabel("Time (HH:MM)")).toHaveCount(0);
   await page.getByRole("button", { name: "Add schedule" }).click();
-  await expect(page.getByRole("status").last()).toContainText("no valid time");
-  await page.getByLabel("Time (HH:MM)").fill("07:30");
-  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Walk ${id}`);
+  await form.getByLabel("Time (HH:MM)").fill("7:30");
+  await form.getByRole("button", { name: "Fri" }).click();
+  await form.getByLabel("Fixed text").fill("Go for a walk.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form.getByRole("status")).toContainText("no valid time");
+  await form.getByLabel("Time (HH:MM)").fill("07:30");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
   // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
-  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
-  const row = page.locator(".check-row", { hasText: `Walk ${id}` });
-  await expect(row).toContainText("next:");
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Fridays at 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  await expect(page.getByRole("region", { name: "Today" })).toBeVisible();
+  const row = page.getByRole("listitem", { name: `Walk ${id}` });
+  await expect(row).toContainText("Fridays at 07:30 · next");
+  await expect(row).toContainText("Not run yet");
+  // Remove asks in the page first.
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await row.getByRole("button", { name: "Keep" }).click();
+  await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(row).toHaveCount(0);
   await page.getByRole("button", { name: "Assistant" }).click();
   await openList(page);

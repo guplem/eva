@@ -25,9 +25,14 @@ export function UpdateVersionDialog(props: {
   const dialog = useRef<HTMLDivElement>(null);
   const { onClose } = props;
 
-  // Focus starts on the picked version, so the arrow keys move the pick at once.
+  // Focus starts on the picked version, so the arrow keys move the pick at once. On close, it
+  // goes back to the button that opened the dialog, so a keyboard user keeps their place.
   useEffect(() => {
+    const opener = document.activeElement;
     dialog.current?.querySelector<HTMLElement>("input:checked, button")?.focus();
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
   }, []);
 
   useEffect(() => {
@@ -41,7 +46,7 @@ export function UpdateVersionDialog(props: {
   return (
     <div
       className="dialog-backdrop update-backdrop"
-      // A tap on the scrim closes it; a tap inside it does not.
+      // A click inside the dialog also reaches the scrim, so only a click on the scrim itself closes it.
       onClick={(event) => event.target === event.currentTarget && props.onClose()}
     >
       <div
@@ -58,27 +63,35 @@ export function UpdateVersionDialog(props: {
         {chosen === undefined && (
           <p>Eva {props.update.current ?? "?"} is the newest version. No newer release exists.</p>
         )}
-        <div className="version-list" role="radiogroup" aria-label="Version">
-          {rows.map((row) =>
-            row.installed ? (
+        <div className="version-list">
+          {chosen !== undefined && (
+            // Only the newer versions are choices, so the installed row stays out of the group.
+            <div className="version-choices" role="radiogroup" aria-label="Version">
+              {rows
+                .filter((row) => !row.installed)
+                .map((row) => (
+                  <label key={row.version} className="version-row">
+                    <input
+                      type="radio"
+                      name="update-version"
+                      value={row.version}
+                      checked={row.version === version}
+                      onChange={() => setVersion(row.version)}
+                    />
+                    <VersionRowText version={row.version} day={row.day} headline={row.headline} />
+                    <span className="status-pill live">New</span>
+                  </label>
+                ))}
+            </div>
+          )}
+          {rows
+            .filter((row) => row.installed)
+            .map((row) => (
               <div key={row.version} className="version-row installed">
                 <VersionRowText version={row.version} day={row.day} headline={row.headline} />
                 <span className="status-pill ok">Installed</span>
               </div>
-            ) : (
-              <label key={row.version} className="version-row">
-                <input
-                  type="radio"
-                  name="update-version"
-                  value={row.version}
-                  checked={row.version === version}
-                  onChange={() => setVersion(row.version)}
-                />
-                <VersionRowText version={row.version} day={row.day} headline={row.headline} />
-                <span className="status-pill live">New</span>
-              </label>
-            ),
-          )}
+            ))}
         </div>
         {chosen !== undefined && (
           <>

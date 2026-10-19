@@ -1,4 +1,4 @@
-/** The words and the face of the Updates page, which need no page. */
+/** The words and the face of the Updates page, apart from the components so that unit tests reach them. */
 import type { UpdateStatus } from "./api.ts";
 import { chatGroup, chatTime } from "./chat-list.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";

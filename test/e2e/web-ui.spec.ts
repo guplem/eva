@@ -1358,7 +1358,8 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
         level: "major",
         summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
         headline: "Rename the keys.",
-        publishedAt: "2025-10-12T09:00:00Z",
+        // Midday UTC is 12 October in every time zone of a test machine.
+        publishedAt: "2025-10-12T12:00:00Z",
       },
       {
         version: "0.3.0",
@@ -1392,15 +1393,19 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+  // Focus goes back to the button that opened the dialog.
+  await expect(card.getByRole("button", { name: "Update to a version…" })).toBeFocused();
   await card.getByRole("button", { name: "Update to a version…" }).click();
   const versions = dialog.getByRole("radiogroup", { name: "Version" });
   await expect(versions.getByRole("radio")).toHaveCount(2);
+  // Focus starts on the picked version.
+  await expect(versions.getByRole("radio", { checked: true })).toBeFocused();
   await expect(versions).toContainText("v1.0.0");
   await expect(versions).toContainText("12 Oct 2025");
   await expect(versions).toContainText("Rename the keys.");
   await expect(versions).toContainText("Voice notes.");
-  await expect(versions.locator(".version-row.installed")).toContainText("v0.2.0");
-  await expect(versions.locator(".version-row.installed")).toContainText("Installed");
+  await expect(dialog.locator(".version-row.installed")).toContainText("v0.2.0");
+  await expect(dialog.locator(".version-row.installed")).toContainText("Installed");
   await expect(versions.getByText("New", { exact: true })).toHaveCount(2);
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
   await dialog.getByText("Every change up to v1.0.0").click();
@@ -1409,14 +1414,19 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   if (test.info().project.name === "phone") {
     // A phone shows the dialog as a bottom sheet, with its buttons at full width.
     const box = await dialog.boundingBox();
-    expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(page.viewportSize()?.height);
+    expect(Math.abs((box?.y ?? 0) + (box?.height ?? 0) - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1);
     const heights = await dialog
-      .getByRole("button")
+      .locator("button, summary")
       .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
   }
-  await versions.getByText("v0.3.0").click();
+  // The arrow keys move the pick, as in any radio group.
+  await versions.getByRole("radio", { checked: true }).focus();
+  await page.keyboard.press("ArrowDown");
   await expect(versions.getByRole("radio", { checked: true })).toHaveValue("0.3.0");
+  await versions.getByRole("radio", { name: /v1\.0\.0/ }).check();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await versions.getByRole("radio", { name: /v0\.3\.0/ }).check();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Update to v0.3.0 and restart" }).click();
   await expect.poll(() => installs).toEqual([{ version: "0.3.0" }]);

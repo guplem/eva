@@ -40,13 +40,17 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pickingVersion, setPickingVersion] = useState(false);
-  /** True once the new Eva answers after an install. */
+  /** Only an answer from the new Eva proves the install, so only then does the card look happy. */
   const [restarted, setRestarted] = useState(false);
 
+  // A fresh status says again what waits, so the happy face of an older install ends.
   useEffect(() => {
     api
       .updateStatus()
-      .then(setUpdate)
+      .then((status) => {
+        setUpdate(status);
+        setRestarted(false);
+      })
       .catch((error: unknown) => setNote(errorText(error)));
   }, [config.updates.frequency, config.updates.install]);
 

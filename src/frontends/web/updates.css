@@ -14,14 +14,14 @@
   overflow-y: auto;
   overflow-wrap: anywhere;
   padding: var(--space-6);
-  gap: 14px;
-  box-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
+  gap: var(--space-3);
+  box-shadow: var(--shadow);
 }
 
 .update-version-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .update-version-title h2 {
@@ -34,7 +34,8 @@
   margin: 0;
 }
 
-.version-list {
+.version-list,
+.version-choices {
   display: flex;
   flex-direction: column;
 }
@@ -43,13 +44,20 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px 14px;
-  padding: var(--space-3) 10px;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
   font-size: var(--text-sm);
 }
 
-.version-row + .version-row {
+.version-list .version-row {
   box-shadow: inset 0 1px 0 var(--line);
+}
+
+/* The rows sit in two boxes: the choices, then the installed version. Only the very first row has no line. */
+.version-list > .version-row:first-child,
+.version-list > .version-choices:first-child > .version-row:first-child,
+.version-choices:has(> .version-row:last-child input:checked) + .version-row {
+  box-shadow: none;
 }
 
 label.version-row {
@@ -60,9 +68,16 @@ label.version-row {
 /* The radio stays for the keyboard and screen readers. The row shows the choice. */
 .version-row input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* The phone rule gives each input 44 px; this one covers its row instead. */
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   opacity: 0;
-  width: 1px;
-  height: 1px;
+  cursor: pointer;
 }
 
 .version-row:has(input:checked) {
@@ -96,6 +111,11 @@ label.version-row {
   color: inherit;
 }
 
+/* The "New" pill has the fill of a picked row, so it takes the panel colour there to keep its shape. */
+.version-row:has(input:checked) .status-pill.live {
+  background: var(--panel);
+}
+
 .version-row .status-pill {
   grid-column: 3;
   grid-row: 1;
@@ -109,6 +129,7 @@ label.version-row {
 
 .update-changes summary {
   cursor: pointer;
+  width: fit-content;
   color: var(--accent-ink);
   font-weight: 600;
   font-size: var(--text-sm);
@@ -116,7 +137,7 @@ label.version-row {
 
 .release-summary {
   white-space: pre-wrap;
-  max-height: 40vh;
+  max-height: 40dvh;
   overflow-y: auto;
   margin-top: var(--space-2);
   font-size: var(--text-sm);
@@ -126,7 +147,7 @@ label.version-row {
   display: flex;
   flex-direction: row-reverse;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .update-version-actions button.primary {
@@ -156,11 +177,10 @@ label.version-row {
     max-width: none;
     max-height: calc(100dvh - 24px);
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+    padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
   }
 
-  /* The handle of a bottom sheet. */
+  /* The grab handle says that the sheet came up from the bottom. */
   .dialog.update-version::before {
     content: "";
     flex: none;
@@ -172,7 +192,20 @@ label.version-row {
   }
 
   .update-version-title h2 {
-    font-size: 18px;
+    font-size: var(--text-lg);
+  }
+
+  /* A tap target, as each button is. */
+  .update-changes summary {
+    /* A list item keeps the arrow that a flex box drops. */
+    display: list-item;
+    min-height: 44px;
+    line-height: 44px;
+  }
+
+  /* The sheet scrolls already. A second scroll area inside it traps a finger. */
+  .release-summary {
+    max-height: none;
   }
 
   /* The buttons of a sheet stack at full width. */

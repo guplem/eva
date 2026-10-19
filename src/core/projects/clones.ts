@@ -120,13 +120,21 @@ export async function describeClone(
   try {
     const head = await runner.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], options);
     if (head.exitCode === 0) branch = head.stdout.trim();
-    const status = await runner.run(["git", "status", "--porcelain"], options);
+    // No index refresh, so no index.lock: a timeout kill would leave the lock and block the agent's git (lesson 81).
+    const status = await runner.run(
+      ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
+      options,
+    );
     if (status.exitCode === 0) changes = status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
+  } catch {
+    // No git: the clone still shows, without the missing detail.
+  }
+  try {
     const view = await runner.run(["gh", "pr", "view", "--json", "number", "--jq", ".number"], options);
     const number = Number.parseInt(view.stdout.trim(), 10);
     if (view.exitCode === 0 && Number.isSafeInteger(number)) pullRequest = number;
   } catch {
-    // No git or no gh: the clone still shows, without the missing detail.
+    // No gh: the clone still shows, without its pull request.
   }
   return { ...clone, branch, pullRequest, changes };
 }

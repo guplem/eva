@@ -217,15 +217,17 @@ export function subscribeToEvents(
     // A retry that the timer started can run after the page closed the stream, such as at a logout.
     if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
-    socket.addEventListener("open", () => {
+    const opened = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
+    socket = opened;
+    opened.addEventListener("open", () => {
       onConnectionChange(true);
     });
-    socket.addEventListener("message", (message) => {
+    opened.addEventListener("message", (message) => {
       onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard | DeviceLoginEvent);
     });
-    socket.addEventListener("close", () => {
-      if (closed) return;
+    opened.addEventListener("close", () => {
+      // A socket that Try now replaced closes late, and must not start a second retry.
+      if (closed || socket !== opened) return;
       onConnectionChange(false);
       retryTimer = setTimeout(connect, 2_000);
     });
@@ -238,10 +240,12 @@ export function subscribeToEvents(
       socket?.close();
     },
     retryNow: () => {
-      // Only a waiting retry moves: an open or opening socket needs no second one.
-      if (retryTimer === undefined) return;
+      if (socket?.readyState === WebSocket.OPEN) return;
+      // An address that left the network can hang while it opens: start again instead of waiting.
+      const stale = socket;
       clearTimeout(retryTimer);
       connect();
+      stale?.close();
     },
   };
 }

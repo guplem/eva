@@ -111,7 +111,7 @@ function NoteConflictCard({
         <Visor size={36} face={stateFaces.conflict} />
         <div>
           <strong>{name} changed here and on the remote</strong>
-          <div className="hint">
+          <div className="field-hint">
             {conflict.path === name ? "" : `${conflict.path}. `}Eva kept both. Pick the one to keep.
           </div>
         </div>
@@ -120,7 +120,9 @@ function NoteConflictCard({
         <Version title="This machine" text={mine} rows={comparison.mine} />
         <Version title="The remote" text={theirs} rows={comparison.theirs} />
       </div>
-      {conflict.picked !== null && <div className="hint">Picked: {pickLabels[conflict.picked].toLowerCase()}.</div>}
+      {conflict.picked !== null && (
+        <div className="field-hint">Picked: {pickLabels[conflict.picked].toLowerCase()}.</div>
+      )}
       <div className="conflict-picks" role="group" aria-label={conflict.path}>
         {(["mine", "theirs", "both"] as const).map((choice) => (
           <button
@@ -134,7 +136,7 @@ function NoteConflictCard({
           </button>
         ))}
       </div>
-      <div className="hint">
+      <div className="field-hint">
         {conflict.kind === "uncommitted"
           ? "Keep theirs leaves this machine's edit in git's stash. "
           : "Git keeps both versions either way. "}
@@ -158,7 +160,7 @@ function Version({
     <div className="conflict-version">
       <div className="label">{title}</div>
       {text === null ? (
-        <div className="hint">No text to show: this side deleted the note, or it is not a short text file.</div>
+        <div className="field-hint">No text to show: this side deleted the note, or it is not a short text file.</div>
       ) : (
         <div className="diff">
           {rows.map((row, index) =>

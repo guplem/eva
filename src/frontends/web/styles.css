@@ -416,17 +416,17 @@ textarea {
 .notices {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .notice {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   border-radius: 18px;
-  padding: 10px 12px 10px 16px;
-  font-size: 13px;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
   background: var(--warn-bg);
   color: var(--ink);
   overflow-wrap: anywhere;
@@ -452,30 +452,24 @@ textarea {
 
 .notice > button {
   flex: none;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .problem-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .offline-note,
 .conflict-head {
   display: flex;
-  gap: 14px;
+  gap: var(--space-4);
   align-items: center;
 }
 
-.offline-note .hint,
-.note-conflicts .hint {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .offline-note {
-  padding: 6px 4px 0 8px;
+  padding: var(--space-1) var(--space-1) 0 var(--space-2);
 }
 
 .narrow-only {
@@ -1045,7 +1039,7 @@ textarea {
   margin-top: 12px;
 }
 
-.settings .seed-custom label {
+.seed-custom label {
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -1208,12 +1202,12 @@ textarea {
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
   border-radius: 20px;
   background: var(--ink);
   color: var(--bg);
-  font-size: 13px;
+  font-size: var(--text-sm);
   box-shadow: 0 16px 40px -12px oklch(0.1 0.03 var(--h) / 0.5);
 }
 
@@ -1229,7 +1223,7 @@ textarea {
 
 .toast button {
   flex: none;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .toast .toast-close {
@@ -1237,7 +1231,7 @@ textarea {
   background: none;
   color: inherit;
   opacity: 0.8;
-  padding: 4px;
+  padding: var(--space-1);
   display: grid;
 }
 
@@ -1245,14 +1239,14 @@ textarea {
 .note-conflicts {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .conflict-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--radius-card);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -1262,12 +1256,12 @@ textarea {
 .conflict-versions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .conflict-version .label {
-  margin-bottom: 4px;
-  font-size: 11px;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1275,7 +1269,7 @@ textarea {
 }
 
 .diff {
-  font: 400 12px/1.6 var(--mono);
+  font: 400 var(--text-xs)/1.6 var(--mono);
   border-radius: 14px;
   background: var(--chip);
   max-height: 320px;
@@ -1283,7 +1277,7 @@ textarea {
 }
 
 .diff div {
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   white-space: pre;
   /* A long line scrolls sideways: its highlight must reach its end. */
   width: max-content;
@@ -1302,7 +1296,7 @@ textarea {
 .conflict-picks {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dialog.wide {
@@ -1549,4 +1543,880 @@ textarea {
   flex-direction: column;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+   Settings: the space and text scale of its pages, on top of the EVE tokens
+   ========================================================================== */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+}
+
+:root[data-density="compact"] {
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 14px;
+  --space-6: 18px;
+}
+
+/* An icon sits beside the words of its button. */
+:where(.settings-shell) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* A quiet button: no fill until the pointer is on it. */
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.large {
+  padding: 10px 18px;
+  font-size: var(--text-md);
+}
+
+/* A button that reads as a link, for a way out of a guided step. */
+button.link-button {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--accent-ink);
+  padding: 4px 0;
+  text-decoration: underline;
+}
+
+/* The design has only a "back" chevron, so "next" is the same drawing, turned. */
+.icon.flip {
+  transform: scaleX(-1);
+}
+/* ==========================================================================
+   Shared parts: cards, pills, status marks, callouts, fields
+   ========================================================================== */
+.card {
+  background: var(--panel);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* A long Windows path or URL has no break points. */
+  overflow-wrap: anywhere;
+  scroll-margin-top: var(--space-4);
+  transition: box-shadow 400ms;
+}
+
+/* A search result or a link points at this card for a moment. */
+.card.flash {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.card-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.card h2 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.card-description {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.pill.done {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.pill.missing {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.status-icon .icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.6;
+}
+
+.status-icon.large {
+  width: 48px;
+  height: 48px;
+}
+
+.status-icon.large .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.status-icon.done {
+  background: var(--ok);
+  color: var(--panel);
+}
+
+.status-icon.missing {
+  background: var(--bad);
+  color: var(--panel);
+}
+
+.callout {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.callout.success {
+  background: var(--ok-bg);
+}
+
+.callout.warning {
+  background: var(--warn-bg);
+}
+
+.callout.danger {
+  background: var(--bad-bg);
+}
+
+.callout ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+
+.callout-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.callout-action span {
+  flex: 1;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field.grow {
+  flex: 1 1 14em;
+}
+
+.field-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* A field and its buttons on one row; on a phone, the buttons go below. */
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.inline-form > input {
+  flex: 1 1 14em;
+  min-width: 0;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.check-row .check-label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.check-result {
+  flex-basis: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  font-size: var(--text-sm);
+}
+
+.check-result.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.check-result.failed {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.secret-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.secret-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* The numbered steps of a guide: big round numbers, so a person sees where they are. */
+.guide-steps {
+  list-style: none;
+  counter-reset: guide;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.guide-steps > li {
+  counter-increment: guide;
+  position: relative;
+  padding-left: 40px;
+  min-height: 28px;
+  line-height: 1.5;
+}
+
+/* A block inside a step, such as a command or a field, sits below the step's text. */
+.guide-steps > li > :is(div, ul, label, section) {
+  margin-top: var(--space-2);
+}
+
+.guide-steps > li::before {
+  content: counter(guide);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--soft);
+  color: var(--soft-ink);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.guide-steps h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.command-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
+.command-line code {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-md);
+}
+
+.code-block {
+  display: block;
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.save-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ==========================================================================
+   Settings: the shell, the side list, the header and the search
+   ========================================================================== */
+.settings-main {
+  overflow: hidden;
+}
+
+.settings-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 248px 1fr;
+}
+
+.settings-nav {
+  background: var(--side);
+  padding: var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.nav-item {
+  justify-content: flex-start;
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  padding: 9px 12px;
+  border-radius: var(--radius-input);
+  text-align: left;
+}
+
+.nav-item[aria-current="page"],
+.nav-item[aria-current="page"]:hover {
+  background: var(--soft);
+  color: var(--soft-ink);
+  font-weight: 600;
+}
+
+.settings-nav-label {
+  flex: 1;
+}
+
+.nav-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.nav-mark .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.6;
+}
+
+.nav-mark.missing {
+  background: var(--bad);
+  color: var(--panel);
+}
+
+.nav-mark.done {
+  color: var(--ok);
+}
+
+.settings-content {
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6) var(--space-2);
+  max-width: 880px;
+  width: 100%;
+}
+
+.settings-header h1 {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.back-button {
+  display: none;
+  padding: 6px;
+}
+
+.search-field {
+  flex: 0 1 300px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: none;
+  box-shadow: var(--shadow);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.search-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+}
+
+.search-field input:focus-visible {
+  box-shadow: none;
+}
+
+.settings-page {
+  padding: var(--space-3) var(--space-6) var(--space-8);
+  max-width: 880px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-notice {
+  position: sticky;
+  bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  margin: auto var(--space-6) var(--space-3);
+  max-width: 832px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-input);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+
+.settings-notice span {
+  flex: 1;
+}
+
+.settings-notice button {
+  color: inherit;
+}
+
+/* ==========================================================================
+   Settings: the home page
+   ========================================================================== */
+.hero {
+  border: 2px solid transparent;
+}
+
+.hero.missing {
+  border-color: var(--bad);
+  background: linear-gradient(var(--bad-bg), var(--panel) 70%);
+}
+
+.hero.done {
+  border-color: var(--ok);
+  background: linear-gradient(var(--ok-bg), var(--panel) 70%);
+}
+
+.hero h2 {
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-1);
+}
+
+.hero p {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+}
+
+.progress-bar {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.progress-segment {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+.progress-segment.done {
+  background: var(--ok);
+}
+
+.progress-segment.missing {
+  background: var(--bad);
+}
+
+.section-grid,
+.search-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section-card {
+  width: 100%;
+  height: 100%;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.section-card:hover:not(:disabled) {
+  background: var(--panel);
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-input);
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.section-icon .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.section-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.chevron {
+  align-self: center;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   Settings: the setup list and a step's page
+   ========================================================================== */
+.progress-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.progress-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.setup-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.step-link {
+  width: 100%;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-left: 4px solid var(--line);
+  border-radius: var(--radius-input);
+  background: var(--panel);
+  text-align: left;
+}
+
+.step-link.done {
+  border-left-color: var(--ok);
+}
+
+.step-link.missing {
+  border-left-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.step-link-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.step-link-title {
+  font-weight: 600;
+}
+
+.step-number {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.stepper-dot {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.stepper-dot .icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.6;
+}
+
+.stepper-dot.done {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--panel);
+}
+
+.stepper-dot.done:hover:not(:disabled) {
+  background: var(--ok);
+}
+
+.stepper-dot.missing {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.stepper-dot[aria-current="step"] {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.step-header {
+  flex-direction: row;
+  align-items: flex-start;
+  border-top: 4px solid var(--line);
+}
+
+.step-header.done {
+  border-top-color: var(--ok);
+}
+
+.step-header.missing {
+  border-top-color: var(--bad);
+}
+
+.step-header-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.step-header h2 {
+  font-size: var(--text-xl);
+}
+
+.step-header p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.step-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* ==========================================================================
+   Settings on a phone: the cards are the way in, and each page has Back
+   ========================================================================== */
+@media (max-width: 760px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    display: none;
+  }
+
+  .back-button {
+    display: inline-flex;
+    min-width: 44px;
+  }
+
+  .settings-header {
+    padding: var(--space-4) var(--space-4) var(--space-2);
+  }
+
+  .settings-header h1 {
+    font-size: var(--text-lg);
+  }
+
+  .search-field {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .search-field input {
+    min-height: 42px;
+  }
+
+  .settings-page {
+    padding: var(--space-2) var(--space-4) var(--space-8);
+  }
+
+  .settings-notice {
+    margin: auto var(--space-3) var(--space-3);
+  }
+
+  .card {
+    padding: var(--space-4);
+  }
+
+  .step-header {
+    flex-direction: column;
+  }
+
+  .stepper-dot {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 760px) {
+  .mode-switch button {
+    padding: 6px 12px;
+  }
+
+  /* The round mark already shows the state, and the row needs its width for the title. */
+  .step-link .pill {
+    display: none;
+  }
+}
+
+.card h3 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md);
 }

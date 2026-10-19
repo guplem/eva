@@ -55,7 +55,7 @@ export function ProblemNotices({
             </span>
             <div>
               <strong>Your message stays in the box</strong>
-              <div className="hint">Eva cannot take it now. Send it again when she is back.</div>
+              <div className="field-hint">Eva cannot take it now. Send it again when she is back.</div>
             </div>
           </div>
         </>

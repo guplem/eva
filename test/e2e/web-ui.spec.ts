@@ -733,7 +733,7 @@ function textEvent(sessionId: string, text: string): string {
 /** Passes the event stream through, and keeps each connection so a test can drop it. */
 async function routeEvents(page: Page): Promise<WebSocketRoute[]> {
   const sockets: WebSocketRoute[] = [];
-  await page.routeWebSocket(/\/api\/events$/, (socket) => {
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     socket.connectToServer();
     sockets.push(socket);
   });
@@ -836,7 +836,7 @@ test("a new message of a running turn replaces the shown one, and the older one 
 
 test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
-  await page.routeWebSocket(/\/api\/events$/, (socket) => {
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     const server = socket.connectToServer();
     // The first connection loses the approval event, as a phone does while it sleeps.
     if (sockets.length === 0) {

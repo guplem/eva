@@ -11,6 +11,8 @@ interface ProjectPageProps {
   readonly clones: readonly CloneDetails[] | null;
   /** The root chats of each clone, by clone path. */
   readonly chatsOf: (clone: CloneDetails) => readonly SessionRecord[];
+  /** Whether a chat waits for a yes or a no from the person. */
+  readonly needsYou: (chat: SessionRecord) => boolean;
   readonly error: string | null;
   readonly onBackToList: () => void;
   readonly onDetails: () => void;
@@ -24,6 +26,7 @@ export function ProjectPage({
   project,
   clones,
   chatsOf,
+  needsYou,
   error,
   onBackToList,
   onDetails,
@@ -89,6 +92,7 @@ export function ProjectPage({
                 key={clone.path}
                 clone={clone}
                 chats={chatsOf(clone)}
+                needsYou={needsYou}
                 now={now}
                 onOpenChat={(chat) => onOpenChat(clone, chat)}
                 onNewChat={() => onNewChat(clone)}
@@ -105,11 +109,12 @@ interface CloneCardProps {
   readonly clone: CloneDetails;
   readonly chats: readonly SessionRecord[];
   readonly now: Date;
+  readonly needsYou: (chat: SessionRecord) => boolean;
   readonly onOpenChat: (chat: SessionRecord) => void;
   readonly onNewChat: () => void;
 }
 
-function CloneCard({ clone, chats, now, onOpenChat, onNewChat }: CloneCardProps): ReactElement {
+function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: CloneCardProps): ReactElement {
   return (
     <section className="card clone-card" aria-label={`Clone ${clone.name}`}>
       <div className="clone-head">
@@ -127,6 +132,7 @@ function CloneCard({ clone, chats, now, onOpenChat, onNewChat }: CloneCardProps)
         <button key={chat.id} className="clone-chat" onClick={() => onOpenChat(chat)}>
           <Icon name="chat" />
           <span className="clone-chat-title">{chat.title}</span>
+          {needsYou(chat) && <span className="status-pill needs-you">Needs you</span>}
           <span className="muted">{chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}</span>
         </button>
       ))}

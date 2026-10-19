@@ -125,6 +125,7 @@
   --radius-composer: 28px;
   --radius-dialog: 28px;
   --radius-sheet: 30px;
+  --sheet-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
   --radius-rail: 18px;
   --radius-input: 14px;
 

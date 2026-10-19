@@ -5,6 +5,8 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type SessionRecord } from "./api.ts";
+import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
+import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer } from "./Composer.tsx";
 import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
@@ -30,6 +32,8 @@ interface ConversationProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly onChanged: () => Promise<void>;
+  /** A branch shows its own requests, so a fork that waits shows the card in its own column. */
+  readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
 }
 
 /** Deletes the chat and its forks in every front end, after a confirm. */
@@ -57,7 +61,7 @@ export function DeleteChatButton({
   );
 }
 
-export function Conversation({ root, sessions, live, onChanged }: ConversationProps): ReactElement {
+export function Conversation({ root, sessions, live, onChanged, approvals }: ConversationProps): ReactElement {
   const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
@@ -88,6 +92,7 @@ export function Conversation({ root, sessions, live, onChanged }: ConversationPr
           parent={sessions.find((candidate) => candidate.id === branch.parentId)}
           live={live}
           onChanged={onChanged}
+          approvals={approvals}
         />
       ))}
     </div>
@@ -99,12 +104,15 @@ function Branch({
   parent,
   live,
   onChanged,
+  approvals,
 }: {
   session: SessionRecord;
   parent: SessionRecord | undefined;
   live: LiveState;
   onChanged: () => Promise<void>;
+  approvals: ConversationProps["approvals"];
 }): ReactElement {
+  const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const [pending, setPending] = useState<string | null>(null);
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
@@ -203,6 +211,9 @@ function Branch({
       ))}
       {pending !== null && <UserMessage text={pending} />}
       {working && <LiveAnswer steps={liveSteps ?? []} mode={session.mode} startedAt={startedAt} />}
+      {waiting.length > 0 && (
+        <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
+      )}
       {running > 0 && (
         <button className="running-tasks ghost" onClick={() => setShownTasks("running")}>
           <Icon name="sync" />

@@ -1,0 +1,493 @@
+/*
+ * The conversation in the EVE style: bubbles, the folded steps, the working line, the actions
+ * and the composer. The section "A conversation at work" of docs/design/eve/reference.html
+ * is the model (classes .msg, .bub, .steps, .stl, .working, .cmp, .box and .send).
+ */
+
+.branches {
+  display: flex;
+  gap: 20px;
+  padding: 20px 28px 0;
+  align-items: stretch;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  background: var(--main-gradient);
+}
+
+/* One branch is the column of the guide. Forks stand side by side, each with its own composer. */
+.branch {
+  min-width: 320px;
+  max-width: 760px;
+  flex: 1;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.branch-title {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.branch-title .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Bubbles */
+.msg {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.msg.me {
+  justify-content: flex-end;
+}
+
+.msg > .mk {
+  margin-top: 2px;
+}
+
+.message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message.answer {
+  background: var(--panel);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail);
+  padding: 13px 16px;
+  box-shadow: var(--shadow);
+  max-width: 86%;
+}
+
+.message.user {
+  background: var(--soft);
+  color: var(--soft-ink);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail) var(--radius-bubble);
+  padding: 13px 16px;
+  max-width: 72%;
+  white-space: pre-wrap;
+}
+
+.who {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+  text-align: right;
+  margin-bottom: 3px;
+}
+
+.message .failed {
+  margin-top: 8px;
+  color: var(--bad);
+  font-size: 13px;
+}
+
+/* Folded steps */
+.step-fold {
+  margin-bottom: 10px;
+}
+
+.steps-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: var(--chip);
+  border-radius: var(--radius-input);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: left;
+}
+
+.steps-line .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.steps-line > span {
+  display: inline-flex;
+  flex: none;
+}
+
+.steps-line > .steps-last {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: block;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 11.5px var(--mono);
+}
+
+.steps-line > .steps-count {
+  margin-right: auto;
+}
+
+.steps-arrow .icon {
+  transition: rotate 0.2s;
+}
+
+.steps-arrow.open .icon {
+  rotate: 180deg;
+}
+
+.steps-line .failed {
+  color: var(--bad);
+}
+
+.step-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
+.step-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  font: 400 11.5px/1.5 var(--mono);
+  color: var(--ink);
+}
+
+.step-list li .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-ink);
+}
+
+.step-list .step-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-list li.failed,
+.step-list li.failed .icon {
+  color: var(--bad);
+}
+
+.step-list li.muted {
+  color: var(--muted);
+}
+
+/* Working */
+.working {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.answer-body + .working,
+.step-fold + .working {
+  margin-top: 8px;
+}
+
+.dots {
+  display: flex;
+  gap: 4px;
+}
+
+.dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+  animation: working-dot 1.3s infinite ease-in-out;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes working-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dots i {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  .steps-arrow .icon {
+    transition: none;
+  }
+}
+
+/* Actions: ghost buttons, with no menu */
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+button.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+button.ghost:hover {
+  background: var(--chip);
+  color: var(--ink);
+}
+
+button.ghost .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.whole-answer {
+  margin-top: 4px;
+  margin-left: -12px;
+}
+
+.running-tasks {
+  align-self: flex-start;
+}
+
+/* Composer */
+.composer {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 10px 0 max(22px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg2) 22px);
+}
+
+.composer-box {
+  background: var(--panel);
+  border-radius: var(--radius-composer);
+  box-shadow: var(--shadow);
+  padding: 14px 12px 10px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.composer-box textarea {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  resize: none;
+  min-height: 24px;
+  max-height: 40vh;
+  field-sizing: content;
+  outline: none;
+}
+
+.composer-box textarea::placeholder {
+  color: var(--muted);
+}
+
+.composer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-row .grow {
+  flex: 1;
+}
+
+.composer .chip,
+.chip-menu .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--chip);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.composer .chip .icon,
+.chip-menu .chip .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.composer .chip.soft {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.chip-menu .chip.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.chip-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.chip-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.chip-menu p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-group-name {
+  width: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.send {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--send-fill);
+  color: var(--on-accent);
+  box-shadow: var(--send-glow);
+}
+
+.send.stop {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+.send:disabled {
+  opacity: 0.55;
+}
+
+@media (max-width: 760px) {
+  .branches {
+    padding: 14px 14px 0;
+  }
+
+  .branch {
+    min-width: calc(100vw - 28px);
+  }
+
+  /* The reference hides the visor on a phone, so the cards get the whole width. */
+  .msg > .mk {
+    display: none;
+  }
+
+  .message.answer {
+    max-width: 100%;
+  }
+
+  .message.user {
+    max-width: 85%;
+  }
+
+  .composer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .composer-box {
+    border-radius: var(--radius-bubble);
+  }
+
+  /* The phone shows only the model, as in the reference. */
+  .chip-engine {
+    display: none;
+  }
+
+  .send {
+    width: 44px;
+    height: 44px;
+  }
+
+  .composer .chip {
+    min-height: 44px;
+    padding: 4px 14px;
+  }
+}

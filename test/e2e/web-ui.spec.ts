@@ -1017,6 +1017,34 @@ test("the chat list shows each chat's time and last answer, and the search filte
   await expect(page.locator(".sidebar .list-item").first()).toBeVisible();
 });
 
+test("a new chat greets with EVE and suggestions, and a tap on one starts the chat", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const greeting = page.locator(".new-chat");
+  await expect(greeting.getByRole("heading", { level: 2 })).toHaveText(/^Good (morning|afternoon|evening)\.$/);
+  await expect(greeting).toContainText("How can I help today?");
+  await expect(greeting.locator(".mk.e-joy")).toBeVisible();
+  const cards = page.getByRole("group", { name: "Suggestions" }).getByRole("button");
+  const settings = (await (await page.request.get("/api/settings")).json()) as {
+    config: { google: { email: string | null } };
+  };
+  const googleReady = settings.config.google.email !== null;
+  await expect(cards.first()).toBeVisible();
+  const visible = await cards.evaluateAll((buttons) => buttons.filter((button) => button.checkVisibility()).length);
+  // A phone shows three suggestions. A computer shows the calendar too, when Google is set up.
+  expect(visible).toBe(test.info().project.name === "phone" || !googleReady ? 3 : 4);
+  await expect(cards.filter({ hasText: "What do I have this week?" })).toHaveCount(googleReady ? 1 : 0);
+  // The cards keep the page within the screen, and each is a touch target.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const box = await cards.first().boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+  await page.getByRole("button", { name: "Summarize yesterday's notes" }).click();
+  await expect(page.locator(".message.user").first()).toContainText("Summarize yesterday's notes");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Summarize yesterday's notes/);
+  await expect(greeting).toHaveCount(0);
+});
+
 test("a new chat shows at the top of a scrolled chat list", async ({ page }) => {
   await logIn(page);
   for (let count = 0; count < 8; count++) await newChat(page);

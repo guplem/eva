@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
-import type { DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
+import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
@@ -401,6 +401,178 @@ describe("device login", () => {
     expect(await json<unknown>(removed)).toEqual({ removed: 2 });
     expect((await call("/api/status", { headers: { cookie: first } })).status).toBe(401);
     expect((await call("/api/status", { headers: { cookie: second } })).status).toBe(401);
+  });
+
+  /** A logged-in page with its event socket open, and the events it gets. */
+  async function openPage(cookie: string): Promise<{ events: DeviceLoginEvent[]; socket: WebSocket }> {
+    const events: DeviceLoginEvent[] = [];
+    const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events?devices`, {
+      headers: { cookie },
+    } as unknown as string[]);
+    openSockets.push(socket);
+    socket.addEventListener("message", (message) => events.push(JSON.parse(String(message.data)) as DeviceLoginEvent));
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve()));
+    return { events, socket };
+  }
+
+  async function until(condition: () => boolean): Promise<void> {
+    for (let tries = 0; tries < 200; tries += 1) {
+      if (condition()) return;
+      await Bun.sleep(10);
+    }
+    throw new Error("The condition did not come true in 2 seconds.");
+  }
+
+  // A socket left open by a failed test would keep the page approver ready for the next test.
+  let openSockets: WebSocket[] = [];
+  afterEach(() => {
+    for (const socket of openSockets) socket.close();
+    openSockets = [];
+  });
+
+  test("removing a device closes its open page, which then stops being an approver", async () => {
+    attachApprover();
+    const phone = deviceCookieOf(await allowedCookie({ "user-agent": "a phone" }));
+    const laptop = deviceCookieOf(await allowedCookie({ "user-agent": "a laptop" }));
+    const phonePage = await openPage(phone);
+    const laptopPage = await openPage(laptop);
+    let phoneClosed = false;
+    phonePage.socket.addEventListener("close", () => {
+      phoneClosed = true;
+    });
+    const listed = await json<{ id: string; current: boolean }[]>(
+      await call("/api/devices", { headers: { cookie: laptop } }),
+    );
+    const phoneId = listed.find((device) => !device.current)?.id ?? "";
+    expect((await call(`/api/devices/${phoneId}`, { method: "DELETE", headers: { cookie: laptop } })).status).toBe(204);
+    await until(() => phoneClosed);
+    expect(laptopPage.socket.readyState).toBe(WebSocket.OPEN);
+    expect((await call("/api/devices", { method: "DELETE", headers: { cookie: laptop } })).status).toBe(200);
+    await until(() => laptopPage.socket.readyState === WebSocket.CLOSED);
+  });
+
+  test("a token page stays open when every device logs out", async () => {
+    const page = await openPage(`eva_token=${token}`);
+    expect((await call("/api/devices", { method: "DELETE" })).status).toBe(200);
+    await Bun.sleep(50);
+    expect(page.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  test("a request from Eva's own computer never reaches the page: only the terminal answers it", async () => {
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
+    const page = await openPage(`eva_token=${token}`);
+    const created = await call("/api/login/device", { method: "POST", headers: {} });
+    expect(created.status).toBe(201);
+    const request = await json<DeviceLoginRequest>(created);
+    expect(request.approvers).toEqual(["terminal"]);
+    expect(await json<unknown>(await call("/api/devices/requests"))).toEqual([]);
+    expect(
+      (await call(`/api/devices/requests/${request.id}`, { method: "POST", body: { answer: "allow" } })).status,
+    ).toBe(404);
+    expect(page.events).toEqual([]);
+  });
+
+  test("the page cannot answer a request that it was not asked", async () => {
+    attachApprover();
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const answered = await call(`/api/devices/requests/${request.id}`, { method: "POST", body: { answer: "allow" } });
+    expect(answered.status).toBe(404);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "pending",
+    });
+  });
+
+  test("the device list redacts a secret in a label", async () => {
+    attachApprover();
+    const secretShaped = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    await allowedCookie({ "user-agent": `a browser ${secretShaped}` });
+    const listed = JSON.stringify(await json<unknown>(await call("/api/devices")));
+    expect(listed).toContain("[redacted]");
+    expect(listed).not.toContain(secretShaped);
+  });
+
+  test("an allowed device's open page gets the request with its code, and allows it", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    asked = [];
+    const page = await openPage(cookie);
+    const request = await json<DeviceLoginRequest>(await requestLogin({ "user-agent": "a new phone" }));
+    await until(() => page.events.length > 0);
+    expect(page.events).toEqual([{ kind: "device_login_request", request }]);
+    const waiting = await call("/api/devices/requests", { headers: { cookie } });
+    expect(await json<unknown>(waiting)).toEqual([request]);
+    const answered = await call(`/api/devices/requests/${request.id}`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: { answer: "allow" },
+    });
+    expect(answered.status).toBe(204);
+    await until(() => page.events.length > 1);
+    expect(page.events[1]).toEqual({ kind: "device_login_settled", id: request.id, answer: "allow" });
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "allowed",
+    });
+    expect(await json<unknown>(await call("/api/devices/requests", { headers: { cookie } }))).toEqual([]);
+    page.socket.close();
+  });
+
+  test("the page approves only while a logged-in page has its socket open", async () => {
+    const refused = await requestLogin();
+    expect(refused.status).toBe(409);
+    expect((await json<{ code: string }>(refused)).code).toBe("device_login_unavailable");
+    const page = await openPage(`eva_token=${token}`);
+    expect((await requestLogin()).status).toBe(201);
+    page.socket.close();
+    await until(() => !eva.deviceLogins.canApprove());
+    expect((await requestLogin()).status).toBe(409);
+  });
+
+  test("a socket that shows no device requests, such as eva chat, is no approver", async () => {
+    const chat = new WebSocket(`${api.url.replace("http", "ws")}/api/events`, {
+      headers: headers(),
+    } as unknown as string[]);
+    await new Promise<void>((resolve) => chat.addEventListener("open", () => resolve()));
+    expect(eva.deviceLogins.canApprove()).toBe(false);
+    chat.close();
+  });
+
+  test("an answer to a request that no longer waits, or with no login, changes nothing", async () => {
+    const page = await openPage(`eva_token=${token}`);
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const path = `/api/devices/requests/${request.id}`;
+    expect((await call(path, { method: "POST", headers: {}, body: { answer: "allow" } })).status).toBe(401);
+    expect((await call(path, { method: "POST", body: { answer: "maybe" } })).status).toBe(400);
+    expect((await call(path, { method: "POST", body: { answer: "deny" } })).status).toBe(204);
+    const again = await call(path, { method: "POST", body: { answer: "allow" } });
+    expect(again.status).toBe(404);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "denied",
+    });
+    page.socket.close();
+  });
+
+  test("Settings lists the devices, marks the caller's, and removes only one", async () => {
+    attachApprover();
+    const phone = deviceCookieOf(await allowedCookie({ "user-agent": "a phone" }));
+    const laptop = deviceCookieOf(await allowedCookie({ "user-agent": "a laptop" }));
+    expect((await call("/api/devices", { headers: {} })).status).toBe(401);
+    const listed = await json<{ id: string; label: string; createdAt: string; current: boolean }[]>(
+      await call("/api/devices", { headers: { cookie: laptop } }),
+    );
+    expect(listed.map(({ label, current }) => ({ label, current }))).toEqual([
+      { label: "owner@example.com, a phone", current: false },
+      { label: "owner@example.com, a laptop", current: true },
+    ]);
+    const phoneId = listed[0]?.id ?? "";
+    expect((await call("/api/devices/0000000000000000", { method: "DELETE" })).status).toBe(404);
+    expect((await call(`/api/devices/${phoneId}`, { method: "DELETE", headers: { cookie: laptop } })).status).toBe(204);
+    expect((await call("/api/status", { headers: { cookie: phone } })).status).toBe(401);
+    expect((await call("/api/status", { headers: { cookie: laptop } })).status).toBe(200);
   });
 });
 

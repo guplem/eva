@@ -469,6 +469,7 @@ test("Settings: Use Eva from any device installs Tailscale, then shares the addr
 test("Settings: Log out every device ends this login too", async ({ page }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Log out every device" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
@@ -583,7 +584,7 @@ test("device login: a browser shows its code and how to allow it, then opens", a
         code: "K7QX",
         account: "owner@example.com",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        approvers: ["Telegram", "terminal"],
+        approvers: ["Telegram", "terminal", "Eva page"],
       },
     }),
   );
@@ -601,6 +602,7 @@ test("device login: a browser shows its code and how to allow it, then opens", a
   await expect(page.getByText("Confirm this device")).toBeVisible();
   await expect(page.getByText("eva devices allow K7QX")).toBeVisible();
   await expect(page.getByText("Or tap Allow in your Telegram chat")).toBeVisible();
+  await expect(page.getByText("Or tap Allow on an Eva page")).toBeVisible();
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
 
@@ -772,7 +774,7 @@ function textEvent(sessionId: string, text: string): string {
 /** Passes the event stream through, and keeps each connection so a test can drop it. */
 async function routeEvents(page: Page): Promise<WebSocketRoute[]> {
   const sockets: WebSocketRoute[] = [];
-  await page.routeWebSocket(/\/api\/events$/, (socket) => {
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     socket.connectToServer();
     sockets.push(socket);
   });
@@ -875,7 +877,7 @@ test("a new message of a running turn replaces the shown one, and the older one 
 
 test("an approval and a task from while the connection was down still show after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
-  await page.routeWebSocket(/\/api\/events$/, (socket) => {
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     const server = socket.connectToServer();
     // The first connection loses the approval and task events, as a phone does while it sleeps.
     if (sockets.length === 0) {
@@ -1314,4 +1316,102 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   const googleRow = page.locator(".check-row", { hasText: "Test Google" });
   await googleRow.getByRole("button", { name: "Test" }).click();
   await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+});
+
+test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {
+  const answers: unknown[] = [];
+  // The demo server has no Tailscale, so the browser plays the server's side of the request.
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-3", code: "R4WZ", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-3", async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await expect(dialog).toContainText("A new device wants to get in. Allow it?");
+  await expect(dialog).toContainText("R4WZ");
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(answers).toEqual([{ answer: "allow" }]);
+});
+
+test("Settings: the device list marks this device, and Remove logs out another one", async ({ page }) => {
+  let devices = [
+    {
+      id: "aaaaaaaaaaaaaaaa",
+      label: "owner@example.com, a phone",
+      createdAt: "2026-10-17T10:00:00.000Z",
+      current: false,
+    },
+    {
+      id: "bbbbbbbbbbbbbbbb",
+      label: "owner@example.com, a laptop",
+      createdAt: "2026-10-17T11:00:00.000Z",
+      current: true,
+    },
+  ];
+  const removed: string[] = [];
+  await page.route("**/api/devices", (route) => route.fulfill({ json: devices }));
+  await page.route("**/api/devices/aaaaaaaaaaaaaaaa", async (route) => {
+    removed.push(route.request().method());
+    devices = devices.filter((device) => device.id !== "aaaaaaaaaaaaaaaa");
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("list", { name: "Devices" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list.getByRole("listitem").nth(1)).toContainText("This device");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  expect(removed).toEqual(["DELETE"]);
+});
+
+test("a page whose login ended shows the login view when its socket drops", async ({ page }) => {
+  let events: WebSocketRoute | null = null;
+  let ended = false;
+  await page.routeWebSocket("**/api/events*", (route) => {
+    // A removed device can never open the socket again.
+    if (ended) {
+      void route.close();
+      return;
+    }
+    route.connectToServer();
+    events = route;
+  });
+  await logIn(page);
+  await expect.poll(() => events !== null).toBe(true);
+  // Another device removed this one: the server closes the socket, and each call gets 401.
+  ended = true;
+  await page.route("**/api/sessions", (route) =>
+    route.fulfill({ status: 401, json: { error: "A valid token is required." } }),
+  );
+  await (events as WebSocketRoute | null)?.close();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: removing this device logs this browser out", async ({ page }) => {
+  await page.route("**/api/devices", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "cccccccccccccccc",
+          label: "owner@example.com, this browser",
+          createdAt: "2026-10-17T10:00:00.000Z",
+          current: true,
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/devices/cccccccccccccccc", (route) => route.fulfill({ status: 204 }));
+  await logIn(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });

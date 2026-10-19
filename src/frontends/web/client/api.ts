@@ -3,7 +3,12 @@ import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaSetupState, EvaStatus } from "../../../core/eva.ts";
 import type { ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
-import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
+import type {
+  DeviceLoginEvent,
+  DeviceLoginRequest,
+  DeviceLoginState,
+  DeviceSummary,
+} from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
@@ -30,7 +35,9 @@ export type {
   CloneDetails,
   ConflictChoice,
   ConflictResolution,
+  DeviceLoginEvent,
   DeviceLoginRequest,
+  DeviceSummary,
   EngineUpdateStatus,
   EvaStatus,
   PageSecretName,
@@ -101,6 +108,13 @@ export const api = {
   deviceLoginState: (requestId: string): Promise<{ state: DeviceLoginState["state"] }> =>
     request("GET", `/api/login/device/${encodeURIComponent(requestId)}`),
   logOutEveryDevice: (): Promise<{ removed: number }> => request("DELETE", "/api/devices"),
+  devices: (): Promise<DeviceSummary[]> => request("GET", "/api/devices"),
+  /** Logs out one device. A browser that removes its own device is logged out too. */
+  removeDevice: (id: string): Promise<void> => request("DELETE", `/api/devices/${encodeURIComponent(id)}`),
+  /** The device requests that this page may answer, as the event socket sends them. */
+  deviceRequests: (): Promise<DeviceLoginRequest[]> => request("GET", "/api/devices/requests"),
+  answerDeviceRequest: (id: string, answer: "allow" | "deny"): Promise<void> =>
+    request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<SessionRecord[]> => request("GET", "/api/sessions"),
   newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
@@ -186,19 +200,21 @@ export const api = {
 
 /** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
 export function subscribeToEvents(
-  onEvent: (event: SessionEvent | ScheduleCard) => void,
+  onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): () => void {
   let socket: WebSocket | null = null;
   let closed = false;
   const connect = (): void => {
+    // A retry that the timer started can run after the page closed the stream, such as at a logout.
+    if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}/api/events`);
+    socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
     socket.addEventListener("open", () => {
       onConnectionChange(true);
     });
     socket.addEventListener("message", (message) => {
-      onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard);
+      onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard | DeviceLoginEvent);
     });
     socket.addEventListener("close", () => {
       if (closed) return;

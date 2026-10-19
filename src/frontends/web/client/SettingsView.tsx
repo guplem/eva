@@ -15,6 +15,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { DevicesPanel } from "./DevicesPanel.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { SetupProgress } from "./SetupProgress.tsx";
@@ -315,17 +316,6 @@ export function SettingsView({
     }
   };
 
-  /** Ends every device login, this browser's included. The token still works. */
-  const logOutEveryDevice = async (): Promise<void> => {
-    try {
-      await api.logOutEveryDevice();
-      await api.logout();
-      onLoggedOut();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
-
   const save = async (): Promise<void> => {
     const seconds = Number(sweepSeconds);
     if (!Number.isInteger(seconds) || seconds < 10) {
@@ -523,6 +513,7 @@ export function SettingsView({
             </code>
           </div>
         </fieldset>
+        <DevicesPanel onChanged={setNotice} onLoggedOut={onLoggedOut} />
         <fieldset>
           <legend>Updates</legend>
           <div>{update === null ? "This Eva cannot update herself." : describeUpdate(update)}</div>
@@ -672,7 +663,6 @@ export function SettingsView({
             Save
           </button>
           <button onClick={() => void api.logout().then(onLoggedOut)}>Log out</button>
-          <button onClick={() => void logOutEveryDevice()}>Log out every device</button>
         </div>
       </div>
     </div>

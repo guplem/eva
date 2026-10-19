@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 
-/** The page asks again at this pace until the owner answers in Telegram or in the terminal. */
+/** The page asks again at this pace until the owner answers in Telegram, in the terminal or on another Eva page. */
 const devicePollMs = 2_000;
 
 type DeviceStep =
@@ -79,6 +79,11 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
           </span>
         )}
         {approvers.includes("Telegram") && <span>Or tap Allow in your Telegram chat, if it shows the same code.</span>}
+        {approvers.includes("Eva page") && (
+          <span>
+            Or tap Allow on an Eva page that is open and logged in on another device, if it shows the same code.
+          </span>
+        )}
         <span className="chip">This page opens by itself when you allow it.</span>
       </div>
     );

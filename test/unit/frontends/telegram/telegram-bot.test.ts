@@ -185,6 +185,21 @@ describe("device login", () => {
     expect(eva.deviceLogins.check(request.id, "owner@example.com")).toEqual({ state: "expired" });
   });
 
+  for (const [answer, shown] of [
+    ["allow", "Allowed"],
+    ["deny", "Denied"],
+  ] as const) {
+    test(`${answer} from another approver, such as the web page, closes the question`, async () => {
+      const bot = createBot();
+      const request = eva.deviceLogins.request("owner@example.com", "x");
+      await settle(bot, () => deviceQuestion() !== undefined);
+      eva.deviceLogins.answer(request.id, answer);
+      await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+      expect(String(telegram.callsTo("editMessageText")[0]?.params["text"])).toEndWith(`\n\n${shown}`);
+      expect(JSON.stringify(telegram.callsTo("editMessageText")[0]?.params)).not.toContain("inline_keyboard");
+    });
+  }
+
   test("a stranger's press lets nobody in", async () => {
     const bot = createBot();
     const request = eva.deviceLogins.request("owner@example.com", "x");

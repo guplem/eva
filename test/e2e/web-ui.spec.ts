@@ -1410,6 +1410,38 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await page.request.delete("/api/secrets/githubToken");
 });
 
+test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: "GitHub refused the request (HTTP 401): Bad credentials", code: "github_failed" },
+    }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  await expect(page.getByText("Bad credentials")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.getByRole("button", { name: "Open the GitHub step" }).click();
+  await expect(page.getByRole("region", { name: "GitHub", exact: true }).first()).toBeVisible();
+});
+
 test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({
   page,
 }) => {

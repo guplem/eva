@@ -27,9 +27,9 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
           ? `${where} Press Restart now so that Eva uses it.`
           : `${where} It is only on this computer: ${result.problem}`,
       );
+      // The buttons stay off after a success: the card shows the vault once the setup loads again.
     } catch (error) {
       context.notify(errorText(error));
-    } finally {
       setBusy(null);
     }
   };
@@ -37,7 +37,11 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
   return (
     <>
       {hasToken ? (
-        <PickRepository busy={busy} onClone={(repository) => void run("clone", () => api.cloneVault(repository))} />
+        <PickRepository
+          context={context}
+          busy={busy}
+          onClone={(repository) => void run("clone", () => api.cloneVault(repository))}
+        />
       ) : (
         <div className="vault-choice">
           <h3>Use your vault from GitHub</h3>
@@ -68,9 +72,11 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
 }
 
 function PickRepository({
+  context,
   busy,
   onClone,
 }: {
+  readonly context: SettingsContext;
   readonly busy: "clone" | "create" | null;
   readonly onClone: (repository: string) => void;
 }): ReactElement {
@@ -105,6 +111,8 @@ function PickRepository({
         <div className="callout danger callout-action">
           <span>Eva could not list your repositories. {listing.reason}</span>
           <button onClick={() => void load()}>Try again</button>
+          {/* A wrong or old token is the usual cause, and the GitHub step replaces it. */}
+          <GitHubStepLink context={context} />
         </div>
       )}
       {listing.state === "ready" && (

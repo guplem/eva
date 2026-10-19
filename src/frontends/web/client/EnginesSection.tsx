@@ -123,9 +123,11 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
   const [code, setCode] = useState("");
   // One request at a time: a double tap would start a second login and end the first one.
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const start = async (): Promise<void> => {
     setBusy(true);
+    setStarting(true);
     try {
       // A phone blocks a window that opens after a wait, so the page shows a link instead.
       setLoginUrl((await api.startClaudeLogin()).url);
@@ -133,6 +135,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
       context.notify(errorText(error));
     } finally {
       setBusy(false);
+      setStarting(false);
     }
   };
 
@@ -143,12 +146,18 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
       setCode("");
       setLoginUrl(null);
       context.noteAndReload("Logged in to Claude. Press Restart Eva so that chats use the new login.");
+      // The setup steps reload above; the settings hold the "Saved" state of the token field.
+      context.reloadSettings();
     } catch (error) {
+      // Each failed Finish ends the login on Eva's computer, so the old link leads nowhere.
+      setLoginUrl(null);
       context.notify(errorText(error));
     } finally {
       setBusy(false);
     }
   };
+  // The server checks this too; here a bad paste keeps the link, as it never reaches claude.
+  const codeReady = code.trim() !== "" && !/\s/.test(code.trim());
 
   return (
     <Steps>
@@ -156,7 +165,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
         Press the button. Eva prepares the login, which takes a few seconds.
         <div className="button-row">
           <button className="primary" disabled={busy} onClick={() => void start()}>
-            Log in to Claude
+            {starting ? "Preparing the login…" : "Log in to Claude"}
           </button>
           {loginUrl !== null && (
             <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
@@ -179,7 +188,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />
-          <button className="primary" disabled={busy || code.trim() === ""} onClick={() => void finish()}>
+          <button className="primary" disabled={busy || !codeReady} onClick={() => void finish()}>
             Finish
           </button>
         </div>

@@ -1810,6 +1810,12 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   await code.fill("wrong-code");
   await page.getByRole("button", { name: "Finish" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Claude did not accept the code." })).toBeVisible();
+  // The refused code ended the login, so its link goes, and a new login starts.
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeHidden();
+  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeVisible();
+  await code.fill("two words");
+  await expect(page.getByRole("button", { name: "Finish" })).toBeDisabled();
   await code.fill("e2e-code#e2e-state");
   await page.getByRole("button", { name: "Finish" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Logged in to Claude." })).toBeVisible();

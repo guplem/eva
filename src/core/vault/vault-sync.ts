@@ -43,6 +43,9 @@ export interface VaultConflict {
   readonly kind: ConflictKind;
   /** A committed conflict waits until every note has a pick. */
   readonly picked: ConflictChoice | null;
+  /** The text of each version, so the person can compare them. Null: that side deleted the note, or it is not short text. */
+  readonly mine: string | null;
+  readonly theirs: string | null;
 }
 
 export interface VaultConflictReport {
@@ -80,6 +83,8 @@ const maxPushAttempts = 3;
 const maxScannedFileBytes = 1_000_000;
 /** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
 const maxCommittedFileBytes = 50 * 1024 * 1024;
+/** A note conflict shows each version only up to this size: the page compares them line by line. */
+const maxComparedTextBytes = 200_000;
 /** The `git status --porcelain` codes of a path with a merge conflict. */
 const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 
@@ -198,12 +203,60 @@ export class VaultSync {
     const branch = await this.checkedDefaultBranch();
     if (branch === null) return [];
     const unmerged = unmergedPaths(await this.statusEntries());
-    if (unmerged.length > 0) return unmerged.map((path) => ({ path, kind: "uncommitted", picked: null }));
+    if (unmerged.length > 0) {
+      const stages = await this.unmergedStages();
+      const conflicts: VaultConflict[] = [];
+      // Stage 3 is this machine's edit, from the stash; stage 2 is the remote's version (see resolveUncommitted).
+      for (const path of unmerged) {
+        const sides = stages.get(path);
+        conflicts.push({
+          path,
+          kind: "uncommitted",
+          picked: null,
+          mine: await this.versionText(sides?.get("3") ?? null),
+          theirs: await this.versionText(sides?.get("2") ?? null),
+        });
+      }
+      return conflicts;
+    }
     // A read reports a merge-tree failure only while a conflict is open: a clean vault raises no alert.
     const plan = await this.mergePlan(branch, this.state.status === "conflict");
     if (plan === null) return [];
     this.dropStalePicks(plan);
-    return plan.paths.map(({ path }) => ({ path, kind: "committed", picked: this.picks.get(path)?.choice ?? null }));
+    const conflicts: VaultConflict[] = [];
+    for (const { path, mine, theirs } of plan.paths) {
+      conflicts.push({
+        path,
+        kind: "committed",
+        picked: this.picks.get(path)?.choice ?? null,
+        mine: await this.versionText(mine),
+        theirs: await this.versionText(theirs),
+      });
+    }
+    return conflicts;
+  }
+
+  /** The versions of each unmerged path, by stage. Empty when git fails: the list then shows no text. */
+  private async unmergedStages(): Promise<Map<string, Map<string, Version>>> {
+    const stages = new Map<string, Map<string, Version>>();
+    const listed = await this.git(["ls-files", "-u", "-z"], localTimeoutMs);
+    if (listed.exitCode !== 0) return stages;
+    for (const { path, stage, version } of parseStageEntries(listed.stdout)) {
+      const sides = stages.get(path) ?? new Map<string, Version>();
+      sides.set(stage, version);
+      stages.set(path, sides);
+    }
+    return stages;
+  }
+
+  /** The text of one version, or null for a deleted, binary or long one: a phone cannot compare those. */
+  private async versionText(version: Version | null): Promise<string | null> {
+    if (version === null) return null;
+    const size = await this.git(["cat-file", "-s", version.oid], localTimeoutMs);
+    if (size.exitCode !== 0 || Number(size.stdout.trim()) > maxComparedTextBytes) return null;
+    const blob = await this.git(["cat-file", "blob", version.oid], localTimeoutMs);
+    if (blob.exitCode !== 0 || blob.stdout.includes("\0")) return null;
+    return blob.stdout;
   }
 
   /** Returns false when the note has no conflict. */

@@ -14,6 +14,7 @@ function turn(at: string, contextTokens: number | null): Turn {
     steps: [],
     omittedSteps: 0,
     contextTokens,
+    contextWindow: null,
     failure: null,
     lastMessageId: null,
     at,

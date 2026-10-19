@@ -110,6 +110,7 @@ describe("a conversation", () => {
         steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
         omittedSteps: 0,
         contextTokens: 15,
+        contextWindow: 200_000,
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -527,6 +528,7 @@ describe("exactly one end event (lesson 47)", () => {
         { kind: "task", text: "look" },
       ],
       contextTokens: null,
+      contextWindow: null,
     });
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });

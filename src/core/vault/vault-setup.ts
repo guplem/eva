@@ -3,7 +3,7 @@
  * repository that the person picks, or starts a new vault from the template and pushes it to a new
  * private repository. The folder is the saved one when it is empty, else `<home>/vault`.
  */
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -103,7 +103,7 @@ export class VaultSetup {
   push(repository: string): Promise<VaultSetupResult> {
     return this.once(async () => {
       const folder = this.options.savedVaultPath();
-      if (folder === null || !(await this.needsPush()))
+      if (folder === null || !(await this.lacksRemote(folder)))
         throw new EvaError("config_invalid", "The vault needs no push: it has a repository, or no commit yet.");
       const result = await this.pushTo(folder, repository);
       if (result.problem !== null) throw new EvaError("github_failed", result.problem);
@@ -114,7 +114,12 @@ export class VaultSetup {
   /** True for a saved vault with a commit and no remote, which the page offers to push. */
   async needsPush(): Promise<boolean> {
     const folder = this.options.savedVaultPath();
-    if (folder === null) return false;
+    // A new vault has a commit and no remote for a moment before its own push.
+    if (folder === null || this.running) return false;
+    return this.lacksRemote(folder);
+  }
+
+  private lacksRemote(folder: string): Promise<boolean> {
     return vaultNeedsPush({ folder, runner: this.options.runner, environment: this.options.gitEnvironment() });
   }
 
@@ -167,12 +172,12 @@ export class VaultSetup {
    */
   private async orRemove(folder: string, step: () => Promise<void>): Promise<void> {
     const existed = existsSync(folder);
+    const before = new Set(existed ? readdirSync(folder) : []);
     try {
       await step();
     } catch (error) {
-      // The folder was empty or missing before the step, so each file in it is the step's own.
-      if (!existed) rmSync(folder, { recursive: true, force: true });
-      else for (const entry of readdirSync(folder)) rmSync(join(folder, entry), { recursive: true, force: true });
+      // Only after a git step: a refusal of a folder that holds files means that the files are someone else's.
+      if (isEvaError(error, "git_failed")) removeNewEntries(folder, before, existed);
       throw error;
     }
   }
@@ -213,4 +218,18 @@ function vaultAddress(answer: string): string {
     "config_invalid",
     `Eva cannot read "${text}". Pick a repository, or type a name such as you/vault.`,
   );
+}
+
+/** Removes the entries that a failed step added. A failed removal must not hide the step's own error. */
+function removeNewEntries(folder: string, before: ReadonlySet<string>, existed: boolean): void {
+  try {
+    for (const entry of readdirSync(folder)) {
+      // On Windows, git's read-only object files and a closing git child can need a retry.
+      if (!before.has(entry)) rmSync(join(folder, entry), { recursive: true, force: true, maxRetries: 3 });
+    }
+    // rmdirSync removes only an empty folder, so a file that came meanwhile keeps it.
+    if (!existed) rmdirSync(folder);
+  } catch {
+    // The page shows the git error; the next try names the files that stay in the folder.
+  }
 }

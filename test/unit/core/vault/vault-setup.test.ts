@@ -207,6 +207,21 @@ describe("a failed vault setup", () => {
     expect(readdirSync(folder).length).toBeGreaterThan(0);
   });
 
+  test("files that another program writes during the clone stay, when the clone refuses the folder", async () => {
+    const folder = join(paths.root, "vault");
+    const run: ProcessRunner["run"] = (command, options) => {
+      // `eva setup` in a terminal fills the folder while the page's clone checks the address.
+      if (command.includes("ls-remote")) {
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "note.md"), "mine");
+      }
+      return systemProcessRunner.run(command, options);
+    };
+    const refused = await failure(withRunner(run).clone(sandbox.remote));
+    expect(isEvaError(refused, "vault_not_found")).toBe(true);
+    expect(readFileSync(join(folder, "note.md"), "utf8")).toBe("mine");
+  });
+
   test("a saved vault folder that is a file is refused with a reason", async () => {
     const file = join(sandbox.root, "not-a-folder");
     writeFileSync(file, "text");

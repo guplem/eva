@@ -3,6 +3,7 @@
  * when the old copy has gone, so the new copy waits for it.
  */
 import type { EnvironmentMap } from "../../shared/environment.ts";
+import { instanceVariable } from "../settings/home.ts";
 import { supervisedVariable } from "./supervisor.ts";
 
 const oldCopyVariable = "EVA_WAIT_FOR_PID";
@@ -20,6 +21,8 @@ export function newCopyLaunch(input: {
   readonly evaCommand: readonly string[];
   readonly arguments: readonly string[];
   readonly environment: EnvironmentMap;
+  /** The name of this Eva. The copy has no terminal, so it cannot ask which Eva to run. */
+  readonly instance: string;
   readonly pid: number;
 }): NewCopyLaunch {
   // The new copy is Eva herself, not an agent, so it gets Eva's whole environment (lesson 96 covers agents).
@@ -28,6 +31,7 @@ export function newCopyLaunch(input: {
     // The copy runs outside any supervisor, so it must not carry a supervisor's pid.
     if (value !== undefined && name !== supervisedVariable) environment[name] = value;
   }
+  environment[instanceVariable] = input.instance;
   environment[oldCopyVariable] = String(input.pid);
   return { command: [...input.evaCommand, ...input.arguments], environment };
 }

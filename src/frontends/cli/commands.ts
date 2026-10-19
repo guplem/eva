@@ -3,14 +3,7 @@
  * The `run` command starts the whole Eva, which only `src/main.ts` may wire, so it comes in.
  */
 import { randomBytes } from "node:crypto";
-import {
-  createHomeFolders,
-  homePaths,
-  loadSecrets,
-  resolveHomeFolder,
-  type EvaConfig,
-  type HomePaths,
-} from "../../core/settings/home.ts";
+import { createHomeFolders, loadSecrets, type EvaConfig, type HomePaths } from "../../core/settings/home.ts";
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
@@ -35,15 +28,9 @@ import {
   startProjectWork,
 } from "./client.ts";
 import { allowDevice } from "./devices.ts";
+import { chooseInstance } from "./instance-choice.ts";
 import { runDoctor } from "./doctor.ts";
-import {
-  childEnvironment,
-  defaultHomeFolder,
-  installEnvironment,
-  remoteAccessWatcher,
-  writeLine,
-  type CliHost,
-} from "./host.ts";
+import { childEnvironment, installEnvironment, remoteAccessWatcher, writeLine, type CliHost } from "./host.ts";
 import { hub, link, runningClient, settings, sync, update } from "./local-commands.ts";
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
@@ -72,14 +59,12 @@ export async function runCli(argv: readonly string[], host: CliHost, wiring: Cli
     writeLine(host, evaVersion);
     return exitCodes.clean;
   }
-  const paths = homePaths(
-    resolveHomeFolder({
-      flag: command.home,
-      environment: host.environment,
-      platform: host.platform,
-      userHome: host.userHome,
-    }),
-  );
+  const paths = await chooseInstance(host, {
+    name: command.instance,
+    creates: command.command === "setup",
+    // Setup asks its own questions unless a script runs it, so it may ask for the name too.
+    interactive: command.command === "setup" ? !command.nonInteractive : host.interactive,
+  });
 
   switch (command.command) {
     case "doctor":
@@ -177,7 +162,6 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     newToken: () => randomBytes(24).toString("base64url"),
     runner: host.runner,
     environment: childEnvironment(host),
-    defaultHome: defaultHomeFolder(host),
     platform: host.platform,
     githubLogin: githubBrowserLogin(host, githubClientId),
     userHome: host.userHome,

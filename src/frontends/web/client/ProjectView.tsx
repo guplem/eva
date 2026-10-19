@@ -203,6 +203,7 @@ export function ProjectView({
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
   const chatDetails = {
     tree,
+    onChanged,
     tasks: tasksOf(
       live.tasks,
       tree.map((session) => session.id),

@@ -188,6 +188,7 @@ describe("PiEngine", () => {
       lastMessageId: "a1",
       usage: { inputTokens: 1000, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 0 },
       contextTokens: 1200,
+      contextWindow: null,
     });
     expect((events.at(-1) as { costUsd: number }).costUsd).toBeGreaterThan(0);
     const run = fake.runs[0];

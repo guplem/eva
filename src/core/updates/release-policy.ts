@@ -16,6 +16,8 @@ export interface ReleaseInfo {
   readonly version: string;
   /** The release notes, as the release workflow writes them. */
   readonly notes: string;
+  /** When GitHub published the release, as an ISO time. A source checkout has none. */
+  readonly publishedAt?: string | null;
 }
 
 export interface NewerRelease extends ReleaseInfo {
@@ -23,6 +25,9 @@ export interface NewerRelease extends ReleaseInfo {
   readonly level: ReleaseLevel;
   /** What the jump from the current version to this one brings, breaking changes first. */
   readonly summary: string;
+  /** The first change of this release alone, as one sentence, or null when it lists none. */
+  readonly headline: string | null;
+  readonly publishedAt: string | null;
 }
 
 export interface UpdatePick {
@@ -64,7 +69,12 @@ export function pickUpdate(
     .map((release) => ({ ...release, level: releaseLevel(current, release.version) }))
     .sort((left, right) => (isNewerVersion(left.version, right.version) ? -1 : 1));
   // Sorted newest first, so the releases up to one are that one and all after it.
-  const newer = sorted.map((release, index) => ({ ...release, summary: releaseSummary(sorted.slice(index)) }));
+  const newer = sorted.map((release, index) => ({
+    ...release,
+    summary: releaseSummary(sorted.slice(index)),
+    headline: releaseHeadline(release),
+    publishedAt: release.publishedAt ?? null,
+  }));
   const allowed = newer.find((release) => levelRank[release.level] <= levelRank[policy])?.version ?? null;
   const newest = newer[0]?.version ?? null;
   const install = required === undefined ? allowed : atLeast(newer, allowed, required);
@@ -117,4 +127,24 @@ export function releaseSummary(releases: readonly ReleaseInfo[]): string {
     .filter(([, entries]) => entries.length > 0)
     .map(([title, entries]) => [`${title}:`, ...entries].join("\n"));
   return parts.length === 0 ? "No listed changes." : parts.join("\n\n");
+}
+
+/**
+ * The first change of one release as a sentence for a list row, breaking changes first. A list
+ * row has room for one line, so the commit prefix and the pull request number go.
+ */
+function releaseHeadline(release: ReleaseInfo): string | null {
+  const first = releaseSummary([release])
+    .split("\n")
+    .find((line) => line.startsWith("• "));
+  if (first === undefined) return null;
+  const versionMark = ` (${release.version})`;
+  const line = first.slice(2);
+  const text = (line.endsWith(versionMark) ? line.slice(0, -versionMark.length) : line)
+    .replace(/ \(#\d+\)$/, "")
+    .replace(/^[a-z]+(\([^)]*\))?!?:\s*/, "")
+    .trim();
+  if (text === "") return null;
+  const sentence = `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
 }

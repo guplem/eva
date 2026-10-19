@@ -5,6 +5,7 @@
  * of her own git commands, never in an agent's (lesson 96).
  */
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
@@ -59,12 +60,72 @@ export async function cloneVault(inputs: VaultCloneInputs): Promise<void> {
   if (clone.exitCode !== 0) {
     throw new EvaError("git_failed", `git could not clone ${inputs.repository}: ${clone.stderr.trim()}`);
   }
-  // Kept in the clone, so every later pull and push finds the token the same way.
-  for (const value of ["", credentialHelper]) {
-    await inputs.runner.run(["git", "config", "--local", "--add", credentialKey, value], {
+  await keepCredentialHelper(inputs.folder, inputs.runner, environment);
+}
+
+/**
+ * Pushes a new local vault to an empty repository, such as one that setup just made on GitHub.
+ * A rerun after a failed push repeats each step safely: it never adds a second remote, and never forces.
+ */
+export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
+  const environment = { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" };
+  const run = (args: readonly string[], timeoutMs: number): ReturnType<ProcessRunner["run"]> =>
+    inputs.runner.run(["git", ...args], { cwd: inputs.folder, environment, timeoutMs });
+  const origin = await run(["remote", "get-url", "origin"], configTimeoutMs);
+  const remote = await run(
+    origin.exitCode === 0
+      ? ["remote", "set-url", "origin", inputs.repository]
+      : ["remote", "add", "origin", inputs.repository],
+    configTimeoutMs,
+  );
+  if (remote.exitCode !== 0) {
+    throw new EvaError("git_failed", `git could not add ${inputs.repository} as the remote: ${remote.stderr.trim()}`);
+  }
+  await keepCredentialHelper(inputs.folder, inputs.runner, environment);
+  // HEAD, not main: a vault that the person made by hand can be on another branch, such as master.
+  const push = await run([...githubCredentialArguments, "push", "-q", "-u", "origin", "HEAD"], cloneTimeoutMs);
+  if (push.exitCode !== 0) {
+    // Sync cannot push to an empty remote, so a remote left here would keep the vault off GitHub for good.
+    // With no remote, a rerun of setup offers the push again.
+    await run(["remote", "remove", "origin"], configTimeoutMs);
+    throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
+  }
+  // Sync reads the remote's default branch from origin/HEAD, which only a clone writes.
+  const branch = await run(["symbolic-ref", "--short", "HEAD"], configTimeoutMs);
+  if (branch.exitCode === 0) await run(["remote", "set-head", "origin", branch.stdout.trim()], configTimeoutMs);
+}
+
+/**
+ * True for a git vault with a commit and no remote: a new vault that had no GitHub login yet.
+ * A rerun of setup then offers the push. A vault with a remote needs none: sync pushes to it,
+ * and Eva never replaces a remote that the person chose.
+ */
+export async function vaultNeedsPush(inputs: Omit<VaultCloneInputs, "repository">): Promise<boolean> {
+  // The folder itself must be the repository, not a folder inside another one.
+  if (!existsSync(join(inputs.folder, ".git"))) return false;
+  const run = (args: readonly string[]): ReturnType<ProcessRunner["run"]> =>
+    inputs.runner.run(["git", ...args], {
       cwd: inputs.folder,
-      environment,
+      environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: configTimeoutMs,
     });
-  }
+  // With no commit, the push would fail after GitHub already made the repository.
+  const commit = await run(["rev-parse", "-q", "--verify", "HEAD"]);
+  if (commit.exitCode !== 0 || commit.stdout.trim() === "") return false;
+  const remotes = await run(["remote"]);
+  return remotes.exitCode === 0 && remotes.stdout.trim() === "";
+}
+
+/** Kept in the clone, so every later pull and push finds the token the same way. */
+async function keepCredentialHelper(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<void> {
+  const config = (args: readonly string[]): ReturnType<ProcessRunner["run"]> =>
+    runner.run(["git", "config", "--local", ...args], { cwd: folder, environment, timeoutMs: configTimeoutMs });
+  // A rerun adds no second copy. A helper that the person set stays in the file.
+  const current = await config(["--get-all", credentialKey]);
+  if (current.stdout.includes(credentialHelper)) return;
+  for (const value of ["", credentialHelper]) await config(["--add", credentialKey, value]);
 }

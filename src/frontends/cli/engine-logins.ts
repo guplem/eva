@@ -36,7 +36,7 @@ export async function engineLoginState(options: EngineLoginStateOptions): Promis
 /** The explanation and one step for each missing login; none when every login is in place. */
 export function engineLoginSteps(state: EngineLoginState, folders: EngineFolders, platform: NodeJS.Platform): string[] {
   const steps = [
-    // First, so the person can log in before setup runs `gh repo create` for a new vault.
+    // First: the GitHub login of this instance, which project clones and pull requests need.
     ...(state.gh ? [] : [`- GitHub: ${ghStep(folders, platform)}`]),
     ...(state.claudeToken
       ? []

@@ -132,7 +132,11 @@ describe("doctor and setup", () => {
   });
 
   test("an interactive setup asks at the console, and starts Eva as a service", async () => {
-    const host = fakeHost({ userHome: join(root, "user") }, []);
+    // Enter at the GitHub question would start a real browser login, so this person skips it.
+    const host = fakeHost({
+      userHome: join(root, "user"),
+      withPrompt: (work) => work((question) => Promise.resolve(question.startsWith("GitHub login") ? "skip" : "")),
+    });
     expect(await run(host, "setup")).toBe(exitCodes.clean);
     expect(loadSecrets(paths).localApiToken).toBeString();
     expect(host.commands).toContainEqual(["systemctl", "--user", "enable", "--now", "eva-home.service"]);

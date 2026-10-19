@@ -27,7 +27,18 @@ import {
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
-import { checkVaultRepository, cloneVault, githubTokenVariable } from "../../core/vault/vault-clone.ts";
+import {
+  checkVaultRepository,
+  cloneVault,
+  githubTokenVariable,
+  pushNewVault,
+  vaultNeedsPush,
+} from "../../core/vault/vault-clone.ts";
+import {
+  createGitHubRepository,
+  listGitHubRepositories,
+  type GitHubRepository,
+} from "../../core/vault/github-repositories.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
@@ -37,7 +48,6 @@ import {
   engineLoginReport,
   engineLoginState,
   engineLoginSteps,
-  loginToGitHub,
   quoteForShell,
   withVariable,
   type EngineLoginState,
@@ -110,13 +120,13 @@ export interface SetupOptions {
   /** The environment of an engine installer: the child environment plus the person's proxy settings. */
   readonly installEnvironment: Readonly<Record<string, string>>;
   readonly arch: string;
+  /** The GitHub API, which lists and creates repositories; a test points it at a fake server. */
+  readonly githubApiBaseUrl?: string;
   /** The pi release downloads; a test points it at a fake server. */
   readonly piReleasesBaseUrl?: string;
   /** Runs once the engines, the port and the local token are in place, before the other questions. */
   readonly afterEssentials?: () => Promise<void>;
 }
-
-const ghTimeoutMs = 120_000;
 
 /** Returns whether setup saved anything after `afterEssentials`, when a running Eva would need a restart. */
 export async function runSetup(options: SetupOptions): Promise<{ changedAfterStart: boolean }> {
@@ -151,7 +161,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   /** A person is not asked again for a step done already, on the page or in an earlier setup. */
   const done = (isDone: boolean): boolean => options.interactive && isDone;
   options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
-  // First, so the person can log in to gh before setup runs `gh repo create`.
+  // First, so the person knows every login that this instance still needs before the questions.
   const engineFolders = isExtraInstance(paths, options.defaultHome, options.platform) ? engineFoldersOf(paths) : null;
   const loginState = (folders: EngineFolders): Promise<EngineLoginState> =>
     engineLoginState({
@@ -200,7 +210,9 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     const folder = config().vaultPath;
     return folder !== null && !isEmptyFolder(folder);
   };
-  if (!done(vaultReady())) await askVault(options, ask, saveVaultPath, saveSecret, engineFolders);
+  // Only a person: a script answers every question again on each run.
+  const vaultWasReady = done(vaultReady());
+  if (!vaultWasReady) await askVault(options, ask, saveVaultPath, saveSecret);
   else if (!done(secrets().githubToken !== undefined)) {
     // Private projects need the token too, so a ready vault still gets the question.
     if (options.interactive && options.githubLogin !== null)
@@ -209,6 +221,16 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
       const githubToken = await ask("githubToken", "GitHub token, for private projects (Enter to skip): ");
       if (githubToken !== "") saveSecret("githubToken", githubToken);
     }
+  }
+  const readyVault = config().vaultPath;
+  // A new vault that had no GitHub login yet gets the push now. One with a remote has its push from sync.
+  if (
+    vaultWasReady &&
+    readyVault !== null &&
+    (await vaultNeedsPush({ folder: readyVault, runner: options.runner, environment: options.environment }))
+  ) {
+    options.write(`The vault in ${readyVault} is in no GitHub repository yet.`);
+    await offerVaultPush(options, readyVault, ask);
   }
   // A vault brings the person's settings from another machine; a script's engine answer still wins.
   if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
@@ -318,7 +340,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
 
 /**
  * The GitHub login: the browser login, or a pasted token. `enterLogsIn`: false keeps Enter as
- * "skip" when the vault needs no token, as in a rerun, for a new vault or over SSH.
+ * "skip" when the vault is ready and the login serves only private projects, as in a rerun.
  */
 async function askGithubLoginOf(
   options: SetupOptions,
@@ -362,13 +384,15 @@ async function askGithubLoginOf(
   }
 }
 
-/** The vault questions: its repository, the GitHub login, and its folder. A new vault starts from the template. */
+/**
+ * The vault questions: the GitHub login first, then the vault's repository, picked from the
+ * person's repositories, and its folder. A new vault starts from the template.
+ */
 async function askVault(
   options: SetupOptions,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
   saveVaultPath: (folder: string) => void,
   saveSecret: (name: keyof EvaSecrets, value: string) => void,
-  engineFolders: EngineFolders | null,
 ): Promise<void> {
   const paths = homePaths(options.paths.root);
   const githubToken = (): string | undefined => loadSecrets(paths).githubToken;
@@ -380,33 +404,42 @@ async function askVault(
     // Saved now, so a failed clone never makes the person type the token again.
     if (answer !== "") saveSecret("githubToken", answer);
   };
-  const askGithubLogin = (githubLogin: NonNullable<SetupOptions["githubLogin"]>, enterLogsIn: boolean): Promise<void> =>
-    askGithubLoginOf(options, ask, saveSecret, githubLogin, enterLogsIn);
-  const askRepository = async (): Promise<string> => {
+  const askRepository = async (): Promise<VaultChoice> => {
+    // The login comes first, so the person picks the vault from a list instead of typing its address.
+    // A script cannot wait for a person, so it gives a token, or none.
+    if (options.interactive && options.githubLogin !== null)
+      await askGithubLoginOf(options, ask, saveSecret, options.githubLogin, true);
+    else await askGithubToken();
+    const token = githubToken();
+    if (options.interactive && token !== undefined) {
+      const picked = await pickRepository(options, ask, token);
+      if (picked !== null) return picked;
+    }
     const repository = await ask(
       "vaultRepository",
       "Your vault's repository, such as https://github.com/you/vault (Enter to skip, or to start a new vault): ",
     );
-    // Project clones use the token too, so even a new vault or an SSH address gets the question.
-    // The browser login only gives a github.com token, and a script cannot wait for a person.
-    const onGitHub = /^(https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|$)/i.test(repository);
-    if (options.interactive && options.githubLogin !== null && onGitHub)
-      // Only an HTTPS vault needs the token to clone, so only there does Enter log in.
-      await askGithubLogin(options.githubLogin, /^https:/i.test(repository));
-    else await askGithubToken();
-    return repository;
+    return { repository, create: false };
   };
-  let repository = await askRepository();
+  const first = await askRepository();
+  if (first.skip === true) return;
+  let { repository, create } = first;
   // Eva clones the vault herself: with a repository, the folder has a default, so only
   // a script (EVA_VAULT_PATH) picks another one.
   const current = loadSettings(paths).config.vaultPath;
-  const defaultFolder = current ?? (repository === "" ? null : join(paths.root, "vault"));
+  const defaultFolder = current ?? (repository === "" && !create ? null : join(paths.root, "vault"));
   const answer =
-    repository === "" || !options.interactive ? await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `) : "";
+    (repository === "" && !create) || !options.interactive
+      ? await ask("vault", `Vault folder [${defaultFolder ?? "none"}]: `)
+      : "";
   const folder = answer === "" ? defaultFolder : answer;
   if (folder === null) return;
   saveVaultPath(folder);
-  if (!isEmptyFolder(folder)) return;
+  if (!isEmptyFolder(folder)) {
+    if (create)
+      options.write(`${folder} is not empty, so Eva does not put a new vault there. It is your vault folder now.`);
+    return;
+  }
   const gitEnvironment = (): Record<string, string> => {
     const token = githubToken();
     return { ...options.environment, ...(token === undefined ? {} : { [githubTokenVariable]: token }) };
@@ -417,14 +450,95 @@ async function askVault(
     const problem = `git could not read ${repository}: ${reason}`;
     if (!options.interactive) throw new EvaError("config_invalid", problem);
     options.write(`${problem}\nCheck the address and the token, then try again.`);
-    repository = await askRepository();
+    const next = await askRepository();
+    // The folder stays saved but empty, so the next setup asks about the vault again.
+    if (next.skip === true) return;
+    ({ repository, create } = next);
   }
   if (repository !== "") {
     await cloneVault({ repository, folder, runner: options.runner, environment: gitEnvironment() });
     options.write(`Cloned the vault into ${folder}.`);
   } else {
     const timeZone = loadSettings(paths).config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    await offerNewVault(options, engineFolders, folder, timeZone, ask);
+    await offerNewVault(options, folder, timeZone, ask, create);
+  }
+}
+
+/** The vault's repository address, or "" with `create` for a new vault, or "" alone to skip. */
+interface VaultChoice {
+  readonly repository: string;
+  readonly create: boolean;
+  /** Enter at the list: no vault now. "0" creates one, so Enter does not ask about it again. */
+  readonly skip?: boolean;
+}
+
+// Enough to find a vault at a glance on a phone screen; a name or an address reaches the others.
+const listedRepositories = 15;
+
+/**
+ * Lists the person's repositories, and asks which one holds the vault. Returns null when GitHub
+ * cannot list them, such as for a token that reaches only some repositories: setup then asks for the address.
+ */
+async function pickRepository(
+  options: SetupOptions,
+  ask: (key: SetupQuestion, question: string) => Promise<string>,
+  token: string,
+): Promise<VaultChoice | null> {
+  let repositories: GitHubRepository[];
+  try {
+    repositories = await listGitHubRepositories({
+      token,
+      ...(options.githubApiBaseUrl === undefined ? {} : { baseUrl: options.githubApiBaseUrl }),
+    });
+  } catch (error) {
+    if (!isEvaError(error, "github_failed")) throw error;
+    options.write(`Eva could not list your GitHub repositories. ${error.message}`);
+    return null;
+  }
+  const shown = repositories.slice(0, listedRepositories);
+  options.write(
+    [
+      "Your GitHub repositories, pushed most recently first:",
+      "  0. Create a new vault",
+      ...shown.map(
+        (repository, index) =>
+          `  ${String(index + 1)}. ${repository.fullName}${repository.private ? " (private)" : ""}`,
+      ),
+    ].join("\n"),
+  );
+  for (;;) {
+    const answer = await ask(
+      "vaultRepository",
+      "Your vault: type its number, its name, or its address (Enter to skip): ",
+    );
+    if (answer === "") return { repository: "", create: false, skip: true };
+    if (answer === "0") return { repository: "", create: true };
+    if (/^\d+$/.test(answer)) {
+      const repository = shown[Number(answer) - 1];
+      if (repository !== undefined) return { repository: repository.cloneUrl, create: false };
+      options.write(`No repository has the number ${answer}.`);
+      continue;
+    }
+    // A name from the whole list, not only the shown part: `vault` or `you/vault`.
+    // GitHub's copied clone text ends in .git.
+    const name = answer.toLowerCase().replace(/\.git$/, "");
+    const named = repositories.filter(
+      (repository) =>
+        repository.fullName.toLowerCase() === name || repository.fullName.toLowerCase().split("/")[1] === name,
+    );
+    const only = named.length === 1 ? named[0] : undefined;
+    if (only !== undefined) return { repository: only.cloneUrl, create: false };
+    if (named.length > 1) {
+      options.write(
+        `Several repositories are named ${answer}: ${named.map((each) => each.fullName).join(", ")}. Type the full name.`,
+      );
+      continue;
+    }
+    if (isAddress(answer)) return { repository: answer, create: false };
+    // A repository that is not in the list, such as one of the oldest.
+    if (/^[\w.-]+\/[\w.-]+$/.test(name)) return { repository: `https://github.com/${name}.git`, create: false };
+    // Never a bare word to git, which would read it as a folder on this computer.
+    options.write(`No repository is named ${answer}. Type a number, a name such as you/vault, or an address.`);
   }
 }
 
@@ -477,16 +591,21 @@ function loggedInEngine(current: EngineName, logins: Readonly<Record<EngineName,
   return logins[current] || !logins[other] ? null : other;
 }
 
-/** A missing or empty vault folder: Eva can start a vault there from her template. */
+/**
+ * A missing or empty vault folder: Eva can start a vault there from her template.
+ * `chosen`: the person already chose "Create a new vault" from the list of repositories.
+ */
 async function offerNewVault(
   options: SetupOptions,
-  engineFolders: EngineFolders | null,
   folder: string,
   timeZone: string,
   ask: (key: SetupQuestion, question: string) => Promise<string>,
+  chosen: boolean,
 ): Promise<void> {
-  const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
-  if (!/^y(es)?$/i.test(create)) return;
+  if (!chosen) {
+    const create = await ask("createVault", `${folder} holds no vault. Create a new vault there? [y/N]: `);
+    if (!/^y(es)?$/i.test(create)) return;
+  }
   const name = (await ask("name", "What should Eva call you? ")) || "the owner";
   const language = (await ask("language", "The language for Eva's answers [English]: ")) || "English";
   const topics = splitList(
@@ -499,29 +618,70 @@ async function offerNewVault(
     environment: options.environment,
   });
   options.write(`Created a new vault in ${folder}.`);
-  const repository = await ask(
-    "githubRepository",
-    "Name of a new private GitHub repository for it, made with `gh` (Enter to skip): ",
-  );
-  if (repository === "") return;
-  const result = await options.runner.run(
-    ["gh", "repo", "create", repository, "--private", "--source", folder, "--remote", "origin", "--push"],
-    {
-      cwd: folder,
-      environment: {
-        ...options.environment,
-        ...(engineFolders === null ? {} : { GH_CONFIG_DIR: engineFolders.gh }),
-        GIT_TERMINAL_PROMPT: "0",
-      },
-      timeoutMs: ghTimeoutMs,
-    },
-  );
-  const login = engineFolders === null ? "gh auth login" : loginToGitHub(engineFolders.gh, options.platform);
-  options.write(
-    result.exitCode === 0
-      ? `Created the private repository ${repository} and pushed the vault.`
-      : `gh could not create the repository: ${result.stderr.trim()}. Run \`${login}\`, then push the vault yourself.`,
-  );
+  await offerVaultPush(options, folder, ask);
+}
+
+/**
+ * Puts a new vault in a private GitHub repository, made through the GitHub API with the login token.
+ * The local vault comes first, so a failed create or push loses nothing, and a rerun offers it again.
+ */
+async function offerVaultPush(
+  options: SetupOptions,
+  folder: string,
+  ask: (key: SetupQuestion, question: string) => Promise<string>,
+): Promise<void> {
+  const token = loadSecrets(homePaths(options.paths.root)).githubToken;
+  if (token === undefined) {
+    options.write(
+      "To keep the vault in a private GitHub repository, log in to GitHub: run `eva setup` again, and log in at the GitHub question.",
+    );
+    return;
+  }
+  // A push can fail after GitHub made the repository; a retry with the same name then pushes to it again.
+  const created = new Map<string, string>();
+  for (;;) {
+    const answer = await ask(
+      "githubRepository",
+      "Name of a new private GitHub repository for the vault, such as vault, or the address of an empty one (Enter to skip): ",
+    );
+    if (answer === "") return;
+    try {
+      let repository = isAddress(answer) ? answer : (created.get(answer) ?? "");
+      if (repository === "") {
+        const made = await createGitHubRepository({
+          token,
+          name: answer,
+          ...(options.githubApiBaseUrl === undefined ? {} : { baseUrl: options.githubApiBaseUrl }),
+        });
+        options.write(`Created the private repository ${made.fullName}.`);
+        created.set(answer, made.cloneUrl);
+        repository = made.cloneUrl;
+      }
+      await pushNewVault({
+        repository,
+        folder,
+        runner: options.runner,
+        environment: { ...options.environment, [githubTokenVariable]: token },
+      });
+      options.write(`Pushed the vault to ${repository}.`);
+      return;
+    } catch (error) {
+      if (!isEvaError(error, "github_failed") && !isEvaError(error, "git_failed")) throw error;
+      options.write(error.message);
+      // A script goes on with the local vault, and says why above.
+      if (!options.interactive) return;
+      options.write(
+        created.has(answer)
+          ? "Type the same name to push again, or type another name, or paste the address of an empty repository."
+          : "Type another name. Or create an empty private repository on github.com, and paste its address here.",
+      );
+    }
+  }
+}
+
+/** A git address or a folder on this computer, not a bare repository name such as `vault`. */
+function isAddress(text: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:|^[a-z]:[\\/]|^\.{0,2}[\\/]/i.test(text);
 }
 
 async function readPort(

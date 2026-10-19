@@ -1334,10 +1334,14 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
   await expect(page.getByRole("button", { name: "Open schedules" }).locator("svg.icon")).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Project" }).click();
+  await expect(page.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
   await expectNoSymbolMarks(page);
   await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("group", { name: "Progress list" })).toBeVisible();
+  await expectNoSymbolMarks(page);
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();

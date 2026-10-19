@@ -1761,6 +1761,8 @@ test("device login: an open page shows a new device's code, and Allow answers it
   await expect(dialog).toContainText("A new device wants to get in. Allow it?");
   await expect(dialog).toContainText("R4WZ");
   await dialog.getByRole("button", { name: "Allow" }).click();
+  // EVE shows her delighted face a moment, then the notice closes.
+  await expect(dialog).toContainText("Allowed. The new device opens Eva now.");
   await expect(dialog).toHaveCount(0);
   expect(answers).toEqual([{ answer: "allow" }]);
 });
@@ -1847,4 +1849,31 @@ test("Settings: the device list names each device from its browser", async ({ pa
   await expect(row).toContainText("Windows computer");
   await expect(row).toContainText("Chrome · owner@example.com · allowed");
   await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
+});
+
+test("device login: Deny answers the new device, and the notice closes at once", async ({ page }) => {
+  const answers: unknown[] = [];
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-4", code: "T7KM", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-4", async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await expect(dialog).toContainText("T7KM");
+  if (test.info().project.name === "phone") {
+    // A phone shows the notice as a bottom sheet, with buttons a finger can hit.
+    const box = await dialog.boundingBox();
+    const viewport = page.viewportSize();
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeCloseTo(viewport?.height ?? 0, 0);
+    const deny = await dialog.getByRole("button", { name: "Deny" }).boundingBox();
+    expect(deny?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  await dialog.getByRole("button", { name: "Deny" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(answers).toEqual([{ answer: "deny" }]);
 });

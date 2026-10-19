@@ -168,3 +168,115 @@ button.device-log-out {
     justify-self: start;
   }
 }
+
+/* The new-device notice: a dialog on a computer, a bottom sheet on a phone. */
+.device-backdrop {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.device-sheet {
+  width: 100%;
+  max-width: 460px;
+  background: var(--panel);
+  border-radius: var(--radius-dialog);
+  box-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.device-sheet h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+/* The same type as the login code, so the person compares the two screens at a glance. */
+.device-code {
+  font: 500 32px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-align: center;
+  background: var(--chip);
+  border-radius: 18px;
+  padding: 16px 10px;
+  color: var(--ink);
+}
+
+.device-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.device-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.device-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
+  font-weight: 600;
+}
+
+.device-actions button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Allow is the main action, so it takes the width that Deny leaves. */
+.device-actions button.primary {
+  flex: 1;
+  box-shadow: 0 6px 18px -6px var(--glow);
+}
+
+.device-actions button.danger {
+  background: var(--bad-bg);
+}
+
+@media (max-width: 760px) {
+  .device-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .device-sheet {
+    max-width: none;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+
+  /* The handle of a bottom sheet. */
+  .device-sheet::before {
+    content: "";
+    flex: none;
+    width: 40px;
+    height: 5px;
+    border-radius: 9px;
+    background: var(--line);
+  }
+
+  .device-sheet h2 {
+    font-size: 18px;
+  }
+
+  .device-actions {
+    justify-content: center;
+  }
+
+  .device-actions button.primary {
+    flex: none;
+  }
+}

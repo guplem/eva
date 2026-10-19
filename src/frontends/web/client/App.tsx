@@ -20,6 +20,7 @@ import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState
 import { LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
@@ -28,6 +29,8 @@ import { SettingsView } from "./SettingsView.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
+/** How long the notice of an allowed device shows the delighted face. */
+const allowedFaceMs = 1_500;
 
 export function App(): ReactElement {
   return (
@@ -44,6 +47,8 @@ function EvaApp(): ReactElement {
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
+  /** The request that the person just allowed. Its notice stays a moment, with the delighted face. */
+  const [allowedDevice, setAllowedDevice] = useState<DeviceLoginRequest | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
@@ -243,6 +248,12 @@ function EvaApp(): ReactElement {
     }, onConnectionChange);
   }, [authenticated, refreshSessions, recover]);
 
+  useEffect(() => {
+    if (allowedDevice === null) return undefined;
+    const timer = setTimeout(() => setAllowedDevice(null), allowedFaceMs);
+    return () => clearTimeout(timer);
+  }, [allowedDevice]);
+
   if (authenticated === null) return <div className="empty">Loading…</div>;
   if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
 
@@ -257,15 +268,17 @@ function EvaApp(): ReactElement {
   const approval = approvals[0];
 
   /** A failed answer drops the request too: it expired, or another approver answered it. */
-  const answerDevice = async (id: string, answer: "allow" | "deny"): Promise<void> => {
-    setDeviceRequests((current) => current.filter((entry) => entry.id !== id));
+  const answerDevice = async (request: DeviceLoginRequest, answer: "allow" | "deny"): Promise<void> => {
+    setDeviceRequests((current) => current.filter((entry) => entry.id !== request.id));
+    if (answer === "allow") setAllowedDevice(request);
     try {
-      await api.answerDeviceRequest(id, answer);
+      await api.answerDeviceRequest(request.id, answer);
     } catch (caught) {
+      setAllowedDevice(null);
       showError(caught);
     }
   };
-  const deviceRequest = deviceRequests[0];
+  const deviceRequest = allowedDevice ?? deviceRequests[0];
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
@@ -354,21 +367,11 @@ function EvaApp(): ReactElement {
       )}
       {/* An approval holds a running turn, so it comes first. A device request comes next. */}
       {approval === undefined && deviceRequest !== undefined && (
-        <div className="dialog-backdrop">
-          <div className="dialog" role="dialog" aria-label="New device">
-            <strong>A new device wants to get in. Allow it?</strong>
-            <span>
-              Allow it only if the new device shows the code <code>{deviceRequest.code}</code>. Account:{" "}
-              {deviceRequest.account}.
-            </span>
-            <div className="message-actions">
-              <button className="primary" onClick={() => void answerDevice(deviceRequest.id, "allow")}>
-                Allow
-              </button>
-              <button onClick={() => void answerDevice(deviceRequest.id, "deny")}>Deny</button>
-            </div>
-          </div>
-        </div>
+        <NewDeviceDialog
+          request={deviceRequest}
+          allowed={deviceRequest === allowedDevice}
+          onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
+        />
       )}
       {approval === undefined && deviceRequest === undefined && card !== undefined && (
         <ScheduleCardDialog

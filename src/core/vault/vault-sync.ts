@@ -66,6 +66,15 @@ export interface VaultSyncOptions {
 
 const networkTimeoutMs = 60_000;
 const localTimeoutMs = 20_000;
+/** The git commands that write a commit, and so need a name and an email. */
+const committingCommands = new Set(["commit", "commit-tree", "merge", "rebase", "stash"]);
+/** The same identity as the first commit of a new vault (vault-template.ts). */
+const evaIdentity: Readonly<Record<string, string>> = {
+  GIT_AUTHOR_NAME: "Eva",
+  GIT_AUTHOR_EMAIL: "eva@localhost",
+  GIT_COMMITTER_NAME: "Eva",
+  GIT_COMMITTER_EMAIL: "eva@localhost",
+};
 const maxPushAttempts = 3;
 /** Files bigger than this are not scanned for secrets: binaries, archives, exports. */
 const maxScannedFileBytes = 1_000_000;
@@ -107,6 +116,7 @@ export class VaultSync {
   private readonly options: VaultSyncOptions;
   private queue: Promise<unknown>;
   private state: VaultSyncState;
+  private hasIdentity: boolean;
   /**
    * The picks of a committed conflict, by path, with the versions at the time of the pick, until
    * every note has one. Memory is enough: a restart loses only these picks, and git still holds
@@ -119,6 +129,7 @@ export class VaultSync {
     this.queue = Promise.resolve();
     this.state = { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] };
     this.picks = new Map();
+    this.hasIdentity = false;
   }
 
   get currentState(): VaultSyncState {
@@ -646,12 +657,14 @@ export class VaultSync {
     timeoutMs: number,
     environment: Readonly<Record<string, string>> = {},
   ): Promise<GitResult> {
+    const identity = committingCommands.has(arguments_[0] ?? "") ? await this.identityEnvironment() : {};
     try {
       return await this.options.runner.run(["git", ...arguments_], {
         cwd: this.options.vaultPath,
         // Literal pathspecs: a note named "n*.md" must never match "nb.md".
         environment: {
           ...this.options.environment,
+          ...identity,
           ...environment,
           GIT_TERMINAL_PROMPT: "0",
           GIT_LITERAL_PATHSPECS: "1",
@@ -662,6 +675,27 @@ export class VaultSync {
       const reason = isEvaError(error) ? error.message : String(error);
       return { exitCode: -1, stdout: "", stderr: reason };
     }
+  }
+
+  /**
+   * A new machine often has no git name or email, and its host name gives git no email to guess,
+   * so every commit would fail. Then Eva commits as herself; the person's own identity always wins.
+   */
+  private async identityEnvironment(): Promise<Readonly<Record<string, string>>> {
+    // Only a found identity is kept: one that the person sets later, while Eva runs, then wins.
+    if (this.hasIdentity) return {};
+    try {
+      const result = await this.options.runner.run(["git", "var", "GIT_COMMITTER_IDENT"], {
+        cwd: this.options.vaultPath,
+        environment: { ...this.options.environment, GIT_TERMINAL_PROMPT: "0" },
+        timeoutMs: localTimeoutMs,
+      });
+      this.hasIdentity = result.exitCode === 0;
+    } catch {
+      // git could not start: the commit itself then reports the problem.
+      return {};
+    }
+    return this.hasIdentity ? {} : evaIdentity;
   }
 
   private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {

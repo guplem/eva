@@ -114,6 +114,14 @@ jobs:
         if: env.RUN_CODE_CHECKS == 'true'
         shell: bash
         run: bash scripts/smoke-executable.sh "dist/eva${{ runner.os == 'Windows' && '.exe' || '' }}"
+      # The one-command install (install/), as a new person runs it. Linux uses a clean Ubuntu with no git.
+      - name: Smoke test the install script
+        if: env.RUN_CODE_CHECKS == 'true' && runner.os == 'Linux'
+        run: bash scripts/smoke-install.sh dist/eva
+      - name: Smoke test the install script
+        if: env.RUN_CODE_CHECKS == 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/smoke-install.ps1 dist/eva.exe
 
   voice:
     needs: changes

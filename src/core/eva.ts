@@ -444,7 +444,8 @@ export class Eva {
     if (this.backgroundTicking) return;
     this.backgroundTicking = true;
     try {
-      await this.vault.pullIfDue(this.settings.config.sync);
+      // The interval applies at once; sync.enabled waits for a restart, as the sweep and the turn sync do.
+      await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:

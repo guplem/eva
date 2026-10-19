@@ -149,6 +149,19 @@ describe("Eva", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
   });
 
+  test("a saved change of sync.enabled does not start the timed pull before a restart", async () => {
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Remote.md", "From another machine.\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "remote note");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const instance = start(new FakeEngine(), { sync: syncOff });
+    instance.updateSettings({ sync: { enabled: true } });
+    clock = new Date(clock.getTime() + 60 * 60_000);
+    await instance.backgroundTick();
+    expect(existsSync(join(vault, "Remote.md"))).toBe(false);
+  });
+
   test("the engine gets an allowlisted environment with the Claude token, and no other secret (lesson 96)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);

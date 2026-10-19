@@ -39,12 +39,20 @@ describe("describeDevice", () => {
           "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         ),
       ),
-    ).toMatchObject({ name: "Android phone", browser: "Chrome", icon: "phone" });
+    ).toMatchObject({ name: "Android", browser: "Chrome", icon: "phone" });
+    // Samsung Internet: the label cuts the user agent before "Mobile", so a phone and a tablet look the same.
+    expect(
+      describeDevice(
+        label(
+          "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36",
+        ),
+      ),
+    ).toMatchObject({ name: "Android", icon: "phone" });
     expect(
       describeDevice(
         label("Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"),
       ),
-    ).toMatchObject({ name: "Android tablet", icon: "phone" });
+    ).toMatchObject({ name: "Android", icon: "phone" });
     expect(describeDevice(label("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) CriOS/120.0"))).toMatchObject({
       name: "iPad",
       browser: "Chrome",

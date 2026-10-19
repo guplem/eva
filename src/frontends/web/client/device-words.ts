@@ -12,8 +12,8 @@ export interface DeviceWords {
 const systems: readonly (readonly [RegExp, string, DeviceWords["icon"]])[] = [
   [/iPhone/, "iPhone", "phone"],
   [/iPad/, "iPad", "phone"],
-  [/Android.*Mobile/, "Android phone", "phone"],
-  [/Android/, "Android tablet", "phone"],
+  // The label often cuts the user agent before "Mobile", so it cannot tell an Android phone from a tablet.
+  [/Android/, "Android", "phone"],
   [/Windows/, "Windows computer", "laptop"],
   [/CrOS/, "Chromebook", "laptop"],
   [/Macintosh|Mac OS X/, "Mac", "laptop"],

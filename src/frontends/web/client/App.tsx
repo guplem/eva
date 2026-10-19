@@ -20,6 +20,8 @@ import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
+import { Visor } from "./Visor.tsx";
+import { stateFaces } from "./visor-faces.ts";
 
 type Screen = "assistant" | "project" | "settings" | "schedules";
 
@@ -258,6 +260,7 @@ function EvaApp(): ReactElement {
   return (
     <div className="app">
       <header className="topbar">
+        <Visor size={28} face={isConnected ? stateFaces.idle : stateFaces.offline} />
         {/* Hidden, not removed, so the mode switch does not move on a phone. */}
         <button
           className="menu-button"

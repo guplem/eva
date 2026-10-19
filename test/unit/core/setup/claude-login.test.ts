@@ -38,7 +38,7 @@ function fakeTerminal(
   script: { onStart?: (terminal: FakeTerminal) => void; onWrite?: (terminal: FakeTerminal, text: string) => void },
 ): FakeTerminal {
   let output = "";
-  const listeners: (() => void)[] = [];
+  const listeners = new Set<() => void>();
   let finish: (code: number) => void = () => undefined;
   const exited = new Promise<number>((resolve) => {
     finish = resolve;
@@ -50,7 +50,10 @@ function fakeTerminal(
     stopped: false,
     output: () => output,
     onOutput: (listener) => {
-      listeners.push(listener);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     write: (text) => {
       terminal.written.push(text);
@@ -242,5 +245,92 @@ describe("ClaudeLogin", () => {
     await login.start();
     login.stop();
     expect(terminals[0]?.stopped).toBe(true);
+  });
+});
+
+describe("ClaudeLogin with output in pieces", () => {
+  test("waits for the prompt, so a cut address never goes to the page", async () => {
+    const { login, terminals } = makeLogin({
+      onStart: (terminal) => {
+        terminal.print(addressScreen[0] ?? "");
+        terminal.print(addressScreen[1] ?? "");
+        // The link stops in the middle of the address.
+        terminal.print(`${escape}]8;id=example;${url.slice(0, 60)}`);
+      },
+    });
+    const started = login.start();
+    await Bun.sleep(5);
+    const terminal = terminals[0];
+    terminal?.print(`${url.slice(60)}${bell}${url}${escape}]8;;${bell}\r\n`);
+    terminal?.print(addressScreen[3] ?? "");
+    expect(await started).toEqual({ url });
+  });
+
+  test("waits for the end of the token", async () => {
+    const { login, terminals } = makeLogin({ onStart: showAddress });
+    await login.start();
+    const finished = login.finish("example-code");
+    const terminal = terminals[0];
+    terminal?.print(`Your OAuth token (valid for 1 year):\r\n\r\n${token.slice(0, 40)}`);
+    await Bun.sleep(5);
+    terminal?.print(`${token.slice(40)}${escape}[22m\r\n`);
+    expect(await finished).toEqual({ token });
+  });
+
+  test("takes the token at the end of the output when claude ends", async () => {
+    const { login } = makeLogin({
+      onStart: showAddress,
+      onWrite: (terminal) => {
+        terminal.print(token);
+        terminal.exit(0);
+      },
+    });
+    await login.start();
+    expect(await login.finish("example-code")).toEqual({ token });
+  });
+
+  test("never puts the pasted code into the error", async () => {
+    const { login } = makeLogin(
+      {
+        onStart: showAddress,
+        // The terminal echoes what Eva types.
+        onWrite: (terminal, text) => {
+          terminal.print(text.replace("\r", "\r\n"));
+        },
+      },
+      { waitMs: 30 },
+    );
+    await login.start();
+    const error = await failure(login.finish("secret-example-code"));
+    expect((error as Error).message).not.toContain("secret-example-code");
+  });
+
+  test("a Finish before the address waits for no code", async () => {
+    const { login, terminals } = makeLogin({});
+    const started = login.start();
+    const error = await failure(login.finish("example-code"));
+    expect((error as Error).message).toContain("No Claude login waits");
+    expect(terminals[0]?.written).toEqual([]);
+    terminals[0]?.print(addressScreen.join(""));
+    expect(await started).toEqual({ url });
+  });
+
+  test("a start that a newer start replaced says so", async () => {
+    const { login, terminals } = makeLogin({});
+    const first = login.start();
+    const second = login.start();
+    terminals[1]?.print(addressScreen.join(""));
+    expect(await second).toEqual({ url });
+    const error = await failure(first);
+    expect(isEvaError(error, "claude_login_failed")).toBe(true);
+  });
+
+  test("stop also ends a login that waits for its token", async () => {
+    const { login, terminals } = makeLogin({ onStart: showAddress });
+    await login.start();
+    const finished = failure(login.finish("example-code"));
+    login.stop();
+    expect(terminals[0]?.stopped).toBe(true);
+    expect(isEvaError(await finished, "claude_login_failed")).toBe(true);
   });
 });

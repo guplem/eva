@@ -17,8 +17,8 @@ export interface TerminalProcessOptions {
 export interface TerminalProcess {
   /** All the output so far, as text, with the terminal codes still in it. */
   output(): string;
-  /** Calls `listener` after each new piece of output. */
-  onOutput(listener: () => void): void;
+  /** Calls `listener` after each new piece of output. Returns a function that stops the calls. */
+  onOutput(listener: () => void): () => void;
   /** Types text into the terminal. A `\r` is the Enter key. */
   write(text: string): void;
   /** The exit code. */
@@ -37,7 +37,7 @@ const outputLimit = 200_000;
 /** Throws EvaError `process_failed` when the program cannot start. */
 export const systemTerminalProcessStarter: TerminalProcessStarter = (command, options) => {
   const decoder = new TextDecoder();
-  const listeners: (() => void)[] = [];
+  const listeners = new Set<() => void>();
   let output = "";
   let child: Bun.Subprocess;
   try {
@@ -56,6 +56,11 @@ export const systemTerminalProcessStarter: TerminalProcessStarter = (command, op
   } catch (error) {
     throw new EvaError("process_failed", `Could not start ${command[0] ?? "a process"}.`, { cause: error });
   }
+  if (child.terminal === undefined) {
+    // A Bun with no terminal support for this system: claude would wait in silence until the timeout.
+    child.kill();
+    throw new EvaError("process_failed", "This system gives Eva no terminal for the program.");
+  }
   const stop = (): void => {
     if (child.exitCode === null && child.signalCode === null) stopProcessTree(child.pid);
   };
@@ -68,7 +73,10 @@ export const systemTerminalProcessStarter: TerminalProcessStarter = (command, op
   return {
     output: () => output,
     onOutput: (listener) => {
-      listeners.push(listener);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     write: (text) => {
       child.terminal?.write(text);

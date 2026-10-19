@@ -22,8 +22,13 @@ export interface ClaudeLoginOptions {
 const lifetimeMs = 15 * 60_000;
 const defaultWaitMs = 60_000;
 const codeLimit = 2_000;
-const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}/;
+/** A token is whole only when a character that no token holds follows it: output comes in pieces. */
+const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}(?=[^0-9A-Za-z_-])/;
+/** After the end of the program, nothing more comes, so the end of the output ends the token too. */
+const endedTokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}/;
 const addressPattern = /https:\/\/\S*oauth\/authorize\S*/;
+/** claude prints its prompt after the address, so the address is whole once the prompt shows. */
+const promptPattern = /paste\s+code\s+here/i;
 /** After a refused code, claude waits on this line instead of ending. */
 const refusedPattern = /press\s+enter\s+to\s+retry/i;
 /** What `read` returns when claude refused the code. */
@@ -33,11 +38,14 @@ const tryAgain = 'Press "Log in to Claude" to try again.';
 export class ClaudeLogin {
   private readonly options: ClaudeLoginOptions;
   /** One person, so one login at a time: a new start replaces it. */
-  private pending: TerminalProcess | null;
+  private current: TerminalProcess | null;
+  /** True from the address until the first Finish: claude reads one code only. */
+  private waitsForCode: boolean;
 
   constructor(options: ClaudeLoginOptions) {
     this.options = options;
-    this.pending = null;
+    this.current = null;
+    this.waitsForCode = false;
   }
 
   /** Starts `claude setup-token` and returns the address of Claude's login page. */
@@ -58,15 +66,21 @@ export class ClaudeLogin {
     } catch (error) {
       throw failure(`Eva could not start the claude program. ${tryAgain}`, error);
     }
-    this.pending = terminal;
+    this.current = terminal;
     void terminal.exited.then(() => {
-      if (this.pending === terminal) this.pending = null;
+      if (this.current === terminal) this.release();
     });
-    const result = await this.waitFor(
-      terminal,
-      (screen) => screen.links.find(isLoginAddress) ?? match(screen.text, addressPattern),
+    const result = await this.waitFor(terminal, (screen) =>
+      promptPattern.test(screen.text)
+        ? (screen.links.find(isLoginAddress) ?? match(screen.text, addressPattern))
+        : null,
     );
-    if (typeof result === "string") return { url: result };
+    if (typeof result === "string") {
+      // A second start meanwhile replaced this login.
+      if (this.current !== terminal) throw failure(`A newer Claude login started meanwhile. ${tryAgain}`);
+      this.waitsForCode = true;
+      return { url: result };
+    }
     this.stopTerminal(terminal);
     throw failure(`${ended(result, "Claude's login address")} ${tryAgain}`);
   }
@@ -76,17 +90,21 @@ export class ClaudeLogin {
     const code = pasted.trim();
     if (code === "" || code.length > codeLimit || /\s/.test(code))
       throw failure("Paste the code from Claude's page: one line, with no spaces.");
-    const terminal = this.pending;
-    if (terminal === null) throw failure(`No Claude login waits for a code. ${tryAgain}`);
-    // The code goes to one program only: a second Finish must not type into it again.
-    this.pending = null;
+    const terminal = this.current;
+    if (terminal === null || !this.waitsForCode)
+      throw failure(
+        `No Claude login waits for a code. A login ends after 15 minutes, and after each Finish. ${tryAgain}`,
+      );
+    this.waitsForCode = false;
     // The screen before the code holds no token and no refusal, so only the new output counts.
     const from = terminal.output().length;
     terminal.write(`${code}\r`);
     const result = await this.waitFor(
       terminal,
-      (screen) => match(screen.text, tokenPattern) ?? (refusedPattern.test(screen.text) ? refused : null),
-      from,
+      (screen, exited) =>
+        match(screen.text, exited ? endedTokenPattern : tokenPattern) ??
+        (refusedPattern.test(screen.text) ? refused : null),
+      { from, hide: code },
     );
     this.stopTerminal(terminal);
     if (result === refused)
@@ -95,47 +113,57 @@ export class ClaudeLogin {
     throw failure(`${ended(result, "the token")} ${tryAgain}`);
   }
 
-  /** Ends a waiting login, such as at Eva's stop. */
+  /** Ends the login, such as at Eva's stop. */
   stop(): void {
-    const terminal = this.pending;
-    this.pending = null;
+    const terminal = this.current;
+    this.release();
     if (terminal !== null) terminal.stop();
   }
 
+  private release(): void {
+    this.current = null;
+    this.waitsForCode = false;
+  }
+
   private stopTerminal(terminal: TerminalProcess): void {
-    if (this.pending === terminal) this.pending = null;
+    if (this.current === terminal) this.release();
     terminal.stop();
   }
 
-  /** Waits until `read` finds a value in the output, the program ends, or the wait ends. */
+  /**
+   * Waits until `read` finds a value in the output, the program ends, or the wait ends. Only the
+   * output after `from` counts. A line with `hide` in it never goes into the error message.
+   */
   private waitFor<T>(
     terminal: TerminalProcess,
-    read: (screen: Screen) => T | null,
-    from = 0,
+    read: (screen: Screen, exited: boolean) => T | null,
+    { from = 0, hide }: { readonly from?: number; readonly hide?: string } = {},
   ): Promise<T | { readonly reason: "exited" | "timeout"; readonly lastWords: string }> {
     return new Promise((resolve) => {
       let finished = false;
+      const screen = (): Screen => screenOf(terminal.output().slice(from));
       const done = (value: { found: T } | { reason: "exited" | "timeout" }): void => {
         if (finished) return;
         finished = true;
         clearTimeout(timer);
-        resolve(
-          "found" in value ? value.found : { ...value, lastWords: lastWords(screenOf(terminal.output().slice(from))) },
-        );
+        unsubscribe();
+        resolve("found" in value ? value.found : { ...value, lastWords: lastWords(screen(), hide) });
       };
-      const check = (): void => {
-        const found = read(screenOf(terminal.output().slice(from)));
+      const check = (exited: boolean): void => {
+        const found = read(screen(), exited);
         if (found !== null) done({ found });
       };
       const timer = setTimeout(() => {
         done({ reason: "timeout" });
       }, this.options.waitMs ?? defaultWaitMs);
-      terminal.onOutput(check);
+      const unsubscribe = terminal.onOutput(() => {
+        check(false);
+      });
       void terminal.exited.then(() => {
-        check();
+        check(true);
         done({ reason: "exited" });
       });
-      check();
+      check(false);
     });
   }
 }
@@ -177,7 +205,8 @@ function screenOf(output: string): Screen {
       if (output.charAt(end) === "G" || output.charAt(end) === "C") text += " ";
       index = end + 1;
     } else if (character === escapeCharacter) {
-      index += 3;
+      // A character set choice, such as ESC ( B, has one more character than other short codes.
+      index += "()".includes(output.charAt(index + 1)) ? 3 : 2;
     } else {
       if (character === "\r" || character === "\n") text += "\n";
       else if (character >= " ") text += character;
@@ -196,11 +225,11 @@ function match(text: string, pattern: RegExp): string | null {
 }
 
 /** The last line that claude printed, which names the problem. */
-function lastWords(screen: Screen): string {
+function lastWords(screen: Screen, hide: string | undefined): string {
   const lines = screen.text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line !== "" && !/^paste code here/i.test(line));
+    .filter((line) => line !== "" && !promptPattern.test(line) && (hide === undefined || !line.includes(hide)));
   return (lines.at(-1) ?? "").slice(0, 300);
 }
 

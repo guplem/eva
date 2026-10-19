@@ -34,12 +34,18 @@ describe("systemTerminalProcessStarter", () => {
       environment,
       timeoutMs: 20_000,
     });
+    let stoppedCalls = 0;
+    const unsubscribe = child.onOutput(() => {
+      stoppedCalls++;
+    });
+    unsubscribe();
     const heard = new Promise<void>((resolve) => {
       child.onOutput(() => {
         if (child.output().includes("late")) resolve();
       });
     });
     await heard;
+    expect(stoppedCalls).toBe(0);
     await child.exited;
   });
 

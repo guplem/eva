@@ -734,6 +734,7 @@ describe("the Claude Code login from the page", () => {
           output: () => output,
           onOutput: (listener) => {
             listeners.push(listener);
+            return () => undefined;
           },
           write: () => {
             output += `\r\n${token}\r\n`;

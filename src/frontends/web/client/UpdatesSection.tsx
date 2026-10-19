@@ -2,8 +2,10 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
 import { api, type EngineUpdateStatus, type PublicSettings, type UpdateStatus } from "./api.ts";
-import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
+import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { updatesFace } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
+import { Visor } from "./Visor.tsx";
 
 type Updates = PublicSettings["config"]["updates"];
 
@@ -38,6 +40,8 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pickingVersion, setPickingVersion] = useState(false);
+  /** True once the new Eva answers after an install. */
+  const [restarted, setRestarted] = useState(false);
 
   useEffect(() => {
     api
@@ -66,6 +70,7 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   /** Installs `version`, or what the update policy allows when it is undefined. */
   const updateNow = async (version?: string): Promise<void> => {
     setPickingVersion(false);
+    setRestarted(false);
     setNote(version === undefined ? "Checking…" : `Installing ${version}…`);
     try {
       const status = await api.updateNow(version);
@@ -74,6 +79,7 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
       if (status.phase !== "restarting") return;
       setNote("Eva restarts with the new version when no chat runs…");
       const result = await waitForNewEva();
+      setRestarted(result === "restarted");
       setNote(
         result === "restarted"
           ? "Eva restarted with the new version."
@@ -103,22 +109,23 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
       item="eva-updates"
       title="Eva updates"
       description="Eva installs an update only when no chat is running, then restarts."
+      aside={<Visor face={updatesFace(update, restarted)} />}
     >
       <div className="callout">{update === null ? "This Eva cannot update herself." : describeUpdate(update)}</div>
-      <SelectField
+      <ChoiceChips
         label="Install updates automatically"
         value={config.updates.frequency}
         choices={updateChoices}
         onChange={(frequency) => void context.saveNow({ updates: { frequency } })}
       />
-      <SelectField
+      <ChoiceChips
         label="Eva installs by herself"
         value={config.updates.install}
         choices={installChoices}
         onChange={(install) => void context.saveNow({ updates: { install } })}
       />
       {config.updates.install === "major" && (
-        <div className="callout danger">
+        <div className="callout warning">
           A major update can break things that work today. With this choice, Eva installs it by herself.
         </div>
       )}

@@ -1338,7 +1338,7 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
 });
 
-test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({
+test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({
   page,
 }) => {
   const status = {
@@ -1357,8 +1357,17 @@ test("Settings: Update to a version shows each newer release, warns on a major o
         notes: "",
         level: "major",
         summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
+        headline: "Rename the keys.",
+        publishedAt: "2025-10-12T09:00:00Z",
       },
-      { version: "0.3.0", notes: "", level: "minor", summary: "New features:\n• feat: voice notes (0.3.0)" },
+      {
+        version: "0.3.0",
+        notes: "",
+        level: "minor",
+        summary: "New features:\n• feat: voice notes (0.3.0)",
+        headline: "Voice notes.",
+        publishedAt: null,
+      },
     ],
     lastCheckAt: null,
     lastError: null,
@@ -1374,28 +1383,61 @@ test("Settings: Update to a version shows each newer release, warns on a major o
   });
   await logIn(page);
   await openSettings(page, "Updates");
-  await expect(page.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
-  await page.getByRole("button", { name: "Update to a version…" }).click();
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await expect(card.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
+  // A version waits, so EVE looks surprised.
+  await expect(card.locator(".mk.e-surprise")).toHaveCount(1);
+  await card.getByRole("button", { name: "Update to a version…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
-  await dialog.getByRole("combobox").press("Escape");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Update to a version…" }).click();
+  await card.getByRole("button", { name: "Update to a version…" }).click();
+  const versions = dialog.getByRole("radiogroup", { name: "Version" });
+  await expect(versions.getByRole("radio")).toHaveCount(2);
+  await expect(versions).toContainText("v1.0.0");
+  await expect(versions).toContainText("12 Oct 2025");
+  await expect(versions).toContainText("Rename the keys.");
+  await expect(versions).toContainText("Voice notes.");
+  await expect(versions.locator(".version-row.installed")).toContainText("v0.2.0");
+  await expect(versions.locator(".version-row.installed")).toContainText("Installed");
+  await expect(versions.getByText("New", { exact: true })).toHaveCount(2);
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
+  await dialog.getByText("Every change up to v1.0.0").click();
   await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
-  await dialog.getByRole("combobox").selectOption("0.3.0");
+  await expect(dialog).toContainText("Your chats stay as they are.");
+  if (test.info().project.name === "phone") {
+    // A phone shows the dialog as a bottom sheet, with its buttons at full width.
+    const box = await dialog.boundingBox();
+    expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(page.viewportSize()?.height);
+    const heights = await dialog
+      .getByRole("button")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  }
+  await versions.getByText("v0.3.0").click();
+  await expect(versions.getByRole("radio", { checked: true })).toHaveValue("0.3.0");
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Install 0.3.0" }).click();
+  await dialog.getByRole("button", { name: "Update to v0.3.0 and restart" }).click();
   await expect.poll(() => installs).toEqual([{ version: "0.3.0" }]);
   await expect(dialog).toHaveCount(0);
 });
 
-test("Settings: the major update policy shows a warning", async ({ page }) => {
+test("Settings: the update choices are chips, and the major update policy shows a warning", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Updates");
+  const policy = page.getByRole("group", { name: "Eva installs by herself" });
   await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
-  await page.getByLabel("Eva installs by herself").selectOption("major");
+  await policy.getByRole("button", { name: "Every release, even major ones" }).click();
+  await expect(policy.getByRole("button", { name: "Every release, even major ones" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByText("With this choice, Eva installs it by herself.")).toBeVisible();
-  await page.getByLabel("Eva installs by herself").selectOption("minor");
+  await policy.getByRole("button", { name: "Fixes and new features" }).click();
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
+  const frequency = page.getByRole("group", { name: "Install updates automatically" });
+  await expect(frequency.getByRole("button")).toHaveCount(4);
 });
 
 test("Settings: Check and install waits until the new Eva answers, not the old one", async ({ page }) => {
@@ -1432,6 +1474,8 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
   await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
   await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
   expect(readsWhileRestarting).toBe(3);
+  // The install worked, so EVE looks happy.
+  await expect(page.getByRole("region", { name: "Eva updates" }).locator(".mk.e-joy")).toHaveCount(1);
 });
 
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {

@@ -355,15 +355,17 @@ function LiveAnswer({
 
 /** When the page first saw the running turn, with a render each second while it runs. */
 function useStartTime(running: boolean): number {
-  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [, setTick] = useState(0);
+  // Set during the render, so the first frame of a turn never shows the time of an older one.
+  if (running && startedAt === null) setStartedAt(Date.now());
+  if (!running && startedAt !== null) setStartedAt(null);
   useEffect(() => {
     if (!running) return;
-    setStartedAt(Date.now());
     const timer = setInterval(() => setTick((tick) => tick + 1), 1_000);
     return () => clearInterval(timer);
   }, [running]);
-  return startedAt;
+  return startedAt ?? Date.now();
 }
 
 function CopyButton({ text }: { readonly text: string }): ReactElement {

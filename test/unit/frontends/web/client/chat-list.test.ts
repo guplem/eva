@@ -24,6 +24,7 @@ function turn(fields: Partial<Turn>): Turn {
     steps: [],
     omittedSteps: 0,
     contextTokens: null,
+    contextWindow: null,
     failure: null,
     lastMessageId: null,
     at: now.toISOString(),

@@ -93,6 +93,11 @@ describe("setupProgress", () => {
     expect(step(none, "engine")?.detail).toContain("eva setup");
   });
 
+  test("a missing vault leads to this page, not to a terminal", () => {
+    expect(step(fresh, "vault")?.detail).toContain("Pick it from your GitHub repositories");
+    expect(step(fresh, "vault")?.detail).not.toContain("eva setup");
+  });
+
   test("phone access that is off is optional; a bot with no paired chat says how to pair", () => {
     const input: ProgressInput = { ...fresh, remoteAccess: null, telegram: { token: true, paired: false } };
     expect(step(input, "remoteAccess")?.state).toBe("optional");

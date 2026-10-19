@@ -573,6 +573,27 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
+test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
+  await logIn(page);
+  const accent = (): Promise<string> =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent"));
+  const before = await accent();
+  await page.getByRole("button", { name: "Settings" }).click();
+  const colours = page.getByRole("group", { name: "Colour" });
+  await expect(colours.getByRole("button")).toHaveCount(15);
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "true");
+  await colours.getByRole("button", { name: "Violet" }).click();
+  await expect(colours.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "false");
+  expect(await accent()).not.toBe(before);
+  await page.getByLabel("Any colour").fill("#123abc");
+  await expect(page.getByText("#123ABC")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");
+});
+
 test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
   await page.route("**/*", (route) =>
     route

@@ -214,7 +214,7 @@ export function ProjectView({
       <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Projects">
         <h2 className="list-title">Projects</h2>
         <input
-          className="search-field"
+          className="project-search"
           aria-label="Search projects"
           placeholder="Search projects"
           value={search}

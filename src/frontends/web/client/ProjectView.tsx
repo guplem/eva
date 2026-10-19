@@ -10,6 +10,7 @@ import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversat
 import { useShowError } from "./error-toast.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
+import { ShowListButton } from "./MainNav.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
@@ -19,6 +20,7 @@ interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
+  readonly onShowList: () => void;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
   /** The chat that the address names; its project and clone open with it. */
@@ -49,6 +51,7 @@ export function ProjectView({
   sessions,
   live,
   sidebarOpen,
+  onShowList,
   onChanged,
   onNavigate,
   linkedChat,
@@ -296,6 +299,7 @@ export function ProjectView({
         ) : page.kind === "chat" && chat !== undefined ? (
           <>
             <div className="main-header">
+              <ShowListButton onClick={onShowList} />
               <div className="header-text">
                 <h1>{chat.title}</h1>
                 <div className="sub crumbs">

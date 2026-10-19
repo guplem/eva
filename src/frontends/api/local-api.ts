@@ -97,6 +97,7 @@ const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
 const localAccount = "this computer";
 /** The address that Google sent the browser to, or its code alone. */
 const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
+const claudeLoginSchema = z.object({ code: z.string().min(1).max(10_000) });
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
@@ -508,6 +509,9 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (url.pathname === "/api/google/login/finish")
       return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
   }
+  if (method === "POST" && url.pathname === "/api/engines/claude-code/login") return json(await eva.startClaudeLogin());
+  if (method === "POST" && url.pathname === "/api/engines/claude-code/login/finish")
+    return json(await eva.finishClaudeLogin(claudeLoginSchema.parse(await request.json()).code));
   if (method === "DELETE" && url.pathname === "/api/devices") return json({ removed: eva.deviceLogins.forgetAll() });
   if (method === "POST" && url.pathname === "/api/devices/allow") {
     // Only the label comes back: the device token reaches only the browser that asked.

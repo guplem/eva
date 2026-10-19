@@ -191,8 +191,9 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await composer.press("Enter");
   // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
   const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
+  // The working card shows at once, so only the finished answer tells that no trust question comes.
+  await Promise.race([answer.filter({ hasText: title }).waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
   await expect(answer).toContainText(title);
   const chatId = await chatIdNamed(page, title);
@@ -265,7 +266,7 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
   );
 });
 
-test("an approval opens a dialog, and Allow answers the turn", async ({ page }) => {
+test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
   await openList(page);
   await page.getByRole("button", { name: "New chat", exact: true }).click();
@@ -273,7 +274,7 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
   await composer.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Approval" });
+  const dialog = page.getByRole("region", { name: "Eva asks for permission" });
   await expect(dialog).toContainText("gh issue create");
   // While the turn waits, its running task shows under the conversation, also on a phone.
   await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
@@ -288,10 +289,69 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   // On a phone, the person must see which chat waits for a decision.
   const listed = page.locator(".sidebar .list-item[aria-current='true']");
   await expect(listed.locator(".status-pill")).toHaveText("Needs you");
-  await dialog.getByRole("button", { name: "Allow" }).click();
+  // The card names what it asks, with the firm face beside it on a computer.
+  await expect(dialog).toContainText("Needs you");
+  await expect(dialog.getByRole("heading")).toHaveText("Eva wants to run a command");
+  const allow = dialog.getByRole("button", { name: "Allow once" });
+  if (test.info().project.name === "phone") {
+    // A bottom sheet with full-width buttons, in reach of the thumb.
+    const box = await allow.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0).toBeGreaterThan(300);
+    // The sheet does not cover the tab bar: the person can still go to another page.
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("button", { name: /^Schedules/ })
+      .click({ trial: true, timeout: 2_000 });
+  } else {
+    await expect(page.locator(".msg:has(.approval-card) .mk.e-firm")).toBeVisible();
+  }
+  // The request is in the chat, not in a dialog that blocks the page.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await allow.click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+
+test("a request of another chat gets a notice that opens it, and an answer from elsewhere closes the card", async ({
+  page,
+}) => {
+  const title = `Waiting chat (${test.info().project.name})`;
+  await logIn(page);
+  const waitingId = await newChat(page);
+  await page.request.post(`/api/sessions/${waitingId}/rename`, { data: { title } });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please approve this");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(card).toContainText(title);
+
+  // Another chat: the card goes, and a notice names the chat that waits.
+  await newChat(page);
+  await expect(card).toHaveCount(0);
+  const notice = page.getByRole("region", { name: "Chats that wait for you" });
+  await expect(notice).toContainText(`Eva needs your permission in ${title}`);
+  // The notice also shows on another page.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Schedules" }).click();
+  await notice.getByRole("button", { name: `Open ${title}` }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await expect(card).toContainText("gh issue create");
+  // Another test can leave a request of its own chat, so only this chat must leave the notice.
+  await expect(notice.getByRole("button", { name: `Open ${title}` })).toHaveCount(0);
+
+  // Telegram or the terminal answers first: the card closes here too.
+  const pending = (await (await page.request.get("/api/approvals")).json()) as {
+    requestId: string;
+    sessionId: string;
+  }[];
+  const request = pending.find((entry) => entry.sessionId === waitingId);
+  expect(request).toBeDefined();
+  await page.request.post(`/api/approvals/${request?.requestId ?? ""}`, { data: { answer: "deny" } });
+  await expect(card).toHaveCount(0);
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered: deny");
 });
 
 test("Copy copies the text of an answer", async ({ page, context }) => {
@@ -378,8 +438,8 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   // The first chat in a clone of an unknown repository asks for trust. Both screen
   // sizes share one demo server, so only the first of them sees the question.
   const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
+  await Promise.race([answer.filter({ hasText: "Fix the bug" }).waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) {
     await expect(trustQuestion).toContainText("Trust this repository");
     await trustQuestion.getByRole("button", { name: "Deny" }).click();
@@ -1229,7 +1289,7 @@ test("an approval and a task from while the connection was down still show after
   await expect
     .poll(async () => ((await (await page.request.get("/api/approvals")).json()) as unknown[]).length)
     .toBeGreaterThan(0);
-  const dialog = page.getByRole("dialog", { name: "Approval" });
+  const dialog = page.getByRole("region", { name: "Eva asks for permission" });
   await expect(dialog).toHaveCount(0);
   const runningTask = page.getByRole("button", { name: "1 background task running" });
   await expect(runningTask).toHaveCount(0);
@@ -1237,7 +1297,7 @@ test("an approval and a task from while the connection was down still show after
   await sockets[0]?.close();
   await expect(dialog).toContainText("gh issue create");
   await expect(runningTask).toBeVisible();
-  await dialog.getByRole("button", { name: "Allow" }).click();
+  await dialog.getByRole("button", { name: "Allow once" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
   // The task ends with its turn.
   await expect(runningTask).toHaveCount(0);
@@ -1840,4 +1900,52 @@ test("Settings: removing this device logs this browser out", async ({ page }) =>
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+});
+
+test("Settings: Claude Code logs in from the page, with a pasted code", async ({ page }) => {
+  const codes: string[] = [];
+  let refuse = true;
+  await page.route("**/api/engines/claude-code/login", (route) =>
+    route.fulfill({ json: { url: "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state" } }),
+  );
+  await page.route("**/api/engines/claude-code/login/finish", async (route) => {
+    codes.push((route.request().postDataJSON() as { code: string }).code);
+    if (refuse) {
+      refuse = false;
+      await route.fulfill({
+        status: 409,
+        json: {
+          error: 'Claude did not accept the code. Press "Log in to Claude" to try again.',
+          code: "claude_login_failed",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "AI engines");
+  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toHaveAttribute(
+    "href",
+    "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state",
+  );
+  const code = page.getByLabel("The code from Claude's page");
+  await code.fill("wrong-code");
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Claude did not accept the code." })).toBeVisible();
+  // The refused code ended the login, so its link goes, and a new login starts.
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeHidden();
+  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeVisible();
+  await code.fill("two words");
+  await expect(page.getByRole("button", { name: "Finish" })).toBeDisabled();
+  await code.fill("e2e-code#e2e-state");
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged in to Claude." })).toBeVisible();
+  expect(codes).toEqual(["wrong-code", "e2e-code#e2e-state"]);
+  // The token stays the way that needs a terminal, one tap away.
+  await page.getByRole("button", { name: "Get a token in a terminal instead" }).click();
+  await expect(page.getByText("claude setup-token").first()).toBeVisible();
+  await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
 });

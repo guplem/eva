@@ -18,4 +18,4 @@
 
 ## Captures
 
-- Take captures of the page with `scripts/capture-ui.ts`, while `bun run test/e2e/serve-demo.ts` runs. The header of the script gives its arguments.
+- To capture the web page, start `bun run test/e2e/serve-demo.ts`. Then run `scripts/capture-ui.ts`: its header gives the arguments.

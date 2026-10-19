@@ -1,5 +1,5 @@
 /**
- * Takes captures of the web page from the demo server, for the before and after images of a PR.
+ * Takes captures of the web page from the demo server.
  * Start the demo first, in the checkout to capture: `bun run test/e2e/serve-demo.ts`.
  *
  * Usage: bun run scripts/capture-ui.ts <out-dir> <prefix> [address ...]

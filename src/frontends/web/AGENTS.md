@@ -6,7 +6,7 @@
 - Take every colour from the EVE tokens at the top of `styles.css`, such as `--panel`, `--ink`, `--accent` and `--ok`. Write no raw colour in a component rule.
 - Take each space and text size from the `--space-*` and `--text-*` scale in `styles.css`.
 - Use the state colours for one meaning each. `--ok` means done. `--bad` means the person must act. `--warn` means wait, or take care. `--chip` means optional.
-- Show a state with a shape or a word too, never with colour alone: `StatusIcon` has a check, an alert or a plus, and `StatusPill` has a word.
+- Show a state with a shape or a word too, never with colour alone: `StatusIcon` has a check, an alert, an x or a plus, and `StatusPill` has a word.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
 - Take an icon from `client/icons.tsx`. Its set is the design's set, and a test keeps it so.
 

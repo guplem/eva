@@ -303,6 +303,68 @@ button.ghost .icon {
   align-self: flex-start;
 }
 
+/* New chat: the section "New chat" of the reference (hello, .sug). */
+.new-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.new-chat h2 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.new-chat p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 640px;
+}
+
+.suggestion.card {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px 16px;
+  border: 0;
+  text-align: left;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: box-shadow 200ms;
+}
+
+.suggestion.card:hover {
+  box-shadow:
+    var(--shadow),
+    0 0 0 2px var(--soft);
+}
+
+.suggestion .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-ink);
+}
+
+.suggestion small {
+  display: block;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: var(--text-xs);
+}
+
 /* Composer */
 .composer {
   position: sticky;
@@ -466,6 +528,27 @@ button.ghost .icon {
 
   .message.user {
     max-width: 85%;
+  }
+
+  .new-chat {
+    padding: var(--space-4) 2px;
+  }
+
+  .new-chat .mk.xl {
+    font-size: 76px;
+  }
+
+  .new-chat h2 {
+    font-size: 26px;
+  }
+
+  /* The reference shows three suggestions in one column, so the composer stays in reach. */
+  .suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestion:nth-child(n + 4) {
+    display: none;
   }
 
   .composer {

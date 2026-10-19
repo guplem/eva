@@ -12,6 +12,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
+import { NewChatGreeting } from "./NewChatGreeting.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -227,6 +228,10 @@ function Branch({
         <div className={`usage-limit ${usageLimit.status}`} role="status">
           {describeUsageLimit(usageLimit, new Date())}
         </div>
+      )}
+      {/* The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md). */}
+      {session.mode === "assistant" && parent === undefined && turnCount === 0 && pending === null && !working && (
+        <NewChatGreeting onPick={(text) => void send(text)} />
       )}
       <Composer
         session={session}

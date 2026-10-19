@@ -2,7 +2,7 @@
  * The Setup pages. The overview lists each step with its state, and a step page explains the step
  * in plain words, shows its controls, and leads to the next step.
  */
-import { useState, type ReactElement } from "react";
+import { useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { api, type ProgressStep } from "./api.ts";
 import { ClaudeCodeCard } from "./EnginesSection.tsx";
 import { DevicesPanel } from "./DevicesPanel.tsx";
@@ -11,6 +11,7 @@ import { GooglePanel } from "./GooglePanel.tsx";
 import { DevicesGuide, PhoneAccess } from "./AccessSection.tsx";
 import { Icon } from "./icons.tsx";
 import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
+import { needsYou, nextToDo, setupSummary, stepMark } from "./setup-summary.ts";
 import { VaultFolderCard } from "./VaultSection.tsx";
 
 /** Why each step matters, in words for a person who is new to all of this. */
@@ -25,30 +26,32 @@ const whyItMatters: Readonly<Record<ProgressStep["key"], string>> = {
   google: "With Google, Eva can read your calendar, files, contacts and tasks.",
 };
 
-export function nextMissing(steps: readonly ProgressStep[]): ProgressStep | undefined {
-  return steps.find((step) => step.state === "missing");
-}
-
-/** The bar and the count at the top of the setup pages. */
-function ProgressSummary({ steps }: { readonly steps: readonly ProgressStep[] }): ReactElement {
-  const done = steps.filter((step) => step.state === "done").length;
-  const missing = steps.filter((step) => step.state === "missing").length;
+/** The ring of done steps, with the steps that are left. The Settings home page shows it too. */
+export function SetupRing({
+  steps,
+  children,
+}: {
+  readonly steps: readonly ProgressStep[];
+  /** The line under the headline. */
+  readonly children?: ReactNode;
+}): ReactElement {
+  const summary = setupSummary(steps);
+  const ring = { "--ring-fill": `${String(summary.percent)}%` } as CSSProperties;
   return (
-    <div className="progress-summary">
-      <div className="progress-text">
-        <strong>
-          {missing === 0
-            ? "Setup is complete"
-            : `${String(missing)} ${missing === 1 ? "step needs" : "steps need"} you`}
-        </strong>
-        <span className="field-hint">
-          {String(done)} of {String(steps.length)} done
-        </span>
+    <div className="setup-ring-row">
+      <div
+        className="setup-ring"
+        style={ring}
+        role="img"
+        aria-label={`${String(summary.done)} of ${String(summary.total)} steps done`}
+      >
+        <b>
+          {summary.done}/{summary.total}
+        </b>
       </div>
-      <div className="progress-bar" aria-hidden="true">
-        {steps.map((step) => (
-          <span key={step.key} className={`progress-segment ${step.state}`} />
-        ))}
+      <div className="setup-ring-text">
+        <strong>{summary.headline}</strong>
+        {children}
       </div>
     </div>
   );
@@ -59,7 +62,7 @@ function RestartCallout({ context }: { readonly context: SettingsContext }): Rea
   return (
     <div className="callout warning callout-action">
       <span>Eva uses the new tokens after a restart.</span>
-      <button className="primary" onClick={() => void context.restartNow()}>
+      <button className="primary" onClick={context.askRestart}>
         Restart now
       </button>
     </div>
@@ -70,14 +73,15 @@ export function SetupOverview({ context }: { readonly context: SettingsContext }
   const setup = context.setup;
   if (setup === null) return <div className="empty">Loading the setup…</div>;
   const steps = setup.progress;
-  const next = nextMissing(steps);
+  const next = nextToDo(steps);
   return (
     <>
       <section className="card setup-hero" aria-label="Progress list">
-        <ProgressSummary steps={steps} />
-        <p className="card-description">
-          Each step has its own page with what to do. A step marked Optional adds more, but Eva works without it.
-        </p>
+        <SetupRing steps={steps}>
+          <span className="field-hint">
+            Each step has its own page with what to do. A step marked Optional adds more, but Eva works without it.
+          </span>
+        </SetupRing>
         {next !== undefined && (
           <div className="button-row">
             <button className="primary large" onClick={() => context.navigate({ section: "setup", item: next.key })}>
@@ -90,7 +94,7 @@ export function SetupOverview({ context }: { readonly context: SettingsContext }
         <ol className="setup-step-list">
           {steps.map((step, index) => (
             <li key={step.key}>
-              <StepLink step={step} number={index + 1} context={context} />
+              <StepLink step={step} number={index + 1} isNext={step === next} context={context} />
             </li>
           ))}
         </ol>
@@ -102,19 +106,20 @@ export function SetupOverview({ context }: { readonly context: SettingsContext }
 function StepLink({
   step,
   number,
+  isNext,
   context,
 }: {
   readonly step: ProgressStep;
   readonly number: number;
+  /** The first step to do. It shows the main action, as in the EVE capture. */
+  readonly isNext: boolean;
   readonly context: SettingsContext;
 }): ReactElement {
   const last = step.lastCheck;
+  const mark = stepMark(step);
   return (
-    <button
-      className={`step-link ${step.state}`}
-      onClick={() => context.navigate({ section: "setup", item: step.key })}
-    >
-      <StatusIcon state={step.state} />
+    <button className={`step-link ${mark}`} onClick={() => context.navigate({ section: "setup", item: step.key })}>
+      <StatusIcon state={mark} />
       <span className="step-link-text">
         <span className="step-link-title">
           <span className="step-number">Step {String(number)}</span> {step.title}
@@ -129,7 +134,13 @@ function StepLink({
           </span>
         )}
       </span>
-      <StatusPill state={step.state} />
+      {isNext ? (
+        <span className="step-action" aria-hidden="true">
+          Set up
+        </span>
+      ) : (
+        <StatusPill state={mark} />
+      )}
       <Icon name="back" className="chevron flip" />
     </button>
   );
@@ -156,12 +167,18 @@ export function SetupStepPage({
         {steps.map((each, position) => (
           <button
             key={each.key}
-            className={`stepper-dot ${each.state}`}
+            className={`stepper-dot ${stepMark(each)}`}
             aria-current={each.key === step.key ? "step" : undefined}
             aria-label={`Step ${String(position + 1)}: ${each.title}`}
             onClick={() => context.navigate({ section: "setup", item: each.key })}
           >
-            {each.state === "done" ? <Icon name="check" /> : String(position + 1)}
+            {stepMark(each) === "done" ? (
+              <Icon name="check" />
+            ) : stepMark(each) === "failed" ? (
+              <Icon name="x" label="Failed" />
+            ) : (
+              String(position + 1)
+            )}
           </button>
         ))}
       </nav>
@@ -179,7 +196,7 @@ export function SetupStepPage({
         )}
         {next !== undefined ? (
           <button className="primary" onClick={() => context.navigate({ section: "setup", item: next.key })}>
-            {step.state === "missing" ? "Skip for now" : "Next step"}
+            {needsYou(step) ? "Skip for now" : "Next step"}
             <Icon name="back" className="flip" />
           </button>
         ) : (
@@ -218,22 +235,21 @@ function StepHeader({
     }
   };
   const last = step.lastCheck;
+  const mark = stepMark(step);
   return (
-    <section className={`card step-header ${step.state}`} aria-label={step.title}>
-      <StatusIcon state={step.state} size="large" />
+    <section className={`card step-header ${mark}`} aria-label={step.title}>
+      <StatusIcon state={mark} size="large" />
       <div className="step-header-text">
         <span className="step-number">
           Step {String(number)} of {String(total)}
         </span>
         <h2>{step.title}</h2>
         <p>{whyItMatters[step.key]}</p>
-        <div
-          className={
-            step.state === "done" ? "callout success" : step.state === "missing" ? "callout danger" : "callout"
-          }
-        >
-          <StatusPill state={step.state} />{" "}
-          {step.state === "missing" ? (
+        <div className={mark === "done" ? "callout success" : needsYou(step) ? "callout danger" : "callout"}>
+          <StatusPill state={mark} />{" "}
+          {mark === "failed" ? (
+            "The last test failed. Follow the steps below to fix it, then press Test this step."
+          ) : mark === "missing" ? (
             check === null ? (
               "Follow the steps below. Eva sees each change by herself."
             ) : (

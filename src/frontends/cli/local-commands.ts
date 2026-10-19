@@ -170,7 +170,7 @@ export async function settings(
 }
 
 /** The API of the Eva that runs with this home, or null when none runs. */
-function runningClient(host: CliHost, paths: HomePaths): ClientOptions | null {
+export function runningClient(host: CliHost, paths: HomePaths): ClientOptions | null {
   const token = loadSecrets(paths).localApiToken;
   const probe = { bootId: host.bootId, isProcessAlive: host.isProcessAlive };
   if (token === undefined || runningInstancePid(paths.lock, probe) === null) return null;

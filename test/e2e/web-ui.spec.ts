@@ -14,15 +14,17 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
-/** The task chip under the answer opens the chat's background tasks, also on a phone. */
+/** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("Search the notes");
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
+      "Nothing runs in the background.",
+    );
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("Search the notes");
-  await expect(dialog).toContainText("done");
+  await expect(dialog).toContainText("ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -570,17 +572,19 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
-test("device login: a browser that Tailscale names waits for Allow in Telegram, then opens", async ({
-  page,
-  context,
-  baseURL,
-}) => {
+test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
   let polls = 0;
   // The demo server has no Tailscale, so the browser plays the server's side of the device login.
   await page.route("**/api/login/device", (route) =>
     route.fulfill({
       status: 201,
-      json: { id: "request-1", code: "K7QX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+      json: {
+        id: "request-1",
+        code: "K7QX",
+        account: "owner@example.com",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        approvers: ["Telegram", "terminal"],
+      },
     }),
   );
   await page.route("**/api/login/device/request-1", async (route) => {
@@ -594,17 +598,18 @@ test("device login: a browser that Tailscale names waits for Allow in Telegram, 
     await route.fulfill({ json: { state: "allowed" } });
   });
   await page.goto("/");
-  await expect(page.getByText("Confirm this device in Telegram")).toBeVisible();
-  await expect(page.getByText("K7QX")).toBeVisible();
+  await expect(page.getByText("Confirm this device")).toBeVisible();
+  await expect(page.getByText("eva devices allow K7QX")).toBeVisible();
+  await expect(page.getByText("Or tap Allow in your Telegram chat")).toBeVisible();
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
 
-test("device login: without a Telegram bot, the page says why and asks for the token", async ({ page }) => {
+test("device login: with no approver, the page says why and asks for the token", async ({ page }) => {
   await page.route("**/api/login/device", (route) =>
-    route.fulfill({ status: 409, json: { error: "This machine runs no Telegram bot that can confirm a new device." } }),
+    route.fulfill({ status: 409, json: { error: "Nothing on this machine can confirm a new device." } }),
   );
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("This machine runs no Telegram bot that can confirm a new device.");
+  await expect(page.getByRole("status")).toHaveText("Nothing on this machine can confirm a new device.");
   await expect(page.getByLabel(/Token/)).toBeVisible();
 });
 
@@ -612,13 +617,44 @@ test("device login: a denied request offers to ask again", async ({ page }) => {
   await page.route("**/api/login/device", (route) =>
     route.fulfill({
       status: 201,
-      json: { id: "request-2", code: "M3PT", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" },
+      json: {
+        id: "request-2",
+        code: "M3PT",
+        account: "owner@example.com",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        approvers: ["terminal"],
+      },
     }),
   );
   await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("The request was denied in Telegram.");
-  await expect(page.getByRole("button", { name: "Ask in Telegram again" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("The request was denied.");
+  await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
+});
+
+test("Settings: the progress list shows each step, and keeps the last Test result", async ({ page }) => {
+  await logIn(page);
+  // The demo has no allowed device yet, so at least that step is left.
+  await expect(page.getByRole("button", { name: /Settings/ })).toContainText("to set up");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("group", { name: "Progress list" });
+  await expect(list).toContainText("Your devices");
+  await expect(list).toContainText("eva devices allow");
+  await list.getByRole("button", { name: "Test Your vault" }).click();
+  await expect(list).toContainText("Last test:");
+});
+
+test("Settings: a token saved on the page shows at once in the progress list", async ({ page }) => {
+  await logIn(page);
+  await page.request.delete("/api/secrets/githubToken");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const list = page.getByRole("group", { name: "Progress list" });
+  await expect(list).not.toContainText("The token is saved.");
+  await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-progress-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(list).toContainText("The token is saved.");
+  await expect(list).toContainText("Eva uses the new tokens after a restart.");
+  await page.request.delete("/api/secrets/githubToken");
 });
 
 test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
@@ -837,14 +873,15 @@ test("a new message of a running turn replaces the shown one, and the older one 
   await expect(page.getByText("second thought")).toBeVisible();
 });
 
-test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {
+test("an approval and a task from while the connection was down still show after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events$/, (socket) => {
     const server = socket.connectToServer();
-    // The first connection loses the approval event, as a phone does while it sleeps.
+    // The first connection loses the approval and task events, as a phone does while it sleeps.
     if (sockets.length === 0) {
       server.onMessage((message) => {
-        if (!String(message).includes('"approval_needed"')) socket.send(message);
+        const text = String(message);
+        if (!text.includes('"approval_needed"') && !text.includes('"task_changed"')) socket.send(message);
       });
     }
     sockets.push(socket);
@@ -858,11 +895,16 @@ test("an approval asked while the connection was down still opens the dialog aft
     .toBeGreaterThan(0);
   const dialog = page.getByRole("dialog", { name: "Approval" });
   await expect(dialog).toHaveCount(0);
+  const runningTask = page.getByRole("button", { name: "1 background task running" });
+  await expect(runningTask).toHaveCount(0);
 
   await sockets[0]?.close();
   await expect(dialog).toContainText("gh issue create");
+  await expect(runningTask).toBeVisible();
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  // The task ends with its turn.
+  await expect(runningTask).toHaveCount(0);
 });
 
 test("a failed send shows the error and keeps the typed text", async ({ page }) => {

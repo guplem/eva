@@ -8,6 +8,7 @@ import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
+import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
@@ -159,7 +160,11 @@ describe("device login", () => {
   let asked: DeviceLoginRequest[];
 
   function attachApprover(canApprove = true): void {
-    eva.deviceLogins.attachApprover({ canApprove: () => canApprove, ask: (request) => asked.push(request) });
+    eva.deviceLogins.attachApprover({
+      name: "Telegram",
+      canApprove: () => canApprove,
+      ask: (request) => asked.push(request),
+    });
   }
 
   async function requestLogin(extra: Record<string, string> = {}): Promise<Response> {
@@ -223,12 +228,76 @@ describe("device login", () => {
 
   test("only an allowed Tailscale account on the tailnet name may ask", async () => {
     attachApprover();
-    expect((await call("/api/login/device", { method: "POST", headers: {} })).status).toBe(403);
-    expect((await call("/api/login/device", { method: "POST", headers: headers() })).status).toBe(403);
+    const noAccount = { host: "eva.example-tailnet.ts.net" };
+    expect((await call("/api/login/device", { method: "POST", headers: noAccount })).status).toBe(403);
     expect((await requestLogin({ "tailscale-user-login": "stranger@example.com" })).status).toBe(403);
-    expect((await call("/api/login/device/unknown", { headers: {} })).status).toBe(403);
+    expect((await call("/api/login/device/unknown", { headers: noAccount })).status).toBe(403);
     expect((await call("/api/login/device", { method: "PUT", headers: tailnet })).status).toBe(404);
     expect(asked).toEqual([]);
+  });
+
+  test("the page on Eva's own computer asks too, only the terminal answers, and only that browser collects the cookie", async () => {
+    attachApprover();
+    // Telegram alone cannot answer: any local program can make this request.
+    expect((await call("/api/login/device", { method: "POST", headers: {} })).status).toBe(409);
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
+    const created = await call("/api/login/device", { method: "POST", headers: {} });
+    expect(created.status).toBe(201);
+    const request = await json<DeviceLoginRequest>(created);
+    expect(request.account).toBe("this computer");
+    expect(request.approvers).toEqual(["terminal"]);
+    expect(asked).toEqual([]);
+    eva.deviceLogins.answer(request.id, "allow");
+    const stolen = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(stolen)).toEqual({ state: "expired" });
+  });
+
+  test("a forwarded request is never this computer, even with a local host name", async () => {
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
+    const forwarded = await call("/api/login/device", { method: "POST", headers: { "x-forwarded-for": "100.64.0.9" } });
+    expect(forwarded.status).toBe(403);
+  });
+
+  test("only the token allows a device, never a device login: a lost phone cannot let more in", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const refused = await call("/api/devices/allow", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: { code: request.code },
+    });
+    expect(refused.status).toBe(403);
+    expect(await json<unknown>(await call(`/api/login/device/${request.id}`, { headers: tailnet }))).toEqual({
+      state: "pending",
+    });
+  });
+
+  test("the terminal allows a device with its code, through the token", async () => {
+    attachApprover();
+    const request = await json<DeviceLoginRequest>(await requestLogin());
+    const unknown = await call("/api/devices/allow", { method: "POST", body: { code: "ZZZZ" } });
+    expect(unknown.status).toBe(404);
+    const allowed = await call("/api/devices/allow", { method: "POST", body: { code: request.code } });
+    expect(allowed.status).toBe(200);
+    const body = await allowed.text();
+    expect(JSON.parse(body)).toEqual({ label: expect.stringContaining("owner@example.com") as string });
+    const collected = await call(`/api/login/device/${request.id}`, { headers: tailnet });
+    expect(await json<unknown>(collected)).toEqual({ state: "allowed" });
+    expect(body).not.toContain(deviceCookieOf(collected.headers.get("set-cookie") ?? "").slice("eva_device=".length));
+    expect((await call("/api/devices/allow", { method: "POST", headers: {}, body: { code: "ZZZZ" } })).status).toBe(
+      401,
+    );
   });
 
   test("another account cannot collect the cookie of a request", async () => {
@@ -254,10 +323,10 @@ describe("device login", () => {
     }
   });
 
-  test("without a Telegram bot that can ask, the page learns why and falls back to the token", async () => {
+  test("with no approver that can ask, the page learns why and falls back to the token", async () => {
     const refused = await requestLogin();
     expect(refused.status).toBe(409);
-    expect((await json<{ error: string }>(refused)).error).toContain("Telegram");
+    expect((await json<{ error: string }>(refused)).error).toContain("Log in with the token");
     attachApprover(false);
     expect((await requestLogin()).status).toBe(409);
   });
@@ -293,44 +362,33 @@ describe("device login", () => {
     expect(saved.status).toBe(200);
   });
 
-  test("a device login changes the page's settings, but never a machine trust setting", async () => {
+  // The owner's choice in #137: an allowed device has the same control as the console.
+  test("a device login changes every setting, machine and trust settings included", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());
     const device = { cookie, "content-type": "application/json" };
-    const page = await call("/api/settings", {
-      method: "PUT",
-      headers: device,
-      body: { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
-    });
-    expect(page.status).toBe(200);
     for (const change of [
-      { remoteAccess: { allowedTailscaleIdentities: ["stranger@example.com"] } },
-      { telegram: { allowedChatId: 42 } },
-      { trust: { trustedRepositoryOwners: ["stranger"] } },
-      { engines: { claudeCode: { executable: "/tmp/other" } } },
-      { vaultPath: "/tmp/other-vault" },
+      { timeZone: "Europe/Madrid", projectRoots: ["/work"], sync: { sweepSeconds: 30 } },
+      { remoteAccess: { allowedTailscaleIdentities: ["owner@example.com"] } },
+      { trust: { trustedRepositoryOwners: ["me"] } },
     ]) {
-      const refused = await call("/api/settings", { method: "PUT", headers: device, body: change });
-      expect(refused.status).toBe(403);
+      const saved = await call("/api/settings", { method: "PUT", headers: device, body: change });
+      expect(saved.status).toBe(200);
     }
-    expect(eva.publicSettings().config.remoteAccess.allowedTailscaleIdentities).toEqual([]);
-    const withToken = await call("/api/settings", {
-      method: "PUT",
-      body: { trust: { trustedRepositoryOwners: ["me"] } },
-    });
-    expect(withToken.status).toBe(200);
+    expect(eva.publicSettings().config.trust.trustedRepositoryOwners).toEqual(["me"]);
   });
 
-  test("a device login can neither replace nor remove a token", async () => {
+  test("a device login replaces and removes a token", async () => {
     attachApprover();
     const device = { cookie: deviceCookieOf(await allowedCookie()), "content-type": "application/json" };
     const replaced = await call("/api/secrets/claudeOauthToken", {
       method: "PUT",
       headers: device,
-      body: { value: "sk-ant-oat-stranger-token" },
+      body: { value: "sk-ant-oat-new-token" },
     });
-    expect(replaced.status).toBe(403);
-    expect((await call("/api/secrets/githubToken", { method: "DELETE", headers: device })).status).toBe(403);
+    expect(replaced.status).toBe(200);
+    expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(true);
+    expect((await call("/api/secrets/claudeOauthToken", { method: "DELETE", headers: device })).status).toBe(200);
     expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
   });
 
@@ -373,6 +431,45 @@ describe("routes", () => {
     expect(events.map((event) => event.kind)).toEqual(["message_received", "text", "turn_finished"]);
     const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
     expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
+  });
+
+  test("serves the background tasks of a running turn, for a page that missed their events", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      yield { kind: "task_changed", taskId: "k1", description: "look around", state: "running" };
+      await released;
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    try {
+      const deadline = Date.now() + 5_000;
+      while (eva.sessions.backgroundTasks().tasks.length === 0 && Date.now() < deadline) await Bun.sleep(5);
+      expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([
+        { taskId: "k1", sessionId: session.id, description: "look around", state: "running" },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
+    expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([]);
+  });
+
+  test("the session list sends the steps of the recent turns only, and the store keeps them all", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    for (let count = 0; count <= recentTurnsWithSteps; count += 1) await eva.sessions.send(session.id, "go");
+    const listed = (await json<{ id: string; turns: { steps: unknown[] }[] }[]>(await call("/api/sessions"))).find(
+      (entry) => entry.id === session.id,
+    );
+    expect(listed?.turns.map((turn) => turn.steps.length)).toEqual([0, ...Array<number>(recentTurnsWithSteps).fill(1)]);
+    expect(eva.sessions.get(session.id).turns[0]?.steps).toHaveLength(1);
   });
 
   test("a WebSocket with no token is refused", async () => {
@@ -628,8 +725,8 @@ describe("web routes", () => {
     expect((await finish({})).status).toBe(400);
   });
 
-  test("a device login cannot change the Google client or log in to Google", async () => {
-    eva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+  test("a device login changes the Google client and reaches the Google login", async () => {
+    eva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = eva.deviceLogins.request("owner@example.com", "a phone");
     eva.deviceLogins.answer(request.id, "allow");
     const answer = eva.deviceLogins.check(request.id, "owner@example.com");
@@ -640,9 +737,10 @@ describe("web routes", () => {
       body: { value: "other-client" },
       headers: deviceHeaders,
     });
-    expect(put.status).toBe(403);
-    for (const path of ["/api/google/login", "/api/google/login/finish"])
-      expect((await call(path, { method: "POST", body: { address: "x" }, headers: deviceHeaders })).status).toBe(403);
+    expect(put.status).toBe(200);
+    // Past the login check: the finish route answers about the request itself.
+    const finish = await call("/api/google/login/finish", { method: "POST", body: {}, headers: deviceHeaders });
+    expect(finish.status).not.toBe(403);
   });
 
   test("secrets: write-only, only the ones that the page may change", async () => {
@@ -1139,19 +1237,16 @@ describe("remote access", () => {
     expect((await remoteCall("/api/remote-access/other", { method: "POST" })).status).toBe(404);
   });
 
-  test("a device login cannot install programs on the machine", async () => {
+  test("a device login sets up Tailscale, as the console does", async () => {
     startRemote();
-    remoteEva.deviceLogins.attachApprover({ canApprove: () => true, ask: () => undefined });
+    remoteEva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = remoteEva.deviceLogins.request("owner@example.com", "a phone");
     remoteEva.deviceLogins.answer(request.id, "allow");
     const answer = remoteEva.deviceLogins.check(request.id, "owner@example.com");
     const deviceToken = answer.state === "allowed" ? answer.token : "";
     const device = { cookie: `eva_device=${deviceToken}`, "content-type": "application/json" };
-    expect((await remoteCall("/api/status", { headers: device })).status).toBe(200);
     for (const path of ["/api/remote-access/install", "/api/remote-access/sign-in"])
-      expect((await remoteCall(path, { method: "POST", headers: device })).status).toBe(403);
-    expect(installs).toBe(0);
-    expect(tailscale.commands).not.toContain("up");
+      expect((await remoteCall(path, { method: "POST", headers: device })).status).not.toBe(403);
   });
 
   test("with tailscale serve off, the actions answer that phone access is off", async () => {

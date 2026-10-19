@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildQueryOptions,
   ClaudeCodeEngine,
@@ -442,6 +442,154 @@ describe("mapSdkMessages", () => {
     expect(await collect([bare])).toEqual([
       { kind: "usage_limit", status: "rejected", window: "other", usedPercent: null, resetsAt: null },
     ]);
+  });
+});
+
+describe("the start of Eva's MCP servers", () => {
+  /** The captured init message, with the given server states. */
+  function initLine(servers: { name: string; status: string }[]): SDKMessage {
+    const captured = loadCapture("new-turn-with-tool").find(
+      (line) => line.type === "system" && line.subtype === "init",
+    )!;
+    return { ...captured, mcp_servers: servers };
+  }
+
+  function mapped(
+    servers: { name: string; status: string }[],
+    status: () => Promise<McpServerStatus[]>,
+  ): Promise<EngineEventPayload[]> {
+    return drain(
+      mapSdkMessages(replay([initLine(servers), resultOf("new-turn-with-tool")]), {
+        servers: ["google"],
+        status,
+        waitMs: 50,
+      }),
+    );
+  }
+
+  test("a server of Eva's that failed becomes a notice with the engine's reason, and the turn goes on", async () => {
+    const events = await mapped([{ name: "google", status: "failed" }], () =>
+      Promise.resolve([{ name: "google", status: "failed", error: "spawn uvx ENOENT" }]),
+    );
+    expect(events).toEqual([
+      { kind: "notice", text: 'Eva could not start the MCP server "google": spawn uvx ENOENT' },
+      expect.objectContaining({ kind: "turn_finished" }) as EngineEventPayload,
+    ]);
+  });
+
+  test("a server that started, still starts, or is the person's own gives no notice and no question", async () => {
+    let asked = 0;
+    const events = await mapped(
+      [
+        { name: "google", status: "connected" },
+        { name: "own-server", status: "failed" },
+      ],
+      () => {
+        asked += 1;
+        return Promise.resolve([]);
+      },
+    );
+    const pending = await mapped([{ name: "google", status: "pending" }], () => Promise.resolve([]));
+    expect([...events, ...pending].map((event) => event.kind)).toEqual(["turn_finished", "turn_finished"]);
+    expect(asked).toBe(0);
+  });
+
+  test("a server that needs a login, or a status that fails or never comes, still gives a notice", async () => {
+    const login = await mapped([{ name: "google", status: "needs-auth" }], () => Promise.resolve([]));
+    const failed = await mapped([{ name: "google", status: "failed" }], () => Promise.reject(new Error("closed")));
+    const silent = await mapped([{ name: "google", status: "failed" }], () => new Promise(() => undefined));
+    expect([login[0], failed[0], silent[0]]).toEqual([
+      { kind: "notice", text: 'Eva could not start the MCP server "google": it needs a login.' },
+      { kind: "notice", text: 'Eva could not start the MCP server "google": Claude Code gave no reason.' },
+      { kind: "notice", text: 'Eva could not start the MCP server "google": Claude Code gave no reason.' },
+    ]);
+  });
+
+  test("a server still starting at init that fails later gives its notice before the turn ends", async () => {
+    const failedLater = await mapped([{ name: "google", status: "pending" }], () =>
+      Promise.resolve([{ name: "google", status: "failed", error: "uvx timed out" }]),
+    );
+    const startedLater = await mapped([{ name: "google", status: "pending" }], () =>
+      Promise.resolve([{ name: "google", status: "connected" }]),
+    );
+    expect(failedLater.map((event) => event.kind)).toEqual(["notice", "turn_finished"]);
+    expect(failedLater[0]).toEqual({
+      kind: "notice",
+      text: 'Eva could not start the MCP server "google": uvx timed out',
+    });
+    expect(startedLater.map((event) => event.kind)).toEqual(["turn_finished"]);
+  });
+
+  /**
+   * The SDK closes the CLI's stdin at the result of a one-message turn, so a status request after
+   * it never gets an answer. This fake answers only before the result.
+   */
+  function closingAtResult(answer: McpServerStatus[]): Promise<EngineEventPayload[]> {
+    let ended = false;
+    const answerLine = loadCapture("new-turn-with-tool").find(
+      (line): line is SDKMessage => line.type === "assistant" && line.parent_tool_use_id === null,
+    )!;
+    const messages = (async function* () {
+      await Promise.resolve();
+      yield initLine([{ name: "google", status: "pending" }]);
+      yield answerLine;
+      ended = true;
+      yield resultOf("new-turn-with-tool");
+    })();
+    return drain(
+      mapSdkMessages(messages, {
+        servers: ["google"],
+        status: () => (ended ? new Promise(() => undefined) : Promise.resolve(answer)),
+        waitMs: 50,
+      }),
+    );
+  }
+
+  test("a server still starting at init is asked about while the turn runs, before the SDK closes stdin", async () => {
+    const failed = await closingAtResult([{ name: "google", status: "failed", error: "uvx timed out" }]);
+    const started = await closingAtResult([{ name: "google", status: "connected" }]);
+    const starting = await closingAtResult([{ name: "google", status: "pending" }]);
+    const notices = (events: EngineEventPayload[]): EngineEventPayload[] =>
+      events.filter((event) => event.kind === "notice");
+    expect(notices(failed)).toEqual([
+      { kind: "notice", text: 'Eva could not start the MCP server "google": uvx timed out' },
+    ]);
+    expect(notices(started)).toEqual([]);
+    expect(notices(starting)).toEqual([
+      {
+        kind: "notice",
+        text: 'Eva could not start the MCP server "google": it was still starting when the model answered.',
+      },
+    ]);
+  });
+
+  test("a query with no status request still gives the notice, with no reason", async () => {
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () => replay([initLine([{ name: "google", status: "failed" }]), resultOf("new-turn-with-tool")]),
+    });
+    const events = await drain(
+      engine.runTurn(request({ mcpServers: { google: { command: "uvx", args: [], environment: {} } } })),
+    );
+    expect(events[0]).toEqual({
+      kind: "notice",
+      text: 'Eva could not start the MCP server "google": Claude Code gave no reason.',
+    });
+  });
+
+  test("the engine checks the servers of the turn through the query's own status", async () => {
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      query: () =>
+        Object.assign(replay([initLine([{ name: "google", status: "failed" }]), resultOf("new-turn-with-tool")]), {
+          mcpServerStatus: () =>
+            Promise.resolve<McpServerStatus[]>([{ name: "google", status: "failed", error: "timed out" }]),
+        }),
+    });
+    const events = await drain(
+      engine.runTurn(request({ mcpServers: { google: { command: "uvx", args: [], environment: {} } } })),
+    );
+    expect(events[0]).toEqual({ kind: "notice", text: 'Eva could not start the MCP server "google": timed out' });
   });
 });
 

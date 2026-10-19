@@ -1,7 +1,8 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaStatus } from "../../../core/eva.ts";
-import type { PageSecretName, PublicSettings, SetupState } from "../../../core/settings/live-settings.ts";
+import type { EvaSetupState, EvaStatus } from "../../../core/eva.ts";
+import type { ProgressStep } from "../../../core/setup/progress.ts";
+import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
 import type { DeviceLoginRequest, DeviceLoginState } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { CloneDetails } from "../../../core/projects/clones.ts";
@@ -9,7 +10,7 @@ import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
-import type { PendingApproval } from "../../../core/sessions/session-manager.ts";
+import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
@@ -40,7 +41,8 @@ export type {
   PublicSettings,
   RemoteAccess,
   ScheduleCard,
-  SetupState,
+  EvaSetupState,
+  ProgressStep,
   SessionEvent,
   SessionRecord,
   SetupItem,
@@ -118,6 +120,7 @@ export const api = {
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
+  backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
@@ -143,7 +146,7 @@ export const api = {
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
-  setupState: (): Promise<SetupState> => request("GET", "/api/settings/setup"),
+  setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),

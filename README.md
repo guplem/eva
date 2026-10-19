@@ -35,21 +35,17 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
 
 1. **Install git** on the computer that stays on: [git-scm.com/downloads](https://git-scm.com/downloads).
 2. **Download Eva:** one program from the [latest release](https://github.com/guplem/eva/releases/latest). [Install Eva on Windows](docs/guide/setup.md#install-eva-on-windows) and [Install Eva on Linux](docs/guide/setup.md#install-eva-on-linux) give the commands.
-3. **Answer Eva's questions:**
+3. **Run the setup.** It works over SSH too, on a computer with no screen:
 
    ```bash
    eva setup
    ```
 
-   Eva asks for your notebook, your AI login, your Telegram bot, and the Tailscale sign-in. She installs the harnesses, Claude Code and pi, when they are missing. She checks the notebook's address before she continues.
+   Setup installs the harnesses (Claude Code and pi) and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
 
-4. **Start Eva, and let her start by herself from now on:**
+4. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left, such as your AI login and the optional Telegram bot. Your notebook still needs the terminal: setup asks for it. Each answer is saved at once, in both places.
 
-   ```bash
-   eva service install
-   ```
-
-5. **Pair your Telegram chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+5. **With a Telegram bot, pair your chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
 
 Eva updates herself from new releases. You choose which ones in Settings.
 

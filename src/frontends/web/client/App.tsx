@@ -11,7 +11,7 @@ import {
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
-import { applyEvent, emptyLiveState, type LiveState } from "./live-state.ts";
+import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -46,6 +46,7 @@ function EvaApp(): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<readonly string[]>([]);
+  const [setupMissing, setSetupMissing] = useState(0);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
@@ -76,7 +77,9 @@ function EvaApp(): ReactElement {
   // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
-      setProblems((await api.status()).problems);
+      const status = await api.status();
+      setProblems(status.problems);
+      setSetupMissing(status.setupMissing);
     } catch {
       // The next poll or the next reconnect tries again.
     }
@@ -121,13 +124,20 @@ function EvaApp(): ReactElement {
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
    * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
+   * A note goes too: a lost event can hide the turn start that clears it.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...state, steps: {} }));
+    setLive((state) => ({ ...forgetTaskEvents(state), steps: {}, notes: {} }));
     await refreshSessions();
     await refreshProblems();
     try {
       setApprovals(await api.pendingApprovals());
+    } catch {
+      // The next reconnect or the next visit tries again.
+    }
+    try {
+      const snapshot = await api.backgroundTasks();
+      setLive((state) => withTasks(state, snapshot));
     } catch {
       // The next reconnect or the next visit tries again.
     }
@@ -241,6 +251,8 @@ function EvaApp(): ReactElement {
         <span className="spacer" />
         <button aria-pressed={screen === "settings"} onClick={() => setScreen("settings")}>
           Settings
+          {/* A badge, not a banner: a short phone screen keeps its room for the chats. */}
+          {setupMissing > 0 && <span className="chip">{setupMissing} to set up</span>}
         </button>
       </header>
       {problems.length > 0 && (
@@ -281,7 +293,9 @@ function EvaApp(): ReactElement {
           onNavigate={() => setSidebarOpen(false)}
         />
       )}
-      {screen === "settings" && <SettingsView onLoggedOut={() => setAuthenticated(false)} />}
+      {screen === "settings" && (
+        <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
+      )}
       {screen === "schedules" && <SchedulesView />}
       {approval !== undefined && (
         <div className="dialog-backdrop">

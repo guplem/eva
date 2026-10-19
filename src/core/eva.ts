@@ -3,7 +3,7 @@
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
 import { existsSync } from "node:fs";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -32,13 +32,22 @@ import { migrations, vaultAhead, type StartMigrations } from "./migrations/migra
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
-import { LiveSettings, type PageSecretName, type PublicSettings, type SetupState } from "./settings/live-settings.ts";
+import {
+  LiveSettings,
+  pageSecretNames,
+  type PageSecretName,
+  type PublicSettings,
+  type SetupState,
+} from "./settings/live-settings.ts";
 import {
   engineEnvironment,
+  engineLoginFolders,
   engineToolEnvironment,
   gitEnvironment,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
+import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
+import { missingSteps, setupProgress, type CheckRecord, type ProgressStep } from "./setup/progress.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -110,6 +119,8 @@ export interface EvaOptions {
    * the same OS user, so its engines get their own config folders (lesson 111).
    */
   readonly defaultHome?: string;
+  /** The OS user's home folder, where the engines keep their own logins. Default: the real one. */
+  readonly userHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
   /** Google's address for the Google login and check; a test points it at a fake server. */
@@ -140,6 +151,15 @@ export interface EvaStatus {
   readonly localUrl: string;
   /** One line for each open problem; empty when all is good. */
   readonly problems: readonly string[];
+  /** How many setup steps still need the person; the Settings page lists them. */
+  readonly setupMissing: number;
+}
+
+/** The Setup section: the settings' state, and the progress list. */
+export interface EvaSetupState extends SetupState {
+  readonly progress: readonly ProgressStep[];
+  /** True when the files hold a token that Eva does not use yet, such as one that `eva setup` saved. */
+  readonly restartNeeded: boolean;
 }
 
 const approvalTimeoutMs = 10 * 60_000;
@@ -169,6 +189,8 @@ export class Eva {
   private readonly googleLogin: GoogleLogin;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
+  /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
+  private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
   private readonly settings: LiveSettings;
@@ -253,6 +275,7 @@ export class Eva {
       engines: options.engines.map((engine) => engine.name),
     });
     this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
+    this.checkResults = new Map();
     this.googleLogin = new GoogleLogin({
       credentialsFolder: googleCredentialsFolder(options.paths),
       now: options.now,
@@ -654,6 +677,7 @@ export class Eva {
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
+      setupMissing: missingSteps(this.setupProgress()),
     };
   }
 
@@ -725,24 +749,51 @@ export class Eva {
   }
 
   /** Checks and saves a settings change; see `LiveSettings.update`. */
-  updateSettings(
-    patch: Readonly<Record<string, unknown>>,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: boolean } {
-    return this.settings.update(patch, options);
+  updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
+    return this.settings.update(patch);
   }
 
-  setupState(): Promise<SetupState> {
-    return this.settings.setupState();
+  async setupState(): Promise<EvaSetupState> {
+    const saved = this.settings.saved().secrets;
+    // The engines, git and Telegram read the tokens at start, so a token saved since then waits for a restart.
+    const restartNeeded = pageSecretNames.some((name) => saved[name] !== this.options.secrets[name]);
+    return { ...(await this.settings.setupState()), progress: this.setupProgress(), restartNeeded };
+  }
+
+  /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
+  setupProgress(): ProgressStep[] {
+    const { config, secrets } = this.settings.saved();
+    const secretsSet = {
+      claudeOauthToken: secrets.claudeOauthToken !== undefined,
+      githubToken: secrets.githubToken !== undefined,
+      telegramBotToken: secrets.telegramBotToken !== undefined,
+    };
+    const folders = engineLoginFolders(this.facts, this.options.userHome ?? homedir());
+    const found = new Set(this.options.engines.map((engine) => engine.name));
+    const loggedIn = {
+      "claude-code": secretsSet.claudeOauthToken || claudeLoggedIn(folders.claude),
+      pi: piLoginState(folders.piAgent) === "ok",
+    };
+    return setupProgress({
+      engines: (["claude-code", "pi"] as const).map((name) => ({
+        name,
+        found: found.has(name),
+        loggedIn: loggedIn[name],
+      })),
+      defaultEngine: config.engines.default,
+      vaultPath: config.vaultPath,
+      githubToken: secretsSet.githubToken,
+      remoteAccess: this.options.remoteAccess?.current() ?? null,
+      devices: this.deviceLogins.count(),
+      telegram: { token: secretsSet.telegramBotToken, paired: config.telegram.allowedChatId !== null },
+      google: config.google.email !== null,
+      checks: Object.fromEntries(this.checkResults),
+    });
   }
 
   /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
-  saveSecret(
-    name: PageSecretName,
-    value: string | null,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: true } {
-    return this.settings.saveSecret(name, value, options);
+  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
+    return this.settings.saveSecret(name, value);
   }
 
   async runCheck(name: CheckName): Promise<CheckResult> {
@@ -766,9 +817,12 @@ export class Eva {
       },
     });
     // The Test reads the saved settings, but chats keep the Google settings of the start.
-    return name === "google" && result.ok && this.googleRestartNeeded()
-      ? { ok: true, detail: `${result.detail} Press Restart Eva so that chats use these Google settings.` }
-      : result;
+    const shown =
+      name === "google" && result.ok && this.googleRestartNeeded()
+        ? { ok: true, detail: `${result.detail} Press Restart Eva so that chats use these Google settings.` }
+        : result;
+    this.checkResults.set(name, { ...shown, at: this.options.now().toISOString() });
+    return shown;
   }
 
   /** The address of Google's consent page, for the scopes of the saved Google settings. */

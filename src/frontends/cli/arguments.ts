@@ -25,6 +25,7 @@ export type CliCommand =
       readonly key?: string;
       readonly value?: string;
     }
+  | { readonly command: "devices-allow"; readonly home: string | undefined; readonly code: string }
   | { readonly command: "service-install"; readonly home: string | undefined }
   | { readonly command: "supervise"; readonly home: string | undefined }
   | { readonly command: "projects"; readonly home: string | undefined; readonly query: string }
@@ -70,6 +71,7 @@ Commands:
   settings          Show every setting; "(vault)" marks the settings that every machine shares
   settings get <key>          Show one setting, such as updates.frequency
   settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
+  devices allow <code>        Let in the browser that shows this code on Eva's page
   version           Show Eva's version
   help              Show this text
 `;
@@ -117,6 +119,10 @@ export function parseArguments(argv: readonly string[]): CliCommand {
       return updateCommand(home, switchesSeen.has("--check"), rest);
     case "settings":
       return settingsCommand(home, rest);
+    case "devices":
+      return rest[0] === "allow" && rest[1] !== undefined && rest.length === 2
+        ? { command: "devices-allow", home, code: rest[1] }
+        : usageError("Use: eva devices allow <code>");
     case "projects":
       return { command: "projects", home, query: rest.join(" ") };
     case "work": {

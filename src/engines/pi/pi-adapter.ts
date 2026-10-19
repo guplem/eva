@@ -14,6 +14,8 @@
  * - **MCP servers:** pi has no MCP support, so the bridge in pi-mcp-bridge.ts runs Eva's
  *   servers and gives their tools Claude Code's names. The specs hold secrets. They go in a file
  *   that the bridge deletes at start. A shell command can read pi's environment, so never there.
+ *   The bridge sends each problem, such as a server that did not start, as a `notify` with a
+ *   fixed prefix. pi emits it before it reads the prompt.
  * - **Exit code:** ignored after the turn end. pi on Windows can crash on exit after a tool
  *   ran, with the session file complete.
  * - **Command-line flags only:** RPC commands such as `set_model` and `set_auto_retry` write
@@ -27,7 +29,7 @@ import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
-import { mcpExtensionSource, mcpServersFileVariable } from "./pi-mcp-extension.ts";
+import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
 
@@ -218,7 +220,9 @@ export class PiEngine implements EnginePort {
       } else if (type === "tool_execution_end") {
         yield { kind: "tool_finished", toolUseId: String(record["toolCallId"]), isError: record["isError"] === true };
       } else if (type === "extension_ui_request") {
-        answerDialog(pi, request, record);
+        const notice = bridgeNotice(record);
+        if (notice !== null) yield { kind: "notice", text: notice };
+        else answerDialog(pi, request, record);
       } else if (type === "auto_retry_start") {
         pendingError = null;
       } else if (type === "agent_end") {
@@ -313,6 +317,15 @@ function removeSpecs(file: string | null): void {
   } catch {
     // Windows can hold a file for a moment. The file stays in the instance home, next to secrets.json.
   }
+}
+
+/** The text of a problem line from Eva's MCP bridge, or null for any other record. */
+function bridgeNotice(record: Record<string, unknown>): string | null {
+  const message = record["message"];
+  if (record["method"] !== "notify" || typeof message !== "string" || !message.startsWith(mcpNoticePrefix)) {
+    return null;
+  }
+  return message.slice(mcpNoticePrefix.length);
 }
 
 /** Answers Eva's approval dialog through the person, and cancels any other dialog. Never blocks the stream. */

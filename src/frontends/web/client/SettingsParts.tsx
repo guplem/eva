@@ -32,7 +32,7 @@ export interface SettingsContext {
   readonly noteAndReload: (note: string) => void;
   readonly reloadSettings: () => void;
   readonly setStatus: (status: EvaStatus) => void;
-  /** Opens the restart question at the top of the page. */
+  /** Opens the restart question, which names the running chats. */
   readonly askRestart: () => void;
   readonly navigate: (route: SettingsRoute) => void;
   readonly onLoggedOut: () => void;
@@ -468,7 +468,7 @@ export function ChoiceChips<T extends string>({
   readonly onChange: (value: T) => void;
 }): ReactElement {
   return (
-    <div className="field choice-field">
+    <div className="field">
       <span className="field-label">{label}</span>
       <div className="choice-chips" role="group" aria-label={label}>
         {choices.map((choice) => (

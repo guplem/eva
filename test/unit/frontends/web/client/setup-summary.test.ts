@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ProgressStep } from "../../../../../src/core/setup/progress.ts";
-import { restartQuestion, setupSummary, stepMark } from "../../../../../src/frontends/web/client/setup-summary.ts";
+import {
+  nextToDo,
+  restartQuestion,
+  setupSummary,
+  stepMark,
+} from "../../../../../src/frontends/web/client/setup-summary.ts";
 
 function step(state: ProgressStep["state"], lastOk: boolean | null = null): ProgressStep {
   return {
@@ -24,6 +29,17 @@ describe("a setup step's mark", () => {
   test("shows a failed last test, also on a step that is set up", () => {
     expect(stepMark(step("done", false))).toBe("failed");
     expect(stepMark(step("missing", false))).toBe("failed");
+  });
+
+  test("keeps an optional step optional after a failed test, because Eva works without it", () => {
+    expect(stepMark(step("optional", false))).toBe("optional");
+    expect(setupSummary([step("optional", false)]).left).toBe(0);
+  });
+
+  test("leads to the first step that needs the person, also a failed one", () => {
+    const failed = step("done", false);
+    expect(nextToDo([step("done"), step("optional"), failed, step("missing")])).toBe(failed);
+    expect(nextToDo([step("done"), step("optional", false)])).toBeUndefined();
   });
 });
 

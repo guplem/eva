@@ -1216,6 +1216,10 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   const first = list.getByRole("button").filter({ hasText: "Step 1" });
   await expect(first.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
   await expect(first).toContainText("Last test: The token expired.");
+  // A failed step needs the person, so it keeps the main action, and its page says why.
+  await expect(first).toContainText("Set up");
+  await first.click();
+  await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
 });
 
 test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({

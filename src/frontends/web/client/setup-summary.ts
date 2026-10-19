@@ -7,9 +7,23 @@ import type { ProgressStep } from "./api.ts";
 /** A step's round mark. "failed" is not a step state: it comes from the step's last Test. */
 export type StepMark = ProgressStep["state"] | "failed";
 
-/** A failed last test wins over "done": the step is set up, but it does not work now. */
+/**
+ * A failed last test wins over "done": the step is set up, but it does not work now.
+ * An optional step stays optional, because Eva works without it.
+ */
 export function stepMark(step: ProgressStep): StepMark {
-  return step.lastCheck?.ok === false ? "failed" : step.state;
+  return step.lastCheck?.ok === false && step.state !== "optional" ? "failed" : step.state;
+}
+
+/** A step to do, or a step whose test failed: both need the person. */
+export function needsYou(step: ProgressStep): boolean {
+  const mark = stepMark(step);
+  return mark === "missing" || mark === "failed";
+}
+
+/** The first step that needs the person. Its row and the Continue button lead to it. */
+export function nextToDo(steps: readonly ProgressStep[]): ProgressStep | undefined {
+  return steps.find(needsYou);
 }
 
 export interface SetupSummary {
@@ -25,7 +39,7 @@ export interface SetupSummary {
 export function setupSummary(steps: readonly ProgressStep[]): SetupSummary {
   const marks = steps.map(stepMark);
   const done = marks.filter((mark) => mark === "done").length;
-  const left = marks.filter((mark) => mark === "missing" || mark === "failed").length;
+  const left = steps.filter(needsYou).length;
   const total = steps.length;
   return {
     done,

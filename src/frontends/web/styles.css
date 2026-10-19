@@ -2076,7 +2076,7 @@ button.link-button {
 .step-action {
   flex: none;
   align-self: center;
-  padding: 4px 14px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--on-accent);
@@ -2085,7 +2085,7 @@ button.link-button {
   white-space: nowrap;
 }
 
-/* The ring fills with the share of done steps; its middle shows the count. */
+/* The accent, as in the EVE capture: the ring shows progress, not one state. */
 .setup-ring-row {
   display: flex;
   align-items: center;
@@ -2115,7 +2115,7 @@ button.link-button {
 .setup-ring-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
   font-size: var(--text-lg);
 }
@@ -2162,7 +2162,7 @@ button.link-button {
 
 .restart-question {
   flex-wrap: wrap;
-  border-color: var(--warn);
+  border: 2px solid var(--warn);
 }
 
 .stepper {

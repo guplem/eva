@@ -11,7 +11,7 @@ import { GooglePanel } from "./GooglePanel.tsx";
 import { DevicesGuide, PhoneAccess } from "./AccessSection.tsx";
 import { Icon } from "./icons.tsx";
 import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
-import { setupSummary, stepMark } from "./setup-summary.ts";
+import { needsYou, nextToDo, setupSummary, stepMark } from "./setup-summary.ts";
 import { VaultFolderCard } from "./VaultSection.tsx";
 
 /** Why each step matters, in words for a person who is new to all of this. */
@@ -25,10 +25,6 @@ const whyItMatters: Readonly<Record<ProgressStep["key"], string>> = {
   telegram: "With a Telegram bot, you can chat with Eva from the Telegram app.",
   google: "With Google, Eva can read your calendar, files, contacts and tasks.",
 };
-
-export function nextMissing(steps: readonly ProgressStep[]): ProgressStep | undefined {
-  return steps.find((step) => step.state === "missing");
-}
 
 /** The ring of done steps, with the steps that are left. The Settings home page shows it too. */
 export function SetupRing({
@@ -77,7 +73,7 @@ export function SetupOverview({ context }: { readonly context: SettingsContext }
   const setup = context.setup;
   if (setup === null) return <div className="empty">Loading the setup…</div>;
   const steps = setup.progress;
-  const next = nextMissing(steps);
+  const next = nextToDo(steps);
   return (
     <>
       <section className="card setup-hero" aria-label="Progress list">
@@ -176,7 +172,13 @@ export function SetupStepPage({
             aria-label={`Step ${String(position + 1)}: ${each.title}`}
             onClick={() => context.navigate({ section: "setup", item: each.key })}
           >
-            {stepMark(each) === "done" ? <Icon name="check" /> : String(position + 1)}
+            {stepMark(each) === "done" ? (
+              <Icon name="check" />
+            ) : stepMark(each) === "failed" ? (
+              <Icon name="x" label="Failed" />
+            ) : (
+              String(position + 1)
+            )}
           </button>
         ))}
       </nav>
@@ -194,7 +196,7 @@ export function SetupStepPage({
         )}
         {next !== undefined ? (
           <button className="primary" onClick={() => context.navigate({ section: "setup", item: next.key })}>
-            {step.state === "missing" ? "Skip for now" : "Next step"}
+            {needsYou(step) ? "Skip for now" : "Next step"}
             <Icon name="back" className="flip" />
           </button>
         ) : (
@@ -233,22 +235,21 @@ function StepHeader({
     }
   };
   const last = step.lastCheck;
+  const mark = stepMark(step);
   return (
-    <section className={`card step-header ${stepMark(step)}`} aria-label={step.title}>
-      <StatusIcon state={stepMark(step)} size="large" />
+    <section className={`card step-header ${mark}`} aria-label={step.title}>
+      <StatusIcon state={mark} size="large" />
       <div className="step-header-text">
         <span className="step-number">
           Step {String(number)} of {String(total)}
         </span>
         <h2>{step.title}</h2>
         <p>{whyItMatters[step.key]}</p>
-        <div
-          className={
-            step.state === "done" ? "callout success" : step.state === "missing" ? "callout danger" : "callout"
-          }
-        >
-          <StatusPill state={step.state} />{" "}
-          {step.state === "missing" ? (
+        <div className={mark === "done" ? "callout success" : needsYou(step) ? "callout danger" : "callout"}>
+          <StatusPill state={mark} />{" "}
+          {mark === "failed" ? (
+            "The last test failed. Follow the steps below to fix it, then press Test this step."
+          ) : mark === "missing" ? (
             check === null ? (
               "Follow the steps below. Eva sees each change by herself."
             ) : (

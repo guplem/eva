@@ -3,7 +3,7 @@
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
 import { existsSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -31,7 +31,7 @@ import { runMigrations, type MigrationRun, type MigrationStore } from "./migrati
 import { migrations, vaultAhead, type StartMigrations } from "./migrations/migrations.ts";
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
-import type { EvaConfig, EvaSecrets, HomePaths } from "./settings/home.ts";
+import { engineFolders, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
 import {
   LiveSettings,
   pageSecretNames,
@@ -41,7 +41,6 @@ import {
 } from "./settings/live-settings.ts";
 import {
   engineEnvironment,
-  engineLoginFolders,
   engineToolEnvironment,
   gitEnvironment,
   type InstanceFacts,
@@ -114,13 +113,6 @@ export interface EvaOptions {
   readonly restartForUpdate?: () => void;
   /** Phone access through Tailscale, such as the RemoteAccessWatcher. Null: `tailscaleServe` is off. */
   readonly remoteAccess?: RemoteAccessControl | null;
-  /**
-   * The platform's default home folder. An instance with another home is an extra instance on
-   * the same OS user, so its engines get their own config folders (lesson 111).
-   */
-  readonly defaultHome?: string;
-  /** The OS user's home folder, where the engines keep their own logins. Default: the real one. */
-  readonly userHome?: string;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
   /** Google's address for the Google login and check; a test points it at a fake server. */
@@ -222,8 +214,6 @@ export class Eva {
     this.facts = {
       paths: options.paths,
       processEnvironment: options.processEnvironment,
-      ownClaudeConfigFolder: options.config.engines.claudeCode.ownConfigFolder,
-      ...(options.defaultHome === undefined ? {} : { defaultHome: options.defaultHome }),
       ...(options.evaCommand === undefined ? {} : { evaCommand: options.evaCommand }),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
@@ -768,7 +758,7 @@ export class Eva {
       githubToken: secrets.githubToken !== undefined,
       telegramBotToken: secrets.telegramBotToken !== undefined,
     };
-    const folders = engineLoginFolders(this.facts, this.options.userHome ?? homedir());
+    const folders = engineFolders(this.options.paths);
     const found = new Set(this.options.engines.map((engine) => engine.name));
     const loggedIn = {
       "claude-code": secretsSet.claudeOauthToken || claudeLoggedIn(folders.claude),

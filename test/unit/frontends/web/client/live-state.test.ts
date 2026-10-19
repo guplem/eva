@@ -14,6 +14,7 @@ const finished = {
   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
   costUsd: null,
   contextTokens: null,
+  contextWindow: null,
 } as const;
 
 let seq = 0;
@@ -80,6 +81,7 @@ describe("applyEvent", () => {
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: null,
         contextTokens: null,
+        contextWindow: null,
       },
     ]);
     expect(ended.notes["s1"]).toEqual(["one"]);

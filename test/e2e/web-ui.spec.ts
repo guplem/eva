@@ -36,7 +36,7 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("Search the notes");
-  await expect(dialog).toContainText("ended");
+  await expect(dialog).toContainText("Ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -274,6 +274,9 @@ test("an approval opens a dialog, and Allow answers the turn", async ({ page }) 
   await expect(dialog).toContainText("gh issue create");
   // While the turn waits, its running task shows under the conversation, also on a phone.
   await expect(page.getByRole("button", { name: "1 background task running" })).toBeVisible();
+  // On a phone, the person must see which chat waits for a decision.
+  const listed = page.locator(".sidebar .list-item[aria-current='true']");
+  await expect(listed.locator(".status-pill")).toHaveText("Needs you");
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
 });
@@ -915,7 +918,7 @@ test("the Chats badge counts the approvals that wait, and the dot says that Eva 
   }
 });
 
-test("the model menu and the New chat button sit at the bottom of the chat list, apart", async ({ page }) => {
+test("the New chat button sits in the list header, and the model menu at the bottom", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -935,15 +938,36 @@ test("the model menu and the New chat button sit at the bottom of the chat list,
   if (sidebar === null || modelBox === null || buttonBox === null || firstChatBox === null) {
     throw new Error("A sidebar part is not on the screen.");
   }
-  expect(sidebar.y + sidebar.height - (buttonBox.y + buttonBox.height)).toBeLessThanOrEqual(24);
-  // The footer gap is 16 px. The margin of 1 px allows for a rounded layout.
-  expect(buttonBox.y - (modelBox.y + modelBox.height)).toBeGreaterThanOrEqual(15);
+  expect(buttonBox.y).toBeLessThan(firstChatBox.y);
+  expect(sidebar.y + sidebar.height - (modelBox.y + modelBox.height)).toBeLessThanOrEqual(24);
   expect(firstChatBox.y).toBeLessThan(modelBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
     .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
   expect(cut).toBe(0);
+});
+
+test("the chat list shows each chat's time and last answer, and the search filters it", async ({ page }) => {
+  const title = `A chat to find (${test.info().project.name})`;
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(title);
+  await openList(page);
+  const today = page.getByRole("region", { name: "Today" });
+  const item = today.locator(".list-item[aria-current='true']");
+  await expect(item.locator(".chat-item-preview")).toContainText(/Echo \d+:/);
+  await expect(item.locator(".chat-item-preview")).toContainText(title);
+  await expect(item.locator(".chat-item-time")).toHaveText(/^\d\d:\d\d$/);
+  const search = page.getByRole("searchbox", { name: "Search chats" });
+  await search.fill("no chat has this title");
+  await expect(page.locator(".sidebar .list-item")).toHaveCount(0);
+  await expect(page.getByText("No chat matches.")).toBeVisible();
+  await search.fill("");
+  await expect(page.locator(".sidebar .list-item").first()).toBeVisible();
 });
 
 test("a new chat shows at the top of a scrolled chat list", async ({ page }) => {
@@ -954,6 +978,9 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
   await openList(page);
   await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
+  // The header stays at the top of the scrolled list, so the click needs no scroll back.
+  expect(await page.locator(".sidebar-list").evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeInViewport();
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
   await page.getByRole("button", { name: "New chat", exact: true }).click();
@@ -1052,7 +1079,9 @@ test("an answer shows its steps as badges with a hover text, and a tap lists the
   await expect(steps).toHaveCount(0);
 });
 
-test("the chat panel shows the model, engine and context, and a phone opens it from Chat info", async ({ page }) => {
+test("the chat panel shows the context ring, the engine and the model, and a phone opens it from Chat info", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   const composer = page.getByLabel("Message").first();
@@ -1061,20 +1090,29 @@ test("the chat panel shows the model, engine and context, and a phone opens it f
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   if (test.info().project.name === "desktop") {
     const panel = page.getByRole("complementary", { name: "This chat" });
-    await expect(panel).toContainText("claude-code");
-    await expect(panel).toContainText("15 tokens");
+    await expect(panel).toContainText("Claude Code");
+    // The engine names its window, so the ring shows a share.
+    await expect(panel).toContainText("15 of 200k tokens");
+    await expect(panel.getByRole("img", { name: "0% of the context window in use" })).toBeVisible();
     // getByRole skips hidden elements, so count the button by its class.
     await expect(page.locator(".chat-info-button")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    await panel.getByRole("button", { name: "Fork this chat" }).click();
+    await expect(panel).toContainText("1, with 1 fork");
     return;
   }
   await page.getByRole("button", { name: "Chat info" }).click();
-  const dialog = page.getByRole("dialog", { name: "This chat" });
-  await expect(dialog).toContainText("assistant");
-  await expect(dialog).toContainText("15 tokens");
-  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+  const sheet = page.getByRole("dialog", { name: "This chat" });
+  await expect(sheet).toContainText("Assistant");
+  await expect(sheet).toContainText("15 of 200k tokens");
+  await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
+  await expect(sheet).toHaveCount(0);
+  // A tap on the scrim above the sheet closes it too.
+  await page.getByRole("button", { name: "Chat info" }).click();
+  await expect(sheet).toBeVisible();
+  await page.mouse.click(20, 20);
+  await expect(sheet).toHaveCount(0);
 });
 
 test("a new message of a running turn replaces the shown one, and the older one becomes a badge", async ({ page }) => {

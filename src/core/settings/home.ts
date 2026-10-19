@@ -1,29 +1,62 @@
 /**
  * The instance home folder: where one Eva instance keeps its config, secrets, state
- * and logs.
+ * and logs. Each instance has a name, and its home is `eva-<name>` in the platform's config folder.
  */
-import { chmodSync, mkdirSync } from "node:fs";
-import { join, resolve, win32 } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 
-export interface HomeFolderInputs {
-  readonly flag?: string | undefined;
+/** The variable that names the instance of an `eva` command, as `--instance` does. */
+export const instanceVariable = "EVA_INSTANCE";
+/** The name that setup offers for the first instance on a computer. */
+export const firstInstanceName = "eva";
+const homePrefix = "eva-";
+const namePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const nameMaxLength = 32;
+
+export interface InstancesFolderInputs {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly platform: NodeJS.Platform;
   readonly userHome: string;
 }
 
-/** `--home`, then `EVA_HOME`, then the platform's config folder. */
-export function resolveHomeFolder(inputs: HomeFolderInputs): string {
-  if (inputs.flag !== undefined) return inputs.flag;
-  const fromEnvironment = inputs.environment["EVA_HOME"];
-  if (fromEnvironment !== undefined) return fromEnvironment;
-  if (inputs.platform === "win32") {
-    return join(inputs.environment["APPDATA"] ?? join(inputs.userHome, "AppData", "Roaming"), "eva");
+/** The folder that holds the home of each instance: the platform's config folder. */
+export function instancesFolder(inputs: InstancesFolderInputs): string {
+  if (inputs.platform === "win32") return inputs.environment["APPDATA"] ?? join(inputs.userHome, "AppData", "Roaming");
+  return inputs.environment["XDG_CONFIG_HOME"] ?? join(inputs.userHome, ".config");
+}
+
+/** What is wrong with an instance name, or null for a good one. The name is part of a folder and a service name. */
+export function instanceNameProblem(name: string): string | null {
+  if (name.length <= nameMaxLength && namePattern.test(name)) return null;
+  return `"${name}" is not a name for an Eva. Use up to ${String(nameMaxLength)} lower-case letters, digits and dashes, such as eva or ana.`;
+}
+
+export function instanceHome(folder: string, name: string): string {
+  return join(folder, `${homePrefix}${name}`);
+}
+
+/** The name of the instance in this home: the folder name without `eva-`. */
+export function instanceNameOf(paths: HomePaths): string {
+  const folder = basename(resolve(paths.root));
+  return folder.startsWith(homePrefix) ? folder.slice(homePrefix.length) : folder;
+}
+
+/** The names of the instances in the folder, sorted. Setup writes `config.json`, so a home without it is no instance. */
+export function listInstances(folder: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(folder);
+  } catch {
+    return [];
   }
-  return join(inputs.environment["XDG_CONFIG_HOME"] ?? join(inputs.userHome, ".config"), "eva");
+  return entries
+    .filter((entry) => entry.startsWith(homePrefix))
+    .map((entry) => entry.slice(homePrefix.length))
+    .filter((name) => instanceNameProblem(name) === null && existsSync(homePaths(instanceHome(folder, name)).config))
+    .sort();
 }
 
 export interface HomePaths {
@@ -73,7 +106,7 @@ export function homePaths(root: string): HomePaths {
   };
 }
 
-/** The engine login folders of an instance home. */
+/** The engine login folders of an instance home. Each instance has its own, so one Eva never uses another's login (lesson 111). */
 export interface EngineFolders {
   readonly claude: string;
   readonly piAgent: string;
@@ -92,7 +125,7 @@ export function engineFolders(paths: HomePaths): EngineFolders {
 }
 
 /**
- * The global git config of an extra instance's agents. With `GIT_CONFIG_GLOBAL`, git reads only
+ * The global git config of an instance's agents. With `GIT_CONFIG_GLOBAL`, git reads only
  * this file, so it includes the person's own global config first. Then it resets the GitHub
  * helpers: without this, a push asks the OS user's helper and goes out as the first person.
  * Other hosts keep the person's helpers.
@@ -123,24 +156,6 @@ export function engineGitConfig(environment: Readonly<Record<string, string | un
 /** The variables that point each engine at its folder. */
 export function engineFolderVariables(folders: EngineFolders): Record<string, string> {
   return { CLAUDE_CONFIG_DIR: folders.claude, PI_CODING_AGENT_DIR: folders.piAgent, GH_CONFIG_DIR: folders.gh };
-}
-
-/**
- * True when the home is not the platform default, such as a second person's Eva on this OS
- * user. An extra instance needs its own engine folders: with the OS user's folders, it would
- * use the first person's logins and subscription (lesson 111). The first instance keeps the OS
- * user's folders, so Project mode matches a session that the person opens by hand.
- */
-export function isExtraInstance(
-  paths: HomePaths,
-  defaultHome: string | undefined,
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  if (defaultHome === undefined) return false;
-  // Windows paths ignore letter case, so `--home` with other capitals still names the default home.
-  const normalize = (path: string): string =>
-    platform === "win32" ? win32.resolve(path).toLowerCase() : resolve(path);
-  return normalize(defaultHome) !== normalize(paths.root);
 }
 
 /** Creates the home and state folders, readable by the OS user only. Windows ignores the mode. */
@@ -184,9 +199,8 @@ const configSchema = z.object({
         .object({
           executable: z.string().min(1).nullable().default(null),
           defaultModel: modelAliasSchema.default("default"),
-          ownConfigFolder: z.boolean().default(false),
         })
-        .default({ executable: null, defaultModel: "default", ownConfigFolder: false }),
+        .default({ executable: null, defaultModel: "default" }),
       pi: z
         .object({
           /** The program that starts pi. Null: `pi` found on PATH. */
@@ -208,7 +222,7 @@ const configSchema = z.object({
     })
     .default({
       default: "claude-code",
-      claudeCode: { executable: null, defaultModel: "default", ownConfigFolder: false },
+      claudeCode: { executable: null, defaultModel: "default" },
       pi: { executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } },
     }),
   telegram: z

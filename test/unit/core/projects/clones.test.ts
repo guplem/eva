@@ -79,6 +79,11 @@ describe("clone folders", () => {
     expect(listClones(project).map((clone) => clone.name)).toEqual(["example-app-0"]);
   });
 
+  test("a repos file instead of a folder means no clones", () => {
+    writeFileSync(join(project, "repos"), "not a folder\n");
+    expect(listClones(project)).toEqual([]);
+  });
+
   test("creates a clone in the next free folder, and records the URL it came from", async () => {
     const origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
     const clone = await createClone({

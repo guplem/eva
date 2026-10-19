@@ -51,9 +51,15 @@ function isFolder(path: string): boolean {
 /** The clones of a project, sorted by repository and number. */
 export function listClones(projectPath: string): Clone[] {
   const reposFolder = join(projectPath, "repos");
-  if (!existsSync(reposFolder)) return [];
+  if (!isFolder(reposFolder)) return [];
+  let names: string[];
+  try {
+    names = readdirSync(reposFolder);
+  } catch {
+    return [];
+  }
   const clones: Clone[] = [];
-  for (const name of readdirSync(reposFolder)) {
+  for (const name of names) {
     const match = cloneNamePattern.exec(name);
     const path = join(reposFolder, name);
     if (!match || !isFolder(path)) continue;

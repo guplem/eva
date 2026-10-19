@@ -984,10 +984,13 @@ describe("web routes", () => {
     expect((await call("/api/secrets/githubToken", { method: "PUT", body: { value: " " } })).status).toBe(400);
   });
 
-  test("an engine check may take longer than Bun's 10 s idle timeout", async () => {
-    // A cold start of a real engine often takes more than 10 s.
+  test("an engine check may take longer than Bun's idle timeout", async () => {
+    // A cold start of a real engine can outlast any idle timeout. A short one keeps the test fast.
+    // Bun closes an idle request at its next 4 s tick, so 8 s leaves a margin on a slow runner.
+    api.stop();
+    api = startLocalApi({ eva, port: 0, token, extraHosts: [], allowedTailscaleIdentities: [], idleTimeoutSeconds: 1 });
     turnScript = async function* (request) {
-      await Bun.sleep(14_000);
+      await Bun.sleep(8_000);
       yield* FakeEngine.answer(request, "OK");
     };
     // With no body, Bun counts the wait as idle: the case that closed the socket.

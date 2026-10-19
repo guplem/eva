@@ -238,7 +238,8 @@ export class Eva {
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
-      syncEnabled: () => this.settings.config.sync.enabled,
+      // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
+      syncEnabled: () => options.config.sync.enabled,
       assistantBusy: () => this.assistantBusy(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);

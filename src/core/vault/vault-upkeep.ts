@@ -26,7 +26,7 @@ export interface VaultUpkeepOptions {
   /** Null when no vault is configured. */
   readonly vaultSync: VaultSync | null;
   readonly now: () => Date;
-  /** The live `sync.enabled` setting. Off stops the automatic steps, never a request from the person. */
+  /** The `sync.enabled` setting. Off stops the automatic steps, never a request from the person. */
   readonly syncEnabled: () => boolean;
   /** True while an Assistant chat runs a turn. */
   readonly assistantBusy: () => boolean;

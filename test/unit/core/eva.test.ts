@@ -136,6 +136,19 @@ describe("Eva", () => {
     expect(existsSync(join(vault, "Remote.md"))).toBe(true);
   });
 
+  test("a saved change of sync.enabled waits for a restart, as the idle sweep does", async () => {
+    const engine = new FakeEngine((request) => {
+      writeFileSync(join(request.startFolder, "Methods", "New.md"), "A new note.\n");
+      return FakeEngine.answer(request, "Stored it.");
+    });
+    mkdirSync(join(vault, "Methods"));
+    const instance = start(engine, { sync: syncOn });
+    expect(instance.updateSettings({ sync: { enabled: false } }).restartNeeded).toBe(true);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(session.id, "Store a note.");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
+  });
+
   test("the engine gets an allowlisted environment with the Claude token, and no other secret (lesson 96)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);

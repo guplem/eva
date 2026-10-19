@@ -36,6 +36,22 @@ export interface DeviceLoginApprover {
   /** False while the approver cannot reach the owner, such as a bot with no paired chat. */
   canApprove(): boolean;
   ask(request: DeviceLoginRequest): void;
+  /** Another approver, or this one, answered a request that this approver was asked. */
+  settled?(id: string, answer: "allow" | "deny"): void;
+}
+
+/** What the page hears on its event socket. These are not session events, so they carry no `seq`. */
+export type DeviceLoginEvent =
+  | { readonly kind: "device_login_request"; readonly request: DeviceLoginRequest }
+  | { readonly kind: "device_login_settled"; readonly id: string; readonly answer: "allow" | "deny" };
+
+/** A device as the page lists it. The id is a hash prefix, so the list never shows a whole hash. */
+export interface DeviceSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly createdAt: string;
+  /** The device of the caller. */
+  readonly current: boolean;
 }
 
 export interface DeviceLoginsOptions {
@@ -47,6 +63,7 @@ interface PendingLogin {
   readonly request: DeviceLoginRequest;
   readonly label: string;
   readonly expiresAtMs: number;
+  readonly asked: readonly DeviceLoginApprover[];
   answer: { readonly state: "allowed"; readonly token: string } | { readonly state: "denied" } | null;
 }
 
@@ -63,11 +80,14 @@ const requestsPerWindow = 5;
 /** No 0, O, 1 or I: the owner compares the code by eye. */
 const codeLetters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const codeLength = 4;
+/** 64 bits of the hash tell the devices apart, and the id never logs anyone in. */
+const deviceIdLength = 16;
 
 export class DeviceLogins {
   private readonly options: DeviceLoginsOptions;
   private readonly pending: Map<string, PendingLogin>;
   private readonly approvers: Set<DeviceLoginApprover>;
+  private readonly forgetListeners: Set<() => void>;
   /** The recent requests of each account, so one account cannot use up another's. */
   private requestTimes: Map<string, number[]>;
   private devices: StoredDevice[];
@@ -76,6 +96,7 @@ export class DeviceLogins {
     this.options = options;
     this.pending = new Map();
     this.approvers = new Set();
+    this.forgetListeners = new Set();
     this.requestTimes = new Map();
     this.devices = loadDevices(options.path);
   }
@@ -116,7 +137,13 @@ export class DeviceLogins {
       expiresAt: new Date(nowMs + pendingLifetimeMs).toISOString(),
       approvers: ready.map((approver) => approver.name),
     };
-    this.pending.set(request.id, { request, label, expiresAtMs: nowMs + pendingLifetimeMs, answer: null });
+    this.pending.set(request.id, {
+      request,
+      label,
+      expiresAtMs: nowMs + pendingLifetimeMs,
+      asked: ready,
+      answer: null,
+    });
     for (const approver of ready) approver.ask(request);
     return request;
   }
@@ -129,6 +156,7 @@ export class DeviceLogins {
     if (login?.answer !== null) return false;
     if (answer === "deny") {
       login.answer = { state: "denied" };
+      settle(login, "deny");
       return true;
     }
     const token = randomBytes(32).toString("base64url");
@@ -138,7 +166,26 @@ export class DeviceLogins {
     ];
     this.saveDevices();
     login.answer = { state: "allowed", token };
+    settle(login, "allow");
     return true;
+  }
+
+  /**
+   * The answer of one approver. Returns false also for a request that it was not asked, such as a
+   * request from Eva's own computer, which only the terminal may answer.
+   */
+  answerAs(approver: DeviceLoginApprover, id: string, answer: "allow" | "deny"): boolean {
+    this.removeExpired(this.options.now().getTime());
+    if (this.pending.get(id)?.asked.includes(approver) !== true) return false;
+    return this.answer(id, answer);
+  }
+
+  /** The requests that wait for an answer and that this approver was asked, oldest first. */
+  waitingFor(approver: DeviceLoginApprover): DeviceLoginRequest[] {
+    this.removeExpired(this.options.now().getTime());
+    return [...this.pending.values()]
+      .filter((login) => login.answer === null && login.asked.includes(approver))
+      .map((login) => login.request);
   }
 
   /**
@@ -175,11 +222,42 @@ export class DeviceLogins {
     return this.devices.some((device) => device.hash === hash);
   }
 
+  /** Calls the listener after each removal of devices, so a front end can end their open connections. */
+  onForget(listener: () => void): () => void {
+    this.forgetListeners.add(listener);
+    return () => {
+      this.forgetListeners.delete(listener);
+    };
+  }
+
   /** Logs out one device. */
   forget(token: string): void {
     const hash = hashOf(token);
     this.devices = this.devices.filter((device) => device.hash !== hash);
     this.saveDevices();
+    this.notifyForget();
+  }
+
+  /** Every device, oldest first. `currentToken` is the device token of the caller, or null. */
+  list(currentToken: string | null): DeviceSummary[] {
+    const currentHash = currentToken === null ? null : hashOf(currentToken);
+    return this.devices.map((device) => ({
+      id: idOf(device),
+      label: device.label,
+      createdAt: device.createdAt,
+      current: device.hash === currentHash,
+    }));
+  }
+
+  /** Logs out the device with this id. Returns false when no single device has it. */
+  forgetById(id: string): boolean {
+    const matches = this.devices.filter((device) => idOf(device) === id);
+    const [match] = matches;
+    if (matches.length !== 1 || match === undefined) return false;
+    this.devices = this.devices.filter((device) => device !== match);
+    this.saveDevices();
+    this.notifyForget();
+    return true;
   }
 
   /** Logs out every device. Returns how many there were. */
@@ -187,11 +265,16 @@ export class DeviceLogins {
     const count = this.devices.length;
     this.devices = [];
     this.saveDevices();
+    this.notifyForget();
     return count;
   }
 
   private removeExpired(nowMs: number): void {
     for (const [id, login] of this.pending) if (login.expiresAtMs <= nowMs) this.pending.delete(id);
+  }
+
+  private notifyForget(): void {
+    for (const listener of this.forgetListeners) callSafely(() => listener());
   }
 
   private saveDevices(): void {
@@ -201,6 +284,23 @@ export class DeviceLogins {
 
 function hashOf(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function idOf(device: StoredDevice): string {
+  return device.hash.slice(0, deviceIdLength);
+}
+
+function settle(login: PendingLogin, answer: "allow" | "deny"): void {
+  for (const approver of login.asked) callSafely(() => approver.settled?.(login.request.id, answer));
+}
+
+/** A broken front end must not undo an answer that is already saved, or keep the others from hearing of it. */
+function callSafely(work: () => void): void {
+  try {
+    work();
+  } catch {
+    // The other front ends still get the news.
+  }
 }
 
 function newCode(): string {

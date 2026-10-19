@@ -221,7 +221,7 @@ You can also do these steps later, from your phone: send `/link` to your bot in 
 Then, on your phone:
 
 1. Install the **Tailscale** app, sign in with the same account, and switch it on.
-2. Open the address, or scan the QR code from Settings on another screen. Send `/link` to your bot in Telegram if you forget the address. The first time, the page shows a short code and Eva asks in Telegram whether to allow this device. Tap **Allow** when the code matches.
+2. Open the address, or scan the QR code from Settings on another screen. Send `/link` to your bot in Telegram if you forget the address. The first time, the page shows a short code. Eva asks in Telegram, and on any Eva page that is open and logged in. Tap **Allow** when the code matches.
 3. Choose "Add to Home screen" in the browser menu. Eva then opens like an app.
 
 Do the same on any other computer: install Tailscale, sign in, open the address. Settings has a **Copy** button for the address, and a **Share** button on a phone.

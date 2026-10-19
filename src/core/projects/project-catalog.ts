@@ -33,8 +33,8 @@ export interface Project {
   readonly title: string;
   /** The first paragraph after the title, in one line. */
   readonly description: string | null;
-  /** The clone folders in `repos/`. */
-  readonly cloneCount: number;
+  /** The names of the clone folders in `repos/`, so a page can match chats to clones. */
+  readonly clones: readonly string[];
   readonly warnings: readonly string[];
 }
 
@@ -169,7 +169,7 @@ function readProject(path: string, name: string): Project | null {
     frontMatter,
     title: readTitle(text) ?? parsedId.slug,
     description: readDescription(text),
-    cloneCount: listClones(path).length,
+    clones: listClones(path).map((clone) => clone.name),
     warnings: allWarnings,
   };
 }

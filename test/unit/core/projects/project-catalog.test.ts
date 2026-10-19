@@ -114,15 +114,18 @@ describe("discoverProjects", () => {
     expect(description("2025-03-05-1015-no-title")).toBe("Just a line.");
   });
 
-  test("counts the clone folders of each project", () => {
+  test("names the clone folders of each project", () => {
     addProject("2025-03-02-1015-example-app", "status: active");
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-0"), { recursive: true });
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-1"), { recursive: true });
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "notes"), { recursive: true });
     addProject("2025-03-03-1015-empty", "status: idea");
     const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
-    expect(projects.find((project) => project.id === "2025-03-02-1015-example-app")?.cloneCount).toBe(2);
-    expect(projects.find((project) => project.id === "2025-03-03-1015-empty")?.cloneCount).toBe(0);
+    expect(projects.find((project) => project.id === "2025-03-02-1015-example-app")?.clones).toEqual([
+      "example-app-0",
+      "example-app-1",
+    ]);
+    expect(projects.find((project) => project.id === "2025-03-03-1015-empty")?.clones).toEqual([]);
   });
 
   test("warns when the front matter time does not match the folder name", () => {

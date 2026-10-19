@@ -100,7 +100,8 @@ function EvaApp({
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       const status = await api.status();
-      setProblems(status.problemDetails);
+      // An older Eva sends only the texts: show nothing rather than break the page.
+      setProblems((status as Partial<EvaStatus>).problemDetails ?? []);
       setSyncState(status.vaultSync);
       setSetupMissing(status.setupMissing);
     } catch {
@@ -143,6 +144,21 @@ function EvaApp({
       onLinkedChatOpened();
     })();
   }, [linkIsMissing, linkedChatId, showError, onLinkedChatOpened]);
+
+  // The conflict can end elsewhere, such as a pick from Telegram: the dialog then has nothing to show.
+  const syncStatus = syncState?.status;
+  useEffect(() => {
+    if (syncStatus !== "conflict") setConflictsOpen(false);
+  }, [syncStatus]);
+
+  useEffect(() => {
+    if (!conflictsOpen) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setConflictsOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [conflictsOpen]);
 
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
@@ -289,14 +305,14 @@ function EvaApp({
       isConnected={isConnected}
       problems={problems}
       syncStatus={syncState?.status ?? "ok"}
+      onSettings={screen === "settings"}
       onRetryNow={() => events.current?.retryNow()}
       onAction={runProblemAction}
     />
   );
-  /** A pick changes the sync state; the problem list follows, and the dialog closes once nothing is left. */
+  /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
   const onConflictState = (state: VaultSyncState): void => {
     setSyncState(state);
-    if (state.status !== "conflict") setConflictsOpen(false);
     void refreshProblems();
   };
 
@@ -366,7 +382,7 @@ function EvaApp({
       {/* Before the other dialogs: an approval that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (
         <div className="dialog-backdrop">
-          <div className="dialog wide" role="dialog" aria-label="Note conflicts">
+          <div className="dialog wide" role="dialog" aria-modal="true" aria-label="Note conflicts">
             <NoteConflicts state={syncState} onState={onConflictState} />
             <div className="message-actions">
               <button onClick={() => setConflictsOpen(false)}>Close</button>

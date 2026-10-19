@@ -5,7 +5,7 @@
 import type { ReactElement } from "react";
 import type { EvaStatus } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { problemAction, problemActionLabels, type ProblemAction } from "./problem-actions.ts";
+import { isOtherMachineProblem, problemAction, problemActionLabels, type ProblemAction } from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -13,6 +13,8 @@ interface ProblemNoticesProps {
   readonly isConnected: boolean;
   readonly problems: EvaStatus["problemDetails"];
   readonly syncStatus: EvaStatus["vaultSync"]["status"];
+  /** On the Settings page, Settings problems need no button: their fix is on the page. */
+  readonly onSettings: boolean;
   readonly onRetryNow: () => void;
   readonly onAction: (action: ProblemAction) => void;
 }
@@ -21,6 +23,7 @@ export function ProblemNotices({
   isConnected,
   problems,
   syncStatus,
+  onSettings,
   onRetryNow,
   onAction,
 }: ProblemNoticesProps): ReactElement | null {
@@ -54,11 +57,14 @@ export function ProblemNotices({
       {problems.length > 0 && (
         <section className="problem-list" aria-label="Problems">
           {problems.map((problem) => {
-            const action = problemAction(problem.key, syncStatus);
+            const action = problemAction(problem.key, syncStatus, { onSettings });
             return (
               <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : "warn"}`}>
                 <Icon name="alert" />
-                <span className="notice-text">{problem.message}</span>
+                <span className="notice-text">
+                  {problem.message}
+                  {isOtherMachineProblem(problem.key) && " Open Eva on that machine to fix it."}
+                </span>
                 {action !== null && <button onClick={() => onAction(action)}>{problemActionLabels[action]}</button>}
               </div>
             );

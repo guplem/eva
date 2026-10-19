@@ -1068,6 +1068,9 @@ test("a note conflict opens from its banner, and the last pick closes it", async
   await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
   const dialog = page.getByRole("dialog", { name: "Note conflicts" });
   await expect(dialog).toContainText("Eva kept both. Pick the one to keep.");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
   await expect(dialog.getByText("- [ ] Buy coffee")).toBeVisible();
   await dialog.getByRole("button", { name: "Keep mine: Notes/plan.md" }).click();
   await expect(dialog).toHaveCount(0);

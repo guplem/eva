@@ -76,7 +76,14 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
       icon="globe"
       title="Use Eva from any device"
       description="Only through Tailscale, a free private network of your own devices. Strangers cannot reach Eva."
-      aside={<span className={`pill ${mark}`}>{pillWords[mark]}</span>}
+      aside={
+        // Eva installs Tailscale by herself, so the pill does not ask the person to act.
+        access.busy === "installing" ? (
+          <span className="pill optional">Installing</span>
+        ) : (
+          <span className={`pill ${mark}`}>{pillWords[mark]}</span>
+        )
+      }
     >
       <div className="access-step">
         <StatusIcon state={mark} />

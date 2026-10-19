@@ -91,19 +91,13 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           "github",
           "GitHub",
           "optional",
-          "A GitHub token lets Eva reach a private notebook and private projects. Paste it below.",
+          "A GitHub token lets Eva reach a private notebook and private projects.",
           "github",
         ),
     telegramStep(input.telegram, make),
     input.google
       ? make("google", "Google", "done", "A Google account is set.", "google")
-      : make(
-          "google",
-          "Google",
-          "optional",
-          "Calendar, Drive, Contacts and Tasks. The Google part below shows each step.",
-          "google",
-        ),
+      : make("google", "Google", "optional", "Calendar, Drive, Contacts and Tasks.", "google"),
   ];
 }
 
@@ -139,7 +133,7 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
     "engine",
     "An AI engine",
     "missing",
-    "For a Claude subscription, run `claude setup-token` on any computer with a browser, and paste the token in Engines below. For another provider, run `pi` on Eva's computer and type /login.",
+    "For a Claude subscription, run `claude setup-token` on any computer with a browser, and paste the token in Settings or in `eva setup`. For another provider, run `pi` on Eva's computer and type /login.",
     input.defaultEngine,
   );
 }
@@ -170,11 +164,5 @@ function telegramStep(telegram: ProgressInput["telegram"], make: Make): Progress
       "Send the pairing code to your bot, so that it talks only to you.",
       "telegram",
     );
-  return make(
-    "telegram",
-    "Telegram",
-    "optional",
-    "A bot of your own lets you talk to Eva in Telegram. Paste its token below.",
-    "telegram",
-  );
+  return make("telegram", "Telegram", "optional", "A bot of your own lets you talk to Eva in Telegram.", "telegram");
 }

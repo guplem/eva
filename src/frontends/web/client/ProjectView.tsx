@@ -104,8 +104,9 @@ export function ProjectView({
     };
   }, [openProjectId, cloneVersion, showError]);
 
-  // A linked Project chat opens in its clone, whatever the search and the filters show.
-  const linkedId = linkedChat?.mode === "project" ? linkedChat.id : null;
+  // A linked Project chat opens in its clone, whatever the search and the filters show. A fork opens
+  // as a branch of its first chat, because the page shows a chat with all its forks.
+  const linkedId = linkedChat?.mode === "project" ? rootIdOf(linkedChat, sessions) : null;
   const linkedProjectId = linkedChat?.projectId ?? null;
   const linkedClone = linkedChat?.clone ?? null;
   useEffect(() => {
@@ -340,4 +341,17 @@ function tagsOf(projects: readonly Project[]): string[] {
   return [...new Set(projects.flatMap((project) => project.frontMatter.tags.map((tag) => tag.toLowerCase())))].sort(
     (first, second) => first.localeCompare(second),
   );
+}
+
+/** The first chat of a fork's line, found through the parents that the list still has. */
+function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]): string {
+  let current = chat;
+  const seen = new Set<string>();
+  while (current.parentId !== null && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = sessions.find((candidate) => candidate.id === current.parentId);
+    if (parent === undefined) break;
+    current = parent;
+  }
+  return current.id;
 }

@@ -373,6 +373,68 @@ test("a clone card lists all its chats, and a new chat starts in a clone that ha
   await expect(page.locator(".main-header .sub")).toContainText(cloneName);
 });
 
+test("a deleted project chat shows its project page again", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Delete chat" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+});
+
+test("the project page says that the clones load, not that there are none", async ({ page }) => {
+  await logIn(page);
+  let release = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/projects/*/clones", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await page.getByRole("button", { name: "Project" }).click();
+  await openList(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await expect(page.getByText("Loading the clones…")).toBeVisible();
+  await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
+  release();
+  await expect(page.getByText("Loading the clones…")).toHaveCount(0);
+});
+
+test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
+  const title = `Forked project work (${test.info().project.name})`;
+  await logIn(page);
+  await openExampleApp(page);
+  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
+  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  await expect(answer).toContainText(title);
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  await expect(page.locator(".branch")).toHaveCount(2);
+  let forkId: string | undefined;
+  await expect
+    .poll(async () => {
+      const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; parentId: string }[];
+      forkId = sessions.find((session) => session.parentId === chatId)?.id;
+      return forkId;
+    })
+    .toBeDefined();
+
+  await page.goto("/");
+  await page.goto(`/#/chat/${forkId ?? ""}`);
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await expect(page.locator(".message.user").first()).toContainText(title);
+});
+
 test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await logIn(page);

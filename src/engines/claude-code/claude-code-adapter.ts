@@ -206,6 +206,7 @@ async function* mapEachTurn(
   let laterStatus: Promise<McpServerStatus[]> | null = null;
   let lastMessageId: string | null = null;
   let contextTokens: number | null = null;
+  let answeringModel: string | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   for await (const message of messages) {
     switch (message.type) {
@@ -214,6 +215,7 @@ async function* mapEachTurn(
         if (message.parent_tool_use_id !== null) break;
         // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
         contextTokens = contextOf(message.message.usage) ?? contextTokens;
+        answeringModel = message.message.model;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -283,6 +285,7 @@ async function* mapEachTurn(
           usage,
           costUsd: message.total_cost_usd,
           contextTokens,
+          contextWindow: contextWindowOf(message.modelUsage, answeringModel),
         };
         break;
       }
@@ -381,6 +384,20 @@ function contextOf(usage: {
 }): number | null {
   const total = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
   return total > 0 ? total : null;
+}
+
+/**
+ * The window of the model that answered. A subagent can use a smaller model, and its window
+ * would give a wrong share. So a list that does not name the model gives null.
+ */
+function contextWindowOf(
+  modelUsage: Readonly<Record<string, { readonly contextWindow: number }>> | undefined,
+  model: string | null,
+): number | null {
+  const entries = Object.entries(modelUsage ?? {});
+  const entry = entries.length === 1 ? entries[0] : entries.find(([name]) => name === model);
+  const window = entry?.[1].contextWindow;
+  return typeof window === "number" && window > 0 ? window : null;
 }
 
 function usageOf(usage: {

@@ -192,7 +192,8 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  // The working card shows at once, so only the finished answer tells that no trust question comes.
+  await Promise.race([answer.filter({ hasText: title }).waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
   await expect(answer).toContainText(title);
   const chatId = await chatIdNamed(page, title);
@@ -338,7 +339,8 @@ test("a request of another chat gets a notice that opens it, and an answer from 
   await notice.getByRole("button", { name: `Open ${title}` }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await expect(card).toContainText("gh issue create");
-  await expect(notice).toHaveCount(0);
+  // Another test can leave a request of its own chat, so only this chat must leave the notice.
+  await expect(notice.getByRole("button", { name: `Open ${title}` })).toHaveCount(0);
 
   // Telegram or the terminal answers first: the card closes here too.
   const pending = (await (await page.request.get("/api/approvals")).json()) as {
@@ -437,7 +439,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   // sizes share one demo server, so only the first of them sees the question.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  await Promise.race([answer.filter({ hasText: "Fix the bug" }).waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) {
     await expect(trustQuestion).toContainText("Trust this repository");
     await trustQuestion.getByRole("button", { name: "Deny" }).click();

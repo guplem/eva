@@ -42,6 +42,8 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [deviceAnswering, setDeviceAnswering] = useState(false);
+  const answeringDevice = useRef(false);
   const [screen, setScreen] = useState<Destination>(() => destinationOf(window.location.hash) ?? "chats");
   const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
@@ -269,13 +271,20 @@ function EvaApp(): ReactElement {
 
   /** A failed answer drops the request too: it expired, or another approver answered it. */
   const answerDevice = async (request: DeviceLoginRequest, answer: "allow" | "deny"): Promise<void> => {
-    setDeviceRequests((current) => current.filter((entry) => entry.id !== request.id));
-    if (answer === "allow") setAllowedDevice(request);
+    // The disabled buttons show only after a render, so two quick taps could send two answers.
+    if (answeringDevice.current) return;
+    answeringDevice.current = true;
+    setDeviceAnswering(true);
     try {
       await api.answerDeviceRequest(request.id, answer);
+      // Only a confirmed answer shows "Allowed": a slow phone link can still fail.
+      if (answer === "allow") setAllowedDevice(request);
     } catch (caught) {
-      setAllowedDevice(null);
       showError(caught);
+    } finally {
+      setDeviceRequests((current) => current.filter((entry) => entry.id !== request.id));
+      answeringDevice.current = false;
+      setDeviceAnswering(false);
     }
   };
   const deviceRequest = allowedDevice ?? deviceRequests[0];
@@ -370,6 +379,7 @@ function EvaApp(): ReactElement {
         <NewDeviceDialog
           request={deviceRequest}
           allowed={deviceRequest === allowedDevice}
+          busy={deviceAnswering}
           onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
         />
       )}

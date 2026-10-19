@@ -1851,6 +1851,23 @@ test("Settings: the device list names each device from its browser", async ({ pa
   await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
 });
 
+test("device login: a failed Allow never says Allowed, and shows why", async ({ page }) => {
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-5", code: "W2PX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-5", (route) =>
+    route.fulfill({ status: 404, json: { error: "That request expired." } }),
+  );
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(page.getByRole("alert")).toContainText("That request expired.");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Allowed. The new device opens Eva now.")).toHaveCount(0);
+});
+
 test("device login: Deny answers the new device, and the notice closes at once", async ({ page }) => {
   const answers: unknown[] = [];
   await page.route("**/api/devices/requests", (route) =>

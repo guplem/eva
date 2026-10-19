@@ -12,6 +12,8 @@ export function NewDeviceDialog(props: {
   readonly request: DeviceLoginRequest;
   /** The person allowed it: EVE shows her delighted face for a moment, and the buttons go. */
   readonly allowed: boolean;
+  /** An answer is on its way, so the buttons wait. */
+  readonly busy: boolean;
   readonly onAnswer: (answer: "allow" | "deny") => void;
 }): ReactElement {
   const { request, allowed } = props;
@@ -26,11 +28,11 @@ export function NewDeviceDialog(props: {
         </p>
         {!allowed && (
           <div className="device-actions">
-            <button className="primary" onClick={() => props.onAnswer("allow")}>
+            <button className="primary" disabled={props.busy} onClick={() => props.onAnswer("allow")}>
               <Icon name="check" />
               Allow
             </button>
-            <button className="danger" onClick={() => props.onAnswer("deny")}>
+            <button className="danger" disabled={props.busy} onClick={() => props.onAnswer("deny")}>
               Deny
             </button>
           </div>

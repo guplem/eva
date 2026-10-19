@@ -83,6 +83,13 @@ describe("pick update", () => {
     expect(pickUpdate("1.0.0", [{ version: "1.1.0", notes }], "minor").newer[0]?.headline).toBe("What is new?");
   });
 
+  test("a hand-written line keeps a first word that is not a commit type", () => {
+    const notes = "https://example.com/blog/1.1\n";
+    expect(pickUpdate("1.0.0", [{ version: "1.1.0", notes }], "minor").newer[0]?.headline).toBe(
+      "Https://example.com/blog/1.1.",
+    );
+  });
+
   test("each newer release carries its publish date, or null when GitHub sent none", () => {
     const newer = pickUpdate(
       "1.0.0",

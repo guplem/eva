@@ -4,7 +4,13 @@
  */
 import type { EvaConfig } from "../settings/home.ts";
 import { isNewerVersion } from "./release-verification.ts";
-import { detailsEnd, detailsStart, noChangeNotes, releaseNoteSections } from "./release-version.ts";
+import {
+  detailsEnd,
+  detailsStart,
+  isConventionalSubject,
+  noChangeNotes,
+  releaseNoteSections,
+} from "./release-version.ts";
 
 /** The largest step that Eva installs by herself. */
 export type UpdatePolicy = EvaConfig["updates"]["install"];
@@ -130,8 +136,8 @@ export function releaseSummary(releases: readonly ReleaseInfo[]): string {
 }
 
 /**
- * The first change of one release as a sentence for a list row, breaking changes first. A list
- * row has room for one line, so the commit prefix and the pull request number go.
+ * The first change of one release as a sentence for a list row, breaking changes first. A row
+ * has room for one line. Drop the commit type and the pull request number.
  */
 function releaseHeadline(release: ReleaseInfo): string | null {
   const first = releaseSummary([release])
@@ -140,10 +146,9 @@ function releaseHeadline(release: ReleaseInfo): string | null {
   if (first === undefined) return null;
   const versionMark = ` (${release.version})`;
   const line = first.slice(2);
-  const text = (line.endsWith(versionMark) ? line.slice(0, -versionMark.length) : line)
-    .replace(/ \(#\d+\)$/, "")
-    .replace(/^[a-z]+(\([^)]*\))?!?:\s*/, "")
-    .trim();
+  const change = (line.endsWith(versionMark) ? line.slice(0, -versionMark.length) : line).replace(/ \(#\d+\)$/, "");
+  // Only a known commit type goes: a hand-written line such as a link keeps its first word.
+  const text = (isConventionalSubject(change) ? change.replace(/^\w+(\([^)]*\))?!?:\s*/, "") : change).trim();
   if (text === "") return null;
   const sentence = `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
   return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;

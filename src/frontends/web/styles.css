@@ -1447,6 +1447,13 @@ button.small {
   overflow-wrap: anywhere;
 }
 
+/* A row, so the 44 px crumb of a phone keeps the clone and the branch on its centre line. */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+}
 .crumb {
   border: none;
   background: transparent;

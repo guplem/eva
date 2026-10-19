@@ -298,7 +298,7 @@ export function ProjectView({
             <div className="main-header">
               <div className="header-text">
                 <h1>{chat.title}</h1>
-                <div className="sub">
+                <div className="sub crumbs">
                   <button className="crumb" onClick={() => open({ kind: "project", project: page.project })}>
                     {page.project.title}
                   </button>

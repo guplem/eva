@@ -44,12 +44,17 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
           <p className="field-hint">
             Save a GitHub token first, so Eva can list your repositories. The GitHub step shows how to make one.
           </p>
+          <GitHubStepLink context={context} />
           <SecretField
             name="githubToken"
             label="GitHub token"
             saved={false}
             help="Eva uses it to list, clone and create your vault's repository."
-            onChanged={context.noteAndReload}
+            onChanged={(note) => {
+              // The card reads whether a token is saved from the settings, so they load again too.
+              context.reloadSettings();
+              context.noteAndReload(note);
+            }}
           />
         </div>
       )}
@@ -213,10 +218,13 @@ export function VaultPush({ context }: { readonly context: SettingsContext }): R
   };
   if (!context.settings.secretsSet.githubToken)
     return (
-      <p className="callout warning">
-        Your vault is only on this computer. Save a GitHub token in the GitHub step, and Eva keeps it in a private
-        repository.
-      </p>
+      <div className="callout warning">
+        <p>
+          Your vault is only on this computer. Save a GitHub token in the GitHub step, and Eva keeps it in a private
+          repository.
+        </p>
+        <GitHubStepLink context={context} />
+      </div>
     );
   return (
     <div className="vault-choice">
@@ -235,5 +243,13 @@ export function VaultPush({ context }: { readonly context: SettingsContext }): R
         </button>
       </div>
     </div>
+  );
+}
+
+function GitHubStepLink({ context }: { readonly context: SettingsContext }): ReactElement {
+  return (
+    <button className="link-button" onClick={() => context.navigate({ section: "setup", item: "github" })}>
+      Open the GitHub step
+    </button>
   );
 }

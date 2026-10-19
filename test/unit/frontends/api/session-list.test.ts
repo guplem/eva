@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionRecord } from "../../../../src/core/sessions/session-store.ts";
-import { withRecentSteps } from "../../../../src/frontends/api/session-list.ts";
+import { withRecentSteps, withRunState } from "../../../../src/frontends/api/session-list.ts";
 
 type Turn = SessionRecord["turns"][number];
 
@@ -61,5 +61,17 @@ describe("withRecentSteps", () => {
   test("a chat with few turns stays the same", () => {
     const short = session([turn("one")]);
     expect(withRecentSteps([short], 2)).toEqual([short]);
+  });
+});
+
+describe("withRunState", () => {
+  test("marks each chat whose turn runs, so a page that reloads mid-turn still shows it", () => {
+    const quiet = session([]);
+    const working = { ...session([]), id: "s2" };
+    const listed = withRunState([quiet, working], (id) => id === "s2");
+    expect(listed.map((entry) => [entry.id, entry.running])).toEqual([
+      ["s1", false],
+      ["s2", true],
+    ]);
   });
 });

@@ -632,6 +632,35 @@ describe("routes", () => {
     expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([]);
   });
 
+  test("the session list says which chat runs a turn, for a page that reloads mid-turn", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      await released;
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const runningOf = async (): Promise<boolean | undefined> =>
+      (await json<{ id: string; running: boolean }[]>(await call("/api/sessions"))).find(
+        (entry) => entry.id === session.id,
+      )?.running;
+    expect(await runningOf()).toBe(false);
+    const turn = eva.sessions.send(session.id, "go");
+    try {
+      const deadline = Date.now() + 5_000;
+      while (!eva.sessions.isBusy(session.id) && Date.now() < deadline) await Bun.sleep(5);
+      expect(await runningOf()).toBe(true);
+    } finally {
+      release();
+      await turn;
+    }
+    expect(await runningOf()).toBe(false);
+  });
+
   test("the session list sends the steps of the recent turns only, and the store keeps them all", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

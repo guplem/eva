@@ -151,9 +151,12 @@ test("a link opened before the login opens its chat after the login", async ({ p
 
 test("a link to a deleted chat says so", async ({ page }) => {
   await logIn(page);
-  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "A chat that goes"));
+  const title = await newAnsweredChat(page, "A chat that goes");
+  const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   expect((await page.request.delete(`/api/sessions/${chatId}`)).status()).toBe(200);
+  // The page learns of the delete over its socket. A link that comes first finds the chat in the old list and opens it.
+  await expect(page.locator(".sidebar .list-item", { hasText: title })).toHaveCount(0);
   await page.goto(`/#/chat/${chatId}`);
   await expect(page.getByRole("alert")).toContainText("That chat no longer exists.");
   expect(new URL(page.url()).hash).toBe("#/chats");

@@ -60,9 +60,17 @@ describe("VaultSync.save", () => {
       GIT_CONFIG_NOSYSTEM: "1",
     };
     sandbox.write(vault, "Methods/New.md", "Steps.\n");
-    const state = await createSync(vault, { environment: noIdentity }).save();
+    const sync = createSync(vault, { environment: noIdentity });
+    const state = await sync.save();
     expect(state.status).toBe("ok");
     expect(sandbox.git(vault, "log", "-1", "--format=%an <%ae>")).toBe("Eva <eva@localhost>");
+
+    // A name that the person sets later, while Eva runs, wins from the next save on.
+    sandbox.git(vault, "config", "user.name", "Alex");
+    sandbox.git(vault, "config", "user.email", "alex@example.invalid");
+    sandbox.write(vault, "Methods/Later.md", "More steps.\n");
+    await sync.save();
+    expect(sandbox.git(vault, "log", "-1", "--format=%an <%ae>")).toBe("Alex <alex@example.invalid>");
   });
 
   test("the person's own git name and email stay on the commits", async () => {

@@ -116,7 +116,7 @@ export class VaultSync {
   private readonly options: VaultSyncOptions;
   private queue: Promise<unknown>;
   private state: VaultSyncState;
-  private identity: Promise<Readonly<Record<string, string>>> | null;
+  private hasIdentity: boolean;
   /**
    * The picks of a committed conflict, by path, with the versions at the time of the pick, until
    * every note has one. Memory is enough: a restart loses only these picks, and git still holds
@@ -129,7 +129,7 @@ export class VaultSync {
     this.queue = Promise.resolve();
     this.state = { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] };
     this.picks = new Map();
-    this.identity = null;
+    this.hasIdentity = false;
   }
 
   get currentState(): VaultSyncState {
@@ -681,18 +681,21 @@ export class VaultSync {
    * A new machine often has no git name or email, and its host name gives git no email to guess,
    * so every commit would fail. Then Eva commits as herself; the person's own identity always wins.
    */
-  private identityEnvironment(): Promise<Readonly<Record<string, string>>> {
-    this.identity ??= this.options.runner
-      .run(["git", "var", "GIT_COMMITTER_IDENT"], {
+  private async identityEnvironment(): Promise<Readonly<Record<string, string>>> {
+    // Only a found identity is kept: one that the person sets later, while Eva runs, then wins.
+    if (this.hasIdentity) return {};
+    try {
+      const result = await this.options.runner.run(["git", "var", "GIT_COMMITTER_IDENT"], {
         cwd: this.options.vaultPath,
         environment: { ...this.options.environment, GIT_TERMINAL_PROMPT: "0" },
         timeoutMs: localTimeoutMs,
-      })
-      .then(
-        (result) => (result.exitCode === 0 ? {} : evaIdentity),
-        () => ({}),
-      );
-    return this.identity;
+      });
+      this.hasIdentity = result.exitCode === 0;
+    } catch {
+      // git could not start: the commit itself then reports the problem.
+      return {};
+    }
+    return this.hasIdentity ? {} : evaIdentity;
   }
 
   private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {

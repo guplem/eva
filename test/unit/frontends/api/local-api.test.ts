@@ -458,6 +458,25 @@ describe("device login", () => {
     expect(page.socket.readyState).toBe(WebSocket.OPEN);
   });
 
+  test("a request from Eva's own computer never reaches the page: only the terminal answers it", async () => {
+    eva.deviceLogins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: () => undefined,
+    });
+    const page = await openPage(`eva_token=${token}`);
+    const created = await call("/api/login/device", { method: "POST", headers: {} });
+    expect(created.status).toBe(201);
+    const request = await json<DeviceLoginRequest>(created);
+    expect(request.approvers).toEqual(["terminal"]);
+    expect(await json<unknown>(await call("/api/devices/requests"))).toEqual([]);
+    expect(
+      (await call(`/api/devices/requests/${request.id}`, { method: "POST", body: { answer: "allow" } })).status,
+    ).toBe(404);
+    expect(page.events).toEqual([]);
+  });
+
   test("the page cannot answer a request that it was not asked", async () => {
     attachApprover();
     const request = await json<DeviceLoginRequest>(await requestLogin());

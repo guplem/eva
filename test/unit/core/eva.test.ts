@@ -136,7 +136,7 @@ describe("Eva", () => {
     expect(existsSync(join(vault, "Remote.md"))).toBe(true);
   });
 
-  test("a saved change of sync.enabled waits for a restart, as the idle sweep does", async () => {
+  test("a saved change of sync.enabled waits for a restart", async () => {
     const engine = new FakeEngine((request) => {
       writeFileSync(join(request.startFolder, "Methods", "New.md"), "A new note.\n");
       return FakeEngine.answer(request, "Stored it.");

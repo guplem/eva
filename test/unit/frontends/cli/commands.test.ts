@@ -251,12 +251,12 @@ describe("with a running Eva", () => {
     // The lock says Eva runs, but nothing listens on this port, such as after a slow start. A fixed
     // port could belong to a server of a parallel test file, so the test takes a port that it freed.
     const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
-    const port = String(probe.port);
+    const port = probe.port ?? 0;
     await probe.stop(true);
-    saveConfig(paths, { ...loadSettings(paths).config, port: Number(port) });
+    saveConfig(paths, { ...loadSettings(paths).config, port });
     const answering = fakeHost({
       isProcessAlive: () => true,
-      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland", EVA_PORT: port },
+      environment: { ...gitEnvironment, EVA_TIME_ZONE: "Pacific/Auckland", EVA_PORT: String(port) },
     });
     expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
     expect(printed(answering)).toContain("Eva's page did not answer.");

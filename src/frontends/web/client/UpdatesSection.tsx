@@ -212,7 +212,7 @@ export function RestartCard({ context }: { readonly context: SettingsContext }):
       description="Eva reads new tokens and some settings only when she starts. A restart stops the running chats."
     >
       <div className="button-row">
-        <button onClick={() => void context.restartNow()}>Restart Eva</button>
+        <button onClick={context.askRestart}>Restart now</button>
       </div>
     </Card>
   );

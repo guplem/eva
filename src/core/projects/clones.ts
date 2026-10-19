@@ -39,6 +39,15 @@ export function cloneFolderName(projectPath: string, repository: string): string
   }
 }
 
+/** A broken link or a folder without rights is not a clone. It must not break the project list (lesson 54). */
+function isFolder(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** The clones of a project, sorted by repository and number. */
 export function listClones(projectPath: string): Clone[] {
   const reposFolder = join(projectPath, "repos");
@@ -47,7 +56,7 @@ export function listClones(projectPath: string): Clone[] {
   for (const name of readdirSync(reposFolder)) {
     const match = cloneNamePattern.exec(name);
     const path = join(reposFolder, name);
-    if (!match || !statSync(path).isDirectory()) continue;
+    if (!match || !isFolder(path)) continue;
     clones.push({ name, path, repository: match[1] ?? name, index: Number(match[2]) });
   }
   return clones.sort(

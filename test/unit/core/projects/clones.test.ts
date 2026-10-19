@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CloneOriginStore,
@@ -71,6 +71,12 @@ describe("clone folders", () => {
     mkdirSync(join(project, "repos", "notes"), { recursive: true });
     expect(listClones(project).map((clone) => clone.name)).toEqual(["example-app-0", "example-app-1"]);
     expect(listClones(project)[0]).toMatchObject({ repository: "example-app", index: 0 });
+  });
+
+  test.skipIf(process.platform === "win32")("skips an entry that it cannot read, such as a broken link", () => {
+    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
+    symlinkSync(join(project, "gone"), join(project, "repos", "example-app-1"));
+    expect(listClones(project).map((clone) => clone.name)).toEqual(["example-app-0"]);
   });
 
   test("creates a clone in the next free folder, and records the URL it came from", async () => {

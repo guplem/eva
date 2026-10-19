@@ -755,6 +755,24 @@ describe("the vault step on the page", () => {
     }
   });
 
+  test("a failed push of a new vault never sends a token back to the page", async () => {
+    const instance = withoutVault();
+    try {
+      const token = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      const result = await instance.createVault({
+        name: "Sam",
+        language: "English",
+        topics: [],
+        repository: `https://x-access-token:${token}@127.0.0.1:1/you/vault.git`,
+      });
+      expect(result.repository).toBeNull();
+      expect(result.problem).toContain("[redacted]");
+      expect(JSON.stringify(result)).not.toContain(token);
+    } finally {
+      instance.stop();
+    }
+  });
+
   test("an empty saved folder shows the step as missing, and a new local vault asks for its push", async () => {
     const instance = withoutVault();
     try {

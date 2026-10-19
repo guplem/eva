@@ -782,18 +782,24 @@ export class Eva {
   }
 
   /** Clones the vault that the person picked on the page; a restart starts to use it. */
-  cloneVault(repository: string): Promise<VaultSetupResult> {
-    return this.vaultSetup.clone(repository);
+  async cloneVault(repository: string): Promise<VaultSetupResult> {
+    return this.redactSetup(await this.vaultSetup.clone(repository));
   }
 
   /** Starts a new vault from the template, and pushes it to a new private repository. */
-  createVault(answers: NewVaultAnswers): Promise<VaultSetupResult> {
-    return this.vaultSetup.create(answers);
+  async createVault(answers: NewVaultAnswers): Promise<VaultSetupResult> {
+    return this.redactSetup(await this.vaultSetup.create(answers));
   }
 
   /** Pushes a new local vault to a new private repository, or to an empty one. */
-  pushVault(repository: string): Promise<VaultSetupResult> {
-    return this.vaultSetup.push(repository);
+  async pushVault(repository: string): Promise<VaultSetupResult> {
+    return this.redactSetup(await this.vaultSetup.push(repository));
+  }
+
+  /** A result is no error, so it skips the API's redaction; git's text may name a typed address with a token. */
+  private redactSetup(result: VaultSetupResult): VaultSetupResult {
+    const redact = (text: string | null): string | null => (text === null ? null : this.redactor.redact(text));
+    return { folder: result.folder, repository: redact(result.repository), problem: redact(result.problem) };
   }
 
   /**

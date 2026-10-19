@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
@@ -119,34 +119,25 @@ describe("Eva", () => {
     expect(Object.keys(environment).some((name) => name.startsWith("GIT_AUTHOR"))).toBe(false);
   });
 
-  test("the ownConfigFolder setting gives the instance its own Claude config folder", async () => {
+  test("each instance gets its own Claude, pi and gh config folders (lesson 111)", async () => {
     const engine = new FakeEngine();
-    const instance = start(engine, {
-      engines: { ...defaultConfig.engines, claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true } },
-    });
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
-    expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
-  });
-
-  test("an extra instance on the same OS user gets its own Claude, pi and gh config folders (lesson 111)", async () => {
-    const engine = new FakeEngine();
-    const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
+    const instance = start(engine);
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(join(home, "engines", "claude"));
     expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBe(join(home, "engines", "pi-agent"));
     expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
   });
 
-  test("an extra instance gives the agent's git its own global config, so a push uses the instance's gh login", async () => {
+  test("the agent's git gets the instance's own global config, so a push uses the instance's gh login", async () => {
     const engine = new FakeEngine();
-    const instance = start(engine, {}, { defaultHome: join(home, "..", "default-eva-home") });
+    const instance = start(engine);
     await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
     const gitConfig = join(home, "engines", "git", "gitconfig");
     expect(engine.requests[0]?.environment["GIT_CONFIG_GLOBAL"]).toBe(gitConfig);
     expect(readFileSync(gitConfig, "utf-8")).toContain("helper = !gh auth git-credential");
   });
 
-  test("Eva's own gh calls in an extra instance use its gh folder, not the first person's login", async () => {
+  test("Eva's own gh calls use the instance's gh folder, not another person's login", async () => {
     const ghEnvironments: Record<string, string>[] = [];
     eva = new Eva({
       paths: homePaths(home),
@@ -162,23 +153,11 @@ describe("Eva", () => {
       processEnvironment: gitEnvironment,
       now: () => clock,
       basePrompt: "Base.",
-      defaultHome: join(home, "..", "default-eva-home"),
     });
     await eva.runCheck("github");
     expect(ghEnvironments[0]?.["GH_CONFIG_DIR"]).toBe(join(home, "engines", "gh"));
     // Only gh needs its folder; git and the Google tools get no engine folder.
     expect(ghEnvironments[0]?.["CLAUDE_CONFIG_DIR"]).toBeUndefined();
-  });
-
-  test("the instance in the default home uses the OS user's own engine config folders", async () => {
-    const engine = new FakeEngine();
-    const instance = start(engine, {}, { defaultHome: join(home, ".") });
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli", model: "default" }).id, "hi");
-    expect(engine.requests[0]?.environment["CLAUDE_CONFIG_DIR"]).toBeUndefined();
-    expect(engine.requests[0]?.environment["PI_CODING_AGENT_DIR"]).toBeUndefined();
-    expect(engine.requests[0]?.environment["GH_CONFIG_DIR"]).toBeUndefined();
-    expect(engine.requests[0]?.environment["GIT_CONFIG_GLOBAL"]).toBeUndefined();
-    expect(existsSync(join(home, "engines", "git"))).toBe(false);
   });
 
   test("a Project chat runs in a clone, which Eva creates when the project has none", async () => {
@@ -551,6 +530,7 @@ describe("Eva", () => {
     await eva.sessions.send(session.id, "hi");
     const environment = engine.requests[0]?.environment ?? {};
     expect(environment["EVA_HOME"]).toBe(home);
+    expect(environment["EVA_INSTANCE"]).toBe(basename(home).slice("eva-".length));
     expect(environment["EVA_SESSION_ID"]).toBe(session.id);
     expect(environment["PATH"]?.startsWith(join(home, "bin"))).toBe(true);
     expect(readFileSync(join(home, "bin", "eva"), "utf8")).toBe(
@@ -784,12 +764,7 @@ describe("Eva", () => {
     };
     eva = new Eva({
       paths: homePaths(home),
-      config: config({
-        engines: {
-          ...defaultConfig.engines,
-          claudeCode: { ...defaultConfig.engines.claudeCode, ownConfigFolder: true },
-        },
-      }),
+      config: config(),
       secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value-for-tests" },
       engines: [new FakeEngine()],
       runner,

@@ -46,7 +46,7 @@ The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). 
      irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
      ```
 
-   The command installs git when it is missing, downloads Eva from the latest release, and starts `eva setup`. On Linux, git asks for your password, because it needs administrator rights.
+   The command installs git when it is missing, downloads Eva from the latest release, and starts `eva setup`. On Linux, when git or curl is missing, `sudo` asks for your password, because their install needs administrator rights.
 
 2. **Answer the setup.** Setup installs the harnesses (Claude Code and pi), uv and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
 

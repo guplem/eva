@@ -112,7 +112,12 @@ Setup then lists the repositories that the token reaches. When GitHub refuses th
 
 2. With a Telegram bot, pair your chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
 
-**Install by hand.** To read each step before it runs, read [install.ps1](../../install/install.ps1), or do its steps yourself: install git with `winget install --id Git.Git -e`, download `eva-windows-x64.exe` from the [latest release](https://github.com/guplem/eva/releases/latest) as `%LOCALAPPDATA%\Programs\Eva\eva.exe`, add that folder to your `PATH`, open PowerShell again, and run `eva setup`.
+**Install by hand.** To read each step before it runs, read [install.ps1](../../install/install.ps1). Or do its steps yourself:
+
+1. Install git: `winget install --id Git.Git -e`.
+2. Download `eva-windows-x64.exe` from the [latest release](https://github.com/guplem/eva/releases/latest), and save it as `%LOCALAPPDATA%\Programs\Eva\eva.exe`.
+3. Add that folder to your `PATH`.
+4. Open PowerShell again, and run `eva setup`.
 
 ## The short path
 
@@ -176,7 +181,13 @@ These steps work over SSH too. They install Eva for your own user.
 
 2. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-**Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh), or do its steps yourself: install git, download `eva-linux-x64` (or `eva-linux-arm64`) from the [latest release](https://github.com/guplem/eva/releases/latest) as `~/.local/bin/eva`, make it executable with `chmod +x`, and run `export PATH="$HOME/.local/bin:$PATH"`. Then run `eva setup` in that same terminal: the service keeps the `PATH` of setup, and finds uv and the harnesses in `~/.local/bin` through it.
+**Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh). Or do its steps yourself:
+
+1. Install git and curl, for example with `sudo apt install -y git curl`.
+2. Download `eva-linux-x64` (or `eva-linux-arm64`) from the [latest release](https://github.com/guplem/eva/releases/latest), and save it as `~/.local/bin/eva`.
+3. Make it executable: `chmod +x ~/.local/bin/eva`.
+4. Run `export PATH="$HOME/.local/bin:$PATH"`.
+5. Run `eva setup` in that same terminal. The service keeps the `PATH` of setup, and finds uv and the harnesses in `~/.local/bin` through it.
 
 **Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code, pi and uv here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install none of them, add `EVA_INSTALL_ENGINES="no"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and it never waits for a device code.
 

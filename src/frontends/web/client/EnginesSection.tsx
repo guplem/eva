@@ -128,6 +128,8 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
   const start = async (): Promise<void> => {
     setBusy(true);
     setStarting(true);
+    // A new start ends the old login on Eva's computer, even when the new one fails.
+    setLoginUrl(null);
     try {
       // A phone blocks a window that opens after a wait, so the page shows a link instead.
       setLoginUrl((await api.startClaudeLogin()).url);

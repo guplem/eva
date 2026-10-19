@@ -16,7 +16,6 @@
 - Write a setup step's guide as numbered `guide-steps` in plain words, for a person who never used a terminal. Give each command a `CommandLine`, so the person copies it.
 - On a phone, every button is 44 px tall or more, and no page is wider than the screen. The phone tests in `test/e2e/web-ui.spec.ts` check each Settings page.
 
-## Before and after captures
+## Captures
 
-- Capture the page for a PR with `scripts/capture-ui.ts`. Start `bun run test/e2e/serve-demo.ts` in the checkout to capture, then run the script. Its header gives the arguments.
-- Run the script from the PR checkout for both sides. It only talks to the demo port, so it captures the demo that runs: the `origin/main` worktree for "before", the PR branch for "after".
+- Take captures of the page with `scripts/capture-ui.ts`, while `bun run test/e2e/serve-demo.ts` runs. The header of the script gives its arguments.

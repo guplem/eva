@@ -29,14 +29,7 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 
 ## Before and after captures
 
-GitHub cannot attach a file to a PR description through its API. So the images go to a branch of their own, and the description links to them.
-
-1. **Find how this repository captures its screens.** An `AGENTS.md` file can name a capture script and a demo with example data. If none exists, run the app with example data, and take the captures with the browser test tool of the repository, such as Playwright.
-2. **Take the "before" captures** from `origin/main`. Make a worktree of it in `.claude/worktrees/`, and run the app there. Capture each screen that the PR changes, on a computer and on a phone, and in each theme that the app has.
-3. **Take the "after" captures** in the same way from the PR branch. Add each new screen.
-4. **Capture only example data.** Never capture a person's real data or a secret: the images can go to a public repository.
-5. **Push the images** to a new branch, `<pr-branch>-captures`, made from `origin/main`. Put them in `docs/screenshots/pr-<N>/`.
-6. **Open a PR from that branch**, with "(not for merging)" at the end of its title. Close it at once. Never merge it.
-7. **Link each image by its commit:** `https://github.com/<owner>/<repo>/blob/<sha>/docs/screenshots/pr-<N>/<file>.png?raw=true`. A closed PR keeps its commits, so the links keep working.
-8. **Add a "Before and after" section** to the PR description. Use a table with a Before column and an After column. Give a computer image `width="420"` and a phone image `width="200"`. Say which commit each side shows.
-9. **Take the captures again** when a merge of `main` changes the screens a lot.
+- Capture each changed screen on `origin/main` and on the PR branch. If the repository has a way to take captures, use it. Capture only example data, never a person's real data.
+- GitHub cannot attach a file to a PR description through its API. So push the images to a branch of their own, open a PR from it, and close that PR at once. Never merge it.
+- Link each image by its commit: `https://github.com/<owner>/<repo>/blob/<sha>/<path>?raw=true`. A closed PR keeps its commits, so the links keep working.
+- Show the images in a "Before and after" table in the PR description.

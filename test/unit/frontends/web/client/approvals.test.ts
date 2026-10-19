@@ -63,7 +63,7 @@ describe("approvalPlace", () => {
     expect(approvalPlace(sessions[1])).toBe("Plan the week");
   });
 
-  test("names an unknown chat in plain words", () => {
-    expect(approvalPlace(undefined)).toBe("A chat");
+  test("names a chat that is not in the list in words that fit in a sentence", () => {
+    expect(approvalPlace(undefined)).toBe("another chat");
   });
 });

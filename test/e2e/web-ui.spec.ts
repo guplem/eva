@@ -297,6 +297,11 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
     const box = await allow.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     expect(box?.width ?? 0).toBeGreaterThan(300);
+    // The sheet does not cover the tab bar: the person can still go to another page.
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("button", { name: /^Schedules/ })
+      .click({ trial: true, timeout: 2_000 });
   } else {
     await expect(page.locator(".msg:has(.approval-card) .mk.e-firm")).toBeVisible();
   }

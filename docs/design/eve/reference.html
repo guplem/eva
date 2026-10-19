@@ -2367,7 +2367,7 @@
   <h2 style="font-size:17px;font-weight:700;margin:10px 0 6px">Eva wants to run a command</h2>
   <div class="diff"><div>$ git push origin feature/passkeys</div></div>
   <p class="small muted" style="margin-top:8px">It sends 3 commits to GitHub. Nothing else changes.</p>
-  <div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="btn pri">${I("check")} Allow once</span><span class="btn soft">Allow in this chat</span><span class="grow"></span><span class="btn danger">Deny</span></div></div>`;
+  <div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="btn pri">${I("check")} Allow once</span><span class="grow"></span><span class="btn danger">Deny</span></div></div>`;
       const apprConvo = (phoneView) => `<div class="sc"><div class="col">
   <div class="msg me"><div class="bub"><div class="who">You · 09:04</div>Push the passkey login branch.</div></div>
   <div class="msg">${phoneView ? "" : mk("s")}<div class="bub"><div class="steps">${I("check")} 2 steps · 3 s <span class="grow"></span><span class="last ell">git status</span>${I("down")}</div>The tests pass and 3 commits are ready. I need your permission to push them.</div></div>
@@ -2380,8 +2380,8 @@
         desc: "Some actions need a yes from the person. The request shows in the chat, in the chat list and on the nav icon.",
         imp: [
           "The permission card has an amber border, so nobody takes it for an answer.",
-          "It shows the exact command and says in one sentence what changes.",
-          "Three clear ways out: allow once, allow in this chat, or deny.",
+          "It shows the exact command and, when Eva knows it, says in one sentence what changes.",
+          "Two clear ways out: allow once or deny. Each turn starts a new engine process, so no engine keeps an answer for the whole chat.",
           "On the phone it is a bottom sheet, within reach of the thumb.",
         ],
         desk: desk({
@@ -2401,7 +2401,7 @@
           body: apprConvo(true),
           foot: composer(false, "Assistant", "Sonnet"),
           tab: false,
-          overlay: `<div class="scrim" style="place-items:end stretch"></div><div class="sheet"><div class="row"><span class="st warn">Needs you</span><span class="grow"></span><span class="small muted">example-app-1</span></div><h2>Eva wants to run a command</h2><div class="diff"><div>$ git push origin feature/passkeys</div></div><p class="small muted">It sends 3 commits to GitHub. Nothing else changes.</p><span class="btn pri lg">${I("check")} Allow once</span><span class="btn soft lg">Allow in this chat</span><span class="btn danger lg">Deny</span></div>`,
+          overlay: `<div class="sheet"><div class="row"><span class="st warn">Needs you</span><span class="grow"></span><span class="small muted">example-app-1</span></div><h2>Eva wants to run a command</h2><div class="diff"><div>$ git push origin feature/passkeys</div></div><p class="small muted">It sends 3 commits to GitHub. Nothing else changes.</p><span class="btn pri lg">${I("check")} Allow once</span><span class="btn danger lg">Deny</span></div>`,
         }),
       });
 

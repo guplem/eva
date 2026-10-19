@@ -31,7 +31,7 @@ interface ConversationProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly onChanged: () => Promise<void>;
-  /** Each branch shows the requests of its own session. */
+  /** A branch shows its own requests, so a fork that waits shows the card in its own column. */
   readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
 }
 

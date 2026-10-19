@@ -32,6 +32,6 @@ export function approvalTitle(toolName: string): string {
 
 /** The clone of a project chat, or the title of an assistant chat. */
 export function approvalPlace(session: Pick<SessionRecord, "mode" | "title" | "clone"> | undefined): string {
-  if (session === undefined) return "A chat";
+  if (session === undefined) return "another chat";
   return session.mode === "project" && session.clone !== null ? `clone ${session.clone}` : session.title;
 }

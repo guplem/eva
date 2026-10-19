@@ -45,8 +45,8 @@
 }
 
 .approval-card h2 {
-  margin: 10px 0 6px;
-  font-size: 17px;
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 
@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: 6px 16px;
+  padding: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
   background: var(--warn-bg);
   border-bottom: 1px solid var(--warn);
@@ -99,23 +99,21 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-
-/* On a phone, the requests of the open chat are a bottom sheet, in reach of the thumb. */
+/*
+ * On a phone, the requests of the open chat are a bottom sheet, in reach of the thumb. It sits
+ * at the end of the conversation, just above the composer, and covers nothing: the composer, Stop,
+ * the tab bar and the chat list stay in reach, and each fork keeps its sheet in its own column.
+ */
 @media (max-width: 760px) {
   .approval-requests {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 15;
-    max-height: 70dvh;
-    overflow-y: auto;
-    padding: 10px 20px max(20px, env(safe-area-inset-bottom));
+    /* The width of the screen: the conversation has a 14 px side padding on a phone. */
+    margin: 0 -14px;
+    padding: var(--space-2) var(--space-5) var(--space-5);
     background: var(--panel);
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
     box-shadow:
       0 -2px 0 var(--warn),
-      0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+      var(--sheet-shadow);
   }
 
   /* The grab handle says that the sheet came up from the bottom. */
@@ -141,15 +139,10 @@
 
   .approval-actions button {
     width: 100%;
-    min-height: 44px;
     justify-content: center;
   }
 
   .approval-actions .danger {
     margin-left: 0;
-  }
-
-  .approval-notice button {
-    min-height: 44px;
   }
 }

@@ -209,7 +209,7 @@
   overflow-y: auto;
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   padding: 10px 20px max(20px, env(safe-area-inset-bottom));
-  box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+  box-shadow: var(--sheet-shadow);
 }
 
 /* The grab handle says that the sheet came up from the bottom. */

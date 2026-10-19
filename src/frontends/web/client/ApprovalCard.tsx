@@ -2,7 +2,7 @@
  * A permission request in the chat that asks: an amber card with Eva's firm face beside it.
  * A phone shows the cards as a bottom sheet over the chat, with full-width buttons.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useLayoutEffect, useState, type ReactElement } from "react";
 import type { PendingApproval } from "./api.ts";
 import { approvalTitle } from "./approvals.ts";
 import { Icon } from "./icons.tsx";
@@ -22,8 +22,9 @@ export interface ChatApprovals {
 /** Tells the page which sessions are on screen, and that none are once the view goes. */
 export function useShownChat(onShowChat: ChatApprovals["onShowChat"], sessionIds: readonly string[]): void {
   // A string key: the array is new at each render, and its content is what counts.
+  // A layout effect, so the first frame of a chat never shows its request as a card and as a notice.
   const key = sessionIds.join("\n");
-  useEffect(() => {
+  useLayoutEffect(() => {
     onShowChat(key === "" ? [] : key.split("\n"));
     return () => onShowChat([]);
   }, [key, onShowChat]);
@@ -97,7 +98,7 @@ export function ApprovalNotice({
 }): ReactElement | null {
   if (entries.length === 0) return null;
   return (
-    <section className="approval-notice" aria-label="Chats that wait for you">
+    <section className="approval-notice" aria-label="Chats that wait for you" aria-live="polite">
       {entries.map((entry) => (
         <div key={entry.requestId} className="approval-notice-item">
           <span className="status-pill needs-you">Needs you</span>

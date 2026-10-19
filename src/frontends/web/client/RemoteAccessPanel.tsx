@@ -13,6 +13,7 @@ import {
 import { api, type RemoteAccess } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
 import { qrCodeShape } from "./qr-code.ts";
+import { Card, StatusPill } from "./SettingsParts.tsx";
 
 /** An action, such as an install, shows its progress soon after. */
 const waitingPollMs = 3_000;
@@ -67,17 +68,21 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
   const canShare = typeof navigator.share === "function";
 
   return (
-    <fieldset className="remote-access">
-      <legend>Use Eva from any device</legend>
+    <Card
+      item="remote-access"
+      title="Use Eva from any device"
+      description="Tailscale, a free private network of your own devices, opens Eva on your phone and other computers."
+      aside={<StatusPill state={ready ? "done" : "missing"} />}
+    >
       {url !== null ? (
         <>
-          <div>
+          <div className="callout success">
             Open Eva:{" "}
             <a href={url} target="_blank" rel="noreferrer">
               {url}
             </a>
           </div>
-          <div className="check-row">
+          <div className="button-row">
             <button onClick={() => copy(url)}>{copied ? "Copied" : "Copy"}</button>
             {canShare && (
               <button
@@ -93,9 +98,8 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
         </>
       ) : (
         <>
-          <div>Tailscale, a free private network of your own devices, opens Eva on your phone and other computers.</div>
           <h3>On this machine</h3>
-          <ol>
+          <ol className="guide-steps">
             {setupSteps(access).map((step, index) => {
               const action = step.action;
               return (
@@ -104,25 +108,27 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
                   {action !== null && (
                     <>
                       {" "}
-                      <button onClick={() => run(action)}>{actionLabel(action)}</button>
+                      <button className="primary" onClick={() => run(action)}>
+                        {actionLabel(action)}
+                      </button>
                     </>
                   )}
                 </li>
               );
             })}
           </ol>
-          <div className="hint">Eva finds each change by herself within a minute.</div>
+          <div className="field-hint">Eva finds each change by herself within a minute.</div>
         </>
       )}
       <h3>On each phone or computer</h3>
-      <ol>
+      <ol className="guide-steps">
         {deviceSteps(access).map((step, index) => (
           <li key={index}>
             <StepText step={step} />
           </li>
         ))}
       </ol>
-    </fieldset>
+    </Card>
   );
 }
 

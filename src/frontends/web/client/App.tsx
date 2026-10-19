@@ -18,6 +18,7 @@ import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
+import { isSettingsHash } from "./settings-routes.ts";
 import { SettingsView } from "./SettingsView.tsx";
 
 type Screen = "assistant" | "project" | "settings" | "schedules";
@@ -41,7 +42,10 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [screen, setScreen] = useState<Screen>("assistant");
+  // A settings address opens Settings, so a reload stays on the settings page.
+  const [screen, setScreenState] = useState<Screen>(() =>
+    isSettingsHash(window.location.hash) ? "settings" : "assistant",
+  );
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
@@ -55,8 +59,25 @@ function EvaApp(): ReactElement {
   const showError = useShowError();
   const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
 
+  /** Settings keeps its page in the address. Another screen clears that address, with no new history entry. */
+  const setScreen = useCallback((next: Screen): void => {
+    if (next === "settings") {
+      window.location.hash = "#/settings";
+      setScreenState("settings");
+      return;
+    }
+    if (isSettingsHash(window.location.hash))
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    setScreenState(next);
+  }, []);
+
   useEffect(() => {
-    const onHashChange = (): void => setLinkedChatId(linkedChatIdOf(window.location.hash));
+    const onHashChange = (): void => {
+      setLinkedChatId(linkedChatIdOf(window.location.hash));
+      // Back and Forward move in and out of Settings.
+      if (isSettingsHash(window.location.hash)) setScreenState("settings");
+      else setScreenState((current) => (current === "settings" ? "assistant" : current));
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -65,7 +86,7 @@ function EvaApp(): ReactElement {
   const linkedMode = linkedChat?.mode ?? null;
   useEffect(() => {
     if (linkedMode !== null) setScreen(linkedMode);
-  }, [linkedChatId, linkedMode]);
+  }, [linkedChatId, linkedMode, setScreen]);
 
   /**
    * A view opened the linked chat: the link is used up. A view mounts again at each screen
@@ -279,10 +300,20 @@ function EvaApp(): ReactElement {
           </button>
         </div>
         <span className="spacer" />
-        <button aria-pressed={screen === "settings"} onClick={() => setScreen("settings")}>
+        <button
+          className={setupMissing > 0 ? "settings-button needs-setup" : "settings-button"}
+          aria-pressed={screen === "settings"}
+          onClick={() => setScreen("settings")}
+        >
           Settings
-          {/* A badge, not a banner: a short phone screen keeps its room for the chats. */}
-          {setupMissing > 0 && <span className="chip">{setupMissing} to set up</span>}
+          {/* A badge, not a banner: a short phone screen keeps its room for the chats. A setup
+              step that Eva needs makes it red, so the person finds the way there. */}
+          {setupMissing > 0 && (
+            <span className="attention-badge">
+              {setupMissing}
+              <span className="badge-words"> to set up</span>
+            </span>
+          )}
         </button>
       </header>
       {problems.length > 0 && (

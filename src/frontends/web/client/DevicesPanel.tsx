@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type DeviceSummary } from "./api.ts";
+import { Card } from "./SettingsParts.tsx";
 
 interface DevicesPanelProps {
   readonly onChanged: (note: string) => void;
@@ -58,31 +59,33 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
   };
 
   return (
-    <fieldset>
-      <legend>Devices</legend>
-      <div className="hint">These browsers may open Eva. When one is lost, remove it here.</div>
+    <Card item="devices" title="Devices" description="These browsers may open Eva. When one is lost, remove it here.">
       {devices === null ? (
-        <div className="hint">Loading…</div>
+        <div className="field-hint">Loading…</div>
       ) : devices.length === 0 ? (
-        <div className="hint">No device has logged in with a code yet.</div>
+        <div className="field-hint">No device has logged in with a code yet.</div>
       ) : (
         <ul className="device-list" aria-label="Devices">
           {devices.map((device) => (
             <li key={device.id}>
               <span>
                 {device.label}
-                {device.current && <span className="chip">This device</span>}
-                <span className="hint">Allowed {new Date(device.createdAt).toLocaleString()}</span>
+                {device.current && <span className="pill done">This device</span>}
+                <span className="field-hint">Allowed {new Date(device.createdAt).toLocaleString()}</span>
               </span>
-              <button onClick={() => void remove(device)}>Remove</button>
+              <button className="ghost danger" onClick={() => void remove(device)}>
+                Remove
+              </button>
             </li>
           ))}
         </ul>
       )}
-      <div className="message-actions">
-        <button onClick={() => void removeAll()}>Log out every device</button>
+      <div className="button-row">
+        <button className="danger" onClick={() => void removeAll()}>
+          Log out every device
+        </button>
       </div>
-    </fieldset>
+    </Card>
   );
 }
 

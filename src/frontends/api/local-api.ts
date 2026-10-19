@@ -19,6 +19,7 @@ import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
+import { recentTurnsWithSteps, withRecentSteps } from "./session-list.ts";
 
 export interface LocalApiOptions {
   readonly eva: Eva;
@@ -280,8 +281,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   const method = request.method;
 
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
-  if (method === "GET" && url.pathname === "/api/sessions") return json(eva.sessions.list());
+  if (method === "GET" && url.pathname === "/api/sessions")
+    return json(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps));
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
+  if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
     const tag = url.searchParams.get("tag");

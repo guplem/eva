@@ -99,12 +99,29 @@ export function ChatInfoButton(props: ChatProps): ReactElement {
   );
 }
 
-export function TasksDialog({ tasks, onClose }: { readonly tasks: Tasks; readonly onClose: () => void }): ReactElement {
+export function TasksDialog({
+  tasks,
+  empty,
+  total,
+  onClose,
+}: {
+  readonly tasks: Tasks;
+  readonly empty: string;
+  /** How many tasks the answer had. A long turn keeps only its last 100 steps, so some can be missing. */
+  readonly total?: number;
+  readonly onClose: () => void;
+}): ReactElement {
+  const shown = Object.keys(tasks).length;
+  const missing = total === undefined ? 0 : total - shown;
   return (
     <Dialog label="Background tasks" onClose={onClose}>
-      <strong>Background tasks of this chat</strong>
-      {/* The tasks live in this page only, so a count from before a reload can have no list. */}
-      <TaskList tasks={tasks} empty="This page has no news of these tasks. They ran before it opened." />
+      <strong>Background tasks</strong>
+      <TaskList tasks={tasks} empty={empty} />
+      {shown > 0 && missing > 0 && (
+        <span className="chip">
+          {missing} more {missing === 1 ? "task was" : "tasks were"} not kept.
+        </span>
+      )}
     </Dialog>
   );
 }

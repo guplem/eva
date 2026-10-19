@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatTokens, latestContext } from "../../../../../src/frontends/web/client/chat-details.ts";
+import { formatTokens, latestContext, tasksOfTurn } from "../../../../../src/frontends/web/client/chat-details.ts";
 import type { SessionRecord } from "../../../../../src/core/sessions/session-store.ts";
 
 type Turn = SessionRecord["turns"][number];
@@ -46,5 +46,19 @@ describe("latestContext", () => {
 
   test("a chat with no answer gives null", () => {
     expect(latestContext([session([])])).toBeNull();
+  });
+});
+
+describe("tasksOfTurn", () => {
+  test("a stored answer lists its own tasks: each one ended with its turn, and an error means it failed", () => {
+    const steps: Turn["steps"] = [
+      { kind: "message", text: "Looking.", isError: false, id: "m1" },
+      { kind: "task", text: "look around", isError: false, id: "k1" },
+      { kind: "task", text: "npm test", isError: true, id: "k2" },
+    ];
+    expect(tasksOfTurn(steps, "s1")).toEqual({
+      k1: { description: "look around", state: "ended", sessionId: "s1" },
+      k2: { description: "npm test", state: "failed", sessionId: "s1" },
+    });
   });
 });

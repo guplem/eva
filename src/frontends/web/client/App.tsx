@@ -11,7 +11,7 @@ import {
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
-import { applyEvent, emptyLiveState, type LiveState } from "./live-state.ts";
+import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -127,11 +127,17 @@ function EvaApp(): ReactElement {
    * A note goes too: a lost event can hide the turn start that clears it.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...state, steps: {}, notes: {} }));
+    setLive((state) => ({ ...forgetTaskEvents(state), steps: {}, notes: {} }));
     await refreshSessions();
     await refreshProblems();
     try {
       setApprovals(await api.pendingApprovals());
+    } catch {
+      // The next reconnect or the next visit tries again.
+    }
+    try {
+      const snapshot = await api.backgroundTasks();
+      setLive((state) => withTasks(state, snapshot));
     } catch {
       // The next reconnect or the next visit tries again.
     }

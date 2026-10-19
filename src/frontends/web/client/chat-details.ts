@@ -1,5 +1,7 @@
 /** The figures of the chat panel. */
+import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { SessionRecord } from "./api.ts";
+import type { LiveState } from "./live-state.ts";
 
 /** "25.4k tokens": short enough for the panel. */
 export function formatTokens(count: number): string {
@@ -19,4 +21,17 @@ export function latestContext(sessions: readonly Pick<SessionRecord, "turns">[])
     undefined,
   );
   return newest?.contextTokens ?? null;
+}
+
+/**
+ * The tasks of a stored answer, from its steps. Each one ended with its turn; a step keeps
+ * only an error, so "ended" covers done and stopped alike.
+ */
+export function tasksOfTurn(steps: readonly TurnStep[], sessionId: string): LiveState["tasks"] {
+  const tasks: Record<string, LiveState["tasks"][string]> = {};
+  for (const step of steps) {
+    if (step.kind !== "task" || step.id === null) continue;
+    tasks[step.id] = { description: step.text, state: step.isError ? "failed" : "ended", sessionId };
+  }
+  return tasks;
 }

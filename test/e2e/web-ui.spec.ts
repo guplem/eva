@@ -14,15 +14,17 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
-/** The task chip under the answer opens the chat's background tasks, also on a phone. */
+/** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
-    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText("Search the notes");
+    await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
+      "Nothing runs in the background.",
+    );
   }
   await page.getByRole("button", { name: "1 background task", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "Background tasks" });
   await expect(dialog).toContainText("Search the notes");
-  await expect(dialog).toContainText("done");
+  await expect(dialog).toContainText("ended");
   await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -871,14 +873,15 @@ test("a new message of a running turn replaces the shown one, and the older one 
   await expect(page.getByText("second thought")).toBeVisible();
 });
 
-test("an approval asked while the connection was down still opens the dialog after the reconnect", async ({ page }) => {
+test("an approval and a task from while the connection was down still show after the reconnect", async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events$/, (socket) => {
     const server = socket.connectToServer();
-    // The first connection loses the approval event, as a phone does while it sleeps.
+    // The first connection loses the approval and task events, as a phone does while it sleeps.
     if (sockets.length === 0) {
       server.onMessage((message) => {
-        if (!String(message).includes('"approval_needed"')) socket.send(message);
+        const text = String(message);
+        if (!text.includes('"approval_needed"') && !text.includes('"task_changed"')) socket.send(message);
       });
     }
     sockets.push(socket);
@@ -892,11 +895,16 @@ test("an approval asked while the connection was down still opens the dialog aft
     .toBeGreaterThan(0);
   const dialog = page.getByRole("dialog", { name: "Approval" });
   await expect(dialog).toHaveCount(0);
+  const runningTask = page.getByRole("button", { name: "1 background task running" });
+  await expect(runningTask).toHaveCount(0);
 
   await sockets[0]?.close();
   await expect(dialog).toContainText("gh issue create");
+  await expect(runningTask).toBeVisible();
   await dialog.getByRole("button", { name: "Allow" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
+  // The task ends with its turn.
+  await expect(runningTask).toHaveCount(0);
 });
 
 test("a failed send shows the error and keeps the typed text", async ({ page }) => {

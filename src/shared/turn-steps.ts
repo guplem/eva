@@ -17,7 +17,7 @@ export interface TurnStep {
   readonly id: string | null;
 }
 
-/** Long enough for a hover. The web app fetches the whole session list after each turn. */
+/** Long enough for a hover. The web app fetches the steps of the recent turns after each turn. */
 const stepTextLength = 200;
 const maxStoredSteps = 100;
 

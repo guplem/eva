@@ -23,6 +23,22 @@ async function openProjects(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
 }
 
+/**
+ * Waits for the answer to a first message in a new clone, and denies the trust question if it comes.
+ * Only the first chat in a clone asks; both screen sizes share one demo server. The live answer card
+ * shows at once, so wait for the text of the answer, not for its card: an open question blocks the page.
+ */
+async function answerInNewClone(page: Page, text: string): Promise<void> {
+  const answer = page.locator(".message.answer").filter({ hasText: text }).first();
+  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
+  await expect(answer.or(trustQuestion)).toBeVisible();
+  if (await trustQuestion.isVisible()) {
+    await expect(trustQuestion).toContainText("Trust this repository");
+    await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  }
+  await expect(answer).toBeVisible();
+}
+
 /** Opens the page of the Example app project in Project mode. */
 async function openExampleApp(page: Page): Promise<void> {
   await openProjects(page);
@@ -214,12 +230,7 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
-  // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
-  const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
-  if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  await expect(answer).toContainText(title);
+  await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
 
   await page.goto("/");
@@ -403,16 +414,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
-  // The first chat in a clone of an unknown repository asks for trust. Both screen
-  // sizes share one demo server, so only the first of them sees the question.
-  const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
-  if (await trustQuestion.isVisible()) {
-    await expect(trustQuestion).toContainText("Trust this repository");
-    await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  }
-  await expect(answer).toContainText("Fix the bug");
+  await answerInNewClone(page, "Fix the bug");
   // Project mode shows the same activity as Assistant mode.
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
     "title",
@@ -488,11 +490,7 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
-  const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
-  if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  await expect(answer).toContainText(title);
+  await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Retry" }).first().click();

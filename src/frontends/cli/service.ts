@@ -6,37 +6,30 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { hardExitGraceMs, shutdownDeadlineMs } from "../../core/instance/shutdown.ts";
 import { superviseEva, supervisedVariable } from "../../core/instance/supervisor.ts";
-import { createHomeFolders, homePaths, isExtraInstance, type HomePaths } from "../../core/settings/home.ts";
+import { createHomeFolders, instanceNameOf, type HomePaths } from "../../core/settings/home.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { FileLogger } from "../../shared/logger.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
 import type { ProcessResult } from "../../shared/process-runner.ts";
 import { Redactor } from "../../shared/redaction.ts";
-import { childEnvironment, defaultHomeFolder, evaCommand, writeLine, type CliHost } from "./host.ts";
+import { childEnvironment, evaCommand, writeLine, type CliHost } from "./host.ts";
 
 const serviceStepTimeoutMs = 30_000;
 
 export interface ServiceTarget {
   /** The command that runs Eva, from `evaCommand`: [bun, src/main.ts] or [eva]. */
   readonly executable: readonly string[];
-  readonly home: string;
+  /** The name of the Eva that the service runs. */
+  readonly instance: string;
 }
 
-/**
- * The service's name: `eva` for the default home, and `eva-<folder>` for any other, so a second
- * instance on the same machine never replaces the first one's service.
- */
-export function serviceName(home: string, defaultHome: string, platform: NodeJS.Platform = process.platform): string {
-  if (!isExtraInstance(homePaths(home), defaultHome, platform)) return "eva";
-  const folder = basename(home)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `eva-${folder === "" ? "instance" : folder}`;
+/** The service's name, `eva-<name>`, so each Eva on the same machine has her own service. */
+export function serviceName(paths: HomePaths): string {
+  return `eva-${instanceNameOf(paths)}`;
 }
 
 /**
@@ -69,15 +62,18 @@ export function restartMethod(
     : "new-copy";
 }
 
-export function systemdUnit(target: ServiceTarget & { readonly path: string }): string {
+/** `configFolder`: the XDG_CONFIG_HOME of the install, so the service finds the same Evas as the terminal. */
+export function systemdUnit(
+  target: ServiceTarget & { readonly path: string; readonly configFolder: string | undefined },
+): string {
   return `[Unit]
 Description=Eva, a personal super harness
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=${[...target.executable, "--home", target.home].join(" ")}
-Environment=PATH=${target.path}
+ExecStart=${[...target.executable, "--instance", target.instance].join(" ")}
+Environment=PATH=${target.path}${target.configFolder === undefined ? "" : `\nEnvironment=XDG_CONFIG_HOME=${target.configFolder}`}
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=2 3
@@ -88,8 +84,8 @@ WantedBy=default.target
 }
 
 /** The logon task runs the supervisor, because Task Scheduler cannot restart Eva after a crash. */
-export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[] {
-  const command = [...target.executable.map((part) => `"${part}"`), "supervise", "--home", `"${target.home}"`].join(
+export function windowsTaskCommand(target: ServiceTarget, name: string): string[] {
+  const command = [...target.executable.map((part) => `"${part}"`), "supervise", "--instance", target.instance].join(
     " ",
   );
   return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", windowsTaskName(name), "/TR", command];
@@ -100,7 +96,7 @@ export function windowsTaskCommand(target: ServiceTarget, name = "eva"): string[
  * days, and when a laptop switches to its battery. Either stop would end the supervisor.
  * The new settings replace all of the task's settings: the other defaults suit Eva too.
  */
-export function windowsTaskSettingsCommand(name = "eva"): string[] {
+export function windowsTaskSettingsCommand(name: string): string[] {
   const settings =
     "New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries";
   // The task name comes from serviceName, which keeps only letters, digits and dashes, so the quotes are safe.
@@ -114,22 +110,23 @@ export function windowsTaskSettingsCommand(name = "eva"): string[] {
 }
 
 /** Starts the logon task now, so Eva runs without a new logon. */
-export function windowsRunTaskCommand(name = "eva"): string[] {
+export function windowsRunTaskCommand(name: string): string[] {
   return ["schtasks", "/Run", "/TN", windowsTaskName(name)];
 }
 
 function windowsTaskName(name: string): string {
-  return name === "eva" ? "Eva" : `Eva-${name.slice("eva-".length)}`;
+  return `Eva-${name.slice("eva-".length)}`;
 }
 
 /** `eva service install`: installs and starts the service, or the logon task on Windows. */
 export async function installService(host: CliHost, paths: HomePaths): Promise<number> {
   const executable = evaCommand(host);
-  const name = serviceName(paths.root, defaultHomeFolder(host), host.platform);
+  const name = serviceName(paths);
+  const instance = instanceNameOf(paths);
   const runStep = (step: readonly string[]): Promise<ProcessResult> =>
     host.runner.run(step, { cwd: paths.root, environment: childEnvironment(host), timeoutMs: serviceStepTimeoutMs });
   if (host.platform === "win32") {
-    const created = await runStep(windowsTaskCommand({ executable, home: paths.root }, name));
+    const created = await runStep(windowsTaskCommand({ executable, instance }, name));
     if (created.exitCode !== 0) {
       writeLine(host, `schtasks failed: ${created.stderr.trim()}`);
       writeLine(host, "If it says that access is denied, open the terminal with Run as administrator, then try again.");
@@ -160,7 +157,12 @@ export async function installService(host: CliHost, paths: HomePaths): Promise<n
   mkdirSync(dirname(unitPath), { recursive: true });
   writeFileSync(
     unitPath,
-    systemdUnit({ executable, home: paths.root, path: servicePath(host.environment["PATH"] ?? "/usr/bin:/bin") }),
+    systemdUnit({
+      executable,
+      instance,
+      path: servicePath(host.environment["PATH"] ?? "/usr/bin:/bin"),
+      configFolder: host.environment["XDG_CONFIG_HOME"],
+    }),
   );
   for (const step of [
     ["systemctl", "--user", "daemon-reload"],
@@ -189,7 +191,7 @@ export function supervise(host: CliHost, paths: HomePaths, start: LongProcessSta
   createHomeFolders(paths);
   const logger = new FileLogger({ folder: paths.logsFolder, redactor: new Redactor(), now: () => new Date() });
   const supervisor = superviseEva({
-    command: [...evaCommand(host), "--home", paths.root],
+    command: [...evaCommand(host), "--instance", instanceNameOf(paths)],
     cwd: paths.root,
     // The child is Eva herself, not an agent, so she gets the whole environment (lesson 96 covers agents).
     environment: Object.fromEntries(

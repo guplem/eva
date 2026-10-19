@@ -84,7 +84,7 @@ function fakeSupervisor(runs: readonly FakeRun[]): Fake {
   };
   const pendingSleeps: (() => void)[] = [];
   const supervisor = superviseEva({
-    command: ["eva", "--home", "/h"],
+    command: ["eva", "--instance", "ana"],
     cwd: "/h",
     environment: { PATH: "/bin" },
     start,

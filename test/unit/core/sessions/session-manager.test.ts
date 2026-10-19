@@ -110,6 +110,7 @@ describe("a conversation", () => {
         steps: [{ kind: "message", text: "answer 1", isError: false, id: `${record.engineSessionId}:answer 1` }],
         omittedSteps: 0,
         contextTokens: 15,
+        contextWindow: 200_000,
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -264,6 +265,29 @@ describe("a conversation", () => {
     expect(engine.requests.map((request) => request.prompt)).toEqual(["first", "second\n\nthird"]);
   });
 
+  test("a turn runs until its end event, though the chat stays busy for the work after the turn", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    // A front end reads the list again on the end event, so the list must say the turn ended.
+    const atEnd: boolean[] = [];
+    manager.subscribe((event) => {
+      if (event.kind === "turn_finished") atEnd.push(manager.isTurnRunning(sessionId), manager.isBusy(sessionId));
+    });
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => engine.requests.length > 0);
+    expect(manager.isTurnRunning(sessionId)).toBe(true);
+    release();
+    await turn;
+    expect(atEnd).toEqual([false, true]);
+    expect(manager.isTurnRunning(sessionId)).toBe(false);
+  });
+
   test("a chat with a gathered message is active before its turn starts, so an update waits (lesson 92)", async () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);
@@ -299,6 +323,45 @@ describe("models (lesson 41)", () => {
     await manager.send(sessionId, "hi");
     expect(engine.requests[0]?.model).toBe("haiku");
     expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+  });
+
+  test("a chat's engine is chosen before its first message, and fixed after it", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = manager.createSession({
+      mode: "assistant",
+      engine: "pi",
+      model: "default",
+      startFolder: "/vault",
+      source: "web",
+    }).id;
+    expect(manager.setEngine(sessionId, "claude-code").engine).toBe("claude-code");
+    await manager.send(sessionId, "hi");
+    expect(engine.requests).toHaveLength(1);
+    expect(() => manager.setEngine(sessionId, "claude-code")).toThrow("before its first message");
+  });
+
+  test("the engine of a chat must be on this machine", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const error: unknown = (() => {
+      try {
+        manager.setEngine(sessionId, "pi");
+        return undefined;
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(isEvaError(error, "engine_failed")).toBe(true);
+    expect(manager.get(sessionId).engine).toBe("claude-code");
+  });
+
+  test("a fork keeps the engine of its chat, because it continues the chat's engine session", async () => {
+    const manager = createManager(new FakeEngine());
+    const parentId = newAssistantSession(manager);
+    await manager.send(parentId, "hi");
+    const fork = manager.fork(parentId, manager.get(parentId).turns[0]?.lastMessageId ?? "");
+    expect(() => manager.setEngine(fork.id, "claude-code")).toThrow("A fork keeps");
   });
 });
 
@@ -527,6 +590,7 @@ describe("exactly one end event (lesson 47)", () => {
         { kind: "task", text: "look" },
       ],
       contextTokens: null,
+      contextWindow: null,
     });
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });

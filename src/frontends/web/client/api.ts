@@ -17,6 +17,7 @@ import type { SetupItem, SetupReport } from "../../../core/projects/repository-s
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
+import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type {
@@ -26,7 +27,7 @@ import type {
   VaultConflictReport,
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
-import type { ModelAlias } from "../../../shared/engine-port.ts";
+import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
@@ -53,6 +54,7 @@ export type {
   EvaSetupState,
   ProgressStep,
   SessionEvent,
+  ListedSession,
   SessionRecord,
   SetupItem,
   SetupReport,
@@ -113,11 +115,16 @@ export const api = {
   answerDeviceRequest: (id: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
-  sessions: (): Promise<SessionRecord[]> => request("GET", "/api/sessions"),
+  sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
   newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "assistant", model }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
+  /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
+  setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
+  setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>

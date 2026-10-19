@@ -24,7 +24,7 @@ import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
-import { recentTurnsWithSteps, withRecentSteps } from "./session-list.ts";
+import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
 
 export interface LocalApiOptions {
   readonly eva: Eva;
@@ -56,10 +56,11 @@ interface SocketData {
 }
 
 const modelSchema = z.enum(["default", "opus", "sonnet", "haiku"]).default("default");
+const engineSchema = z.enum(["claude-code", "pi"]);
 const newSessionSchema = z.object({
   mode: z.enum(["assistant", "project"]),
   model: modelSchema,
-  engine: z.enum(["claude-code", "pi"]).optional(),
+  engine: engineSchema.optional(),
   projectId: z.string().min(1).optional(),
   clone: z.string().min(1).optional(),
 });
@@ -362,7 +363,9 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
 
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
   if (method === "GET" && url.pathname === "/api/sessions")
-    return json(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps));
+    return json(
+      withRunState(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps), (id) => eva.sessions.isTurnRunning(id)),
+    );
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());
   if (method === "GET" && url.pathname === "/api/projects") {
@@ -427,6 +430,14 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());
       return json(eva.sessions.rename(sessionId, title));
+    }
+    if (action === "model") {
+      const { model } = z.object({ model: modelSchema.unwrap() }).parse(await request.json());
+      return json(eva.sessions.setModel(sessionId, model));
+    }
+    if (action === "engine") {
+      const { engine } = z.object({ engine: engineSchema }).parse(await request.json());
+      return json(eva.sessions.setEngine(sessionId, engine));
     }
   }
   if (

@@ -104,6 +104,8 @@
   --ok-bg: oklch(0.95 0.04 150);
   --warn: oklch(0.6 0.14 65);
   --warn-bg: oklch(0.96 0.05 85);
+  /* Darker than --warn: small bold text on --warn-bg needs a contrast of 4.5 to 1. */
+  --warn-ink: oklch(0.45 0.12 65);
   --bad: oklch(0.56 0.19 25);
   --bad-bg: oklch(0.95 0.03 25);
 
@@ -155,6 +157,7 @@
     --ok-bg: oklch(0.3 0.06 150);
     --warn: oklch(0.84 0.13 80);
     --warn-bg: oklch(0.32 0.06 75);
+    --warn-ink: var(--warn);
     --bad: oklch(0.74 0.16 25);
     --bad-bg: oklch(0.32 0.07 25);
     /* A shadow does not show on a dark ground, so dark surfaces get a ring too. */
@@ -183,6 +186,7 @@
   --ok-bg: oklch(0.3 0.06 150);
   --warn: oklch(0.84 0.13 80);
   --warn-bg: oklch(0.32 0.06 75);
+  --warn-ink: var(--warn);
   --bad: oklch(0.74 0.16 25);
   --bad-bg: oklch(0.32 0.07 25);
   --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
@@ -518,6 +522,157 @@ textarea {
   font-size: 12px;
 }
 
+/* The header stays at the top of a long list, so "New" is always in reach. */
+.chat-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* The list has a 12 px padding. The header covers it, so it does not move up when it sticks. */
+  margin-top: -12px;
+  padding: 12px 0 4px;
+  background: var(--side);
+}
+
+.sidebar .chat-list-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+}
+
+.chat-list-header .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--chip);
+  border-radius: var(--radius-pill);
+  padding: 0 14px;
+  color: var(--muted);
+}
+
+.chat-search:focus-within {
+  outline: 2px solid var(--accent);
+}
+
+/* The pill around the field shows the focus. */
+.chat-search input:focus {
+  outline: none;
+}
+
+.chat-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+}
+
+.chat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-group h3 {
+  margin: 8px 8px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* A grid keeps the time and the pill in one column, whatever the length of the title. */
+.chat-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+}
+
+/* Only the text is cut. A cut pill would also cut the glow of its dot. */
+.chat-item-title,
+.chat-item-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-item-title {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.chat-item-title .icon {
+  margin-right: 4px;
+}
+
+.chat-item-time {
+  align-self: start;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chat-item-preview {
+  grid-column: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.list-item.chat-item[aria-current="true"] {
+  background: var(--panel);
+  border-color: transparent;
+  /* Smaller than --shadow: the list clips a shadow that is wider than its padding. */
+  box-shadow: 0 2px 8px oklch(0.4 0.05 var(--h) / 0.14);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  grid-row: 2;
+  grid-column: 2;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.status-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.working {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.status-pill.working::before {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+}
+
+.status-pill.needs-you {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .main {
   min-width: 0;
   overflow: auto;
@@ -578,11 +733,6 @@ textarea {
   border-color: var(--bad);
 }
 
-.running-tasks {
-  align-self: flex-start;
-  font-size: 13px;
-}
-
 .usage-limit {
   font-size: 13px;
   color: var(--muted);
@@ -611,45 +761,6 @@ textarea {
   font-size: 13px;
   color: var(--bad);
   overflow-wrap: anywhere;
-}
-
-.branches {
-  display: flex;
-  gap: 16px;
-  padding: 16px 20px 0;
-  align-items: stretch;
-  overflow: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.branch {
-  min-width: 320px;
-  max-width: 640px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.branch-title {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.message {
-  padding: 10px 14px;
-  border-radius: var(--radius-bubble);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  overflow-wrap: anywhere;
-}
-
-.message.user {
-  align-self: flex-end;
-  background: var(--chip);
-  max-width: 85%;
-  white-space: pre-wrap;
 }
 
 /* The answer's Markdown, as block HTML: compact spacing that fits a chat bubble on a phone. */
@@ -757,144 +868,9 @@ textarea {
   color: var(--muted);
 }
 
-.steps {
-  margin-bottom: 8px;
-}
-
-.answer-body + .steps,
-.whole-answer + .steps,
-.whole-answer {
-  margin-top: 8px;
-}
-
-.whole-answer {
-  display: block;
-  padding: 2px 10px;
-  font-size: 13px;
-}
-
-.steps-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: var(--chip);
-}
-
-/* Each kind has its own shape, not only its own colour, so the badges read without colour too. */
-.step-badge {
-  display: inline-block;
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.step-badge.step-command {
-  border-radius: 2px;
-  background: var(--ink);
-}
-
-.step-badge.step-tool {
-  background: transparent;
-  border: 2px solid var(--muted);
-}
-
-.step-badge.step-task {
-  border-radius: 1px;
-  transform: rotate(45deg) scale(0.85);
-  background: var(--ok);
-}
-
-.step-badge.failed {
-  background: var(--bad);
-  border-color: var(--bad);
-}
-
-.step-list {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-}
-
-.step-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* The composer stays at the bottom of the conversation, also while the messages scroll. */
-.composer {
-  display: flex;
-  gap: 8px;
-  margin-top: auto;
-  position: sticky;
-  bottom: 0;
-  padding: 8px 0 max(16px, env(safe-area-inset-bottom));
-  background: var(--bg);
-}
-
-.composer textarea {
-  flex: 1;
-  min-height: 44px;
-  resize: vertical;
-}
-
-.tasks {
-  width: 300px;
-  box-shadow: inset 1px 0 0 var(--line);
-  padding: 12px;
-  overflow-y: auto;
-  background: var(--side);
-}
-
-.tasks h2 {
-  font-size: 13px;
-  margin-top: 0;
-}
-
-.tasks h3,
 .dialog h3 {
   font-size: 13px;
   margin: 12px 0 8px;
-}
-
-.chat-details {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 14px;
-}
-
-.chat-details dt {
-  color: var(--muted);
-}
-
-.chat-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.task {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.task .state {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .empty {
@@ -1298,8 +1274,7 @@ textarea {
     min-height: 44px;
   }
 
-  .icon-button,
-  .steps-toggle {
+  .icon-button {
     min-width: 44px;
   }
 
@@ -1308,17 +1283,9 @@ textarea {
     height: 44px;
   }
 
-  .tasks {
-    display: none;
-  }
-
   .menu-button,
   .chat-info-button {
     display: inline-block;
-  }
-
-  .branch {
-    min-width: calc(100vw - 40px);
   }
 }
 

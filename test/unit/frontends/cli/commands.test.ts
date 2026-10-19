@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -9,6 +9,7 @@ import {
   createHomeFolders,
   defaultConfig,
   homePaths,
+  instanceHome,
   loadSecrets,
   saveConfig,
   saveSecrets,
@@ -19,7 +20,7 @@ import { loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "../../../../src/frontends/cli/devices.ts";
-import { defaultHomeFolder, evaCommand } from "../../../../src/frontends/cli/host.ts";
+import { evaCommand } from "../../../../src/frontends/cli/host.ts";
 import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
@@ -34,8 +35,10 @@ let paths: HomePaths;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "eva-commands-"));
-  paths = homePaths(join(root, "home"));
+  paths = homePaths(instanceHome(root, "test"));
   createHomeFolders(paths);
+  // Setup writes the config, so a home without one is no Eva.
+  writeFileSync(paths.config, "{}\n");
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -49,7 +52,12 @@ const noWiring: CliWiring = {
 };
 
 function run(host: FakeHost, ...argv: string[]): Promise<number> {
-  return runCli(["--home", paths.root, ...argv], host, noWiring);
+  return runCli(["--instance", "test", ...argv], inRoot(host), noWiring);
+}
+
+/** The host with the test folder as its config folder, where the instances live. */
+function inRoot<Host extends FakeHost>(host: Host): Host {
+  return { ...host, environment: { ...host.environment, XDG_CONFIG_HOME: root, APPDATA: root } };
 }
 
 function printed(host: FakeHost): string {
@@ -66,7 +74,7 @@ describe("runCli without a home", () => {
     expect(host.errors.join("")).toContain("Unknown command fly.");
   });
 
-  test("run starts the whole Eva through the wiring, with the resolved home", async () => {
+  test("run starts the whole Eva through the wiring, in the home of the only Eva", async () => {
     const served: string[] = [];
     const wiring: CliWiring = {
       ...noWiring,
@@ -75,7 +83,7 @@ describe("runCli without a home", () => {
         return Promise.resolve(exitCodes.update);
       },
     };
-    expect(await runCli(["--home", paths.root], fakeHost(), wiring)).toBe(exitCodes.update);
+    expect(await runCli([], inRoot(fakeHost()), wiring)).toBe(exitCodes.update);
     expect(served).toEqual([paths.root]);
   });
 });
@@ -139,7 +147,7 @@ describe("doctor and setup", () => {
     });
     expect(await run(host, "setup")).toBe(exitCodes.clean);
     expect(loadSecrets(paths).localApiToken).toBeString();
-    expect(host.commands).toContainEqual(["systemctl", "--user", "enable", "--now", "eva-home.service"]);
+    expect(host.commands).toContainEqual(["systemctl", "--user", "enable", "--now", "eva-test.service"]);
     // The fake runs no real Eva, so she never answers, and setup goes on.
     expect(printed(host)).toContain("Eva did not start.");
   });
@@ -333,11 +341,6 @@ describe("with no Eva running", () => {
 });
 
 describe("the host helpers", () => {
-  test("the default home ignores EVA_HOME, but not XDG_CONFIG_HOME", () => {
-    const host = fakeHost({ environment: { EVA_HOME: "/srv/other", XDG_CONFIG_HOME: "/srv/config" } });
-    expect(defaultHomeFolder(host)).toBe(join("/srv/config", "eva"));
-  });
-
   test("the single executable runs itself; a source checkout runs bun with main.ts", () => {
     expect(evaCommand(fakeHost({ standalone: true, execPath: "C:/eva/eva.exe" }))).toEqual(["C:/eva/eva.exe"]);
     expect(evaCommand(fakeHost())).toEqual(["/usr/bin/bun", "/opt/eva/src/main.ts"]);
@@ -366,11 +369,12 @@ describe("service install and supervise", () => {
     const userHome = join(root, "user");
     const host = fakeHost({ userHome });
     expect(await run(host, "service", "install")).toBe(exitCodes.clean);
-    const unit = readFileSync(join(userHome, ".config", "systemd", "user", "eva-home.service"), "utf-8");
-    expect(unit).toContain(`ExecStart=/usr/bin/bun /opt/eva/src/main.ts --home ${paths.root}`);
+    const unit = readFileSync(join(userHome, ".config", "systemd", "user", "eva-test.service"), "utf-8");
+    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --instance test");
+    expect(unit).toContain(`Environment=XDG_CONFIG_HOME=${root}`);
     expect(host.commands.map((command) => command.join(" "))).toEqual([
       "systemctl --user daemon-reload",
-      "systemctl --user enable --now eva-home.service",
+      "systemctl --user enable --now eva-test.service",
       "loginctl enable-linger",
     ]);
     expect(printed(host)).toContain("Eva keeps running when you log out.");
@@ -440,9 +444,9 @@ describe("service install and supervise", () => {
       };
     };
     const host = fakeHost();
-    const done = runCli(["--home", paths.root, "supervise"], host, { ...noWiring, startLongProcess: start });
+    const done = runCli(["--instance", "test", "supervise"], inRoot(host), { ...noWiring, startLongProcess: start });
     for (let round = 0; round < 100 && started.length === 0; round += 1) await Bun.sleep(5);
-    expect(started[0]).toEqual(["/usr/bin/bun", "/opt/eva/src/main.ts", "--home", paths.root]);
+    expect(started[0]).toEqual(["/usr/bin/bun", "/opt/eva/src/main.ts", "--instance", "test"]);
     for (const handler of host.stopHandlers) handler();
     expect(await done).toBe(exitCodes.clean);
   });

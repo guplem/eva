@@ -147,3 +147,17 @@ describe("a bad date", () => {
     expect(chatGroup(new Date("bad"), now)).toBe("Older");
   });
 });
+
+describe("chatPreview on realistic Markdown", () => {
+  const preview = (answerText: string): string => chatPreview({ turns: [turn({ answerText })] });
+
+  test("keeps names and sums that look like emphasis", () => {
+    expect(preview("Edit __init__.py and my_file.ts")).toBe("Edit __init__.py and my_file.ts");
+    expect(preview("2 * 3 * 4 = 24")).toBe("2 * 3 * 4 = 24");
+  });
+
+  test("shows the text of a link and of strong emphasis, and leaves out a code block", () => {
+    expect(preview("***Both*** in [the docs](https://example.com/x)")).toBe("Both in the docs");
+    expect(preview("Run this:\n```ts\nconst a = 1;\n```\nThen reload.")).toBe("Run this: Then reload.");
+  });
+});

@@ -57,12 +57,18 @@ export function chatPreview(chat: Pick<SessionRecord, "turns">, state: ChatState
 /** The text on one line, with no Markdown marks: they mean nothing in one short line. */
 function oneLine(text: string): string {
   const line = text
+    // The preview shows 140 characters. A cut keeps the regular expressions fast on a long answer.
+    .slice(0, previewLength * 4)
+    // A code block says little in one line, and its language name would look like a word.
+    .replace(/```[^\n]*\n?[\s\S]*?(```|$)/g, " ")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
-    .replace(/(\*\*|__|\*|`+)(.+?)\1/g, "$2")
+    // Emphasis touches its text. So "2 * 3 * 4" and "__init__.py" keep their marks.
+    .replace(/(\*{1,3}|`+)(?=\S)(.+?)(?<=\S)\1/g, "$2")
     .replace(/`+/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  // A line of marks only, such as an unclosed code fence, says nothing.
+  // A line of marks only says nothing.
   return /^[\s*_`#>~-]*$/.test(line) ? "" : line;
 }
 

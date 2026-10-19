@@ -1,0 +1,487 @@
+/*
+ * The Schedules page of the EVE design (`reference.html`, section "Schedules"): the page, the day
+ * line, one card per schedule, and the add and setup card dialogs. The setup card can open on any page.
+ */
+
+.schedules-page {
+  /* A long prompt or path has no break points. */
+  overflow-wrap: anywhere;
+  padding: 18px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schedules-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.schedules-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedules-header h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.schedules-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.schedules-column {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The buttons of the EVE design: a pill with no border. */
+.schedules-page button,
+.schedule-sheet button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--chip);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.schedules-page button .icon,
+.schedule-sheet button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.schedules-page button.primary,
+.schedule-sheet button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--button-glow);
+}
+
+.schedules-page button.danger,
+.schedule-sheet button.danger {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.schedules-page button.quiet,
+.schedule-sheet button.quiet {
+  background: transparent;
+  color: var(--muted);
+}
+
+.schedules-page button:focus-visible,
+.schedule-sheet button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.schedule-panel {
+  background: var(--panel);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+
+.schedule-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.schedule-panel-heading strong {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The day line: today's runs on a 24-hour bar, with a glowing line at the time now. */
+.day-line {
+  position: relative;
+  height: 54px;
+  border-radius: 16px;
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.day-line-hour {
+  position: absolute;
+  bottom: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.day-line-run {
+  position: absolute;
+  top: 9px;
+  height: 22px;
+  border-radius: 99px;
+  background: var(--soft);
+  color: var(--soft-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-line-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.schedule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 14px 18px;
+}
+
+.schedule-row-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.schedule-row-name {
+  font-weight: 700;
+}
+
+.schedule-row-result {
+  grid-column: 2 / 4;
+}
+
+.schedule-row-question {
+  grid-column: 1 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.schedule-row-question span {
+  flex: 1;
+  min-width: 12em;
+}
+
+/* A status pill: a dot and a word. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.status-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.status-pill.bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.status-pill.idle {
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.schedule-problem {
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--warn-bg);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.schedules-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.schedules-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* The add and setup card dialogs. A phone shows them as a bottom sheet. */
+.schedule-sheet {
+  background: var(--panel);
+  border-radius: var(--radius-dialog);
+  box-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
+  padding: 24px;
+  width: 100%;
+  max-width: 460px;
+  /* A pushed prompt can be long, so the card scrolls and never pushes the buttons off a phone screen. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.schedule-backdrop {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.schedule-sheet h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.schedule-sheet p {
+  margin: 0;
+}
+
+.schedule-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px 12px;
+  font-size: 13px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.schedule-fields dt {
+  color: var(--muted);
+}
+
+.schedule-fields dd {
+  margin: 0;
+  justify-self: end;
+  text-align: right;
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+
+/* A changed field of a setup card stands out, so the person sees what someone changed. */
+.schedule-fields .changed {
+  color: var(--accent-ink);
+}
+
+.schedule-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule-sheet-actions .spacer {
+  flex: 1;
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schedule-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.schedule-form fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-form legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.schedule-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schedule-sheet .schedule-days button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.schedule-sheet .schedule-days button[aria-pressed="true"] {
+  background: var(--soft);
+  color: var(--soft-ink);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.schedule-form-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.schedules-notice {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* The text of a button that shows only its icon on a phone. */
+.schedules-add-text {
+  display: inline;
+}
+
+@media (max-width: 760px) {
+  .schedules-page {
+    padding: 4px 14px 14px;
+  }
+
+  .schedules-header h1 {
+    font-size: 30px;
+  }
+
+  .schedules-column,
+  .schedule-list {
+    gap: 12px;
+  }
+
+  .schedules-page button.schedules-add {
+    width: 44px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--chip);
+    color: var(--ink);
+    box-shadow: none;
+  }
+
+  .schedules-page button.schedules-add .icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .schedules-add-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .schedule-row {
+    padding: 14px;
+  }
+
+  .schedule-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .schedule-sheet {
+    max-width: none;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 24px);
+    box-shadow: 0 -10px 40px oklch(0.1 0.03 var(--h) / 0.25);
+  }
+
+  /* The handle of a bottom sheet. */
+  .schedule-sheet::before {
+    content: "";
+    flex: none;
+    width: 40px;
+    height: 5px;
+    border-radius: 9px;
+    background: var(--line);
+    align-self: center;
+  }
+
+  .schedule-sheet h2 {
+    font-size: 18px;
+  }
+
+  /* The buttons of a sheet stack at full width. */
+  .schedule-sheet-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .schedule-sheet-actions .spacer {
+    display: none;
+  }
+
+  /* Seven day buttons of 44 px fit in one line of a 375 px screen. */
+  .schedule-days {
+    gap: 4px;
+  }
+
+  .schedule-sheet .schedule-days button {
+    min-width: 44px;
+    padding: 0 4px;
+  }
+}

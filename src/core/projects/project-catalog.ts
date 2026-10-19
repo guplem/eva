@@ -184,9 +184,14 @@ function readTitle(text: string): string | null {
   return titleHeading(text.replace(frontMatterPattern, ""))?.title ?? null;
 }
 
+/** A line that starts a block that is not a paragraph: a heading, quote, table, HTML, list, rule, fence or image. */
+const blockStartPattern = /^(#|>|\||<|!\[|\[!\[|[*+-]\s|[-*_]{3,}|```|~~~|\d+[.)]\s)/;
+const descriptionLimit = 300;
+
 /**
- * The first paragraph after the title, in one line, or null. Many project files start with a list,
- * a quote, a table or a fence for the agents, and none of them reads as a description.
+ * The first paragraph after the title, in one plain line of at most 300 characters, or null.
+ * Many project files start with a list, a quote, a table, a fence or badges for the agents,
+ * and none of them reads as a description. Every project in each list sends it, so it stays short.
  */
 function readDescription(text: string): string | null {
   const body = text.replace(frontMatterPattern, "");
@@ -194,11 +199,18 @@ function readDescription(text: string): string | null {
   const rest = heading === null ? body : body.slice(heading.index + heading.length);
   const lines = rest.split("\n").map((line) => line.trim());
   const start = lines.findIndex((line) => line.length > 0);
-  if (start === -1) return null;
-  const end = lines.findIndex((line, index) => index > start && line.length === 0);
-  const paragraph = lines.slice(start, end === -1 ? undefined : end);
-  if (/^(#|>|\||<|[*+-]\s|[-*_]{3,}|```|~~~|\d+[.)]\s)/.test(paragraph[0] ?? "")) return null;
-  return paragraph.join(" ");
+  if (start === -1 || blockStartPattern.test(lines[start] ?? "")) return null;
+  const end = lines.findIndex((line, index) => index > start && (line.length === 0 || blockStartPattern.test(line)));
+  const plain = lines
+    .slice(start, end === -1 ? undefined : end)
+    .join(" ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|`)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (plain.length === 0) return null;
+  return plain.length <= descriptionLimit ? plain : `${plain.slice(0, descriptionLimit - 1).trimEnd()}…`;
 }
 
 export interface TitleHeading {

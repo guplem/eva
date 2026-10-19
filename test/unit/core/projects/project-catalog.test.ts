@@ -114,6 +114,28 @@ describe("discoverProjects", () => {
     expect(description("2025-03-05-1015-no-title")).toBe("Just a line.");
   });
 
+  test("the description is plain text: it drops inline Markdown, ends at a block, and stays short", () => {
+    addProject(
+      "2025-03-02-1015-marked",
+      "status: active",
+      "\n# Marked\n\nA **bold** app with `code`, a [link](https://example.com) and ![a logo](logo.png).\n## Rules\n- a\n",
+    );
+    addProject(
+      "2025-03-03-1015-badges",
+      "status: active",
+      "\n# Badges\n\n[![CI](https://ci.example)](https://ci.example)\n",
+    );
+    addProject("2025-03-04-1015-long", "status: active", `\n# Long\n\n${"word ".repeat(100)}\n`);
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    const description = (id: string): string | null | undefined =>
+      projects.find((project) => project.id === id)?.description;
+    expect(description("2025-03-02-1015-marked")).toBe("A bold app with code, a link and .");
+    expect(description("2025-03-03-1015-badges")).toBeNull();
+    const long = description("2025-03-04-1015-long") ?? "";
+    expect(long.length).toBeLessThanOrEqual(300);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
   test("names the clone folders of each project", () => {
     addProject("2025-03-02-1015-example-app", "status: active");
     mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-0"), { recursive: true });

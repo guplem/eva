@@ -7,4 +7,4 @@ description: Rename or refactor a symbol safely by searching every naming-case v
 
 - Search **every** naming variant: camelCase, PascalCase, snake_case, kebab-case and UPPER_CASE.
 - Search the whole project: code, tests, docs, configs and JSON files. A missed variant in a config key or a data file compiles, but breaks at runtime.
-- Follow the list of stored names and registration points in `AGENTS.md`.
+- If `AGENTS.md` lists stored names or registration points, follow that list.

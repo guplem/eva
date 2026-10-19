@@ -14,6 +14,8 @@ import {
   type SessionEvent,
   type ListedSession,
 } from "./api.ts";
+import { ApprovalNotice } from "./ApprovalCard.tsx";
+import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
@@ -49,6 +51,8 @@ function EvaApp(): ReactElement {
   const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  /** The sessions of the chat on screen. Their requests show as cards, so they need no notice. */
+  const [shownSessionIds, setShownSessionIds] = useState<readonly string[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
   /** The request that the person just allowed. Its notice stays a moment, with the delighted face. */
   const [allowedDevice, setAllowedDevice] = useState<DeviceLoginRequest | null>(null);
@@ -268,7 +272,15 @@ function EvaApp(): ReactElement {
       showError(caught);
     }
   };
-  const approval = approvals[0];
+  const chatApprovals = { pending: approvals, onAnswer: answerApproval, onShowChat: setShownSessionIds };
+  // The open chat shows its own requests as cards. A request of any other chat gets a line that opens it.
+  const elsewhere = approvalsOutside(approvals, shownSessionIds).map((approval) => ({
+    requestId: approval.requestId,
+    place: approvalPlace(sessions.find((session) => session.id === approval.sessionId)),
+    open: () => {
+      window.location.hash = `#/chat/${encodeURIComponent(rootChatId(approval.sessionId, sessions))}`;
+    },
+  }));
 
   /** A failed answer drops the request too: it expired, or another approver answered it. */
   const answerDevice = async (request: DeviceLoginRequest, answer: "allow" | "deny"): Promise<void> => {
@@ -326,6 +338,7 @@ function EvaApp(): ReactElement {
             </ul>
           </section>
         )}
+        <ApprovalNotice entries={elsewhere} />
         {!isConnected && (
           <div className="connection-banner" role="status">
             Reconnecting…
@@ -341,7 +354,7 @@ function EvaApp(): ReactElement {
             onNavigate={() => setSidebarOpen(false)}
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
-            approvalSessionIds={approvals.map((approval) => approval.sessionId)}
+            approvals={chatApprovals}
           />
         )}
         {screen === "projects" && (
@@ -354,6 +367,7 @@ function EvaApp(): ReactElement {
             onLinkedChatOpened={onLinkedChatOpened}
             onChanged={refreshSessions}
             onNavigate={() => setSidebarOpen(false)}
+            approvals={chatApprovals}
           />
         )}
         {screen === "settings" && (
@@ -361,22 +375,7 @@ function EvaApp(): ReactElement {
         )}
         {screen === "schedules" && <SchedulesView />}
       </div>
-      {approval !== undefined && (
-        <div className="dialog-backdrop">
-          <div className="dialog" role="dialog" aria-label="Approval">
-            <strong>Eva wants to run {approval.toolName}</strong>
-            <code>{approval.summary}</code>
-            <div className="message-actions">
-              <button className="primary" onClick={() => void answerApproval(approval.requestId, "allow")}>
-                Allow
-              </button>
-              <button onClick={() => void answerApproval(approval.requestId, "deny")}>Deny</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* An approval holds a running turn, so it comes first. A device request comes next. */}
-      {approval === undefined && deviceRequest !== undefined && (
+      {deviceRequest !== undefined && (
         <NewDeviceDialog
           request={deviceRequest}
           allowed={deviceRequest === allowedDevice}
@@ -384,7 +383,7 @@ function EvaApp(): ReactElement {
           onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
         />
       )}
-      {approval === undefined && deviceRequest === undefined && card !== undefined && (
+      {deviceRequest === undefined && card !== undefined && (
         <ScheduleCardDialog
           card={card}
           onConfirm={() => void answerCard(card, "confirm")}

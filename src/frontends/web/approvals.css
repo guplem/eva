@@ -1,0 +1,148 @@
+/*
+ * The permission card, and the notice for a request of another chat. The section "Eva asks for
+ * permission" of docs/design/eve/reference.html is the model.
+ */
+
+.approval-requests {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The amber ring tells the card from an answer. */
+.approval-card {
+  flex: 1;
+  min-width: 0;
+  max-width: 86%;
+  background: var(--panel);
+  border-radius: var(--radius-card);
+  box-shadow:
+    0 0 0 2px var(--warn),
+    var(--shadow);
+  padding: var(--space-4) var(--space-5);
+  overflow-wrap: anywhere;
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-head .status-pill,
+.approval-notice .status-pill {
+  flex: none;
+}
+
+.approval-place {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.approval-card h2 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.approval-input {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.approval-actions .danger {
+  margin-left: auto;
+}
+
+.approval-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* A request of a chat that is not on screen: a line under the top of the page, never a dialog. */
+.approval-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn);
+}
+
+.approval-notice-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.approval-notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/*
+ * On a phone, the requests of the open chat are a bottom sheet, in reach of the thumb. It sits
+ * at the end of the conversation, just above the composer, and covers nothing: the composer, Stop,
+ * the tab bar and the chat list stay in reach, and each fork keeps its sheet in its own column.
+ */
+@media (max-width: 760px) {
+  .approval-requests {
+    /* The width of the screen: the conversation has a 14 px side padding on a phone. */
+    margin: 0 -14px;
+    padding: var(--space-2) var(--space-5) var(--space-5);
+    background: var(--panel);
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    box-shadow:
+      0 -2px 0 var(--warn),
+      var(--sheet-shadow);
+  }
+
+  /* The grab handle says that the sheet came up from the bottom. */
+  .approval-requests::before {
+    content: "";
+    width: 40px;
+    height: 5px;
+    flex: none;
+    border-radius: 9px;
+    background: var(--line);
+    align-self: center;
+  }
+
+  .approval-card {
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .approval-actions {
+    flex-direction: column;
+  }
+
+  .approval-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .approval-actions .danger {
+    margin-left: 0;
+  }
+}

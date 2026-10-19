@@ -13,7 +13,7 @@ import type { ProcessRunner } from "../shared/process-runner.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
-import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
+import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
 import {
   scheduleCardProblem,
   engineUpdateProblem,
@@ -151,6 +151,8 @@ export interface EvaStatus {
   readonly localUrl: string;
   /** One line for each open problem; empty when all is good. */
   readonly problems: readonly string[];
+  /** The same problems with their keys. */
+  readonly problemDetails: readonly ProblemDetail[];
   /** How many setup steps still need the person; the Settings page lists them. */
   readonly setupMissing: number;
 }
@@ -677,6 +679,7 @@ export class Eva {
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
+      problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
       setupMissing: missingSteps(this.setupProgress()),
     };
   }

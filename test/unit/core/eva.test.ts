@@ -1207,8 +1207,13 @@ describe("Eva alerts", () => {
       resolvedMessage: "Telegram works again.",
     });
     expect(instance.status().problems).toEqual(["Another program polls the bot."]);
+    // The web page picks the button of a problem from its key, never from its text.
+    expect(instance.status().problemDetails).toEqual([
+      { key: "telegram_poll", level: "error", message: "Another program polls the bot." },
+    ]);
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
+    expect(instance.status().problemDetails).toEqual([]);
   });
 
   test("a start after an unclean exit sends one alert that stays out of the problems", () => {

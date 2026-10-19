@@ -14,10 +14,18 @@ async function openList(page: Page): Promise<void> {
   if (await menu.isVisible()) await menu.click();
 }
 
+/**
+ * Opens Projects and waits for its list. With no project open, the list shows with no menu tap on
+ * both sizes. openList would race: the menu button of the page before can still show for a moment.
+ */
+async function openProjects(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
+}
+
 /** Opens the page of the Example app project in Project mode. */
 async function openExampleApp(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
@@ -414,8 +422,7 @@ test("the project page says that the clones load, not that there are none", asyn
     await answered;
     await route.continue();
   });
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByText("Loading the clones…")).toBeVisible();
@@ -484,8 +491,7 @@ test("Project mode: the repository setup shows each item's light and copies its 
 
 test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   const active = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" });
   await expect(active).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
@@ -503,8 +509,7 @@ test("the status chips hide a closed project until a tap clears the filter", asy
 
 test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
@@ -522,8 +527,7 @@ test("the tag chips show only the projects with that tag", async ({ page }) => {
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   const project = page.getByRole("button", { name: /Broken notes/ });
   await expect(project).toContainText("1 warning");
   await project.click();
@@ -1613,8 +1617,7 @@ test.describe("on a touch screen", () => {
 test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
   const run = test.info().project.name;
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
   await page.getByRole("button", { name: "Details", exact: true }).click();

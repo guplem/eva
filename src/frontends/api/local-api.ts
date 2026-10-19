@@ -95,6 +95,14 @@ const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
 const localAccount = "this computer";
 /** The address that Google sent the browser to, or its code alone. */
 const googleLoginSchema = z.object({ address: z.string().min(1).max(10_000) });
+const vaultCloneSchema = z.object({ repository: z.string().min(1).max(2_000) });
+const vaultPushSchema = vaultCloneSchema;
+const newVaultSchema = z.object({
+  name: z.string().max(200),
+  language: z.string().max(200),
+  topics: z.array(z.string().max(200)).max(50),
+  repository: z.string().max(2_000),
+});
 const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["mine", "theirs", "both"]) });
 /** The schedule rules live in the core; the API only needs an object. */
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
@@ -515,6 +523,13 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     return json({ label });
   }
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
+  if (method === "GET" && url.pathname === "/api/vault/repositories") return json(await eva.vaultRepositories());
+  if (method === "POST" && url.pathname === "/api/vault/clone")
+    return json(await eva.cloneVault(vaultCloneSchema.parse(await request.json()).repository));
+  if (method === "POST" && url.pathname === "/api/vault/create")
+    return json(await eva.createVault(newVaultSchema.parse(await request.json())));
+  if (method === "POST" && url.pathname === "/api/vault/push")
+    return json(await eva.pushVault(vaultPushSchema.parse(await request.json()).repository));
   if (url.pathname === "/api/vault/conflicts") {
     if (method === "GET") return json(await eva.vaultConflicts());
     if (method === "POST") {

@@ -97,7 +97,7 @@ export class ClaudeLogin {
       );
     this.waitsForCode = false;
     // The screen before the code holds no token and no refusal, so only the new output counts.
-    const from = terminal.output().length;
+    const from = terminal.received();
     terminal.write(`${code}\r`);
     const result = await this.waitFor(
       terminal,
@@ -132,7 +132,7 @@ export class ClaudeLogin {
 
   /**
    * Waits until `read` finds a value in the output, the program ends, or the wait ends. Only the
-   * output after `from` counts. A line with `hide` in it never goes into the error message.
+   * output after `from`, a count of `received` characters, counts. A line with `hide` in it never goes into the error message.
    */
   private waitFor<T>(
     terminal: TerminalProcess,
@@ -141,7 +141,7 @@ export class ClaudeLogin {
   ): Promise<T | { readonly reason: "exited" | "timeout"; readonly lastWords: string }> {
     return new Promise((resolve) => {
       let finished = false;
-      const screen = (): Screen => screenOf(terminal.output().slice(from));
+      const screen = (): Screen => screenOf(outputSince(terminal, from));
       const done = (value: { found: T } | { reason: "exited" | "timeout" }): void => {
         if (finished) return;
         finished = true;
@@ -166,6 +166,12 @@ export class ClaudeLogin {
       check(false);
     });
   }
+}
+
+/** The output after the first `from` characters, as far as the cap on the output kept it. */
+function outputSince(terminal: TerminalProcess, from: number): string {
+  const output = terminal.output();
+  return output.slice(Math.max(0, output.length - (terminal.received() - from)));
 }
 
 /** The output as a person reads it, and the targets of its terminal links. */

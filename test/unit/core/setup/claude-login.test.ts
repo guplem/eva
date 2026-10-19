@@ -49,6 +49,7 @@ function fakeTerminal(
     written: [],
     stopped: false,
     output: () => output,
+    received: () => output.length,
     onOutput: (listener) => {
       listeners.add(listener);
       return () => {
@@ -332,5 +333,46 @@ describe("ClaudeLogin with output in pieces", () => {
     login.stop();
     expect(terminals[0]?.stopped).toBe(true);
     expect(isEvaError(await finished, "claude_login_failed")).toBe(true);
+  });
+});
+
+describe("ClaudeLogin with a full output buffer", () => {
+  test("still finds the token after the cap on the output dropped old text", async () => {
+    const cap = 1_500;
+    let output = "";
+    let received = 0;
+    const listeners = new Set<() => void>();
+    const print = (text: string): void => {
+      received += text.length;
+      output = (output + text).slice(-cap);
+      for (const listener of listeners) listener();
+    };
+    const login = new ClaudeLogin({
+      program: "claude",
+      cwd: "/tmp/example-eva",
+      environment: () => ({}),
+      waitMs: 500,
+      start: () => ({
+        output: () => output,
+        received: () => received,
+        onOutput: (listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        write: () => {
+          print(`\r\n${token}\r\n`);
+        },
+        exited: new Promise<number>(() => undefined),
+        stop: () => undefined,
+      }),
+    });
+    const started = login.start();
+    // Spinner frames fill the buffer before the address comes.
+    for (let frame = 0; frame < 200; frame++) print(`${escape}[97m*${escape}[39m\r\n`);
+    print(addressScreen.join(""));
+    expect(await started).toEqual({ url });
+    expect(await login.finish("example-code")).toEqual({ token });
   });
 });

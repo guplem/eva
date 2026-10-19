@@ -732,6 +732,7 @@ describe("the Claude Code login from the page", () => {
         const listeners: (() => void)[] = [];
         return {
           output: () => output,
+          received: () => output.length,
           onOutput: (listener) => {
             listeners.push(listener);
             return () => undefined;

@@ -17,6 +17,8 @@ export interface TerminalProcessOptions {
 export interface TerminalProcess {
   /** All the output so far, as text, with the terminal codes still in it. */
   output(): string;
+  /** The count of all output characters so far, also those that the cap on `output` dropped. */
+  received(): number;
   /** Calls `listener` after each new piece of output. Returns a function that stops the calls. */
   onOutput(listener: () => void): () => void;
   /** Types text into the terminal. A `\r` is the Enter key. */
@@ -39,6 +41,7 @@ export const systemTerminalProcessStarter: TerminalProcessStarter = (command, op
   const decoder = new TextDecoder();
   const listeners = new Set<() => void>();
   let output = "";
+  let received = 0;
   let child: Bun.Subprocess;
   try {
     child = Bun.spawn([...command], {
@@ -48,7 +51,9 @@ export const systemTerminalProcessStarter: TerminalProcessStarter = (command, op
         ...terminalSize,
         data: (_terminal, bytes) => {
           // `stream: true` keeps a character that a chunk boundary splits.
-          output = (output + decoder.decode(bytes, { stream: true })).slice(-outputLimit);
+          const text = decoder.decode(bytes, { stream: true });
+          received += text.length;
+          output = (output + text).slice(-outputLimit);
           for (const listener of listeners) listener();
         },
       },
@@ -72,6 +77,7 @@ export const systemTerminalProcessStarter: TerminalProcessStarter = (command, op
   });
   return {
     output: () => output,
+    received: () => received,
     onOutput: (listener) => {
       listeners.add(listener);
       return () => {

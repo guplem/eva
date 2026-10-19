@@ -49,6 +49,18 @@ describe("systemTerminalProcessStarter", () => {
     await child.exited;
   });
 
+  test("counts all the output, also past the cap", async () => {
+    const child = systemTerminalProcessStarter([bun, "-e", "process.stdout.write('x'.repeat(250_000) + '\\nend\\n')"], {
+      cwd: process.cwd(),
+      environment,
+      timeoutMs: 20_000,
+    });
+    await outputWith(child, "end");
+    await child.exited;
+    expect(child.received()).toBeGreaterThan(250_000);
+    expect(child.output().length).toBeLessThanOrEqual(200_000);
+  });
+
   test("stops a program on request, and after its timeout", async () => {
     const stopped = systemTerminalProcessStarter([bun, "-e", "setTimeout(() => {}, 60_000)"], {
       cwd: process.cwd(),

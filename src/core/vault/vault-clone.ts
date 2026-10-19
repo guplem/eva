@@ -5,6 +5,7 @@
  * of her own git commands, never in an agent's (lesson 96).
  */
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
@@ -85,6 +86,21 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
   if (push.exitCode !== 0) {
     throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
   }
+}
+
+/**
+ * True for a git vault that has no remote branch yet: a new vault whose push never ran or failed.
+ * A rerun of setup then offers the push again. A folder that is not a git repository needs none.
+ */
+export async function vaultNeedsPush(inputs: Omit<VaultCloneInputs, "repository">): Promise<boolean> {
+  // The folder itself must be the repository, not a folder inside another one.
+  if (!existsSync(join(inputs.folder, ".git"))) return false;
+  const result = await inputs.runner.run(["git", "for-each-ref", "--count=1", "refs/remotes"], {
+    cwd: inputs.folder,
+    environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
+    timeoutMs: configTimeoutMs,
+  });
+  return result.exitCode === 0 && result.stdout.trim() === "";
 }
 
 /** Kept in the clone, so every later pull and push finds the token the same way. */

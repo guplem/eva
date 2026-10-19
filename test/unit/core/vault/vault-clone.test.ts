@@ -7,6 +7,7 @@ import {
   githubCredentialArguments,
   githubTokenVariable,
   pushNewVault,
+  vaultNeedsPush,
 } from "../../../../src/core/vault/vault-clone.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -167,5 +168,18 @@ describe("pushNewVault", () => {
     expect(isEvaError(failed, "git_failed")).toBe(true);
     expect(String(failed)).toContain("missing.git");
     expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toBe("# Vault\n");
+  });
+});
+
+describe("vaultNeedsPush", () => {
+  test("only a git vault with no remote branch needs a push", async () => {
+    const inputs = { runner: systemProcessRunner, environment: gitEnvironment };
+    const plain = join(sandbox.root, "plain");
+    mkdirSync(plain);
+    expect(await vaultNeedsPush({ ...inputs, folder: plain })).toBe(false);
+    sandbox.git(plain, "init", "-q", "-b", "main");
+    expect(await vaultNeedsPush({ ...inputs, folder: plain })).toBe(true);
+    const cloned = sandbox.clone("cloned");
+    expect(await vaultNeedsPush({ ...inputs, folder: cloned })).toBe(false);
   });
 });

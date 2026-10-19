@@ -30,8 +30,11 @@ describe("syncSkills", () => {
     const root = repository();
     write(root, ".agents/skills/write-commit/SKILL.md", "commit");
     write(root, ".agents/skills/rename-symbol/notes/cases.md", "cases");
+    // A skill can carry its own files, such as a script beside SKILL.md.
+    write(root, ".agents/skills/write-commit/helper.ts", "script");
     syncSkills(root);
     expect(readFileSync(join(root, ".claude/skills/write-commit/SKILL.md"), "utf8")).toBe("commit");
+    expect(readFileSync(join(root, ".claude/skills/write-commit/helper.ts"), "utf8")).toBe("script");
     expect(readFileSync(join(root, ".claude/skills/rename-symbol/notes/cases.md"), "utf8")).toBe("cases");
   });
 

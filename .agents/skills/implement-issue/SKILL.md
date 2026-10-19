@@ -23,5 +23,13 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 6. **Review the work.** Start 5 sub-agents (3 mid-tier, 2 top-tier). Each looks for real errors, or for a clear mismatch with the plan, the architecture or the project rules. Fix each finding that is valid.
 7. **Review again.** Start 3 new sub-agents (2 mid-tier, 1 top-tier). Give them the findings that you rejected, with your reasons. They raise a rejected finding again only with new evidence. They also look for new problems. Fix each finding that is valid.
 8. **Prepare the PR.** Delete the plan file: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review.
-9. **Merge the PR.** Update a branch that is behind `main` once, so the checks run on the newest code. Then turn on auto-merge. Do not update the branch again when other PRs merge. When the PR does not merge, find the cause and fix it: resolve a conflict or fix a red check. Run a check again only when it fails for a cause outside this PR. Never bypass the merge ruleset, for example with an admin merge.
-10. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes.
+9. **Show the change to the user interface.** Do this step when a capture of a screen on `origin/main` and a capture on the PR branch would look different: the PR adds or removes a screen, or changes its layout, its style or its parts. Skip it when no screen looks different, such as a change to logic, tests or docs. Skip it also for a change of a few words. The section [Before and after captures](#before-and-after-captures) gives the steps.
+10. **Merge the PR.** Update a branch that is behind `main` once, so the checks run on the newest code. Then turn on auto-merge. Do not update the branch again when other PRs merge. When the PR does not merge, find the cause and fix it: resolve a conflict or fix a red check. Run a check again only when it fails for a cause outside this PR. Never bypass the merge ruleset, for example with an admin merge.
+11. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes.
+
+## Before and after captures
+
+- Capture each changed screen on `origin/main` and on the PR branch. If the repository has a way to take captures, use it. Capture only example data, never a person's real data.
+- GitHub cannot attach a file to a PR description through its API. So push the images to a branch of their own, open a PR from it, and close that PR at once. Never merge it.
+- Link each image by its commit: `https://github.com/<owner>/<repo>/blob/<sha>/<path>?raw=true`. A closed PR keeps its commits, so the links keep working.
+- Show the images in a "Before and after" table in the PR description.

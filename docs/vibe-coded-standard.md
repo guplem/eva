@@ -95,7 +95,7 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 ## Releases
 
 - **Each merge to the default branch that changes the shipped code makes a release,** after the checks pass there.
-- **The commit prefixes pick the version** (`MAJOR.MINOR.PATCH`): `feat:` raises `MINOR`, `fix:` raises `PATCH`, and a `!` raises `MAJOR`.
+- **The commit prefixes pick the version** (`MAJOR.MINOR.PATCH`): `feat:` raises `MINOR`; `fix:`, `perf:`, `refactor:` and `build:` raise `PATCH`; a `!` raises `MAJOR`. Other prefixes, such as `docs:`, make no release.
 - **A check refuses a commit subject without a known prefix.**
 - **`AGENTS.md` defines a breaking change for the project.** In general, a change is breaking when the user must act by hand after the update, or loses something.
 - **A check enforces the `!`.** When a stored or public name goes away with no migration and no `!`, CI fails. An agent can forget a rule, but not a check.

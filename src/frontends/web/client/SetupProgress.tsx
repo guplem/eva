@@ -1,8 +1,11 @@
 /** The setup progress list at the top of Settings: each step done, missing or optional, with what to do. */
 import { useState, type ReactElement } from "react";
 import { api, type ProgressStep } from "./api.ts";
+import { Icon, type IconName } from "./icons.tsx";
+import { TestMark } from "./SettingsParts.tsx";
 
-const marks: Readonly<Record<ProgressStep["state"], string>> = { done: "✓", missing: "✗", optional: "○" };
+// The marks of the EVE design: a step to do shows `alert`, and an optional step matches its "Add" button.
+const marks: Readonly<Record<ProgressStep["state"], IconName>> = { done: "check", missing: "alert", optional: "plus" };
 const labels: Readonly<Record<ProgressStep["state"], string>> = {
   done: "Done",
   missing: "Missing",
@@ -26,8 +29,8 @@ export function SetupProgress({
         {missing === 0 ? "Setup is complete" : `Setup: ${String(missing)} of ${String(steps.length)} steps left`}
       </legend>
       <div className="hint">
-        Each answer saves at once, here or in <code>eva setup</code> on Eva&apos;s computer. A step marked ○ is
-        optional.
+        Each answer saves at once, here or in <code>eva setup</code> on Eva&apos;s computer. A step marked{" "}
+        <Icon name={marks.optional} label={labels.optional} /> is optional.
       </div>
       {restartNeeded && (
         <div className="hint">Eva uses the new tokens after a restart. Press Restart Eva under Updates, below.</div>
@@ -57,9 +60,7 @@ function StepRow({ step, onChanged }: { step: ProgressStep; onChanged: () => voi
   const last = step.lastCheck;
   return (
     <div className="check-row" data-state={step.state}>
-      <span role="img" aria-label={labels[step.state]}>
-        {marks[step.state]}
-      </span>
+      <Icon name={marks[step.state]} label={labels[step.state]} />
       {/* A long path or command must wrap on a phone, never widen the page. */}
       <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
         <strong>{step.title}</strong>
@@ -69,7 +70,7 @@ function StepRow({ step, onChanged }: { step: ProgressStep; onChanged: () => voi
           <>
             <br />
             <span className={last.ok ? "ok" : "failed"}>
-              {last.ok ? "✓" : "✗"} Last test: {last.detail}
+              <TestMark ok={last.ok} detail={`Last test: ${last.detail}`} />
             </span>
           </>
         )}

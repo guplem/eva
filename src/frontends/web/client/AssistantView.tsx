@@ -5,6 +5,7 @@ import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
+import { Icon } from "./icons.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
@@ -82,11 +83,15 @@ export function AssistantView({
                 onNavigate();
               }}
             >
-              ⏰
+              <Icon name="clock" />
             </button>
           </div>
           {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-            <span className="chip">No schedule has run yet. Add one on the Schedules page (⏰).</span>
+            <span className="chip">
+              No schedule has run yet. Add one on the Schedules page (
+              <Icon name="clock" label="the clock button" />
+              ).
+            </span>
           )}
           <h2>Chats</h2>
           {chats.map((chat) => (
@@ -99,7 +104,12 @@ export function AssistantView({
                 onNavigate();
               }}
             >
-              {chat.source === "schedule" ? "⏰ " : ""}
+              {/* Hidden from a screen reader: the line below the title already says "schedule". */}
+              {chat.source === "schedule" && (
+                <>
+                  <Icon name="clock" />{" "}
+                </>
+              )}
               {chat.title}
               <div className="muted">{chat.source}</div>
             </button>
@@ -179,7 +189,7 @@ function ChatTitle({
           title="Rename this chat"
           onClick={() => setDraft(chat.title)}
         >
-          ✏️
+          <Icon name="pen" />
         </button>
       </>
     );

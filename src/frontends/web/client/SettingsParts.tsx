@@ -8,6 +8,16 @@ import {
   type VaultConflict,
   type VaultSyncState,
 } from "./api.ts";
+import { Icon } from "./icons.tsx";
+
+/** The result of a test: a named mark, so a screen reader also hears whether it passed. */
+export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail: string }): ReactElement {
+  return (
+    <>
+      <Icon name={ok ? "check" : "x"} label={ok ? "Passed" : "Failed"} /> {detail}
+    </>
+  );
+}
 
 /**
  * One Test button and its result. The check runs on the server, with the saved settings. The
@@ -28,7 +38,7 @@ export function CheckRow({ name, label }: { name: string; label: string }): Reac
       <span style={{ flex: 1 }}>{label}</span>
       <span role="status" className={result === null || result === "running" ? "" : result.ok ? "ok" : "failed"}>
         {result === "running" && "Testing…"}
-        {result !== null && result !== "running" && `${result.ok ? "✓" : "✗"} ${result.detail}`}
+        {result !== null && result !== "running" && <TestMark ok={result.ok} detail={result.detail} />}
       </span>
       <button aria-label={label} onClick={() => void run()}>
         Test

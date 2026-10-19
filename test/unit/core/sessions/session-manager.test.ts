@@ -324,6 +324,45 @@ describe("models (lesson 41)", () => {
     expect(engine.requests[0]?.model).toBe("haiku");
     expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
   });
+
+  test("a chat's engine is chosen before its first message, and fixed after it", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = manager.createSession({
+      mode: "assistant",
+      engine: "pi",
+      model: "default",
+      startFolder: "/vault",
+      source: "web",
+    }).id;
+    expect(manager.setEngine(sessionId, "claude-code").engine).toBe("claude-code");
+    await manager.send(sessionId, "hi");
+    expect(engine.requests).toHaveLength(1);
+    expect(() => manager.setEngine(sessionId, "claude-code")).toThrow("before its first message");
+  });
+
+  test("the engine of a chat must be on this machine", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    const error: unknown = (() => {
+      try {
+        manager.setEngine(sessionId, "pi");
+        return undefined;
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(isEvaError(error, "engine_failed")).toBe(true);
+    expect(manager.get(sessionId).engine).toBe("claude-code");
+  });
+
+  test("a fork keeps the engine of its chat, because it continues the chat's engine session", async () => {
+    const manager = createManager(new FakeEngine());
+    const parentId = newAssistantSession(manager);
+    await manager.send(parentId, "hi");
+    const fork = manager.fork(parentId, manager.get(parentId).turns[0]?.lastMessageId ?? "");
+    expect(() => manager.setEngine(fork.id, "claude-code")).toThrow("A fork keeps");
+  });
 });
 
 /** A namer that a test answers by hand, so it controls when the name arrives. */

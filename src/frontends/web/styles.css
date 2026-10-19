@@ -1123,6 +1123,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  /* A phone's top bar has no room for the brand mark: the mode switch needs it. */
+  .topbar .mk {
+    display: none;
+  }
+
   .sidebar {
     display: none;
   }

@@ -17,8 +17,11 @@ import { fakeGoogle } from "../support/fake-google.ts";
 import { googleScopes } from "../../src/core/google/google-scopes.ts";
 import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
+import visorGallery from "./visor-gallery.html";
 
 export const demoPort = 7499;
+/** The test page of EVE's faces (`visor-gallery.html`). */
+export const galleryPort = 7498;
 export const demoToken = "e2e-demo-token";
 
 const sandbox = createGitSandbox();
@@ -159,5 +162,7 @@ const eva = new Eva({
 // No front end confirms a card here, so each new schedule's card waits for the web UI. A short
 // check keeps the browser tests fast; Eva itself checks every 30 seconds.
 setInterval(() => void eva.schedules?.tick(), 300);
+// The faces get their own port, so the product's server has no test route.
+Bun.serve({ hostname: "127.0.0.1", port: galleryPort, routes: { "/": visorGallery }, development: false });
 startLocalApi({ eva, port: demoPort, token: demoToken, extraHosts: [], allowedTailscaleIdentities: [] });
 process.stdout.write(`Eva demo ready on http://127.0.0.1:${String(demoPort)}\n`);

@@ -192,7 +192,8 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  // The live answer shows at once, so wait for its text: before it comes, the trust question can still open.
+  await Promise.race([page.locator(".message.answer", { hasText: title }).first().waitFor(), trustQuestion.waitFor()]);
   if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
   await expect(answer).toContainText(title);
   const chatId = await chatIdNamed(page, title);
@@ -379,7 +380,11 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   // sizes share one demo server, so only the first of them sees the question.
   const answer = page.locator(".message.answer").first();
   const trustQuestion = page.getByRole("dialog", { name: "Approval" });
-  await Promise.race([answer.waitFor(), trustQuestion.waitFor()]);
+  // The live answer shows at once, so wait for its text: before it comes, the trust question can still open.
+  await Promise.race([
+    page.locator(".message.answer", { hasText: "Fix the bug" }).first().waitFor(),
+    trustQuestion.waitFor(),
+  ]);
   if (await trustQuestion.isVisible()) {
     await expect(trustQuestion).toContainText("Trust this repository");
     await trustQuestion.getByRole("button", { name: "Deny" }).click();

@@ -69,7 +69,7 @@ describe("chatPreview", () => {
   test("says that a new chat has no message, and cuts a long text", () => {
     expect(chatPreview({ turns: [] })).toBe("No messages yet");
     const preview = chatPreview({ turns: [turn({ answerText: "word ".repeat(100) })] });
-    expect(preview).toHaveLength(141);
+    expect(preview).toHaveLength(140);
     expect(preview.endsWith("…")).toBe(true);
   });
 });
@@ -109,12 +109,41 @@ describe("groupChats", () => {
 });
 
 describe("chatPreview with a state", () => {
-  test("a waiting approval says so, because the last answer is old news", () => {
+  test("a waiting approval says so, because the last answer is out of date", () => {
     expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "needs-you")).toBe("Eva needs your permission");
   });
 
   test("a first turn that runs says that Eva works, not that the chat is empty", () => {
     expect(chatPreview({ turns: [] }, "working")).toBe("Eva is working on it");
     expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "working")).toBe("Done.");
+  });
+});
+
+describe("chatPreview edge cases", () => {
+  test("keeps a mark inside the text, such as an issue number or an arrow", () => {
+    expect(chatPreview({ turns: [turn({ answerText: "Closed #169 in C#: a -> b, 2*3" })] })).toBe(
+      "Closed #169 in C#: a -> b, 2*3",
+    );
+    expect(chatPreview({ turns: [turn({ answerText: "> Quote\n- **Bold** and `code`" })] })).toBe(
+      "Quote Bold and code",
+    );
+  });
+
+  test("an answer of marks only, or an empty failure, falls back to the person's message", () => {
+    expect(chatPreview({ turns: [turn({ answerText: "**\n```" })] })).toBe("What is on today?");
+    expect(chatPreview({ turns: [turn({ failure: "" })] })).toBe("What is on today?");
+  });
+
+  test("cuts a long text between characters, never inside an emoji", () => {
+    const preview = chatPreview({ turns: [turn({ answerText: "🙂".repeat(200) })] });
+    expect(Array.from(preview)).toHaveLength(141);
+    expect(preview.endsWith("🙂…")).toBe(true);
+  });
+});
+
+describe("a bad date", () => {
+  test("shows no time and goes to the older chats", () => {
+    expect(chatTime(new Date("bad"), now)).toBe("");
+    expect(chatGroup(new Date("bad"), now)).toBe("Older");
   });
 });

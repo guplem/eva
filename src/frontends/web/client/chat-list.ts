@@ -3,7 +3,7 @@ import type { SessionRecord } from "./api.ts";
 
 export type ChatGroup = "Today" | "This week" | "Older";
 
-/** "Needs you" wins over "Working": an approval holds a running turn. */
+/** "Needs you" wins over "Working": the turn waits for the approval. */
 export type ChatState = "needs-you" | "working" | null;
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -21,12 +21,15 @@ function daysBefore(at: Date, now: Date): number {
 /** A time a little in the future, from another machine's clock, counts as today. */
 export function chatGroup(at: Date, now: Date): ChatGroup {
   const days = daysBefore(at, now);
+  // A bad stored time gives NaN, and NaN fails every comparison.
+  if (Number.isNaN(days)) return "Older";
   if (days <= 0) return "Today";
   return days < 7 ? "This week" : "Older";
 }
 
 /** "09:14" today, "Mon" this week, "12 Oct" before, and "12 Oct 2025" in another year. */
 export function chatTime(at: Date, now: Date): string {
+  if (Number.isNaN(at.getTime())) return "";
   const group = chatGroup(at, now);
   if (group === "Today") {
     return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
@@ -38,19 +41,29 @@ export function chatTime(at: Date, now: Date): string {
 
 /**
  * One line of the last message: the answer, why the turn failed, or the person's message.
- * A waiting approval comes first, because the last answer is old news then.
+ * A waiting approval comes first: the last answer no longer tells the current state.
  */
 export function chatPreview(chat: Pick<SessionRecord, "turns">, state: ChatState = null): string {
   if (state === "needs-you") return "Eva needs your permission";
   const last = chat.turns.at(-1);
   if (last === undefined) return state === "working" ? "Eva is working on it" : "No messages yet";
-  const text = last.failure ?? (last.answerText.trim() === "" ? last.userText : last.answerText);
-  // The Markdown marks mean nothing in one short line.
+  const line = oneLine(last.failure ?? "") || oneLine(last.answerText) || oneLine(last.userText);
+  if (line === "") return "No messages yet";
+  // By code point, so the cut never splits an emoji.
+  const characters = Array.from(line);
+  return characters.length > previewLength ? `${characters.slice(0, previewLength).join("").trimEnd()}…` : line;
+}
+
+/** The text on one line, with no Markdown marks: they mean nothing in one short line. */
+function oneLine(text: string): string {
   const line = text
-    .replace(/[*`#>]+/g, "")
+    .replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/(\*\*|__|\*|`+)(.+?)\1/g, "$2")
+    .replace(/`+/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return line.length > previewLength ? `${line.slice(0, previewLength)}…` : line;
+  // A line of marks only, such as an unclosed code fence, says nothing.
+  return /^[\s*_`#>~-]*$/.test(line) ? "" : line;
 }
 
 /** The state of a chat and its forks. Any session of the tree counts. */

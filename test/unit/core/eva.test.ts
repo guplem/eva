@@ -109,6 +109,29 @@ describe("Eva", () => {
     expect(instance.status().vaultSync.status).toBe("ok");
   });
 
+  test("with sync off, an Assistant turn neither pulls nor pushes the vault, but Sync now still works", async () => {
+    const engine = new FakeEngine((request) => {
+      writeFileSync(join(request.startFolder, "Methods", "New.md"), "A new note.\n");
+      return FakeEngine.answer(request, "Stored it.");
+    });
+    mkdirSync(join(vault, "Methods"));
+    const other = sandbox.clone("other");
+    sandbox.write(other, "Remote.md", "From another machine.\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "remote note");
+    sandbox.git(other, "push", "-q", "origin", "main");
+    const instance = start(engine, { sync: { ...defaultConfig.sync, enabled: false } });
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(session.id, "Store a note.");
+
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Methods/New.md");
+    expect(existsSync(join(vault, "Remote.md"))).toBe(false);
+    // A request from the person still syncs: the setting stops only the automatic steps.
+    expect((await instance.syncVault()).status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
+    expect(existsSync(join(vault, "Remote.md"))).toBe(true);
+  });
+
   test("the engine gets an allowlisted environment with the Claude token, and no other secret (lesson 96)", async () => {
     const engine = new FakeEngine();
     const instance = start(engine);

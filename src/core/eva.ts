@@ -238,6 +238,7 @@ export class Eva {
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
+      syncEnabled: () => this.settings.config.sync.enabled,
       assistantBusy: () => this.assistantBusy(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);

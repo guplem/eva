@@ -951,6 +951,18 @@ describe("web routes", () => {
     expect((await finish({})).status).toBe(400);
   });
 
+  test("the Claude login says what is missing, and checks the pasted code", async () => {
+    const started = await call("/api/engines/claude-code/login", { method: "POST", body: {} });
+    expect(started.status).toBe(409);
+    expect(await json<{ code: string; error: string }>(started)).toMatchObject({ code: "claude_login_failed" });
+    const finish = (body: unknown): Promise<Response> =>
+      call("/api/engines/claude-code/login/finish", { method: "POST", body });
+    expect((await finish({})).status).toBe(400);
+    const early = await finish({ code: "example-code" });
+    expect(early.status).toBe(409);
+    expect((await json<{ error: string }>(early)).error).toContain("No Claude login waits");
+  });
+
   test("a device login changes the Google client and reaches the Google login", async () => {
     eva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = eva.deviceLogins.request("owner@example.com", "a phone");

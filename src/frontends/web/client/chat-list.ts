@@ -13,7 +13,7 @@ const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const previewLength = 140;
 
 /** Whole local days from `at` to `now`. A clock change makes one day 23 or 25 hours, so the count rounds. */
-function daysBefore(at: Date, now: Date): number {
+export function daysBefore(at: Date, now: Date): number {
   const start = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   return Math.round((start(now) - start(at)) / dayMs);
 }

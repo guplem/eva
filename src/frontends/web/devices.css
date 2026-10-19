@@ -1,0 +1,75 @@
+/*
+ * Remote access, the device list and the new-device notice, after the "Remote access and
+ * devices" section of docs/design/eve/reference.html (`.check`, `.dev`, `.codebig`, `.dlg`, `.sheet`).
+ */
+
+/* The device list: an icon, the name and its detail line, and Remove or "This one". */
+.device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.device-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.device-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.device-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.device-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-detail {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* The current device: the soft accent, with a glowing dot, as the reference's `.st.live`. */
+.pill.live {
+  gap: 6px;
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.pill.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+}
+
+/* The danger pill of the reference: a soft red fill, apart from the quiet Remove buttons. */
+button.device-log-out {
+  background: var(--bad-bg);
+  border-color: var(--bad-bg);
+}

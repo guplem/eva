@@ -1791,7 +1791,13 @@ test("Settings: the device list marks this device, and Remove logs out another o
   await openSettings(page, "Access");
   const list = page.getByRole("list", { name: "Devices" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
-  await expect(list.getByRole("listitem").nth(1)).toContainText("This device");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("This one");
+  await expect(
+    list
+      .getByRole("listitem")
+      .nth(1)
+      .getByRole("button", { name: /Remove/ }),
+  ).toHaveCount(0);
   page.once("dialog", (dialog) => void dialog.accept());
   await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
@@ -1821,23 +1827,24 @@ test("a page whose login ended shows the login view when its socket drops", asyn
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
-test("Settings: removing this device logs this browser out", async ({ page }) => {
+test("Settings: the device list names each device from its browser", async ({ page }) => {
   await page.route("**/api/devices", (route) =>
     route.fulfill({
       json: [
         {
           id: "cccccccccccccccc",
-          label: "owner@example.com, this browser",
+          label:
+            "owner@example.com, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
           createdAt: "2026-10-17T10:00:00.000Z",
-          current: true,
+          current: false,
         },
       ],
     }),
   );
-  await page.route("**/api/devices/cccccccccccccccc", (route) => route.fulfill({ status: 204 }));
   await logIn(page);
   await openSettings(page, "Access");
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  const row = page.getByRole("list", { name: "Devices" }).getByRole("listitem");
+  await expect(row).toContainText("Windows computer");
+  await expect(row).toContainText("Chrome · owner@example.com · allowed");
+  await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
 });

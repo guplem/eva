@@ -227,6 +227,22 @@ export class SessionManager {
     return updated;
   }
 
+  /** Chooses the engine of a chat before its first turn, as the composer's chip does. */
+  setEngine(sessionId: string, engine: EngineName): SessionRecord {
+    const session = this.get(sessionId);
+    // The fork's first turn continues its parent's engine session, which only that engine knows.
+    if (session.parentId !== null) throw new EvaError("session_busy", "A fork keeps the engine of its chat.");
+    if (session.turns.length > 0 || this.isBusy(sessionId)) {
+      throw new EvaError("session_busy", "The engine of a chat is chosen before its first message.");
+    }
+    if (!this.options.engines.some((candidate) => candidate.name === engine)) {
+      throw new EvaError("engine_failed", `The engine ${engine} is not available.`);
+    }
+    const updated = { ...session, engine };
+    this.options.store.save(updated);
+    return updated;
+  }
+
   /**
    * Gives a chat the person's title. A running turn keeps it, because its end reads the record
    * again. A first message names only a chat that still has the default title. A chat renamed to

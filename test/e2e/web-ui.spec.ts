@@ -286,8 +286,11 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
   await page.request.post("/api/schedules", { data: { id, name: "Pushed by someone", at: "07:30", text: "Hi." } });
   const dialog = page.getByRole("dialog", { name: "Setup card" });
   await expect(dialog).toContainText("New schedule: Pushed by someone");
-  page.once("dialog", (question) => void question.accept());
+  // The card asks in the page, not with a browser question.
   await dialog.getByRole("button", { name: "Remove schedule" }).click();
+  await dialog.getByRole("button", { name: "Keep" }).click();
+  await dialog.getByRole("button", { name: "Remove schedule" }).click();
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const listed = (await (await page.request.get("/api/schedules")).json()) as {
     schedules: { schedule: { id: string } }[];
@@ -632,21 +635,38 @@ test("the page brings its own fonts, so it needs no other server", async ({ page
   await expect(page.locator("html")).toHaveCSS("font-family", /^Quicksand/);
 });
 
-test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
-  let polls = 0;
-  // The demo server has no Tailscale, so the browser plays the server's side of the device login.
-  await page.route("**/api/login/device", (route) =>
-    route.fulfill({
+/**
+ * The demo server has no Tailscale, so the browser plays the server's side of the device login.
+ * Returns the number of requests that the page made.
+ */
+async function routeDeviceLogin(
+  page: Page,
+  request: { id: string; code: string; approvers: string[]; state?: "pending" | "denied" | "expired" },
+): Promise<() => number> {
+  let asked = 0;
+  await page.route("**/api/login/device", (route) => {
+    asked += 1;
+    return route.fulfill({
       status: 201,
       json: {
-        id: "request-1",
-        code: "K7QX",
+        id: request.id,
+        code: request.code,
         account: "owner@example.com",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        approvers: ["Telegram", "terminal", "Eva page"],
+        approvers: request.approvers,
       },
-    }),
-  );
+    });
+  });
+  if (request.state !== undefined) {
+    const state = request.state;
+    await page.route(`**/api/login/device/${request.id}`, (route) => route.fulfill({ json: { state } }));
+  }
+  return () => asked;
+}
+
+test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
+  let polls = 0;
+  await routeDeviceLogin(page, { id: "request-1", code: "K7QX", approvers: ["Telegram", "terminal", "Eva page"] });
   await page.route("**/api/login/device/request-1", async (route) => {
     polls += 1;
     if (polls < 2) {
@@ -658,10 +678,63 @@ test("device login: a browser shows its code and how to allow it, then opens", a
     await route.fulfill({ json: { state: "allowed" } });
   });
   await page.goto("/");
-  await expect(page.getByText("Confirm this device")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Confirm this device" })).toBeVisible();
+  await expect(page.getByText("K7QX", { exact: true })).toBeVisible();
   await expect(page.getByText("eva devices allow K7QX")).toBeVisible();
   await expect(page.getByText("Or tap Allow in your Telegram chat")).toBeVisible();
   await expect(page.getByText("Or tap Allow on an Eva page")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Waiting. This page opens by itself.");
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+});
+
+test("device login: the page lists only the ways that can allow the code", async ({ page }) => {
+  await routeDeviceLogin(page, { id: "request-3", code: "T4NB", approvers: ["terminal"], state: "pending" });
+  await page.goto("/");
+  await expect(page.getByText("eva devices allow T4NB")).toBeVisible();
+  await expect(page.getByText(/Telegram/)).toHaveCount(0);
+  await expect(page.getByText(/another device/)).toHaveCount(0);
+});
+
+test("device login: Copy code puts the code on the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await routeDeviceLogin(page, { id: "request-4", code: "H8RW", approvers: ["Telegram"], state: "pending" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Copy code" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("H8RW");
+});
+
+test("device login: the token form opens from a quiet link, and the code comes back", async ({ page }) => {
+  const asked = await routeDeviceLogin(page, {
+    id: "request-5",
+    code: "W2KD",
+    approvers: ["terminal"],
+    state: "pending",
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Log in with the token instead" }).click();
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+  await page.getByRole("button", { name: "Use the code instead" }).click();
+  await expect(page.getByText("eva devices allow W2KD")).toBeVisible();
+  // The page goes back to the same request, so the code that the person may have typed stays valid.
+  expect(asked()).toBe(1);
+});
+
+test("device login: the page still opens by itself while the token form shows", async ({ page, context, baseURL }) => {
+  let allowed = false;
+  await routeDeviceLogin(page, { id: "request-7", code: "F6GJ", approvers: ["Telegram"] });
+  await page.route("**/api/login/device/request-7", async (route) => {
+    if (!allowed) {
+      await route.fulfill({ json: { state: "pending" } });
+      return;
+    }
+    await context.addCookies([{ name: "eva_token", value: token, url: baseURL ?? "" }]);
+    await route.fulfill({ json: { state: "allowed" } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Log in with the token instead" }).click();
+  await expect(page.getByLabel(/Token/)).toBeVisible();
+  allowed = true;
   await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
 });
 
@@ -674,23 +747,26 @@ test("device login: with no approver, the page says why and asks for the token",
   await expect(page.getByLabel(/Token/)).toBeVisible();
 });
 
-test("device login: a denied request offers to ask again", async ({ page }) => {
-  await page.route("**/api/login/device", (route) =>
-    route.fulfill({
-      status: 201,
-      json: {
-        id: "request-2",
-        code: "M3PT",
-        account: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-        approvers: ["terminal"],
-      },
-    }),
-  );
-  await page.route("**/api/login/device/request-2", (route) => route.fulfill({ json: { state: "denied" } }));
+test("device login: a denied request looks sad, and offers to ask again", async ({ page }) => {
+  await routeDeviceLogin(page, { id: "request-2", code: "M3PT", approvers: ["terminal"], state: "denied" });
   await page.goto("/");
   await expect(page.getByRole("status")).toHaveText("The request was denied.");
+  await expect(page.locator(".mk")).toHaveClass(/e-sad/);
   await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
+});
+
+test("device login: an expired request looks skeptical, and Ask again asks for a new code", async ({ page }) => {
+  const asked = await routeDeviceLogin(page, {
+    id: "request-6",
+    code: "P9LC",
+    approvers: ["terminal"],
+    state: "expired",
+  });
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("The request expired. Ask again, or log in with the token.");
+  await expect(page.locator(".mk")).toHaveClass(/e-skeptic/);
+  await page.getByRole("button", { name: "Ask again" }).click();
+  await expect.poll(asked).toBe(2);
 });
 
 test("Settings: the progress list shows each step, and keeps the last Test result", async ({ page }) => {
@@ -737,19 +813,33 @@ test("Schedules page: open it from the sidebar, add a schedule, see its next run
   await expect(page.getByRole("button", { name: "Assistant" })).toHaveAttribute("aria-pressed", "true");
   // No sidebar shows here, so the list button would do nothing.
   await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
-  await page.getByLabel(/^Id/).fill(id);
-  await page.getByLabel("Name").fill(`Walk ${id}`);
-  await page.getByLabel("Time (HH:MM)").fill("7:30");
-  await page.getByLabel("Fixed text").fill("Go for a walk.");
+  // The form opens in a dialog, so it does not fill the page.
+  await expect(page.getByLabel("Time (HH:MM)")).toHaveCount(0);
   await page.getByRole("button", { name: "Add schedule" }).click();
-  await expect(page.getByRole("status").last()).toContainText("no valid time");
-  await page.getByLabel("Time (HH:MM)").fill("07:30");
-  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Walk ${id}`);
+  await form.getByLabel("Time (HH:MM)").fill("7:30");
+  await form.getByRole("button", { name: "Fri" }).click();
+  await form.getByLabel("Fixed text").fill("Go for a walk.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form.getByRole("status")).toContainText("no valid time");
+  await form.getByLabel("Time (HH:MM)").fill("07:30");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
   // No front end shows cards in the demo, so the new schedule's card waits in a dialog.
-  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
-  const row = page.locator(".check-row", { hasText: `Walk ${id}` });
-  await expect(row).toContainText("next:");
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Fridays at 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  await expect(page.getByRole("region", { name: "Today" })).toBeVisible();
+  const row = page.getByRole("listitem", { name: `Walk ${id}` });
+  await expect(row).toContainText("Fridays at 07:30 · next");
+  await expect(row).toContainText("Not run yet");
+  // Remove asks in the page first.
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await row.getByRole("button", { name: "Keep" }).click();
+  await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
+  await row.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(row).toHaveCount(0);
   await page.getByRole("button", { name: "Assistant" }).click();
   await openList(page);

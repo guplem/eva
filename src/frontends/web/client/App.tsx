@@ -24,6 +24,7 @@ import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
+import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { Visor } from "./Visor.tsx";
@@ -291,10 +292,11 @@ function EvaApp({
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
+      // The card itself asks "Remove?" before it calls this.
       if (answer === "confirm") await api.confirmScheduleCard(card);
-      else if (window.confirm(`Remove the schedule ${card.name}?`)) await api.removeSchedule(card.scheduleId);
-      else return;
+      else await api.removeSchedule(card.scheduleId);
       setCards((current) => current.filter((entry) => entry.scheduleId !== card.scheduleId));
+      window.dispatchEvent(new Event(schedulesChangedEvent));
     } catch (caught) {
       showError(caught);
     }

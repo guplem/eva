@@ -30,7 +30,7 @@ A change to one of these goals needs the owner.
 ## Rules
 
 - **Never write personal data** in a file, commit, issue or PR: no names of private people, employers, machine addresses, tokens or home paths. Use the neutral demo vault and `example-app` style names.
-- **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`), with an environment from `buildChildEnvironment` and a timeout.
+- **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`; `TerminalProcessStarter` for a program that needs a terminal), with an environment from `buildChildEnvironment` and a timeout.
   Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
@@ -74,7 +74,7 @@ A commit that changes `src/` with no test change says why in its message.
 ## Git and GitHub
 
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
-- Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. When the branch is behind `main`, run `gh pr update-branch`.
+- Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. Run `gh pr update-branch` once, before you turn on auto-merge. Do not update the branch again when other PRs merge.
 - Never push to a person's vault.
 - One owner per branch. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.

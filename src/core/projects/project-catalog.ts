@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { listClones } from "./clones.ts";
 import { parseProjectId, type ParsedProjectId } from "./project-id.ts";
 
 export type ProjectStatus = "idea" | "active" | "paused" | "closed";
@@ -30,6 +31,10 @@ export interface Project {
   readonly parsedId: ParsedProjectId;
   readonly frontMatter: ProjectFrontMatter;
   readonly title: string;
+  /** The first paragraph after the title, in one line. */
+  readonly description: string | null;
+  /** The clone folders in `repos/`. */
+  readonly cloneCount: number;
   readonly warnings: readonly string[];
 }
 
@@ -157,7 +162,16 @@ function readProject(path: string, name: string): Project | null {
   if (frontMatter.created !== null && !createdMatchesId(frontMatter.created, name)) {
     allWarnings.push(`created ${frontMatter.created} does not match the folder name`);
   }
-  return { id: name, path, parsedId, frontMatter, title: readTitle(text) ?? parsedId.slug, warnings: allWarnings };
+  return {
+    id: name,
+    path,
+    parsedId,
+    frontMatter,
+    title: readTitle(text) ?? parsedId.slug,
+    description: readDescription(text),
+    cloneCount: listClones(path).length,
+    warnings: allWarnings,
+  };
 }
 
 /** `2025-03-02T10:15` matches `2025-03-02-1015-...`; `2019-03` matches `2019-03-...`. */
@@ -168,6 +182,23 @@ function createdMatchesId(created: string, folderName: string): boolean {
 
 function readTitle(text: string): string | null {
   return titleHeading(text.replace(frontMatterPattern, ""))?.title ?? null;
+}
+
+/**
+ * The first paragraph after the title, in one line, or null. Many project files start with a list,
+ * a quote, a table or a fence for the agents, and none of them reads as a description.
+ */
+function readDescription(text: string): string | null {
+  const body = text.replace(frontMatterPattern, "");
+  const heading = titleHeading(body);
+  const rest = heading === null ? body : body.slice(heading.index + heading.length);
+  const lines = rest.split("\n").map((line) => line.trim());
+  const start = lines.findIndex((line) => line.length > 0);
+  if (start === -1) return null;
+  const end = lines.findIndex((line, index) => index > start && line.length === 0);
+  const paragraph = lines.slice(start, end === -1 ? undefined : end);
+  if (/^(#|>|\||<|[*+-]\s|[-*_]{3,}|```|~~~|\d+[.)]\s)/.test(paragraph[0] ?? "")) return null;
+  return paragraph.join(" ");
 }
 
 export interface TitleHeading {

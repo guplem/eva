@@ -1806,6 +1806,7 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
 
 test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {
   const answers: unknown[] = [];
+  const sockets = await routeEvents(page);
   // The demo server has no Tailscale, so the browser plays the server's side of the request.
   await page.route("**/api/devices/requests", (route) =>
     route.fulfill({
@@ -1814,6 +1815,13 @@ test("device login: an open page shows a new device's code, and Allow answers it
   );
   await page.route("**/api/devices/requests/request-3", async (route) => {
     answers.push(route.request().postDataJSON());
+    // The server tells every page that the request settled before it answers this page.
+    sockets.at(-1)?.send(JSON.stringify({ kind: "device_login_settled", id: "request-3", answer: "allow" }));
+    // Give the page time to handle the event: the notice must stay, with its buttons off.
+    await page.waitForTimeout(300);
+    await expect(
+      page.getByRole("dialog", { name: "New device" }).getByRole("button", { name: "Allow" }),
+    ).toBeDisabled();
     await route.fulfill({ status: 204 });
   });
   await logIn(page);
@@ -1821,6 +1829,8 @@ test("device login: an open page shows a new device's code, and Allow answers it
   await expect(dialog).toContainText("A new device wants to get in. Allow it?");
   await expect(dialog).toContainText("R4WZ");
   await dialog.getByRole("button", { name: "Allow" }).click();
+  // EVE shows her delighted face a moment, then the notice closes.
+  await expect(dialog).toContainText("Allowed. The new device opens Eva now.");
   await expect(dialog).toHaveCount(0);
   expect(answers).toEqual([{ answer: "allow" }]);
 });
@@ -1851,7 +1861,13 @@ test("Settings: the device list marks this device, and Remove logs out another o
   await openSettings(page, "Access");
   const list = page.getByRole("list", { name: "Devices" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
-  await expect(list.getByRole("listitem").nth(1)).toContainText("This device");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("This one");
+  await expect(
+    list
+      .getByRole("listitem")
+      .nth(1)
+      .getByRole("button", { name: /Remove/ }),
+  ).toHaveCount(0);
   page.once("dialog", (dialog) => void dialog.accept());
   await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
@@ -1881,25 +1897,70 @@ test("a page whose login ended shows the login view when its socket drops", asyn
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
-test("Settings: removing this device logs this browser out", async ({ page }) => {
+test("Settings: the device list names each device from its browser", async ({ page }) => {
   await page.route("**/api/devices", (route) =>
     route.fulfill({
       json: [
         {
           id: "cccccccccccccccc",
-          label: "owner@example.com, this browser",
+          label:
+            "owner@example.com, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
           createdAt: "2026-10-17T10:00:00.000Z",
-          current: true,
+          current: false,
         },
       ],
     }),
   );
-  await page.route("**/api/devices/cccccccccccccccc", (route) => route.fulfill({ status: 204 }));
   await logIn(page);
   await openSettings(page, "Access");
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  const row = page.getByRole("list", { name: "Devices" }).getByRole("listitem");
+  await expect(row).toContainText("Windows computer");
+  await expect(row).toContainText("Chrome · owner@example.com · allowed");
+  await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
+});
+
+test("device login: a failed Allow never says Allowed, and shows why", async ({ page }) => {
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-5", code: "W2PX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-5", (route) =>
+    route.fulfill({ status: 404, json: { error: "That request expired." } }),
+  );
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(page.getByRole("alert")).toContainText("That request expired.");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Allowed. The new device opens Eva now.")).toHaveCount(0);
+});
+
+test("device login: Deny answers the new device, and the notice closes at once", async ({ page }) => {
+  const answers: unknown[] = [];
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-4", code: "T7KM", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-4", async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await expect(dialog).toContainText("T7KM");
+  if (test.info().project.name === "phone") {
+    // A phone shows the notice as a bottom sheet, with buttons a finger can hit.
+    const box = await dialog.boundingBox();
+    const viewport = page.viewportSize();
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeCloseTo(viewport?.height ?? 0, 0);
+    const deny = await dialog.getByRole("button", { name: "Deny" }).boundingBox();
+    expect(deny?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  await dialog.getByRole("button", { name: "Deny" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(answers).toEqual([{ answer: "deny" }]);
 });
 
 test("Settings: Claude Code logs in from the page, with a pasted code", async ({ page }) => {

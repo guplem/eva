@@ -1,0 +1,282 @@
+/*
+ * Remote access, the device list and the new-device notice, after the "Remote access and
+ * devices" section of docs/design/eve/reference.html (`.check`, `.dev`, `.codebig`, `.dlg`, `.sheet`).
+ */
+
+/* The device list: an icon, the name and its detail line, and Remove or "This one". */
+.device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.device-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.device-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.device-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.device-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-detail {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* The current device: the soft accent, with a glowing dot, as the reference's `.st.live`. */
+.pill.live {
+  gap: 6px;
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.pill.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+}
+
+/* The danger pill of the reference: a soft red fill, apart from the quiet Remove buttons. */
+button.device-log-out {
+  background: var(--bad-bg);
+  border-color: var(--bad-bg);
+}
+
+/* A round icon at the left of a card title, such as the globe of remote access. */
+.card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.card-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* A step row: a round mark, a title with one line under it, and an optional button. */
+.access-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.access-step .status-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.access-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.access-step-text small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.access-address {
+  font-family: var(--mono);
+}
+
+.access-step button,
+.access-share button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.access-step button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* An optional step: the grey mark of the guide, with the icon of the thing to set up. */
+.access-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.access-mark .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.access-share {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  /* Copy goes under the address, so a long address gets the whole width. */
+  .access-step {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .access-step button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* The new-device notice: a dialog on a computer, a bottom sheet on a phone. */
+.device-backdrop {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.device-sheet {
+  width: 100%;
+  max-width: 460px;
+  background: var(--panel);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--dialog-shadow);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.device-sheet h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+/* The same type as the login code, so the person compares the two screens at a glance. */
+.device-code {
+  font: 500 32px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-align: center;
+  background: var(--chip);
+  border-radius: 18px;
+  padding: 16px 10px;
+  color: var(--ink);
+}
+
+.device-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.device-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.device-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
+  font-weight: 600;
+}
+
+.device-actions button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Allow is the main action, so it takes the width that Deny leaves. */
+.device-actions button.primary {
+  flex: 1;
+  box-shadow: var(--button-glow);
+}
+
+.device-actions button.danger {
+  background: var(--bad-bg);
+}
+
+@media (max-width: 760px) {
+  .device-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .device-sheet {
+    max-width: none;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: 10px 20px max(24px, env(safe-area-inset-bottom));
+    box-shadow: var(--sheet-shadow);
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+
+  /* The handle of a bottom sheet. */
+  .device-sheet::before {
+    content: "";
+    flex: none;
+    width: 40px;
+    height: 5px;
+    border-radius: 9px;
+    background: var(--line);
+  }
+
+  .device-sheet h2 {
+    font-size: 18px;
+  }
+
+  .device-actions {
+    justify-content: center;
+  }
+
+  .device-actions button.primary {
+    flex: none;
+  }
+}

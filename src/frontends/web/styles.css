@@ -113,6 +113,7 @@
   --scrim: oklch(0.25 0.03 var(--h) / 0.32);
   --main-gradient: radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%);
   --button-glow: 0 6px 18px -6px var(--glow);
+  --dialog-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
   --send-fill: radial-gradient(circle at 38% 30%, oklch(0.9 calc(var(--c) * 0.6) var(--h)), var(--accent) 70%);
   --send-glow: 0 0 16px -2px var(--glow);
   --visor-fill: radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%);
@@ -1331,28 +1332,6 @@ textarea {
   box-sizing: border-box;
   font-family: var(--mono);
   font-size: 13px;
-}
-
-.device-list {
-  list-style: none;
-  margin: 8px 0;
-  padding: 0;
-}
-
-.device-list li {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-top: 1px solid var(--line);
-}
-
-.device-list li > span {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 /* ==========================================================================

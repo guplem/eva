@@ -1481,7 +1481,8 @@ button.link-button {
   color: var(--ok);
 }
 
-.pill.missing {
+.pill.missing,
+.pill.failed {
   background: var(--bad-bg);
   color: var(--bad);
 }
@@ -1519,7 +1520,8 @@ button.link-button {
   color: var(--panel);
 }
 
-.status-icon.missing {
+.status-icon.missing,
+.status-icon.failed {
   background: var(--bad);
   color: var(--panel);
 }
@@ -1915,31 +1917,6 @@ button.link-button {
   margin: 0 0 var(--space-1);
 }
 
-.hero p {
-  margin: 0 0 var(--space-3);
-  color: var(--muted);
-}
-
-.progress-bar {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.progress-segment {
-  flex: 1;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--line);
-}
-
-.progress-segment.done {
-  background: var(--ok);
-}
-
-.progress-segment.missing {
-  background: var(--bad);
-}
-
 .section-grid,
 .search-results {
   display: grid;
@@ -2010,21 +1987,6 @@ button.link-button {
 /* ==========================================================================
    Settings: the setup list and a step's page
    ========================================================================== */
-.progress-summary {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.progress-text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--text-lg);
-}
-
 .setup-step-list {
   list-style: none;
   margin: 0;
@@ -2051,7 +2013,8 @@ button.link-button {
   border-left-color: var(--ok);
 }
 
-.step-link.missing {
+.step-link.missing,
+.step-link.failed {
   border-left-color: var(--bad);
   background: var(--bad-bg);
 }
@@ -2074,6 +2037,99 @@ button.link-button {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* The first step to do shows the main action, as in the EVE capture. The whole row is the button. */
+.step-action {
+  flex: none;
+  align-self: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The accent, as in the EVE capture: the ring shows progress, not one state. */
+.setup-ring-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.setup-ring {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) var(--ring-fill, 0%), var(--chip) 0);
+}
+
+.setup-ring b {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--panel);
+  font-size: var(--text-sm);
+}
+
+.setup-ring-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-lg);
+}
+
+.setup-ring-text .field-hint {
+  font-size: var(--text-sm);
+}
+
+.choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.choice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--chip);
+  border-color: transparent;
+}
+
+.choice-chip .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.choice-chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.restart-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restart-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.restart-question {
+  flex-wrap: wrap;
+  border: 2px solid var(--warn);
 }
 
 .stepper {
@@ -2111,7 +2167,8 @@ button.link-button {
   background: var(--ok);
 }
 
-.stepper-dot.missing {
+.stepper-dot.missing,
+.stepper-dot.failed {
   border-color: var(--bad);
   color: var(--bad);
 }
@@ -2130,7 +2187,8 @@ button.link-button {
   border-top-color: var(--ok);
 }
 
-.step-header.missing {
+.step-header.missing,
+.step-header.failed {
   border-top-color: var(--bad);
 }
 

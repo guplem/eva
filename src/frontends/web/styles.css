@@ -1175,7 +1175,7 @@ textarea {
   border: none;
   background: none;
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.8;
   padding: 4px;
   display: grid;
 }
@@ -1224,6 +1224,9 @@ textarea {
 .diff div {
   padding: 0 12px;
   white-space: pre;
+  /* A long line scrolls sideways: its highlight must reach its end. */
+  width: max-content;
+  min-width: 100%;
 }
 
 .diff .a {

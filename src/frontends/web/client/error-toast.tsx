@@ -18,7 +18,6 @@ const fixedInSettings: ReadonlySet<EvaErrorCode> = new Set([
   "google_failed",
   "tailscale_install_failed",
   "update_failed",
-  "vault_ahead",
 ]);
 
 /** A failed login shows a key, as the guide does for an expired login. */

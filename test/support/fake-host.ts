@@ -43,6 +43,7 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
     runner: scriptedRunner(commands),
     write: (text) => output.push(text),
     writeError: (text) => errors.push(text),
+    interactive: false,
     withPrompt: (work) => work(() => Promise.resolve(answers.shift() ?? "")),
     sleep: () => Promise.resolve(),
     standalone: false,

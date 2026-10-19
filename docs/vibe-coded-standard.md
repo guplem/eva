@@ -88,7 +88,7 @@ Lefthook installs the hooks with the dependency install. The hooks are harness-a
 - **Squash merge off.** A squash merge loses the commit prefixes that pick the version.
 - **The repository admin can bypass the ruleset for pull requests only.** Direct pushes to the default branch still follow the rules.
 - **A large change starts with a plan** in `docs/plans/<name>.md`, pushed to a draft PR. Delete the plan before the merge: the branch history keeps it.
-- **An agent merges its own PR** with auto-merge. GitHub merges it when the checks pass.
+- **An agent merges its own PR** with auto-merge. First it updates a branch that is behind, so the checks run on the newest code. GitHub merges the PR when the checks pass.
 - **When the PR does not merge, the agent finds the cause and fixes it:** it resolves a conflict or fixes a red check.
 - **An agent never bypasses the ruleset.** A deny or ask rule stops each merge with admin rights, such as `gh pr merge --admin` or a GitHub merge tool.
 

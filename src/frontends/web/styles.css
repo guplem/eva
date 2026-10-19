@@ -2287,3 +2287,11 @@ button.link-button {
   margin: var(--space-2) 0 0;
   font-size: var(--text-md);
 }
+
+/* The vault step: each choice is its own block, apart from the next one. */
+.vault-choice {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}

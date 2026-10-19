@@ -1358,7 +1358,7 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
         level: "major",
         summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
         headline: "Rename the keys.",
-        // Midday UTC is 12 October in every time zone of a test machine.
+        // The browser uses the time zone of the test machine, so the day is the 12th or the 13th.
         publishedAt: "2025-10-12T12:00:00Z",
       },
       {
@@ -1401,7 +1401,7 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   // Focus starts on the picked version.
   await expect(versions.getByRole("radio", { checked: true })).toBeFocused();
   await expect(versions).toContainText("v1.0.0");
-  await expect(versions).toContainText("12 Oct 2025");
+  await expect(versions).toContainText(/1[23] Oct 2025/);
   await expect(versions).toContainText("Rename the keys.");
   await expect(versions).toContainText("Voice notes.");
   await expect(dialog.locator(".version-row.installed")).toContainText("v0.2.0");
@@ -1439,6 +1439,7 @@ test("Settings: the update choices are chips, and the major update policy shows 
   const policy = page.getByRole("group", { name: "Eva installs by herself" });
   await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
   await policy.getByRole("button", { name: "Every release, even major ones" }).click();
+  await expect(page.getByRole("region", { name: "Eva updates" }).getByRole("alert")).toContainText("A major update");
   await expect(policy.getByRole("button", { name: "Every release, even major ones" })).toHaveAttribute(
     "aria-pressed",
     "true",

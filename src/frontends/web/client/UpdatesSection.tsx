@@ -129,7 +129,7 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
         onChange={(install) => void context.saveNow({ updates: { install } })}
       />
       {config.updates.install === "major" && (
-        <div className="callout warning">
+        <div className="callout warning" role="alert">
           A major update can break things that work today. With this choice, Eva installs it by herself.
         </div>
       )}

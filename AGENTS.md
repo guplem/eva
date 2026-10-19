@@ -74,7 +74,7 @@ A commit that changes `src/` with no test change says why in its message.
 ## Git and GitHub
 
 - Branch with `git checkout -b <branch> origin/main && git push -u origin <branch>`.
-- Merge with `gh pr merge --auto --merge`. The ruleset waits for every check. When the branch is behind `main`, run `gh pr update-branch`.
+- Merge with `gh pr merge --auto --merge`. The ruleset waits for every check.
 - Never push to a person's vault.
 - One owner per branch. Agent worktrees live in `.claude/worktrees/`.
 - For each PR: assign yourself, write `Closes #N`, and add the `waiting-for-human-check` label.

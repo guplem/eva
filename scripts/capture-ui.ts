@@ -2,7 +2,7 @@
  * Takes captures of the web page from the demo server, for the before and after images of a PR.
  * Start the demo first, in the checkout to capture: `bun run test/e2e/serve-demo.ts`.
  *
- * Usage: bun run .agents/skills/implement-issue/capture-ui.ts <out-dir> <prefix> [address ...]
+ * Usage: bun run scripts/capture-ui.ts <out-dir> <prefix> [address ...]
  *   An address is a hash, such as `#/settings` or `#/settings/setup/engine`. The default is `#/chats`.
  *   Each address gives three files: <prefix>-<name>-computer-light.png, -computer-dark and -phone-light.
  *   Set EVA_CAPTURE_CHROMIUM to a Chromium program when Playwright has no browser of its own version.
@@ -24,7 +24,7 @@ const views = [
 
 const [outDir, prefix, ...given] = process.argv.slice(2);
 if (outDir === undefined || prefix === undefined) {
-  process.stderr.write("Use: bun run .agents/skills/implement-issue/capture-ui.ts <out-dir> <prefix> [address ...]\n");
+  process.stderr.write("Use: bun run scripts/capture-ui.ts <out-dir> <prefix> [address ...]\n");
   process.exit(1);
 }
 const addresses = given.length > 0 ? given : ["#/chats"];

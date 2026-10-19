@@ -2,8 +2,7 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  // .claude/skills/ is a git-ignored copy of .agents/skills/, so only the original is checked.
-  { ignores: ["node_modules/", "coverage/", ".claude/", "*.config.js", ".dependency-cruiser.cjs"] },
+  { ignores: ["node_modules/", "coverage/", "*.config.js", ".dependency-cruiser.cjs"] },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
@@ -24,7 +23,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["test/**/*.ts", "scripts/**/*.ts", ".agents/**/*.ts"],
+    files: ["test/**/*.ts", "scripts/**/*.ts"],
     rules: {
       "no-console": "off",
       "@typescript-eslint/no-non-null-assertion": "off",

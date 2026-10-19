@@ -80,7 +80,9 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
         )}
         {approvers.includes("Telegram") && <span>Or tap Allow in your Telegram chat, if it shows the same code.</span>}
         {approvers.includes("Eva page") && (
-          <span>Or tap Allow on an Eva page that is open and logged in on another device, if it shows the same code.</span>
+          <span>
+            Or tap Allow on an Eva page that is open and logged in on another device, if it shows the same code.
+          </span>
         )}
         <span className="chip">This page opens by itself when you allow it.</span>
       </div>

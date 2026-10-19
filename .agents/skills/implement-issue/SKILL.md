@@ -23,5 +23,20 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 6. **Review the work.** Start 5 sub-agents (3 mid-tier, 2 top-tier). Each looks for real errors, or for a clear mismatch with the plan, the architecture or the project rules. Fix each finding that is valid.
 7. **Review again.** Start 3 new sub-agents (2 mid-tier, 1 top-tier). Give them the findings that you rejected, with your reasons. They raise a rejected finding again only with new evidence. They also look for new problems. Fix each finding that is valid.
 8. **Prepare the PR.** Delete the plan file: the branch history keeps it. Write what changed, why, and the effects, with links to the related issues. Mark the PR as ready for review.
-9. **Merge the PR.** Turn on auto-merge. When the PR does not merge, find the cause and fix it: update a branch that is behind `main`, resolve a conflict, or fix a red check. Run a check again only when it fails for a cause outside this PR. Never bypass the merge ruleset, for example with an admin merge.
-10. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes.
+9. **Show the change to the page.** Do this step when the PR changes what the web page shows, and a reviewer wants to see it: a new page, a new layout or a redesign. Skip it for a small fix, a text change, or a change that nobody can see. The section [Before and after captures](#before-and-after-captures) gives the steps.
+10. **Merge the PR.** Turn on auto-merge. When the PR does not merge, find the cause and fix it: update a branch that is behind `main`, resolve a conflict, or fix a red check. Run a check again only when it fails for a cause outside this PR. Never bypass the merge ruleset, for example with an admin merge.
+11. **Clean up.** Remove the `auto-developing` label from the issue and the PR when the PR merges or closes.
+
+## Before and after captures
+
+GitHub cannot attach a file to a PR description through its API. So the images go to a branch of their own, and the description links to them.
+
+1. **Take the "before" captures** from `origin/main`. Make a worktree of it in `.claude/worktrees/`, run `bun install` in it, and start `bun run test/e2e/serve-demo.ts` there.
+2. **Run the capture script** from the PR checkout: `bun run scripts/capture-ui.ts <out-dir> before <address> ...`. Give the address of each changed page, such as `#/settings`. The script only talks to the demo on its port, so it captures the demo that runs. Then stop the demo.
+3. **Take the "after" captures** in the same way, with the demo of the PR branch and the prefix `after`. Add the address of each new page.
+4. **Capture only the demo vault.** Never capture a person's vault: the images go to a public repository.
+5. **Push the images** to a new branch, `<pr-branch>-captures`, made from `origin/main`. Put them in `docs/screenshots/pr-<N>/`.
+6. **Open a PR from that branch**, with "(not for merging)" at the end of its title. Close it at once. Never merge it.
+7. **Link each image by its commit:** `https://github.com/<owner>/<repo>/blob/<sha>/docs/screenshots/pr-<N>/<file>.png?raw=true`. A closed PR keeps its commits, so the links keep working.
+8. **Add a "Before and after" section** to the PR description. Use a table with a Before column and an After column. Give a computer image `width="420"` and a phone image `width="200"`. Say which commit each side shows.
+9. **Take the captures again** when a merge of `main` changes the pages a lot.

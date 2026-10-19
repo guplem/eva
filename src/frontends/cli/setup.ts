@@ -450,7 +450,10 @@ async function askVault(
     const problem = `git could not read ${repository}: ${reason}`;
     if (!options.interactive) throw new EvaError("config_invalid", problem);
     options.write(`${problem}\nCheck the address and the token, then try again.`);
-    ({ repository, create } = await askRepository());
+    const next = await askRepository();
+    // The folder stays saved but empty, so the next setup asks about the vault again.
+    if (next.skip === true) return;
+    ({ repository, create } = next);
   }
   if (repository !== "") {
     await cloneVault({ repository, folder, runner: options.runner, environment: gitEnvironment() });
@@ -517,7 +520,8 @@ async function pickRepository(
       continue;
     }
     // A name from the whole list, not only the shown part: `vault` or `you/vault`.
-    const name = answer.toLowerCase();
+    // GitHub's copied clone text ends in .git.
+    const name = answer.toLowerCase().replace(/\.git$/, "");
     const named = repositories.filter(
       (repository) =>
         repository.fullName.toLowerCase() === name || repository.fullName.toLowerCase().split("/")[1] === name,
@@ -532,7 +536,7 @@ async function pickRepository(
     }
     if (isAddress(answer)) return { repository: answer, create: false };
     // A repository that is not in the list, such as one of the oldest.
-    if (/^[\w.-]+\/[\w.-]+$/.test(answer)) return { repository: `https://github.com/${answer}.git`, create: false };
+    if (/^[\w.-]+\/[\w.-]+$/.test(name)) return { repository: `https://github.com/${name}.git`, create: false };
     // Never a bare word to git, which would read it as a folder on this computer.
     options.write(`No repository is named ${answer}. Type a number, a name such as you/vault, or an address.`);
   }
@@ -667,7 +671,7 @@ async function offerVaultPush(
       // A script goes on with the local vault, and says why above.
       if (!options.interactive) return;
       options.write(
-        created.size > 0
+        created.has(answer)
           ? "Type the same name to push again, or type another name, or paste the address of an empty repository."
           : "Type another name. Or create an empty private repository on github.com, and paste its address here.",
       );

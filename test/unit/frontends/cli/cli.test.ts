@@ -926,7 +926,7 @@ describe("runSetup", () => {
       };
       const lines: string[] = [];
       await setup(
-        { githubToken: "a-pasted-token", vaultRepository: ["vualt", "vault", "old/notes"] },
+        { githubToken: "a-pasted-token", vaultRepository: ["vualt", "vault", "old/notes.git"] },
         { runner: recording, lines },
       );
       const text = lines.join("\n");
@@ -941,6 +941,19 @@ describe("runSetup", () => {
       expect(asked).not.toContain("vault");
       expect(asked).not.toContain("createVault");
       expect(loadSettings(homePaths(home)).config.vaultPath).toBeNull();
+    });
+
+    test("Enter at the list after a repository that git cannot read means no vault, with no other question", async () => {
+      const missing = join(home, "no-such-repository");
+      const lines: string[] = [];
+      const asked: SetupQuestion[] = [];
+      await setup(
+        { githubToken: "a-pasted-token", vaultRepository: [missing, ""] },
+        { runner: gitRunner, lines, asked },
+      );
+      expect(lines.join("\n")).toContain(`git could not read ${missing}`);
+      expect(asked).not.toContain("createVault");
+      expect(existsSync(join(home, "vault", "AGENTS.md"))).toBe(false);
     });
 
     test("a token that cannot list the repositories gets the address question instead", async () => {

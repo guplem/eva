@@ -32,7 +32,7 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 GitHub cannot attach a file to a PR description through its API. So the images go to a branch of their own, and the description links to them.
 
 1. **Take the "before" captures** from `origin/main`. Make a worktree of it in `.claude/worktrees/`, run `bun install` in it, and start `bun run test/e2e/serve-demo.ts` there.
-2. **Run the capture script** from the PR checkout: `bun run scripts/capture-ui.ts <out-dir> before <address> ...`. Give the address of each changed page, such as `#/settings`. The script only talks to the demo on its port, so it captures the demo that runs. Then stop the demo.
+2. **Run the capture script** that sits beside this file, from the PR checkout: `bun run .agents/skills/implement-issue/capture-ui.ts <out-dir> before <address> ...`. Give the address of each changed page, such as `#/settings`. The script only talks to the demo on its port, so it captures the demo that runs. Then stop the demo.
 3. **Take the "after" captures** in the same way, with the demo of the PR branch and the prefix `after`. Add the address of each new page.
 4. **Capture only the demo vault.** Never capture a person's vault: the images go to a public repository.
 5. **Push the images** to a new branch, `<pr-branch>-captures`, made from `origin/main`. Put them in `docs/screenshots/pr-<N>/`.

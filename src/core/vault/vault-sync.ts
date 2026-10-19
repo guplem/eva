@@ -38,11 +38,14 @@ export type ConflictChoice = "mine" | "theirs" | "both";
  */
 export type ConflictKind = "committed" | "uncommitted";
 
-export interface VaultConflict {
+export interface ConflictSummary {
   readonly path: string;
   readonly kind: ConflictKind;
   /** A committed conflict waits until every note has a pick. */
   readonly picked: ConflictChoice | null;
+}
+
+export interface VaultConflict extends ConflictSummary {
   /** The text of each version, so the person can compare them. Null: that side deleted the note, or it is not short text. */
   readonly mine: string | null;
   readonly theirs: string | null;
@@ -53,7 +56,10 @@ export interface VaultConflictReport {
   readonly conflicts: readonly VaultConflict[];
 }
 
-export interface ConflictResolution extends VaultConflictReport {
+/** The answer to a pick has no texts: each text costs git processes, and a tap must answer fast. */
+export interface ConflictResolution {
+  readonly state: VaultSyncState;
+  readonly conflicts: readonly ConflictSummary[];
   /** False when the note had no conflict: nothing changed. */
   readonly found: boolean;
 }
@@ -110,6 +116,8 @@ interface ConflictedPath {
   readonly mine: Version | null;
   readonly theirs: Version | null;
 }
+
+type ListedConflict = ConflictSummary & ConflictedPath;
 
 /** The result of merging the remote into HEAD: the merged tree, and the paths that conflict. */
 interface MergePlan {
@@ -170,7 +178,10 @@ export class VaultSync {
   /** The notes that conflict now, from git itself, so the list survives a restart. */
   conflicts(): Promise<VaultConflictReport> {
     return this.serialize(async () => {
-      const conflicts = await this.listConflicts();
+      const conflicts: VaultConflict[] = [];
+      for (const { mine, theirs, ...summary } of await this.listConflicts()) {
+        conflicts.push({ ...summary, mine: await this.versionText(mine), theirs: await this.versionText(theirs) });
+      }
       return { state: this.state, conflicts };
     });
   }
@@ -183,7 +194,11 @@ export class VaultSync {
   resolve(path: string, choice: ConflictChoice): Promise<ConflictResolution> {
     return this.serialize(async () => {
       const found = await this.applyPick(path, choice);
-      const conflicts = await this.listConflicts();
+      const conflicts = (await this.listConflicts()).map(({ path: notePath, kind, picked }) => ({
+        path: notePath,
+        kind,
+        picked,
+      }));
       return { state: this.state, conflicts, found };
     });
   }
@@ -199,41 +214,33 @@ export class VaultSync {
     return this.state;
   }
 
-  private async listConflicts(): Promise<VaultConflict[]> {
+  /** Each conflicted note with the git objects of its two versions. */
+  private async listConflicts(): Promise<ListedConflict[]> {
     const branch = await this.checkedDefaultBranch();
     if (branch === null) return [];
     const unmerged = unmergedPaths(await this.statusEntries());
     if (unmerged.length > 0) {
       const stages = await this.unmergedStages();
-      const conflicts: VaultConflict[] = [];
       // Stage 3 is this machine's edit, from the stash; stage 2 is the remote's version (see resolveUncommitted).
-      for (const path of unmerged) {
-        const sides = stages.get(path);
-        conflicts.push({
-          path,
-          kind: "uncommitted",
-          picked: null,
-          mine: await this.versionText(sides?.get("3") ?? null),
-          theirs: await this.versionText(sides?.get("2") ?? null),
-        });
-      }
-      return conflicts;
+      return unmerged.map((path) => ({
+        path,
+        kind: "uncommitted",
+        picked: null,
+        mine: stages.get(path)?.get("3") ?? null,
+        theirs: stages.get(path)?.get("2") ?? null,
+      }));
     }
     // A read reports a merge-tree failure only while a conflict is open: a clean vault raises no alert.
     const plan = await this.mergePlan(branch, this.state.status === "conflict");
     if (plan === null) return [];
     this.dropStalePicks(plan);
-    const conflicts: VaultConflict[] = [];
-    for (const { path, mine, theirs } of plan.paths) {
-      conflicts.push({
-        path,
-        kind: "committed",
-        picked: this.picks.get(path)?.choice ?? null,
-        mine: await this.versionText(mine),
-        theirs: await this.versionText(theirs),
-      });
-    }
-    return conflicts;
+    return plan.paths.map(({ path, mine, theirs }) => ({
+      path,
+      kind: "committed",
+      picked: this.picks.get(path)?.choice ?? null,
+      mine,
+      theirs,
+    }));
   }
 
   /** The versions of each unmerged path, by stage. Empty when git fails: the list then shows no text. */

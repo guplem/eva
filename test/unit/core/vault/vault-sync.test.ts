@@ -397,8 +397,8 @@ describe("VaultSync conflicts", () => {
     const first = await sync.resolve("a.md", "theirs");
     expect(first.state.status).toBe("conflict");
     expect(first.conflicts).toEqual([
-      { path: "a.md", kind: "committed", picked: "theirs", mine: "a mine\n", theirs: "a theirs\n" },
-      { path: "b.md", kind: "committed", picked: null, mine: "b mine\n", theirs: "b theirs\n" },
+      { path: "a.md", kind: "committed", picked: "theirs" },
+      { path: "b.md", kind: "committed", picked: null },
     ]);
     expect(sandbox.git(sandbox.remote, "show", "main:b.md")).toBe("b theirs");
     // A sweep commit between two picks keeps the first pick.
@@ -576,16 +576,13 @@ describe("VaultSync conflict edge cases", () => {
     await sync.save();
     const result = await sync.resolve("b.md", "mine");
     expect(result.state.status).toBe("conflict");
+    // A pick answers with no texts: a phone that taps through many notes must not wait for them.
     expect(result.conflicts).toEqual([
-      {
-        path: "a.md",
-        kind: "committed",
-        picked: null,
-        mine: "a mine\n",
-        theirs: "a theirs, with an important change\n",
-      },
-      { path: "b.md", kind: "committed", picked: "mine", mine: "b mine\n", theirs: "b theirs\n" },
+      { path: "a.md", kind: "committed", picked: null },
+      { path: "b.md", kind: "committed", picked: "mine" },
     ]);
+    // The list shows the remote's new version, so the person reads it before picking again.
+    expect((await sync.conflicts()).conflicts[0]).toMatchObject({ theirs: "a theirs, with an important change\n" });
   });
 });
 

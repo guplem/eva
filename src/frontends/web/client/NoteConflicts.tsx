@@ -2,7 +2,7 @@
  * The notes in a vault sync conflict, each as a card with both versions side by side and the
  * three picks. Settings and the conflict dialog show the same list.
  */
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type ConflictChoice, type VaultConflict, type VaultSyncState } from "./api.ts";
 import { compareVersions, type DiffRow } from "./line-diff.ts";
 import { Visor } from "./Visor.tsx";
@@ -51,8 +51,16 @@ export function NoteConflicts({
     try {
       const result = await api.resolveVaultConflict(path, choice);
       if (result.found) {
-        setConflicts(result.conflicts);
+        // A pick answers with no texts, so the cards keep theirs until the list loads again.
+        setConflicts((current) =>
+          result.conflicts.map((summary) => {
+            const shown = current?.find((conflict) => conflict.path === summary.path);
+            return { ...summary, mine: shown?.mine ?? null, theirs: shown?.theirs ?? null };
+          }),
+        );
         onState(result.state);
+        // A note can change on the remote between two picks: the person must see its new text.
+        if (result.conflicts.length > 0) load();
       } else {
         // A refused pick (an Assistant turn runs) keeps the list, so the person can pick again.
         setNote(result.state.lastError ?? "That note has no conflict anymore.");
@@ -92,7 +100,10 @@ function NoteConflictCard({
   readonly busy: boolean;
   readonly onPick: (choice: ConflictChoice) => void;
 }): ReactElement {
-  const comparison = compareVersions(conflict.mine, conflict.theirs);
+  // An older Eva sends no texts. The diff is slow on long notes, and the page renders often while a chat streams.
+  const mine = conflict.mine ?? null;
+  const theirs = conflict.theirs ?? null;
+  const comparison = useMemo(() => compareVersions(mine, theirs), [mine, theirs]);
   const name = conflict.path.split("/").at(-1) ?? conflict.path;
   return (
     <section className="conflict-card" aria-label={`Conflict: ${conflict.path}`}>
@@ -106,8 +117,8 @@ function NoteConflictCard({
         </div>
       </div>
       <div className="conflict-versions">
-        <Version title="This machine" text={conflict.mine} rows={comparison.mine} />
-        <Version title="The remote" text={conflict.theirs} rows={comparison.theirs} />
+        <Version title="This machine" text={mine} rows={comparison.mine} />
+        <Version title="The remote" text={theirs} rows={comparison.theirs} />
       </div>
       {conflict.picked !== null && <div className="hint">Picked: {pickLabels[conflict.picked].toLowerCase()}.</div>}
       <div className="conflict-picks" role="group" aria-label={conflict.path}>
@@ -127,7 +138,8 @@ function NoteConflictCard({
         {conflict.kind === "uncommitted"
           ? "Keep theirs leaves this machine's edit in git's stash. "
           : "Git keeps both versions either way. "}
-        Keep both keeps mine and puts theirs in a copy beside the note.
+        Keep both keeps mine and puts theirs in a copy beside the note. When one side deleted the note, Keep both keeps
+        the other side and makes no copy.
       </div>
     </section>
   );

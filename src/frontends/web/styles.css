@@ -262,6 +262,14 @@ textarea {
   gap: 8px;
 }
 
+/* The size of the EVE design. The colour comes from the text, through currentColor. */
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  vertical-align: middle;
+}
+
 .icon-button {
   border: 1px solid transparent;
   background: transparent;

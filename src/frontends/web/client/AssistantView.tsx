@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ListedSession, type SessionRecord } from "./api.ts";
+import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
@@ -22,8 +23,7 @@ interface AssistantViewProps {
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
-  /** The sessions whose approvals wait for the person. */
-  readonly approvalSessionIds: readonly string[];
+  readonly approvals: ChatApprovals;
 }
 
 export function AssistantView({
@@ -35,8 +35,9 @@ export function AssistantView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
-  approvalSessionIds,
+  approvals,
 }: AssistantViewProps): ReactElement {
+  const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The model comes first in a new chat, and the chat keeps it (lesson 41).
@@ -59,6 +60,10 @@ export function AssistantView({
     ),
   };
   const listRef = useRef<HTMLDivElement>(null);
+  useShownChat(
+    approvals.onShowChat,
+    tree.map((session) => session.id),
+  );
   const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
 
   useEffect(() => {
@@ -155,7 +160,7 @@ export function AssistantView({
               <ChatInfoButton {...chat} />
               <DeleteChatButton chat={selected} onChanged={onChanged} />
             </div>
-            <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} />
+            <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} approvals={approvals} />
           </>
         )}
       </main>

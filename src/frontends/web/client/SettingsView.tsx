@@ -18,6 +18,7 @@ import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts
 import { DevicesPanel } from "./DevicesPanel.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
+import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { SetupProgress } from "./SetupProgress.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
@@ -601,6 +602,8 @@ export function SettingsView({
         </fieldset>
         <fieldset>
           <legend>Appearance</legend>
+          <div className="hint">Pick a colour. Eva builds the whole palette from it.</div>
+          <SeedColourPicker seed={appearance.seed} onPick={(seed) => changeAppearance({ seed })} />
           <label>
             Theme
             <select
@@ -622,7 +625,7 @@ export function SettingsView({
               <option value="compact">Compact</option>
             </select>
           </label>
-          <div className="hint">This browser keeps its own theme and density.</div>
+          <div className="hint">This browser keeps its own colour, theme and density.</div>
         </fieldset>
         <fieldset>
           <legend>Projects</legend>

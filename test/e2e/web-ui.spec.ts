@@ -573,6 +573,52 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
+test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
+  await logIn(page);
+  const accent = (): Promise<string> =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent"));
+  const before = await accent();
+  await page.getByRole("button", { name: "Settings" }).click();
+  const colours = page.getByRole("group", { name: "Colour" });
+  await expect(colours.getByRole("button")).toHaveCount(15);
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "true");
+  await colours.getByRole("button", { name: "Violet" }).click();
+  await expect(colours.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
+  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "false");
+  expect(await accent()).not.toBe(before);
+  await page.getByLabel("Any colour").fill("#123abc");
+  await expect(page.getByText("#123ABC")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Mode" })).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");
+});
+
+test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
+  await page.route("**/*", (route) =>
+    route
+      .request()
+      .url()
+      .startsWith(baseURL ?? "")
+      ? route.continue()
+      : route.abort(),
+  );
+  await page.goto("/");
+  // `document.fonts.check` is also true when no face matches, so the test reads each face's status.
+  const loaded = await page.evaluate(async () => {
+    await Promise.all(
+      ["500 14px Quicksand", "400 14px 'IBM Plex Mono'", "500 14px 'IBM Plex Mono'"].map((font) =>
+        document.fonts.load(font),
+      ),
+    );
+    return [...document.fonts]
+      .filter((face) => face.status === "loaded")
+      .map((face) => `${face.family.replaceAll('"', "")} ${face.weight}`);
+  });
+  expect(loaded).toEqual(expect.arrayContaining(["Quicksand 300 700", "IBM Plex Mono 400", "IBM Plex Mono 500"]));
+  await expect(page.locator("html")).toHaveCSS("font-family", /^Quicksand/);
+});
+
 test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
   let polls = 0;
   // The demo server has no Tailscale, so the browser plays the server's side of the device login.

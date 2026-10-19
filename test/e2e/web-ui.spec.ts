@@ -573,6 +573,31 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
+test("the page brings its own fonts, so it needs no other server", async ({ page, baseURL }) => {
+  await page.route("**/*", (route) =>
+    route
+      .request()
+      .url()
+      .startsWith(baseURL ?? "")
+      ? route.continue()
+      : route.abort(),
+  );
+  await page.goto("/");
+  // `document.fonts.check` is also true when no face matches, so the test reads each face's status.
+  const loaded = await page.evaluate(async () => {
+    await Promise.all(
+      ["500 14px Quicksand", "400 14px 'IBM Plex Mono'", "500 14px 'IBM Plex Mono'"].map((font) =>
+        document.fonts.load(font),
+      ),
+    );
+    return [...document.fonts]
+      .filter((face) => face.status === "loaded")
+      .map((face) => `${face.family.replaceAll('"', "")} ${face.weight}`);
+  });
+  expect(loaded).toEqual(expect.arrayContaining(["Quicksand 300 700", "IBM Plex Mono 400", "IBM Plex Mono 500"]));
+  await expect(page.locator("html")).toHaveCSS("font-family", /^Quicksand/);
+});
+
 test("device login: a browser shows its code and how to allow it, then opens", async ({ page, context, baseURL }) => {
   let polls = 0;
   // The demo server has no Tailscale, so the browser plays the server's side of the device login.

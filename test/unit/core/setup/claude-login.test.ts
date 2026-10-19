@@ -296,7 +296,7 @@ describe("ClaudeLogin with output in pieces", () => {
         onStart: showAddress,
         // The terminal echoes what Eva types.
         onWrite: (terminal, text) => {
-          terminal.print(text.replace("\r", "\r\n"));
+          terminal.print(text.replaceAll("\r", "\r\n"));
         },
       },
       { waitMs: 30 },

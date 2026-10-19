@@ -82,25 +82,32 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
     throw new EvaError("git_failed", `git could not add ${inputs.repository} as the remote: ${remote.stderr.trim()}`);
   }
   await keepCredentialHelper(inputs.folder, inputs.runner, environment);
-  const push = await run([...githubCredentialArguments, "push", "-q", "-u", "origin", "main"], cloneTimeoutMs);
+  // HEAD, not main: a vault that the person made by hand can be on another branch, such as master.
+  const push = await run([...githubCredentialArguments, "push", "-q", "-u", "origin", "HEAD"], cloneTimeoutMs);
   if (push.exitCode !== 0) {
     throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
   }
 }
 
 /**
- * True for a git vault that has no remote branch yet: a new vault whose push never ran or failed.
- * A rerun of setup then offers the push again. A folder that is not a git repository needs none.
+ * True for a git vault with a commit and no remote: a new vault that had no GitHub login yet.
+ * A rerun of setup then offers the push. A vault with a remote needs none: sync pushes to it,
+ * and Eva never replaces a remote that the person chose.
  */
 export async function vaultNeedsPush(inputs: Omit<VaultCloneInputs, "repository">): Promise<boolean> {
   // The folder itself must be the repository, not a folder inside another one.
   if (!existsSync(join(inputs.folder, ".git"))) return false;
-  const result = await inputs.runner.run(["git", "for-each-ref", "--count=1", "refs/remotes"], {
-    cwd: inputs.folder,
-    environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
-    timeoutMs: configTimeoutMs,
-  });
-  return result.exitCode === 0 && result.stdout.trim() === "";
+  const run = (args: readonly string[]): ReturnType<ProcessRunner["run"]> =>
+    inputs.runner.run(["git", ...args], {
+      cwd: inputs.folder,
+      environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" },
+      timeoutMs: configTimeoutMs,
+    });
+  // With no commit, the push would fail after GitHub already made the repository.
+  const commit = await run(["rev-parse", "-q", "--verify", "HEAD"]);
+  if (commit.exitCode !== 0 || commit.stdout.trim() === "") return false;
+  const remotes = await run(["remote"]);
+  return remotes.exitCode === 0 && remotes.stdout.trim() === "";
 }
 
 /** Kept in the clone, so every later pull and push finds the token the same way. */
@@ -111,7 +118,8 @@ async function keepCredentialHelper(
 ): Promise<void> {
   const config = (args: readonly string[]): ReturnType<ProcessRunner["run"]> =>
     runner.run(["git", "config", "--local", ...args], { cwd: folder, environment, timeoutMs: configTimeoutMs });
-  // A rerun replaces the two lines instead of adding two more. git exits with 5 when there is none to remove.
-  await config(["--unset-all", credentialKey]);
+  // A rerun adds no second copy. A helper that the person set stays in the file.
+  const current = await config(["--get-all", credentialKey]);
+  if (current.stdout.includes(credentialHelper)) return;
   for (const value of ["", credentialHelper]) await config(["--add", credentialKey, value]);
 }

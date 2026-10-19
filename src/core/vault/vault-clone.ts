@@ -116,6 +116,11 @@ export async function vaultNeedsPush(inputs: Omit<VaultCloneInputs, "repository"
   return remotes.exitCode === 0 && remotes.stdout.trim() === "";
 }
 
+/** A git address or a folder on this computer, not a bare repository name such as `vault`. */
+export function isAddress(text: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:|^[a-z]:[\\/]|^\.{0,2}[\\/]/i.test(text);
+}
+
 /** Kept in the clone, so every later pull and push finds the token the same way. */
 async function keepCredentialHelper(
   folder: string,

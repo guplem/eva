@@ -35,6 +35,7 @@ import {
   checkVaultRepository,
   cloneVault,
   githubTokenVariable,
+  isAddress,
   pushNewVault,
   vaultNeedsPush,
 } from "../../core/vault/vault-clone.ts";
@@ -693,11 +694,6 @@ async function offerVaultPush(
       );
     }
   }
-}
-
-/** A git address or a folder on this computer, not a bare repository name such as `vault`. */
-function isAddress(text: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:|^[a-z]:[\\/]|^\.{0,2}[\\/]/i.test(text);
 }
 
 async function readPort(

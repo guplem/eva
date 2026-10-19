@@ -146,7 +146,7 @@ async function checkGoogleSetup(inputs: CheckInputs): Promise<CheckResult> {
     return {
       ok: false,
       detail:
-        "The Google login works, but this machine has no uv to run the Google tools. Install it on the machine: https://docs.astral.sh/uv/",
+        "The Google login works, but this machine has no uv to run the Google tools. Run `eva setup` on the machine: it installs uv.",
     };
   return { ok: true, detail: inputs.redact(result.detail) };
 }

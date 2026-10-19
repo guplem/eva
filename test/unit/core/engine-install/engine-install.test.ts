@@ -17,9 +17,12 @@ import {
   engineInstallSteps,
   engineProgramCandidates,
   findEngineProgram,
+  findUv,
   installEngine,
+  installUv,
   locateEngineProgram,
   piInstallFolder,
+  uvInstallSteps,
   type EngineInstallInputs,
 } from "../../../../src/core/engine-install/engine-install.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
@@ -312,5 +315,57 @@ describe("engineInstallSteps", () => {
     expect(engineInstallSteps("claude-code", "win32")).toContain("irm https://claude.ai/install.ps1 | iex");
     expect(engineInstallSteps("pi", "linux")).toContain("curl -fsSL https://pi.dev/install.sh | sh");
     expect(engineInstallSteps("pi", "win32")).toContain("irm https://pi.dev/install.ps1 | iex");
+  });
+});
+
+describe("uv", () => {
+  test("is found on the PATH, then in the folder of its installer", async () => {
+    const onPath: string[][] = [];
+    expect(await findUv(inputs(fakeRunner(onPath, () => ({}))))).toBe("uv");
+    const inFolder = fakeRunner([], (command) => (command[0] === "uv" ? "missing" : {}));
+    expect(await findUv(inputs(inFolder))).toBe("/srv/example/.local/bin/uv");
+    expect(await findUv(inputs(inFolder, "win32"))).toBe("D:\\Homes\\example\\.local\\bin\\uv.exe");
+    expect(await findUv(inputs(fakeRunner([], () => "missing")))).toBeNull();
+  });
+
+  test("installs with the official installer, and needs no administrator", async () => {
+    const commands: string[][] = [];
+    let installed = false;
+    const runner = fakeRunner(commands, (command) => {
+      if (command[0] === "sh") installed = true;
+      return command.at(-1) === "--version" && !installed ? "missing" : {};
+    });
+    expect(await installUv(inputs(runner))).toBe("uv");
+    expect(commands).toContainEqual(["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"]);
+  });
+
+  test("installs on Windows with PowerShell", async () => {
+    const commands: string[][] = [];
+    let installed = false;
+    const runner = fakeRunner(commands, (command) => {
+      if (command[0] === "powershell") installed = true;
+      return command.at(-1) === "--version" && !installed ? "missing" : {};
+    });
+    await installUv(inputs(runner, "win32"));
+    expect(commands).toContainEqual([
+      "powershell",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      "irm https://astral.sh/uv/install.ps1 | iex",
+    ]);
+  });
+
+  test("a failed install gives the steps to install uv by hand", async () => {
+    const runner = fakeRunner([], (command) =>
+      command[0] === "sh" ? { exitCode: 1, stderr: "no network\n" } : "missing",
+    );
+    const error = await caught(installUv(inputs(runner)));
+    expect(isEvaError(error, "engine_install_failed")).toBe(true);
+    expect((error as Error).message).toContain("no network");
+    expect((error as Error).message).toContain(uvInstallSteps("linux"));
+    expect(uvInstallSteps("linux")).toContain("curl -LsSf https://astral.sh/uv/install.sh | sh");
+    expect(uvInstallSteps("win32")).toContain("irm https://astral.sh/uv/install.ps1 | iex");
   });
 });

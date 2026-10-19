@@ -71,7 +71,8 @@ const tools: readonly ToolCheck[] = [
     versionArguments: ["--version"],
     feature: "pskill and the Google tools",
     required: false,
-    install: "https://docs.astral.sh/uv/",
+    install: "https://docs.astral.sh/uv/, or run `eva setup`",
+    installOnLinux: "eva setup",
     update: "uv self update",
   },
   {

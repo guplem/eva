@@ -1,6 +1,6 @@
 /**
- * Finds and installs the program of an engine, for `eva setup`. Neither install needs an
- * administrator. Claude Code uses its official installer. pi uses the standalone build of its
+ * Finds and installs the program of an engine, and uv for the Google tools, for `eva setup`. No
+ * install needs an administrator. Claude Code uses its official installer. pi uses the standalone build of its
  * GitHub release, which needs no Node.js or npm. The Eva executable holds neither of them. When
  * Eva cannot install, the error gives the exact steps instead.
  */
@@ -123,6 +123,50 @@ export async function installEngine(engine: EngineName, inputs: EngineInstallInp
   const program = await findEngineProgram(engine, inputs);
   if (program === null) throw failure(`The ${name} install finished, but Eva cannot find the program. ${steps}`);
   return program;
+}
+
+const uvInstaller = {
+  posix: "curl -LsSf https://astral.sh/uv/install.sh | sh",
+  win32: "irm https://astral.sh/uv/install.ps1 | iex",
+} as const;
+
+/** uv on the PATH, then in the folder of its installer, which a running terminal may not have on its PATH yet. */
+export async function findUv(inputs: EngineInstallInputs): Promise<string | null> {
+  const path = inputs.platform === "win32" ? win32 : posix;
+  const candidates = [
+    "uv",
+    path.join(inputs.homeFolder, ".local", "bin", inputs.platform === "win32" ? "uv.exe" : "uv"),
+  ];
+  for (const program of candidates) {
+    if (await answers([program, "--version"], inputs)) return program;
+  }
+  return null;
+}
+
+/** Installs uv with its official installer and returns it. Throws EvaError `engine_install_failed` with the steps. */
+export async function installUv(inputs: EngineInstallInputs): Promise<string> {
+  const steps = uvInstallSteps(inputs.platform);
+  const command =
+    inputs.platform === "win32"
+      ? ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", uvInstaller.win32]
+      : ["sh", "-c", uvInstaller.posix];
+  try {
+    await run(command, inputs, installTimeoutMs);
+  } catch (error) {
+    throw new EvaError("engine_install_failed", `Eva could not install uv: ${messageOf(error)} ${steps}`, {
+      cause: error,
+    });
+  }
+  const program = await findUv(inputs);
+  if (program === null) throw failure(`The uv install finished, but Eva cannot find the program. ${steps}`);
+  return program;
+}
+
+/** What a person runs to install uv by hand. */
+export function uvInstallSteps(platform: NodeJS.Platform): string {
+  return platform === "win32"
+    ? `In PowerShell, run \`${uvInstaller.win32}\`. See https://docs.astral.sh/uv/.`
+    : `Run \`${uvInstaller.posix}\`. See https://docs.astral.sh/uv/.`;
 }
 
 /** What a person runs to install the engine by hand. */

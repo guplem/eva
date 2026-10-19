@@ -33,19 +33,26 @@ To open Eva's web page from your phone, you also need **Tailscale** (free). You 
 
 The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
 
-1. **Install git** on the computer that stays on: [git-scm.com/downloads](https://git-scm.com/downloads).
-2. **Download Eva:** one program from the [latest release](https://github.com/guplem/eva/releases/latest). [Install Eva on Windows](docs/guide/setup.md#install-eva-on-windows) and [Install Eva on Linux](docs/guide/setup.md#install-eva-on-linux) give the commands.
-3. **Run the setup.** It works over SSH too, on a computer with no screen:
+1. **Run one command** on the computer that stays on. It works over SSH too, on a computer with no screen.
+   - Linux:
 
-   ```bash
-   eva setup
-   ```
+     ```bash
+     curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
+     ```
 
-   Setup installs the harnesses (Claude Code and pi) and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
+   - Windows, in PowerShell:
 
-4. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left, such as your AI login and the optional Telegram bot. Your notebook still needs the terminal: setup asks for it. Each answer is saved at once, in both places.
+     ```powershell
+     irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
+     ```
 
-5. **With a Telegram bot, pair your chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+   The command installs git when it is missing, downloads Eva from the latest release, and starts `eva setup`. On Linux, when git or curl is missing, `sudo` asks for your password, because their install needs administrator rights.
+
+2. **Answer the setup.** Setup installs the harnesses (Claude Code and pi), uv and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
+
+3. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left, such as your AI login and the optional Telegram bot. Your notebook still needs the terminal: setup asks for it. Each answer is saved at once, in both places.
+
+4. **With a Telegram bot, pair your chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
 
 Eva updates herself from new releases. You choose which ones in Settings.
 

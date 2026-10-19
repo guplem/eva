@@ -578,11 +578,19 @@ describe("runSetup", () => {
       expect(text).toContain("run `claude setup-token`");
     });
 
+    test("with no uv, setup installs it after the harnesses, for the Google tools", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      await setup({}, { runner: installRunner(commands), lines, piReleasesBaseUrl: serveRelease() });
+      expect(commands).toContainEqual(["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"]);
+      expect(lines.join("\n")).toContain("Installing uv");
+    });
+
     test("a script can skip the installs; a person is never asked", async () => {
       const commands: string[][] = [];
       const asked: SetupQuestion[] = [];
       await setup({ installEngines: "no" }, { interactive: false, runner: installRunner(commands), asked });
-      expect(commands.some((command) => command[0] === "bash" || command[0] === "tar")).toBe(false);
+      expect(commands.some((command) => ["bash", "tar", "sh"].includes(command[0] ?? ""))).toBe(false);
       asked.length = 0;
       await setup({}, { runner: scriptedRunner([]), asked });
       expect(asked).not.toContain("installEngines");

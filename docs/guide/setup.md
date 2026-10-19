@@ -92,45 +92,38 @@ Setup then lists the repositories that the token reaches. When GitHub refuses th
 
 ## Install Eva on Windows
 
-1. Install git. Run:
+1. In PowerShell, run:
 
-   ```bash
-   winget install --id Git.Git -e
+   ```powershell
+   irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
    ```
 
-2. Download Eva into her own folder, and add that folder to your `PATH` (the list of folders where Windows finds programs). Run these one by one:
+   The command does these steps:
+   - It installs git with winget (the program installer of Windows) when git is missing.
+   - It downloads Eva into `%LOCALAPPDATA%\Programs\Eva`, and checks the download against the release's `SHA256SUMS` file, so a broken download stops.
+   - It adds that folder to your `PATH` (the list of folders where Windows finds programs).
+   - It starts `eva setup`. Answer it as [The short path](#the-short-path) says.
 
-   ```bash
-   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\Eva"
-   ```
-
-   ```bash
-   Invoke-WebRequest https://github.com/guplem/eva/releases/latest/download/eva-windows-x64.exe -OutFile "$env:LOCALAPPDATA\Programs\Eva\eva.exe"
-   ```
-
-   ```bash
-   [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\Eva", "User")
-   ```
-
-   Close PowerShell and open it again, so that it finds the new programs.
-
-3. Run the setup, as [The short path](#the-short-path) says:
-
-   ```bash
-   eva setup
-   ```
+   Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the command again.
 
    When setup starts Eva, Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator**, and run `eva service install`.
 
    If Eva crashes, she starts again within a minute. On the hub, she then tells you in Telegram. She does not start again after you stop her, or when her settings are wrong.
 
-4. With a Telegram bot, pair your chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
+2. With a Telegram bot, pair your chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
+
+**Install by hand.** To read each step before it runs, read [install.ps1](../../install/install.ps1). Or do its steps yourself:
+
+1. Install git: `winget install --id Git.Git -e`.
+2. Download `eva-windows-x64.exe` from the [latest release](https://github.com/guplem/eva/releases/latest), and save it as `%LOCALAPPDATA%\Programs\Eva\eva.exe`.
+3. Add that folder to your `PATH`.
+4. Open PowerShell again, and run `eva setup`.
 
 ## The short path
 
 Eva's computer may have no screen. You then reach it over SSH, and touch it as little as possible. `eva setup` does the steps that only that computer can do, and you finish the rest on Eva's page:
 
-1. Setup installs what is missing: Claude Code, pi and Tailscale. Open the Tailscale sign-in link that it shows, on any device.
+1. Setup installs what is missing: Claude Code, pi, uv (for the Google tools) and Tailscale. Open the Tailscale sign-in link that it shows, on any device.
 2. Setup asks to start Eva. Press Enter. She then starts by herself each time the computer starts.
 3. Setup shows Eva's address. Open it on your phone or your laptop. The page shows a short code.
 4. Type that code in the terminal. The device that shows it can now open Eva, with the same control as the terminal.
@@ -171,34 +164,32 @@ You can run `eva setup` again at any time. It asks only for the steps that are n
 
 These steps work over SSH too. They install Eva for your own user.
 
-1. Install git, if `git --version` does not find it. On Ubuntu or Debian, run:
+1. Run:
 
    ```bash
-   sudo apt install -y git
+   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
    ```
 
-2. Download Eva into `~/.local/bin`, a folder for your own programs. On an ARM computer, such as a Raspberry Pi, use `eva-linux-arm64` instead of `eva-linux-x64`.
+   The command does these steps:
+   - It installs git and curl when they are missing, with apt, dnf, pacman, zypper or apk. They need administrator rights, so `sudo` asks for your password.
+   - It downloads Eva for your processor (x64 or ARM) into `~/.local/bin`, a folder for your own programs. It checks the download against the release's `SHA256SUMS` file, so a broken download stops.
+   - It starts `eva setup`. Answer it as [The short path](#the-short-path) says.
 
-   ```bash
-   mkdir -p ~/.local/bin
-   curl -fsSL -o ~/.local/bin/eva https://github.com/guplem/eva/releases/latest/download/eva-linux-x64
-   chmod +x ~/.local/bin/eva
-   export PATH="$HOME/.local/bin:$PATH"
-   ```
-
-   The last line lets this terminal find `eva`. Ubuntu adds the folder to the `PATH` by itself at your next login.
-
-3. Run the setup, as [The short path](#the-short-path) says:
-
-   ```bash
-   eva setup
-   ```
+   Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the command again.
 
    When setup starts Eva, it also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator. If you said no, run `eva service install` later.
 
-4. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
+2. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code and pi here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install no harness, add `EVA_INSTALL_ENGINES="no"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and it never waits for a device code.
+**Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh). Or do its steps yourself:
+
+1. Install git and curl, for example with `sudo apt install -y git curl`.
+2. Download `eva-linux-x64` (or `eva-linux-arm64`) from the [latest release](https://github.com/guplem/eva/releases/latest), and save it as `~/.local/bin/eva`.
+3. Make it executable: `chmod +x ~/.local/bin/eva`.
+4. Run `export PATH="$HOME/.local/bin:$PATH"`.
+5. Run `eva setup` in that same terminal. The service keeps the `PATH` of setup, and finds uv and the harnesses in `~/.local/bin` through it.
+
+**Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code, pi and uv here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install none of them, add `EVA_INSTALL_ENGINES="no"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and it never waits for a device code.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive
@@ -231,7 +222,7 @@ Do the same on any other computer: install Tailscale, sign in, open the address.
 
 ## Add the optional tools
 
-Some features need one more program on Eva's computer. For example, the Google tools need [uv](https://docs.astral.sh/uv/), and voice notes need ffmpeg and whisper.cpp. Run:
+Some features need one more program on Eva's computer. For example, voice notes need ffmpeg and whisper.cpp, and PDFs need typst. Run:
 
 ```bash
 eva doctor
@@ -241,7 +232,7 @@ It lists each missing tool, the feature that needs it, and how to install it. [T
 
 ## A second person on the same computer
 
-Each person gets their own Eva, with their own notebook, bot and AI login. Give the second Eva her own home folder:
+Each person gets their own Eva, with their own notebook, bot and AI login. The computer has Eva already, so skip the one command. Give the second Eva her own home folder:
 
 ```bash
 eva --home ~/eva-partner setup

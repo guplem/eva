@@ -798,7 +798,9 @@ export class Eva {
 
   /** A result is no error, so it skips the API's redaction; git's text may name a typed address with a token. */
   private redactSetup(result: VaultSetupResult): VaultSetupResult {
-    const redact = (text: string | null): string | null => (text === null ? null : this.redactor.redact(text));
+    // The login part of an address goes too: a password of another service has no shape that the redactor knows.
+    const redact = (text: string | null): string | null =>
+      text === null ? null : this.redactor.redact(text.replace(/\/\/[^/@\s]*@/g, "//"));
     return { folder: result.folder, repository: redact(result.repository), problem: redact(result.problem) };
   }
 

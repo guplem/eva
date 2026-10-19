@@ -766,8 +766,14 @@ describe("the vault step on the page", () => {
         repository: `https://x-access-token:${token}@127.0.0.1:1/you/vault.git`,
       });
       expect(result.repository).toBeNull();
-      expect(result.problem).toContain("[redacted]");
+      expect(result.problem).toContain("could not push");
       expect(JSON.stringify(result)).not.toContain(token);
+      // A password of another service has no known shape, so the login part of the address goes.
+      const bare = join(sandbox.root, "empty.git");
+      mkdirSync(bare);
+      sandbox.git(bare, "init", "-q", "--bare");
+      const pushed = await instance.pushVault(`file://person:plain-password@${bare}`.replace("@/", "@localhost/"));
+      expect(JSON.stringify(pushed)).not.toContain("plain-password");
     } finally {
       instance.stop();
     }

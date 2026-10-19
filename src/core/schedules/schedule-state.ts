@@ -1,7 +1,8 @@
 /**
  * What Eva learned about each schedule, in the instance home (lesson 64): when she first saw
- * it, the slot it last fired, the result of its last run, and the fields its last setup card showed. Losing this file
- * costs one new setup card per schedule, so a broken file starts empty (lesson 54).
+ * it, the slot it last fired, the result of its last run, and the fields its last setup card
+ * showed. Losing this file costs one new setup card per schedule, so a broken file starts empty
+ * (lesson 54).
  */
 import { z } from "zod";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";

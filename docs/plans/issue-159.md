@@ -7,7 +7,7 @@ A new person installs Eva with one command: `curl -fsSL https://github.com/guple
 ## Steps
 
 1. `eva setup` installs uv when it is missing, in the same step as the harnesses (`src/core/engine-install/engine-install.ts`, `installEngines` in `src/frontends/cli/setup.ts`). Official installer, no administrator, the exact steps when it fails.
-2. `install/install.sh` (POSIX sh): install git with apt-get, dnf, pacman or zypper when it is missing (with `sudo` unless root); download `eva-linux-x64` or `eva-linux-arm64`; check it against `SHA256SUMS`; put it in `~/.local/bin`; add that folder to `~/.profile` when the `PATH` lacks it; run `eva setup` with the terminal as input.
+2. `install/install.sh` (POSIX sh): install git with apt-get, dnf, pacman, zypper or apk when it is missing (with `sudo` unless root); download `eva-linux-x64` or `eva-linux-arm64`; check it against `SHA256SUMS`; put it in `~/.local/bin`; add that folder to `~/.profile` when the `PATH` lacks it; run `eva setup` with the terminal as input.
 3. `install/install.ps1` (Windows PowerShell 5.1 and later): the same, with winget for git and `%LOCALAPPDATA%\Programs\Eva`.
 4. CI: the `package` job runs each script against the executable that it built, served by a local web server. On Linux, a clean Ubuntu container with no git checks the git install too.
 5. The release workflow publishes both scripts as release files.

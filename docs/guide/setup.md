@@ -98,7 +98,13 @@ Setup then lists the repositories that the token reaches. When GitHub refuses th
    irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
    ```
 
-   The command installs git with winget when it is missing. It downloads Eva into `%LOCALAPPDATA%\Programs\Eva`, checks the download, and adds that folder to your `PATH` (the list of folders where Windows finds programs). Then it starts `eva setup`: answer it as [The short path](#the-short-path) says. To update Eva by hand later, run the command again.
+   The command does these steps:
+   - It installs git with winget (the program installer of Windows) when git is missing.
+   - It downloads Eva into `%LOCALAPPDATA%\Programs\Eva`, and checks the download against the release's `SHA256SUMS` file, so a broken download stops.
+   - It adds that folder to your `PATH` (the list of folders where Windows finds programs).
+   - It starts `eva setup`. Answer it as [The short path](#the-short-path) says.
+
+   Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the command again.
 
    When setup starts Eva, Windows may ask for permission. If it refuses, open PowerShell with **Run as administrator**, and run `eva service install`.
 
@@ -106,7 +112,7 @@ Setup then lists the repositories that the token reaches. When GitHub refuses th
 
 2. With a Telegram bot, pair your chat, so that Eva answers only you. Run `eva status`: it shows a line such as `Telegram pairing code: send EVA-1A2B3C4D to your bot`. Send that code to your bot in Telegram. From then on, Eva answers only that chat.
 
-**Install by hand.** To read each step before it runs, read [install.ps1](../../install/install.ps1), or do its steps yourself: install git with `winget install --id Git.Git -e`, download `eva-windows-x64.exe` from the [latest release](https://github.com/guplem/eva/releases/latest) as `%LOCALAPPDATA%\Programs\Eva\eva.exe`, add that folder to your `PATH`, and run `eva setup`.
+**Install by hand.** To read each step before it runs, read [install.ps1](../../install/install.ps1), or do its steps yourself: install git with `winget install --id Git.Git -e`, download `eva-windows-x64.exe` from the [latest release](https://github.com/guplem/eva/releases/latest) as `%LOCALAPPDATA%\Programs\Eva\eva.exe`, add that folder to your `PATH`, open PowerShell again, and run `eva setup`.
 
 ## The short path
 
@@ -159,13 +165,18 @@ These steps work over SSH too. They install Eva for your own user.
    curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
    ```
 
-   The command installs git when it is missing, with apt, dnf, pacman, zypper or apk. Git needs administrator rights, so `sudo` asks for your password. Then the command downloads Eva for your processor (x64 or ARM) into `~/.local/bin`, a folder for your own programs, and checks the download. Then it starts `eva setup`: answer it as [The short path](#the-short-path) says. To update Eva by hand later, run the command again.
+   The command does these steps:
+   - It installs git and curl when they are missing, with apt, dnf, pacman, zypper or apk. They need administrator rights, so `sudo` asks for your password.
+   - It downloads Eva for your processor (x64 or ARM) into `~/.local/bin`, a folder for your own programs. It checks the download against the release's `SHA256SUMS` file, so a broken download stops.
+   - It starts `eva setup`. Answer it as [The short path](#the-short-path) says.
+
+   Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the command again.
 
    When setup starts Eva, it also runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that step fails, it prints the command for an administrator. If you said no, run `eva service install` later.
 
 2. With a Telegram bot, pair your chat: run `eva status`, and send the code that it shows to your bot. The log is in `~/.config/eva/logs/`.
 
-**Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh), or do its steps yourself: install git, download `eva-linux-x64` (or `eva-linux-arm64`) from the [latest release](https://github.com/guplem/eva/releases/latest) as `~/.local/bin/eva`, make it executable with `chmod +x`, and run `eva setup`.
+**Install by hand.** To read each step before it runs, read [install.sh](../../install/install.sh), or do its steps yourself: install git, download `eva-linux-x64` (or `eva-linux-arm64`) from the [latest release](https://github.com/guplem/eva/releases/latest) as `~/.local/bin/eva`, make it executable with `chmod +x`, and run `export PATH="$HOME/.local/bin:$PATH"`. Then run `eva setup` in that same terminal: the service keeps the `PATH` of setup, and finds uv and the harnesses in `~/.local/bin` through it.
 
 **Set Eva up with no questions.** For a script, give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup installs Claude Code, pi and uv here too. A failed install does not stop the script: setup prints the command to install by hand. With pi, leave out `EVA_CLAUDE_TOKEN`. To set the default engine, add `EVA_ENGINE="pi"` or `EVA_ENGINE="claude-code"`. To install none of them, add `EVA_INSTALL_ENGINES="no"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and it never waits for a device code.
 
@@ -210,7 +221,7 @@ It lists each missing tool, the feature that needs it, and how to install it. [T
 
 ## A second person on the same computer
 
-Each person gets their own Eva, with their own notebook, bot and AI login. Give the second Eva her own home folder:
+Each person gets their own Eva, with their own notebook, bot and AI login. The computer has Eva already, so skip the one command. Give the second Eva her own home folder:
 
 ```bash
 eva --home ~/eva-partner setup

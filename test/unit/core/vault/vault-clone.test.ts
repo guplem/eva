@@ -160,6 +160,8 @@ describe("pushNewVault", () => {
     sandbox.git(folder, "branch", "-m", "master");
     await pushNewVault({ repository: empty, folder, runner: systemProcessRunner, environment: gitEnvironment });
     expect(sandbox.git(empty, "log", "--format=%s", "master")).toContain("Start the vault");
+    // Sync reads the remote's default branch here; only a clone writes it otherwise.
+    expect(sandbox.git(folder, "symbolic-ref", "refs/remotes/origin/HEAD")).toContain("refs/remotes/origin/master");
   });
 
   test("a credential helper that the person set stays", async () => {
@@ -184,6 +186,8 @@ describe("pushNewVault", () => {
     expect(isEvaError(failed, "git_failed")).toBe(true);
     expect(String(failed)).toContain("missing.git");
     expect(readFileSync(join(folder, "AGENTS.md"), "utf8")).toBe("# Vault\n");
+    // No remote is left behind: sync cannot push to an empty remote, and a rerun of setup offers the push again.
+    expect(await vaultNeedsPush({ folder, runner: systemProcessRunner, environment: gitEnvironment })).toBe(true);
   });
 });
 

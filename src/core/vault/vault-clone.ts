@@ -85,8 +85,14 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
   // HEAD, not main: a vault that the person made by hand can be on another branch, such as master.
   const push = await run([...githubCredentialArguments, "push", "-q", "-u", "origin", "HEAD"], cloneTimeoutMs);
   if (push.exitCode !== 0) {
+    // Sync cannot push to an empty remote, so a remote left here would keep the vault off GitHub for good.
+    // With no remote, a rerun of setup offers the push again.
+    await run(["remote", "remove", "origin"], configTimeoutMs);
     throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
   }
+  // Sync reads the remote's default branch from origin/HEAD, which only a clone writes.
+  const branch = await run(["symbolic-ref", "--short", "HEAD"], configTimeoutMs);
+  if (branch.exitCode === 0) await run(["remote", "set-head", "origin", branch.stdout.trim()], configTimeoutMs);
 }
 
 /**

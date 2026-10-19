@@ -17,6 +17,7 @@ export type EvaErrorCode =
   | "setting_forbidden"
   | "github_failed"
   | "google_failed"
+  | "claude_login_failed"
   | "tailscale_install_failed"
   | "engine_install_failed"
   | "project_invalid"

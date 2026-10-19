@@ -43,6 +43,7 @@ describe("setupProgress", () => {
       ["google", "optional"],
     ]);
     expect(missingSteps(steps)).toBe(4);
+    expect(step(fresh, "engine")?.detail).toContain("Log in to Claude");
     expect(step(fresh, "engine")?.detail).toContain("claude setup-token");
     expect(step(fresh, "remoteAccess")?.detail).toContain("Sign in to Tailscale");
     expect(step(fresh, "device")?.detail).toContain("eva devices allow");

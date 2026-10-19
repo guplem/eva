@@ -6,15 +6,14 @@
 - Take every colour from the EVE tokens at the top of `styles.css`, such as `--panel`, `--ink`, `--accent` and `--ok`. Write no raw colour in a component rule.
 - Take each space and text size from the `--space-*` and `--text-*` scale in `styles.css`.
 - Use the state colours for one meaning each. `--ok` means done. `--bad` means the person must act. `--warn` means wait, or take care. `--chip` means optional.
-- Show a state with a shape or a word too, never with colour alone: `StatusIcon` has a check, an alert, an x or a plus, and `StatusPill` has a word.
+- Show a state with a shape or a word too, never with colour alone.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
-- Take an icon from `client/icons.tsx`. Its set is the design's set, and a test keeps it so.
+- Take each icon from `client/icons.tsx`.
 
 ## Settings
 
 - Add a setting to its section's file (`*Section.tsx`) as a `Card` with an `item` id. Add the same id to `searchEntries` in `client/settings-routes.ts`, so the search finds it.
 - Write a setup step's guide as numbered `guide-steps` in plain words, for a person who never used a terminal. Give each command a `CommandLine`, so the person copies it.
-- On a phone, every button is 44 px tall or more, and no page is wider than the screen. The phone tests in `test/e2e/web-ui.spec.ts` check each Settings page.
 
 ## Captures
 

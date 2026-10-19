@@ -1,6 +1,7 @@
 /**
- * Use Eva from any device: the setup steps with a button for each step Eva can do, then the
- * address with Copy, Share and a QR code. The page reads the status until the address works.
+ * Use Eva from any device, as two step rows. "On this machine" has the setup steps with a button
+ * for each step Eva can do, then the address with Copy, Share and a QR code. "On each phone or
+ * computer" has the steps for a new device. The page reads the status until the address works.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import {
@@ -12,8 +13,9 @@ import {
 } from "../../../core/remote-access/steps.ts";
 import { api, type RemoteAccess } from "./api.ts";
 import { useShowError } from "./error-toast.tsx";
+import { Icon } from "./icons.tsx";
 import { qrCodeShape } from "./qr-code.ts";
-import { Card, StatusPill } from "./SettingsParts.tsx";
+import { Card, StatusIcon } from "./SettingsParts.tsx";
 
 /** An action, such as an install, shows its progress soon after. */
 const waitingPollMs = 3_000;
@@ -67,60 +69,79 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
   // `navigator.share` exists only where the system has a share sheet, such as on a phone.
   const canShare = typeof navigator.share === "function";
 
+  const mark = ready ? "done" : remoteAccessStep(access) === "failed" ? "failed" : "missing";
   return (
     <Card
       item="remote-access"
+      icon="globe"
       title="Use Eva from any device"
-      description="Tailscale, a free private network of your own devices, opens Eva on your phone and other computers."
-      aside={<StatusPill state={ready ? "done" : "missing"} />}
+      description="Only through Tailscale, a free private network of your own devices. Strangers cannot reach Eva."
+      aside={<span className={`pill ${mark}`}>{pillWords[mark]}</span>}
     >
+      <div className="access-step">
+        <StatusIcon state={mark} />
+        <div className="access-step-text">
+          <b>On this machine</b>
+          {url !== null ? (
+            <small>
+              Tailscale is on. Address:{" "}
+              <a className="access-address" href={url} target="_blank" rel="noreferrer">
+                {url}
+              </a>
+            </small>
+          ) : (
+            <small>Eva finds each change by herself within a minute.</small>
+          )}
+        </div>
+        {url !== null && (
+          <button onClick={() => copy(url)}>
+            <Icon name="copy" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
       {url !== null ? (
-        <>
-          <div className="callout success">
-            Open Eva:{" "}
-            <a href={url} target="_blank" rel="noreferrer">
-              {url}
-            </a>
-          </div>
-          <div className="button-row">
-            <button onClick={() => copy(url)}>{copied ? "Copied" : "Copy"}</button>
-            {canShare && (
-              <button
-                onClick={() => {
-                  navigator.share({ title: "Eva", url }).catch(() => undefined);
-                }}
-              >
-                Share
-              </button>
-            )}
-          </div>
+        <div className="access-share">
           <QrCode text={url} />
-        </>
+          {canShare && (
+            <button
+              onClick={() => {
+                navigator.share({ title: "Eva", url }).catch(() => undefined);
+              }}
+            >
+              Share
+            </button>
+          )}
+        </div>
       ) : (
-        <>
-          <h3>On this machine</h3>
-          <ol className="guide-steps">
-            {setupSteps(access).map((step, index) => {
-              const action = step.action;
-              return (
-                <li key={index}>
-                  <StepText step={step} />
-                  {action !== null && (
-                    <>
-                      {" "}
-                      <button className="primary" onClick={() => run(action)}>
-                        {actionLabel(action)}
-                      </button>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-          <div className="field-hint">Eva finds each change by herself within a minute.</div>
-        </>
+        <ol className="guide-steps">
+          {setupSteps(access).map((step, index) => {
+            const action = step.action;
+            return (
+              <li key={index}>
+                <StepText step={step} />
+                {action !== null && (
+                  <>
+                    {" "}
+                    <button className="primary" onClick={() => run(action)}>
+                      {actionLabel(action)}
+                    </button>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ol>
       )}
-      <h3>On each phone or computer</h3>
+      <div className="access-step">
+        <span className="access-mark">
+          <Icon name="phone" />
+        </span>
+        <div className="access-step-text">
+          <b>On each phone or computer</b>
+          <small>Install Tailscale and log in with the same account.</small>
+        </div>
+      </div>
       <ol className="guide-steps">
         {deviceSteps(access).map((step, index) => (
           <li key={index}>
@@ -131,6 +152,12 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
     </Card>
   );
 }
+
+const pillWords: Readonly<Record<"done" | "missing" | "failed", string>> = {
+  done: "Connected",
+  missing: "Needs you",
+  failed: "Failed",
+};
 
 function StepText({ step }: { readonly step: GuideStep }): ReactElement {
   return (

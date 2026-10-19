@@ -73,3 +73,98 @@ button.device-log-out {
   background: var(--bad-bg);
   border-color: var(--bad-bg);
 }
+
+/* A round icon at the left of a card title, such as the globe of remote access. */
+.card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.card-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* A step row: a round mark, a title with one line under it, and an optional button. */
+.access-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.access-step .status-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.access-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.access-step-text small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.access-address {
+  font-family: var(--mono);
+}
+
+.access-step button,
+.access-share button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.access-step button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* An optional step: the grey mark of the guide, with the icon of the thing to set up. */
+.access-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.access-mark .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.access-share {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  /* Copy goes under the address, so a long address gets the whole width. */
+  .access-step {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .access-step button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

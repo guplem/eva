@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   homePaths,
@@ -10,7 +10,7 @@ import {
 } from "../../../../src/core/settings/home.ts";
 import { VaultSetup } from "../../../../src/core/vault/vault-setup.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
-import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -168,5 +168,50 @@ describe("VaultSetup", () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: folder });
     expect(isEvaError(await failure(setup().create({ ...answers, repository: "" })), "vault_not_found")).toBe(true);
     expect(await setup().needsPush()).toBe(false);
+  });
+});
+
+describe("a failed vault setup", () => {
+  /** The system runner, but the git step named `step` fails after it runs, as a kill by the timeout would. */
+  const failingAt =
+    (step: string): ProcessRunner["run"] =>
+    async (command, options) => {
+      const result = await systemProcessRunner.run(command, options);
+      return command.includes(step) ? { ...result, exitCode: 1, stderr: `${step} was stopped` } : result;
+    };
+  const withRunner = (run: ProcessRunner["run"]): VaultSetup =>
+    new VaultSetup({
+      paths,
+      runner: { run },
+      savedVaultPath: () => loadConfig(paths).vaultPath,
+      gitEnvironment: () => gitEnvironment,
+      githubToken: () => undefined,
+    });
+
+  test("a failed commit of a new vault leaves no half vault, so the page offers the step again", async () => {
+    const refused = await failure(withRunner(failingAt("commit")).create({ ...answers, repository: "" }));
+    expect(isEvaError(refused, "git_failed")).toBe(true);
+    expect(existsSync(join(paths.root, "vault"))).toBe(false);
+    expect(loadConfig(paths).vaultPath).toBeNull();
+    await setup().create({ ...answers, repository: "" });
+  });
+
+  test("a stopped clone leaves the saved empty folder empty, and keeps it", async () => {
+    const folder = join(sandbox.root, "notes");
+    mkdirSync(folder);
+    saveConfig(paths, { ...defaultConfig, vaultPath: folder });
+    const refused = await failure(withRunner(failingAt("clone")).clone(sandbox.remote));
+    expect(isEvaError(refused, "git_failed")).toBe(true);
+    expect(readdirSync(folder)).toEqual([]);
+    await setup().clone(sandbox.remote);
+    expect(readdirSync(folder).length).toBeGreaterThan(0);
+  });
+
+  test("a saved vault folder that is a file is refused with a reason", async () => {
+    const file = join(sandbox.root, "not-a-folder");
+    writeFileSync(file, "text");
+    saveConfig(paths, { ...defaultConfig, vaultPath: file });
+    expect(isEvaError(await failure(setup().clone(sandbox.remote)), "vault_not_found")).toBe(true);
+    expect(readFileSync(file, "utf8")).toBe("text");
   });
 });

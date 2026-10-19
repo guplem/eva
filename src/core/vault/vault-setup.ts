@@ -3,7 +3,7 @@
  * repository that the person picks, or starts a new vault from the template and pushes it to a new
  * private repository. The folder is the saved one when it is empty, else `<home>/vault`.
  */
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -67,7 +67,7 @@ export class VaultSetup {
       const environment = this.options.gitEnvironment();
       const reason = await checkVaultRepository({ repository, runner: this.options.runner, environment });
       if (reason !== null) throw new EvaError("git_failed", `git could not read ${repository}: ${reason}`);
-      await cloneVault({ repository, folder, runner: this.options.runner, environment });
+      await this.orRemove(folder, () => cloneVault({ repository, folder, runner: this.options.runner, environment }));
       this.saveFolder(folder);
       return { folder, repository, problem: null };
     });
@@ -77,17 +77,19 @@ export class VaultSetup {
   create(answers: NewVaultAnswers): Promise<VaultSetupResult> {
     return this.once(async () => {
       const folder = this.freeFolder();
-      await createVaultFromTemplate({
-        folder,
-        answers: {
-          name: answers.name.trim() || "the owner",
-          language: answers.language.trim() || "English",
-          timeZone: this.timeZone(),
-          topics: answers.topics.map((topic) => topic.trim()).filter((topic) => topic !== ""),
-        },
-        runner: this.options.runner,
-        environment: this.options.gitEnvironment(),
-      });
+      await this.orRemove(folder, () =>
+        createVaultFromTemplate({
+          folder,
+          answers: {
+            name: answers.name.trim() || "the owner",
+            language: answers.language.trim() || "English",
+            timeZone: this.timeZone(),
+            topics: answers.topics.map((topic) => topic.trim()).filter((topic) => topic !== ""),
+          },
+          runner: this.options.runner,
+          environment: this.options.gitEnvironment(),
+        }),
+      );
       // The local vault comes first, so a failed push loses nothing, and the page offers it again.
       this.saveFolder(folder);
       if (this.options.githubToken() === undefined && !isAddress(answers.repository))
@@ -147,9 +149,32 @@ export class VaultSetup {
 
   private freeFolder(): string {
     const folder = this.options.savedVaultPath() ?? join(this.options.paths.root, "vault");
-    if (existsSync(folder) && readdirSync(folder).length > 0)
+    if (!existsSync(folder)) return folder;
+    let entries: string[];
+    try {
+      entries = readdirSync(folder);
+    } catch {
+      throw new EvaError("vault_not_found", `${folder} is not a folder that Eva can read.`);
+    }
+    if (entries.length > 0)
       throw new EvaError("vault_not_found", `${folder} holds files already, so Eva does not put a new vault there.`);
     return folder;
+  }
+
+  /**
+   * Removes what a failed step wrote into the empty or missing folder. A half vault, such as a
+   * `.git` with no commit, would count as a vault, and the page could not offer the step again.
+   */
+  private async orRemove(folder: string, step: () => Promise<void>): Promise<void> {
+    const existed = existsSync(folder);
+    try {
+      await step();
+    } catch (error) {
+      // The folder was empty or missing before the step, so each file in it is the step's own.
+      if (!existed) rmSync(folder, { recursive: true, force: true });
+      else for (const entry of readdirSync(folder)) rmSync(join(folder, entry), { recursive: true, force: true });
+      throw error;
+    }
   }
 
   /** Only the machine's file, as `eva setup` saves it: a merge with defaults would write over the vault's settings. */

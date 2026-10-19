@@ -14,7 +14,7 @@ import type { CloneDetails } from "../../../core/projects/clones.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
-import type { ScheduleCard, ScheduleView } from "../../../core/schedules/scheduler.ts";
+import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { ListedSession } from "../../api/session-list.ts";
@@ -49,6 +49,8 @@ export type {
   PublicSettings,
   RemoteAccess,
   ScheduleCard,
+  ScheduleList,
+  ScheduleView,
   EvaSetupState,
   ProgressStep,
   SessionEvent,
@@ -61,11 +63,6 @@ export type {
   VaultConflictReport,
   VaultSyncState,
 };
-
-export interface ScheduleList {
-  readonly schedules: readonly ScheduleView[];
-  readonly problems: readonly string[];
-}
 
 export class ApiError extends Error {
   readonly status: number;

@@ -41,9 +41,12 @@ export function useShowError(): ShowError {
 export function ErrorToastProvider({
   children,
   onOpenSettings,
+  settingsIsOpen,
 }: {
   readonly children: ReactNode;
   readonly onOpenSettings: () => void;
+  /** On the Settings page, a button to it would do nothing. */
+  readonly settingsIsOpen: boolean;
 }): ReactElement {
   const [toast, setToast] = useState<Toast | null>(null);
   const showError = useCallback((caught: unknown): void => {
@@ -63,7 +66,7 @@ export function ErrorToastProvider({
         <div className="toast" role="alert">
           <Icon name={toast.icon} />
           <span>{toast.message}</span>
-          {toast.fixInSettings && (
+          {toast.fixInSettings && !settingsIsOpen && (
             <button
               className="primary"
               onClick={() => {

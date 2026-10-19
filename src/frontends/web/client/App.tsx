@@ -44,7 +44,7 @@ export function App(): ReactElement {
   // The screen lives here, so a toast can open Settings.
   const [screen, setScreen] = useState<Screen>("assistant");
   return (
-    <ErrorToastProvider onOpenSettings={() => setScreen("settings")}>
+    <ErrorToastProvider onOpenSettings={() => setScreen("settings")} settingsIsOpen={screen === "settings"}>
       <EvaApp screen={screen} setScreen={setScreen} />
     </ErrorToastProvider>
   );
@@ -151,14 +151,21 @@ function EvaApp({
     if (syncStatus !== "conflict") setConflictsOpen(false);
   }, [syncStatus]);
 
+  const hasDialogOnTop = approvals.length > 0 || deviceRequests.length > 0;
   useEffect(() => {
     if (!conflictsOpen) return undefined;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setConflictsOpen(false);
+      // An approval or a device request shows on top, and Escape must not close the dialog under it.
+      if (event.key === "Escape" && !hasDialogOnTop) setConflictsOpen(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [conflictsOpen]);
+  }, [conflictsOpen, hasDialogOnTop]);
+
+  // Another page has its own content: the dialog must not stay over it.
+  useEffect(() => {
+    setConflictsOpen(false);
+  }, [screen]);
 
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
@@ -305,7 +312,7 @@ function EvaApp({
       isConnected={isConnected}
       problems={problems}
       syncStatus={syncState?.status ?? "ok"}
-      onSettings={screen === "settings"}
+      openPage={screen === "settings" || screen === "schedules" ? screen : null}
       onRetryNow={() => events.current?.retryNow()}
       onAction={runProblemAction}
     />

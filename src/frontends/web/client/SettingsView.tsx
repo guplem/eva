@@ -65,7 +65,7 @@ const statusPollMs = 3_000;
 const chatNameRulesLength = 4_000;
 const restartPollLimit = 60;
 
-/** `onSetupChanged` lets the page around it count the setup steps again, as for the badge on Settings. */
+/** `onSetupChanged` lets the page around it read the setup steps and the problems again, as for the badge on Settings. */
 export function SettingsView({
   onLoggedOut,
   onSetupChanged,
@@ -311,6 +311,8 @@ export function SettingsView({
     setSyncing(true);
     try {
       setSyncState(await api.syncVault());
+      // A sync can end a problem, and the notice at the top must follow.
+      onSetupChanged?.();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     } finally {
@@ -413,7 +415,15 @@ export function SettingsView({
               {syncing ? "Syncing…" : "Sync now"}
             </button>
           </div>
-          {syncState !== null && <VaultSyncView state={syncState} onState={setSyncState} />}
+          {syncState !== null && (
+            <VaultSyncView
+              state={syncState}
+              onState={(state) => {
+                setSyncState(state);
+                onSetupChanged?.();
+              }}
+            />
+          )}
           <label>
             Vault save interval (seconds)
             <input inputMode="numeric" value={sweepSeconds} onChange={(event) => setSweepSeconds(event.target.value)} />

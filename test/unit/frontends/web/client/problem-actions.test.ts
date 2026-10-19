@@ -21,10 +21,12 @@ describe("problemAction", () => {
     expect(isOtherMachineProblem("update")).toBe(false);
   });
 
-  test("on the Settings page, no button leads to Settings: the fix is already on the page", () => {
-    expect(problemAction("update", "ok", { onSettings: true })).toBeNull();
-    expect(problemAction("vault_sync", "conflict", { onSettings: true })).toBeNull();
-    expect(problemAction("schedule:lunch", "ok", { onSettings: true })).toBe("open_schedules");
+  test("no button leads to the page that is open: the fix is already there", () => {
+    expect(problemAction("update", "ok", "settings")).toBeNull();
+    expect(problemAction("vault_sync", "conflict", "settings")).toBeNull();
+    expect(problemAction("schedule:lunch", "ok", "settings")).toBe("open_schedules");
+    expect(problemAction("schedule:lunch", "ok", "schedules")).toBeNull();
+    expect(problemAction("update", "ok", "schedules")).toBe("open_settings");
   });
 
   test("every other problem opens Settings", () => {

@@ -5,7 +5,13 @@
 import type { ReactElement } from "react";
 import type { EvaStatus } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { isOtherMachineProblem, problemAction, problemActionLabels, type ProblemAction } from "./problem-actions.ts";
+import {
+  isOtherMachineProblem,
+  problemAction,
+  problemActionLabels,
+  type FixPage,
+  type ProblemAction,
+} from "./problem-actions.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -13,8 +19,8 @@ interface ProblemNoticesProps {
   readonly isConnected: boolean;
   readonly problems: EvaStatus["problemDetails"];
   readonly syncStatus: EvaStatus["vaultSync"]["status"];
-  /** On the Settings page, Settings problems need no button: their fix is on the page. */
-  readonly onSettings: boolean;
+  /** The page that is open, when it holds the fix of some problems. */
+  readonly openPage: FixPage | null;
   readonly onRetryNow: () => void;
   readonly onAction: (action: ProblemAction) => void;
 }
@@ -23,7 +29,7 @@ export function ProblemNotices({
   isConnected,
   problems,
   syncStatus,
-  onSettings,
+  openPage,
   onRetryNow,
   onAction,
 }: ProblemNoticesProps): ReactElement | null {
@@ -57,7 +63,7 @@ export function ProblemNotices({
       {problems.length > 0 && (
         <section className="problem-list" aria-label="Problems">
           {problems.map((problem) => {
-            const action = problemAction(problem.key, syncStatus, { onSettings });
+            const action = problemAction(problem.key, syncStatus, openPage);
             return (
               <div key={problem.key} className={`notice ${problem.level === "error" ? "bad" : "warn"}`}>
                 <Icon name="alert" />

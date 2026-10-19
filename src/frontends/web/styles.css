@@ -925,18 +925,6 @@ textarea {
   gap: 12px;
 }
 
-.login {
-  max-width: 380px;
-  margin: 15vh auto;
-  padding: 24px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .settings {
   /* A long Windows path or URL has no break points. */
   overflow-wrap: anywhere;

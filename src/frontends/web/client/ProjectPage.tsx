@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { CloneDetails, Project, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { changesPill, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
-import { chatTime } from "./time-format.ts";
+import { chatTime } from "./chat-list.ts";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -127,7 +127,7 @@ function CloneCard({ clone, chats, now, onOpenChat, onNewChat }: CloneCardProps)
         <button key={chat.id} className="clone-chat" onClick={() => onOpenChat(chat)}>
           <Icon name="chat" />
           <span className="clone-chat-title">{chat.title}</span>
-          <span className="muted">{chatTime(chat.lastTurnAt ?? chat.createdAt, now)}</span>
+          <span className="muted">{chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}</span>
         </button>
       ))}
       <div>

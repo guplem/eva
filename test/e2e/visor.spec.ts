@@ -113,7 +113,8 @@ test("with reduced motion, the rotate mode stays on one face", async ({ page }) 
   await expect(page.getByRole("figure", { name: "rotate" }).locator(".mk")).toHaveClass(/e-scan/);
 });
 
-test("the top bar shows EVE, worried while the page reconnects", async ({ page }) => {
+test("the nav rail shows EVE, worried while the page reconnects", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "The tab bar of a phone has no visor.");
   const sockets: WebSocketRoute[] = [];
   await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     socket.connectToServer();
@@ -122,10 +123,10 @@ test("the top bar shows EVE, worried while the page reconnects", async ({ page }
   await page.goto("/");
   await page.getByLabel(/Token/).fill("e2e-demo-token");
   await page.getByRole("button", { name: "Log in" }).click();
-  const visor = page.getByRole("banner").locator(".mk");
-  await expect(visor).toHaveClass("mk s");
+  const visor = page.getByRole("navigation", { name: "Main" }).locator(".mk");
+  await expect(visor).toHaveClass("mk");
 
   await sockets.at(-1)?.close();
-  await expect(visor).toHaveClass("mk s e-worry");
-  await expect(visor).toHaveClass("mk s");
+  await expect(visor).toHaveClass("mk e-worry");
+  await expect(visor).toHaveClass("mk");
 });

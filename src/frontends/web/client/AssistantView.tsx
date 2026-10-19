@@ -7,6 +7,7 @@ import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversat
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { PhoneListHeader, ShowListButton } from "./MainNav.tsx";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -14,23 +15,23 @@ interface AssistantViewProps {
   readonly sessions: readonly SessionRecord[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
+  readonly onShowList: () => void;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
-  readonly onOpenSchedules: () => void;
 }
 
 export function AssistantView({
   sessions,
   live,
   sidebarOpen,
+  onShowList,
   onChanged,
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
-  onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -72,27 +73,6 @@ export function AssistantView({
     <div className="layout">
       <nav className={`sidebar has-footer${sidebarOpen ? " open" : ""}`} aria-label="Chats">
         <div className="sidebar-list" ref={listRef}>
-          <div className="sidebar-heading">
-            <h2>Schedules</h2>
-            <button
-              className="icon-button"
-              aria-label="Open schedules"
-              title="Open schedules"
-              onClick={() => {
-                onOpenSchedules();
-                onNavigate();
-              }}
-            >
-              <Icon name="clock" />
-            </button>
-          </div>
-          {chats.filter((chat) => chat.source === "schedule").length === 0 && (
-            <span className="chip">
-              No schedule has run yet. Add one on the Schedules page (
-              <Icon name="clock" label="the clock button" />
-              ).
-            </span>
-          )}
           <h2>Chats</h2>
           {chats.map((chat) => (
             <button
@@ -135,10 +115,14 @@ export function AssistantView({
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
         {selected === undefined ? (
-          <div className="empty">No chats yet. Start one with “New chat”.</div>
+          <>
+            <PhoneListHeader title="Chats" onShowList={onShowList} />
+            <div className="empty">No chats yet. Start one with “New chat”.</div>
+          </>
         ) : (
           <>
             <div className="main-header">
+              <ShowListButton onClick={onShowList} />
               <ChatTitle key={selected.id} chat={selected} onChanged={onChanged} />
               <span className="badge">{selected.modelAlias}</span>
               <ChatInfoButton {...chat} />

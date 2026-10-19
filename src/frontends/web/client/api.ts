@@ -27,7 +27,7 @@ import type {
   VaultConflictReport,
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
-import type { ModelAlias } from "../../../shared/engine-port.ts";
+import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
@@ -120,6 +120,11 @@ export const api = {
     request("POST", "/api/sessions", { mode: "assistant", model }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
+  /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
+  setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
+  setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>

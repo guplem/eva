@@ -127,8 +127,9 @@ export async function describeClone(
     const head = await runner.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], options);
     if (head.exitCode === 0) branch = head.stdout.trim();
     // No index refresh, so no index.lock: a timeout kill would leave the lock and block the agent's git (lesson 81).
+    // A new folder counts once, so a big folder that is not ignored stays fast.
     const status = await runner.run(
-      ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
+      ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"],
       options,
     );
     if (status.exitCode === 0) changes = status.stdout.split("\n").filter((line) => line.trim().length > 0).length;

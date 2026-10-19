@@ -74,7 +74,7 @@ Your notebook (the vault) is a private GitHub repository of notes. Setup first l
 3. Press **Authorize**. Setup goes on by itself.
 4. Setup lists the 15 repositories that you pushed most recently. Choose one:
    - **Use a notebook that you already have.** Type its number, or its name, such as `vault` or `you/vault`. A name also finds a repository that the list does not show. Eva clones the notebook (makes a copy on this computer).
-   - **Start a new notebook.** Type `0`. Eva fills the folder `vault` in her home from her template. Then type a name for its private GitHub repository, such as `vault`. Eva creates the repository and puts the notebook in it.
+   - **Start a new notebook.** Type `0`. Answer the questions about you. Eva fills the folder `vault` in her home from her template. Then type a name for its private GitHub repository, such as `vault`. Eva creates the repository and puts the notebook in it.
    - **No notebook now.** Press Enter.
 
 The login lets Eva read and write all your GitHub repositories, private ones too. Eva also needs it to clone your private projects. Eva keeps it on this computer, and never gives it to the AI tools that she runs. You can remove it on GitHub under **Settings → Applications**.
@@ -151,8 +151,8 @@ Setup asks each question only when its step is not done yet. Press Enter to keep
 | Time zone                    | Enter keeps your computer's time zone.                                                                                                                                |
 | GitHub login or token        | Enter logs in in the browser. Or paste a token, or type `skip`. See [Decide where your notebook lives](#decide-where-your-notebook-lives).                            |
 | Your vault                   | After a login: its number or name in the list, `0` for a new notebook, an address, or Enter for none. Without a login: its address, or Enter to start a new notebook. |
-| Vault folder                 | For a new notebook without a login only: the folder for it. Enter keeps the folder in brackets.                                                                       |
-| New notebook                 | For a new notebook without a login only: `y`, then the questions below.                                                                                               |
+| Vault folder                 | For a new notebook, when setup shows no list: the folder for it. Enter keeps the folder in brackets.                                                                  |
+| New notebook                 | For a new notebook, when setup shows no list: `y`, then the questions below.                                                                                          |
 | What should Eva call you?    | Your name, or the name that you like.                                                                                                                                 |
 | Language                     | The language of Eva's answers. Enter keeps English.                                                                                                                   |
 | Main topics                  | A few words, such as `work, family, music`. Change them later in `.eva/assistant.md`.                                                                                 |

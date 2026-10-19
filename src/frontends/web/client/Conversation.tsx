@@ -113,6 +113,7 @@ function Branch({
   }, [turnCount]);
   const liveSteps = live.steps[session.id];
   const usageLimit = live.usageLimits[session.id];
+  const notes = live.notes[session.id] ?? [];
   const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
   const send = async (): Promise<void> => {
@@ -189,6 +190,11 @@ function Branch({
           onClose={closeTasks}
         />
       )}
+      {notes.map((note, index) => (
+        <div key={`note-${String(index)}`} className="turn-note" role="status">
+          {note}
+        </div>
+      ))}
       {usageLimit !== undefined && !hasReset(usageLimit, new Date()) && (
         <div className={`usage-limit ${usageLimit.status}`} role="status">
           {describeUsageLimit(usageLimit, new Date())}

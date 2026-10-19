@@ -51,6 +51,43 @@ describe("applyEvent", () => {
     expect(state.steps["s1"]?.[0]?.text).toContain("lost");
   });
 
+  test("a notice is a note of its chat, never a step, so the answer stays the last message", () => {
+    const notice = 'Eva could not start the MCP server "google": no uvx';
+    const state = run([
+      { kind: "text", text: "No calendar today.", messageId: "m1" },
+      { kind: "notice", text: notice },
+    ]);
+    expect(state.steps["s1"]?.map((step) => step.text)).toEqual(["No calendar today."]);
+    expect(state.notes["s1"]).toEqual([notice]);
+  });
+
+  test("the same notice of a follow-up turn shows once", () => {
+    const state = run([
+      { kind: "notice", text: "one" },
+      { kind: "notice", text: "one" },
+    ]);
+    expect(state.notes["s1"]).toEqual(["one"]);
+  });
+
+  test("a notice outlives its turn, until the chat's next turn starts or the chat goes", () => {
+    const stamp = { sessionId: "s1", seq: 1, at: "2026-10-18T10:00:00.000Z" };
+    const ended = run([
+      { kind: "notice", text: "one" },
+      {
+        kind: "turn_finished",
+        engineSessionId: "e1",
+        lastMessageId: null,
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        costUsd: null,
+        contextTokens: null,
+      },
+    ]);
+    expect(ended.notes["s1"]).toEqual(["one"]);
+    const next = applyEvent(ended, { ...stamp, kind: "message_received", text: "Again", origin: "api" });
+    expect(next.notes["s1"]).toBeUndefined();
+    expect(applyEvent(ended, { ...stamp, kind: "session_deleted" }).notes["s1"]).toBeUndefined();
+  });
+
   test("a usage limit outlives its turn and the next one, until a newer limit or a delete (issue #67)", () => {
     const limit = {
       kind: "usage_limit",
@@ -146,6 +183,6 @@ describe("applyEvent", () => {
 
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
-    expect(applyEvent(state, event({ kind: "notice", text: "x" }))).toBe(state);
+    expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
   });
 });

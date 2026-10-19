@@ -16,9 +16,14 @@ export interface LiveState {
    * turn ends at once and the person still needs the reset time.
    */
   readonly usageLimits: Readonly<Record<string, UsageLimit>>;
+  /**
+   * The notices of each chat's last turn, such as an MCP server that did not start, by session id.
+   * They outlive the turn, because a short turn ends before the person reads them.
+   */
+  readonly notes: Readonly<Record<string, readonly string[]>>;
 }
 
-export const emptyLiveState: LiveState = { steps: {}, tasks: {}, taskSeqs: {}, usageLimits: {} };
+export const emptyLiveState: LiveState = { steps: {}, tasks: {}, taskSeqs: {}, usageLimits: {}, notes: {} };
 
 const historyLostNote = "The earlier history of this chat is lost.";
 
@@ -47,6 +52,28 @@ export function forgetTaskEvents(state: LiveState): LiveState {
 
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
+  return applyToTurn(applyToNotes(state, event), event);
+}
+
+/** A notice is no step: the answer must stay the last message, and the whole answer must not hold it. */
+function applyToNotes(state: LiveState, event: SessionEvent): LiveState {
+  const id = event.sessionId;
+  if (event.kind === "notice") {
+    const current = state.notes[id] ?? [];
+    // A follow-up turn starts with no message_received, so it can send the same notice again.
+    if (current.includes(event.text)) return state;
+    return { ...state, notes: { ...state.notes, [id]: [...current, event.text] } };
+  }
+  // A new turn brings its own notices.
+  if ((event.kind === "message_received" || event.kind === "session_deleted") && id in state.notes) {
+    const notes = { ...state.notes };
+    Reflect.deleteProperty(notes, id);
+    return { ...state, notes };
+  }
+  return state;
+}
+
+function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
   if (event.kind === "usage_limit") {
     const { sessionId, seq: _seq, at: _at, ...limit } = event;
     return { ...state, usageLimits: { ...state.usageLimits, [sessionId]: limit } };

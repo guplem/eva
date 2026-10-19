@@ -70,6 +70,8 @@ export type EngineEventPayload =
       readonly costUsd: number | null;
       /** The input tokens of the turn's last top-level model call: the context before the last answer. */
       readonly contextTokens: number | null;
+      /** The size of the context window of the model that answered, or null when the engine does not say. */
+      readonly contextWindow: number | null;
     }
   | { readonly kind: "turn_failed"; readonly reason: string };
 

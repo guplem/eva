@@ -14,8 +14,8 @@ import {
   type PendingApproval,
   type ScheduleCard,
   type SessionEvent,
-  type SessionRecord,
   type VaultSyncState,
+  type ListedSession,
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
@@ -46,7 +46,7 @@ export function App(): ReactElement {
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [screen, setScreen] = useState<Destination>(() => destinationOf(window.location.hash) ?? "chats");
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
@@ -119,9 +119,16 @@ function EvaApp(): ReactElement {
     }
   }, []);
 
+  // Reads overlap: one starts at a turn start and one at its end. Only the newest read may set the list,
+  // or an older answer brings back a running state that already ended.
+  const latestRead = useRef(0);
   const refreshSessions = useCallback(async (): Promise<void> => {
+    latestRead.current += 1;
+    const read = latestRead.current;
     try {
-      setSessions(await api.sessions());
+      const listed = await api.sessions();
+      if (read !== latestRead.current) return;
+      setSessions(listed);
       setAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) setAuthenticated(false);
@@ -139,8 +146,11 @@ function EvaApp(): ReactElement {
     if (!linkIsMissing) return;
     void (async (): Promise<void> => {
       try {
+        latestRead.current += 1;
+        const read = latestRead.current;
         const fresh = await api.sessions();
-        setSessions(fresh);
+        // A newer read already set the list. This read still says whether the chat exists.
+        if (read === latestRead.current) setSessions(fresh);
         if (fresh.some((session) => session.id === linkedChatId)) return;
         showError(new Error("That chat no longer exists."));
       } catch (caught) {
@@ -260,6 +270,9 @@ function EvaApp(): ReactElement {
         void refreshSessions();
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         void refreshSessions();
+      } else if (event.kind === "message_received") {
+        // A turn starts. Its first step can come much later, and the list already says that the chat works.
+        void refreshSessions();
       }
     }, onConnectionChange);
     events.current = subscription;
@@ -352,6 +365,7 @@ function EvaApp(): ReactElement {
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
             notices={notices}
+            approvalSessionIds={approvals.map((approval) => approval.sessionId)}
           />
         )}
         {screen === "projects" && (

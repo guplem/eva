@@ -254,6 +254,8 @@ export class PiEngine implements EnginePort {
         usage,
         costUsd,
         contextTokens,
+        // pi names no context window in its turn events, so the panel shows the count only.
+        contextWindow: null,
       };
     }
   }

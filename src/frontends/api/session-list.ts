@@ -18,3 +18,11 @@ export function withRecentSteps(sessions: readonly SessionRecord[], recentTurns:
     };
   });
 }
+
+/** A listed session, and whether a turn runs in it now. The store keeps no such field. */
+export type ListedSession = SessionRecord & { readonly running: boolean };
+
+/** A reload or a reconnect loses the events, so the list itself says which chats work now. */
+export function withRunState(sessions: readonly SessionRecord[], isRunning: (id: string) => boolean): ListedSession[] {
+  return sessions.map((session) => ({ ...session, running: isRunning(session.id) }));
+}

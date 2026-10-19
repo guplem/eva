@@ -6,11 +6,12 @@ describe("newCopyLaunch", () => {
   test("the single executable runs itself again with the same arguments", () => {
     const launch = newCopyLaunch({
       evaCommand: ["/opt/eva/eva"],
-      arguments: ["--home", "/srv/eva-home"],
+      arguments: ["--instance", "ana"],
       environment: { PATH: "/usr/bin" },
+      instance: "ana",
       pid: 42,
     });
-    expect(launch.command).toEqual(["/opt/eva/eva", "--home", "/srv/eva-home"]);
+    expect(launch.command).toEqual(["/opt/eva/eva", "--instance", "ana"]);
   });
 
   test("a source checkout runs bun with main.ts", () => {
@@ -18,19 +19,21 @@ describe("newCopyLaunch", () => {
       evaCommand: ["/usr/bin/bun", "/opt/eva/src/main.ts"],
       arguments: [],
       environment: {},
+      instance: "ana",
       pid: 42,
     });
     expect(launch.command).toEqual(["/usr/bin/bun", "/opt/eva/src/main.ts"]);
   });
 
-  test("the copy waits for this pid, and carries no supervisor's pid", () => {
+  test("the copy waits for this pid, runs the same Eva without a question, and carries no supervisor's pid", () => {
     const launch = newCopyLaunch({
       evaCommand: ["/opt/eva/eva"],
       arguments: [],
       environment: { PATH: "/usr/bin", [supervisedVariable]: "7", EMPTY: undefined },
+      instance: "ana",
       pid: 42,
     });
-    expect(launch.environment).toEqual({ PATH: "/usr/bin", EVA_WAIT_FOR_PID: "42" });
+    expect(launch.environment).toEqual({ PATH: "/usr/bin", EVA_INSTANCE: "ana", EVA_WAIT_FOR_PID: "42" });
   });
 });
 

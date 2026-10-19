@@ -1,11 +1,21 @@
 /**
- * The chat in view: its model, engine and mode, how full its context is, and its background
- * tasks, such as subagents and background commands. A wide screen shows them in a side panel.
- * A phone shows them in a dialog from the "Chat info" button, and the tasks also from the task chip.
+ * The chat in view: how full its context is, its engine, model and mode, its background tasks,
+ * such as subagents and background commands, and a way to fork it. A computer shows them in the
+ * inspector column. A phone shows the same content in a bottom sheet from the "Chat info" button.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import type { SessionRecord } from "./api.ts";
-import { formatTokens, latestContext } from "./chat-details.ts";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { api, type SessionRecord } from "./api.ts";
+import {
+  contextFigure,
+  contextShare,
+  engineLabel,
+  forkPoint,
+  latestContext,
+  taskStatus,
+  titleCase,
+} from "./chat-details.ts";
+import { useShowError } from "./error-toast.tsx";
+import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
 
 type Tasks = LiveState["tasks"];
@@ -20,18 +30,23 @@ export function runningCount(tasks: Tasks): number {
   return Object.values(tasks).filter((task) => task.state === "running").length;
 }
 
+/** One card for each task: its description and a status pill with one word and one colour. */
 function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: string }): ReactElement {
   const entries = Object.entries(tasks);
-  if (entries.length === 0) return <span className="chip">{empty}</span>;
+  if (entries.length === 0) return <p className="task-empty">{empty}</p>;
   return (
-    <>
-      {entries.map(([taskId, task]) => (
-        <div key={taskId} className="task">
-          {task.description}
-          <div className="state">{task.state}</div>
-        </div>
-      ))}
-    </>
+    <ul className="task-list">
+      {entries.map(([taskId, task]) => {
+        const status = taskStatus(task.state);
+        return (
+          <li key={taskId} className="task-card">
+            <Icon name="sync" />
+            <span className="task-description">{task.description}</span>
+            <span className={`status-pill ${status.tone}`}>{status.label}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -39,49 +54,106 @@ interface ChatProps {
   /** The chat first, then each of its forks. Empty when no chat is open. */
   readonly tree: readonly SessionRecord[];
   readonly tasks: Tasks;
+  /** Reloads the chat list, so a new fork shows in it. */
+  readonly onChanged: () => Promise<void>;
 }
 
-function ChatDetails({ tree, tasks }: ChatProps): ReactElement {
-  const root = tree[0];
+/** A conic gradient fills the ring with the share. Only a known window gives a share, so the ring is never a guess. */
+function ContextUse({ tree }: { readonly tree: readonly SessionRecord[] }): ReactElement {
   const context = latestContext(tree);
+  const share = context === null ? null : contextShare(context);
+  return (
+    <div className="context-use">
+      {share !== null && (
+        <div
+          className="context-ring"
+          style={{ "--share": share } as CSSProperties}
+          role="img"
+          aria-label={`${String(share)}% of the context window in use`}
+        >
+          <b aria-hidden="true">{share}%</b>
+        </div>
+      )}
+      <div className="context-text">
+        <span className="muted">Context used</span>
+        {context === null ? (
+          <span>Not known</span>
+        ) : (
+          <span>
+            <strong>{contextFigure(context)}</strong> tokens
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ForkButton({ tree, onChanged }: Pick<ChatProps, "tree" | "onChanged">): ReactElement | null {
+  const showError = useShowError();
+  const [forking, setForking] = useState(false);
+  const point = forkPoint(tree[0]);
+  if (point === null) return null;
+  const fork = async (): Promise<void> => {
+    setForking(true);
+    try {
+      await api.fork(point.sessionId, point.messageId);
+      await onChanged();
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setForking(false);
+    }
+  };
+  return (
+    <button className="fork-chat" disabled={forking} onClick={() => void fork()}>
+      <Icon name="fork" /> Fork this chat
+    </button>
+  );
+}
+
+function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
+  const root = tree[0];
   return (
     <>
       {root !== undefined && (
-        <dl className="chat-details">
-          <dt>Model</dt>
-          <dd>{root.modelAlias}</dd>
-          <dt>Engine</dt>
-          <dd>{root.engine}</dd>
-          <dt>Mode</dt>
-          <dd>{root.mode}</dd>
-          <dt>Answers</dt>
-          <dd>
-            {tree.reduce((sum, session) => sum + session.turns.length, 0)}
-            {tree.length > 1 ? `, with ${String(tree.length - 1)} fork${tree.length === 2 ? "" : "s"}` : ""}
-          </dd>
-          <dt>Context</dt>
-          <dd>{context === null ? "Not known" : formatTokens(context)}</dd>
-        </dl>
+        <>
+          <ContextUse tree={tree} />
+          <dl className="chat-facts">
+            {/* An open chat keeps its engine and its model (lesson 41), so they are text, not chips. */}
+            <dt>Engine</dt>
+            <dd>{engineLabel(root.engine)}</dd>
+            <dt>Model</dt>
+            <dd>{titleCase(root.modelAlias)}</dd>
+            <dt>Mode</dt>
+            <dd>{titleCase(root.mode)}</dd>
+            <dt>Answers</dt>
+            <dd>
+              {tree.reduce((sum, session) => sum + session.turns.length, 0)}
+              {tree.length > 1 ? `, with ${String(tree.length - 1)} fork${tree.length === 2 ? "" : "s"}` : ""}
+            </dd>
+          </dl>
+        </>
       )}
       <h3>Background tasks</h3>
       <TaskList
         tasks={tasks}
         empty={root?.engine === "pi" ? "pi does not report background tasks." : "Nothing runs in the background."}
       />
+      <ForkButton tree={tree} onChanged={onChanged} />
     </>
   );
 }
 
 export function ChatPanel(props: ChatProps): ReactElement {
   return (
-    <aside className="tasks" aria-label="This chat">
+    <aside className="chat-panel" aria-label="This chat">
       <h2>This chat</h2>
       <ChatDetails {...props} />
     </aside>
   );
 }
 
-/** A phone hides the side panel, so this button opens the same details in a dialog. */
+/** A phone hides the inspector, so this button opens the same details in a bottom sheet. */
 export function ChatInfoButton(props: ChatProps): ReactElement {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -91,8 +163,11 @@ export function ChatInfoButton(props: ChatProps): ReactElement {
         Chat info
       </button>
       {open && (
-        <Dialog label="This chat" onClose={close}>
-          <ChatDetails {...props} />
+        <Dialog label="This chat" onClose={close} sheet>
+          <div className="chat-panel in-sheet">
+            <h2>This chat</h2>
+            <ChatDetails {...props} />
+          </div>
         </Dialog>
       )}
     </>
@@ -129,10 +204,13 @@ export function TasksDialog({
 function Dialog({
   label,
   onClose,
+  sheet = false,
   children,
 }: {
   readonly label: string;
   readonly onClose: () => void;
+  /** A bottom sheet, which slides up from the bottom of a phone screen. */
+  readonly sheet?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const close = useRef<HTMLButtonElement>(null);
@@ -145,8 +223,12 @@ function Dialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={label}>
+    <div
+      className={sheet ? "dialog-backdrop sheet-backdrop" : "dialog-backdrop"}
+      // A tap on the scrim closes the sheet; a tap inside it does not.
+      onClick={sheet ? (event) => event.target === event.currentTarget && onClose() : undefined}
+    >
+      <div className={sheet ? "dialog sheet" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose}>

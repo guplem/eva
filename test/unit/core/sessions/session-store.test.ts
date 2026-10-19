@@ -86,6 +86,7 @@ describe("SessionStore", () => {
       steps: [],
       omittedSteps: 0,
       contextTokens: null,
+      contextWindow: null,
     });
     expect(corruptCopies()).toEqual([]);
   });
@@ -98,9 +99,15 @@ describe("SessionStore", () => {
       steps: [{ kind: "renamed-kind", text: "x" }],
       omittedSteps: -1,
       contextTokens: "many",
+      contextWindow: 0,
     };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
-    expect(openStore().get("one")?.turns[0]).toMatchObject({ steps: [], omittedSteps: 0, contextTokens: null });
+    expect(openStore().get("one")?.turns[0]).toMatchObject({
+      steps: [],
+      omittedSteps: 0,
+      contextTokens: null,
+      contextWindow: null,
+    });
   });
 
   test("starts empty with no file, and makes no copy (lesson 54)", () => {

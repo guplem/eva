@@ -57,11 +57,11 @@ import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } f
 
 describe("parseArguments", () => {
   test("no command runs the core", () => {
-    expect(parseArguments([])).toEqual({ command: "run", home: undefined });
+    expect(parseArguments([])).toEqual({ command: "run", instance: undefined });
   });
 
-  test("reads --home anywhere, and the options of each command", () => {
-    expect(parseArguments(["--home", "/h", "status"])).toEqual({ command: "status", home: "/h" });
+  test("reads --instance anywhere, and the options of each command", () => {
+    expect(parseArguments(["--instance", "ana", "status"])).toEqual({ command: "status", instance: "ana" });
     expect(
       parseArguments([
         "chat",
@@ -74,69 +74,74 @@ describe("parseArguments", () => {
       ]),
     ).toEqual({
       command: "chat",
-      home: undefined,
+      instance: undefined,
       projectId: "2025-03-02-1015-example-app",
       clone: "example-app-0",
       model: "haiku",
     });
     expect(parseArguments(["projects", "photo", "booth"])).toEqual({
       command: "projects",
-      home: undefined,
+      instance: undefined,
       query: "photo booth",
     });
-    expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", home: undefined });
-    expect(parseArguments(["supervise", "--home", "/h"])).toEqual({ command: "supervise", home: "/h" });
-    expect(parseArguments(["setup"])).toEqual({ command: "setup", home: undefined, nonInteractive: false });
-    expect(parseArguments(["setup", "--non-interactive", "--home", "/h"])).toEqual({
+    expect(parseArguments(["service", "install"])).toEqual({ command: "service-install", instance: undefined });
+    expect(parseArguments(["supervise", "--instance", "ana"])).toEqual({ command: "supervise", instance: "ana" });
+    expect(parseArguments(["setup"])).toEqual({ command: "setup", instance: undefined, nonInteractive: false });
+    expect(parseArguments(["setup", "--non-interactive", "--instance", "ana"])).toEqual({
       command: "setup",
-      home: "/h",
+      instance: "ana",
       nonInteractive: true,
     });
-    expect(parseArguments(["doctor"])).toEqual({ command: "doctor", home: undefined });
+    expect(parseArguments(["doctor"])).toEqual({ command: "doctor", instance: undefined });
     expect(parseArguments(["work", "2025-03-02-1015-example-app", "fix", "the", "bug"])).toEqual({
       command: "work",
-      home: undefined,
+      instance: undefined,
       projectId: "2025-03-02-1015-example-app",
       request: "fix the bug",
     });
     expect(parseArguments(["work", "only-a-project"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", home: undefined, engine: "pi" });
+    expect(parseArguments(["chat", "--engine", "pi"])).toEqual({ command: "chat", instance: undefined, engine: "pi" });
     expect(parseArguments(["chat", "--engine", "codex"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["update"])).toEqual({ command: "update", home: undefined, checkOnly: false, version: null });
+    expect(parseArguments(["update"])).toEqual({
+      command: "update",
+      instance: undefined,
+      checkOnly: false,
+      version: null,
+    });
     expect(parseArguments(["update", "--check"])).toEqual({
       command: "update",
-      home: undefined,
+      instance: undefined,
       checkOnly: true,
       version: null,
     });
     expect(parseArguments(["update", "1.2.0"])).toEqual({
       command: "update",
-      home: undefined,
+      instance: undefined,
       checkOnly: false,
       version: "1.2.0",
     });
     expect(parseArguments(["update", "v1.2.0"])).toMatchObject({ version: "1.2.0" });
     expect(parseArguments(["update", "latest"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["sync"])).toEqual({ command: "sync", home: undefined });
-    expect(parseArguments(["hub"])).toEqual({ command: "hub", home: undefined });
-    expect(parseArguments(["link"])).toEqual({ command: "link", home: undefined });
+    expect(parseArguments(["sync"])).toEqual({ command: "sync", instance: undefined });
+    expect(parseArguments(["hub"])).toEqual({ command: "hub", instance: undefined });
+    expect(parseArguments(["link"])).toEqual({ command: "link", instance: undefined });
     expect(parseArguments(["devices", "allow", "AB2C"])).toEqual({
       command: "devices-allow",
-      home: undefined,
+      instance: undefined,
       code: "AB2C",
     });
     expect(parseArguments(["devices", "allow"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["devices"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["settings"])).toEqual({ command: "settings", home: undefined, action: "list" });
+    expect(parseArguments(["settings"])).toEqual({ command: "settings", instance: undefined, action: "list" });
     expect(parseArguments(["settings", "get", "updates.frequency"])).toEqual({
       command: "settings",
-      home: undefined,
+      instance: undefined,
       action: "get",
       key: "updates.frequency",
     });
     expect(parseArguments(["settings", "set", "timeZone", "Europe/Madrid"])).toEqual({
       command: "settings",
-      home: undefined,
+      instance: undefined,
       action: "set",
       key: "timeZone",
       value: "Europe/Madrid",
@@ -148,8 +153,13 @@ describe("parseArguments", () => {
   test("an unknown command or a bad option is a usage error", () => {
     expect(parseArguments(["fly"])).toMatchObject({ command: "usage-error" });
     expect(parseArguments(["chat", "--model", "giant"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["--home"])).toMatchObject({ command: "usage-error" });
-    expect(parseArguments(["help"])).toEqual({ command: "help", home: undefined });
+    expect(parseArguments(["--instance"])).toMatchObject({ command: "usage-error" });
+    // An option that Eva does not know is never dropped without a word, such as the old --home.
+    expect(parseArguments(["--home", "/h", "status"])).toMatchObject({
+      command: "usage-error",
+      message: "Unknown option --home.",
+    });
+    expect(parseArguments(["help"])).toEqual({ command: "help", instance: undefined });
   });
 });
 
@@ -309,16 +319,20 @@ describe("runDoctor", () => {
 });
 
 describe("runSetup", () => {
+  let root: string;
   let home: string;
   let existingVault: string;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "eva-setup-"));
+    // The home sits in a folder of its own, as eva-<name>, so its siblings are only this test's other Evas.
+    root = mkdtempSync(join(tmpdir(), "eva-setup-"));
+    home = join(root, "eva-test");
+    mkdirSync(home);
     existingVault = join(home, "existing-vault");
     mkdirSync(existingVault);
     writeFileSync(join(existingVault, "AGENTS.md"), "# Vault\n");
   }, gitHookTimeoutMs);
   afterEach(() => {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }, gitHookTimeoutMs);
 
   /**
@@ -374,7 +388,6 @@ describe("runSetup", () => {
       runner?: ProcessRunner;
       lines?: string[];
       asked?: SetupQuestion[];
-      defaultHome?: string;
       githubLogin?: SetupOptions["githubLogin"];
       piReleasesBaseUrl?: string;
     } = {},
@@ -393,7 +406,6 @@ describe("runSetup", () => {
       interactive: extra.interactive ?? true,
       runner: extra.runner ?? okRunner,
       environment: gitEnvironment,
-      defaultHome: extra.defaultHome ?? home,
       githubLogin: extra.githubLogin ?? null,
       githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.server?.port)}`,
       platform: "linux",
@@ -492,8 +504,8 @@ describe("runSetup", () => {
 
   test("the default engine follows the login, and Claude Code stays when both have one", async () => {
     const piLogin = (): void => {
-      mkdirSync(join(home, ".pi", "agent"), { recursive: true });
-      writeFileSync(join(home, ".pi", "agent", "auth.json"), JSON.stringify({ openai: { type: "oauth" } }));
+      mkdirSync(join(home, "engines", "pi-agent"), { recursive: true });
+      writeFileSync(join(home, "engines", "pi-agent", "auth.json"), JSON.stringify({ openai: { type: "oauth" } }));
     };
     const lines: string[] = [];
     piLogin();
@@ -503,13 +515,13 @@ describe("runSetup", () => {
     // A Claude token now: the person chose nothing on the web page, but pi stays, as the default has a login.
     await setup({ claudeToken: "a-claude-setup-token-value" });
     expect(loadSettings(homePaths(home)).config.engines.default).toBe("pi");
-    rmSync(join(home, ".pi"), { recursive: true });
+    rmSync(join(home, "engines", "pi-agent"), { recursive: true });
     await setup({});
     expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
-    // A Claude Code login of its own counts as much as a token.
+    // The instance's own Claude Code login counts as much as a token.
     rmSync(join(home, "secrets.json"));
-    mkdirSync(join(home, ".claude"));
-    writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+    mkdirSync(join(home, "engines", "claude"), { recursive: true });
+    writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
     piLogin();
     await setup({});
     expect(loadSettings(homePaths(home)).config.engines.default).toBe("claude-code");
@@ -605,7 +617,7 @@ describe("runSetup", () => {
       expect(text).toContain("Installed pi:");
     });
 
-    test("an extra instance logs in to pi in its own folder", async () => {
+    test("each instance logs in to pi in its own folder", async () => {
       const lines: string[] = [];
       await setup(
         {},
@@ -613,7 +625,6 @@ describe("runSetup", () => {
           runner: installRunner([]),
           lines,
           piReleasesBaseUrl: serveRelease(),
-          defaultHome: join(home, "default-home"),
         },
       );
       expect(lines.join("\n")).toContain(`PI_CODING_AGENT_DIR='${join(home, "engines", "pi-agent")}' '`);
@@ -673,6 +684,14 @@ describe("runSetup", () => {
     } finally {
       await taken.stop(true);
     }
+  });
+
+  test("the port of another Eva on this computer is not suggested, even while she is stopped", async () => {
+    mkdirSync(join(root, "eva-other"));
+    writeFileSync(join(root, "eva-other", "config.json"), JSON.stringify({ port: defaultConfig.port }));
+    await setup({});
+    expect(loadSettings(homePaths(home)).config.port).toBeGreaterThan(defaultConfig.port);
+    expect(await firstFreePort(defaultConfig.port, new Set([defaultConfig.port]))).toBeGreaterThan(defaultConfig.port);
   });
 
   test("Eva clones the vault from its repository into her home, with the GitHub token", async () => {
@@ -1044,7 +1063,6 @@ describe("runSetup", () => {
         interactive: true,
         runner: okRunner,
         environment: gitEnvironment,
-        defaultHome: home,
         githubLogin: null,
         platform: "linux",
         userHome: home,
@@ -1071,7 +1089,6 @@ describe("runSetup", () => {
         interactive: true,
         runner: okRunner,
         environment: gitEnvironment,
-        defaultHome: home,
         githubLogin: null,
         platform: "linux",
         userHome: home,
@@ -1150,7 +1167,6 @@ describe("runSetup", () => {
           interactive: true,
           runner: okRunner,
           environment: gitEnvironment,
-          defaultHome: home,
           githubLogin: null,
           platform: "linux",
           userHome: home,
@@ -1229,7 +1245,8 @@ describe("runSetup", () => {
     expect(asked).not.toContain("createVault");
     expect(asked).not.toContain("vault");
     expect(githubApi.created).toEqual(["my-vault"]);
-    expect(commands.some((command) => command[0] === "gh")).toBe(false);
+    // gh only checks the instance's own login; the vault needs none of it.
+    expect(commands.filter((command) => command[0] === "gh").every((command) => command[1] === "auth")).toBe(true);
     expect(lines.join("\n")).toContain("Created the private repository you/my-vault.");
     const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
     expect(pushed.stdout.toString()).toContain("Start the vault");
@@ -1316,7 +1333,7 @@ describe("runSetup", () => {
     expect(pushed.stdout.toString()).toContain("Start the vault");
   });
 
-  test("an extra instance hears about its own engine logins first, and gets a login report at the end", async () => {
+  test("each instance hears about its own engine logins first, and gets a login report at the end", async () => {
     const lines: string[] = [];
     const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const runner: ProcessRunner = {
@@ -1328,10 +1345,10 @@ describe("runSetup", () => {
     const emptyFolder = join(home, "empty");
     await setup(
       { vault: emptyFolder, createVault: "y", githubRepository: "my-vault", claudeToken: "a-claude-token" },
-      { lines, runner, defaultHome: join(home, "..", "default-eva-home") },
+      { lines, runner },
     );
     const ghFolder = join(home, "engines", "gh");
-    const firstStep = lines.findIndex((line) => line.includes("second Eva on this computer"));
+    const firstStep = lines.findIndex((line) => line.includes("keeps her own logins"));
     expect(firstStep).toBeGreaterThan(-1);
     expect(firstStep).toBeLessThan(lines.findIndex((line) => line.startsWith("Created a new vault")));
     expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
@@ -1342,22 +1359,14 @@ describe("runSetup", () => {
     expect(lines.join("\n")).toContain("- GitHub: not logged in.");
   });
 
-  test("a missing Claude token names how to run setup again: this home for a person, the variable for a script", async () => {
-    const extraHome = { defaultHome: join(home, "..", "default-eva-home") };
-    const lines: string[] = [];
-    await setup({}, { lines, ...extraHome });
-    expect(lines.join("\n")).toContain(`run \`eva --home '${home}' setup\` again`);
-    const scriptLines: string[] = [];
-    await setup({}, { lines: scriptLines, interactive: false, ...extraHome });
-    expect(scriptLines.join("\n")).not.toContain("Setup keeps going");
-    expect(scriptLines.join("\n")).toContain("run setup again with the token in EVA_CLAUDE_TOKEN");
-  });
-
-  test("the instance in the default home hears nothing about engine logins", async () => {
+  test("a missing Claude token names how to run setup again: this Eva for a person, the variable for a script", async () => {
     const lines: string[] = [];
     await setup({}, { lines });
-    expect(lines.join("\n")).not.toContain("second Eva");
-    expect(lines.join("\n")).not.toContain("Engine logins");
+    expect(lines.join("\n")).toContain("run `eva --instance test setup` again");
+    const scriptLines: string[] = [];
+    await setup({}, { lines: scriptLines, interactive: false });
+    expect(scriptLines.join("\n")).not.toContain("Setup keeps going");
+    expect(scriptLines.join("\n")).toContain("run setup again with the token in EVA_CLAUDE_TOKEN");
   });
 
   test("each question has its own environment variable for --non-interactive", () => {
@@ -1371,13 +1380,20 @@ describe("service", () => {
   test("the systemd unit restarts on a crash, never on bad settings or a second instance (lesson 89)", () => {
     const unit = systemdUnit({
       executable: ["/usr/bin/bun", "/opt/eva/src/main.ts"],
-      home: "/srv/eva-home",
+      instance: "ana",
       path: "/usr/bin:/bin",
+      configFolder: undefined,
     });
-    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --home /srv/eva-home");
+    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --instance ana");
     expect(unit).toContain("Restart=on-failure");
     expect(unit).toContain("RestartPreventExitStatus=2 3");
     expect(unit).toContain("Environment=PATH=/usr/bin:/bin");
+    expect(unit).not.toContain("XDG_CONFIG_HOME");
+  });
+
+  test("the systemd unit keeps the install's XDG_CONFIG_HOME, so the service finds the same Evas", () => {
+    const unit = systemdUnit({ executable: ["eva"], instance: "ana", path: "/usr/bin", configFolder: "/srv/config" });
+    expect(unit).toContain("Environment=XDG_CONFIG_HOME=/srv/config");
   });
 
   test("the service PATH drops the folders that only one `bun run` has", () => {
@@ -1401,27 +1417,25 @@ describe("service", () => {
     expect(restartMethod({ EVA_SUPERVISED: "42" }, alive, 1)).toBe("new-copy");
   });
 
-  test("a second instance on the same machine gets its own service name", () => {
-    expect(serviceName("/u/.config/eva", "/u/.config/eva")).toBe("eva");
-    expect(serviceName("/u/.config/eva-partner", "/u/.config/eva")).toBe("eva-eva-partner");
-    expect(serviceName("/srv/Partner Home", "/u/.config/eva")).toBe("eva-partner-home");
-    expect(serviceName("/srv/__", "/u/.config/eva")).toBe("eva-instance");
-    // The same default-home test as the engine logins: Windows ignores letter case.
-    expect(serviceName("D:\\Eva-Homes\\EVA", "d:\\eva-homes\\eva\\", "win32")).toBe("eva");
-    expect(windowsTaskCommand({ executable: ["eva.exe"], home: "C:/h" }, "eva-partner")).toContain("Eva-partner");
+  test("each Eva on the same machine gets her own service, named after her", () => {
+    expect(serviceName(homePaths("/u/.config/eva-ana"))).toBe("eva-ana");
+    expect(serviceName(homePaths("/u/.config/eva-eva"))).toBe("eva-eva");
+    expect(windowsTaskCommand({ executable: ["eva.exe"], instance: "ana" }, "eva-ana")).toContain("Eva-ana");
   });
 
   test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
-    expect(windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], home: "C:/home/eva" })).toEqual([
+    expect(
+      windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], instance: "ana" }, "eva-ana"),
+    ).toEqual([
       "schtasks",
       "/Create",
       "/F",
       "/SC",
       "ONLOGON",
       "/TN",
-      "Eva",
+      "Eva-ana",
       "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --home "C:/home/eva"',
+      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --instance ana',
     ]);
   });
 
@@ -1435,11 +1449,9 @@ describe("service", () => {
     expect(script).toContain("-DontStopIfGoingOnBatteries");
     // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
     expect(script).toContain("-ErrorAction Stop");
-    expect(windowsTaskSettingsCommand()[4]).toContain("-TaskName 'Eva'");
   });
 
   test("after the install, the Windows task starts at once, under the same name", () => {
-    expect(windowsRunTaskCommand()).toEqual(["schtasks", "/Run", "/TN", "Eva"]);
     expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
   });
 });

@@ -23,7 +23,8 @@ import {
   type SettingsSection,
 } from "./settings-routes.ts";
 import { errorText, type SettingsContext } from "./SettingsParts.tsx";
-import { nextMissing, SetupOverview, SetupStepPage } from "./SetupPages.tsx";
+import { nextMissing, SetupOverview, SetupStepPage, SetupRing } from "./SetupPages.tsx";
+import { restartQuestion, setupSummary } from "./setup-summary.ts";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
 
@@ -45,6 +46,8 @@ export function SettingsView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [route, setRoute] = useState<SettingsRoute>(() => parseSettingsHash(window.location.hash));
   const [query, setQuery] = useState("");
+  /** The restart question while it waits for an answer, or null. */
+  const [restartAsk, setRestartAsk] = useState<string | null>(null);
 
   useEffect(() => {
     const onHashChange = (): void => setRoute(parseSettingsHash(window.location.hash));
@@ -125,15 +128,21 @@ export function SettingsView({
     return true;
   };
 
+  /** The question names the running chats, because a restart stops them. */
+  const askRestart = (): void => {
+    Promise.all([api.status(), api.sessions()])
+      .then(([current, sessions]) => {
+        const busy = new Set(current.busySessionIds);
+        const names = sessions.filter((session) => busy.has(session.id)).map((session) => session.title);
+        setRestartAsk(restartQuestion(names));
+      })
+      .catch((error: unknown) => setNotice(errorText(error)));
+  };
+
   /** Eva stops for a moment at a restart; the page asks again until she answers. */
   const restartNow = async (): Promise<void> => {
+    setRestartAsk(null);
     try {
-      const running = (await api.status()).busySessionIds.length;
-      const warning =
-        running === 0
-          ? ""
-          : `${String(running)} ${running === 1 ? "chat is" : "chats are"} running. A restart stops ${running === 1 ? "it" : "them"}. `;
-      if (!window.confirm(`${warning}Restart Eva now?`)) return;
       await api.restart();
       setNotice("Eva restarts…");
       for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
@@ -175,7 +184,7 @@ export function SettingsView({
         .catch((error: unknown) => setNotice(errorText(error)));
     },
     setStatus,
-    restartNow,
+    askRestart,
     navigate,
     onLoggedOut,
   };
@@ -227,6 +236,10 @@ export function SettingsView({
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
+            <button className="restart-button" onClick={askRestart}>
+              <Icon name="restart" />
+              Restart Eva
+            </button>
           </header>
           <div className="settings-page">
             {query.trim() !== "" ? (
@@ -237,6 +250,19 @@ export function SettingsView({
               <SectionPage id={section.id} item={route.item} context={context} />
             )}
           </div>
+          {restartAsk !== null && (
+            <div className="settings-notice restart-question" role="alertdialog" aria-label="Restart Eva">
+              <span>{restartAsk}</span>
+              <div className="button-row">
+                <button className="ghost" onClick={() => setRestartAsk(null)}>
+                  Cancel
+                </button>
+                <button className="primary" onClick={() => void restartNow()}>
+                  Yes, restart
+                </button>
+              </div>
+            </div>
+          )}
           {notice !== null && (
             // Sticky, so a phone shows the result of a control near the bottom of the screen.
             <div className="settings-notice" role="status">
@@ -297,7 +323,7 @@ function SectionMark({
 
 function SettingsHome({ context }: { readonly context: SettingsContext }): ReactElement {
   const steps = context.setup?.progress ?? [];
-  const missing = steps.filter((step) => step.state === "missing").length;
+  const missing = setupSummary(steps).left;
   const next = nextMissing(steps);
   return (
     <>
@@ -305,16 +331,13 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
         <section className={`card hero ${missing === 0 ? "done" : "missing"}`} aria-label="Setup">
           <div className="hero-text">
             <h2>{missing === 0 ? "Eva is set up" : "Finish setting up Eva"}</h2>
-            <p>
-              {missing === 0
-                ? "Every needed step is done. Optional steps can add Telegram, GitHub and Google."
-                : `${String(missing)} ${missing === 1 ? "step needs" : "steps need"} you. Each one has a page that shows what to do.`}
-            </p>
-            <div className="progress-bar" aria-hidden="true">
-              {steps.map((step) => (
-                <span key={step.key} className={`progress-segment ${step.state}`} />
-              ))}
-            </div>
+            <SetupRing steps={steps}>
+              <span className="field-hint">
+                {missing === 0
+                  ? "Every needed step is done. Optional steps can add Telegram, GitHub and Google."
+                  : "Each step that is left has a page that shows what to do."}
+              </span>
+            </SetupRing>
           </div>
           <div className="button-row">
             {next !== undefined ? (

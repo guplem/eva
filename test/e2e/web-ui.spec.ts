@@ -586,8 +586,10 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");
-  await page.getByLabel("Theme").selectOption("dark");
-  await page.getByLabel("Density").selectOption("compact");
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await page.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
+  await expect(page.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "System" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
   await page.reload();
@@ -1162,28 +1164,58 @@ test("no banner shows while all is good", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
 });
 
-test("Settings: Restart Eva asks first, then restarts and waits for Eva", async ({ page }) => {
+test("Settings: Restart Eva in the header names the running chats, then restarts and waits for Eva", async ({
+  page,
+}) => {
   const restarts: string[] = [];
   await page.route("**/api/restart", async (route) => {
     restarts.push(route.request().method());
     await route.fulfill({ status: 202, json: { restarting: true } });
   });
   await logIn(page);
+  const created = (await (await page.request.post("/api/sessions", { data: { mode: "assistant" } })).json()) as {
+    id: string;
+  };
+  await page.request.post(`/api/sessions/${created.id}/rename`, { data: { title: "Plan the trip" } });
+  // The demo engine answers at once, so the page sees this chat as running only through a changed status.
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, busySessionIds: [created.id] } });
+  });
   await openSettings(page, "Updates");
-  const questions: string[] = [];
-  page.once("dialog", (dialog) => {
-    questions.push(dialog.message());
-    void dialog.dismiss();
-  });
   await page.getByRole("button", { name: "Restart Eva" }).click();
-  await expect.poll(() => questions).toEqual(["Restart Eva now?"]);
+  const question = page.getByRole("alertdialog", { name: "Restart Eva" });
+  await expect(question).toContainText('"Plan the trip" is running. A restart stops it. Restart Eva now?');
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(question).toHaveCount(0);
   expect(restarts).toEqual([]);
-  page.once("dialog", (dialog) => {
-    void dialog.accept();
-  });
   await page.getByRole("button", { name: "Restart Eva" }).click();
+  await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
   await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
   expect(restarts).toEqual(["POST"]);
+  await page.request.delete(`/api/sessions/${created.id}`);
+});
+
+test("Settings: the setup ring counts the done steps, and a failed test has its own mark", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step, index) =>
+      index === 0
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
+        : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  await expect(list.getByRole("img", { name: /^\d+ of \d+ steps done$/ })).toBeVisible();
+  await expect(list).toContainText(/Setup: \d+ steps? left/);
+  const first = list.getByRole("button").filter({ hasText: "Step 1" });
+  await expect(first.locator(".status-icon")).toHaveAttribute("aria-label", "Failed");
+  await expect(first).toContainText("Last test: The token expired.");
 });
 
 test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({

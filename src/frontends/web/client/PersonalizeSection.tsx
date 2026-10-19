@@ -5,16 +5,17 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { api, ApiError } from "./api.ts";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
-import { Card, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
+import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
 
-const themeChoices: readonly { value: Appearance["theme"]; label: string }[] = [
-  { value: "system", label: "Use the system setting" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+const themeChoices: readonly { value: Appearance["theme"]; label: string; icon?: IconName }[] = [
+  { value: "light", label: "Light", icon: "sun" },
+  { value: "dark", label: "Dark", icon: "moon" },
+  { value: "system", label: "System" },
 ];
 
 const densityChoices: readonly { value: Appearance["density"]; label: string }[] = [
@@ -45,13 +46,13 @@ function AppearanceCard(): ReactElement {
         <span className="field-hint">Pick a colour. Eva builds the whole palette from it.</span>
         <SeedColourPicker seed={appearance.seed} onPick={(seed) => change({ seed })} />
       </div>
-      <SelectField
+      <ChoiceChips
         label="Theme"
         value={appearance.theme}
         choices={themeChoices}
         onChange={(theme) => change({ theme })}
       />
-      <SelectField
+      <ChoiceChips
         label="Density"
         value={appearance.density}
         choices={densityChoices}

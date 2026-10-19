@@ -42,8 +42,9 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [deviceAnswering, setDeviceAnswering] = useState(false);
-  const answeringDevice = useRef(false);
+  /** The server sends "settled" before its answer, so the notice keeps this request until the answer comes. */
+  const [answeringDevice, setAnsweringDevice] = useState<DeviceLoginRequest | null>(null);
+  const answering = useRef(false);
   const [screen, setScreen] = useState<Destination>(() => destinationOf(window.location.hash) ?? "chats");
   const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
@@ -272,9 +273,9 @@ function EvaApp(): ReactElement {
   /** A failed answer drops the request too: it expired, or another approver answered it. */
   const answerDevice = async (request: DeviceLoginRequest, answer: "allow" | "deny"): Promise<void> => {
     // The disabled buttons show only after a render, so two quick taps could send two answers.
-    if (answeringDevice.current) return;
-    answeringDevice.current = true;
-    setDeviceAnswering(true);
+    if (answering.current) return;
+    answering.current = true;
+    setAnsweringDevice(request);
     try {
       await api.answerDeviceRequest(request.id, answer);
       // Only a confirmed answer shows "Allowed": a slow phone link can still fail.
@@ -283,11 +284,11 @@ function EvaApp(): ReactElement {
       showError(caught);
     } finally {
       setDeviceRequests((current) => current.filter((entry) => entry.id !== request.id));
-      answeringDevice.current = false;
-      setDeviceAnswering(false);
+      answering.current = false;
+      setAnsweringDevice(null);
     }
   };
-  const deviceRequest = allowedDevice ?? deviceRequests[0];
+  const deviceRequest = allowedDevice ?? answeringDevice ?? deviceRequests[0];
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
@@ -379,7 +380,7 @@ function EvaApp(): ReactElement {
         <NewDeviceDialog
           request={deviceRequest}
           allowed={deviceRequest === allowedDevice}
-          busy={deviceAnswering}
+          busy={answeringDevice !== null}
           onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
         />
       )}

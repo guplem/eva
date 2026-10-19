@@ -1746,6 +1746,7 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
 
 test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {
   const answers: unknown[] = [];
+  const sockets = await routeEvents(page);
   // The demo server has no Tailscale, so the browser plays the server's side of the request.
   await page.route("**/api/devices/requests", (route) =>
     route.fulfill({
@@ -1754,6 +1755,13 @@ test("device login: an open page shows a new device's code, and Allow answers it
   );
   await page.route("**/api/devices/requests/request-3", async (route) => {
     answers.push(route.request().postDataJSON());
+    // The server tells every page that the request settled before it answers this page.
+    sockets.at(-1)?.send(JSON.stringify({ kind: "device_login_settled", id: "request-3", answer: "allow" }));
+    // Give the page time to handle the event: the notice must stay, with its buttons off.
+    await page.waitForTimeout(300);
+    await expect(
+      page.getByRole("dialog", { name: "New device" }).getByRole("button", { name: "Allow" }),
+    ).toBeDisabled();
     await route.fulfill({ status: 204 });
   });
   await logIn(page);

@@ -1,5 +1,6 @@
 /** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { Icon } from "./icons.tsx";
 import {
   api,
   ApiError,
@@ -264,7 +265,7 @@ function EvaApp(): ReactElement {
           style={hasSidebar ? undefined : { visibility: "hidden" }}
           onClick={() => setSidebarOpen((open) => !open)}
         >
-          ☰
+          <Icon name="menu" />
         </button>
         <div className="mode-switch" role="group" aria-label="Mode">
           {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}

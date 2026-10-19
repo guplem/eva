@@ -4,6 +4,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
+import { Icon } from "./icons.tsx";
 
 /** A toast hides itself after this time; the person can close it sooner. */
 const toastVisibleMs = 8_000;
@@ -36,7 +37,7 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
         <div className="toast" role="alert">
           <span>{message}</span>
           <button aria-label="Close the message" onClick={() => setMessage(null)}>
-            ✕
+            <Icon name="x" />
           </button>
         </div>
       )}

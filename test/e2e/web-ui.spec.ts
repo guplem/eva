@@ -424,7 +424,7 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   await page.getByRole("button", { name: "Settings" }).click();
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
-  await expect(vaultRow).toContainText("✓");
+  await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
@@ -502,11 +502,13 @@ test("Settings: each engine has a Test that runs a tiny real prompt", async ({ p
   await page.getByRole("button", { name: "Settings" }).click();
   const claudeRow = page.locator(".check-row", { hasText: "Test the Claude Code token" });
   await claudeRow.getByRole("button", { name: "Test" }).click();
-  await expect(claudeRow).toContainText("✓ Claude Code answered:");
+  await expect(claudeRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(claudeRow).toContainText("Claude Code answered:");
   const piRow = page.locator(".check-row", { hasText: "Test pi" });
   await piRow.getByRole("button", { name: "Test" }).click();
   // The demo server has only the scripted Claude Code engine.
-  await expect(piRow).toContainText("✗ Eva did not find pi on this machine.");
+  await expect(piRow.getByRole("img", { name: "Failed" })).toBeVisible();
+  await expect(piRow).toContainText("Eva did not find pi on this machine.");
   await expect(page.getByText("Telegram is not set up: save a bot token, then restart Eva.")).toBeVisible();
   await expect(page.getByText("Only the Tailscale account that owns this machine.")).toBeVisible();
 });
@@ -1315,7 +1317,31 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await expect(page.getByText("Account: person@example.com")).toBeVisible();
   const googleRow = page.locator(".check-row", { hasText: "Test Google" });
   await googleRow.getByRole("button", { name: "Test" }).click();
-  await expect(googleRow).toContainText("✓ Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+  await expect(googleRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(googleRow).toContainText("Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
+});
+
+// Emoji and symbol marks look different on each system and ignore the theme colours (#164).
+const symbolMark = /[\p{Extended_Pictographic}\u2190-\u21ff\u2300-\u23ff\u2460-\u27bf\u2b00-\u2bff]/u;
+
+async function expectNoSymbolMarks(page: Page): Promise<void> {
+  expect(await page.locator("body").innerText()).not.toMatch(symbolMark);
+}
+
+test("each page shows line icons, never an emoji or a symbol mark", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await expect(page.getByRole("button", { name: "Open schedules" }).locator("svg.icon")).toBeVisible();
+  await expectNoSymbolMarks(page);
+  await page.getByRole("button", { name: "Open schedules" }).click();
+  await expectNoSymbolMarks(page);
+  await page.getByRole("button", { name: "Project" }).click();
+  await expectNoSymbolMarks(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
+  await vaultRow.getByRole("button", { name: "Test" }).click();
+  await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expectNoSymbolMarks(page);
 });
 
 test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {

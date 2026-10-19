@@ -94,9 +94,11 @@ export interface CloneDetails extends Clone {
   readonly branch: string | null;
   /** The number of the open pull request of the branch, when `gh` finds one. */
   readonly pullRequest: number | null;
+  /** The files that `git status` lists: changed, staged or new. Null when git fails. */
+  readonly changes: number | null;
 }
 
-/** A clone with its current branch and pull request, for the project view. */
+/** A clone with its current branch, pull request and change count, for the project view. */
 export async function describeClone(
   clone: Clone,
   runner: ProcessRunner,
@@ -105,16 +107,19 @@ export async function describeClone(
   const options = { cwd: clone.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
   let branch: string | null = null;
   let pullRequest: number | null = null;
+  let changes: number | null = null;
   try {
     const head = await runner.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], options);
     if (head.exitCode === 0) branch = head.stdout.trim();
+    const status = await runner.run(["git", "status", "--porcelain"], options);
+    if (status.exitCode === 0) changes = status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
     const view = await runner.run(["gh", "pr", "view", "--json", "number", "--jq", ".number"], options);
     const number = Number.parseInt(view.stdout.trim(), 10);
     if (view.exitCode === 0 && Number.isSafeInteger(number)) pullRequest = number;
   } catch {
     // No git or no gh: the clone still shows, without the missing detail.
   }
-  return { ...clone, branch, pullRequest };
+  return { ...clone, branch, pullRequest, changes };
 }
 
 /** The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102). */

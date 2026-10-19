@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CloneOriginStore,
   cloneFolderName,
   createClone,
+  describeClone,
   githubSlug,
   isTrustedByDefault,
   listClones,
@@ -136,6 +137,35 @@ describe("clone folders", () => {
       "https://github.com/owner/example-app",
       join(project, "repos", "example-app-0"),
     ]);
+  });
+
+  test("describes a clone with its branch and the number of changed files", async () => {
+    const clone = await createClone({
+      projectPath: project,
+      repositoryUrl: sandbox.remote,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    expect(await describeClone(clone, systemProcessRunner, gitEnvironment)).toMatchObject({
+      branch: "main",
+      changes: 0,
+    });
+    writeFileSync(join(clone.path, "new.txt"), "new\n");
+    writeFileSync(join(clone.path, "other.txt"), "other\n");
+    expect((await describeClone(clone, systemProcessRunner, gitEnvironment)).changes).toBe(2);
+  });
+
+  test("a clone whose git fails has no branch and no change count", async () => {
+    mkdirSync(join(project, "repos", "example-app-0"), { recursive: true });
+    const [clone] = listClones(project);
+    if (clone === undefined) throw new Error("The test needs one clone.");
+    const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
+    expect(await describeClone(clone, failing, gitEnvironment)).toMatchObject({
+      branch: null,
+      pullRequest: null,
+      changes: null,
+    });
   });
 });
 

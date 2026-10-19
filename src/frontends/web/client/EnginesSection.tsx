@@ -1,10 +1,11 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement } from "react";
-import type { PublicSettings } from "./api.ts";
+import { api, type PublicSettings } from "./api.ts";
 import {
   Card,
   CheckRow,
   CommandLine,
+  errorText,
   SecretField,
   SelectField,
   Steps,
@@ -65,10 +66,11 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
   );
 }
 
-/** A Claude subscription logs in with a token from `claude setup-token`, which needs a browser. */
+/** A Claude subscription logs in with a token from `claude setup-token`, which Eva can run for the page. */
 export function ClaudeCodeCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const saved = context.settings.secretsSet.claudeOauthToken;
   const installed = found(context, "claude-code");
+  const [terminalSteps, setTerminalSteps] = useState(false);
   // Without a token, Claude Code is the way to finish a missing engine step, so it needs the person too.
   const engineMissing =
     context.setup?.progress.some((step) => step.key === "engine" && step.state === "missing") ?? false;
@@ -85,23 +87,104 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
           install it.
         </div>
       )}
-      <Steps>
-        <li>
-          On any computer with a browser, open a terminal. Copy this command, paste it there and press Enter:
-          <CommandLine command="claude setup-token" />
-        </li>
-        <li>A browser page opens. Log in with your Claude account, and allow the access.</li>
-        <li>The terminal shows a long token. Copy it, and paste it here:</li>
-      </Steps>
+      {installed && <ClaudeLoginSteps context={context} />}
+      {installed && !terminalSteps ? (
+        <button className="link-button" onClick={() => setTerminalSteps(true)}>
+          Get a token in a terminal instead
+        </button>
+      ) : (
+        <Steps>
+          <li>
+            On any computer with a browser, open a terminal. Copy this command, paste it there and press Enter:
+            <CommandLine command="claude setup-token" />
+          </li>
+          <li>A browser page opens. Log in with your Claude account, and allow the access.</li>
+          <li>The terminal shows a long token. Copy it, and paste it here:</li>
+        </Steps>
+      )}
       <SecretField
         name="claudeOauthToken"
         label="Claude Code token"
         saved={saved}
-        help="It starts with sk-ant-oat. It stays on this machine, never in your vault."
+        help={`${installed ? "The login above saves it here. You can also paste a token. " : ""}It starts with sk-ant-oat. It stays on this machine, never in your vault.`}
         check="claude-code"
         onChanged={context.noteAndReload}
       />
     </Card>
+  );
+}
+
+/**
+ * The login with no terminal: Eva runs `claude setup-token` on her computer, and the person logs
+ * in on Claude's page from any device. The token never reaches the page.
+ */
+function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): ReactElement {
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  // One request at a time: a double tap would start a second login and end the first one.
+  const [busy, setBusy] = useState(false);
+
+  const start = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      // A phone blocks a window that opens after a wait, so the page shows a link instead.
+      setLoginUrl((await api.startClaudeLogin()).url);
+    } catch (error) {
+      context.notify(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finish = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await api.finishClaudeLogin(code);
+      setCode("");
+      setLoginUrl(null);
+      context.noteAndReload("Logged in to Claude. Press Restart Eva so that chats use the new login.");
+    } catch (error) {
+      context.notify(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Steps>
+      <li>
+        Press the button. Eva prepares the login, which takes a few seconds.
+        <div className="button-row">
+          <button className="primary" disabled={busy} onClick={() => void start()}>
+            Log in to Claude
+          </button>
+          {loginUrl !== null && (
+            <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
+              Open Claude&apos;s page
+            </a>
+          )}
+        </div>
+      </li>
+      <li>On Claude&apos;s page, log in with your own Claude account, and allow the access.</li>
+      <li>
+        Claude&apos;s page shows a code. Copy it, paste it here, and press Finish:
+        <div className="inline-form">
+          {/* Always here: a phone may reload the page while the person is on Claude's page. */}
+          <input
+            aria-label="The code from Claude's page"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+          <button className="primary" disabled={busy || code.trim() === ""} onClick={() => void finish()}>
+            Finish
+          </button>
+        </div>
+      </li>
+    </Steps>
   );
 }
 
@@ -115,6 +198,10 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
   };
   return (
     <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
+      <div className="callout">
+        The pi login needs a terminal on Eva&apos;s computer: pi asks its questions only there. To log in from this page
+        alone, use Claude Code above.
+      </div>
       {installed ? (
         <Steps>
           <li>

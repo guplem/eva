@@ -312,28 +312,74 @@ textarea {
   background: var(--panel);
 }
 
-.problem-banner {
-  padding: 6px 16px;
+/* Offline and the open problems, at the top of the main area. Each says what happened and has the fix. */
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 0;
+}
+
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-radius: 18px;
+  padding: 10px 12px 10px 16px;
   font-size: 13px;
-  background: var(--panel);
-  color: var(--bad);
-  border-bottom: 1px solid var(--bad);
+  background: var(--warn-bg);
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
-.problem-banner ul {
-  margin: 2px 0 0;
-  padding-left: 18px;
-  color: var(--ink);
+.notice > .icon {
+  flex: none;
+  color: var(--warn);
 }
 
-.connection-banner {
-  padding: 4px 16px;
+.notice.bad {
+  background: var(--bad-bg);
+}
+
+.notice.bad > .icon {
+  color: var(--bad);
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice > button {
+  flex: none;
   font-size: 13px;
-  text-align: center;
-  background: var(--chip);
+}
+
+.problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.offline-note,
+.conflict-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.offline-note .hint,
+.note-conflicts .hint {
   color: var(--muted);
-  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.offline-note {
+  padding: 6px 4px 0 8px;
+}
+
+.narrow-only {
+  display: none;
 }
 
 .mode-switch {
@@ -1090,26 +1136,115 @@ textarea {
   opacity: 0.5;
 }
 
+/* The toast swaps the page colours, so it stands out from any page under it. */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom));
+  bottom: max(26px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: min(480px, calc(100vw - 32px));
+  width: max-content;
+  max-width: calc(100vw - 32px);
   z-index: 30;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--bad);
-  background: var(--panel);
-  color: var(--bad);
-  box-shadow: var(--shadow);
+  padding: 10px 12px 10px 16px;
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  box-shadow: 0 16px 40px -12px oklch(0.1 0.03 var(--h) / 0.5);
+}
+
+.toast > .icon {
+  flex: none;
 }
 
 .toast span {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast button {
+  flex: none;
+  font-size: 13px;
+}
+
+.toast .toast-close {
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  padding: 4px;
+  display: grid;
+}
+
+/* A note in a vault sync conflict: both versions side by side, and the three picks. */
+.note-conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conflict-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+}
+
+.conflict-versions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.conflict-version .label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.diff {
+  font: 400 12px/1.6 var(--mono);
+  border-radius: 14px;
+  background: var(--chip);
+  max-height: 320px;
+  overflow: auto;
+}
+
+.diff div {
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.diff .a {
+  background: var(--ok-bg);
+}
+
+.diff .gap {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.conflict-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dialog.wide {
+  max-width: 760px;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
 }
 
 .menu-button,
@@ -1119,6 +1254,19 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  /* On a phone the two versions of a note stack, and the offline face is small. */
+  .conflict-versions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wide-only {
+    display: none;
+  }
+
+  .narrow-only {
+    display: contents;
+  }
+
   .layout {
     grid-template-columns: 1fr;
   }

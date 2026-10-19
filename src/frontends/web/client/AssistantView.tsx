@@ -1,5 +1,5 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
@@ -19,6 +19,8 @@ interface AssistantViewProps {
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
+  /** Offline and the open problems, shown at the top of the main area. */
+  readonly notices: ReactNode;
   readonly onOpenSchedules: () => void;
 }
 
@@ -30,6 +32,7 @@ export function AssistantView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
+  notices,
   onOpenSchedules,
 }: AssistantViewProps): ReactElement {
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -134,6 +137,7 @@ export function AssistantView({
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
+        {notices}
         {selected === undefined ? (
           <div className="empty">No chats yet. Start one with “New chat”.</div>
         ) : (

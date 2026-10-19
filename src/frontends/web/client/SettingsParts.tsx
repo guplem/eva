@@ -1,14 +1,8 @@
 /** The small parts of the settings page: a Test row, a write-only secret field, and the vault sync state. */
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import {
-  api,
-  type CheckResult,
-  type ConflictChoice,
-  type PageSecretName,
-  type VaultConflict,
-  type VaultSyncState,
-} from "./api.ts";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { api, type CheckResult, type PageSecretName, type VaultSyncState } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { NoteConflicts } from "./NoteConflicts.tsx";
 
 /** The result of a test: a named mark, so a screen reader also hears whether it passed. */
 export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail: string }): ReactElement {
@@ -149,7 +143,7 @@ export function VaultSyncView({
       <div className="hint">
         Last commit: {formatTime(state.lastCommitAt)}. Last push: {formatTime(state.lastPushAt)}.
       </div>
-      {state.status === "conflict" && <VaultConflicts state={state} onState={onState} />}
+      {state.status === "conflict" && <NoteConflicts state={state} onState={onState} />}
       {state.withheldFiles.length > 0 && (
         <div>
           These files stay out of the vault&apos;s commits. Move the secret out of the file, or make it smaller:
@@ -163,100 +157,6 @@ export function VaultSyncView({
         </div>
       )}
     </section>
-  );
-}
-
-const pickLabels: Readonly<Record<ConflictChoice, string>> = {
-  mine: "Keep mine",
-  theirs: "Keep theirs",
-  both: "Keep both",
-};
-
-/**
- * Each conflicted note with its three picks. The list loads again when the sync state changes,
- * so a sync that brings a new conflict shows it. The last pick pushes, and the new state goes up.
- */
-function VaultConflicts({
-  state,
-  onState,
-}: {
-  state: VaultSyncState;
-  onState: (state: VaultSyncState) => void;
-}): ReactElement {
-  const [conflicts, setConflicts] = useState<readonly VaultConflict[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  // The disabled buttons show only after a render, so two quick taps could send two picks.
-  const picking = useRef(false);
-
-  const load = (): void => {
-    api
-      .vaultConflicts()
-      .then((report) => {
-        setConflicts(report.conflicts);
-        // The conflict can end elsewhere: a sync on another path, or a fix by hand. The parent then shows the new state.
-        if (report.state.status !== "conflict") onState(report.state);
-      })
-      .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)));
-  };
-  useEffect(load, [state.lastError, state.lastCommitAt]);
-
-  const pick = async (path: string, choice: ConflictChoice): Promise<void> => {
-    if (picking.current) return;
-    picking.current = true;
-    setBusy(true);
-    setNote(null);
-    try {
-      const result = await api.resolveVaultConflict(path, choice);
-      if (result.found) {
-        setConflicts(result.conflicts);
-        onState(result.state);
-      } else {
-        // A refused pick (an Assistant turn runs) keeps the list, so the person can pick again.
-        setNote(result.state.lastError ?? "That note has no conflict anymore.");
-        load();
-      }
-    } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error));
-    } finally {
-      picking.current = false;
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div>
-      <p className="hint">
-        &quot;Mine&quot; is this machine&apos;s version, &quot;theirs&quot; is the remote&apos;s. &quot;Keep both&quot;
-        keeps mine and puts theirs in a copy beside the note. Git keeps both versions either way.
-      </p>
-      {conflicts === null && note === null && <div>Loading the conflicts…</div>}
-      {conflicts?.length === 0 && <div>No note conflicts now.</div>}
-      <ul>
-        {conflicts?.map((conflict) => (
-          <li key={conflict.path}>
-            {conflict.path}
-            {conflict.picked !== null && ` (picked: ${pickLabels[conflict.picked].toLowerCase()})`}
-            {conflict.kind === "uncommitted" && (
-              <div className="hint">Keep theirs leaves this machine&apos;s edit in git&apos;s stash.</div>
-            )}
-            <div className="check-row" role="group" aria-label={conflict.path}>
-              {(["mine", "theirs", "both"] as const).map((choice) => (
-                <button
-                  key={choice}
-                  disabled={busy}
-                  aria-label={`${pickLabels[choice]}: ${conflict.path}`}
-                  onClick={() => void pick(conflict.path, choice)}
-                >
-                  {pickLabels[choice]}
-                </button>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {note !== null && <div role="alert">{note}</div>}
-    </div>
   );
 }
 

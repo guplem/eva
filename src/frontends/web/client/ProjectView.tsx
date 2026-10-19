@@ -3,7 +3,7 @@
  * conversation of the selected clone with its branch and pull request, the project details, and
  * the repository setup.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
@@ -21,6 +21,8 @@ interface ProjectViewProps {
   /** The chat that the address names; its project and clone open with it. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
+  /** Offline and the open problems, shown at the top of the main area. */
+  readonly notices: ReactNode;
 }
 
 /**
@@ -49,6 +51,7 @@ export function ProjectView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
+  notices,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -278,6 +281,7 @@ export function ProjectView({
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
+        {notices}
         {panel?.kind === "details" ? (
           <ProjectDetailsEditor
             key={panel.project.id}

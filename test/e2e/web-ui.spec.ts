@@ -528,6 +528,14 @@ test("Settings: the default model saves at once", async ({ page }) => {
   }
 });
 
+const planConflict = {
+  path: "Notes/plan.md",
+  kind: "committed",
+  picked: null,
+  mine: "- [ ] Review pull request #42\n- [ ] Thursday demo at 9\n",
+  theirs: "- [ ] Review pull request #42\n- [ ] Buy coffee\n",
+};
+
 test("Settings: the vault sync state shows a conflict, its picks and the held-back files", async ({ page }) => {
   let conflictState: Record<string, unknown> = {};
   await page.route("**/api/status", async (route) => {
@@ -548,13 +556,16 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   // The demo vault has no conflict, so the browser plays the conflict list as well.
   await page.route("**/api/vault/conflicts", (route) =>
     route.fulfill({
-      json: { state: conflictState, conflicts: [{ path: "Notes/plan.md", kind: "committed", picked: null }] },
+      json: { state: conflictState, conflicts: [planConflict] },
     }),
   );
   await logIn(page);
   await page.getByRole("button", { name: "Settings" }).click();
   const sync = page.getByRole("region", { name: "Vault sync" });
   await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  const card = sync.getByRole("region", { name: "Conflict: Notes/plan.md" });
+  await expect(card).toContainText("plan.md changed here and on the remote");
+  await expect(card.locator(".diff .a")).toHaveText(["- [ ] Thursday demo at 9", "- [ ] Buy coffee"]);
   await expect(sync.getByRole("group", { name: "Notes/plan.md" })).toBeVisible();
   await expect(sync.getByRole("button", { name: "Keep mine: Notes/plan.md" })).toBeVisible();
   await expect(sync.getByRole("button", { name: "Keep theirs: Notes/plan.md" })).toBeVisible();
@@ -829,7 +840,7 @@ async function routeEvents(page: Page): Promise<WebSocketRoute[]> {
   return sockets;
 }
 
-test("a dropped connection shows Reconnecting…, and the reconnect clears a stale answer", async ({ page }) => {
+test("a dropped connection says Eva does not answer, and the reconnect clears a stale answer", async ({ page }) => {
   const sockets = await routeEvents(page);
   await logIn(page);
   const sessionId = await newChat(page);
@@ -837,9 +848,31 @@ test("a dropped connection shows Reconnecting…, and the reconnect clears a sta
   await expect(page.getByText("half an answer")).toBeVisible();
 
   await sockets.at(-1)?.close();
-  await expect(page.getByText("Reconnecting…")).toBeVisible();
-  await expect(page.getByText("Reconnecting…")).toBeHidden();
+  await expect(page.getByText("Eva does not answer.")).toBeVisible();
+  await expect(page.getByText("Your message stays in the box")).toBeVisible();
+  await expect(page.getByText("Eva does not answer.")).toBeHidden();
   await expect(page.getByText("half an answer")).toHaveCount(0);
+});
+
+test("Try now connects at once, before the next timed try", async ({ page }) => {
+  let refuse = false;
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
+    sockets.push(socket);
+    if (refuse) void socket.close();
+    else socket.connectToServer();
+  });
+  await logIn(page);
+  refuse = true;
+  await sockets.at(-1)?.close();
+  const banner = page.getByRole("status").filter({ hasText: "Eva does not answer." });
+  await expect(banner).toBeVisible();
+  // A timed try just failed, so the next one is 2 seconds away: only Try now can connect sooner.
+  const dropped = sockets.length;
+  await expect.poll(() => sockets.length).toBeGreaterThan(dropped);
+  refuse = false;
+  await banner.getByRole("button", { name: "Try now" }).click();
+  await expect(banner).toBeHidden({ timeout: 1_000 });
 });
 
 test("back on the page, a stale answer from before the sleep is cleared", async ({ page }) => {
@@ -975,16 +1008,91 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
 });
 
-test("open problems show in a banner at the top", async ({ page }) => {
+/** Plays the status with these open problems, and with the sync state changed as given. */
+async function routeProblems(
+  page: Page,
+  problems: readonly { key: string; level: "warn" | "error"; message: string }[],
+  vaultSync: Record<string, unknown> = {},
+): Promise<void> {
   await page.route("**/api/status", async (route) => {
     const response = await route.fetch();
-    const status = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...status, problems: ["The vault sync failed: disk full."] } });
+    const status = (await response.json()) as Record<string, unknown> & { vaultSync: Record<string, unknown> };
+    await route.fulfill({
+      response,
+      json: {
+        ...status,
+        vaultSync: { ...status.vaultSync, ...vaultSync },
+        problems: problems.map((problem) => problem.message),
+        problemDetails: problems,
+      },
+    });
   });
+}
+
+test("open problems show in a banner at the top, each with the button that fixes it", async ({ page }) => {
+  await routeProblems(page, [
+    { key: "update", level: "error", message: "The update install failed." },
+    { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed." },
+  ]);
   await logIn(page);
   const banner = page.getByRole("region", { name: "Problems" });
-  await expect(banner).toContainText("1 problem");
-  await expect(banner).toContainText("The vault sync failed: disk full.");
+  await expect(banner).toContainText("The update install failed.");
+  await banner.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Open Settings" }).click();
+  await expect(page.locator(".topbar").getByRole("button", { name: /^Settings/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
+  await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
+    status: "conflict",
+  });
+  await page.route("**/api/vault/conflicts", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { state: { status: "conflict" }, conflicts: [planConflict] } });
+      return;
+    }
+    await page.unroute("**/api/status");
+    await route.fulfill({
+      json: {
+        found: true,
+        conflicts: [],
+        state: { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] },
+      },
+    });
+  });
+  await logIn(page);
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
+  const dialog = page.getByRole("dialog", { name: "Note conflicts" });
+  await expect(dialog).toContainText("Eva kept both. Pick the one to keep.");
+  await expect(dialog.getByText("- [ ] Buy coffee")).toBeVisible();
+  await dialog.getByRole("button", { name: "Keep mine: Notes/plan.md" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+});
+
+test("a failure that Settings fixes offers the way there", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.route("**/api/sessions", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 500,
+          json: { error: "The engine claude-code is not available.", code: "engine_failed" },
+        })
+      : route.continue(),
+  );
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
+  await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".topbar").getByRole("button", { name: /^Settings/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 test("no banner shows while all is good", async ({ page }) => {

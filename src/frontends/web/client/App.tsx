@@ -1,5 +1,5 @@
 /** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from "react";
 import { Icon } from "./icons.tsx";
 import {
   api,
@@ -7,15 +7,21 @@ import {
   subscribeToEvents,
   type DeviceLoginEvent,
   type DeviceLoginRequest,
+  type EvaStatus,
+  type EventSubscription,
   type PendingApproval,
   type ScheduleCard,
   type SessionEvent,
   type SessionRecord,
+  type VaultSyncState,
 } from "./api.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
+import { NoteConflicts } from "./NoteConflicts.tsx";
+import type { ProblemAction } from "./problem-actions.ts";
+import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
@@ -35,23 +41,33 @@ function linkedChatIdOf(hash: string): string | null {
 }
 
 export function App(): ReactElement {
+  // The screen lives here, so a toast can open Settings.
+  const [screen, setScreen] = useState<Screen>("assistant");
   return (
-    <ErrorToastProvider>
-      <EvaApp />
+    <ErrorToastProvider onOpenSettings={() => setScreen("settings")}>
+      <EvaApp screen={screen} setScreen={setScreen} />
     </ErrorToastProvider>
   );
 }
 
-function EvaApp(): ReactElement {
+function EvaApp({
+  screen,
+  setScreen,
+}: {
+  readonly screen: Screen;
+  readonly setScreen: Dispatch<SetStateAction<Screen>>;
+}): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [screen, setScreen] = useState<Screen>("assistant");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
-  const [problems, setProblems] = useState<readonly string[]>([]);
+  const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
+  const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
+  const [conflictsOpen, setConflictsOpen] = useState(false);
+  const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
@@ -68,7 +84,7 @@ function EvaApp(): ReactElement {
   const linkedMode = linkedChat?.mode ?? null;
   useEffect(() => {
     if (linkedMode !== null) setScreen(linkedMode);
-  }, [linkedChatId, linkedMode]);
+  }, [linkedChatId, linkedMode, setScreen]);
 
   /**
    * A view opened the linked chat: the link is used up. A view mounts again at each screen
@@ -84,7 +100,8 @@ function EvaApp(): ReactElement {
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       const status = await api.status();
-      setProblems(status.problems);
+      setProblems(status.problemDetails);
+      setSyncState(status.vaultSync);
       setSetupMissing(status.setupMissing);
     } catch {
       // The next poll or the next reconnect tries again.
@@ -179,7 +196,7 @@ function EvaApp(): ReactElement {
       // so ask over HTTP: a 401 there shows the login page and ends the retries.
       else void refreshSessions();
     };
-    return subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
+    const subscription = subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
       if (event.kind === "device_login_request") {
         setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
         return;
@@ -216,6 +233,11 @@ function EvaApp(): ReactElement {
         void refreshSessions();
       }
     }, onConnectionChange);
+    events.current = subscription;
+    return () => {
+      subscription.close();
+      events.current = null;
+    };
   }, [authenticated, refreshSessions, recover]);
 
   if (authenticated === null) return <div className="empty">Loading…</div>;
@@ -257,6 +279,27 @@ function EvaApp(): ReactElement {
   };
   const card = cards[0];
 
+  const runProblemAction = (action: ProblemAction): void => {
+    if (action === "pick_version") setConflictsOpen(true);
+    else if (action === "open_schedules") setScreen("schedules");
+    else setScreen("settings");
+  };
+  const notices = (
+    <ProblemNotices
+      isConnected={isConnected}
+      problems={problems}
+      syncStatus={syncState?.status ?? "ok"}
+      onRetryNow={() => events.current?.retryNow()}
+      onAction={runProblemAction}
+    />
+  );
+  /** A pick changes the sync state; the problem list follows, and the dialog closes once nothing is left. */
+  const onConflictState = (state: VaultSyncState): void => {
+    setSyncState(state);
+    if (state.status !== "conflict") setConflictsOpen(false);
+    void refreshProblems();
+  };
+
   return (
     <div className="app">
       <header className="topbar">
@@ -289,21 +332,8 @@ function EvaApp(): ReactElement {
           {setupMissing > 0 && <span className="chip">{setupMissing} to set up</span>}
         </button>
       </header>
-      {problems.length > 0 && (
-        <section className="problem-banner" aria-label="Problems">
-          <strong>{problems.length === 1 ? "1 problem" : `${String(problems.length)} problems`}</strong>
-          <ul>
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {!isConnected && (
-        <div className="connection-banner" role="status">
-          Reconnecting…
-        </div>
-      )}
+      {/* The chat views put the notices in their main area, beside the list. */}
+      {(screen === "settings" || screen === "schedules") && notices}
       {screen === "assistant" && (
         <AssistantView
           sessions={sessions}
@@ -314,6 +344,7 @@ function EvaApp(): ReactElement {
           linkedChat={linkedChat}
           onLinkedChatOpened={onLinkedChatOpened}
           onOpenSchedules={() => setScreen("schedules")}
+          notices={notices}
         />
       )}
       {screen === "project" && (
@@ -325,12 +356,24 @@ function EvaApp(): ReactElement {
           onLinkedChatOpened={onLinkedChatOpened}
           onChanged={refreshSessions}
           onNavigate={() => setSidebarOpen(false)}
+          notices={notices}
         />
       )}
       {screen === "settings" && (
         <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
       )}
       {screen === "schedules" && <SchedulesView />}
+      {/* Before the other dialogs: an approval that comes meanwhile shows on top. */}
+      {conflictsOpen && syncState !== null && (
+        <div className="dialog-backdrop">
+          <div className="dialog wide" role="dialog" aria-label="Note conflicts">
+            <NoteConflicts state={syncState} onState={onConflictState} />
+            <div className="message-actions">
+              <button onClick={() => setConflictsOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
       {approval !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="Approval">

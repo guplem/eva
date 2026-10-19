@@ -198,14 +198,22 @@ export const api = {
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
 };
 
-/** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
+export interface EventSubscription {
+  readonly close: () => void;
+  /** Tries to connect at once, instead of at the next timed try. */
+  readonly retryNow: () => void;
+}
+
+/** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
   onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
-): () => void {
+): EventSubscription {
   let socket: WebSocket | null = null;
   let closed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   const connect = (): void => {
+    retryTimer = undefined;
     // A retry that the timer started can run after the page closed the stream, such as at a logout.
     if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -219,12 +227,21 @@ export function subscribeToEvents(
     socket.addEventListener("close", () => {
       if (closed) return;
       onConnectionChange(false);
-      setTimeout(connect, 2_000);
+      retryTimer = setTimeout(connect, 2_000);
     });
   };
   connect();
-  return () => {
-    closed = true;
-    socket?.close();
+  return {
+    close: () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      socket?.close();
+    },
+    retryNow: () => {
+      // Only a waiting retry moves: an open or opening socket needs no second one.
+      if (retryTimer === undefined) return;
+      clearTimeout(retryTimer);
+      connect();
+    },
   };
 }

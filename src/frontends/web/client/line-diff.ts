@@ -1,6 +1,6 @@
 /**
  * A line diff for the two versions of a note conflict. Each side shows its own lines, and the
- * lines that the other side does not have stand out.
+ * lines that the other side does not have stand out. Line endings do not count: CRLF and LF read the same.
  */
 
 export type DiffRow =
@@ -15,7 +15,7 @@ export interface VersionComparison {
 
 /** The shared lines that stay visible around each change. */
 const contextLines = 2;
-/** Above this many cells, the comparison is too slow for a phone: every differing line counts as changed. */
+/** Above this many cells, the exact comparison is too slow for a phone, and a quicker one runs instead. */
 const maxTableCells = 1_000_000;
 
 /** Null stands for a side that deleted the note. */
@@ -54,7 +54,15 @@ function sharedLines(left: readonly string[], right: readonly string[]): [boolea
   }
   const rows = leftEnd - start;
   const columns = rightEnd - start;
-  if (rows === 0 || columns === 0 || rows * columns > maxTableCells) return [leftShared, rightShared];
+  if (rows === 0 || columns === 0) return [leftShared, rightShared];
+  if (rows * columns > maxTableCells) {
+    // A line that the other side also has counts as shared, wherever it is.
+    const leftLines = new Set(left.slice(start, leftEnd));
+    const rightLines = new Set(right.slice(start, rightEnd));
+    for (let i = start; i < leftEnd; i += 1) leftShared[i] = rightLines.has(left[i] ?? "");
+    for (let j = start; j < rightEnd; j += 1) rightShared[j] = leftLines.has(right[j] ?? "");
+    return [leftShared, rightShared];
+  }
   // lengths[i][j]: the common subsequence of the middle lines from i and from j on.
   const lengths = Array.from({ length: rows + 1 }, () => new Uint32Array(columns + 1));
   for (let i = rows - 1; i >= 0; i -= 1) {

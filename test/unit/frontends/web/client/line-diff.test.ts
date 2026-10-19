@@ -49,6 +49,22 @@ describe("compareVersions", () => {
     expect(compareVersions("a\n", null).theirs).toEqual([]);
   });
 
+  test("on two long notes, still keeps plain a line that both sides have", () => {
+    const shared = Array.from({ length: 3000 }, (_, index) => `line ${String(index)}`);
+    const mine = ["mine", ...shared].join("\n");
+    const theirs = [...shared.slice(0, 1500), "theirs", ...shared.slice(1500)].join("\n");
+    const result = compareVersions(mine, theirs);
+    expect(result.mine.filter((row) => row.kind === "changed")).toEqual([{ kind: "changed", text: "mine" }]);
+    expect(result.theirs.filter((row) => row.kind === "changed")).toEqual([{ kind: "changed", text: "theirs" }]);
+  });
+
+  test("shows identical sides as plain lines", () => {
+    expect(compareVersions("a\r\nb\r\n", "a\nb\n").mine).toEqual([
+      { kind: "same", text: "a" },
+      { kind: "same", text: "b" },
+    ]);
+  });
+
   test("still answers fast for two long notes with no line in common", () => {
     const mine = Array.from({ length: 3000 }, (_, index) => `m${String(index)}`).join("\n");
     const theirs = Array.from({ length: 3000 }, (_, index) => `t${String(index)}`).join("\n");

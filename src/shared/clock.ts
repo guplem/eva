@@ -19,4 +19,9 @@ export class SequenceCounter {
     this.last += 1;
     return this.last;
   }
+
+  /** The last number given, or 0 before the first. */
+  current(): number {
+    return this.last;
+  }
 }

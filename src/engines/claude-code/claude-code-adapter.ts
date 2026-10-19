@@ -5,6 +5,7 @@
  */
 import {
   query as sdkQuery,
+  type McpServerStatus,
   type Options,
   type SDKMessage,
   type SDKRateLimitInfo,
@@ -13,7 +14,21 @@ import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engin
 import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 
-type QueryFunction = (input: { prompt: string; options: Options }) => AsyncIterable<SDKMessage>;
+/** The SDK's query, with the one control request that Eva uses. */
+type QueryRun = AsyncIterable<SDKMessage> & { mcpServerStatus?: () => Promise<McpServerStatus[]> };
+type QueryFunction = (input: { prompt: string; options: Options }) => QueryRun;
+
+/** How the stream checks the start of Eva's own MCP servers. */
+export interface McpStartCheck {
+  /** The names of Eva's servers. A server of the person's own is not Eva's to report. */
+  readonly servers: readonly string[];
+  /** The init message has no reason for a failure. This control request has it. */
+  readonly status: () => Promise<McpServerStatus[]>;
+  readonly waitMs: number;
+}
+
+/** The SDK's control request has no time bound of its own, so a slow answer must not hold the turn. */
+const mcpStatusWaitMs = 5_000;
 
 export interface ClaudeCodeEngineOptions {
   /** Absolute path of the person's `claude` program. Eva never embeds one. */
@@ -77,8 +92,9 @@ export class ClaudeCodeEngine implements EnginePort {
       },
     };
     try {
-      const messages = (this.options.query ?? sdkQuery)({ prompt: request.prompt, options });
-      yield* mapSdkMessages(messages);
+      const run = (this.options.query ?? sdkQuery)({ prompt: request.prompt, options });
+      const status = run.mcpServerStatus?.bind(run) ?? (() => Promise.resolve([]));
+      yield* mapSdkMessages(run, { servers: Object.keys(request.mcpServers), status, waitMs: mcpStatusWaitMs });
     } catch (error) {
       yield { kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) };
     }
@@ -158,10 +174,14 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
  * a result, the subagent's work, and a second turn with its own result (issue #70). So a success
  * ends the turn only when the stream ends. An error result ends it at once. A throw, such as a
  * stop while the subagent works, fails the turn, so the person sees that the rest is lost.
+ * With `mcp`, each of Eva's MCP servers that did not start becomes a notice.
  */
-export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
+export async function* mapSdkMessages(
+  messages: AsyncIterable<SDKMessage>,
+  mcp: McpStartCheck | null = null,
+): AsyncIterable<EngineEventPayload> {
   let finished: Extract<EngineEventPayload, { kind: "turn_finished" }> | null = null;
-  for await (const event of mapEachTurn(messages)) {
+  for await (const event of mapEachTurn(messages, mcp)) {
     if (event.kind === "turn_finished") {
       finished = event;
       continue;
@@ -173,13 +193,24 @@ export async function* mapSdkMessages(messages: AsyncIterable<SDKMessage>): Asyn
 }
 
 /** Each SDK result becomes a turn end that covers the whole stream so far. */
-async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<EngineEventPayload> {
+async function* mapEachTurn(
+  messages: AsyncIterable<SDKMessage>,
+  mcp: McpStartCheck | null,
+): AsyncIterable<EngineEventPayload> {
+  // A background subagent's follow-up turn can send its own init, and the person needs one notice.
+  let mcpChecked = false;
+  // A server that `uvx` downloads on its first start can still connect at init, and fail later.
+  let stillStarting: string[] = [];
+  // The SDK closes the CLI's stdin at the result of a one-message turn, and a request after that gets
+  // no answer. So the second check goes out at the first answer, and the result waits for it.
+  let laterStatus: Promise<McpServerStatus[]> | null = null;
   let lastMessageId: string | null = null;
   let contextTokens: number | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
+        if (mcp !== null && stillStarting.length > 0 && laterStatus === null) laterStatus = boundedStatus(mcp);
         if (message.parent_tool_use_id !== null) break;
         // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
         contextTokens = contextOf(message.message.usage) ?? contextTokens;
@@ -209,6 +240,13 @@ async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<
         break;
       }
       case "system": {
+        if (message.subtype === "init" && mcp !== null && !mcpChecked) {
+          mcpChecked = true;
+          const own = message.mcp_servers.filter((server) => mcp.servers.includes(server.name));
+          stillStarting = own.filter((server) => server.status === "pending").map((server) => server.name);
+          const failed = own.filter(isStartFailure);
+          if (failed.length > 0) yield* startNotices(failed, await boundedStatus(mcp));
+        }
         const task = taskEvent(message);
         if (task !== null) yield task;
         break;
@@ -219,6 +257,18 @@ async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<
         break;
       }
       case "result": {
+        if (mcp !== null && stillStarting.length > 0) {
+          const statuses = await (laterStatus ?? boundedStatus(mcp));
+          const late = statuses.filter((status) => stillStarting.includes(status.name));
+          stillStarting = [];
+          yield* startNotices(late.filter(isStartFailure), statuses);
+          for (const server of late.filter((status) => status.status === "pending")) {
+            yield {
+              kind: "notice",
+              text: `Eva could not start the MCP server "${server.name}": it was still starting when the model answered.`,
+            };
+          }
+        }
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.
           yield { kind: "turn_failed", reason: message.errors.join("; ") || message.subtype };
@@ -239,6 +289,41 @@ async function* mapEachTurn(messages: AsyncIterable<SDKMessage>): AsyncIterable<
       default:
         break;
     }
+  }
+}
+
+function isStartFailure(server: { readonly status: string }): boolean {
+  return server.status === "failed" || server.status === "needs-auth";
+}
+
+/** One notice for each server that did not start. The turn goes on without its tools. */
+function* startNotices(
+  failed: readonly { readonly name: string; readonly status: string }[],
+  statuses: readonly McpServerStatus[],
+): Iterable<EngineEventPayload> {
+  for (const server of failed) {
+    const reason =
+      server.status === "needs-auth"
+        ? "it needs a login."
+        : (statuses.find((status) => status.name === server.name)?.error ?? "Claude Code gave no reason.");
+    yield { kind: "notice", text: `Eva could not start the MCP server "${server.name}": ${reason}` };
+  }
+}
+
+/** Never rejects: a status that fails or never comes only costs the reason. */
+async function boundedStatus(mcp: McpStartCheck): Promise<McpServerStatus[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<McpServerStatus[]>((resolve) => {
+    timer = setTimeout(() => {
+      resolve([]);
+    }, mcp.waitMs);
+  });
+  try {
+    return await Promise.race([mcp.status(), timeout]);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -1,7 +1,6 @@
 /**
- * Device login for the web UI. A browser that comes through an allowed
- * Tailscale account asks to log in, the owner allows it in Telegram, and the browser gets a
- * device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
+ * Device login for the web UI. A browser asks to log in with a short code. The owner allows it in
+ * Telegram, or types the code in a terminal on Eva's computer, and the browser gets a device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EvaError } from "../../shared/errors.ts";
@@ -14,6 +13,8 @@ export interface DeviceLoginRequest {
   /** The Tailscale account of the browser. */
   readonly account: string;
   readonly expiresAt: string;
+  /** The approvers that can answer, such as "Telegram" and "terminal", so the page says where to answer. */
+  readonly approvers: readonly string[];
 }
 
 export type DeviceLoginState =
@@ -25,6 +26,13 @@ export type DeviceLoginState =
 
 /** A front end that asks the owner, such as the Telegram bot. */
 export interface DeviceLoginApprover {
+  /** How the page names it to the person. */
+  readonly name: string;
+  /**
+   * True when the person checks the code on their own screen, as in the terminal. Only such an
+   * approver gets a request from this computer: any local program can make one.
+   */
+  readonly servesThisComputer?: boolean;
   /** False while the approver cannot reach the owner, such as a bot with no paired chat. */
   canApprove(): boolean;
   ask(request: DeviceLoginRequest): void;
@@ -80,7 +88,8 @@ export class DeviceLogins {
   private readonly pending: Map<string, PendingLogin>;
   private readonly approvers: Set<DeviceLoginApprover>;
   private readonly forgetListeners: Set<() => void>;
-  private requestTimes: number[];
+  /** The recent requests of each account, so one account cannot use up another's. */
+  private requestTimes: Map<string, number[]>;
   private devices: StoredDevice[];
 
   constructor(options: DeviceLoginsOptions) {
@@ -88,7 +97,7 @@ export class DeviceLogins {
     this.pending = new Map();
     this.approvers = new Set();
     this.forgetListeners = new Set();
-    this.requestTimes = [];
+    this.requestTimes = new Map();
     this.devices = loadDevices(options.path);
   }
 
@@ -105,24 +114,28 @@ export class DeviceLogins {
   }
 
   /** Starts a request and asks every approver that can reach the owner. */
-  request(account: string, label: string): DeviceLoginRequest {
-    const ready = [...this.approvers].filter((approver) => approver.canApprove());
+  request(account: string, label: string, options: { readonly thisComputer?: boolean } = {}): DeviceLoginRequest {
+    const ready = [...this.approvers].filter(
+      (approver) => approver.canApprove() && (options.thisComputer !== true || approver.servesThisComputer === true),
+    );
     if (ready.length === 0)
       throw new EvaError(
         "device_login_unavailable",
-        "This machine runs no Telegram bot that can confirm a new device. Log in with the token instead.",
+        "Nothing on this machine can confirm a new device. Log in with the token instead.",
       );
     const nowMs = this.options.now().getTime();
-    this.requestTimes = this.requestTimes.filter((time) => nowMs - time < requestWindowMs);
-    if (this.requestTimes.length >= requestsPerWindow)
+    const recent = (this.requestTimes.get(account) ?? []).filter((time) => nowMs - time < requestWindowMs);
+    this.requestTimes.set(account, recent);
+    if (recent.length >= requestsPerWindow)
       throw new EvaError("rate_limited", "Too many device logins in the last 10 minutes. Try again later.");
-    this.requestTimes.push(nowMs);
+    recent.push(nowMs);
     this.removeExpired(nowMs);
     const request: DeviceLoginRequest = {
       id: randomUUID(),
       code: newCode(),
       account,
       expiresAt: new Date(nowMs + pendingLifetimeMs).toISOString(),
+      approvers: ready.map((approver) => approver.name),
     };
     this.pending.set(request.id, {
       request,
@@ -175,6 +188,20 @@ export class DeviceLogins {
       .map((login) => login.request);
   }
 
+  /**
+   * Allows the request with this exact code, for the person who types the code that the page
+   * shows. Returns its label, or null. Never "the newest request": any local program can make one.
+   */
+  allowByCode(code: string): string | null {
+    this.removeExpired(this.options.now().getTime());
+    const wanted = code.trim().toUpperCase();
+    const found = [...this.pending.values()].filter((login) => login.answer === null && login.request.code === wanted);
+    // Two waiting requests with one code are rare; neither is allowed, so the person asks again.
+    if (found.length !== 1 || found[0] === undefined) return null;
+    this.answer(found[0].request.id, "allow");
+    return found[0].label;
+  }
+
   /** The state of a request, for the browser that made it. An issued token is handed out once. */
   check(id: string, account: string): DeviceLoginState {
     this.removeExpired(this.options.now().getTime());
@@ -183,6 +210,11 @@ export class DeviceLogins {
     if (login.answer === null) return { state: "pending" };
     this.pending.delete(id);
     return login.answer;
+  }
+
+  /** How many browsers may open Eva with a device login. */
+  count(): number {
+    return this.devices.length;
   }
 
   isValidToken(token: string): boolean {

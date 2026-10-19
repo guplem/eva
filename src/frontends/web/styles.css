@@ -364,6 +364,12 @@ textarea {
   color: var(--danger);
 }
 
+.turn-note {
+  font-size: 13px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
 .clone-chats {
   display: flex;
   flex-direction: column;

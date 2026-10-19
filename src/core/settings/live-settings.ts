@@ -8,7 +8,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import type { Redactor } from "../../shared/redaction.ts";
 import { loadSecrets, saveSecrets, type EvaConfig, type EvaSecrets, type HomePaths } from "./home.ts";
-import { applySettingsChange, isPageSettingKey, loadSettings, saveSettings } from "./settings.ts";
+import { applySettingsChange, loadSettings, saveSettings } from "./settings.ts";
 
 export interface PublicSettings {
   readonly config: EvaConfig;
@@ -87,19 +87,10 @@ export class LiveSettings {
 
   /**
    * Checks and saves a settings change: the person's part in the vault, the machine's part in
-   * `config.json`. With `pageOnly`, for a device login, a machine or trust setting fails with `setting_forbidden`.
+   * `config.json`.
    */
-  update(
-    patch: Readonly<Record<string, unknown>>,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: boolean } {
+  update(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
     const keys = changedKeys(patch, "");
-    const forbidden = options.pageOnly ? keys.find((key) => !isPageSettingKey(key)) : undefined;
-    if (forbidden !== undefined)
-      throw new EvaError(
-        "setting_forbidden",
-        `A device login cannot change ${forbidden}. Change it on the machine with \`eva settings set\`.`,
-      );
     const changed = applySettingsChange(this.savedSettings(), patch);
     saveSettings(this.options.paths, changed);
     this.settings = changed;
@@ -128,14 +119,7 @@ export class LiveSettings {
    * Saves one secret that the settings page may change, or removes it with null. The value never
    * comes back. The git, engine and Telegram processes read the secrets at start, so a restart follows.
    */
-  saveSecret(
-    name: PageSecretName,
-    value: string | null,
-    options: { readonly pageOnly: boolean } = { pageOnly: false },
-  ): { saved: true; restartNeeded: true } {
-    // A token decides whose account Eva uses, so a lost phone with a device login must not swap it.
-    if (options.pageOnly)
-      throw new EvaError("setting_forbidden", "A device login cannot change a token. Log in with the token instead.");
+  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
     const trimmed = value?.trim() ?? null;
     if (trimmed === "") throw new EvaError("config_invalid", "A secret cannot be empty. Remove it instead.");
     // Before anything else, so the value never reaches a log or an error unredacted.
@@ -147,6 +131,11 @@ export class LiveSettings {
     saveSecrets(this.options.paths, secrets);
     this.savedSecrets = secrets;
     return { saved: true, restartNeeded: true };
+  }
+
+  /** The settings and secrets as saved now, also by `eva setup` in another process. */
+  saved(): { readonly config: EvaConfig; readonly secrets: EvaSecrets } {
+    return { config: this.savedSettings(), secrets: loadSecrets(this.options.paths) };
   }
 
   /**

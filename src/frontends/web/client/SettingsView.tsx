@@ -10,7 +10,7 @@ import {
   type EngineUpdateStatus,
   type EvaStatus,
   type PublicSettings,
-  type SetupState,
+  type EvaSetupState,
   type UpdateStatus,
   type VaultSyncState,
 } from "./api.ts";
@@ -18,6 +18,7 @@ import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts
 import { DevicesPanel } from "./DevicesPanel.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
+import { SetupProgress } from "./SetupProgress.tsx";
 import { CheckRow, SecretField, VaultSyncView } from "./SettingsParts.tsx";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 
@@ -62,9 +63,16 @@ const statusPollMs = 3_000;
 const chatNameRulesLength = 4_000;
 const restartPollLimit = 60;
 
-export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): ReactElement {
+/** `onSetupChanged` lets the page around it count the setup steps again, as for the badge on Settings. */
+export function SettingsView({
+  onLoggedOut,
+  onSetupChanged,
+}: {
+  onLoggedOut: () => void;
+  onSetupChanged?: () => void;
+}): ReactElement {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
-  const [setup, setSetup] = useState<SetupState | null>(null);
+  const [setup, setSetup] = useState<EvaSetupState | null>(null);
   const [timeZone, setTimeZone] = useState("");
   const [sweepSeconds, setSweepSeconds] = useState("");
   const [projectRoots, setProjectRoots] = useState("");
@@ -160,6 +168,19 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
     );
   const config = settings.config;
 
+  /** A save can finish a setup step, so the list and the badge read the state again. */
+  const reloadSetup = (): void => {
+    api
+      .setupState()
+      .then(setSetup)
+      .catch(() => undefined);
+    onSetupChanged?.();
+  };
+  const noteAndReload = (note: string): void => {
+    setNotice(note);
+    reloadSetup();
+  };
+
   /** A dropdown saves its own value at once. True when the save worked. */
   const saveNow = async (change: Record<string, unknown>): Promise<boolean> => {
     let result: { restartNeeded: boolean };
@@ -170,6 +191,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
       return false;
     }
     setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
+    reloadSetup();
     try {
       setSettings(await api.settings());
       setUpdate(await api.updateStatus());
@@ -322,6 +344,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
         engines: { pi: { models: { default: piModel.trim() === "" ? null : piModel.trim() } } },
       });
       setNotice((result.restartNeeded ? "Saved. Press Restart Eva to use the new settings." : "Saved.") + rulesProblem);
+      reloadSetup();
     } catch (error) {
       setNotice(errorText(error) + rulesProblem);
     }
@@ -333,6 +356,9 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
   return (
     <div className="main">
       <div className="settings">
+        {setup !== null && (
+          <SetupProgress steps={setup.progress} restartNeeded={setup.restartNeeded} onChanged={reloadSetup} />
+        )}
         {remote !== null && <RemoteAccessPanel initial={remote} />}
         <fieldset>
           <legend>Setup</legend>
@@ -356,7 +382,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             saved={settings.secretsSet.githubToken}
             help="Eva's git commands use it for a private vault over HTTPS."
             check="github"
-            onChanged={setNotice}
+            onChanged={noteAndReload}
           />
 
           <h3>Vault</h3>
@@ -398,7 +424,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             saved={settings.secretsSet.telegramBotToken}
             help="Make a bot with @BotFather in Telegram, then paste its token."
             check="telegram"
-            onChanged={setNotice}
+            onChanged={noteAndReload}
           />
           <div className="hint">
             {setup === null
@@ -443,7 +469,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             saved={settings.secretsSet.claudeOauthToken}
             help="Run `claude setup-token` on any computer with your Claude subscription, then paste the token."
             check="claude-code"
-            onChanged={setNotice}
+            onChanged={noteAndReload}
           />
           {!found("claude-code") && <div className="hint">Eva did not find the claude program on this machine.</div>}
           <label>
@@ -460,7 +486,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
           <GooglePanel
             settings={settings}
             saveNow={saveNow}
-            onChanged={setNotice}
+            onChanged={noteAndReload}
             reload={() => {
               api
                 .settings()
@@ -481,8 +507,7 @@ export function SettingsView({ onLoggedOut }: { onLoggedOut: () => void }): Reac
             {identities.length === 0 ? "Only the Tailscale account that owns this machine." : identities.join(", ")}
           </div>
           <div className="hint">
-            A device login cannot change this list or the tokens. To change the list, run this on the machine, with
-            every account that may ask:{" "}
+            To change the list, run this on the machine, with every account that may ask:{" "}
             <code>
               eva settings set remoteAccess.allowedTailscaleIdentities &apos;[&quot;you@example.com&quot;]&apos;
             </code>

@@ -93,6 +93,16 @@ export function engineToolEnvironment(facts: InstanceFacts): Record<string, stri
   );
 }
 
+/** Where each engine keeps the login that this instance uses: its own folders, or the OS user's. */
+export function engineLoginFolders(facts: InstanceFacts, userHome: string): { claude: string; piAgent: string } {
+  return {
+    claude: claudeConfigFolder(facts) ?? join(userHome, ".claude"),
+    piAgent: isExtraInstance(facts.paths, facts.defaultHome)
+      ? engineFolders(facts.paths).piAgent
+      : join(userHome, ".pi", "agent"),
+  };
+}
+
 /** The instance's own Claude config folder, or null for the OS user's own one. */
 function claudeConfigFolder(facts: InstanceFacts): string | null {
   return isExtraInstance(facts.paths, facts.defaultHome) || facts.ownClaudeConfigFolder

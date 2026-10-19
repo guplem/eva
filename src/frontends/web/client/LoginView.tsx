@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 
-/** The page asks again at this pace until the owner answers in Telegram or on another Eva page. */
+/** The page asks again at this pace until the owner answers in Telegram, in the terminal or on another Eva page. */
 const devicePollMs = 2_000;
 
 type DeviceStep =
@@ -11,8 +11,8 @@ type DeviceStep =
   | { readonly kind: "token"; readonly reason: string | null; readonly canAskAgain: boolean };
 
 /**
- * A browser that comes through Tailscale asks the owner in Telegram, so a phone needs no typing.
- * Any other browser types the token: in a form, never in a URL. The server answers
+ * A browser shows a short code, and the owner allows it in a terminal on Eva's computer or in
+ * Telegram, so a phone needs no long token. The token stays as the last way in: in a form, never in a URL. The server answers
  * each login with a cookie.
  */
 export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElement {
@@ -64,14 +64,24 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
 
   if (step.kind === "asking") return <div className="empty">Loading…</div>;
   if (step.kind === "waiting") {
+    const approvers = step.request.approvers;
     return (
       <div className="login" role="status">
         <h1>Eva</h1>
         <strong>Confirm this device</strong>
         <span>
-          Tap Allow in your Telegram chat, or on an Eva page that is open on another device, if it shows the code{" "}
-          <code>{step.request.code}</code>.
+          The code of this device is <code>{step.request.code}</code>.
         </span>
+        {approvers.includes("terminal") && (
+          <span>
+            In a terminal on Eva's computer, run <code>eva devices allow {step.request.code}</code>. During{" "}
+            <code>eva setup</code>, type the code where setup asks for it.
+          </span>
+        )}
+        {approvers.includes("Telegram") && <span>Or tap Allow in your Telegram chat, if it shows the same code.</span>}
+        {approvers.includes("Eva page") && (
+          <span>Or tap Allow on an Eva page that is open and logged in on another device, if it shows the same code.</span>
+        )}
         <span className="chip">This page opens by itself when you allow it.</span>
       </div>
     );

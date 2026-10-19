@@ -22,6 +22,7 @@ function createLogins(): DeviceLogins {
 
 function attachApprover(logins: DeviceLogins): () => void {
   const approver: DeviceLoginApprover = {
+    name: "Telegram",
     canApprove: () => canApprove,
     ask: (request) => asked.push(request),
   };
@@ -185,6 +186,7 @@ describe("DeviceLogins for the web page", () => {
     open = { value: true },
   ): DeviceLoginApprover {
     const approver: DeviceLoginApprover = {
+      name: "page",
       canApprove: () => open.value,
       ask: (request) => asked.push(request),
       settled: (id, answer) => settled.push([id, answer]),
@@ -288,8 +290,8 @@ describe("DeviceLogins removal and answers by approver", () => {
 
   test("answerAs answers only a request that this approver was asked", () => {
     const logins = createLogins();
-    const asker: DeviceLoginApprover = { canApprove: () => true, ask: () => undefined };
-    const other: DeviceLoginApprover = { canApprove: () => false, ask: () => undefined };
+    const asker: DeviceLoginApprover = { name: "page", canApprove: () => true, ask: () => undefined };
+    const other: DeviceLoginApprover = { name: "Telegram", canApprove: () => false, ask: () => undefined };
     logins.attachApprover(asker);
     logins.attachApprover(other);
     const request = logins.request("owner@example.com", "x");
@@ -305,13 +307,19 @@ describe("DeviceLogins with a failing front end", () => {
     const logins = createLogins();
     const told: string[] = [];
     logins.attachApprover({
+      name: "Telegram",
       canApprove: () => true,
       ask: () => undefined,
       settled: () => {
         throw new Error("broken front end");
       },
     });
-    logins.attachApprover({ canApprove: () => true, ask: () => undefined, settled: (id) => told.push(id) });
+    logins.attachApprover({
+      name: "page",
+      canApprove: () => true,
+      ask: () => undefined,
+      settled: (id) => told.push(id),
+    });
     let forgotten = 0;
     logins.onForget(() => {
       throw new Error("broken front end");
@@ -325,5 +333,70 @@ describe("DeviceLogins with a failing front end", () => {
     expect(logins.check(request.id, "owner@example.com").state).toBe("allowed");
     expect(logins.forgetAll()).toBe(1);
     expect(forgotten).toBe(1);
+  });
+});
+
+describe("allow by code", () => {
+  test("the exact code allows its request, and only that one", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    const first = logins.request("owner@example.com", "owner@example.com, a phone");
+    const second = logins.request("owner@example.com", "owner@example.com, a laptop");
+    expect(logins.allowByCode(` ${second.code.toLowerCase()} `)).toBe("owner@example.com, a laptop");
+    expect(logins.check(second.id, "owner@example.com").state).toBe("allowed");
+    expect(logins.check(first.id, "owner@example.com")).toEqual({ state: "pending" });
+  });
+
+  test("an unknown, used or expired code allows nothing", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    const request = logins.request("owner@example.com", "a phone");
+    expect(logins.allowByCode("ZZZZ")).toBeNull();
+    expect(logins.allowByCode(request.code)).toBe("a phone");
+    expect(logins.allowByCode(request.code)).toBeNull();
+    const late = logins.request("owner@example.com", "a laptop");
+    clock = new Date(clock.getTime() + 5 * 60_000);
+    expect(logins.allowByCode(late.code)).toBeNull();
+  });
+
+  test("a request names the approvers that can answer it", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    logins.attachApprover({ name: "terminal", canApprove: () => true, ask: () => undefined });
+    expect(logins.request("owner@example.com", "a phone").approvers).toEqual(["Telegram", "terminal"]);
+    canApprove = false;
+    expect(logins.request("owner@example.com", "a phone").approvers).toEqual(["terminal"]);
+  });
+});
+
+describe("requests from this computer", () => {
+  test("go only to an approver that reads the code on the person's own screen, never to Telegram", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    const terminal: DeviceLoginRequest[] = [];
+    logins.attachApprover({
+      name: "terminal",
+      servesThisComputer: true,
+      canApprove: () => true,
+      ask: (request) => terminal.push(request),
+    });
+    const local = logins.request("this computer", "this computer, a browser", { thisComputer: true });
+    expect(local.approvers).toEqual(["terminal"]);
+    expect(asked).toEqual([]);
+    expect(terminal).toEqual([local]);
+  });
+
+  test("each account has its own rate limit, so a local program cannot use up the phone's", () => {
+    const logins = createLogins();
+    attachApprover(logins);
+    logins.attachApprover({ name: "terminal", servesThisComputer: true, canApprove: () => true, ask: () => undefined });
+    for (let count = 0; count < 5; count += 1) logins.request("this computer", "a program", { thisComputer: true });
+    expect(
+      isEvaError(
+        thrownBy(() => logins.request("this computer", "a program", { thisComputer: true })),
+        "rate_limited",
+      ),
+    ).toBe(true);
+    expect(logins.request("owner@example.com", "a phone").approvers).toEqual(["Telegram", "terminal"]);
   });
 });

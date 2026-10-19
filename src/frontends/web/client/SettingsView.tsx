@@ -17,6 +17,7 @@ import {
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import { DevicesPanel } from "./DevicesPanel.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
+import { Icon } from "./icons.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { SetupProgress } from "./SetupProgress.tsx";
@@ -657,7 +658,7 @@ export function SettingsView({
           <div className="settings-notice" role="status">
             <span>{notice}</span>
             <button aria-label="Close the notice" onClick={() => setNotice(null)}>
-              ✕
+              <Icon name="x" />
             </button>
           </div>
         )}

@@ -11,11 +11,14 @@ let sandbox: GitSandbox;
 let vault: string;
 let other: string;
 
-function createSync(path: string, seams: { runner?: ProcessRunner; logger?: Logger } = {}): VaultSync {
+function createSync(
+  path: string,
+  seams: { runner?: ProcessRunner; logger?: Logger; environment?: Record<string, string> } = {},
+): VaultSync {
   return new VaultSync({
     vaultPath: path,
     runner: seams.runner ?? systemProcessRunner,
-    environment: gitEnvironment,
+    environment: seams.environment ?? gitEnvironment,
     now: () => new Date(2026, 9, 14, 12, 0),
     ...(seams.logger === undefined ? {} : { logger: seams.logger }),
   });
@@ -42,6 +45,30 @@ describe("VaultSync.save", () => {
     expect(state.status).toBe("ok");
     expect(remoteFiles()).toContain("Life/Diary/2026-10-14.md");
     expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (2 files)");
+  });
+
+  test("a new machine with no git name or email still saves, as Eva", async () => {
+    sandbox.git(vault, "config", "--unset", "user.name");
+    sandbox.git(vault, "config", "--unset", "user.email");
+    // git would guess an email from the machine's name; a new server often has no such name.
+    sandbox.git(vault, "config", "user.useConfigOnly", "true");
+    sandbox.write(sandbox.root, "empty.gitconfig", "");
+    // No name or email anywhere: not in the variables, nor in the person's own git settings.
+    const noIdentity = {
+      ...Object.fromEntries(Object.entries(gitEnvironment).filter(([name]) => !/^GIT_(AUTHOR|COMMITTER)_/.test(name))),
+      GIT_CONFIG_GLOBAL: join(sandbox.root, "empty.gitconfig"),
+      GIT_CONFIG_NOSYSTEM: "1",
+    };
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    const state = await createSync(vault, { environment: noIdentity }).save();
+    expect(state.status).toBe("ok");
+    expect(sandbox.git(vault, "log", "-1", "--format=%an <%ae>")).toBe("Eva <eva@localhost>");
+  });
+
+  test("the person's own git name and email stay on the commits", async () => {
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    await createSync(vault).save();
+    expect(sandbox.git(vault, "log", "-1", "--format=%an")).toBe("Eva Test");
   });
 
   test("a failing pre-commit hook in the vault never blocks an autosave (lesson 27)", async () => {

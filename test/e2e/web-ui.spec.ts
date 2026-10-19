@@ -1901,3 +1901,51 @@ test("Settings: removing this device logs this browser out", async ({ page }) =>
   await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
+
+test("Settings: Claude Code logs in from the page, with a pasted code", async ({ page }) => {
+  const codes: string[] = [];
+  let refuse = true;
+  await page.route("**/api/engines/claude-code/login", (route) =>
+    route.fulfill({ json: { url: "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state" } }),
+  );
+  await page.route("**/api/engines/claude-code/login/finish", async (route) => {
+    codes.push((route.request().postDataJSON() as { code: string }).code);
+    if (refuse) {
+      refuse = false;
+      await route.fulfill({
+        status: 409,
+        json: {
+          error: 'Claude did not accept the code. Press "Log in to Claude" to try again.',
+          code: "claude_login_failed",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "AI engines");
+  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toHaveAttribute(
+    "href",
+    "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state",
+  );
+  const code = page.getByLabel("The code from Claude's page");
+  await code.fill("wrong-code");
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Claude did not accept the code." })).toBeVisible();
+  // The refused code ended the login, so its link goes, and a new login starts.
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeHidden();
+  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeVisible();
+  await code.fill("two words");
+  await expect(page.getByRole("button", { name: "Finish" })).toBeDisabled();
+  await code.fill("e2e-code#e2e-state");
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged in to Claude." })).toBeVisible();
+  expect(codes).toEqual(["wrong-code", "e2e-code#e2e-state"]);
+  // The token stays the way that needs a terminal, one tap away.
+  await page.getByRole("button", { name: "Get a token in a terminal instead" }).click();
+  await expect(page.getByText("claude setup-token").first()).toBeVisible();
+  await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
+});

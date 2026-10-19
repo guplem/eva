@@ -1,6 +1,8 @@
-/** The web UI: a mode switch, the two views, settings, schedules, approvals, and the setup cards of schedules. */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { Icon } from "./icons.tsx";
+/**
+ * The web UI: the main navigation, the four destinations, approvals, and the setup cards of
+ * schedules. The address names the destination, so the back button and a reload work.
+ */
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import {
   api,
   ApiError,
@@ -16,25 +18,16 @@ import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
+import { MainNav } from "./MainNav.tsx";
+import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
-import { isSettingsHash } from "./settings-routes.ts";
 import { SettingsView } from "./SettingsView.tsx";
-import { Visor } from "./Visor.tsx";
-import { stateFaces } from "./visor-faces.ts";
-
-type Screen = "assistant" | "project" | "settings" | "schedules";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
-
-/** The chat that the address names, as `#/chat/<id>`: Telegram links to a chat this way. */
-function linkedChatIdOf(hash: string): string | null {
-  const match = /^#\/chat\/([^/]+)$/.exec(hash);
-  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
-}
 
 export function App(): ReactElement {
   return (
@@ -46,10 +39,7 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  // A settings address opens Settings, so a reload stays on the settings page.
-  const [screen, setScreenState] = useState<Screen>(() =>
-    isSettingsHash(window.location.hash) ? "settings" : "assistant",
-  );
+  const [screen, setScreen] = useState<Destination>(() => destinationOf(window.location.hash) ?? "chats");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
@@ -63,44 +53,44 @@ function EvaApp(): ReactElement {
   const showError = useShowError();
   const linkedChat = sessions.find((session) => session.id === linkedChatId) ?? null;
 
-  /** Settings keeps its page in the address. Another screen clears that address, with no new history entry. */
-  const setScreen = useCallback((next: Screen): void => {
-    if (next === "settings") {
-      window.location.hash = "#/settings";
-      setScreenState("settings");
-      return;
-    }
-    if (isSettingsHash(window.location.hash))
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    setScreenState(next);
-  }, []);
-
+  // The back button and a typed address both come here.
   useEffect(() => {
     const onHashChange = (): void => {
+      const destination = destinationOf(window.location.hash);
+      if (destination !== null) setScreen(destination);
       setLinkedChatId(linkedChatIdOf(window.location.hash));
-      // Back and Forward move in and out of Settings.
-      if (isSettingsHash(window.location.hash)) setScreenState("settings");
-      else setScreenState((current) => (current === "settings" ? "assistant" : current));
+      setSidebarOpen(false);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // The linked chat's mode opens when the chat is first in the list.
+  // The linked chat's destination opens when the chat is first in the list. A project chat stays under Projects.
   const linkedMode = linkedChat?.mode ?? null;
   useEffect(() => {
-    if (linkedMode !== null) setScreen(linkedMode);
-  }, [linkedChatId, linkedMode, setScreen]);
+    if (linkedMode !== null) setScreen(linkedMode === "assistant" ? "chats" : "projects");
+  }, [linkedChatId, linkedMode]);
+
+  // The callback below reads the screen without a new identity at each change: the views run it from an effect.
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
 
   /**
    * A view opened the linked chat: the link is used up. A view mounts again at each screen
-   * change, so a kept link would undo the person's own choice. A clear address also lets the
-   * same link open again.
+   * change, so a kept link would undo the person's own choice. The address becomes that of the
+   * destination in place, so the back button skips the used link, and the same link can open again.
    */
   const onLinkedChatOpened = useCallback((): void => {
     setLinkedChatId(null);
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    window.history.replaceState(null, "", addressOf(screenRef.current));
   }, []);
+
+  /** A new address adds a history entry, so the back button goes to the previous destination. */
+  const openDestination = (destination: Destination): void => {
+    setSidebarOpen(false);
+    if (window.location.hash === addressOf(destination)) setScreen(destination);
+    else window.location.hash = addressOf(destination);
+  };
 
   // A waiting card is also a problem, so both come back together.
   const refreshProblems = useCallback(async (): Promise<void> => {
@@ -263,7 +253,6 @@ function EvaApp(): ReactElement {
     }
   };
   const deviceRequest = deviceRequests[0];
-  const hasSidebar = screen === "assistant" || screen === "project";
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
@@ -282,88 +271,59 @@ function EvaApp(): ReactElement {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <Visor size={28} face={isConnected ? stateFaces.idle : stateFaces.offline} />
-        {/* Hidden, not removed, so the mode switch does not move on a phone. */}
-        <button
-          className="menu-button"
-          aria-label="Show the list"
-          style={hasSidebar ? undefined : { visibility: "hidden" }}
-          onClick={() => setSidebarOpen((open) => !open)}
-        >
-          <Icon name="menu" />
-        </button>
-        <div className="mode-switch" role="group" aria-label="Mode">
-          {/* The Schedules page opens from the Assistant sidebar, so Assistant is the way back. */}
-          <button
-            aria-pressed={screen === "assistant" || screen === "schedules"}
-            onClick={() => setScreen("assistant")}
-          >
-            Assistant
-          </button>
-          <button aria-pressed={screen === "project"} onClick={() => setScreen("project")}>
-            Project
-          </button>
-        </div>
-        <span className="spacer" />
-        <button
-          className={setupMissing > 0 ? "settings-button needs-setup" : "settings-button"}
-          aria-pressed={screen === "settings"}
-          onClick={() => setScreen("settings")}
-        >
-          Settings
-          {/* A badge, not a banner: a short phone screen keeps its room for the chats. A setup
-              step that Eva needs makes it red, so the person finds the way there. */}
-          {setupMissing > 0 && (
-            <span className="attention-badge">
-              {setupMissing}
-              <span className="badge-words"> to set up</span>
-            </span>
-          )}
-        </button>
-      </header>
-      {problems.length > 0 && (
-        <section className="problem-banner" aria-label="Problems">
-          <strong>{problems.length === 1 ? "1 problem" : `${String(problems.length)} problems`}</strong>
-          <ul>
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {!isConnected && (
-        <div className="connection-banner" role="status">
-          Reconnecting…
-        </div>
-      )}
-      {screen === "assistant" && (
-        <AssistantView
-          sessions={sessions}
-          live={live}
-          sidebarOpen={sidebarOpen}
-          onChanged={refreshSessions}
-          onNavigate={() => setSidebarOpen(false)}
-          linkedChat={linkedChat}
-          onLinkedChatOpened={onLinkedChatOpened}
-          onOpenSchedules={() => setScreen("schedules")}
-        />
-      )}
-      {screen === "project" && (
-        <ProjectView
-          sessions={sessions}
-          live={live}
-          sidebarOpen={sidebarOpen}
-          linkedChat={linkedChat}
-          onLinkedChatOpened={onLinkedChatOpened}
-          onChanged={refreshSessions}
-          onNavigate={() => setSidebarOpen(false)}
-        />
-      )}
-      {screen === "settings" && (
-        <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
-      )}
-      {screen === "schedules" && <SchedulesView />}
+      {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
+      <MainNav
+        current={screen}
+        onOpen={openDestination}
+        approvals={approvals.length}
+        setupMissing={setupMissing}
+        isConnected={isConnected}
+      />
+      <div className="app-body">
+        {problems.length > 0 && (
+          <section className="problem-banner" aria-label="Problems">
+            <strong>{problems.length === 1 ? "1 problem" : `${String(problems.length)} problems`}</strong>
+            <ul>
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {!isConnected && (
+          <div className="connection-banner" role="status">
+            Reconnecting…
+          </div>
+        )}
+        {screen === "chats" && (
+          <AssistantView
+            sessions={sessions}
+            live={live}
+            sidebarOpen={sidebarOpen}
+            onShowList={() => setSidebarOpen(true)}
+            onChanged={refreshSessions}
+            onNavigate={() => setSidebarOpen(false)}
+            linkedChat={linkedChat}
+            onLinkedChatOpened={onLinkedChatOpened}
+          />
+        )}
+        {screen === "projects" && (
+          <ProjectView
+            sessions={sessions}
+            live={live}
+            sidebarOpen={sidebarOpen}
+            onShowList={() => setSidebarOpen(true)}
+            linkedChat={linkedChat}
+            onLinkedChatOpened={onLinkedChatOpened}
+            onChanged={refreshSessions}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+        )}
+        {screen === "settings" && (
+          <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
+        )}
+        {screen === "schedules" && <SchedulesView />}
+      </div>
       {approval !== undefined && (
         <div className="dialog-backdrop">
           <div className="dialog" role="dialog" aria-label="Approval">

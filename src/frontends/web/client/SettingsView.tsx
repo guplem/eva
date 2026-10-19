@@ -204,7 +204,7 @@ export function SettingsView({
               onClick={() => navigate({ section: each.id, item: null })}
             >
               <Icon name={sectionIcons[each.id]} />
-              <span className="nav-label">{each.title}</span>
+              <span className="settings-nav-label">{each.title}</span>
               <SectionMark section={each} steps={steps} />
             </button>
           ))}

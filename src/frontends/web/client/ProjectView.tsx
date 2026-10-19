@@ -146,6 +146,8 @@ export function ProjectView({
   const open = (next: Page | null): void => {
     setError(null);
     setPage(next);
+    // A chat may have changed files or the branch, so the clone cards ask git again.
+    if (next?.kind === "project") setCloneVersion((version) => version + 1);
     onNavigate();
   };
 

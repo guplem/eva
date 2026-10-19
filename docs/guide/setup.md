@@ -55,7 +55,7 @@ Each Eva keeps the logins and settings of her harnesses in her own folder. Your 
 1. Run `claude setup-token` on any computer with a browser, such as your laptop. Sign in when the browser opens.
    On Eva's computer, if the terminal does not find `claude`, run the command that setup showed after the install.
 2. Copy the token that it prints. It lasts a year.
-3. Paste it into setup at "Claude token", or into **Engines** in Settings on Eva's page.
+3. Paste it into setup at "Claude token", or into **AI engines** in Settings on Eva's page.
 
 **pi**, for another provider, such as ChatGPT, GitHub Copilot or an API key:
 

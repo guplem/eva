@@ -1,22 +1,14 @@
 /**
- * The Google part of the settings: the setup steps with their links, the OAuth client, the
- * access, the login and its Test. Every step works from a phone.
+ * The Google card: the setup steps with their links, the OAuth client, the access, the login and
+ * its Test, in one numbered list. Every step works from a phone.
  */
 import { useState, type ReactElement } from "react";
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
-import { api, type PublicSettings } from "./api.ts";
-import { CheckRow, SecretField } from "./SettingsParts.tsx";
+import { api } from "./api.ts";
+import { Card, CheckRow, errorText, SecretField, StatusPill, type SettingsContext } from "./SettingsParts.tsx";
 
-interface GooglePanelProps {
-  readonly settings: PublicSettings;
-  /** Saves a settings change and reloads the settings. False when the save failed. */
-  readonly saveNow: (change: Record<string, unknown>) => Promise<boolean>;
-  readonly onChanged: (note: string) => void;
-  /** Reads the settings again, such as the account that the login set. */
-  readonly reload: () => void;
-}
-
-export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePanelProps): ReactElement {
+export function GooglePanel({ context }: { readonly context: SettingsContext }): ReactElement {
+  const { settings, saveNow, noteAndReload: onChanged, reloadSettings: reload } = context;
   const google = settings.config.google;
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [address, setAddress] = useState("");
@@ -61,83 +53,95 @@ export function GooglePanel({ settings, saveNow, onChanged, reload }: GooglePane
   };
 
   return (
-    <>
-      <h3>Google</h3>
-      <div className="hint">
-        Eva can use your Google Calendar, Drive, Contacts and Tasks. Google needs an OAuth client: a key that lets an
-        app ask for access to your account. Each person makes their own, for free. These steps need a login with the
-        token.
-      </div>
-      {steps.slice(0, 3).map((step) => (
-        <GoogleStepView key={step.title} title={step.title} text={step.text} links={step.links} />
-      ))}
-      <SecretField
-        name="googleOauthClientId"
-        label="Google client id"
-        saved={settings.secretsSet.googleOauthClientId}
-        help="It ends with .apps.googleusercontent.com."
-        onChanged={onChanged}
-      />
-      <SecretField
-        name="googleOauthClientSecret"
-        label="Google client secret"
-        saved={settings.secretsSet.googleOauthClientSecret}
-        help="It starts with GOCSPX-."
-        onChanged={onChanged}
-      />
-      <label>
-        Google access
-        <select
-          value={google.readOnly ? "read" : "write"}
-          onChange={(event) => void changeAccess(event.target.value === "read")}
-        >
-          <option value="read">Read only</option>
-          <option value="write">Read and change, such as add events</option>
-        </select>
-      </label>
-      <div className="hint">
-        Eva asks you before any change that reaches other people, such as an invitation. After a change of access, log
-        in to Google again.
-      </div>
-      {steps[3] !== undefined && <GoogleStepView title={steps[3].title} text={steps[3].text} links={[]} />}
-      <div>Account: {google.email ?? "none yet. The login sets it."}</div>
-      <div className="check-row">
-        <button disabled={busy} onClick={() => void startLogin()}>
-          Start the Google login
-        </button>
-        {loginUrl !== null && (
-          <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
-            Open Google&apos;s page
-          </a>
+    <Card
+      item="google"
+      title="Google"
+      description="Eva can use your Google Calendar, Drive, Contacts and Tasks. Google needs an OAuth client: a key that lets an app ask for access to your account. Each person makes their own, for free."
+      aside={<StatusPill state={google.email === null ? "optional" : "done"} />}
+    >
+      <ol className="guide-steps">
+        {steps.slice(0, 3).map((step, index) => (
+          <li key={step.title}>
+            <GoogleStepView title={step.title} text={step.text} links={step.links} />
+            {/* The client fields sit in step 3, so the numbers match the ones that the Google check names. */}
+            {index === 2 && (
+              <>
+                <SecretField
+                  name="googleOauthClientId"
+                  label="Google client id"
+                  saved={settings.secretsSet.googleOauthClientId}
+                  help="It ends with .apps.googleusercontent.com."
+                  onChanged={onChanged}
+                />
+                <SecretField
+                  name="googleOauthClientSecret"
+                  label="Google client secret"
+                  saved={settings.secretsSet.googleOauthClientSecret}
+                  help="It starts with GOCSPX-."
+                  onChanged={onChanged}
+                />
+                <label className="field">
+                  <span className="field-label">Google access</span>
+                  <select
+                    value={google.readOnly ? "read" : "write"}
+                    onChange={(event) => void changeAccess(event.target.value === "read")}
+                  >
+                    <option value="read">Read only</option>
+                    <option value="write">Read and change, such as add events</option>
+                  </select>
+                  <span className="field-hint">
+                    Eva asks you before any change that reaches other people, such as an invitation. After a change of
+                    access, log in to Google again.
+                  </span>
+                </label>
+              </>
+            )}
+          </li>
+        ))}
+        {steps[3] !== undefined && (
+          <li>
+            <GoogleStepView title={steps[3].title} text={steps[3].text} links={[]} />
+            <div className="field-hint">Account: {google.email ?? "none yet. The login sets it."}</div>
+            <div className="button-row">
+              <button disabled={busy} onClick={() => void startLogin()}>
+                Start the Google login
+              </button>
+              {loginUrl !== null && (
+                <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
+                  Open Google&apos;s page
+                </a>
+              )}
+            </div>
+            {/* Always here: a phone may reload the page while the person is on Google's page. */}
+            <div className="inline-form">
+              <input
+                aria-label="The address after the Google login"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="url"
+                placeholder="http://127.0.0.1/eva-google-login?state=…"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+              />
+              <button className="primary" disabled={busy || address.trim() === ""} onClick={() => void finishLogin()}>
+                Finish
+              </button>
+            </div>
+          </li>
         )}
-      </div>
-      {/* Always here: a phone may reload the page while the person is on Google's page. */}
-      <div className="check-row">
-        <input
-          aria-label="The address after the Google login"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          inputMode="url"
-          placeholder="http://127.0.0.1/eva-google-login?state=…"
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-        />
-        <button disabled={busy || address.trim() === ""} onClick={() => void finishLogin()}>
-          Finish
-        </button>
-      </div>
+      </ol>
       <CheckRow name="google" label="Test Google" />
-    </>
+    </Card>
   );
 }
 
 function GoogleStepView({ title, text, links }: ReturnType<typeof googleSetupSteps>[number]): ReactElement {
   return (
-    <div>
-      <strong>{title}</strong>
-      <div className="hint">{text}</div>
+    <>
+      <strong>{title.replace(/^\d+\.\s*/, "")}</strong>
+      <div className="field-hint">{text}</div>
       {links.length > 0 && (
         <ul className="link-list">
           {links.map((link) => (
@@ -149,10 +153,6 @@ function GoogleStepView({ title, text, links }: ReturnType<typeof googleSetupSte
           ))}
         </ul>
       )}
-    </div>
+    </>
   );
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

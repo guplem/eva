@@ -1,0 +1,83 @@
+import { describe, expect, test } from "bun:test";
+import {
+  cardId,
+  isSettingsHash,
+  parentRoute,
+  parseSettingsHash,
+  searchEntries,
+  searchSettings,
+  sectionOfStep,
+  settingsHash,
+  settingsHome,
+  settingsSections,
+} from "../../../../../src/frontends/web/client/settings-routes.ts";
+
+describe("settings addresses", () => {
+  test("the home, a section and a step go to an address and back", () => {
+    for (const route of [
+      settingsHome,
+      { section: "vault" as const, item: null },
+      { section: "setup" as const, item: "remoteAccess" },
+      { section: "connections" as const, item: "github" },
+    ]) {
+      expect(parseSettingsHash(settingsHash(route))).toEqual(route);
+    }
+    expect(settingsHash({ section: "setup", item: "engine" })).toBe("#/settings/setup/engine");
+  });
+
+  test("an unknown section, or another page's address, opens the home page", () => {
+    expect(parseSettingsHash("#/settings/old-section/x")).toEqual(settingsHome);
+    expect(parseSettingsHash("#/chat/abc")).toEqual(settingsHome);
+    expect(parseSettingsHash("#/settings/")).toEqual(settingsHome);
+  });
+
+  test("only a settings address counts as one", () => {
+    expect(isSettingsHash("#/settings")).toBe(true);
+    expect(isSettingsHash("#/settings/vault")).toBe(true);
+    expect(isSettingsHash("#/settingsx")).toBe(false);
+    expect(isSettingsHash("#/chat/abc")).toBe(false);
+    expect(isSettingsHash("")).toBe(false);
+  });
+
+  test("the page one level up: a step goes to its section, a section goes home", () => {
+    expect(parentRoute({ section: "setup", item: "engine" })).toEqual({ section: "setup", item: null });
+    expect(parentRoute({ section: "vault", item: null })).toEqual(settingsHome);
+    expect(parentRoute(settingsHome)).toEqual(settingsHome);
+  });
+
+  test("each setup step has a section that holds its controls", () => {
+    expect(sectionOfStep("engine")).toBe("engines");
+    expect(sectionOfStep("device")).toBe("access");
+    expect(sectionOfStep("google")).toBe("connections");
+    const owned = settingsSections.flatMap((section) => section.steps);
+    expect(new Set(owned).size).toBe(owned.length);
+  });
+
+  test("a card id never clashes with the page's own ids", () => {
+    expect(cardId("github")).toBe("setting-github");
+  });
+});
+
+describe("settings search", () => {
+  test("an empty query finds nothing", () => {
+    expect(searchSettings("   ")).toEqual([]);
+  });
+
+  test("every typed word must match, in any case", () => {
+    expect(searchSettings("DARK").map((entry) => entry.item)).toEqual(["appearance"]);
+    expect(searchSettings("token telegram").map((entry) => entry.item)).toEqual(["telegram"]);
+    expect(searchSettings("telegram banana")).toEqual([]);
+  });
+
+  test("a section's title finds its entries", () => {
+    const found = searchSettings("updates");
+    expect(found.map((entry) => entry.item)).toEqual(["eva-updates", "engine-update", "restart"]);
+  });
+
+  test("each entry names a known section, and no two entries share a place", () => {
+    const sections = new Set(settingsSections.map((section) => section.id));
+    const places = searchEntries.map((entry) => `${entry.section}/${entry.item}`);
+    expect(searchEntries.every((entry) => sections.has(entry.section))).toBe(true);
+    expect(new Set(places).size).toBe(places.length);
+  });
+});

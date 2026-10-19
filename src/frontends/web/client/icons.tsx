@@ -157,11 +157,19 @@ export const iconNames = Object.keys(drawings) as readonly IconName[];
  * One line icon in the colour of the text around it.
  * Give a `label` only when the icon says something that no text next to it says.
  */
-export function Icon({ name, label }: { readonly name: IconName; readonly label?: string }): ReactElement {
+export function Icon({
+  name,
+  label,
+  className,
+}: {
+  readonly name: IconName;
+  readonly label?: string;
+  readonly className?: string;
+}): ReactElement {
   const naming = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
   return (
     <svg
-      className="icon"
+      className={className === undefined ? "icon" : `icon ${className}`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

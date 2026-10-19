@@ -30,4 +30,14 @@ The owner agreed to skip the front-end tests on Windows only if the job is still
 
 ## Decisions
 
-(Filled in after the gap research.)
+Three agents researched each gap. They agreed on each answer.
+
+1. **Only the automatic steps read `sync.enabled`.** These are the turn pull, the turn save, the idle sweep and the timed pull. "Sync now", the conflict list and a conflict pick are requests from the person, and they still work. The updater has the same split: `updates.frequency: "off"` stops the timer, but "Check and install" still runs. A conflict pick is the only way to clear a conflict from a phone, so it must not be stranded. `becomeHub` pushes its claim through "Sync now", so a gate there would break it.
+   - The turn pull and save read the live setting, as `pullIfDue` does. `VaultUpkeep` gets a `syncEnabled` callback. A skipped step returns the current state and logs nothing, so it never clears an alert.
+   - Not changed here: the pull at start (`startup.ts`). It also runs the vault-ahead check, and the setting does not promise to stop it.
+2. **Each slow file's own builder turns the sync off by default.** The tests that check the sync turn it on. `eva.test.ts` already does this for two tests. No shared test config exists, and none is added.
+3. **Bare `--parallel`:** one worker for each core, as Bun's default. The coverage threshold still fails a run under `--parallel`.
+4. **`idleTimeoutSeconds?: number` in `LocalApiOptions`,** with 255 as the default. This matches `pollTimeoutSeconds?`. The test sets 1 and waits 8 s: Bun closes an idle request at its next 4 s tick, so 8 s leaves a margin on a slow runner. The old test proved nothing: with `idleTimeout: 255`, it passed without `server.timeout(request, 0)`.
+5. **No test file depends on running alone.** Every server listens on port 0, every temporary folder comes from `mkdtemp`, and no test changes the working folder. Each worker is its own process. The suite passes under `--parallel` with five random orders.
+
+Risk: `--parallel` runs whole files, so the slowest file sets the floor. On Windows, `telegram-bot` took 241 s. Step 3 must shrink it.

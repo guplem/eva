@@ -214,8 +214,12 @@ async function* mapEachTurn(
         if (mcp !== null && stillStarting.length > 0 && laterStatus === null) laterStatus = boundedStatus(mcp);
         if (message.parent_tool_use_id !== null) break;
         // Each block of one model call comes as its own message with the same usage, so take the last, never a sum.
-        contextTokens = contextOf(message.message.usage) ?? contextTokens;
-        answeringModel = message.message.model;
+        // A synthetic message has no usage and no real model, so only a real call names the model.
+        const callContext = contextOf(message.message.usage);
+        if (callContext !== null) {
+          contextTokens = callContext;
+          answeringModel = message.message.model;
+        }
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;

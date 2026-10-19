@@ -233,6 +233,29 @@ describe("mapSdkMessages", () => {
     expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
   });
 
+  test("a synthetic message with no usage keeps the model of the last real call", async () => {
+    const lines = loadCapture("new-turn-with-tool").filter(isMessage);
+    const lastAssistant = lines.findLast((line) => line.type === "assistant")!;
+    const result = lines.find((line) => line.type === "result")!;
+    const main = result.modelUsage["claude-haiku-4-5-20251001"]!;
+    const noUsage = { ...lastAssistant.message.usage, input_tokens: 0, cache_read_input_tokens: 0 };
+    lines.splice(lines.indexOf(lastAssistant) + 1, 0, {
+      ...lastAssistant,
+      uuid: "00000000-0000-0000-0000-000000000000",
+      message: {
+        ...lastAssistant.message,
+        model: "<synthetic>",
+        content: [],
+        usage: { ...noUsage, cache_creation_input_tokens: 0 },
+      },
+    });
+    lines.splice(lines.indexOf(result), 1, {
+      ...result,
+      modelUsage: { "claude-helper": { ...main, contextWindow: 50_000 }, "claude-haiku-4-5-20251001": main },
+    });
+    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
+  });
+
   test("a turn whose model the usage does not name has no context window, so Eva guesses no limit", async () => {
     const result = resultOf("new-turn-with-tool");
     if (result.type !== "result") throw new Error("The capture has no result.");

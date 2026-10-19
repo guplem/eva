@@ -104,7 +104,8 @@ function EvaApp(): ReactElement {
     const read = latestRead.current;
     try {
       const listed = await api.sessions();
-      if (read === latestRead.current) setSessions(listed);
+      if (read !== latestRead.current) return;
+      setSessions(listed);
       setAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) setAuthenticated(false);
@@ -122,8 +123,11 @@ function EvaApp(): ReactElement {
     if (!linkIsMissing) return;
     void (async (): Promise<void> => {
       try {
+        latestRead.current += 1;
+        const read = latestRead.current;
         const fresh = await api.sessions();
-        setSessions(fresh);
+        // A newer read already set the list. This read still says whether the chat exists.
+        if (read === latestRead.current) setSessions(fresh);
         if (fresh.some((session) => session.id === linkedChatId)) return;
         showError(new Error("That chat no longer exists."));
       } catch (caught) {

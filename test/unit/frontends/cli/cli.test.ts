@@ -1789,6 +1789,7 @@ describe("describeStatusLines", () => {
     problems: [],
     problemDetails: [],
     setupMissing: 0,
+    chatBlocker: null,
   };
 
   test("starts with All good when nothing is wrong", () => {

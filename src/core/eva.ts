@@ -47,7 +47,14 @@ import {
   type InstanceFacts,
 } from "./instance/child-environments.ts";
 import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
-import { missingSteps, setupProgress, type CheckRecord, type ProgressStep } from "./setup/progress.ts";
+import {
+  chatBlocker,
+  missingSteps,
+  setupProgress,
+  type ChatBlocker,
+  type CheckRecord,
+  type ProgressStep,
+} from "./setup/progress.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -151,6 +158,8 @@ export interface EvaStatus {
   readonly problemDetails: readonly ProblemDetail[];
   /** How many setup steps still need the person; the Settings page lists them. */
   readonly setupMissing: number;
+  /** The missing step that stops every chat, or null when a chat can answer. */
+  readonly chatBlocker: ChatBlocker | null;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -667,6 +676,7 @@ export class Eva {
 
   status(): EvaStatus {
     const sessions = this.sessions.list();
+    const progress = this.setupProgress();
     return {
       version: evaVersion,
       vaultPath: this.options.config.vaultPath,
@@ -685,7 +695,8 @@ export class Eva {
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
       problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
-      setupMissing: missingSteps(this.setupProgress()),
+      setupMissing: missingSteps(progress),
+      chatBlocker: chatBlocker(progress),
     };
   }
 

@@ -106,6 +106,16 @@ export function missingSteps(steps: readonly ProgressStep[]): number {
   return steps.filter((step) => step.state === "missing").length;
 }
 
+/** The steps without which no chat can answer. A chat on this machine alone needs no phone access. */
+export type ChatBlocker = Extract<ProgressKey, "engine" | "vault">;
+
+/** The first missing step that stops every chat, or null when a chat can answer. */
+export function chatBlocker(steps: readonly ProgressStep[]): ChatBlocker | null {
+  for (const step of steps)
+    if ((step.key === "engine" || step.key === "vault") && step.state === "missing") return step.key;
+  return null;
+}
+
 type Make = (
   key: ProgressKey,
   title: string,

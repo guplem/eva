@@ -232,7 +232,9 @@ describe("settings", () => {
     expect(steps.find((step) => step.key === "vault")?.state).toBe("done");
     expect(steps.find((step) => step.key === "engine")?.state).toBe("missing");
     expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
+    expect(eva.status().chatBlocker).toBe("engine");
     eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+    expect(eva.status().chatBlocker).toBeNull();
     eva.saveSecret("telegramBotToken", null);
     await eva.runCheck("telegram");
     const after = (await eva.setupState()).progress;

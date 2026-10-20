@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { checkNames } from "../../../../src/core/checks.ts";
 import type { RemoteAccess } from "../../../../src/core/remote-access/remote-access.ts";
-import { missingSteps, setupProgress, type ProgressInput } from "../../../../src/core/setup/progress.ts";
+import { chatBlocker, missingSteps, setupProgress, type ProgressInput } from "../../../../src/core/setup/progress.ts";
 
 const ready: RemoteAccess = {
   url: "https://eva.example-tailnet.ts.net",
@@ -101,6 +101,24 @@ describe("setupProgress", () => {
       state: "optional",
       detail: expect.stringContaining("pairing code") as string,
     });
+  });
+});
+
+describe("chatBlocker", () => {
+  const engineReady: ProgressInput["engines"] = [
+    { name: "claude-code", found: true, loggedIn: true },
+    { name: "pi", found: true, loggedIn: false },
+  ];
+
+  test("names the engine first, then the vault, the two steps that a chat needs", () => {
+    expect(chatBlocker(setupProgress(fresh))).toBe("engine");
+    expect(chatBlocker(setupProgress({ ...fresh, engines: engineReady }))).toBe("vault");
+  });
+
+  test("ignores the optional and the phone steps, even when they are missing", () => {
+    const steps = setupProgress({ ...fresh, engines: engineReady, vaultPath: "/vaults/eva" });
+    expect(missingSteps(steps)).toBeGreaterThan(0);
+    expect(chatBlocker(steps)).toBeNull();
   });
 });
 

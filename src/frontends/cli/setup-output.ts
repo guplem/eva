@@ -32,6 +32,19 @@ export function doneLine(text: string): string {
   return `  [ok] ${text}`;
 }
 
+/**
+ * A writer that indents each line of a step under the step's title. A blank line, a step title and
+ * a line with its own indent stay as they are.
+ */
+export function indented(write: (line: string) => void): (line: string) => void {
+  const indent = (line: string): string =>
+    line === "" || line.startsWith(" ") || /^Step \d+ of \d+: /.test(line) ? line : noteLine(line);
+  // A block of several lines, such as a QR code, gets the same indent on each line, so it keeps its shape.
+  return (text) => {
+    write(text.split("\n").map(indent).join("\n"));
+  };
+}
+
 /** A line for something that needs the person, but does not stop setup. */
 export function noteLine(text: string): string {
   return `  ${text}`;

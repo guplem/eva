@@ -5,6 +5,7 @@
  */
 
 import { EvaError } from "../../shared/errors.ts";
+import { doneLine, noteLine, stepLines } from "./setup-output.ts";
 
 export interface StartOptions {
   readonly interactive: boolean;
@@ -29,38 +30,50 @@ const startWaitMs = 30_000;
 
 export async function startAndLetIn(options: StartOptions): Promise<void> {
   const address = (await options.network()) ?? options.localUrl;
-  if (!(await options.isRunning())) {
+  for (const line of stepLines("Start Eva")) options.write(line);
+  if (await options.isRunning()) options.write(doneLine("Eva runs."));
+  else {
     const answer = await options.ask("startService", "Start Eva now, and each time this computer starts? [Y/n]: ");
     if (!options.interactive && answer !== "" && !/^(y(es)?|no?)$/i.test(answer))
       throw new EvaError("config_invalid", "The answer to start Eva must be yes or no.");
     // A script starts nothing it did not ask for, such as in a test.
     const start = options.interactive ? !/^no?$/i.test(answer) : /^y(es)?$/i.test(answer);
     if (!start) {
-      options.write("Eva does not run yet. To start her, run `eva service install`, or `eva` in a terminal.");
+      options.write(noteLine("Eva does not run yet. To start her, run `eva service install`, or `eva` in a terminal."));
       return;
     }
     if (!(await options.startService()) || !(await waitUntilRunning(options))) {
-      options.write("Eva did not start. Run `eva` to see why. Setup goes on here.");
+      options.write(noteLine("Eva did not start. Run `eva` to see why. Setup goes on here."));
       return;
     }
+    options.write(doneLine("Eva runs, and starts again each time this computer starts."));
   }
   if (!options.interactive) return;
-  options.write(`Open ${address} on any device. The page shows a short code.`);
+  for (const line of stepLines("Your devices")) options.write(line);
+  options.write(noteLine(`Open ${address} on each device that should reach Eva, such as your phone and your laptop.`));
+  options.write(noteLine("Each page shows a short code. Type it here to let that device in."));
+  let allowed = 0;
   for (;;) {
     const code = await options.ask(
       "deviceCode",
-      "Type the code that the page shows, to let that device in (Enter to go on here): ",
+      allowed === 0
+        ? "Code from the page (or press Enter to skip this step): "
+        : "Code of another device (or press Enter when every device is in): ",
     );
     if (code === "") break;
     const label = await options.allow(code);
     if (label === null) {
-      options.write("No device waits with this code. Check the code on the page, or ask again there.");
+      options.write(noteLine("No device waits with this code. Check the code on the page, or reload the page there."));
       continue;
     }
-    options.write(`Allowed ${label}. That device can finish the setup on the page.`);
+    allowed += 1;
+    options.write(doneLine(`Allowed ${label}. It can finish the setup on the page.`));
   }
+  options.write("");
   options.write(
-    "Answer the next questions here, or press Ctrl+C and finish on the page. Each answer is saved at once, in both places.",
+    noteLine(
+      "Answer the next steps here, or press Ctrl+C and finish them in Settings on Eva's page. Each answer is saved at once.",
+    ),
   );
 }
 

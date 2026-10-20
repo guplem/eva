@@ -6,6 +6,7 @@
 import { renderUnicodeCompact } from "uqr";
 import type { RemoteAccess, RemoteAccessControl, RemoteAccessStep } from "../../core/remote-access/remote-access.ts";
 import { describeAccess, remoteAccessStep, setupSteps, stepLine } from "../../core/remote-access/steps.ts";
+import { indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts";
 
 export interface NetworkSetupOptions {
   readonly access: RemoteAccessControl;
@@ -42,10 +43,12 @@ export function accessLines(input: {
 }
 
 /** Walks the person through Tailscale. Returns the address that opens Eva, or null. */
-export async function runNetworkSetup(options: NetworkSetupOptions): Promise<string | null> {
-  options.write("");
+export async function runNetworkSetup(given: NetworkSetupOptions): Promise<string | null> {
+  for (const line of stepLines("Phone access")) given.write(line);
+  // Each line of the step lines up under its title, the QR code too.
+  const options: NetworkSetupOptions = { ...given, write: indented(given.write) };
   options.write(
-    "Use Eva from any device: Tailscale (a free private network of your own devices) opens Eva on your phone and other computers.",
+    noteLine("Tailscale, a free private network of your own devices, opens Eva on your phone and other computers."),
   );
   let access = await options.access.refresh();
   const handled = new Set<RemoteAccessStep>();
@@ -90,11 +93,11 @@ async function handleStep(
 }
 
 function writeSteps(options: NetworkSetupOptions, access: RemoteAccess): void {
-  for (const step of setupSteps(access)) options.write(stepLine(step));
+  for (const step of setupSteps(access)) options.write(noteLine(stepLine(step)));
 }
 
 async function waitForChange(options: NetworkSetupOptions, step: RemoteAccessStep): Promise<RemoteAccess> {
-  options.write("Waiting…");
+  for (const line of yourTurnLines("do the step above, in a browser on any device.")) options.write(line);
   const limit = options.waitLimitMs ?? defaultWaitLimitMs;
   let access: RemoteAccess | null = null;
   for (let waited = 0; waited < limit; waited += pollMs) {
@@ -102,6 +105,8 @@ async function waitForChange(options: NetworkSetupOptions, step: RemoteAccessSte
     access = await options.access.refresh();
     if (remoteAccessStep(access) !== step) return access;
   }
-  options.write("Stopped waiting. Finish the step later: the running Eva finds it by herself within a minute.");
+  options.write(
+    noteLine("Stopped waiting. Finish the step later: the running Eva finds it by herself within a minute."),
+  );
   return access ?? options.access.refresh();
 }

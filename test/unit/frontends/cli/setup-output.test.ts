@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   doneLine,
+  indented,
   questionText,
   setupSteps,
   stepLines,
@@ -20,6 +21,23 @@ describe("the look of eva setup", () => {
     expect(turn[1]).toBe("  >> Your turn: open the link, and sign in.");
     expect(turn[2]).toContain("Setup goes on by itself");
     expect(questionText("Name of this Eva: ")).toBe("> Name of this Eva: ");
+  });
+
+  test("indents each line of a step, and each line of a block such as a QR code alike", () => {
+    const lines: string[] = [];
+    const write = indented((line) => lines.push(line));
+    write("Created a vault.");
+    write("  [ok] Done.");
+    write("");
+    write("Step 2 of 8: Phone access");
+    write("##  ##\n#    #");
+    expect(lines).toEqual([
+      "  Created a vault.",
+      "  [ok] Done.",
+      "",
+      "Step 2 of 8: Phone access",
+      "  ##  ##\n  #    #",
+    ]);
   });
 
   test("stays plain ASCII, so an old Windows console shows it too", () => {

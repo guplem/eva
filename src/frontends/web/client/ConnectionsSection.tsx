@@ -18,12 +18,14 @@ export function ConnectionsSection({ context }: { readonly context: SettingsCont
 export function GitHubCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const saved = context.settings.secretsSet.githubToken;
   const [tokenSteps, setTokenSteps] = useState(false);
+  // The step knows whether the agents' gh has the login too (#244); before the setup loads, the token decides.
+  const step = context.setup?.progress.find((each) => each.key === "github");
   return (
     <Card
       item="github"
       title="GitHub"
-      description="Eva uses your GitHub login to reach your private vault and projects."
-      aside={<StatusPill state={saved ? "done" : "optional"} />}
+      description="Eva uses your GitHub login for your private vault and projects."
+      aside={<StatusPill state={step?.state ?? (saved ? "done" : "optional")} />}
     >
       <GitHubLogin context={context} />
       {!tokenSteps ? (

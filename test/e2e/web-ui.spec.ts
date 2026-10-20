@@ -1964,6 +1964,28 @@ test("Settings: the GitHub step logs in with a code, with no token to make (#243
   await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
 });
 
+test("Settings: a GitHub token without the agents' login needs the person (#244)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "github"
+        ? {
+            ...step,
+            state: "missing",
+            detail: "The token is saved, but your agents cannot push their work yet. Press Log in with GitHub again.",
+          }
+        : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "GitHub", exact: true });
+  await expect(card.getByText("Needs you", { exact: true })).toBeVisible();
+  await expect(card).toContainText("The agents use it to push their work");
+});
+
 test("Settings: a GitHub login that fails says why, and the button works again", async ({ page }) => {
   await page.route("**/api/github/login", (route) =>
     route.fulfill({ json: { code: "WXYZ-1234", url: "https://github.com/login/device" } }),

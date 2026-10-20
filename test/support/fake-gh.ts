@@ -2,7 +2,7 @@
  * A runner that answers `gh` as gh would, and sends every other command to `base`, such as the
  * real git. No test may log in a real gh: it needs the network, and a real GitHub account.
  */
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ProcessResult, ProcessRunOptions, ProcessRunner } from "../../src/shared/process-runner.ts";
 
@@ -34,6 +34,13 @@ export function fakeGh(base: ProcessRunner, refuse: string | null = null): FakeG
       }
       if (command[1] === "auth" && command[2] === "logout" && folder !== undefined)
         rmSync(join(folder, "hosts.yml"), { force: true });
+      // A real gh would send the fake token to GitHub.
+      if (command[1] === "auth" && command[2] === "status")
+        return Promise.resolve(
+          folder !== undefined && existsSync(join(folder, "hosts.yml"))
+            ? { exitCode: 0, stdout: "Logged in to github.com account example-user\n", stderr: "" }
+            : { exitCode: 1, stdout: "", stderr: "You are not logged into any GitHub hosts." },
+        );
       return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
     },
   };

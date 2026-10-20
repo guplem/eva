@@ -124,7 +124,7 @@ const demoRunner: ProcessRunner = {
   run: (command, options) =>
     command[0] === "uvx"
       ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
-      : command[0] === "gh" && command[1] === "auth" && (command[2] === "login" || command[2] === "logout")
+      : command[0] === "gh" && command[1] === "auth"
         ? demoGh.run(command, options)
         : systemProcessRunner.run(command, options),
 };

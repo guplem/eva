@@ -132,6 +132,8 @@ export function currentNames(): string[] {
       `version=${String(scheduleFormatVersion)}`,
       "schedules",
       ...scheduleFieldOrder.map((field) => `schedules[].${field}`),
+      // No setup card shows it, so it is not in `scheduleFieldOrder` (#188).
+      "schedules[].enabled",
       ...dayNames.map((day) => `schedules[].days=${day}`),
     ].map((name) => `vault .eva/schedules.json ${name}`),
     ...hubFields.map((field) => `vault .eva/hub.json ${field}`),

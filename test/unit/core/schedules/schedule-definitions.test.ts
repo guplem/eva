@@ -9,6 +9,7 @@ import {
   readScheduleDefinitions,
   removeScheduleDefinition,
   saveScheduleDefinition,
+  setScheduleEnabled,
   type Schedule,
 } from "../../../../src/core/schedules/schedule-definitions.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -73,6 +74,7 @@ describe("parseScheduleEntry", () => {
       file: null,
       prompt: "Summarise my day.",
       model: "haiku",
+      enabled: true,
     });
   });
 
@@ -91,8 +93,15 @@ describe("parseScheduleEntry", () => {
     [{ id: "x", name: "X", at: "07:00" }, "does nothing"],
     [{ ...morning, file: "Scratch/today.pdf" }, "from Scratch/"],
     [{ ...morning, file: "Scratch\\today.pdf" }, "from Scratch/"],
+    // A typo must never run a schedule that the person turned off.
+    [{ ...morning, enabled: "false" }, "invalid enabled"],
   ])("entry %j is skipped: %s", (entry, reason) => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
+  });
+
+  test("a schedule is on without the field, and off only with enabled false", () => {
+    expect((parseScheduleEntry({ ...morning, enabled: true }, 1) as Schedule).enabled).toBe(true);
+    expect((parseScheduleEntry({ ...morning, enabled: false }, 1) as Schedule).enabled).toBe(false);
   });
 
   test("a long name is cut to the Telegram topic limit", () => {
@@ -106,6 +115,12 @@ describe("announced fields and changes (lesson 66)", () => {
     const fields = announcedFields(schedule);
     expect(Object.keys(fields)).toEqual(["id", "name", "at", "days", "prompt"]);
     expect(fields.days).toBe("mon, tue");
+  });
+
+  test("the on/off state is no announced field, so a pause never changes a card", () => {
+    const on = announcedFields(parseScheduleEntry(morning, 1) as Schedule);
+    const off = announcedFields(parseScheduleEntry({ ...morning, enabled: false }, 1) as Schedule);
+    expect(changedFields(on, off)).toEqual([]);
   });
 
   test("a change names only the fields that differ", () => {
@@ -143,6 +158,26 @@ describe("saving and removing", () => {
     const file = JSON.parse(readFileSync(path, "utf8")) as { note: string; schedules: unknown[] };
     expect(file.note).toBe("keep me");
     expect(file.schedules).toEqual([{ ...morning, id: "evening", extra: 1 }]);
+  });
+
+  test("setScheduleEnabled changes only the enabled key, and turning on removes it", () => {
+    writeFile({
+      version: 1,
+      schedules: [
+        { ...morning, extra: 1 },
+        { ...morning, id: "evening" },
+      ],
+    });
+    expect(setScheduleEnabled(path, "morning", false)).toBe(true);
+    let file = JSON.parse(readFileSync(path, "utf8")) as { schedules: unknown[] };
+    expect(file.schedules).toEqual([
+      { ...morning, extra: 1, enabled: false },
+      { ...morning, id: "evening" },
+    ]);
+    expect(setScheduleEnabled(path, "morning", true)).toBe(true);
+    file = JSON.parse(readFileSync(path, "utf8")) as { schedules: unknown[] };
+    expect(file.schedules[0]).toEqual({ ...morning, extra: 1 });
+    expect(setScheduleEnabled(path, "nobody", false)).toBe(false);
   });
 
   test("a broken file is never replaced by a guess", () => {

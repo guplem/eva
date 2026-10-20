@@ -259,6 +259,7 @@ describe("Scheduler", () => {
             file: null,
             prompt: "Plan my day.",
             model: null,
+            enabled: true,
           },
           nextRun: "2026-07-01T07:30",
           lastRun: null,
@@ -274,6 +275,60 @@ describe("Scheduler", () => {
     scheduler.save(morning);
     await scheduler.tick();
     expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(2);
+  });
+
+  test("a schedule that is off never fires, and turning it off needs no card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeSchedules([{ ...morning, enabled: false }]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    clock = new Date("2026-07-02T05:30:00Z");
+    await scheduler.tick();
+    expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
+    expect(scheduler.list().schedules[0]?.nextRun).toBeNull();
+  });
+
+  test("turning a schedule back on needs a new card that names the change (lesson 67)", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeSchedules([{ ...morning, enabled: false }]);
+    await scheduler.tick();
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
+    // The card skips the slot that was due when it showed, so nothing runs before the person saw it.
+    expect(events.some((event) => event.kind === "schedule_fired")).toBe(false);
+    clock = new Date("2026-07-02T05:30:00Z");
+    await scheduler.tick();
+    expect(events.at(-1)?.kind).toBe("schedule_fired");
+  });
+
+  test("a card that waits stops waiting when its schedule turns off, and cannot be confirmed", async () => {
+    shows = false;
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(scheduler.waitingCards()).toHaveLength(1);
+    const card = scheduler.waitingCards()[0];
+    writeSchedules([{ ...morning, enabled: false }]);
+    await scheduler.tick();
+    expect(scheduler.waitingCards()).toEqual([]);
+    expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
+  });
+
+  test("setEnabled writes the vault file, and false means no such schedule", () => {
+    const scheduler = createScheduler();
+    scheduler.save(morning);
+    expect(scheduler.setEnabled("morning", false)).toBe(true);
+    expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(false);
+    expect(scheduler.setEnabled("nobody", true)).toBe(false);
   });
 
   test("a changed schedule that is already due shows its card and does not fire then (lessons 66, 67)", async () => {

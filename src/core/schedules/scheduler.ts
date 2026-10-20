@@ -13,7 +13,9 @@ import {
   readScheduleDefinitions,
   removeScheduleDefinition,
   saveScheduleDefinition,
+  setScheduleEnabled,
   type Schedule,
+  type ScheduleChange,
   type ScheduleFieldName,
 } from "./schedule-definitions.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
@@ -26,8 +28,8 @@ export type ScheduleEvent =
       readonly scheduleId: string;
       readonly name: string;
       readonly fields: Partial<Record<ScheduleFieldName, string>>;
-      /** Empty for a new schedule. */
-      readonly changed: readonly ScheduleFieldName[];
+      /** Empty for a new schedule. `enabled`: the schedule was off, and someone turned it on. */
+      readonly changed: readonly ScheduleChange[];
       readonly nextRun: string | null;
       readonly timeZone: string;
     }
@@ -123,7 +125,7 @@ export class Scheduler {
     return {
       schedules: definitions.schedules.map((schedule) => ({
         schedule,
-        nextRun: nextSlot(schedule, now),
+        nextRun: schedule.enabled ? nextSlot(schedule, now) : null,
         lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
       })),
       problems: definitions.problems,
@@ -147,6 +149,12 @@ export class Scheduler {
     return removed;
   }
 
+  /** Turns a schedule off or on. Turning it on brings a new setup card at the next check (lesson 67). */
+  setEnabled(scheduleId: string, enabled: boolean): boolean {
+    assertVaultWritable(this.options.vaultPath);
+    return setScheduleEnabled(this.definitionsPath, scheduleId, enabled);
+  }
+
   /** The setup cards that wait for a front end to show them. */
   waitingCards(): ScheduleCard[] {
     return [...this.waiting.values()];
@@ -159,7 +167,8 @@ export class Scheduler {
   confirmCard(scheduleId: string, fields: Readonly<Record<string, string>>): boolean {
     if (!this.options.isHub()) return false;
     const schedule = readScheduleDefinitions(this.definitionsPath).schedules.find((entry) => entry.id === scheduleId);
-    if (schedule === undefined || changedFields(announcedFields(schedule), fields).length > 0) return false;
+    if (schedule === undefined || !schedule.enabled || changedFields(announcedFields(schedule), fields).length > 0)
+      return false;
     const now = wallClockOf(this.options.now(), this.options.timeZone);
     // Another front end showed this card first: the tap only agrees, and must not skip a due slot again.
     if (this.isAnnounced(schedule)) return true;
@@ -217,15 +226,21 @@ export class Scheduler {
   }
 
   private async check(schedule: Schedule, now: string): Promise<void> {
+    if (!schedule.enabled) {
+      this.pause(schedule.id);
+      return;
+    }
     const state = this.state.see(schedule.id, now);
     const fields = announcedFields(schedule);
     if (!this.isAnnounced(schedule)) {
+      const changed: ScheduleChange[] = state.announced === null ? [] : changedFields(state.announced, fields);
+      if (state.announced !== null && state.paused === true) changed.push("enabled");
       const card: ScheduleCard = {
         kind: "schedule_card",
         scheduleId: schedule.id,
         name: schedule.name,
         fields,
-        changed: state.announced === null ? [] : changedFields(state.announced, fields),
+        changed,
         nextRun: nextSlot(schedule, now),
         timeZone: this.options.timeZone,
       };
@@ -247,10 +262,23 @@ export class Scheduler {
     if (slot !== null) await this.fire(schedule, slot);
   }
 
-  /** True when a front end showed a card with the schedule's current fields. */
+  /**
+   * An off schedule shows no card and never fires. Its state remembers the pause, so turning it on
+   * needs a new card: someone who can push could turn on a schedule that the person paused (lesson 67).
+   */
+  private pause(scheduleId: string): void {
+    this.stopWaiting(scheduleId);
+    const state = this.state.peek(scheduleId);
+    if (state !== undefined && state.paused !== true) this.state.update(scheduleId, { paused: true });
+  }
+
+  /** True when a front end showed a card with the schedule's current fields, and no pause came after it. */
   private isAnnounced(schedule: Schedule): boolean {
-    const announced = this.state.peek(schedule.id)?.announced ?? null;
-    return announced !== null && changedFields(announced, announcedFields(schedule)).length === 0;
+    const state = this.state.peek(schedule.id);
+    const announced = state?.announced ?? null;
+    return (
+      announced !== null && state?.paused !== true && changedFields(announced, announcedFields(schedule)).length === 0
+    );
   }
 
   /** The person saw the card: a slot that is already due is skipped, so nothing runs before the card. */
@@ -261,6 +289,7 @@ export class Scheduler {
     const slot = dueSlot(schedule, state, now);
     this.state.update(schedule.id, {
       announced: announcedFields(schedule),
+      paused: false,
       ...(slot === null ? {} : { lastFired: slot }),
     });
     this.stopWaiting(schedule.id);

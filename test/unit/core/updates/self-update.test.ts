@@ -78,6 +78,8 @@ describe("updateExecutable", () => {
   let compressedExecutable: boolean;
   /** GitHub lists the size of each asset. */
   let listsSizes: boolean;
+  /** The executable stops halfway, as a dropped connection does. */
+  let brokenExecutable: boolean;
   let probeAnswer: string;
   let executable: string;
 
@@ -95,6 +97,7 @@ describe("updateExecutable", () => {
     brokenDownloads = false;
     compressedExecutable = false;
     listsSizes = true;
+    brokenExecutable = false;
     probeAnswer = "0.2.0";
     files = signedFiles("0.2.0", "new build");
     olderFiles = signedFiles("0.1.5", "older build");
@@ -137,6 +140,19 @@ describe("updateExecutable", () => {
         if (brokenDownloads) return new Response("broken", { status: 500 });
         const [, , tag, name = ""] = path.split("/");
         const body = (tag === "v0.1.5" ? olderFiles : files)[name];
+        if (brokenExecutable && name === "eva-linux-x64")
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("half"));
+                // Later, so that the headers and the first bytes reach Eva first.
+                setTimeout(() => {
+                  controller.error(new Error("connection lost"));
+                }, 50);
+              },
+            }),
+            { headers: { "content-length": "100" } },
+          );
         if (compressedExecutable && name === "eva-linux-x64" && body !== undefined)
           return new Response(Bun.gzipSync(body), { headers: { "content-encoding": "gzip" } });
         return body === undefined ? new Response("missing", { status: 404 }) : new Response(body);
@@ -289,6 +305,7 @@ describe("updateExecutable", () => {
   });
 
   test("the download of the new executable reports its share, from the length of the reply", async () => {
+    listsSizes = false;
     const reports: UpdateDownload[] = [];
     await updateExecutable(inputs(), undefined, (download) => reports.push(download));
     expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: 9 });
@@ -311,6 +328,14 @@ describe("updateExecutable", () => {
       to: "0.2.0",
     });
     expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: null });
+  });
+
+  test("a download that stops halfway is a clear error, and changes nothing", async () => {
+    brokenExecutable = true;
+    const error = await failure(updateExecutable(inputs(), undefined, () => undefined));
+    expect(isEvaError(error, "update_failed")).toBe(true);
+    expect(String(error)).toContain("eva-linux-x64 could not be downloaded");
+    expect(readFileSync(executable, "utf8")).toBe("old build");
   });
 
   test("as an update channel, apply passes the share on", async () => {

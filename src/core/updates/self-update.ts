@@ -179,8 +179,13 @@ async function download(
   }
   if (!response.ok)
     throw new EvaError("update_failed", `${name} could not be downloaded (${String(response.status)}).`);
-  if (onDownload === undefined || response.body === null) return new Uint8Array(await response.arrayBuffer());
-  return readWithShare(response.body, totalOf(response, asset), onDownload);
+  // A connection can also drop after the headers, in the middle of the body.
+  try {
+    if (onDownload === undefined || response.body === null) return new Uint8Array(await response.arrayBuffer());
+    return await readWithShare(response.body, totalOf(response, asset), onDownload);
+  } catch {
+    throw new EvaError("update_failed", `${name} could not be downloaded.`);
+  }
 }
 
 /**

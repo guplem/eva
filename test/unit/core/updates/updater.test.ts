@@ -216,15 +216,18 @@ describe("Updater restart", () => {
   });
 
   test("the status shows the download while the install runs, and forgets it after", async () => {
-    let seen = null as UpdateStatus["download"];
     let finish = (): void => undefined;
+    let reported = (_seen: UpdateStatus["download"]): void => undefined;
+    const seen = new Promise<UpdateStatus["download"]>((resolve) => {
+      reported = resolve;
+    });
     const updater: Updater = new Updater({
       channel: {
         kind: "executable",
         check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
         apply: (_version, onDownload) => {
           onDownload?.({ receivedBytes: 40, totalBytes: 100 });
-          seen = updater.status().download;
+          reported(updater.status().download);
           return new Promise((resolve) => {
             finish = () => resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null });
           });
@@ -237,9 +240,7 @@ describe("Updater restart", () => {
       now: () => new Date("2026-10-17T10:00:00Z"),
     });
     const install = updater.updateNow();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(seen).toEqual({ receivedBytes: 40, totalBytes: 100 });
+    expect(await seen).toEqual({ receivedBytes: 40, totalBytes: 100 });
     finish();
     expect((await install).download).toBeNull();
   });

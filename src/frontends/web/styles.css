@@ -1429,12 +1429,14 @@ textarea {
     overflow: visible;
   }
 
-  /* The crumbs keep one line, so the header stays one row. */
+  /* The crumbs keep one line, so the header stays one row.
+     The padding keeps the focus ring of the project crumb inside the clipped box. */
   .chat-header .crumbs {
     justify-content: center;
     flex-wrap: nowrap;
     white-space: nowrap;
     overflow: hidden;
+    padding: var(--space-1);
   }
 
   /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */

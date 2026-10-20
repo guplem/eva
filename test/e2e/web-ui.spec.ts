@@ -173,6 +173,11 @@ test("the More actions menu works from the keyboard, and the focus never gets lo
   await more.click();
   await page.keyboard.press("Tab");
   await expect(menu).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+
+  await chooseFromMore(page, "Rename");
+  await page.getByLabel("Chat title").press("Escape");
+  await expect(more).toBeFocused();
 
   await chooseFromMore(page, "Delete chat");
   const keep = page.getByRole("group", { name: "Delete “New chat”?" }).getByRole("button", { name: "Keep" });
@@ -1441,11 +1446,14 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
+  // The focus goes back to what opened the sheet.
+  await expect(page.getByRole("heading", { level: 1 }).getByRole("button")).toBeFocused();
   // A tap on the scrim above the sheet closes it too.
   await chooseFromMore(page, "Chat info");
   await expect(sheet).toBeVisible();
   await page.mouse.click(20, 20);
   await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More actions" })).toBeFocused();
 });
 
 test("a new message of a running turn replaces the shown one, and the older one becomes a step", async ({ page }) => {

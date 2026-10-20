@@ -78,7 +78,16 @@ export function ChatHeader({ chat, details, subtitle, extra, onShowList, onChang
           <div className="sub">{subtitle}</div>
         </div>
       ) : (
-        <RenameForm chat={chat} draft={draft} onDraft={setDraft} onChanged={onChanged} />
+        <RenameForm
+          chat={chat}
+          draft={draft}
+          onDraft={setDraft}
+          onEnd={() => {
+            setDraft(null);
+            moreButton.current?.focus();
+          }}
+          onChanged={onChanged}
+        />
       )}
       {extra}
       <MoreMenu items={items} toggle={moreButton} />
@@ -102,11 +111,14 @@ function RenameForm({
   chat,
   draft,
   onDraft,
+  onEnd,
   onChanged,
 }: {
   readonly chat: SessionRecord;
   readonly draft: string;
-  readonly onDraft: (draft: string | null) => void;
+  readonly onDraft: (draft: string) => void;
+  /** Closes the field, with the new title saved or not. */
+  readonly onEnd: () => void;
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
   // A second Enter while the request runs must not send it again.
@@ -118,7 +130,7 @@ function RenameForm({
     try {
       await api.rename(chat.id, title);
       await onChanged();
-      onDraft(null);
+      onEnd();
     } catch (caught) {
       showError(caught);
     } finally {
@@ -142,13 +154,13 @@ function RenameForm({
         onFocus={(event) => event.target.select()}
         onChange={(event) => onDraft(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onDraft(null);
+          if (event.key === "Escape") onEnd();
         }}
       />
       <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
         Save
       </button>
-      <button type="button" onClick={() => onDraft(null)}>
+      <button type="button" onClick={onEnd}>
         Cancel
       </button>
     </form>
@@ -168,6 +180,7 @@ function DeleteQuestion({
   const [deleting, setDeleting] = useState(false);
   const showError = useShowError();
   const remove = async (): Promise<void> => {
+    if (deleting) return;
     setDeleting(true);
     try {
       await api.deleteChat(chat.id);
@@ -180,7 +193,8 @@ function DeleteQuestion({
   return (
     <div className="chat-delete-question" role="group" aria-label={`Delete “${chat.title}”?`}>
       <span>Delete “{chat.title}” and its forks everywhere?</span>
-      <button className="danger" disabled={deleting} onClick={() => void remove()}>
+      {/* Not disabled: a disabled button drops the focus, and a failed delete must leave it here. */}
+      <button className="danger" aria-disabled={deleting} onClick={() => void remove()}>
         Delete
       </button>
       {/* Focus comes here, so a keyboard or a screen reader reaches the question at once. */}
@@ -258,8 +272,10 @@ function MoreMenu({
           aria-label="Chat actions"
           ref={menu}
           onKeyDown={(event) => {
-            // Tab leaves the menu, so the menu closes and does not stay over the chat.
+            // Tab leaves the menu, so the menu closes. The focus goes back to the toggle first,
+            // so Tab moves on from there, not from the top of the page.
             if (event.key === "Tab") {
+              toggle.current?.focus();
               setOpen(false);
               return;
             }

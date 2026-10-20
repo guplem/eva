@@ -83,6 +83,7 @@ function EvaApp(): ReactElement {
   const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
   const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
+  const [voiceNotes, setVoiceNotes] = useState(false);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
@@ -137,6 +138,8 @@ function EvaApp(): ReactElement {
       setSetupMissing(status.setupMissing);
       // An older Eva sends no blocker: the chats work as before.
       setChatBlocker((status as Partial<EvaStatus>).chatBlocker ?? null);
+      // An older Eva does not say: the microphone stays hidden.
+      setVoiceNotes((status as Partial<EvaStatus>).voiceNotes ?? false);
     } catch {
       // The next poll or the next reconnect tries again.
     }
@@ -215,7 +218,7 @@ function EvaApp(): ReactElement {
   const lastRecovery = useRef(0);
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
-   * waits, with no event here. Read the state again, with the steps of the running turns, so
+   * waits, with no event here. Read the state again, with the steps and drafts of the running turns, so
    * the answer that the person already read stays (#118).
    * A note goes: a lost event can hide the turn start that clears it.
    */
@@ -442,6 +445,7 @@ function EvaApp(): ReactElement {
             notices={notices}
             approvals={chatApprovals}
             blocker={chatBlocker}
+            voiceNotes={voiceNotes}
           />
         )}
         {screen === "projects" && (
@@ -457,6 +461,7 @@ function EvaApp(): ReactElement {
             notices={notices}
             approvals={chatApprovals}
             blocker={chatBlocker}
+            voiceNotes={voiceNotes}
           />
         )}
         {screen === "settings" && (

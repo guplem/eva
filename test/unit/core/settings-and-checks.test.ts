@@ -13,6 +13,7 @@ import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
+import { fakeGh } from "../../support/fake-gh.ts";
 import { fakeGithub } from "../../support/fake-github.ts";
 import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
@@ -42,7 +43,7 @@ beforeEach(() => {
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
     secrets: { telegramBotToken: "123:abc-telegram-token-value" },
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: fakeGh(systemProcessRunner),
     processEnvironment: gitEnvironment,
     now: () => new Date(),
     basePrompt: "Base.",
@@ -83,7 +84,7 @@ describe("repository setup", () => {
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -117,7 +118,7 @@ describe("repository setup", () => {
         config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
         secrets: {},
         engines: [new FakeEngine()],
-        runner: systemProcessRunner,
+        runner: fakeGh(systemProcessRunner),
         processEnvironment: gitEnvironment,
         now: () => new Date(),
         basePrompt: "Base.",
@@ -164,7 +165,7 @@ describe("repository setup", () => {
     });
     const reports = await withoutGh.repositorySetup("2025-04-01-0900-other-app");
     withoutGh.stop();
-    expect(reports[0]?.problem).toContain("gh auth login");
+    expect(reports[0]?.problem).toContain("press Log in with GitHub");
     expect(reports[0]?.sections).toEqual([]);
   });
 });
@@ -258,7 +259,7 @@ describe("settings", () => {
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: { claudeOauthToken: "sk-ant-oat-running-token" },
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -320,8 +321,12 @@ describe("settings", () => {
 });
 
 describe("runCheck", () => {
+  const okCommands: (readonly string[])[] = [];
   const okRunner: ProcessRunner = {
-    run: () => Promise.resolve({ exitCode: 0, stdout: "Logged in to github.com\n", stderr: "" }),
+    run: (command) => {
+      okCommands.push(command);
+      return Promise.resolve({ exitCode: 0, stdout: "Logged in to github.com\n", stderr: "" });
+    },
   };
   const failingRunner: ProcessRunner = {
     run: () => Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" }),
@@ -399,6 +404,7 @@ describe("runCheck", () => {
   test("without a saved GitHub token, the GitHub check runs gh", async () => {
     expect(await runCheck("github", inputs({ runner: failingRunner }))).toEqual({ ok: false, detail: "not logged in" });
     expect(await runCheck("github", inputs())).toEqual({ ok: true, detail: "gh is logged in." });
+    expect(okCommands.at(-1)).toEqual(["gh", "auth", "status", "--hostname", "github.com"]);
   });
 
   test("with a saved GitHub token, the GitHub check asks GitHub whose token it is", async () => {
@@ -414,7 +420,15 @@ describe("runCheck", () => {
     try {
       expect(await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl }))).toEqual({
         ok: true,
-        detail: "The token belongs to @example-owner.",
+        detail: "The token belongs to @example-owner. Your agents use the same login.",
+      });
+      // The agents push with the instance's gh, so a good token is not enough (#244).
+      expect(
+        await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: failingRunner })),
+      ).toEqual({
+        ok: false,
+        detail:
+          "The token belongs to @example-owner, but your agents cannot push their work yet. Press Log in with GitHub again.",
       });
       expect(await runCheck("github", inputs({ githubToken: "bad-token", githubBaseUrl }))).toEqual({
         ok: false,
@@ -598,7 +612,7 @@ describe("live settings, the vault fetch and updates", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -753,7 +767,7 @@ describe("the Claude Code login from the page", () => {
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: { claudeOauthToken: "sk-ant-oat01-old-token-value" },
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -807,12 +821,13 @@ describe("the GitHub login from the page", () => {
           ? Response.json({ login: "example-user", name: "Example User", id: 7 })
           : Response.json({ message: "Bad credentials" }, { status: 401 }),
     });
+    const gh = fakeGh(systemProcessRunner);
     const instance = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: gh,
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -822,14 +837,81 @@ describe("the GitHub login from the page", () => {
         return Promise.resolve("gho_page_login");
       },
     });
+    const githubStep = async (): Promise<string | undefined> =>
+      (await instance.setupState()).progress.find((step) => step.key === "github")?.state;
     try {
       expect(await instance.startGitHubLogin()).toEqual({ code: "ABCD-1234", url: "https://github.com/login/device" });
       expect(await instance.finishGitHubLogin()).toEqual({ restartNeeded: true });
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_page_login");
-      expect((await instance.setupState()).progress.find((step) => step.key === "github")?.state).toBe("done");
+      // One login: the agents' gh gets the same token, on stdin (#244).
+      expect(gh.calls.map((call) => call.command.slice(0, 3))).toEqual([["gh", "auth", "login"]]);
+      expect(gh.calls[0]?.stdin).toBe("gho_page_login\n");
+      expect(await githubStep()).toBe("done");
+      // Removing the token logs the agents out too, with no gh process: gh's logout reaches the keyring.
+      await instance.saveSecret("githubToken", null);
+      expect(gh.calls).toHaveLength(1);
+      expect(readFileSync(join(home, "engines", "gh", "hosts.yml"), "utf8")).not.toContain("github.com");
+      expect(await githubStep()).toBe("optional");
     } finally {
       instance.stop();
       await github.stop(true);
+    }
+  });
+
+  test("a removal during a slow save leaves the agents' gh logged out", async () => {
+    // GitHub answers the account read late, so the save's gh login would come after the removal.
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async () => {
+        await Bun.sleep(300);
+        return Response.json({ login: "example-user", id: 7 });
+      },
+    });
+    const gh = fakeGh(systemProcessRunner);
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: gh,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+    });
+    try {
+      await Promise.all([instance.saveSecret("githubToken", "gho_slow"), instance.saveSecret("githubToken", null)]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBeUndefined();
+      expect(gh.calls.filter((call) => call.command[2] === "login")).toEqual([]);
+      expect((await instance.setupState()).progress.find((step) => step.key === "github")?.state).toBe("optional");
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
+  test("a token that gh refuses is still saved, and the step says what to do", async () => {
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: fakeGh(systemProcessRunner, "error validating token: missing required scope 'read:org'"),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      // Nothing listens here: the account read fails at once, and the save goes on.
+      githubApiBaseUrl: "http://127.0.0.1:9",
+    });
+    try {
+      expect(await instance.saveSecret("githubToken", "gho_old_scopes")).toEqual({ saved: true, restartNeeded: true });
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_old_scopes");
+      const github = (await instance.setupState()).progress.find((step) => step.key === "github");
+      expect(github?.state).toBe("missing");
+      expect(github?.detail).toContain("Log in with GitHub");
+    } finally {
+      instance.stop();
     }
   });
 
@@ -839,7 +921,7 @@ describe("the GitHub login from the page", () => {
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -861,7 +943,7 @@ describe("the vault step on the page", () => {
       config: { ...defaultConfig, timeZone: "UTC" },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -971,7 +1053,7 @@ describe("the commit identity of an Eva", () => {
       config: { ...defaultConfig, timeZone: "UTC" },
       secrets,
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -997,7 +1079,7 @@ describe("the commit identity of an Eva", () => {
       config: { ...defaultConfig, timeZone: "UTC", git: { name: "Another Name", email: "another@example.com" } },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date(),
       basePrompt: "Base.",
@@ -1038,7 +1120,8 @@ describe("the commit identity of an Eva", () => {
   test("the GitHub check of an older install fills a missing account", async () => {
     const instance = instanceWith({ githubToken: "a-page-token" }, fakeAccountApi());
     try {
-      expect((await instance.runCheck("github")).ok).toBe(true);
+      // An older install has no gh login for the agents, so the Test fails, but the token is good.
+      expect((await instance.runCheck("github")).detail).toContain("your agents cannot push their work yet");
       expect(loadGitHubAccount(homePaths(home))).toEqual(account);
     } finally {
       instance.stop();

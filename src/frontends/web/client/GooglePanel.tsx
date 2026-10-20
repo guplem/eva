@@ -14,6 +14,7 @@ import {
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
 import type { EvaConfig } from "../../../core/settings/home.ts";
 import { api } from "./api.ts";
+import { restartNote } from "./notes.ts";
 import {
   Card,
   CheckRow,
@@ -53,9 +54,8 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       const result = await api.finishGoogleLogin(address);
       setAddress("");
       setLoginUrl(null);
-      onChanged(
-        `Logged in to Google as ${result.email}.${result.restartNeeded ? " Press Restart Eva to use Google in chats." : ""}`,
-      );
+      const loggedIn = `Logged in to Google as ${result.email}.`;
+      onChanged(result.restartNeeded ? restartNote(`${loggedIn} Press Restart Eva to use Google in chats.`) : loggedIn);
       reload();
     } catch (error) {
       onChanged(errorText(error));
@@ -110,7 +110,7 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
         ))}
         {steps[3] !== undefined && (
           <li>
-            <GoogleStepView title={steps[3].title} text={steps[3].text} links={[]} />
+            <GoogleStepView {...steps[3]} />
             <div className="field-hint">Account: {google.email ?? "none yet. The login sets it."}</div>
             <div className="button-row">
               <button disabled={busy} onClick={() => void startLogin()}>
@@ -199,11 +199,12 @@ function GoogleAccessFields({
   );
 }
 
-function GoogleStepView({ title, text, links }: ReturnType<typeof googleSetupSteps>[number]): ReactElement {
+function GoogleStepView({ title, text, links, warning }: ReturnType<typeof googleSetupSteps>[number]): ReactElement {
   return (
     <>
       <strong>{title.replace(/^\d+\.\s*/, "")}</strong>
       <div className="field-hint">{text}</div>
+      {warning !== undefined && <div className="callout warning">{warning}</div>}
       {links.length > 0 && (
         <ul className="link-list">
           {links.map((link) => (

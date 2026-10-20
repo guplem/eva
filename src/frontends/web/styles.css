@@ -118,6 +118,9 @@
   --dialog-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
   --send-fill: radial-gradient(circle at 38% 30%, oklch(0.9 calc(var(--c) * 0.6) var(--h)), var(--accent) 70%);
   --send-glow: 0 0 16px -2px var(--glow);
+  /* The knob of a toggle stays white in both themes, as in the EVE design. */
+  --knob: oklch(1 0 0);
+  --knob-shadow: 0 1px 3px oklch(0 0 0 / 0.25);
   --visor-fill: radial-gradient(ellipse at 50% 22%, var(--visor), var(--visor2) 72%);
   --eye-glow: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
 
@@ -233,9 +236,11 @@ samp {
   box-sizing: border-box;
 }
 
+/* A phone browser draws a blue box on each tap. The press rule below gives the feedback instead. */
 body {
   margin: 0;
   background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -246,6 +251,18 @@ button {
   border-radius: var(--radius-pill);
   padding: 6px 12px;
   cursor: pointer;
+  transition: transform 80ms ease-out;
+}
+
+button:active:not(:disabled),
+a.button-link:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
 }
 
 button.primary {
@@ -580,7 +597,8 @@ textarea {
 /* The header stays at the top of a long list, so "New" is always in reach. */
 .chat-list-header {
   position: sticky;
-  top: 0;
+  /* A sticky top counts from inside the list's 12 px padding. At 0 the header moves down and covers the search field. */
+  top: -12px;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -1620,6 +1638,57 @@ button.link-button {
   color: var(--bad);
 }
 
+/*
+ * The on/off switch of the EVE design (`.tog`): a `<button role="switch">` with `aria-checked`.
+ * The knob moves, so the state shows by shape too. The pseudo-elements draw it, so the button
+ * can take a finger's 44 px height on a phone. The role in the selector wins over a page's button style.
+ */
+.toggle[role="switch"] {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.toggle[role="switch"]::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 13px);
+  left: 1px;
+  width: 42px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+
+.toggle[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 10px);
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--knob);
+  box-shadow: var(--knob-shadow);
+}
+
+.toggle[role="switch"][aria-checked="true"]::before {
+  background: var(--accent);
+}
+
+.toggle[role="switch"][aria-checked="true"]::after {
+  left: 20px;
+}
+
+.toggle[role="switch"]:disabled {
+  opacity: 0.6;
+}
+
 .status-icon {
   display: inline-flex;
   align-items: center;
@@ -2533,6 +2602,12 @@ button.small {
   padding: 4px 11px;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* The toggle that opens a long tag list: an action, so it has no fill like a tag. */
+.filter-chip.more {
+  background: transparent;
+  color: var(--accent-ink);
 }
 
 .filter-chip[aria-pressed="true"] {

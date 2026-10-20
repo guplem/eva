@@ -12,12 +12,13 @@ import { Composer } from "./Composer.tsx";
 import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import type { LiveState } from "./live-state.ts";
+import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
+import { RecordingShelf } from "./voice-notes.ts";
 import { toWebHtml } from "./web-format.ts";
 import { storedSteps, type TurnStep } from "../../../shared/turn-steps.ts";
 import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
@@ -26,6 +27,8 @@ import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 const stickToBottomPx = 80;
 /** How long a Copy button says "Copied". */
 const copiedMs = 2_000;
+/** The voice notes of this tab, so a sent message can play what the person said. */
+const recordings = new RecordingShelf((url) => URL.revokeObjectURL(url));
 
 interface ConversationProps {
   readonly root: SessionRecord;
@@ -36,9 +39,19 @@ interface ConversationProps {
   readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
+  /** True when Eva's machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
-export function Conversation({ root, sessions, live, onChanged, approvals, blocker }: ConversationProps): ReactElement {
+export function Conversation({
+  root,
+  sessions,
+  live,
+  onChanged,
+  approvals,
+  blocker,
+  voiceNotes,
+}: ConversationProps): ReactElement {
   const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
@@ -71,6 +84,7 @@ export function Conversation({ root, sessions, live, onChanged, approvals, block
           onChanged={onChanged}
           approvals={approvals}
           blocker={blocker}
+          voiceNotes={voiceNotes}
         />
       ))}
     </div>
@@ -84,6 +98,7 @@ function Branch({
   onChanged,
   approvals,
   blocker,
+  voiceNotes,
 }: {
   session: SessionRecord;
   parent: SessionRecord | undefined;
@@ -91,6 +106,7 @@ function Branch({
   onChanged: () => Promise<void>;
   approvals: ConversationProps["approvals"];
   blocker: ChatBlocker | null;
+  voiceNotes: boolean;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const [pending, setPending] = useState<string | null>(null);
@@ -121,7 +137,8 @@ function Branch({
   const notes = live.notes[session.id] ?? [];
   const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
-  const send = async (message: string): Promise<boolean> => {
+  const send = async (message: string, recording?: string): Promise<boolean> => {
+    if (recording !== undefined) recordings.keep(session.id, message, recording);
     setPending(message);
     setSawLiveSteps(false);
     try {
@@ -153,7 +170,7 @@ function Branch({
       )}
       {session.turns.map((turn, index) => (
         <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
-          <UserMessage text={turn.userText} />
+          <UserMessage text={turn.userText} recording={recordings.find(session.id, turn.userText)} />
           <EvaMessage face={stateFaces.idle}>
             <AnswerBody
               steps={turn.steps}
@@ -189,8 +206,10 @@ function Branch({
           </EvaMessage>
         </div>
       ))}
-      {pending !== null && <UserMessage text={pending} />}
-      {working && <LiveAnswer steps={liveSteps ?? []} mode={session.mode} startedAt={startedAt} />}
+      {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
+      {working && (
+        <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
+      )}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
       )}
@@ -238,17 +257,42 @@ function Branch({
         onStop={() => runAction(() => api.stop(session.id))}
         onChanged={onChanged}
         blocker={blocker}
+        voiceNotes={voiceNotes}
       />
     </section>
   );
 }
 
-function UserMessage({ text }: { readonly text: string }): ReactElement {
+/**
+ * The person's message. A voice note shows what Eva heard, since that is what she answers.
+ * While this tab still holds the recording, a switch plays what the person said.
+ */
+function UserMessage({ text, recording }: { readonly text: string; readonly recording: string | null }): ReactElement {
+  const [showRecording, setShowRecording] = useState(false);
   return (
     <div className="msg me">
       <div className="message user">
         <div className="who">You</div>
-        {text}
+        {recording !== null && showRecording ? <audio className="voice-note" controls src={recording} /> : text}
+        {recording !== null && (
+          <div className="voice-switch" role="group" aria-label="Voice note">
+            <button
+              className={showRecording ? "" : "on"}
+              aria-pressed={!showRecording}
+              onClick={() => setShowRecording(false)}
+            >
+              Heard
+            </button>
+            <button
+              className={showRecording ? "on" : ""}
+              aria-pressed={showRecording}
+              onClick={() => setShowRecording(true)}
+            >
+              <Icon name="mic" />
+              Recording
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -323,14 +367,18 @@ function AnswerBody({
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
-  steps,
+  steps: liveSteps,
+  draft,
   mode,
   startedAt,
 }: {
   readonly steps: readonly TurnStep[];
+  /** The block that the engine writes now. It shows as the last message until its final text comes. */
+  readonly draft: string | undefined;
   readonly mode: SessionRecord["mode"];
   readonly startedAt: number;
 }): ReactElement {
+  const steps = useMemo(() => stepsWithDraft(liveSteps, draft), [liveSteps, draft]);
   // A tick of the clock renders the branch again, so compute this only when a step arrives.
   const shown = useMemo(() => storedSteps(steps), [steps]);
   const wholeAnswer = useMemo(

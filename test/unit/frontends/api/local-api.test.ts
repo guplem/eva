@@ -11,6 +11,7 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -78,7 +79,7 @@ beforeEach(() => {
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: fakeGh(systemProcessRunner),
     processEnvironment: gitEnvironment,
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
@@ -673,6 +674,7 @@ describe("routes", () => {
         {
           sessionId: session.id,
           steps: [{ kind: "message", text: "First block.", isError: false, id: "m1" }],
+          draft: "",
         },
       ]);
     } finally {
@@ -1100,6 +1102,20 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
   });
 
+  test("schedules: turn one off and on, and refuse a bad body or an unknown id (#188)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
+    await call("/api/schedules", { method: "POST", body: entry });
+    const off = await call("/api/schedules/morning", { method: "PATCH", body: { enabled: false } });
+    expect(off.status).toBe(204);
+    const listed = await json<{ schedules: { schedule: { enabled: boolean }; nextRun: string | null }[] }>(
+      await call("/api/schedules"),
+    );
+    expect(listed.schedules.map((view) => [view.schedule.enabled, view.nextRun])).toEqual([[false, null]]);
+    expect((await call("/api/schedules/morning", { method: "PATCH", body: { enabled: true } })).status).toBe(204);
+    expect((await call("/api/schedules/morning", { method: "PATCH", body: { enabled: "no" } })).status).toBe(400);
+    expect((await call("/api/schedules/nobody", { method: "PATCH", body: { enabled: true } })).status).toBe(404);
+  });
+
   test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {
     expect(await json(await call("/api/chat-names"))).toEqual({ rules: "" });
     const saved = await call("/api/chat-names", { method: "PUT", body: { rules: "Lead with an emoji." } });
@@ -1193,7 +1209,7 @@ describe("without a vault", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1285,7 +1301,7 @@ describe("an Eva with an update channel", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1401,6 +1417,64 @@ describe("an Eva with a claude program", () => {
   });
 });
 
+describe("voice notes", () => {
+  test("a machine without a whisper model says so, and its status has no voice notes", async () => {
+    expect((await json<{ voiceNotes: boolean }>(await call("/api/status"))).voiceNotes).toBe(false);
+    const response = await fetch(`${api.url}/api/transcribe`, { method: "POST", headers: headers(), body: "audio" });
+    expect(response.status).toBe(409);
+    expect((await json<{ code: string }>(response)).code).toBe("voice_unavailable");
+  });
+
+  test("the page's recording becomes text on this machine", async () => {
+    const decoded: string[] = [];
+    const listening = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null, voice: { ...defaultConfig.voice, modelPath: "model.bin" } },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) => {
+          if (command[0] === "ffmpeg") decoded.push(command[command.indexOf("-i") + 1] ?? "");
+          const stdout = command[0] === "whisper-cli" ? " [BLANK_AUDIO] Hello Eva \n" : "";
+          return Promise.resolve({ exitCode: 0, stdout, stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const listeningApi = startLocalApi({
+      eva: listening,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      expect(
+        (await json<{ voiceNotes: boolean }>(await fetch(`${listeningApi.url}/api/status`, { headers: headers() })))
+          .voiceNotes,
+      ).toBe(true);
+      const response = await fetch(`${listeningApi.url}/api/transcribe`, {
+        method: "POST",
+        headers: headers({ "content-type": "audio/webm" }),
+        body: new Uint8Array([1, 2, 3]),
+      });
+      expect(await json<unknown>(response)).toEqual({ text: "Hello Eva" });
+      expect(decoded).toHaveLength(1);
+      const tooLong = await fetch(`${listeningApi.url}/api/transcribe`, {
+        method: "POST",
+        headers: headers({ "content-type": "audio/webm" }),
+        body: new Uint8Array(26 * 1024 * 1024),
+      });
+      expect(tooLong.status).toBe(413);
+    } finally {
+      listeningApi.stop();
+      listening.stop();
+    }
+  });
+});
+
 describe("problems, logs and restart", () => {
   test("the status carries the open problems", async () => {
     eva.reportProblem("vault_sync", { level: "error", message: "The vault sync failed.", resolvedMessage: "Fixed." });
@@ -1439,7 +1513,7 @@ describe("problems, logs and restart", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1477,7 +1551,7 @@ describe("an Eva with releases to pick", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1546,7 +1620,7 @@ describe("remote access", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",

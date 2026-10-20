@@ -67,6 +67,8 @@ const newSessionSchema = z.object({
   clone: z.string().min(1).optional(),
 });
 const messageSchema = z.object({ text: z.string().min(1) });
+/** About 20 minutes of the page's Opus recording: more than any voice note needs. */
+const maxVoiceNoteBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const renameSchema = z.object({ title: z.string() });
@@ -112,6 +114,7 @@ const scheduleEntrySchema = z.record(z.string(), z.unknown());
 /** The rules go to a model with each first turn, so they stay short. */
 const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
+const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -506,6 +509,12 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json(await eva.newClone(projectId, repositoryUrl), 201);
     }
   }
+  if (method === "POST" && url.pathname === "/api/transcribe") {
+    // The audio stays in memory and in the transcriber's own temporary folder (lesson 123).
+    const audio = new Uint8Array(await request.arrayBuffer());
+    if (audio.byteLength > maxVoiceNoteBytes) return json({ error: "The voice note is too long." }, 413);
+    return json({ text: await eva.transcribeVoiceNote(audio) });
+  }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
@@ -617,7 +626,7 @@ async function chatNamesRoute(request: Request, method: string, eva: Eva): Promi
   return json({ error: "Not found." }, 404);
 }
 
-/** The schedules of `.eva/schedules.json`: list, add or replace, remove. */
+/** The schedules of `.eva/schedules.json`: list, add or replace, turn off or on, remove. */
 async function schedulesRoute(
   request: Request,
   method: string,
@@ -629,6 +638,12 @@ async function schedulesRoute(
   if (method === "GET" && scheduleId === undefined) return json(schedules.list());
   if (method === "POST" && scheduleId === undefined) {
     return json(schedules.save(scheduleEntrySchema.parse(await request.json())), 201);
+  }
+  if (method === "PATCH" && scheduleId !== undefined) {
+    const { enabled } = scheduleEnabledSchema.parse(await request.json());
+    return schedules.setEnabled(decodeURIComponent(scheduleId), enabled)
+      ? new Response(null, { status: 204 })
+      : json({ error: "No such schedule." }, 404);
   }
   if (method === "DELETE" && scheduleId !== undefined) {
     return schedules.remove(decodeURIComponent(scheduleId))

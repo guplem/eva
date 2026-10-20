@@ -21,6 +21,8 @@ export interface LiveState {
    * They outlive the turn, because a short turn ends before the person reads them.
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
+  /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
+  readonly drafts: Readonly<Record<string, string>>;
   /**
    * While the page reads the running turns again: the id of the newest read, and each event that
    * came since it started. Null when no read is open.
@@ -34,6 +36,7 @@ export const emptyLiveState: LiveState = {
   taskSeqs: {},
   usageLimits: {},
   notes: {},
+  drafts: {},
   recovery: null,
 };
 
@@ -73,24 +76,56 @@ export function startRecovery(state: LiveState, id: number): LiveState {
 }
 
 /**
- * Ends the read with this id. The steps of the core replace the ones that this page knew, and
- * the kept events newer than the snapshot apply again on top of them (lesson 83). With no
- * snapshot, as after a failed read, the page knows only the kept events. The reply of a read
+ * Ends the read with this id. The steps and drafts of the core replace the ones that this page
+ * knew, and the kept events newer than the snapshot apply again on top of them (lesson 83). With
+ * no snapshot, as after a failed read, the page knows only the kept events. The reply of a read
  * that a newer one replaced changes nothing.
  */
 export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSnapshot | null): LiveState {
   if (state.recovery?.id !== id) return state;
   const { events } = state.recovery;
   const newer = snapshot === null ? events : events.filter((event) => event.seq > snapshot.seq);
-  const fromCore = Object.fromEntries((snapshot?.turns ?? []).map((turn) => [turn.sessionId, turn.steps]));
-  return { ...state, steps: newer.reduce(stepsAfter, fromCore), recovery: null };
+  const turns = snapshot?.turns ?? [];
+  const fromCore = Object.fromEntries(turns.map((turn) => [turn.sessionId, turn.steps]));
+  // An older Eva sends no draft.
+  const draftsFromCore = Object.fromEntries(
+    turns.flatMap((turn) => (turn.draft === undefined || turn.draft === "" ? [] : [[turn.sessionId, turn.draft]])),
+  );
+  return {
+    ...state,
+    steps: newer.reduce(stepsAfter, fromCore),
+    drafts: newer.reduce(draftsAfter, draftsFromCore),
+    recovery: null,
+  };
 }
 
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
-  const next = applyToTurn(applyToNotes(state, event), event);
+  const drafts = draftsAfter(state.drafts, event);
+  const withDraft = drafts === state.drafts ? state : { ...state, drafts };
+  const next = applyToTurn(applyToNotes(withDraft, event), event);
   if (next.recovery === null) return next;
   return { ...next, recovery: { ...next.recovery, events: [...next.recovery.events, event] } };
+}
+
+/**
+ * The draft of each chat after one event. The pieces of a block build its draft. A new block,
+ * the block's final text, the turn end or a delete drops it.
+ */
+function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveState["drafts"] {
+  const id = event.sessionId;
+  if (event.kind === "text_delta") {
+    return { ...drafts, [id]: (event.startsBlock === true ? "" : (drafts[id] ?? "")) + event.text };
+  }
+  const ends =
+    event.kind === "text" ||
+    event.kind === "turn_finished" ||
+    event.kind === "turn_failed" ||
+    event.kind === "session_deleted";
+  if (!ends || !(id in drafts)) return drafts;
+  const rest = { ...drafts };
+  Reflect.deleteProperty(rest, id);
+  return rest;
 }
 
 /** The steps of the running turns after one event. A key means that a turn runs. */
@@ -98,6 +133,8 @@ function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["
   // The core's own events are no step of a turn: the list shows their effect after a reload.
   if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
     return steps;
+  // A turn whose first event is a piece runs too.
+  if (event.kind === "text_delta") return event.sessionId in steps ? steps : { ...steps, [event.sessionId]: [] };
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     if (!(event.sessionId in steps)) return steps;
     const rest = { ...steps };
@@ -159,4 +196,10 @@ function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
     tasks: { ...state.tasks, [event.taskId]: task },
     taskSeqs: { ...state.taskSeqs, [event.sessionId]: event.seq },
   };
+}
+
+/** The steps of a running turn, with its draft as the last message, so the answer shows the words as they come. */
+export function stepsWithDraft(steps: readonly TurnStep[], draft: string | undefined): readonly TurnStep[] {
+  if (draft === undefined || draft.trim() === "") return steps;
+  return [...steps, { kind: "message", text: draft, isError: false, id: null }];
 }

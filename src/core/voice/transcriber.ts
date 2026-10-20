@@ -1,12 +1,12 @@
 /**
  * Voice notes become text on this machine, so audio never leaves it
- * (lessons 71, 123). ffmpeg decodes Telegram's Opus audio to 16 kHz WAV, and a whisper.cpp
+ * (lessons 71, 123). ffmpeg decodes the audio of Telegram or of the web page to 16 kHz WAV, and a whisper.cpp
  * binary transcribes it. One note runs at a time.
  *
  * Lesson 123 keeps audio in memory only. whisper.cpp reads a file, so the audio lives in a
  * private temporary folder for the run and is deleted right after, even on a failure.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
@@ -47,6 +47,8 @@ export function createTranscriber(options: TranscriberOptions): Transcribe {
 
 async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): Promise<string> {
   const { tools, runner, environment } = options;
+  // A new instance has no state folder until it saves its first file.
+  mkdirSync(options.temporaryRoot, { recursive: true });
   const folder = mkdtempSync(join(options.temporaryRoot, "voice-"));
   try {
     const input = join(folder, "note.ogg");

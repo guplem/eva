@@ -53,7 +53,7 @@ import {
   saveGitHubAccount,
   loadGitHubAccount,
 } from "./instance/commit-identity.ts";
-import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
+import { claudeLoggedIn, githubCliAccount, piLoginState } from "./setup/logins.ts";
 import {
   chatBlocker,
   missingSteps,
@@ -99,6 +99,7 @@ import {
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
+import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
@@ -187,6 +188,8 @@ export interface EvaStatus {
   readonly setupMissing: number;
   /** The missing step that stops every chat, or null when a chat can answer. */
   readonly chatBlocker: ChatBlocker | null;
+  /** True when this machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -225,6 +228,8 @@ export class Eva {
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
+  /** The gh logins and logouts, one after the other. */
+  private githubCliChanges: Promise<void>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -327,6 +332,7 @@ export class Eva {
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
     });
+    this.githubCliChanges = Promise.resolve();
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -772,7 +778,18 @@ export class Eva {
       problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
       setupMissing: missingSteps(progress),
       chatBlocker: this.chatBlocker(progress),
+      voiceNotes: this.transcribe !== null,
     };
+  }
+
+  /** Turns a voice note into text on this machine. Throws `voice_unavailable` with no whisper model. */
+  async transcribeVoiceNote(audio: Uint8Array): Promise<string> {
+    if (this.transcribe === null)
+      throw new EvaError(
+        "voice_unavailable",
+        "Voice notes are not set up on this machine. Run `eva doctor` to see why.",
+      );
+    return (await this.transcribe(audio)).trim();
   }
 
   projects(query: ProjectQuery = {}): Project[] {
@@ -951,6 +968,7 @@ export class Eva {
       defaultEngine: config.engines.default,
       vaultPath: vaultReady ? vaultPath : null,
       githubToken: secretsSet.githubToken,
+      githubCli: githubCliAccount(folders.gh) !== null,
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       devices: this.deviceLogins.count(),
       telegram: { token: secretsSet.telegramBotToken, paired: config.telegram.allowedChatId !== null },
@@ -962,6 +980,7 @@ export class Eva {
   /**
    * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
    * also waits for its account, so a restart right after the save still has the commit identity.
+   * It also logs the agents' gh in or out: one login serves Eva and her agents (#244).
    */
   async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
     const before = this.settings.secrets.githubToken;
@@ -971,7 +990,34 @@ export class Eva {
     if (token === undefined) saveGitHubAccount(this.options.paths, null);
     else if (!(await this.refreshGitHubAccount(token, token !== before)))
       this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
+    await this.updateGitHubCli(token);
     return result;
+  }
+
+  /**
+   * Logs the agents' gh in with the saved token, or out when none is saved. One change runs at a
+   * time, and only the token that is still saved reaches gh: a quick second save wins. The vault
+   * works with the token alone, so a gh problem never fails the save. The GitHub step shows it.
+   */
+  private updateGitHubCli(token: string | undefined): Promise<void> {
+    const run = async (): Promise<void> => {
+      if (this.settings.secrets.githubToken !== token) return;
+      const gh = {
+        ghFolder: engineFolders(this.options.paths).gh,
+        runner: this.options.runner,
+        environment: this.options.processEnvironment,
+      };
+      const problem = token === undefined ? logOutGitHubCli(gh.ghFolder) : await logInGitHubCli({ ...gh, token });
+      if (problem !== null)
+        this.options.logger?.log(
+          "warn",
+          `Eva could not log ${token === undefined ? "out" : "in"} the agents' gh. ${this.redactor.redact(problem)}`,
+        );
+    };
+    // A change that failed must not stop the ones after it.
+    const next = this.githubCliChanges.then(run, run);
+    this.githubCliChanges = next.catch(() => undefined);
+    return next;
   }
 
   /** The account gives the commit name and email from the next start on. */
@@ -1004,9 +1050,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
-    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    // A token from before Eva kept the account has no record, and Eva never reads it at start. The read
+    // checks the token itself: the Test can fail on the agents' gh alone (#244).
     const token = secrets.githubToken;
-    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+    if (name === "github" && token !== undefined && loadGitHubAccount(this.options.paths) === null)
       await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =

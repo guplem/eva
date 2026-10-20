@@ -86,12 +86,14 @@ export class ApiError extends Error {
 }
 
 async function request<Body>(method: string, path: string, body?: unknown): Promise<Body> {
-  const response = await fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? {} : { "content-type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  // A Blob, such as a voice note, goes as it is.
+  const sent =
+    body === undefined
+      ? {}
+      : body instanceof Blob
+        ? { headers: { "content-type": body.type }, body }
+        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+  const response = await fetch(path, { method, credentials: "same-origin", headers: {}, ...sent });
   if (!response.ok) {
     const text = await response.text();
     let message = text;
@@ -134,6 +136,8 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
   setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
+  /** Turns a recording into text on Eva's machine. Eva keeps no audio. */
+  transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
@@ -219,6 +223,8 @@ export const api = {
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
+  setScheduleEnabled: (scheduleId: string, enabled: boolean): Promise<void> =>
+    request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
   scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards"),

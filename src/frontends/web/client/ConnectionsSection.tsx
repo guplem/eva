@@ -18,13 +18,19 @@ export function ConnectionsSection({ context }: { readonly context: SettingsCont
 export function GitHubCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const saved = context.settings.secretsSet.githubToken;
   const [tokenSteps, setTokenSteps] = useState(false);
+  // The step knows whether the agents' gh has the login too (#244); before the setup loads, the token decides.
+  const step = context.setup?.progress.find((each) => each.key === "github");
   return (
     <Card
       item="github"
       title="GitHub"
-      description="Eva uses your GitHub login to reach your private vault and projects."
-      aside={<StatusPill state={saved ? "done" : "optional"} />}
+      description="Eva uses your GitHub login for your private vault and projects."
+      aside={<StatusPill state={step?.state ?? (saved ? "done" : "optional")} />}
     >
+      {/* "missing" means a saved token that the agents' gh lacks (#244): the step page hides that detail. */}
+      {step?.state === "missing" && (
+        <div className="callout warning">Your agents cannot push their work yet. Press Log in with GitHub.</div>
+      )}
       <GitHubLogin context={context} />
       {!tokenSteps ? (
         <button className="link-button" onClick={() => setTokenSteps(true)}>
@@ -43,7 +49,9 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
             Give the token a name, such as Eva. Pick the repositories of your vault and projects: the token reaches only
             those.
           </li>
-          <li>Under the permissions, allow at least Contents: read and write. Then create the token and copy it.</li>
+          <li>
+            Under the permissions, allow Contents and Pull requests: read and write. Then create the token and copy it.
+          </li>
           <li>Paste the token here, and press Save.</li>
         </Steps>
       )}

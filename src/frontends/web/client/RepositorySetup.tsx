@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type SetupItem, type SetupReport } from "./api.ts";
+import { BackButton } from "./ProjectPage.tsx";
 
 const lightNames: Readonly<Record<SetupItem["light"], string>> = {
   green: "Done",
@@ -14,7 +15,16 @@ const lightNames: Readonly<Record<SetupItem["light"], string>> = {
 
 type Loading = { readonly state: "loading" } | { readonly state: "failed"; readonly reason: string };
 
-export function RepositorySetup({ projectId, title }: { projectId: string; title: string }): ReactElement {
+export function RepositorySetup({
+  projectId,
+  title,
+  onBack,
+}: {
+  readonly projectId: string;
+  readonly title: string;
+  /** Goes back to the project page. */
+  readonly onBack: () => void;
+}): ReactElement {
   const [reports, setReports] = useState<SetupReport[] | Loading>({ state: "loading" });
 
   const load = useCallback(async (): Promise<void> => {
@@ -34,6 +44,7 @@ export function RepositorySetup({ projectId, title }: { projectId: string; title
   return (
     <>
       <div className="main-header">
+        <BackButton label="Back" onClick={onBack} />
         <h1>{title} · Repository setup</h1>
         <button onClick={() => void load()} disabled={loading}>
           Refresh

@@ -96,6 +96,60 @@ describe("discoverProjects", () => {
     expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.title).toBe("Real title");
   });
 
+  test("the description is the first paragraph after the title, in one line", () => {
+    addProject(
+      "2025-03-02-1015-example-app",
+      "status: active",
+      "\n# Example app\n\nA web app for the\nclient portal.\n\nMore text.\n",
+    );
+    addProject("2025-03-03-1015-list-first", "status: active", "\n# List first\n\n- not a description\n");
+    addProject("2025-03-04-1015-no-body", "status: active");
+    addProject("2025-03-05-1015-no-title", "status: active", "\nJust a line.\n");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    const description = (id: string): string | null | undefined =>
+      projects.find((project) => project.id === id)?.description;
+    expect(description("2025-03-02-1015-example-app")).toBe("A web app for the client portal.");
+    expect(description("2025-03-03-1015-list-first")).toBeNull();
+    expect(description("2025-03-04-1015-no-body")).toBeNull();
+    expect(description("2025-03-05-1015-no-title")).toBe("Just a line.");
+  });
+
+  test("the description is plain text: it drops inline Markdown, ends at a block, and stays short", () => {
+    addProject(
+      "2025-03-02-1015-marked",
+      "status: active",
+      "\n# Marked\n\nA **bold** app with `code`, a [link](https://example.com) and ![a logo](logo.png).\n## Rules\n- a\n",
+    );
+    addProject(
+      "2025-03-03-1015-badges",
+      "status: active",
+      "\n# Badges\n\n[![CI](https://ci.example)](https://ci.example)\n",
+    );
+    addProject("2025-03-04-1015-long", "status: active", `\n# Long\n\n${"word ".repeat(100)}\n`);
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    const description = (id: string): string | null | undefined =>
+      projects.find((project) => project.id === id)?.description;
+    expect(description("2025-03-02-1015-marked")).toBe("A bold app with code, a link and .");
+    expect(description("2025-03-03-1015-badges")).toBeNull();
+    const long = description("2025-03-04-1015-long") ?? "";
+    expect(long.length).toBeLessThanOrEqual(300);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  test("names the clone folders of each project", () => {
+    addProject("2025-03-02-1015-example-app", "status: active");
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-0"), { recursive: true });
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "example-app-1"), { recursive: true });
+    mkdirSync(join(vault, "Projects", "2025-03-02-1015-example-app", "repos", "notes"), { recursive: true });
+    addProject("2025-03-03-1015-empty", "status: idea");
+    const projects = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    expect(projects.find((project) => project.id === "2025-03-02-1015-example-app")?.clones).toEqual([
+      "example-app-0",
+      "example-app-1",
+    ]);
+    expect(projects.find((project) => project.id === "2025-03-03-1015-empty")?.clones).toEqual([]);
+  });
+
   test("warns when the front matter time does not match the folder name", () => {
     addProject("2025-03-02-1015-example-app", "created: 2025-03-03T10:15\nstatus: active");
     expect(discoverProjects({ vaultPath: vault, extraRoots: [] })[0]?.warnings).toEqual([

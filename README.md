@@ -88,7 +88,7 @@ Eva's web page shows all your conversations, your projects and the settings. Its
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
-To change a project's title, status, tags or repositories, open the project in the list and press **Project details**.
+To change a project's title, status, tags or repositories, open the project in the list and press **Details**.
 
 Open **Settings** on the web page to change the updates, the notebook sync, the hub and the tokens. [Settings](docs/guide/reference.md#settings) explains each one.
 

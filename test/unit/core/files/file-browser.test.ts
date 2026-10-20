@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { browseVault, maxShownBytes } from "../../../../src/core/files/file-browser.ts";
@@ -130,7 +130,37 @@ describe("browseVault: refusals (lesson 72)", () => {
     expect(refusal(() => browseVault(vault, "link/secret.md", keep))).not.toBeNull();
   });
 
+  test("a link inside the vault does not open git data or a secrets file", () => {
+    write(".env", "SECRET=1\n");
+    try {
+      symlinkSync(join(vault, ".git"), join(vault, "g"), "junction");
+      symlinkSync(join(vault, ".env"), join(vault, "harmless.txt"));
+    } catch {
+      return; // A system that cannot make the link cannot follow one either.
+    }
+    expect(refusal(() => browseVault(vault, "g/config", keep))).not.toBeNull();
+    expect(browseVault(vault, "harmless.txt", keep)).toMatchObject({ kind: "unreadable" });
+  });
+
+  test("a path part with a colon is not found: Windows reads it as a file stream", () => {
+    expect(refusal(() => browseVault(vault, ".git::$INDEX_ALLOCATION/config", keep))).not.toBeNull();
+  });
+
   test("a vault that does not exist is not found", () => {
     expect(refusal(() => browseVault(join(folder, "none"), "", keep))).not.toBeNull();
   });
 });
+
+// Root reads any file, and Windows ignores the mode bits, so only another user sees the refusal.
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "a folder that Eva may not read shows a reason instead of a failure",
+  () => {
+    mkdirSync(join(vault, "Locked"));
+    chmodSync(join(vault, "Locked"), 0o000);
+    try {
+      expect(browseVault(vault, "Locked", keep)).toMatchObject({ kind: "unreadable" });
+    } finally {
+      chmodSync(join(vault, "Locked"), 0o755);
+    }
+  },
+);

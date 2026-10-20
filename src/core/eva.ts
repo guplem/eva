@@ -1033,9 +1033,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
-    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    // A token from before Eva kept the account has no record, and Eva never reads it at start. The read
+    // checks the token itself: the Test can fail on the agents' gh alone (#244).
     const token = secrets.githubToken;
-    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+    if (name === "github" && token !== undefined && loadGitHubAccount(this.options.paths) === null)
       await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =

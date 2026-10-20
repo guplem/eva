@@ -1124,7 +1124,8 @@ describe("the commit identity of an Eva", () => {
   test("the GitHub check of an older install fills a missing account", async () => {
     const instance = instanceWith({ githubToken: "a-page-token" }, fakeAccountApi());
     try {
-      expect((await instance.runCheck("github")).ok).toBe(true);
+      // An older install has no gh login for the agents, so the Test fails, but the token is good.
+      expect((await instance.runCheck("github")).detail).toContain("your agents cannot push their work yet");
       expect(loadGitHubAccount(homePaths(home))).toEqual(account);
     } finally {
       instance.stop();

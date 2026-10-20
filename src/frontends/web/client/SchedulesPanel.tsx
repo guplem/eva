@@ -1,8 +1,8 @@
 /**
- * The schedules of `.eva/schedules.json`: a day line of today, one card per schedule with its
+ * The schedules of `.eva/schedules.json`: a day line of today, one row per schedule with its
  * repeat, next run and last result, and "Add schedule".
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { AddScheduleDialog } from "./AddScheduleDialog.tsx";
 import { api, type ScheduleList, type ScheduleView } from "./api.ts";
 import { Icon } from "./icons.tsx";
@@ -24,10 +24,20 @@ export function SchedulesPanel(): ReactElement {
   /** The schedules whose switch waits for its change and the new list. */
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const reload = (): void => {
-    void api.schedules().then(setList, (error: unknown) => {
+  /** The number of the newest list request: an older answer that comes in later must not undo a toggle. */
+  const latest = useRef(0);
+
+  const load = async (): Promise<void> => {
+    const mine = ++latest.current;
+    try {
+      const fresh = await api.schedules();
+      if (mine === latest.current) setList(fresh);
+    } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
-    });
+    }
+  };
+  const reload = (): void => {
+    void load();
   };
   useEffect(() => {
     reload();
@@ -53,23 +63,19 @@ export function SchedulesPanel(): ReactElement {
     setPending((current) => new Set(current).add(id));
     try {
       await api.setScheduleEnabled(id, enabled);
-      // A push can turn a paused schedule on too, so on always asks again (lesson 67).
+      // Someone who can push to the vault can turn a schedule on too, so on always asks again (lesson 67).
       if (enabled)
         setNotice(`Turned on ${name}. Eva shows its setup card first. It runs only after the card reaches you.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
     // The switch waits for the new list, so a second tap never sends the same state again.
-    void api
-      .schedules()
-      .then(setList, () => undefined)
-      .finally(() => {
-        setPending((current) => {
-          const next = new Set(current);
-          next.delete(id);
-          return next;
-        });
-      });
+    await load();
+    setPending((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
   };
 
   const schedules = list?.schedules ?? [];

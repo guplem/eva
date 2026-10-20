@@ -11,9 +11,9 @@ import { EvaError } from "../../shared/errors.ts";
  */
 export const githubClientId: string | null = "Ov23liT8JKyYSZlnz2OT";
 
-/** The one sentence that setup says before the login. It must match `scope` below. */
+/** What setup says before the login. It must match `scope` below. */
 export const githubLoginAccess =
-  "The login lets Eva read and write all your GitHub repositories, private ones too. Eva uses it only to reach GitHub for you, and never gives it to the AI tools that she runs.";
+  "The login lets Eva and her agents read and write all your GitHub repositories, private ones too. The agents use it to push their work and open pull requests. Eva keeps it on this computer.";
 
 export interface GitHubLoginOptions {
   readonly clientId: string;
@@ -30,7 +30,8 @@ export interface GitHubLoginOptions {
 const requestTimeoutMs = 30_000;
 // GitHub asks for 5 more seconds after each slow_down.
 const slowDownStepSeconds = 5;
-const scope = "repo";
+// gh refuses a token without read:org and gist. workflow lets an agent push a change to a workflow file.
+const scope = "repo read:org gist workflow";
 // Three failed polls in a row: from about 15 seconds when GitHub fails at once, to about 2 minutes when each request times out.
 const maxFailedPolls = 3;
 

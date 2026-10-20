@@ -12,7 +12,14 @@ import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" 
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
 import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
+import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
 import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
+
+/**
+ * The person's rules for Eva as a new vault gets them. They hold no setup answer, so the settings
+ * page can restore them as they are.
+ */
+export const defaultAssistantRules: string = assistantFile;
 
 export interface VaultTemplateAnswers {
   readonly name: string;
@@ -45,7 +52,8 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     "AGENTS.md": agentsFile,
     "README.md": readmeFile,
     ".gitignore": gitignoreFile,
-    ".eva/assistant.md": fill(assistantFile),
+    ".eva/assistant.md": defaultAssistantRules,
+    "Life/About me.md": fill(aboutFile),
     ".eva/schedules.json": JSON.stringify({ version: 1, schedules: [] }, null, 2) + "\n",
     ".eva/.claude-plugin/plugin.json":
       JSON.stringify(
@@ -60,7 +68,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
     ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
     // The empty top-level folders that AGENTS.md describes, so a new vault shows its shape.
     ...Object.fromEntries(
-      ["Principles", "Methods", "Toolbox", "Library", "Life", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),
+      ["Principles", "Methods", "Toolbox", "Library", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),
     ),
   };
 }

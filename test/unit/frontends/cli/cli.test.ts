@@ -1327,9 +1327,9 @@ describe("runSetup", () => {
       { runner: recordingRunner, lines, asked },
     );
     const newVault = join(home, "vault");
-    const assistant = readFileSync(join(newVault, ".eva", "assistant.md"), "utf8");
-    expect(assistant).toContain("- **Name:** Alex");
-    expect(assistant).toContain("- Work\n- music\n");
+    const about = readFileSync(join(newVault, "Life", "About me.md"), "utf8");
+    expect(about).toContain("- **Name:** Alex");
+    expect(about).toContain("- Work\n- music\n");
     // "0" already answers both questions: a new vault, in Eva's home.
     expect(asked).not.toContain("createVault");
     expect(asked).not.toContain("vault");

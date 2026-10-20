@@ -40,7 +40,7 @@ Each wait on the web page is its own sentence, such as "Installing 1.4.0…". A 
    - A wait for content that fills a page gets a skeleton: the first page load (a chat, a list or cards, by the address), the settings, the setup, the schedules, the project list, the clone grid and the Versions card.
    - A chat has no wait of its own: its turns come with the chat list, at the first page load.
    - A button label for a short action stays, such as "Testing…". The login page keeps its faces. The chat keeps its working dots.
-4. **Look.** The track is `--chip`, a pill. The fill is `--accent` with a `--glow` shadow, as the "now" line of the day timeline. The skeleton blocks are `--chip` with a `--panel` shimmer, with the radius of the part they copy.
+4. **Look.** The track is `--chip`, a pill. The fill is `--accent` with a `--glow` shadow, as the "now" line of the day timeline. The skeleton shapes are `--line` with a `--chip` shimmer, with the radius of the part they copy.
 5. **Reduced motion.** No shimmer. The running bar shows a still part of the fill. The sentence still says that Eva works.
 6. **Roles.** A `role="status"` wrapper holds the sentence. A `role="progressbar"` element carries `aria-valuenow` only when the share is known. Skeleton shapes are `aria-hidden`, in an `aria-busy` box with a visually hidden status sentence, so the end-to-end tests keep their texts.
 7. **Not read yet.** The chats arrive with the login check, so the first page load already waits. The project list starts as `null`, so it never says "No project matches." before it reads.

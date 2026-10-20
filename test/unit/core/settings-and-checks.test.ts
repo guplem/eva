@@ -939,6 +939,19 @@ describe("the commit identity of an Eva", () => {
     }
   });
 
+  test("a vault made on the page right after a token save carries the new account's name", async () => {
+    const instance = instanceWith({}, fakeAccountApi());
+    try {
+      await instance.saveSecret("githubToken", "a-page-token");
+      mkdirSync(join(home, "notes"));
+      writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
+      await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      expect(sandbox.git(join(home, "notes"), "log", "-1", "--format=%an <%ae>")).toBe(`Example User <${email}>`);
+    } finally {
+      instance.stop();
+    }
+  });
+
   test("the GitHub check of an older install fills a missing account", async () => {
     const instance = instanceWith({ githubToken: "a-page-token" }, fakeAccountApi());
     try {

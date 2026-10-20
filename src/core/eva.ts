@@ -371,8 +371,13 @@ export class Eva {
       paths: options.paths,
       runner: options.runner,
       savedVaultPath: () => this.savedVaultPath(),
-      // From the files, so a token that the page or `eva setup` saved since the start works at once.
-      gitEnvironment: () => gitEnvironment(this.facts, this.settings.saved().secrets),
+      // From the files, so a token that the page or `eva setup` saved since the start works at once,
+      // and a new vault's first commit carries that token's account.
+      gitEnvironment: () => {
+        const saved = this.settings.saved();
+        const identity = commitIdentity(options.paths, saved.config);
+        return gitEnvironment({ ...this.facts, commitIdentity: identity }, saved.secrets);
+      },
       githubToken: () => this.settings.saved().secrets.githubToken,
       ...(options.githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl: options.githubApiBaseUrl }),
     });

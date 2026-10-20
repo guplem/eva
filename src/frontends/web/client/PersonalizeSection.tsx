@@ -32,7 +32,8 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
   );
 }
 
-function AppearanceCard(): ReactElement {
+/** The design reference shows it too, so a person sees each token change with the seed and the theme. */
+export function AppearanceCard(): ReactElement {
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
   const change = (next: Partial<Appearance>): void => {
     const merged = { ...appearance, ...next };

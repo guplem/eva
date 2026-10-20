@@ -1043,6 +1043,25 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Development");
+  const report = page.getByRole("link", { name: "Report a bug" });
+  const href = (await report.getAttribute("href")) ?? "";
+  expect(href).toContain("https://github.com/guplem/eva/issues/new");
+  expect(new URL(href).searchParams.get("body")).toMatch(/Eva version: \d/);
+  await page.getByRole("button", { name: "Open the design reference" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Design reference");
+  await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");
+  await expect(page.getByRole("region", { name: "Components" })).toContainText(".pill");
+  await expect(page.getByRole("list", { name: "Layers" })).toContainText("src/core");
+  // The theme switch on the page changes the colours of every sample.
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Development");
+});
+
 test("Settings: a token saved on a step's page shows at once in that step", async ({ page }) => {
   await logIn(page);
   await page.request.delete("/api/secrets/githubToken");
@@ -1908,6 +1927,8 @@ test.describe("on a phone", () => {
       "#/settings/connections",
       "#/settings/access",
       "#/settings/personalize",
+      "#/settings/developer/design",
+      "#/settings/developer",
       "#/settings/updates",
     ];
     for (const hash of pages) {

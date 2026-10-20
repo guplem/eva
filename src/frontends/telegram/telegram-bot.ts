@@ -365,7 +365,7 @@ export class TelegramBot {
         await this.send(
           chatId,
           null,
-          `This bot is private. Send the pairing code to use it. Settings, Connections, on Eva's page shows it, and so does \`eva status\`. Your chat id is ${String(chatId)}.`,
+          `This bot is private. Send it the pairing code. Find the code in Settings, Connections, on Eva's page, or run \`eva status\`. Your chat id is ${String(chatId)}.`,
         );
       }
       return;

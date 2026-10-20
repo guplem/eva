@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
-import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
+import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
@@ -84,6 +84,11 @@ beforeEach(() => {
     basePrompt: "Base.",
     gatherMs: 5,
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
+    // GitHub gives the token at once: no test waits for a person.
+    githubBrowserLogin: (show) => {
+      show("ABCD-1234", "https://github.com/login/device");
+      return Promise.resolve("gho_example-page-login");
+    },
   });
   api = startLocalApi({
     eva,
@@ -976,6 +981,20 @@ describe("web routes", () => {
     const early = await finish({ code: "example-code" });
     expect(early.status).toBe(409);
     expect((await json<{ error: string }>(early)).error).toContain("No Claude login waits");
+  });
+
+  test("the GitHub login gives the code, then saves the token", async () => {
+    const finish = (): Promise<Response> => call("/api/github/login/finish", { method: "POST", body: {} });
+    const early = await finish();
+    expect(early.status).toBe(409);
+    expect(await json<{ code: string; error: string }>(early)).toMatchObject({ code: "github_failed" });
+    const started = await call("/api/github/login", { method: "POST", body: {} });
+    expect(await json<{ code: string; url: string }>(started)).toEqual({
+      code: "ABCD-1234",
+      url: "https://github.com/login/device",
+    });
+    expect(await json<{ restartNeeded: boolean }>(await finish())).toEqual({ restartNeeded: true });
+    expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_example-page-login");
   });
 
   test("a device login changes the Google client and reaches the Google login", async () => {

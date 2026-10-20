@@ -97,6 +97,8 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
+import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
@@ -138,6 +140,8 @@ export interface EvaOptions {
   readonly googleBaseUrl?: string;
   /** The GitHub API, which the vault step uses to list and create repositories; a test points it at a fake server. */
   readonly githubApiBaseUrl?: string;
+  /** The GitHub browser login of the page. Default: the device flow with Eva's OAuth App. Null: none. */
+  readonly githubBrowserLogin?: DeviceLogin | null;
   /** Starts a program in a pseudo-terminal, for the Claude login. Default: Bun's terminal. */
   readonly startTerminal?: TerminalProcessStarter;
   /** Where the tools live, for their versions. Default: this machine, not the single executable. */
@@ -217,6 +221,7 @@ export class Eva {
   readonly deviceLogins: DeviceLogins;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
+  private readonly githubLogin: GitHubBrowserLogin;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -318,6 +323,13 @@ export class Eva {
       program: options.claudeExecutable ?? null,
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
+    });
+    this.githubLogin = new GitHubBrowserLogin({
+      login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
+      sleep: (ms) => Bun.sleep(ms),
+      save: async (token) => {
+        await this.saveSecret("githubToken", token);
+      },
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
@@ -695,6 +707,7 @@ export class Eva {
 
   stop(): void {
     this.claudeLogin.stop();
+    this.githubLogin.stop();
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
     if (this.scheduleTimer !== null) clearInterval(this.scheduleTimer);
     if (this.backgroundTimer !== null) clearInterval(this.backgroundTimer);
@@ -1032,6 +1045,17 @@ export class Eva {
     return { restartNeeded: this.settings.saveSecret("claudeOauthToken", token).restartNeeded };
   }
 
+  /** Starts the GitHub browser login, or gives the code of the login that waits. */
+  startGitHubLogin(): Promise<{ code: string; url: string }> {
+    return this.githubLogin.start();
+  }
+
+  /** Waits until the person confirms the code and the token is saved. Git reads it at start. */
+  async finishGitHubLogin(): Promise<{ restartNeeded: true }> {
+    await this.githubLogin.finish();
+    return { restartNeeded: true };
+  }
+
   private googleClient(): { clientId: string; clientSecret: string } | null {
     const { googleOauthClientId, googleOauthClientSecret } = this.settings.secrets;
     return googleOauthClientId === undefined || googleOauthClientSecret === undefined
@@ -1257,4 +1281,11 @@ function holdsFiles(folder: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** The device flow of `eva setup`, with Eva's OAuth App, or null while she has none. */
+function defaultGitHubLogin(now: () => Date): DeviceLogin | null {
+  const clientId = githubClientId;
+  if (clientId === null) return null;
+  return (show, sleep) => githubDeviceLogin({ clientId, show, sleep, clock: { now } });
 }

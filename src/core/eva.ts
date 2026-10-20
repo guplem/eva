@@ -243,6 +243,8 @@ export class Eva {
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
+      // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
+      syncEnabled: () => options.config.sync.enabled,
       assistantBusy: () => this.assistantBusy(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
@@ -453,7 +455,8 @@ export class Eva {
     if (this.backgroundTicking) return;
     this.backgroundTicking = true;
     try {
-      await this.vault.pullIfDue(this.settings.config.sync);
+      // The interval applies at once; sync.enabled waits for a restart, as the sweep and the turn sync do.
+      await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:

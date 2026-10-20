@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   checkVaultRepository,
   cloneVault,
   githubCredentialArguments,
   githubTokenVariable,
+  isAddress,
   pushNewVault,
   vaultNeedsPush,
 } from "../../../../src/core/vault/vault-clone.ts";
@@ -77,6 +78,29 @@ describe("cloneVault", () => {
   });
 });
 
+describe("an address that looks like an option", () => {
+  test("is no address, and git never reads it as an option", async () => {
+    const proof = join(sandbox.root, "ran");
+    // The shell expands the variable, so the text has no slash or space, as a real attack.
+    const option = "--upload-pack=touch${IFS}${EVA_PROOF}@x:";
+    const environment = { ...gitEnvironment, EVA_PROOF: proof };
+    const reason = await checkVaultRepository({ repository: option, runner: systemProcessRunner, environment });
+    expect(reason).not.toBeNull();
+    const refused = await failure(
+      cloneVault({
+        repository: option,
+        folder: join(sandbox.root, "vault"),
+        runner: systemProcessRunner,
+        environment,
+      }),
+    );
+    expect(isEvaError(refused, "git_failed")).toBe(true);
+    expect(existsSync(proof)).toBe(false);
+    expect(isAddress(option)).toBe(false);
+    expect(isAddress("git@github.com:you/vault.git")).toBe(true);
+  });
+});
+
 describe("checkVaultRepository", () => {
   test("returns null when git can read the repository, and git's reason when it cannot", async () => {
     expect(
@@ -113,6 +137,7 @@ describe("checkVaultRepository", () => {
       ...githubCredentialArguments,
       "ls-remote",
       "-q",
+      "--",
       "https://github.com/example/vault",
       "HEAD",
     ]);

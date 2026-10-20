@@ -11,6 +11,8 @@ import type {
 } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
+import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
+import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
@@ -52,6 +54,7 @@ export type {
   ScheduleList,
   ScheduleView,
   EvaSetupState,
+  GitHubRepository,
   ProgressStep,
   SessionEvent,
   ListedSession,
@@ -61,6 +64,7 @@ export type {
   UpdateStatus,
   VaultConflict,
   VaultConflictReport,
+  VaultSetupResult,
   VaultSyncState,
 };
 
@@ -183,6 +187,10 @@ export const api = {
   signInToTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/sign-in", {}),
   restart: (): Promise<void> => request("POST", "/api/restart", {}),
   syncVault: (): Promise<VaultSyncState> => request("POST", "/api/vault/sync", {}),
+  vaultRepositories: (): Promise<GitHubRepository[]> => request("GET", "/api/vault/repositories"),
+  cloneVault: (repository: string): Promise<VaultSetupResult> => request("POST", "/api/vault/clone", { repository }),
+  createVault: (answers: NewVaultAnswers): Promise<VaultSetupResult> => request("POST", "/api/vault/create", answers),
+  pushVault: (repository: string): Promise<VaultSetupResult> => request("POST", "/api/vault/push", { repository }),
   vaultConflicts: (): Promise<VaultConflictReport> => request("GET", "/api/vault/conflicts"),
   resolveVaultConflict: (path: string, choice: ConflictChoice): Promise<ConflictResolution> =>
     request("POST", "/api/vault/conflicts", { path, choice }),

@@ -61,7 +61,7 @@ function RestartCallout({ context }: { readonly context: SettingsContext }): Rea
   if (context.setup?.restartNeeded !== true) return null;
   return (
     <div className="callout warning callout-action">
-      <span>Eva uses the new tokens after a restart.</span>
+      <span>Eva uses the changes after a restart.</span>
       <button className="primary" onClick={context.askRestart}>
         Restart now
       </button>

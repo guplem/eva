@@ -2715,3 +2715,11 @@ button.small {
     grid-template-columns: 1fr;
   }
 }
+
+/* The vault step: each choice is its own block, apart from the next one. */
+.vault-choice {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}

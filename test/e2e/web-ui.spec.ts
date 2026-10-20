@@ -1077,7 +1077,7 @@ test("Settings: a token saved on a step's page shows at once in that step", asyn
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-progress-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(header).toContainText("The token is saved.");
-  await expect(page.getByText("Eva uses the new tokens after a restart.")).toBeVisible();
+  await expect(page.getByText("Eva uses the changes after a restart.")).toBeVisible();
   await page.request.delete("/api/secrets/githubToken");
 });
 
@@ -1639,6 +1639,110 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(first).toContainText("Set up");
   await first.click();
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
+});
+
+test("Settings: the vault step lists the repositories and clones the picked one, with no terminal", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      json: [
+        { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
+        { fullName: "you/example-app", cloneUrl: "https://github.com/you/example-app.git", private: false },
+      ],
+    }),
+  );
+  const cloned: unknown[] = [];
+  await page.route("**/api/vault/clone", async (route) => {
+    cloned.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: { folder: "/eva-home/vault", repository: "https://github.com/you/vault.git", problem: null },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  const clone = page.getByRole("button", { name: "Clone this vault" });
+  await expect(clone).toBeDisabled();
+  await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
+  await clone.click();
+  await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
+  expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+});
+
+test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({ json: [{ fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true }] }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
+  await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
+  await page.request.delete("/api/secrets/githubToken");
+});
+
+test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: "GitHub refused the request (HTTP 401): Bad credentials", code: "github_failed" },
+    }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  await expect(page.getByText("Bad credentials")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.getByRole("button", { name: "Open the GitHub step" }).click();
+  await expect(page.getByRole("region", { name: "GitHub", exact: true }).first()).toBeVisible();
 });
 
 test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({

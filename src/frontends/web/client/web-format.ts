@@ -32,6 +32,18 @@ export function toWebHtml(markdown: string): string {
   return blocks(expandIndentTabs(markdown.replaceAll("\r\n", "\n").split("\n")), false);
 }
 
+/**
+ * The HTML of `toWebHtml` with each heading `levels` deeper, at most `h6`, for a file shown inside
+ * a card: its `# Title` must not become a second title of the page.
+ */
+export function nestedWebHtml(markdown: string, levels: number): string {
+  // toWebHtml escapes every `<` of the text, so each heading tag in its output is its own.
+  return toWebHtml(markdown).replace(
+    /<(\/?)h([1-6])>/g,
+    (_tag, close: string, level: string) => `<${close}h${String(Math.min(Number(level) + levels, 6))}>`,
+  );
+}
+
 /** A tab in an indent counts as four spaces, so it nests a list; a tab in code stays, so copied code works. */
 function expandIndentTabs(lines: readonly string[]): string[] {
   let openFence: string | null = null;

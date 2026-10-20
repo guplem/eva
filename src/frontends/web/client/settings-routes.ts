@@ -150,6 +150,12 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "Appearance",
     words: "theme dark light density compact colour color seed",
   },
+  {
+    item: "assistant-rules",
+    section: "personalize",
+    title: "Eva's rules",
+    words: "system prompt personality instructions behaviour behavior assistant.md restore default",
+  },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   { item: "project-folders", section: "personalize", title: "Project folders", words: "roots projects" },

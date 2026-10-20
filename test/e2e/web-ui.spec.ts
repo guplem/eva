@@ -853,6 +853,42 @@ test("Settings: the rules for chat names save with Save and load again (issue 50
   }
 });
 
+test("Settings: Eva's rules show formatted, save from the plain text, and restore the default after a backup", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  const card = page.getByRole("region", { name: "Eva's rules" });
+  await expect(card.getByRole("heading", { name: "You are Eva" })).toBeVisible();
+  await expect(card).toContainText("A project chat never uses them");
+  try {
+    await card.getByRole("button", { name: "Edit" }).click();
+    await card.getByLabel("Rules in Markdown").fill("# Be brief\n\nAnswer in one sentence.\n");
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "New chats with Eva use the new rules." })).toBeVisible();
+    await expect(card.getByRole("heading", { name: "Be brief" })).toBeVisible();
+
+    await card.getByRole("button", { name: "Restore the default" }).click();
+    const dialog = page.getByRole("dialog", { name: "Restore the default rules" });
+    await expect(dialog.getByRole("checkbox")).toBeChecked();
+    await dialog.getByRole("button", { name: "Save a backup and restore" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Your old rules are in .eva/assistant.backup-" }),
+    ).toBeVisible();
+    await expect(card.getByRole("heading", { name: "Learning" })).toBeVisible();
+  } finally {
+    // Later tests expect the demo vault's own rules.
+    await page.evaluate(async () => {
+      const current = (await (await fetch("/api/assistant-rules")).json()) as { version: string };
+      await fetch("/api/assistant-rules", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version: current.version, text: "# You are Eva\n" }),
+      });
+    });
+  }
+});
+
 test("Settings: Use Eva from any device installs Tailscale, then shares the address", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Access");

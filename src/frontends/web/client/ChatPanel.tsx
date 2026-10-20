@@ -192,14 +192,17 @@ export function TasksDialog({
   );
 }
 
-function Dialog({
+export function Dialog({
   label,
   onClose,
   sheet = false,
+  closeLabel = "Close",
   children,
 }: {
   readonly label: string;
   readonly onClose: () => void;
+  /** Such as "Cancel", when the dialog asks the person to confirm something. */
+  readonly closeLabel?: string;
   /** A bottom sheet, which slides up from the bottom of a phone screen. */
   readonly sheet?: boolean;
   readonly children: ReactNode;
@@ -223,7 +226,7 @@ function Dialog({
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose}>
-            Close
+            {closeLabel}
           </button>
         </div>
       </div>

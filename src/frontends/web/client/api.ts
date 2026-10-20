@@ -16,6 +16,7 @@ import type { GitHubRepository } from "../../../core/vault/github-repositories.t
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
+import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
@@ -180,6 +181,13 @@ export const api = {
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),
+  /** Answers 409 when no vault is configured. */
+  assistantRules: (): Promise<AssistantRulesView> => request("GET", "/api/assistant-rules"),
+  /** Rules that changed since `version` answer 409 with the code `rules_changed`. */
+  saveAssistantRules: (version: string, text: string): Promise<AssistantRulesFile> =>
+    request("PUT", "/api/assistant-rules", { version, text }),
+  restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
+    request("POST", "/api/assistant-rules/restore", { version, backup }),
   /** The value goes one way: the answer never holds it. */
   saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>
     request("PUT", `/api/secrets/${name}`, { value }),

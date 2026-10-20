@@ -234,7 +234,8 @@ describe("settings", () => {
     expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
     expect(eva.status().chatBlocker).toBe("engine");
     eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
-    expect(eva.status().chatBlocker).toBeNull();
+    // The engine reads the token at start, so a chat still cannot answer before a restart.
+    expect(eva.status().chatBlocker).toBe("restart");
     eva.saveSecret("telegramBotToken", null);
     await eva.runCheck("telegram");
     const after = (await eva.setupState()).progress;
@@ -270,6 +271,8 @@ describe("settings", () => {
     mkdirSync(join(home, "engines", "claude"), { recursive: true });
     writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
     expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("done");
+    // Claude Code reads its own login at each turn, so the chat needs no restart.
+    expect(eva.status().chatBlocker).toBeNull();
   });
 
   test("a settings change keeps a Telegram pairing that the bot saved meanwhile", () => {

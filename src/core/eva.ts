@@ -696,7 +696,7 @@ export class Eva {
       problems: this.alerts.openProblems(),
       problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
       setupMissing: missingSteps(progress),
-      chatBlocker: chatBlocker(progress),
+      chatBlocker: this.chatBlocker(progress),
     };
   }
 
@@ -781,7 +781,21 @@ export class Eva {
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
   setupProgress(): ProgressStep[] {
-    const { config, secrets } = this.settings.saved();
+    return this.progressWith(this.settings.saved().secrets);
+  }
+
+  /**
+   * The step that stops every chat. The engines read the Claude token at start, so a token that
+   * the files hold but the running engine lacks needs a restart first.
+   */
+  private chatBlocker(progress: readonly ProgressStep[]): ChatBlocker | null {
+    const missing = chatBlocker(progress);
+    if (missing !== null) return missing;
+    return chatBlocker(this.progressWith(this.options.secrets)) === "engine" ? "restart" : null;
+  }
+
+  private progressWith(secrets: EvaSecrets): ProgressStep[] {
+    const { config } = this.settings.saved();
     const secretsSet = {
       claudeOauthToken: secrets.claudeOauthToken !== undefined,
       githubToken: secrets.githubToken !== undefined,

@@ -50,3 +50,14 @@ describe("setupBlock", () => {
     });
   });
 });
+
+describe("setupBlock after a new login", () => {
+  test("asks for a restart, and opens the Restart card", () => {
+    expect(setupBlock("restart")).toEqual({
+      sentence: "Eva needs a restart before she can use the new login.",
+      action: "Restart Eva",
+      composerLine: "Restart Eva to send a message.",
+      address: "#/settings/updates/restart",
+    });
+  });
+});

@@ -54,17 +54,28 @@ export interface SetupBlock {
   readonly address: string;
 }
 
-const blockWords: Readonly<Record<ChatBlocker, { readonly needs: string; readonly action: string }>> = {
-  engine: { needs: "an AI engine", action: "Set up an AI engine" },
-  vault: { needs: "your vault", action: "Set up your vault" },
+const blocks: Readonly<
+  Record<ChatBlocker, { readonly sentence: string; readonly action: string; readonly address: string }>
+> = {
+  engine: {
+    sentence: "Eva needs an AI engine before she can answer.",
+    action: "Set up an AI engine",
+    address: settingsHash({ section: "setup", item: "engine" }),
+  },
+  vault: {
+    sentence: "Eva needs your vault before she can answer.",
+    action: "Set up your vault",
+    address: settingsHash({ section: "setup", item: "vault" }),
+  },
+  // The engine reads a login at start, so a login saved since then waits for a restart.
+  restart: {
+    sentence: "Eva needs a restart before she can use the new login.",
+    action: "Restart Eva",
+    address: settingsHash({ section: "updates", item: "restart" }),
+  },
 };
 
 export function setupBlock(blocker: ChatBlocker): SetupBlock {
-  const words = blockWords[blocker];
-  return {
-    sentence: `Eva needs ${words.needs} before she can answer.`,
-    action: words.action,
-    composerLine: `${words.action} to send a message.`,
-    address: settingsHash({ section: "setup", item: blocker }),
-  };
+  const block = blocks[blocker];
+  return { ...block, composerLine: `${block.action} to send a message.` };
 }

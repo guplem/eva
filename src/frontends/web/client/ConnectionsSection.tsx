@@ -39,7 +39,10 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
             </a>
             . Log in if GitHub asks.
           </li>
-          <li>Give the token a name, such as Eva. Pick the repositories of your vault and projects.</li>
+          <li>
+            Give the token a name, such as Eva. Pick the repositories of your vault and projects: the token reaches only
+            those.
+          </li>
           <li>Under the permissions, allow at least Contents: read and write. Then create the token and copy it.</li>
           <li>Paste the token here, and press Save.</li>
         </Steps>
@@ -48,7 +51,7 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
         name="githubToken"
         label="GitHub token"
         saved={saved}
-        help="The login above saves it here. A token that you make yourself reaches only the repositories that you pick."
+        help="The login above saves the token here. You can also paste a token."
         check="github"
         onChanged={context.noteAndReload}
       />

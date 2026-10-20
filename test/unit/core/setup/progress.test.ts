@@ -49,7 +49,7 @@ describe("setupProgress", () => {
     expect(step(fresh, "remoteAccess")?.detail).toContain("Sign in to Tailscale");
     expect(step(fresh, "device")?.detail).toContain("eva devices allow");
     expect(step(fresh, "github")?.detail).toBe(
-      "Log in to GitHub, so that Eva can reach your private vault and projects.",
+      "A vault on this computer alone, or a public one, needs no GitHub login.",
     );
   });
 

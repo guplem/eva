@@ -68,7 +68,7 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           "github",
           "GitHub",
           "optional",
-          "Log in to GitHub, so that Eva can reach your private vault and projects.",
+          "A vault on this computer alone, or a public one, needs no GitHub login.",
           "github",
         ),
     input.vaultPath === null

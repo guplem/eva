@@ -118,7 +118,7 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "vault", section: "setup", title: "Set up your vault", words: "step notes folder" },
   { item: "remoteAccess", section: "setup", title: "Set up phone access", words: "step tailscale mobile" },
   { item: "device", section: "setup", title: "Allow your devices", words: "step phone code login" },
-  { item: "github", section: "setup", title: "Connect GitHub", words: "step login token git code" },
+  { item: "github", section: "setup", title: "Connect GitHub", words: "step login browser token git code" },
   { item: "telegram", section: "setup", title: "Connect Telegram", words: "step bot chat" },
   { item: "google", section: "setup", title: "Connect Google", words: "step calendar drive" },
   { item: "default-engine", section: "engines", title: "Engine for new chats", words: "default claude pi model" },
@@ -126,7 +126,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
-  { item: "github", section: "connections", title: "GitHub login", words: "git token private repository https code" },
+  {
+    item: "github",
+    section: "connections",
+    title: "GitHub login",
+    words: "git login browser token private repository https code",
+  },
   {
     item: "commit-identity",
     section: "connections",

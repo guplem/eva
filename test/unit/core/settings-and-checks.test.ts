@@ -830,7 +830,7 @@ describe("the GitHub login from the page", () => {
     }
   });
 
-  test("with no OAuth App, the page hears to paste a token", async () => {
+  test("with no OAuth App, the error says to paste a token", async () => {
     const instance = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },

@@ -23,6 +23,8 @@ export interface Schedule {
   readonly file: string | null;
   readonly prompt: string | null;
   readonly model: string | null;
+  /** False while the person paused the schedule. A file without the field means on. */
+  readonly enabled: boolean;
 }
 
 export interface ScheduleDefinitions {
@@ -34,6 +36,11 @@ export interface ScheduleDefinitions {
 /** The order of the fields in a setup card. */
 export const scheduleFieldOrder = ["id", "name", "at", "days", "text", "file", "prompt", "model"] as const;
 export type ScheduleFieldName = (typeof scheduleFieldOrder)[number];
+/**
+ * What a card names as changed. A card shows no `enabled` field, so a pause never changes
+ * `announcedFields` (lesson 66). A card can still name `enabled` as the change.
+ */
+export type ScheduleChange = ScheduleFieldName | "enabled";
 
 export const formatVersion = 1;
 /** The id travels in Telegram button data, which Telegram caps at 64 bytes. */
@@ -90,7 +97,11 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   // Scratch empties after a week, so the file would be gone by a later firing.
   if (file?.replaceAll("\\", "/").split("/")[0] === "Scratch")
     return `Schedule ${id} sends a file from Scratch/: use a file outside Scratch/.`;
-  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model: optionalText(fields["model"]) };
+  const enabled = "enabled" in fields ? fields["enabled"] : true;
+  // A typo such as "false" in quotes must never run a schedule that the person paused.
+  if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;
+  const model = optionalText(fields["model"]);
+  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled };
 }
 
 /** Every field of a schedule as text, for a setup card and for change detection (lesson 66). */
@@ -138,6 +149,22 @@ export function removeScheduleDefinition(path: string, scheduleId: string): bool
   const kept = file.schedules.filter((entry) => !isEntryWithId(entry, scheduleId));
   if (kept.length === file.schedules.length) return false;
   writeScheduleFile(path, { ...file, schedules: kept });
+  return true;
+}
+
+/** Turns one schedule off or on, and keeps every other key. False when no valid entry has the id. */
+export function setScheduleEnabled(path: string, scheduleId: string, enabled: boolean): boolean {
+  const file = readWritableFile(path);
+  // The first valid entry with the id is the one that runs, as `readScheduleDefinitions` reads it.
+  const index = file.schedules.findIndex(
+    (entry) => isEntryWithId(entry, scheduleId) && typeof parseScheduleEntry(entry, 1) !== "string",
+  );
+  const entry = file.schedules[index] as Record<string, unknown> | undefined;
+  if (entry === undefined) return false;
+  // On is the default, so the key leaves the entry and the file stays as the person wrote it.
+  const { enabled: _old, ...rest } = entry;
+  file.schedules[index] = enabled ? rest : { ...rest, enabled: false };
+  writeScheduleFile(path, file);
   return true;
 }
 

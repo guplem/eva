@@ -1,8 +1,8 @@
 /**
- * The schedules of `.eva/schedules.json`: a day line of today, one card per schedule with its
+ * The schedules of `.eva/schedules.json`: a day line of today, one row per schedule with its
  * repeat, next run and last result, and "Add schedule".
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { AddScheduleDialog } from "./AddScheduleDialog.tsx";
 import { api, type ScheduleList, type ScheduleView } from "./api.ts";
 import { Icon } from "./icons.tsx";
@@ -21,11 +21,23 @@ export function SchedulesPanel(): ReactElement {
   const [list, setList] = useState<ScheduleList | null>(null);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The schedules whose switch waits for its change and the new list. */
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const reload = (): void => {
-    void api.schedules().then(setList, (error: unknown) => {
+  /** The number of the newest list request: an older answer that comes in later must not undo a toggle. */
+  const latest = useRef(0);
+
+  const load = async (): Promise<void> => {
+    const mine = ++latest.current;
+    try {
+      const fresh = await api.schedules();
+      if (mine === latest.current) setList(fresh);
+    } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
-    });
+    }
+  };
+  const reload = (): void => {
+    void load();
   };
   useEffect(() => {
     reload();
@@ -44,6 +56,26 @@ export function SchedulesPanel(): ReactElement {
       setNotice(error instanceof Error ? error.message : String(error));
     }
     reload();
+  };
+
+  const setEnabled = async (view: ScheduleView, enabled: boolean): Promise<void> => {
+    const { id, name } = view.schedule;
+    setPending((current) => new Set(current).add(id));
+    try {
+      await api.setScheduleEnabled(id, enabled);
+      // Someone who can push to the vault can turn a schedule on too, so on always asks again (lesson 67).
+      if (enabled)
+        setNotice(`Turned on ${name}. Eva shows its setup card first. It runs only after the card reaches you.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+    // The switch waits for the new list, so a second tap never sends the same state again.
+    await load();
+    setPending((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
   };
 
   const schedules = list?.schedules ?? [];
@@ -90,6 +122,8 @@ export function SchedulesPanel(): ReactElement {
                 key={view.schedule.id}
                 view={view}
                 now={list.now}
+                busy={pending.has(view.schedule.id)}
+                onToggle={() => void setEnabled(view, !view.schedule.enabled)}
                 onRemove={() => void remove(view.schedule.id)}
               />
             ))}
@@ -171,27 +205,44 @@ function percent(share: number): string {
   return `${String(share * 100)}%`;
 }
 
-function ScheduleRow(props: { view: ScheduleView; now: string; onRemove: () => void }): ReactElement {
+function ScheduleRow(props: {
+  view: ScheduleView;
+  now: string;
+  busy: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+}): ReactElement {
   const { schedule, nextRun, lastRun } = props.view;
   const [asking, setAsking] = useState(false);
-  const result = lastRunWords(lastRun, props.now);
+  const result = schedule.enabled ? lastRunWords(lastRun, props.now) : { text: "Off", tone: "idle" };
   return (
-    <li className="schedule-panel schedule-row" aria-label={schedule.name}>
+    <li className={`schedule-panel schedule-row${schedule.enabled ? "" : " off"}`} aria-label={schedule.name}>
       <span className="schedule-row-icon">
         <Icon name="clock" />
       </span>
       <div>
         <div className="schedule-row-name">{schedule.name}</div>
         <div className="schedule-small">
-          {repeatWords(schedule.at, schedule.days)} · next {nextRunWords(nextRun, props.now)}
+          {repeatWords(schedule.at, schedule.days)} ·{" "}
+          {schedule.enabled ? `next ${nextRunWords(nextRun, props.now)}` : "off"}
         </div>
       </div>
-      {!asking && (
-        <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
-          <Icon name="x" />
-        </button>
-      )}
-      {asking && <span />}
+      <div className="schedule-row-actions">
+        <button
+          className="toggle"
+          role="switch"
+          aria-checked={schedule.enabled}
+          aria-busy={props.busy}
+          disabled={props.busy}
+          aria-label={`Run ${schedule.name}`}
+          onClick={props.onToggle}
+        />
+        {!asking && (
+          <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
+            <Icon name="x" />
+          </button>
+        )}
+      </div>
       <div className="schedule-row-result">
         <span className={`status-pill ${result.tone}`}>{result.text}</span>
       </div>

@@ -93,8 +93,8 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
       {shown !== null && (
         <VaultSyncView
           state={shown}
-          // An older Eva sends no field: the notice shows only for false.
-          autoSync={(context.status as Partial<EvaStatus> | null)?.vaultAutoSync}
+          // An older Eva sends no field: the notice shows only for false. With no vault, nothing waits.
+          autoSync={config.vaultPath === null ? true : (context.status as Partial<EvaStatus> | null)?.vaultAutoSync}
           onState={(state) => {
             setSyncState(state);
             context.reloadSetup();

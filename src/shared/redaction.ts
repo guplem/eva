@@ -36,6 +36,11 @@ export class Redactor {
     this.knownSecrets.sort((first, second) => second.length - first.length);
   }
 
+  /** The length of the longest known secret, or 0. A stream holds back this much text. */
+  longestSecretLength(): number {
+    return this.knownSecrets[0]?.length ?? 0;
+  }
+
   redact(text: string): string {
     let result = text;
     for (const secret of this.knownSecrets) result = result.split(secret).join(replacement);
@@ -52,4 +57,57 @@ export function containsSecretPattern(text: string): boolean {
     pattern.lastIndex = 0;
     return found;
   });
+}
+
+/**
+ * Redacts the text of one block while the engine still writes it. A piece can end in the middle
+ * of a secret, and the redactor sees only whole strings. So the stream redacts the whole block at
+ * each piece, sends whole words only, and holds back enough text to cover a known secret.
+ */
+export class TextStreamRedactor {
+  private readonly redactor: Redactor;
+  private raw: string;
+  private sent: string;
+  private stopped: boolean;
+
+  constructor(redactor: Redactor) {
+    this.redactor = redactor;
+    this.raw = "";
+    this.sent = "";
+    this.stopped = false;
+  }
+
+  /** Adds a piece and returns the redacted text that is safe to send now, which can be empty. */
+  push(piece: string): string {
+    if (this.stopped) return "";
+    this.raw += piece;
+    const redacted = this.redactor.redact(this.raw);
+    // A secret that starts in text already sent, such as a private key after its header: the
+    // stream cannot take it back, so the block waits for its final text.
+    if (!redacted.startsWith(this.sent)) {
+      this.stopped = true;
+      return "";
+    }
+    const limit = redacted.length - Math.max(0, this.redactor.longestSecretLength() - 1);
+    const safe = redacted.slice(0, lastWhitespaceEnd(redacted, limit));
+    if (safe.length <= this.sent.length) return "";
+    const next = safe.slice(this.sent.length);
+    this.sent = safe;
+    return next;
+  }
+
+  /** Starts a new block. */
+  reset(): void {
+    this.raw = "";
+    this.sent = "";
+    this.stopped = false;
+  }
+}
+
+/** The index just after the last whitespace before `limit`, or 0. A token shape never holds whitespace. */
+function lastWhitespaceEnd(text: string, limit: number): number {
+  for (let index = Math.min(limit, text.length) - 1; index >= 0; index -= 1) {
+    if (/\s/.test(text.charAt(index))) return index + 1;
+  }
+  return 0;
 }

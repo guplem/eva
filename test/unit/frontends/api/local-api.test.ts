@@ -1172,6 +1172,29 @@ describe("updates and the vault sync", () => {
   });
 });
 
+describe("the vault step", () => {
+  test("with no GitHub token, the list of repositories says what to do", async () => {
+    const response = await call("/api/vault/repositories");
+    expect(response.status).toBe(409);
+    expect(await json<{ code: string }>(response)).toMatchObject({ code: "github_failed" });
+  });
+
+  test("a vault in place refuses a clone and a new vault, and a bad request is refused", async () => {
+    const clone = await call("/api/vault/clone", { method: "POST", body: { repository: sandbox.remote } });
+    expect(clone.status).toBe(409);
+    expect(await json<{ code: string }>(clone)).toMatchObject({ code: "vault_not_found" });
+    const create = await call("/api/vault/create", {
+      method: "POST",
+      body: { name: "Sam", language: "English", topics: ["work"], repository: "vault" },
+    });
+    expect(await json<{ code: string }>(create)).toMatchObject({ code: "vault_not_found" });
+    expect((await call("/api/vault/clone", { method: "POST", body: {} })).status).toBe(400);
+    expect((await call("/api/vault/create", { method: "POST", body: { name: "Sam" } })).status).toBe(400);
+    // The cloned vault has a remote, so it needs no push.
+    expect((await call("/api/vault/push", { method: "POST", body: { repository: "vault" } })).status).toBe(400);
+  });
+});
+
 describe("an Eva with an update channel", () => {
   test("the API checks, then installs", async () => {
     const restarts: string[] = [];

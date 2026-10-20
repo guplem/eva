@@ -71,6 +71,25 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
 }
 
+/** The browser resolves a token to the same form as a computed style, so the two compare as text. */
+async function tokenColour(page: Page, name: string): Promise<string> {
+  return page.evaluate((each) => {
+    const probe = document.createElement("i");
+    probe.style.color = `var(${each})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+}
+
+async function style(
+  locator: Locator,
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+): Promise<string> {
+  return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+}
+
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
@@ -863,6 +882,28 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
 });
 
+test("Settings: a vault sync error is red, and a conflict that waits for the person is amber (issue #208)", async ({
+  page,
+}) => {
+  let status: "error" | "conflict" = "error";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { vaultSync: Record<string, unknown> };
+    body.vaultSync = { ...body.vaultSync, status, lastError: "The push failed." };
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/vault/conflicts", (route) => route.fulfill({ json: { state: null, conflicts: [] } }));
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const pill = page.getByRole("region", { name: "Vault sync" }).locator(".pill");
+  await expect(pill).toHaveText("Error");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--bad-bg"));
+  status = "conflict";
+  await page.reload();
+  await expect(pill).toHaveText("Conflict");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
+});
+
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");
@@ -1091,6 +1132,27 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Development");
+  const report = page.getByRole("link", { name: "Report a bug" });
+  await expect(report).toHaveAttribute("href", /^https:\/\/github\.com\/guplem\/eva\/issues\/new\?/);
+  // The status loads after the settings, so the version reaches the link a moment later.
+  await expect
+    .poll(async () => new URL((await report.getAttribute("href")) ?? "").searchParams.get("body"))
+    .toMatch(/Eva version: \d/);
+  await page.getByRole("button", { name: "Open the design reference" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Design reference");
+  await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");
+  await expect(page.getByRole("region", { name: "Components" })).toContainText(".pill");
+  await expect(page.getByRole("list", { name: "Layers" })).toContainText("src/core");
+  // The theme switch on the page changes the colours of every sample.
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Development");
+});
+
 test("Settings: a token saved on a step's page shows at once in that step", async ({ page }) => {
   await logIn(page);
   await page.request.delete("/api/secrets/githubToken");
@@ -1104,7 +1166,7 @@ test("Settings: a token saved on a step's page shows at once in that step", asyn
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-progress-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(header).toContainText("The token is saved.");
-  await expect(page.getByText("Eva uses the new tokens after a restart.")).toBeVisible();
+  await expect(page.getByText("Eva uses the changes after a restart.")).toBeVisible();
   await page.request.delete("/api/secrets/githubToken");
 });
 
@@ -1682,6 +1744,154 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
 });
 
+test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step, index) =>
+      index === 0
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
+        : index === 1
+          ? { ...step, state: "missing", lastCheck: null }
+          : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  const token = (name: string): Promise<string> => tokenColour(page, name);
+  await logIn(page);
+  await openSettings(page);
+  const bad = await token("--bad");
+  const badBackground = await token("--bad-bg");
+  const hero = page.getByRole("region", { name: "Setup" });
+  await expect(hero).toContainText("Finish setting up Eva");
+  expect(await style(hero, "borderTopColor")).not.toBe(bad);
+  expect(await style(hero, "backgroundImage")).toBe("none");
+  const count = (section: string): Locator =>
+    page.locator(".section-card", { hasText: section }).getByLabel(/to set up/);
+  expect(await style(count("Vault and sync"), "backgroundColor")).toBe(await token("--warn"));
+  // The engine step failed its test, so its section's count is red, as the step is.
+  await expect(count("AI engines")).toHaveAttribute("aria-label", "1 to set up, 1 failed");
+  expect(await style(count("AI engines"), "backgroundColor")).toBe(bad);
+
+  await openSettings(page, "Setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
+  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
+  await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
+  expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  await left.click();
+  const header = page.locator(".step-header");
+  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
+});
+
+test("Settings: the vault step lists the repositories and clones the picked one, with no terminal", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      json: [
+        { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
+        { fullName: "you/example-app", cloneUrl: "https://github.com/you/example-app.git", private: false },
+      ],
+    }),
+  );
+  const cloned: unknown[] = [];
+  await page.route("**/api/vault/clone", async (route) => {
+    cloned.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: { folder: "/eva-home/vault", repository: "https://github.com/you/vault.git", problem: null },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  const clone = page.getByRole("button", { name: "Clone this vault" });
+  await expect(clone).toBeDisabled();
+  await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
+  await clone.click();
+  await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
+  expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+});
+
+test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({ json: [{ fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true }] }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
+  await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
+  await page.request.delete("/api/secrets/githubToken");
+});
+
+test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: "GitHub refused the request (HTTP 401): Bad credentials", code: "github_failed" },
+    }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Your vault/ })
+    .click();
+  await expect(page.getByText("Bad credentials")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.getByRole("button", { name: "Open the GitHub step" }).click();
+  await expect(page.getByRole("region", { name: "GitHub", exact: true }).first()).toBeVisible();
+});
+
 test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({
   page,
 }) => {
@@ -1970,6 +2180,8 @@ test.describe("on a phone", () => {
       "#/settings/connections",
       "#/settings/access",
       "#/settings/personalize",
+      "#/settings/developer/design",
+      "#/settings/developer",
       "#/settings/updates",
     ];
     for (const hash of pages) {

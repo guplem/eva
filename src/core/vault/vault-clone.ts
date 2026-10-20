@@ -40,7 +40,8 @@ export interface VaultCloneInputs {
  */
 export async function checkVaultRepository(inputs: Omit<VaultCloneInputs, "folder">): Promise<string | null> {
   const result = await inputs.runner.run(
-    ["git", ...githubCredentialArguments, "ls-remote", "-q", inputs.repository, "HEAD"],
+    // `--`: an address that starts with a dash, such as `--upload-pack=...`, is never an option.
+    ["git", ...githubCredentialArguments, "ls-remote", "-q", "--", inputs.repository, "HEAD"],
     { cwd: process.cwd(), environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: checkTimeoutMs },
   );
   if (result.exitCode === 0) return null;
@@ -54,7 +55,7 @@ export async function cloneVault(inputs: VaultCloneInputs): Promise<void> {
   }
   const environment = { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" };
   const clone = await inputs.runner.run(
-    ["git", ...githubCredentialArguments, "clone", "-q", inputs.repository, inputs.folder],
+    ["git", ...githubCredentialArguments, "clone", "-q", "--", inputs.repository, inputs.folder],
     { cwd: process.cwd(), environment, timeoutMs: cloneTimeoutMs },
   );
   if (clone.exitCode !== 0) {
@@ -74,8 +75,8 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
   const origin = await run(["remote", "get-url", "origin"], configTimeoutMs);
   const remote = await run(
     origin.exitCode === 0
-      ? ["remote", "set-url", "origin", inputs.repository]
-      : ["remote", "add", "origin", inputs.repository],
+      ? ["remote", "set-url", "--", "origin", inputs.repository]
+      : ["remote", "add", "--", "origin", inputs.repository],
     configTimeoutMs,
   );
   if (remote.exitCode !== 0) {
@@ -114,6 +115,12 @@ export async function vaultNeedsPush(inputs: Omit<VaultCloneInputs, "repository"
   if (commit.exitCode !== 0 || commit.stdout.trim() === "") return false;
   const remotes = await run(["remote"]);
   return remotes.exitCode === 0 && remotes.stdout.trim() === "";
+}
+
+/** A git address or a folder on this computer, not a bare repository name such as `vault`. */
+export function isAddress(text: string): boolean {
+  // git would read a leading dash as an option, which can run a command.
+  return !text.startsWith("-") && /^[a-z][a-z0-9+.-]*:\/\/|^[^/\s]+@[^:\s]+:|^[a-z]:[\\/]|^\.{0,2}[\\/]/i.test(text);
 }
 
 /** Kept in the clone, so every later pull and push finds the token the same way. */

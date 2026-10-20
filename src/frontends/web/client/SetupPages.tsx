@@ -11,8 +11,16 @@ import { GooglePanel } from "./GooglePanel.tsx";
 import { DevicesGuide, PhoneAccess } from "./AccessSection.tsx";
 import { Icon } from "./icons.tsx";
 import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
-import { needsYou, nextToDo, setupSummary, stepMark } from "./setup-summary.ts";
+import { needsYou, nextToDo, setupSummary, stepMark, type StepMark } from "./setup-summary.ts";
 import { VaultFolderCard } from "./VaultSection.tsx";
+
+// A step that is left is work for the person, not an error: only a failed test is red.
+const calloutTone: Readonly<Record<StepMark, string>> = {
+  done: "success",
+  missing: "warning",
+  optional: "",
+  failed: "danger",
+};
 
 /** Why each step matters, in words for a person who is new to all of this. */
 const whyItMatters: Readonly<Record<ProgressStep["key"], string>> = {
@@ -61,7 +69,7 @@ function RestartCallout({ context }: { readonly context: SettingsContext }): Rea
   if (context.setup?.restartNeeded !== true) return null;
   return (
     <div className="callout warning callout-action">
-      <span>Eva uses the new tokens after a restart.</span>
+      <span>Eva uses the changes after a restart.</span>
       <button className="primary" onClick={context.askRestart}>
         Restart now
       </button>
@@ -245,7 +253,7 @@ function StepHeader({
         </span>
         <h2>{step.title}</h2>
         <p>{whyItMatters[step.key]}</p>
-        <div className={mark === "done" ? "callout success" : needsYou(step) ? "callout danger" : "callout"}>
+        <div className={`callout ${calloutTone[mark]}`}>
           <StatusPill state={mark} />{" "}
           {mark === "failed" ? (
             "The last test failed. Follow the steps below to fix it, then press Test this step."

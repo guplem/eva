@@ -16,6 +16,7 @@ A change to one of these goals needs the owner.
 - **Eva runs existing harnesses** and depends on no single AI vendor. Each person uses their own engine login: a subscription token, never an API key. Never a Claude login through pi.
 - **Remote access only through Tailscale.** Never a public tunnel.
 - **One core process per instance,** and any number of instances.
+- **Instances share programs, never identity.** Every Eva on a computer uses the same git, Claude Code, pi, uv and Tailscale. Each Eva keeps her own logins, vault, bot, settings and commit identity in her own folder.
 - **Eva owns vault sync in her own code.** No agent hooks.
 - **The vault layout is a contract.** A project is `Projects/YYYY-MM-DD-HHmm-name/`; its clones live in `repos/<repo>-<n>/`.
 - **Windows and Linux are both first-class.**

@@ -89,6 +89,13 @@ jobs:
       # Browser tests of the web UI, at desktop size and at 375 px.
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun run test:e2e
+      # A failure that only CI shows needs the browser trace of the failed test to be understood.
+      - if: failure() && env.RUN_CODE_CHECKS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: test-results/
+          retention-days: 7
 
   # The single executable, started the way a new person starts it.
   package:

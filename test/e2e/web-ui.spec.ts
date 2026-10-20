@@ -998,6 +998,25 @@ test("Settings: a vault sync error is red, and a conflict that waits for the per
   expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
 });
 
+test("Settings: with the automatic sync off, the sync card says so, and that Sync now sends the notes (#215)", async ({
+  page,
+}) => {
+  let autoSync = false;
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...body, vaultAutoSync: autoSync } });
+  });
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Automatic sync is off. Press Sync now to send your notes.");
+  autoSync = true;
+  await page.reload();
+  await expect(sync.locator(".pill")).toBeVisible();
+  await expect(sync).not.toContainText("Automatic sync is off");
+});
+
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");

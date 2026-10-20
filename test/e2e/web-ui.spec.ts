@@ -2193,8 +2193,12 @@ test("Settings: an install goes on when a proxy drops the request", async ({ pag
       return;
     }
     reads += 1;
-    const phase = reads <= 2 ? "updating" : reads <= 3 ? "restarting" : "idle";
-    await route.fulfill({ json: { ...base, phase, ...(phase === "idle" ? { current: "0.2.0" } : {}) } });
+    // The download goes on for a moment, then the new Eva answers. Two loops read, so the
+    // page may never see "restarting": the new version alone must say that the install worked.
+    await route.fulfill({
+      json:
+        reads <= 2 ? { ...base, phase: "updating" } : { ...base, phase: "idle", current: "0.2.0", available: false },
+    });
   });
   await logIn(page);
   await openSettings(page, "Updates");

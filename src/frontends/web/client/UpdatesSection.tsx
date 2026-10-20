@@ -174,10 +174,18 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
     setNote(null);
     setWork(version === undefined ? "Looking for a new version…" : `Installing ${version}…`);
     setPosting(true);
+    const before = update?.current ?? null;
     try {
       const status = await installResult(version);
       setPosting(false);
       setUpdate(status);
+      // After a dropped request, the first answer can already come from the new Eva.
+      if (status.phase === "idle" && before !== null && status.current !== null && status.current !== before) {
+        setWork(null);
+        setRestarted(true);
+        setNote("Eva restarted with the new version.");
+        return;
+      }
       if (status.phase !== "restarting") {
         setWork(null);
         return;

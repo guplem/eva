@@ -1358,6 +1358,15 @@ test("the New chat button sits in the list header, and the list has no model men
   expect(cut).toBe(0);
 });
 
+test("the chat list header does not cover the search field", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  const header = await page.locator(".chat-list-header").boundingBox();
+  const search = await page.locator(".chat-search").boundingBox();
+  if (header === null || search === null) throw new Error("A sidebar part is not on the screen.");
+  expect(header.y + header.height).toBeLessThanOrEqual(search.y);
+});
+
 test("the chat list shows each chat's time and last answer, and the search filters it", async ({ page }) => {
   const title = `A chat to find (${test.info().project.name})`;
   await logIn(page);

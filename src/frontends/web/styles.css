@@ -580,7 +580,8 @@ textarea {
 /* The header stays at the top of a long list, so "New" is always in reach. */
 .chat-list-header {
   position: sticky;
-  top: 0;
+  /* A sticky top counts from inside the list's 12 px padding. At 0 the header moves down and covers the search field. */
+  top: -12px;
   z-index: 1;
   display: flex;
   align-items: center;

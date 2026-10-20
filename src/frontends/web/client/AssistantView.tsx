@@ -1,17 +1,16 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import type { ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ListedSession, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
+import { chatSubtitle } from "./chat-details.ts";
+import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
-import { PhoneListHeader, ShowListButton } from "./MainNav.tsx";
-
-const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
+import { ChatHeader } from "./ChatHeader.tsx";
+import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { PhoneListHeader } from "./MainNav.tsx";
 
 interface AssistantViewProps {
   readonly sessions: readonly ListedSession[];
@@ -43,8 +42,6 @@ export function AssistantView({
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The model comes first in a new chat, and the chat keeps it (lesson 41).
-  const [model, setModel] = useState<ModelAlias>("default");
   const [query, setQuery] = useState("");
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));
   const now = new Date();
@@ -77,7 +74,8 @@ export function AssistantView({
 
   const newChat = async (): Promise<void> => {
     try {
-      const chat = await api.newAssistantChat(model);
+      // The composer chip picks another model before the first message (lesson 41).
+      const chat = await api.newAssistantChat("default");
       await onChanged();
       setSelectedId(chat.id);
       // A new chat goes first in the list. Show it, because the list can be scrolled down.
@@ -90,7 +88,7 @@ export function AssistantView({
 
   return (
     <div className="layout">
-      <nav className={`sidebar has-footer${sidebarOpen ? " open" : ""}`} aria-label="Chats">
+      <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
         <div className="sidebar-list" ref={listRef}>
           <div className="chat-list-header">
             <h2>Chats</h2>
@@ -133,19 +131,6 @@ export function AssistantView({
             </section>
           ))}
         </div>
-        {/* The model is picked before the chat starts (lesson 41). It stays here until the composer holds it. */}
-        <div className="sidebar-footer">
-          <label>
-            Model for a new chat
-            <select value={model} onChange={(event) => setModel(event.target.value as ModelAlias)}>
-              {models.map((alias) => (
-                <option key={alias} value={alias}>
-                  {alias}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">
@@ -157,89 +142,23 @@ export function AssistantView({
           </>
         ) : (
           <>
-            <div className="main-header">
-              <ShowListButton onClick={onShowList} />
-              <ChatTitle key={selected.id} chat={selected} onChanged={onChanged} />
-              <span className="badge">{selected.modelAlias}</span>
-              <ChatInfoButton {...chat} />
-              <DeleteChatButton chat={selected} onChanged={onChanged} />
-            </div>
+            <ChatHeader
+              key={selected.id}
+              chat={selected}
+              details={chat}
+              subtitle={chatSubtitle(
+                selected,
+                tree.some((session) => isRunning(session.id)),
+              )}
+              onShowList={onShowList}
+              onChanged={onChanged}
+            />
             <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} approvals={approvals} />
           </>
         )}
       </main>
       <ChatPanel {...chat} />
     </div>
-  );
-}
-
-/** The chat's title, and a pencil that turns it into a field. Enter saves; Escape keeps the old title. */
-function ChatTitle({
-  chat,
-  onChanged,
-}: {
-  readonly chat: SessionRecord;
-  readonly onChanged: () => Promise<void>;
-}): ReactElement {
-  const [draft, setDraft] = useState<string | null>(null);
-  // A second Enter while the request runs must not send it again.
-  const [saving, setSaving] = useState(false);
-  const showError = useShowError();
-
-  const save = async (title: string): Promise<void> => {
-    setSaving(true);
-    try {
-      await api.rename(chat.id, title);
-      await onChanged();
-      setDraft(null);
-    } catch (caught) {
-      showError(caught);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (draft === null) {
-    return (
-      <>
-        <h1>{chat.title}</h1>
-        <button
-          className="icon-button"
-          aria-label="Rename this chat"
-          title="Rename this chat"
-          onClick={() => setDraft(chat.title)}
-        >
-          <Icon name="pen" />
-        </button>
-      </>
-    );
-  }
-  return (
-    <form
-      className="rename-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!saving) void save(draft);
-      }}
-    >
-      <input
-        aria-label="Chat title"
-        value={draft}
-        autoFocus
-        // Selected, so the person can type a new title at once.
-        onFocus={(event) => event.target.select()}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setDraft(null);
-        }}
-      />
-      <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
-        Save
-      </button>
-      <button type="button" onClick={() => setDraft(null)}>
-        Cancel
-      </button>
-    </form>
   );
 }
 

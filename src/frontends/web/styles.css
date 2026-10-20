@@ -518,9 +518,8 @@ textarea {
   margin: 12px 0 4px;
 }
 
-/* Only the list scrolls, so the controls in the footer stay on the screen.
-   A very short screen still scrolls the whole sidebar, so the footer never gets out of reach. */
-.sidebar.has-footer {
+/* The list inside scrolls and holds the padding, so a new chat can scroll the list to its top. */
+.sidebar.has-list {
   overflow-y: auto;
   padding: 0;
   gap: 0;
@@ -539,15 +538,6 @@ textarea {
 /* A flex child with hidden overflow can shrink to nothing, so a long list would cut each chat. */
 .sidebar-list > * {
   flex-shrink: 0;
-}
-
-.sidebar-footer {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line);
 }
 
 /* The size of the EVE design. The colour comes from the text, through currentColor. */
@@ -749,7 +739,7 @@ textarea {
 .main-header {
   display: flex;
   align-items: center;
-  /* A long branch name and the Chat info button must not push the page wider than a phone. */
+  /* A long branch name and the buttons must not push the page wider than a phone. */
   flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
@@ -969,8 +959,7 @@ textarea {
   padding: 12px 16px;
 }
 
-.settings label,
-.sidebar-footer label {
+.settings label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1274,7 +1263,6 @@ textarea {
 
 .menu-button,
 .sidebar-backdrop,
-.chat-info-button,
 .phone-only {
   display: none;
 }
@@ -1432,9 +1420,42 @@ textarea {
     height: 44px;
   }
 
-  .menu-button,
-  .chat-info-button {
+  .menu-button {
     display: inline-block;
+  }
+
+  /* One row: the list button, the title with its subtitle in the centre, and the more button. */
+  .chat-header {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .chat-header .header-text {
+    text-align: center;
+  }
+
+  /* The title button clips its own text, so the heading must not clip the button's focus ring. */
+  .chat-header h1 {
+    overflow: visible;
+  }
+
+  /* The crumbs keep one line, so the header stays one row.
+     The padding keeps the focus ring of the project crumb inside the clipped box. */
+  .chat-header .crumbs {
+    justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+    padding: var(--space-1);
+  }
+
+  /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */
+  .chat-header .mode-chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 
@@ -2572,7 +2593,7 @@ button.small {
 }
 
 .header-text {
-  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. */
+  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. A chat header keeps one row. */
   flex: 1 1 12em;
   min-width: 0;
 }
@@ -2592,6 +2613,84 @@ button.small {
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+/* The title takes the room that the buttons leave, so the header keeps one row. */
+.chat-header .header-text {
+  flex: 1 1 0;
+}
+
+.chat-header h1 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A phone opens the chat details from the title, so the title is a button that looks like text. */
+.chat-title-button {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more-picker {
+  position: relative;
+  flex: none;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  border-radius: var(--radius-input);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.more-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+  text-align: left;
+}
+
+.more-menu button:hover,
+.more-menu button:focus-visible {
+  background: var(--chip);
+}
+
+.more-menu button.danger {
+  color: var(--bad);
+}
+
+/* The delete question takes a row of its own under the title, as a schedule row asks. */
+.chat-delete-question {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chat-delete-question span {
+  flex: 1;
+  min-width: 12em;
 }
 
 /* A row, so the 44 px crumb of a phone keeps the clone and the branch on its centre line. */

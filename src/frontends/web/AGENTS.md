@@ -9,7 +9,7 @@
 - Show a state with a shape or a word too, never with colour alone.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
 - Take each icon from `client/icons.tsx`.
-- Show each wait with a shared part of `client/Loading.tsx`, never with a sentence alone, such as "Loading…".
+- Show each wait with a shared component of `client/Loading.tsx`, never with a sentence alone, such as "Loading…".
   - Inside a card, show `ProgressBar`. Give it the share of the work when Eva knows it, so it fills and shows the percentage. With no share, its lines run.
   - For content that fills a large area, such as a chat or a list, show a skeleton with the shape of that content.
   - Keep the label of a button for a short action, such as "Testing…".

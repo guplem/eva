@@ -5,6 +5,7 @@
  *
  * This migration is frozen: it holds its own level list and works on raw JSON.
  */
+import { existsSync } from "node:fs";
 import { readJsonTolerant } from "../../shared/files.ts";
 import { parseConfig } from "../settings/home.ts";
 import type { Migration } from "./migration-runner.ts";
@@ -19,11 +20,15 @@ export const googleAccessPerService: Migration = {
   store: "machine",
   run: (context) => {
     const read = readJsonTolerant(context.paths.config);
-    if (!read.ok) return read.reason === "missing" ? "done" : "later";
-    const machine = read.value;
+    if (!read.ok && read.reason !== "missing") return "later";
+    const machine = read.ok ? read.value : {};
     if (!isObject(machine)) return "later";
     const google = machine["google"];
-    if (!isObject(google) || !("readOnly" in google)) return "done";
+    if (!isObject(google) || !("readOnly" in google)) {
+      // The 2026-10-18 copy migration can still bring `readOnly` from a vault that joins later.
+      const vaultPath = context.vaultPath;
+      return vaultPath === null || !existsSync(vaultPath) ? "later" : "done";
+    }
     const { readOnly, ...rest } = google;
     const access = isObject(rest["access"]) ? rest["access"] : {};
     // Only `false` gave write access. A bad value falls back to the default, read only.

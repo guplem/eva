@@ -8,22 +8,25 @@ import { googleAccessPerService } from "../../../../src/core/migrations/google-a
 
 let root: string;
 let paths: HomePaths;
+let vault: string;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "eva-google-access-"));
   paths = homePaths(join(root, "home"));
+  vault = join(root, "vault");
   mkdirSync(paths.root, { recursive: true });
+  mkdirSync(vault, { recursive: true });
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function migrate(): "done" | "later" | "failed" {
+function migrate(vaultPath: string | null = vault): "done" | "later" | "failed" {
   const result = runMigrations({
     store: "machine",
     migrations: [googleAccessPerService],
     paths,
-    vaultPath: null,
+    vaultPath,
     version: "0.4.0",
     now: () => new Date("2026-10-20T08:00:00.000Z"),
   });
@@ -76,6 +79,16 @@ describe("googleAccessPerService (machine)", () => {
     rmSync(paths.migrationRecord, { force: true });
     expect(migrate()).toBe("done");
     expect(readConfig()).toEqual({ google: { services: ["calendar"] } });
+  });
+
+  test("without a vault, it waits: the copy from a vault can still bring the old key", () => {
+    writeFileSync(paths.config, JSON.stringify({ google: { services: ["calendar"] } }));
+    expect(migrate(null)).toBe("later");
+    expect(migrate(join(root, "missing-vault"))).toBe("later");
+    // The vault joins, and the 2026-10-18 copy brings the old key.
+    writeFileSync(paths.config, JSON.stringify({ google: { readOnly: false, services: ["calendar"] } }));
+    expect(migrate()).toBe("done");
+    expect(readConfig()).toMatchObject({ google: { access: { calendar: "full" } } });
   });
 
   test("a broken file waits for a later start", () => {

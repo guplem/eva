@@ -1452,6 +1452,64 @@ describe("an Eva with a claude program", () => {
   });
 });
 
+describe("voice notes", () => {
+  test("a machine without a whisper model says so, and its status has no voice notes", async () => {
+    expect((await json<{ voiceNotes: boolean }>(await call("/api/status"))).voiceNotes).toBe(false);
+    const response = await fetch(`${api.url}/api/transcribe`, { method: "POST", headers: headers(), body: "audio" });
+    expect(response.status).toBe(409);
+    expect((await json<{ code: string }>(response)).code).toBe("voice_unavailable");
+  });
+
+  test("the page's recording becomes text on this machine", async () => {
+    const decoded: string[] = [];
+    const listening = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null, voice: { ...defaultConfig.voice, modelPath: "model.bin" } },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: {
+        run: (command) => {
+          if (command[0] === "ffmpeg") decoded.push(command[command.indexOf("-i") + 1] ?? "");
+          const stdout = command[0] === "whisper-cli" ? " [BLANK_AUDIO] Hello Eva \n" : "";
+          return Promise.resolve({ exitCode: 0, stdout, stderr: "" });
+        },
+      },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const listeningApi = startLocalApi({
+      eva: listening,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+    });
+    try {
+      expect(
+        (await json<{ voiceNotes: boolean }>(await fetch(`${listeningApi.url}/api/status`, { headers: headers() })))
+          .voiceNotes,
+      ).toBe(true);
+      const response = await fetch(`${listeningApi.url}/api/transcribe`, {
+        method: "POST",
+        headers: headers({ "content-type": "audio/webm" }),
+        body: new Uint8Array([1, 2, 3]),
+      });
+      expect(await json<unknown>(response)).toEqual({ text: "Hello Eva" });
+      expect(decoded).toHaveLength(1);
+      const tooLong = await fetch(`${listeningApi.url}/api/transcribe`, {
+        method: "POST",
+        headers: headers({ "content-type": "audio/webm" }),
+        body: new Uint8Array(26 * 1024 * 1024),
+      });
+      expect(tooLong.status).toBe(413);
+    } finally {
+      listeningApi.stop();
+      listening.stop();
+    }
+  });
+});
+
 describe("problems, logs and restart", () => {
   test("the status carries the open problems", async () => {
     eva.reportProblem("vault_sync", { level: "error", message: "The vault sync failed.", resolvedMessage: "Fixed." });

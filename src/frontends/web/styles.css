@@ -236,9 +236,11 @@ samp {
   box-sizing: border-box;
 }
 
+/* A phone browser draws a blue box on each tap. The press rule below gives the feedback instead. */
 body {
   margin: 0;
   background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -249,6 +251,18 @@ button {
   border-radius: var(--radius-pill);
   padding: 6px 12px;
   cursor: pointer;
+  transition: transform 80ms ease-out;
+}
+
+button:active:not(:disabled),
+a.button-link:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
 }
 
 button.primary {
@@ -2599,6 +2613,12 @@ button.small {
   padding: 4px 11px;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* The toggle that opens a long tag list: an action, so it has no fill like a tag. */
+.filter-chip.more {
+  background: transparent;
+  color: var(--accent-ink);
 }
 
 .filter-chip[aria-pressed="true"] {

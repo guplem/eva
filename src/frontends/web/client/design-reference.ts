@@ -261,6 +261,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   stop: "Stop a turn",
   user: "The person, an account",
   home: "Home page",
+  mic: "Record a voice note",
 };
 
 export interface ArchitectureLayer {

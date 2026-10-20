@@ -127,7 +127,7 @@ describe("security settings stay on the machine", () => {
   const vaultSecurity = {
     remoteAccess: { allowedTailscaleIdentities: ["intruder@example.com"] },
     trust: { trustedRepositoryOwners: ["intruder"] },
-    google: { email: "owner@example.com", readOnly: false, services: ["gmail"] },
+    google: { email: "owner@example.com", access: { calendar: "full" }, services: ["gmail"] },
   };
 
   function writeVaultSettings(value: unknown): void {
@@ -149,11 +149,15 @@ describe("security settings stay on the machine", () => {
       ...defaultConfig,
       vaultPath: vault,
       trust: { trustedRepositoryOwners: ["example-owner"] },
-      google: { email: "owner@example.com", readOnly: false, services: ["calendar"] },
+      google: {
+        email: "owner@example.com",
+        access: { ...defaultConfig.google.access, calendar: "full" },
+        services: ["calendar"],
+      },
     });
     expect(readJson(paths.config)).toMatchObject({
       trust: { trustedRepositoryOwners: ["example-owner"] },
-      google: { readOnly: false, services: ["calendar"] },
+      google: { access: { calendar: "full" }, services: ["calendar"] },
       remoteAccess: { allowedTailscaleIdentities: [] },
     });
     const shared = readJson(vaultSettingsPath(vault));
@@ -162,7 +166,7 @@ describe("security settings stay on the machine", () => {
     expect(shared).toMatchObject({ google: { email: "owner@example.com" } });
     expect(shared["google"]).toEqual({ email: "owner@example.com" });
     expect(isSharedSettingKey("trust.trustedRepositoryOwners")).toBe(false);
-    expect(isSharedSettingKey("google.readOnly")).toBe(false);
+    expect(isSharedSettingKey("google.access.calendar")).toBe(false);
     expect(isSharedSettingKey("google.email")).toBe(true);
   });
 });
@@ -183,6 +187,15 @@ describe("settings by command", () => {
     expect(settingChange("sync.pullIntervalMinutes", "null")).toEqual({ sync: { pullIntervalMinutes: null } });
     expect(settingChange("projectRoots", '["/a"]')).toEqual({ projectRoots: ["/a"] });
     expect(() => settingChange("nope", "1")).toThrow("nope is not a setting");
+  });
+
+  test("a save keeps google.readOnly until its migration runs, so the old access is not lost", () => {
+    // `eva setup` after an update saves settings before the next start runs the migrations.
+    mkdirSync(paths.root, { recursive: true });
+    writeFileSync(paths.config, JSON.stringify({ google: { readOnly: false } }));
+    changeSettings(paths, { port: 7500 });
+    expect(readJson(paths.config)).toMatchObject({ port: 7500, google: { readOnly: false } });
+    expect(isSettingKey("google.readOnly")).toBe(false);
   });
 
   test("the list marks the settings that the vault holds", () => {

@@ -9,6 +9,7 @@ import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts
 import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { restartNote } from "./notes.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -108,7 +109,11 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           .map((root) => root.trim())
           .filter((root) => root.length > 0),
       });
-      notify((result.restartNeeded ? "Saved. Press Restart Eva to use the new settings." : "Saved.") + rulesProblem);
+      notify(
+        result.restartNeeded
+          ? restartNote(`Saved. Press Restart Eva to use the new settings.${rulesProblem}`)
+          : `Saved.${rulesProblem}`,
+      );
       context.reloadSettings();
     } catch (error) {
       notify(errorText(error) + rulesProblem);

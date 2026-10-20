@@ -111,10 +111,10 @@ describe("runStartMigrations", () => {
     rmSync(paths.root, { recursive: true, force: true });
   });
 
-  test("a fresh install records every migration but the copy, which waits for a vault, and changes nothing", () => {
-    const copy = "2026-10-18-copy-security-settings-from-vault";
+  test("a fresh install records every migration but the two that wait for a config and a vault, and changes nothing", () => {
+    const waiting = ["2026-10-18-copy-security-settings-from-vault", "2026-10-20-google-access-per-service"];
     expect(start()).toEqual({
-      machine: { kind: "done", applied: ids("machine").filter((id) => id !== copy), later: [copy] },
+      machine: { kind: "done", applied: ids("machine").filter((id) => !waiting.includes(id)), later: waiting },
       vault: { kind: "done", applied: ids("vault"), later: [] },
     });
     expect(existsSync(join(vault, ".eva", "settings.json"))).toBe(false);

@@ -19,6 +19,7 @@ import {
   moveSharedSettingsToVault,
   startVaultSettings,
 } from "./settings-moves.ts";
+import { googleAccessPerService } from "./google-access.ts";
 
 /** Add each new migration here. The runner sorts them by id. */
 export const migrations: readonly Migration[] = [
@@ -26,6 +27,7 @@ export const migrations: readonly Migration[] = [
   startVaultSettings,
   copySecuritySettingsFromVault,
   dropSecuritySettingsFromVault,
+  googleAccessPerService,
   moveAssistantPersonality,
 ];
 

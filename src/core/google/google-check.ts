@@ -6,7 +6,8 @@
 import { isEvaError } from "../../shared/errors.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { googleUrls, postToken, readGoogleCredential, type GoogleClient, type GoogleUrls } from "./google-login.ts";
-import { coversScopes, googleScopes } from "./google-scopes.ts";
+import { googleServiceLabels } from "./google-access.ts";
+import { coversScopes, extraScopes, googleScopes } from "./google-scopes.ts";
 import { googleStep } from "./google-steps.ts";
 
 type GoogleService = EvaConfig["google"]["services"][number];
@@ -26,14 +27,6 @@ export interface GoogleCheckResult {
   readonly ok: boolean;
   readonly detail: string;
 }
-
-const serviceLabels: Readonly<Record<GoogleService, string>> = {
-  calendar: "Calendar",
-  drive: "Drive",
-  contacts: "Contacts",
-  tasks: "Tasks",
-  gmail: "Gmail",
-};
 
 /** The API names in Google Cloud's library, for the "turn on" step. */
 const apiNames: Readonly<Record<GoogleService, string>> = {
@@ -81,9 +74,15 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
   // The refresh uses the secret in the login file, as `workspace-mcp` does, so a new secret needs a new login.
   if (credential.client_secret !== client.clientSecret)
     return failed(`The login uses an older client secret. Log in to Google again (step ${String(googleStep.login)}).`);
-  if (!coversScopes(credential.scopes, googleScopes(config)))
+  const needed = googleScopes(config);
+  if (!coversScopes(credential.scopes, needed))
     return failed(
       `The login gives less access than Eva needs now. This happens after a change of access or of the services. Log in to Google again (step ${String(googleStep.login)}).`,
+    );
+  // The server hides the tools above the chosen levels, but a shell can use the login file directly.
+  if (extraScopes(credential.scopes, config).length > 0)
+    return failed(
+      `The login gives more access than you chose. This happens after a change to a lower access. Log in to Google again, so that it gives only the new access (step ${String(googleStep.login)}).`,
     );
 
   const urls = googleUrls(inputs.baseUrl);
@@ -108,7 +107,7 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
   const problems = await Promise.all(config.services.map((service) => readService(service, urls, accessToken)));
   const problem = problems.find((found) => found !== null);
   if (problem !== undefined) return failed(problem);
-  const labels = config.services.map((service) => serviceLabels[service]);
+  const labels = config.services.map((service) => googleServiceLabels[service]);
   return { ok: true, detail: `Eva can read ${listText(labels)} of ${config.email}.` };
 }
 
@@ -127,8 +126,8 @@ async function readService(service: GoogleService, urls: GoogleUrls, accessToken
   const body = (await response.json().catch(() => ({}))) as unknown;
   if (isServiceDisabled(body)) return `Turn on the ${apiNames[service]} (step ${String(googleStep.apis)}).`;
   if (response.status === 401 || response.status === 403)
-    return `Google refused to show ${serviceLabels[service]}. Log in to Google again (step ${String(googleStep.login)}).`;
-  return `Google answered ${String(response.status)} for ${serviceLabels[service]}. Try again later.`;
+    return `Google refused to show ${googleServiceLabels[service]}. Log in to Google again (step ${String(googleStep.login)}).`;
+  return `Google answered ${String(response.status)} for ${googleServiceLabels[service]}. Try again later.`;
 }
 
 /** Google names a turned-off API with a reason code in the error details. */

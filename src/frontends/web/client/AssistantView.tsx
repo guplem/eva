@@ -27,6 +27,8 @@ interface AssistantViewProps {
   readonly approvals: ChatApprovals;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
+  /** True when Eva's machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
 export function AssistantView({
@@ -41,6 +43,7 @@ export function AssistantView({
   notices,
   approvals,
   blocker,
+  voiceNotes,
 }: AssistantViewProps): ReactElement {
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -163,6 +166,7 @@ export function AssistantView({
               onChanged={onChanged}
               approvals={approvals}
               blocker={blocker}
+              voiceNotes={voiceNotes}
             />
           </>
         )}

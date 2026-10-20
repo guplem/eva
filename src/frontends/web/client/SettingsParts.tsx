@@ -14,6 +14,7 @@ import {
 } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
+import { restartNote, type Note } from "./notes.ts";
 import { cardId, type SettingsRoute } from "./settings-routes.ts";
 import type { StepMark } from "./setup-summary.ts";
 
@@ -26,9 +27,9 @@ export interface SettingsContext {
   /** Saves a change at once, such as a dropdown's value. True when the save worked. */
   readonly saveNow: (change: Record<string, unknown>) => Promise<boolean>;
   /** Shows a note in the sticky notice at the bottom. */
-  readonly notify: (note: string) => void;
+  readonly notify: (note: Note) => void;
   /** Shows a note and reads the setup steps again, as after a token save. */
-  readonly noteAndReload: (note: string) => void;
+  readonly noteAndReload: (note: Note) => void;
   /** Reads the setup steps and the open problems again, as after a vault sync. */
   readonly reloadSetup: () => void;
   readonly reloadSettings: () => void;
@@ -207,7 +208,7 @@ interface SecretFieldProps {
   readonly help: ReactNode;
   /** The check that tests the saved secret. Absent: no Test row, as for a secret that needs a second one. */
   readonly check?: string;
-  readonly onChanged: (note: string) => void;
+  readonly onChanged: (note: Note) => void;
 }
 
 /**
@@ -227,9 +228,11 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
       setValue("");
       setIsSaved(true);
       onChanged(
-        check === undefined
-          ? `Saved the ${label}. Press Restart Eva to use it in chats.`
-          : `Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`,
+        restartNote(
+          check === undefined
+            ? `Saved the ${label}. Press Restart Eva to use it in chats.`
+            : `Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`,
+        ),
       );
     } catch (error) {
       onChanged(error instanceof Error ? error.message : String(error));
@@ -240,7 +243,7 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
     try {
       await api.removeSecret(name);
       setIsSaved(false);
-      onChanged(`Removed the ${label}. Press Restart Eva to stop using it.`);
+      onChanged(restartNote(`Removed the ${label}. Press Restart Eva to stop using it.`));
     } catch (error) {
       onChanged(error instanceof Error ? error.message : String(error));
     }

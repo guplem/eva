@@ -84,9 +84,30 @@ describe("checkGoogle", () => {
     expect(
       (await checkGoogle({ ...inputs, client: { ...client, clientSecret: "GOCSPX-new-secret-value" } })).detail,
     ).toContain("older client secret");
-    const writes = { ...inputs, config: { ...inputs.config, readOnly: false } };
+    const writes = {
+      ...inputs,
+      config: { ...inputs.config, access: { ...inputs.config.access, calendar: "full" as const } },
+    };
     expect((await checkGoogle(writes)).detail).toContain("Log in to Google again");
     expect(google.tokenRequests).toEqual([]);
+  });
+
+  test("a login with more access than the person chose asks for a new login", async () => {
+    const everything = { calendar: "full", drive: "full", contacts: "full", tasks: "full", gmail: "full" } as const;
+    saveLogin(googleScopes({ ...defaultConfig.google, access: everything }));
+    // A shell can use the login file directly, so a lower access needs a new login.
+    expect((await checkGoogle(inputs)).detail).toContain("more access than you chose");
+    expect(google.tokenRequests).toEqual([]);
+  });
+
+  test("a service that is off does not count, so a login from before the update stays good", async () => {
+    saveLogin(googleScopes({ ...defaultConfig.google, services: [...defaultConfig.google.services, "gmail"] }));
+    expect((await checkGoogle(inputs)).ok).toBe(true);
+  });
+
+  test("a scope that gives no service access, such as a short name of a base scope, never fails the check", async () => {
+    saveLogin([...googleScopes(defaultConfig.google), "email", "profile"]);
+    expect((await checkGoogle(inputs)).ok).toBe(true);
   });
 
   test("an API that is off names the API to turn on", async () => {

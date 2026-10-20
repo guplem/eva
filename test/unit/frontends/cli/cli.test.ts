@@ -1923,6 +1923,7 @@ describe("describeStatusLines", () => {
     problemDetails: [],
     setupMissing: 0,
     chatBlocker: null,
+    voiceNotes: false,
   };
 
   test("starts with All good when nothing is wrong", () => {

@@ -7,6 +7,7 @@ import {
   api,
   ApiError,
   subscribeToEvents,
+  type ChatBlocker,
   type DeviceLoginEvent,
   type DeviceLoginRequest,
   type EvaStatus,
@@ -37,6 +38,8 @@ import { SettingsView } from "./SettingsView.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
+/** While a setup step stops every chat, read the status this often, so a login done elsewhere unlocks the chat. */
+const blockedPollMs = 5_000;
 /** How long the notice of an allowed device shows the delighted face. */
 const allowedFaceMs = 1_500;
 
@@ -69,6 +72,7 @@ function EvaApp(): ReactElement {
   const [conflictsOpen, setConflictsOpen] = useState(false);
   const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
+  const [chatBlocker, setChatBlocker] = useState<ChatBlocker | null>(null);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
   const showError = useShowError();
@@ -121,6 +125,8 @@ function EvaApp(): ReactElement {
       setProblems((status as Partial<EvaStatus>).problemDetails ?? []);
       setSyncState(status.vaultSync);
       setSetupMissing(status.setupMissing);
+      // An older Eva sends no blocker: the chats work as before.
+      setChatBlocker((status as Partial<EvaStatus>).chatBlocker ?? null);
     } catch {
       // The next poll or the next reconnect tries again.
     }
@@ -222,12 +228,18 @@ function EvaApp(): ReactElement {
     }
   }, [refreshSessions, refreshProblems]);
 
+  const isBlocked = chatBlocker !== null;
   useEffect(() => {
     if (authenticated !== true) return undefined;
     void refreshProblems();
-    const timer = setInterval(() => void refreshProblems(), problemPollMs);
+    const timer = setInterval(() => void refreshProblems(), isBlocked ? blockedPollMs : problemPollMs);
     return () => clearInterval(timer);
-  }, [authenticated, refreshProblems]);
+  }, [authenticated, refreshProblems, isBlocked]);
+
+  // A step done in Settings unlocks the chats as soon as the person goes back to them.
+  useEffect(() => {
+    if (authenticated === true && isBlocked) void refreshProblems();
+  }, [authenticated, isBlocked, refreshProblems, screen]);
 
   useEffect(() => {
     if (authenticated !== true) return undefined;
@@ -402,6 +414,7 @@ function EvaApp(): ReactElement {
             onLinkedChatOpened={onLinkedChatOpened}
             notices={notices}
             approvals={chatApprovals}
+            blocker={chatBlocker}
           />
         )}
         {screen === "projects" && (
@@ -416,6 +429,7 @@ function EvaApp(): ReactElement {
             onNavigate={() => setSidebarOpen(false)}
             notices={notices}
             approvals={chatApprovals}
+            blocker={chatBlocker}
           />
         )}
         {screen === "settings" && (

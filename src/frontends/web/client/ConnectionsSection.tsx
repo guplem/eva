@@ -1,5 +1,5 @@
 /** The connections page: GitHub, Telegram and Google. Each one is optional, and each card says why it helps. */
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { Card, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -7,6 +7,7 @@ export function ConnectionsSection({ context }: { readonly context: SettingsCont
   return (
     <>
       <GitHubCard context={context} />
+      <CommitIdentityCard context={context} />
       <TelegramCard context={context} />
       <GooglePanel context={context} />
     </>
@@ -42,6 +43,52 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
         check="github"
         onChanged={context.noteAndReload}
       />
+    </Card>
+  );
+}
+
+/** Empty fields keep the GitHub account's name and email, so most people never fill them. */
+function CommitIdentityCard({ context }: { readonly context: SettingsContext }): ReactElement {
+  const git = context.settings.config.git;
+  const [name, setName] = useState(git.name ?? "");
+  const [email, setEmail] = useState(git.email ?? "");
+  // A save here, in another tab or with `eva settings` reloads the settings; the fields follow them.
+  useEffect(() => {
+    setName(git.name ?? "");
+    setEmail(git.email ?? "");
+  }, [git.name, git.email]);
+  const save = (): void => {
+    const change = {
+      git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
+    };
+    void context.saveNow(change);
+  };
+  return (
+    <Card
+      item="commit-identity"
+      title="Commit name and email"
+      description="Eva and her agents sign each commit with them. Empty: your GitHub account's name and its private GitHub email."
+    >
+      <label className="field">
+        <span className="field-label">Name</span>
+        <input value={name} placeholder="Your GitHub name" onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label className="field">
+        <span className="field-label">Email</span>
+        <input
+          type="email"
+          autoCapitalize="none"
+          autoComplete="off"
+          value={email}
+          placeholder="Your private GitHub email"
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </label>
+      <div className="button-row">
+        <button className="primary" onClick={save}>
+          Save
+        </button>
+      </div>
     </Card>
   );
 }

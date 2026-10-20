@@ -4,6 +4,7 @@
  */
 import { claimHub } from "../../core/instance/hub.ts";
 import { gitEnvironmentWithToken } from "../../core/instance/child-environments.ts";
+import { commitIdentity } from "../../core/instance/commit-identity.ts";
 import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { loadConfig, loadSecrets, type EvaSecrets, type HomePaths } from "../../core/settings/home.ts";
 import { executableUpdateChannel } from "../../core/updates/self-update.ts";
@@ -76,7 +77,8 @@ export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
     writeLine(host, await requestSync(client));
     return exitCodes.clean;
   }
-  const vaultPath = loadConfig(paths).vaultPath;
+  const config = loadConfig(paths);
+  const vaultPath = config.vaultPath;
   if (vaultPath === null) {
     writeLine(host, "No vault is configured. Run `eva setup` first.");
     return exitCodes.badConfig;
@@ -84,7 +86,7 @@ export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
   const vaultSync = new VaultSync({
     vaultPath,
     runner: host.runner,
-    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths)),
+    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths), commitIdentity(paths, config)),
     now: () => new Date(),
   });
   await vaultSync.pull();
@@ -128,7 +130,7 @@ export async function hub(host: CliHost, paths: HomePaths): Promise<number> {
   const vaultSync = new VaultSync({
     vaultPath: config.vaultPath,
     runner: host.runner,
-    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths)),
+    environment: gitEnvironmentWithToken(host.environment, loadSecrets(paths), commitIdentity(paths, config)),
     now: () => new Date(),
   });
   await vaultSync.pull();

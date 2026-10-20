@@ -79,6 +79,8 @@ export interface HomePaths {
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
+  /** The GitHub account of the saved token, which gives the commit name and email. */
+  readonly githubAccount: string;
   readonly logsFolder: string;
   readonly enginesFolder: string;
 }
@@ -101,6 +103,7 @@ export function homePaths(root: string): HomePaths {
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
+    githubAccount: join(stateFolder, "github-account.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
   };
@@ -128,9 +131,14 @@ export function engineFolders(paths: HomePaths): EngineFolders {
  * The global git config of an instance's agents. With `GIT_CONFIG_GLOBAL`, git reads only
  * this file, so it includes the person's own global config first. Then it resets the GitHub
  * helpers: without this, a push asks the OS user's helper and goes out as the first person.
- * Other hosts keep the person's helpers.
+ * Other hosts keep the person's helpers. The instance's commit identity comes after the include,
+ * so it wins over the person's global name and email.
  */
-export function engineGitConfig(environment: Readonly<Record<string, string | undefined>>, file: string): string {
+export function engineGitConfig(
+  environment: Readonly<Record<string, string | undefined>>,
+  file: string,
+  identity: CommitIdentity = { name: null, email: null },
+): string {
   // Git expands `~/` in an include path itself, on Windows too.
   // An Eva started from this instance's own agent gets this file; including it again would loop.
   const fromEnvironment = environment["GIT_CONFIG_GLOBAL"];
@@ -149,8 +157,17 @@ export function engineGitConfig(environment: Readonly<Record<string, string | un
     '[credential "https://github.com"]',
     "\thelper =",
     "\thelper = !gh auth git-credential",
+    ...(identity.name === null && identity.email === null ? [] : ["[user]"]),
+    ...(identity.name === null ? [] : [`\tname = ${quote(identity.name)}`]),
+    ...(identity.email === null ? [] : [`\temail = ${quote(identity.email)}`]),
     "",
   ].join("\n");
+}
+
+/** The name and email of an instance's commits. A null part leaves that part to git's own settings. */
+export interface CommitIdentity {
+  readonly name: string | null;
+  readonly email: string | null;
 }
 
 /** The variables that point each engine at its folder. */
@@ -235,6 +252,13 @@ const configSchema = z.object({
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),
+  /** The name and email of this Eva's commits. Null: the GitHub account's, then the computer user's git settings. */
+  git: z
+    .object({
+      name: z.string().min(1).nullable().default(null),
+      email: z.string().min(1).nullable().default(null),
+    })
+    .default({ name: null, email: null }),
   google: z
     .object({
       /** The Google account that the Google tools act for. Google stays off until it is set. */

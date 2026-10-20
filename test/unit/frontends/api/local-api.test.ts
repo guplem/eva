@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -22,6 +22,18 @@ let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
 let turnScript: FakeTurnScript | null;
+/** A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. */
+let githubApi: ReturnType<typeof Bun.serve>;
+beforeAll(() => {
+  githubApi = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ message: "Bad credentials" }, { status: 401 }),
+  });
+});
+afterAll(async () => {
+  await githubApi.stop(true);
+});
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
   return { authorization: `Bearer ${token}`, "content-type": "application/json", ...extra };
@@ -71,6 +83,7 @@ beforeEach(() => {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     gatherMs: 5,
+    githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
   });
   api = startLocalApi({
     eva,

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createGitHubRepository, listGitHubRepositories } from "../../../../src/core/vault/github-repositories.ts";
+import {
+  createGitHubRepository,
+  listGitHubRepositories,
+  readGitHubAccount,
+} from "../../../../src/core/vault/github-repositories.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 interface FakeReply {
@@ -153,5 +157,33 @@ describe("createGitHubRepository", () => {
 
     expect(message).toContain("my vault");
     expect(api.requests).toHaveLength(0);
+  });
+});
+
+describe("readGitHubAccount", () => {
+  test("reads the id, the login and the name of the token's account", async () => {
+    const api = fakeApi({ status: 200, body: { id: 1234, login: "example-user", name: "Example User", plan: {} } });
+
+    const account = await readGitHubAccount({ token: "secret-token", baseUrl: api.baseUrl });
+
+    expect(account).toEqual({ id: 1234, login: "example-user", name: "Example User" });
+    expect(api.requests[0]?.path).toBe("/user");
+    expect(api.requests[0]?.headers.get("authorization")).toBe("Bearer secret-token");
+  });
+
+  test("an account with no name has a null name", async () => {
+    const api = fakeApi({ status: 200, body: { id: 1234, login: "example-user", name: null } });
+
+    expect(await readGitHubAccount({ token: "secret-token", baseUrl: api.baseUrl })).toEqual({
+      id: 1234,
+      login: "example-user",
+      name: null,
+    });
+  });
+
+  test("an answer with no id or login fails", async () => {
+    const api = fakeApi({ status: 200, body: [] });
+
+    expect(await failure(readGitHubAccount({ token: "secret-token", baseUrl: api.baseUrl }))).toContain("cannot read");
   });
 });

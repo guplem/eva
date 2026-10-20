@@ -70,6 +70,7 @@ describe("stateFaces", () => {
     expect(stateFaces.offline).toBe("worried");
     expect(stateFaces.asksPermission).toBe("firm");
     expect(stateFaces.thinking).toBe("thinking");
+    expect(stateFaces.notSetUp).toBe("asleep");
     expect(Object.values(stateFaces).every((face) => faces.includes(face))).toBe(true);
   });
 });

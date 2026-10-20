@@ -47,8 +47,21 @@ import {
   gitEnvironment,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
+import {
+  commitIdentity,
+  refreshGitHubAccount,
+  saveGitHubAccount,
+  loadGitHubAccount,
+} from "./instance/commit-identity.ts";
 import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
-import { missingSteps, setupProgress, type CheckRecord, type ProgressStep } from "./setup/progress.ts";
+import {
+  chatBlocker,
+  missingSteps,
+  setupProgress,
+  type ChatBlocker,
+  type CheckRecord,
+  type ProgressStep,
+} from "./setup/progress.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
@@ -156,6 +169,8 @@ export interface EvaStatus {
   readonly problemDetails: readonly ProblemDetail[];
   /** How many setup steps still need the person; the Settings page lists them. */
   readonly setupMissing: number;
+  /** The missing step that stops every chat, or null when a chat can answer. */
+  readonly chatBlocker: ChatBlocker | null;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -230,6 +245,7 @@ export class Eva {
       paths: options.paths,
       processEnvironment: options.processEnvironment,
       ...(options.evaCommand === undefined ? {} : { evaCommand: options.evaCommand }),
+      commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
 
@@ -364,8 +380,13 @@ export class Eva {
       paths: options.paths,
       runner: options.runner,
       savedVaultPath: () => this.savedVaultPath(),
-      // From the files, so a token that the page or `eva setup` saved since the start works at once.
-      gitEnvironment: () => gitEnvironment(this.facts, this.settings.saved().secrets),
+      // From the files, so a token that the page or `eva setup` saved since the start works at once,
+      // and a new vault's first commit carries that token's account.
+      gitEnvironment: () => {
+        const saved = this.settings.saved();
+        const identity = commitIdentity(options.paths, saved.config);
+        return gitEnvironment({ ...this.facts, commitIdentity: identity }, saved.secrets);
+      },
       githubToken: () => this.settings.saved().secrets.githubToken,
       ...(options.githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl: options.githubApiBaseUrl }),
     });
@@ -685,6 +706,7 @@ export class Eva {
 
   status(): EvaStatus {
     const sessions = this.sessions.list();
+    const progress = this.setupProgress();
     return {
       version: evaVersion,
       vaultPath: this.options.config.vaultPath,
@@ -703,7 +725,8 @@ export class Eva {
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
       problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
-      setupMissing: missingSteps(this.setupProgress()),
+      setupMissing: missingSteps(progress),
+      chatBlocker: this.chatBlocker(progress),
     };
   }
 
@@ -836,7 +859,21 @@ export class Eva {
 
   /** Each setup step, from the files as they are now: `eva setup` may have saved a step meanwhile. */
   setupProgress(): ProgressStep[] {
-    const { config, secrets } = this.settings.saved();
+    return this.progressWith(this.settings.saved().secrets);
+  }
+
+  /**
+   * The step that stops every chat. The engines read the Claude token at start, so the running
+   * login decides. A token that only the files hold needs a restart first.
+   */
+  private chatBlocker(progress: readonly ProgressStep[]): ChatBlocker | null {
+    const running = chatBlocker(this.progressWith(this.options.secrets));
+    if (running !== "engine") return running;
+    return chatBlocker(progress) === "engine" ? "engine" : "restart";
+  }
+
+  private progressWith(secrets: EvaSecrets): ProgressStep[] {
+    const { config } = this.settings.saved();
     const secretsSet = {
       claudeOauthToken: secrets.claudeOauthToken !== undefined,
       githubToken: secrets.githubToken !== undefined,
@@ -868,9 +905,28 @@ export class Eva {
     });
   }
 
-  /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
-  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
-    return this.settings.saveSecret(name, value);
+  /**
+   * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
+   * also waits for its account, so a restart right after the save still has the commit identity.
+   */
+  async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
+    const before = this.settings.secrets.githubToken;
+    const result = this.settings.saveSecret(name, value);
+    if (name !== "githubToken") return result;
+    const token = this.settings.secrets.githubToken;
+    if (token === undefined) saveGitHubAccount(this.options.paths, null);
+    else if (!(await this.refreshGitHubAccount(token, token !== before)))
+      this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
+    return result;
+  }
+
+  /** The account gives the commit name and email from the next start on. */
+  private refreshGitHubAccount(token: string, replacesToken = false): Promise<boolean> {
+    return refreshGitHubAccount(this.options.paths, token, {
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
+      replacesToken,
+      isCurrent: () => this.settings.secrets.githubToken === token,
+    });
   }
 
   async runCheck(name: CheckName): Promise<CheckResult> {
@@ -885,6 +941,7 @@ export class Eva {
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { githubBaseUrl: this.options.githubApiBaseUrl }),
       google: {
         config: this.settings.config.google,
         client: this.googleClient(),
@@ -893,6 +950,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
+    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    const token = secrets.githubToken;
+    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+      await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =
       name === "google" && result.ok && this.googleRestartNeeded()

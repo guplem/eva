@@ -4,7 +4,7 @@
  * into one line, and Retry, Fork and Copy under each answer.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
@@ -14,7 +14,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
-import { NewChatGreeting } from "./NewChatGreeting.tsx";
+import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { StepFold } from "./TurnSteps.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -34,9 +34,11 @@ interface ConversationProps {
   readonly onChanged: () => Promise<void>;
   /** A branch shows its own requests, so a fork that waits shows the card in its own column. */
   readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
+  /** The missing setup step that stops every chat, or null. */
+  readonly blocker: ChatBlocker | null;
 }
 
-export function Conversation({ root, sessions, live, onChanged, approvals }: ConversationProps): ReactElement {
+export function Conversation({ root, sessions, live, onChanged, approvals, blocker }: ConversationProps): ReactElement {
   const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
@@ -68,6 +70,7 @@ export function Conversation({ root, sessions, live, onChanged, approvals }: Con
           live={live}
           onChanged={onChanged}
           approvals={approvals}
+          blocker={blocker}
         />
       ))}
     </div>
@@ -80,12 +83,14 @@ function Branch({
   live,
   onChanged,
   approvals,
+  blocker,
 }: {
   session: SessionRecord;
   parent: SessionRecord | undefined;
   live: LiveState;
   onChanged: () => Promise<void>;
   approvals: ConversationProps["approvals"];
+  blocker: ChatBlocker | null;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const [pending, setPending] = useState<string | null>(null);
@@ -215,16 +220,24 @@ function Branch({
           {describeUsageLimit(usageLimit, new Date())}
         </div>
       )}
-      {/* The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md). */}
-      {session.mode === "assistant" && parent === undefined && turnCount === 0 && pending === null && !working && (
-        <NewChatGreeting onPick={(text) => void send(text)} />
-      )}
+      {parent === undefined &&
+        turnCount === 0 &&
+        pending === null &&
+        !working &&
+        (blocker !== null ? (
+          // A project chat needs the engine and the vault too.
+          <NewChatSetup blocker={blocker} />
+        ) : (
+          // The suggestions are Assistant work; a project chat stays a plain harness (AGENTS.md).
+          session.mode === "assistant" && <NewChatGreeting onPick={(text) => void send(text)} />
+        ))}
       <Composer
         session={session}
         running={working}
         onSend={send}
         onStop={() => runAction(() => api.stop(session.id))}
         onChanged={onChanged}
+        blocker={blocker}
       />
     </section>
   );

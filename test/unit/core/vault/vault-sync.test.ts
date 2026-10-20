@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import type { Logger } from "../../../../src/shared/logger.ts";
@@ -77,6 +78,21 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, "Methods/New.md", "Steps.\n");
     await createSync(vault).save();
     expect(sandbox.git(vault, "log", "-1", "--format=%an")).toBe("Eva Test");
+  });
+
+  test("the instance's commit identity signs the autosave, over the vault's own git settings", async () => {
+    sandbox.git(vault, "config", "user.name", "Someone Else");
+    sandbox.git(vault, "config", "user.email", "someone@example.invalid");
+    const environment = gitEnvironmentWithToken(
+      gitEnvironment,
+      {},
+      { name: "Example User", email: "1234+example-user@users.noreply.github.com" },
+    );
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    expect((await createSync(vault, { environment }).save()).status).toBe("ok");
+    expect(sandbox.git(vault, "log", "-1", "--format=%an <%ae> %cn <%ce>")).toBe(
+      "Example User <1234+example-user@users.noreply.github.com> Example User <1234+example-user@users.noreply.github.com>",
+    );
   });
 
   test("a failing pre-commit hook in the vault never blocks an autosave (lesson 27)", async () => {

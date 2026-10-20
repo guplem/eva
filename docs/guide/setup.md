@@ -131,7 +131,7 @@ With more than one Eva, each command asks which Eva. To skip the question, name 
 
 Each Eva lives in her own folder, `eva-<name>`, in `~/.config` on Linux or `%APPDATA%` on Windows. Her logins stay there, so two people never share a login or a subscription. Setup prints one command for each login that is missing: run it in another terminal while setup goes on.
 
-The commits of each Eva carry the name and email of your global git settings, unless her clone sets its own with `git config user.name` and `git config user.email`. For hosts other than GitHub, git uses your own login.
+The commits of each Eva carry the name of her GitHub account and its private GitHub email. Eva reads the account when you log in to GitHub. To use another name or email, set it in **Settings → Connections → Commit name and email**. An Eva with no GitHub login uses the name and email of your global git settings. For hosts other than GitHub, git uses your own login.
 
 **Share a computer user only with people that you trust fully.** All Evas of one computer user can read each other's files, such as notes and tokens. Eva never does this by herself, but nothing on the computer stops it. For people who need privacy from each other, give each person their own computer user, or their own computer.
 

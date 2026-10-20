@@ -20,6 +20,7 @@ import { withMachineDefaults } from "../settings/machine-defaults.ts";
 import { loadSettings } from "../settings/settings.ts";
 import { VaultSync } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
+import { commitIdentity } from "./commit-identity.ts";
 import { claimHubIfUnclaimed, machineRole } from "./hub.ts";
 
 export interface StartNote {
@@ -83,7 +84,11 @@ async function migrateAfterPull(
     await new VaultSync({
       vaultPath,
       runner: options.runner,
-      environment: gitEnvironmentWithToken(options.processEnvironment, secrets),
+      environment: gitEnvironmentWithToken(
+        options.processEnvironment,
+        secrets,
+        commitIdentity(options.paths, machineConfig),
+      ),
       now: options.now,
     }).pull();
     if (claimHubIfUnclaimed(vaultPath, machine, options.now()))

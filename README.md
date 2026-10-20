@@ -1,8 +1,8 @@
 # Eva
 
-**Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone (Telegram, or a web page), and she remembers everything in a private notebook that only you own.
+**Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone, your computer or any other device, through Telegram or her web page. She remembers everything in a private notebook (a vault) that only you own.
 
-**Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. One program gives you one chat, one notebook and one list of projects, whichever harness does the work.
+**Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. You can change the harness, and keep the same chats, notes and projects.
 
 ## How Eva works, in one picture
 
@@ -12,18 +12,16 @@ Think of Eva as a helper who lives in one computer at your home:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | **The helper's desk** | A computer that stays on, such as an old laptop. Eva runs there.                                                         | the hub                      |
 | **The notebook**      | A private folder of notes. Eva reads and writes it, and keeps a copy on GitHub so that nothing gets lost.                | the vault (a git repository) |
-| **The brain**         | An AI service that does the thinking, with your own subscription.                                                        | the engine (Claude Code, pi) |
+| **The brain**         | An AI harness that does the thinking, with your own subscription.                                                        | the engine (Claude Code, pi) |
 | **The phone line**    | How you talk to Eva: a Telegram chat, or her web page.                                                                   | the front ends               |
 | **The private road**  | A free app that connects your phone and computers to the helper's desk, and to nothing else. Strangers cannot reach Eva. | Tailscale                    |
-
-Eva can also work in your coding projects. Each project gets its own copy of the code, and an AI coding agent works there as if you had opened the folder yourself.
 
 ## What you need
 
 1. **A computer that stays on,** with Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
-2. **An AI subscription:** Claude (Pro or Max), or another provider through pi, such as ChatGPT.
+2. **An AI subscription:** Claude, or another provider through pi, such as ChatGPT.
 3. **A GitHub account.** Eva keeps a private copy of your notes there.
-4. **Optional:** Telegram on your phone, to chat with Eva, and Tailscale (free), to open her page from your phone.
+4. **Optional:** Telegram on your phone, to chat with Eva, and Tailscale (free), to open her page from your phone or any other device.
 
 ## Get started
 
@@ -51,23 +49,7 @@ Eva updates herself from new releases. You choose which ones in Settings.
 
 Write to your bot as you write to a person. Eva answers in the same chat. Each new topic (`/new`) is a separate conversation. Telegram, the web page and the terminal share the same conversations: see [Conversations](docs/guide/reference.md#conversations).
 
-| Command      | What it does                                  |
-| ------------ | --------------------------------------------- |
-| `/new`       | Start a new conversation                      |
-| `/chats`     | Pick any conversation to continue here        |
-| `/delete`    | Delete this conversation everywhere           |
-| `/rename`    | Give this conversation a new name             |
-| `/stop`      | Stop what Eva is doing in this conversation   |
-| `/status`    | Show whether everything is all right          |
-| `/logs`      | Show Eva's last warnings and errors           |
-| `/restart`   | Restart Eva (she asks you to confirm first)   |
-| `/link`      | Show the address of Eva's web page            |
-| `/sync`      | Save the notebook now                         |
-| `/conflicts` | Pick a version of each note in a conflict     |
-| `/update`    | Check for updates, or pick a version of Eva   |
-| `/projects`  | Search your projects: `status:active`, `#tag` |
-| `/schedules` | List your reminders and repeated tasks        |
-| `/help`      | Show all the commands                         |
+Type `/` in the chat to see all the commands, with a short note for each.
 
 You can also send voice notes, photos and files.
 

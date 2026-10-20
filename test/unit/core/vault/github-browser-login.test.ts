@@ -111,6 +111,21 @@ describe("the GitHub browser login of the page", () => {
     expect(saved).toEqual(["gho_token"]);
   });
 
+  test("a wait that comes again after the end gets the same result, as after a lost request", async () => {
+    const flow = fakeDeviceFlow();
+    const saved: string[] = [];
+    const login = makeLogin(flow.login, (token) => {
+      saved.push(token);
+      return Promise.resolve();
+    });
+    await login.start();
+    flow.confirm("gho_token");
+    await login.finish();
+    // A phone lost the first answer, and the page asks again.
+    await login.finish();
+    expect(saved).toEqual(["gho_token"]);
+  });
+
   test("a failure reaches the page, even when it comes before the page asks", async () => {
     const flow = fakeDeviceFlow();
     const login = makeLogin(flow.login);

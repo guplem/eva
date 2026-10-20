@@ -6,7 +6,10 @@
  */
 import { EvaError } from "../../shared/errors.ts";
 
-/** The device flow, such as `githubDeviceLogin` with Eva's client id. It waits only in `sleep`. */
+/**
+ * The device flow, such as `githubDeviceLogin` with Eva's client id. It calls `show` before it returns,
+ * and it waits only in `sleep`.
+ */
 export type DeviceLogin = (
   show: (code: string, url: string) => void,
   sleep: (ms: number) => Promise<void>,
@@ -36,7 +39,7 @@ export class GitHubBrowserLogin {
     this.current = null;
   }
 
-  /** Starts the login, or gives the code of the login that waits: a reload must not void a typed code. */
+  /** Starts the login. While a login waits, it gives the same code again, so a reload keeps a typed code. */
   start(): Promise<{ code: string; url: string }> {
     if (this.current !== null && !this.current.settled) return this.current.shown;
     const { login } = this.options;
@@ -70,16 +73,15 @@ export class GitHubBrowserLogin {
     return attempt.shown;
   }
 
-  /** Waits until the token is saved, or the login fails. */
+  /**
+   * Waits until the token is saved, or the login fails. The result stays until the next start:
+   * a phone can lose the answer of a long request, and then the page asks again.
+   */
   async finish(): Promise<void> {
     const attempt = this.current;
     if (attempt === null)
       throw new EvaError("github_failed", "No GitHub login waits. Press Log in with GitHub to start one.");
-    try {
-      await attempt.done;
-    } finally {
-      if (this.current === attempt) this.current = null;
-    }
+    await attempt.done;
   }
 
   stop(): void {

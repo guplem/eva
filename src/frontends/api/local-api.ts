@@ -186,10 +186,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
-      // a vault sync or pick waits for git's network steps, the Google login waits for Google, and the
-      // GitHub login waits until the person confirms the code.
-      // Each ends at its own timeout.
+      // a vault sync or pick waits for git's network steps, the Google login waits for Google, the
+      // GitHub login waits until the person confirms the code, and an update waits for the download
+      // of the new version. Each ends at its own timeout.
       if (
+        url.pathname === "/api/update" ||
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
         url.pathname.startsWith("/api/google/") ||

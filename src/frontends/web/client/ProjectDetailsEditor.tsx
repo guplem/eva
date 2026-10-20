@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
 import { BackButton } from "./ProjectPage.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 const statusChoices = [
   { value: "", label: "None" },
@@ -66,9 +67,13 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
   if (!("version" in file)) {
     return (
       <div className="settings">
-        <div className="muted" role="status">
-          {file.state === "loading" ? "Reading the project…" : `Eva could not read the project: ${file.reason}`}
-        </div>
+        {file.state === "loading" ? (
+          <ProgressBar label="Reading the project…" />
+        ) : (
+          <div className="muted" role="status">
+            Eva could not read the project: {file.reason}
+          </div>
+        )}
         {file.state === "failed" && (
           <div>
             <button onClick={() => void load()}>Try again</button>

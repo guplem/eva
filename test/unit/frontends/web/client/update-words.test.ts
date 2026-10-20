@@ -4,6 +4,7 @@ import {
   installLabel,
   releaseDay,
   updatesFace,
+  updateWait,
   versionRows,
 } from "../../../../../src/frontends/web/client/update-words.ts";
 
@@ -32,6 +33,7 @@ const status: UpdateStatus = {
   lastCheckAt: null,
   lastError: null,
   failedStep: null,
+  download: null,
 };
 
 describe("releaseDay", () => {
@@ -75,5 +77,35 @@ describe("updatesFace", () => {
     expect(updatesFace({ ...status, available: false }, false)).toBe("neutral");
     expect(updatesFace({ ...status, lastError: "offline" }, false)).toBe("neutral");
     expect(updatesFace(null, false)).toBe("neutral");
+  });
+});
+
+describe("updateWait", () => {
+  test("an install shows the version and the share of its download", () => {
+    expect(
+      updateWait({ ...status, phase: "updating", download: { receivedBytes: 30, totalBytes: 120 } }, null),
+    ).toEqual({ label: "Installing 2.15.0…", share: 0.25 });
+  });
+
+  test("an install of unknown size, or from an older Eva, has no share", () => {
+    expect(updateWait({ ...status, phase: "updating" }, "Installing 2.15.0…")).toEqual({
+      label: "Installing 2.15.0…",
+      share: null,
+    });
+    const { download: _download, ...older } = status;
+    expect(updateWait({ ...older, phase: "updating" } as UpdateStatus, null)?.share).toBeNull();
+  });
+
+  test("a check, or a wait that the page started, has no share", () => {
+    expect(updateWait({ ...status, phase: "checking" }, null)).toEqual({
+      label: "Looking for a new version…",
+      share: null,
+    });
+    expect(updateWait(status, "Eva restarts…")).toEqual({ label: "Eva restarts…", share: null });
+  });
+
+  test("nothing runs, so nothing waits", () => {
+    expect(updateWait(status, null)).toBeNull();
+    expect(updateWait(null, null)).toBeNull();
   });
 });

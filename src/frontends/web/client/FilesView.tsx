@@ -16,6 +16,7 @@ import {
 } from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
 import { toWebHtml } from "./web-format.ts";
+import { ListSkeleton } from "./Loading.tsx";
 
 export function FilesView(): ReactElement {
   const [path, setPath] = useState(() => filePathOf(window.location.hash) ?? "");
@@ -89,7 +90,7 @@ export function FilesView(): ReactElement {
               <button onClick={() => setAttempt((count) => count + 1)}>Try again</button>
             </div>
           )}
-          {failure === null && current === null && <div className="empty">Loading…</div>}
+          {failure === null && current === null && <ListSkeleton label="Loading the folder…" rows={8} />}
           {failure === null && current?.kind === "folder" && <FolderList path={path} entries={current.entries} />}
           {failure === null && current?.kind === "unreadable" && (
             <div role="status" className="callout warning">

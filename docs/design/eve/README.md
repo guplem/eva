@@ -149,28 +149,30 @@ Dialogs become bottom sheets on a phone. Their buttons stack at full width.
 
 All of them are in `reference.html`. The class names there are short; pick clear names in the code.
 
-| Component         | Reference class                                      | Notes                                                                                                                     |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Visor             | `.mk`                                                | Sizes: 28 px in messages, 36 px in the nav rail, 76 px and 128 px (with the white shell ring) for empty and login states. |
-| Button            | `.btn`, `.pri`, `.soft`, `.out`, `.ghost`, `.danger` | Pill. One main (`.pri`) button per view.                                                                                  |
-| Chip              | `.chip`                                              | For filters, engine and model pickers. `.on` is selected.                                                                 |
-| Status pill       | `.st.ok`, `.warn`, `.bad`, `.idle`, `.live`          | A dot and a word. `.live` has a glowing dot.                                                                              |
-| Card              | `.card`                                              | `--panel` fill and the card shadow.                                                                                       |
-| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill.                                                                    |
-| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The user's bubble is `--soft`.                                         |
-| Folded steps      | `.steps`                                             | One line: step count, time, the last step, and an arrow that opens the list.                                              |
-| Step list         | `.stl`                                               | Monospace lines with an icon each. Edits show `+N` in green and `−N` in red.                                              |
-| Working indicator | `.working`, `.dots`                                  | Three glowing dots and the time.                                                                                          |
-| Composer          | `.cmp`, `.box`                                       | Attach, engine and model chip, mode chip, send or stop.                                                                   |
-| Context ring      | `.ring`                                              | A conic gradient that shows the share of context in use.                                                                  |
-| Permission card   | in the approval page                                 | Amber border, the exact command, a one-sentence effect, and three buttons.                                                |
-| Dialog and sheet  | `.scrim`, `.dlg`, `.sheet`                           |                                                                                                                           |
-| Toast             | `.toast`                                             | Dark, at the bottom, with an action button.                                                                               |
-| Banner            | `.banner`                                            | `--warn-bg`, for offline and other page-wide states.                                                                      |
-| Setup step        | `.check`                                             | A round mark, a title, a detail and a button.                                                                             |
-| Day timeline      | `.tl`                                                | The schedules of today on a 24-hour bar, with a glowing "now" line.                                                       |
-| Toggle            | `.tog`                                               |                                                                                                                           |
-| Diff              | `.diff`                                              | Added lines on `--ok-bg`, removed lines on `--bad-bg`.                                                                    |
+| Component         | Reference class                                      | Notes                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visor             | `.mk`                                                | Sizes: 28 px in messages, 36 px in the nav rail, 76 px and 128 px (with the white shell ring) for empty and login states.                                                                                                           |
+| Button            | `.btn`, `.pri`, `.soft`, `.out`, `.ghost`, `.danger` | Pill. One main (`.pri`) button per view.                                                                                                                                                                                            |
+| Chip              | `.chip`                                              | For filters, engine and model pickers. `.on` is selected.                                                                                                                                                                           |
+| Status pill       | `.st.ok`, `.warn`, `.bad`, `.idle`, `.live`          | A dot and a word. `.live` has a glowing dot.                                                                                                                                                                                        |
+| Card              | `.card`                                              | `--panel` fill and the card shadow.                                                                                                                                                                                                 |
+| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill.                                                                                                                                                                              |
+| Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The user's bubble is `--soft`.                                                                                                                                                   |
+| Folded steps      | `.steps`                                             | One line: step count, time, the last step, and an arrow that opens the list.                                                                                                                                                        |
+| Step list         | `.stl`                                               | Monospace lines with an icon each. Edits show `+N` in green and `−N` in red.                                                                                                                                                        |
+| Working indicator | `.working`, `.dots`                                  | Three glowing dots and the time.                                                                                                                                                                                                    |
+| Progress bar      | (none)                                               | A wait inside a card. A `--chip` pill track and an `--accent` fill with a `--glow` shadow. A known share fills the bar and shows the percentage. An unknown share runs two lines of light across it. The code calls it `.progress`. |
+| Skeleton          | (none)                                               | A wait for content that fills a large area. `--line` shapes with a `--chip` shimmer, and the radii of the content to come: list items, bubbles, cards and facts. The code calls it `.skeleton`.                                     |
+| Composer          | `.cmp`, `.box`                                       | Attach, engine and model chip, mode chip, send or stop.                                                                                                                                                                             |
+| Context ring      | `.ring`                                              | A conic gradient that shows the share of context in use.                                                                                                                                                                            |
+| Permission card   | in the approval page                                 | Amber border, the exact command, a one-sentence effect, and three buttons.                                                                                                                                                          |
+| Dialog and sheet  | `.scrim`, `.dlg`, `.sheet`                           |                                                                                                                                                                                                                                     |
+| Toast             | `.toast`                                             | Dark, at the bottom, with an action button.                                                                                                                                                                                         |
+| Banner            | `.banner`                                            | `--warn-bg`, for offline and other page-wide states.                                                                                                                                                                                |
+| Setup step        | `.check`                                             | A round mark, a title, a detail and a button.                                                                                                                                                                                       |
+| Day timeline      | `.tl`                                                | The schedules of today on a 24-hour bar, with a glowing "now" line.                                                                                                                                                                 |
+| Toggle            | `.tog`                                               |                                                                                                                                                                                                                                     |
+| Diff              | `.diff`                                              | Added lines on `--ok-bg`, removed lines on `--bad-bg`.                                                                                                                                                                              |
 
 Icons are simple line icons on a 24 px grid, 1.8 px stroke, round caps. They replace the emoji that the web client uses today. Eva draws her own icons: they come from no icon library. The design reference page of the web app (Settings, Developer) shows each icon with its use. Give each icon one meaning on every page.
 
@@ -211,7 +213,7 @@ Only the eyes change. The visor stays round and still. All faces blink. A transi
 
 The login page rotates faces while it waits: searching (5 s), thinking (3 s), happy, wink, surprised, listening and delighted.
 
-With `prefers-reduced-motion`, no face moves and no eye blinks.
+With `prefers-reduced-motion`, no face moves and no eye blinks. The waits stand still too: a skeleton loses its shimmer, and a running bar shows a still part of its fill.
 
 ## Pages
 
@@ -338,6 +340,7 @@ The reference shows some things that the web client does not have today. Each im
 | Toast with an action button                                                         | A toast with text only.                                                                                      |
 | Seed colour picker                                                                  | Theme and density only.                                                                                      |
 | Line icons                                                                          | Emoji.                                                                                                       |
+| No part for a wait, apart from the working dots of a chat                           | A progress bar inside a card, and skeletons for content that fills a large area.                             |
 
 ## Captures
 

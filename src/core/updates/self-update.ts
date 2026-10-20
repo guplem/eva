@@ -19,7 +19,7 @@ import {
   signedVersion,
   verifyChecksumsSignature,
 } from "./release-verification.ts";
-import type { UpdateChannel } from "./updater.ts";
+import type { UpdateChannel, UpdateDownload } from "./updater.ts";
 
 export interface UpdateInputs {
   readonly currentVersion: string;
@@ -43,6 +43,8 @@ export type UpdateResult =
 interface ReleaseAsset {
   readonly name: string;
   readonly browser_download_url: string;
+  /** The size in bytes, for a reply that gives no length. */
+  readonly size?: number;
 }
 
 interface Release {
@@ -61,7 +63,11 @@ const probeTimeoutMs = 30_000;
 const downloadTimeoutMs = 10 * 60_000;
 
 /** Installs the release of `version`, or the newest release when it is undefined. */
-export async function updateExecutable(inputs: UpdateInputs, version?: string): Promise<UpdateResult> {
+export async function updateExecutable(
+  inputs: UpdateInputs,
+  version?: string,
+  onDownload?: (download: UpdateDownload) => void,
+): Promise<UpdateResult> {
   const assetName = assetNameFor(inputs.platform, inputs.arch);
   if (assetName === null)
     throw new EvaError("update_failed", `No Eva build exists for ${inputs.platform} ${inputs.arch}.`);
@@ -75,10 +81,15 @@ export async function updateExecutable(inputs: UpdateInputs, version?: string): 
     if (version === undefined) return { status: "up_to_date", version: inputs.currentVersion };
     throw new EvaError("update_failed", `Eva never installs an older version than ${inputs.currentVersion}.`);
   }
-  return install(inputs, release, assetName);
+  return install(inputs, release, assetName, onDownload);
 }
 
-async function install(inputs: UpdateInputs, release: Release, assetName: string): Promise<UpdateResult> {
+async function install(
+  inputs: UpdateInputs,
+  release: Release,
+  assetName: string,
+  onDownload?: (download: UpdateDownload) => void,
+): Promise<UpdateResult> {
   const checksums = new TextDecoder().decode(await download(release, checksumsFileName));
   const signature = new TextDecoder().decode(await download(release, signatureFileName));
   if (!verifyChecksumsSignature(checksums, signature, inputs.publicKey ?? releasePublicKey))
@@ -93,7 +104,7 @@ async function install(inputs: UpdateInputs, release: Release, assetName: string
       `Release ${release.tag_name} signs version ${version ?? "none"}, which is not a newer version. Nothing changed.`,
     );
   const expected = parseChecksums(checksums).get(assetName);
-  const executable = await download(release, assetName);
+  const executable = await download(release, assetName, onDownload);
   if (expected === undefined || sha256Hex(executable) !== expected)
     throw new EvaError("update_failed", `${assetName} does not match its signed checksum. Nothing changed.`);
 
@@ -119,8 +130,8 @@ export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
         })),
       };
     },
-    async apply(version) {
-      const result = await updateExecutable(inputs, version);
+    async apply(version, onDownload) {
+      const result = await updateExecutable(inputs, version, onDownload);
       return result.status === "updated"
         ? { current: result.from, latest: result.to, available: false, releases: [] }
         : { current: result.version, latest: result.version, available: false, releases: [] };
@@ -153,7 +164,11 @@ async function publishedReleases(inputs: UpdateInputs): Promise<Release[]> {
     .sort((left, right) => (isNewerVersion(left.tag_name, right.tag_name) ? -1 : 1));
 }
 
-async function download(release: Release, name: string): Promise<Uint8Array> {
+async function download(
+  release: Release,
+  name: string,
+  onDownload?: (download: UpdateDownload) => void,
+): Promise<Uint8Array> {
   const asset = release.assets.find((candidate) => candidate.name === name);
   if (asset === undefined) throw new EvaError("update_failed", `Release ${release.tag_name} has no ${name}.`);
   let response: Response;
@@ -164,7 +179,45 @@ async function download(release: Release, name: string): Promise<Uint8Array> {
   }
   if (!response.ok)
     throw new EvaError("update_failed", `${name} could not be downloaded (${String(response.status)}).`);
-  return new Uint8Array(await response.arrayBuffer());
+  // A connection can also drop after the headers, in the middle of the body.
+  try {
+    if (onDownload === undefined || response.body === null) return new Uint8Array(await response.arrayBuffer());
+    return await readWithShare(response.body, totalOf(response, asset), onDownload);
+  } catch {
+    throw new EvaError("update_failed", `${name} could not be downloaded.`);
+  }
+}
+
+/**
+ * The size of the download. A compressed reply gives the length of the compressed bytes, and a
+ * chunked one gives none, so GitHub's listed size wins.
+ */
+function totalOf(response: Response, asset: ReleaseAsset): number | null {
+  if (asset.size !== undefined && asset.size > 0) return asset.size;
+  if (response.headers.has("content-encoding")) return null;
+  const length = Number(response.headers.get("content-length"));
+  return Number.isFinite(length) && length > 0 ? length : null;
+}
+
+async function readWithShare(
+  body: ReadableStream<Uint8Array>,
+  totalBytes: number | null,
+  onDownload: (download: UpdateDownload) => void,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  for await (const chunk of body) {
+    chunks.push(chunk);
+    receivedBytes += chunk.byteLength;
+    onDownload({ receivedBytes, totalBytes });
+  }
+  const bytes = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function replaceExecutable(inputs: UpdateInputs, bytes: Uint8Array, version: string): Promise<void> {

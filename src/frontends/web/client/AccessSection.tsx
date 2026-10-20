@@ -4,6 +4,7 @@ import { api } from "./api.ts";
 import { DevicesPanel } from "./DevicesPanel.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { Card, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 export function AccessSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
@@ -21,7 +22,11 @@ export function PhoneAccess({ context }: { readonly context: SettingsContext }):
   if (remote !== null) return <RemoteAccessPanel initial={remote} />;
   return (
     <Card item="remote-access" title="Use Eva from any device">
-      <div className="field-hint">{context.status === null ? "Loading…" : "Phone access is off on this machine."}</div>
+      {context.status === null ? (
+        <ProgressBar label="Reading the phone access…" />
+      ) : (
+        <div className="field-hint">Phone access is off on this machine.</div>
+      )}
     </Card>
   );
 }

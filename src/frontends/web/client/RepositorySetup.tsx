@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type SetupItem, type SetupReport } from "./api.ts";
 import { BackButton } from "./ProjectPage.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 const lightNames: Readonly<Record<SetupItem["light"], string>> = {
   green: "Done",
@@ -58,11 +59,11 @@ export function RepositorySetup({
               <ReportView key={`${String(index)}-${report.repositoryUrl}`} report={report} />
             ))}
           </>
+        ) : reports.state === "loading" ? (
+          <ProgressBar label="Reading GitHub…" />
         ) : (
           <div className="muted" role="status">
-            {reports.state === "loading"
-              ? "Reading GitHub…"
-              : `Eva could not read the setup: ${reports.reason} Press Refresh to try again.`}
+            Eva could not read the setup: {reports.reason} Press Refresh to try again.
           </div>
         )}
       </div>

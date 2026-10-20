@@ -25,7 +25,13 @@ export interface UpdateChannel {
   readonly kind: "executable" | "source";
   check(): Promise<UpdateCheck>;
   /** Installs `version`, or the newest one when it is undefined. Returns the version before and after. */
-  apply(version?: string): Promise<UpdateCheck>;
+  apply(version?: string, onDownload?: (download: UpdateDownload) => void): Promise<UpdateCheck>;
+}
+
+/** How far the download of a new version got. The total is null when the reply gives no size. */
+export interface UpdateDownload {
+  readonly receivedBytes: number;
+  readonly totalBytes: number | null;
 }
 
 export type UpdatePhase = "idle" | "checking" | "waiting_for_idle" | "updating" | "restarting";
@@ -51,6 +57,8 @@ export interface UpdateStatus {
   readonly lastCheckAt: string | null;
   readonly lastError: string | null;
   readonly failedStep: UpdateStep | null;
+  /** The download of the new version while the phase is "updating", else null. */
+  readonly download: UpdateDownload | null;
 }
 
 export interface UpdaterOptions {
@@ -85,6 +93,7 @@ export class Updater {
   private chosen: string | null;
   /** The new version is in place, and Eva restarts once no chat runs a turn. */
   private restartPending: boolean;
+  private download: UpdateDownload | null;
 
   constructor(options: UpdaterOptions) {
     this.options = options;
@@ -95,6 +104,7 @@ export class Updater {
     this.failedStep = null;
     this.chosen = null;
     this.restartPending = false;
+    this.download = null;
   }
 
   status(): UpdateStatus {
@@ -119,6 +129,7 @@ export class Updater {
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       lastError: this.lastError,
       failedStep: this.failedStep,
+      download: this.download,
     };
   }
 
@@ -228,7 +239,12 @@ export class Updater {
     }
     this.phase = "updating";
     try {
-      const installed = await this.options.channel.apply(this.last?.releases === null ? undefined : target);
+      const installed = await this.options.channel.apply(
+        this.last?.releases === null ? undefined : target,
+        (download) => {
+          this.download = download;
+        },
+      );
       this.last = installed;
       this.chosen = null;
       this.options.logger?.log("info", "Eva updated; she restarts.", { from: installed.current, to: installed.latest });
@@ -242,6 +258,8 @@ export class Updater {
       this.chosen = null;
       this.options.logger?.log("warn", "The update failed.", { reason: this.lastError });
       this.phase = "idle";
+    } finally {
+      this.download = null;
     }
     return this.status();
   }

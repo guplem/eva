@@ -39,6 +39,7 @@ A change to one of these goals needs the owner.
 - **Order events by `seq`,** never by `at` (lesson 83).
 - **Import a file in `src/` either as code or `with { type: "text" }`,** never both: the bundler keeps one form, and the executable breaks.
 - **Before you delete a folder, list its git-ignored files** (`git status --ignored -- <folder>`). An ignored file, such as a `.env`, is in no commit, so a delete loses it for good.
+- **Reuse a shared component before you add one.** Solve the same problem with the same pattern on every page. When a shared component does not fit, extend it. Do not add a second component for the same job.
 - **Comment the why, never the what.**
 - **Use one word per concept:** instance, vault, project, clone (never "workspace"), session, fork, turn, engine, front end.
 - **A step that only a person can do** becomes a GitHub issue with the `requires-human-intervention` label. Then continue with fakes.

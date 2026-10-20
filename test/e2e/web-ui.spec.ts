@@ -630,6 +630,42 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
+test("the project list shows its shape while it reads, not that no project matches", async ({ page }) => {
+  let answer = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/api/projects?*", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await logIn(page);
+  await openProjects(page);
+  const list = page.getByRole("navigation", { name: "Projects" });
+  await expect(list.getByText("Loading the projects…")).toBeAttached();
+  await expect(list.locator(".skeleton-item").first()).toBeVisible();
+  await expect(list.getByText("No project matches.")).toHaveCount(0);
+  answer();
+  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(list.locator(".skeleton")).toHaveCount(0);
+});
+
+test("a failed first read of the projects says so, and Try again reads them", async ({ page }) => {
+  let failing = true;
+  await page.route("**/api/projects?*", async (route) => {
+    if (failing) await route.fulfill({ status: 500, json: { error: "The vault is busy." } });
+    else await route.continue();
+  });
+  await logIn(page);
+  await openProjects(page);
+  const list = page.getByRole("navigation", { name: "Projects" });
+  await expect(list.getByText("Eva could not read the projects.")).toBeVisible();
+  await expect(list.getByText("No project matches.")).toHaveCount(0);
+  failing = false;
+  await list.getByRole("button", { name: "Try again" }).click();
+  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+});
+
 test("the project page says that the clones load, not that there are none", async ({ page }) => {
   await logIn(page);
   let release = (): void => undefined;
@@ -2160,6 +2196,150 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
   expect(readsWhileRestarting).toBe(3);
   // The install worked, so EVE looks happy.
   await expect(page.getByRole("region", { name: "Eva updates" }).locator(".mk.e-joy")).toHaveCount(1);
+});
+
+test("Settings: an install shows a bar that fills with the download", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    current: "0.1.0",
+    latest: "0.2.0",
+    target: "0.2.0",
+    heldBack: null,
+    releases: [],
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    download: null,
+  };
+  let installing = false;
+  let finish = (): void => undefined;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      installing = true;
+      // The request ends only after the download, as in Eva.
+      await finished;
+      installing = false;
+      await route.fulfill({ json: { ...base, phase: "idle", current: "0.2.0", available: false } });
+      return;
+    }
+    await route.fulfill({
+      json: installing
+        ? { ...base, phase: "updating", download: { receivedBytes: 42, totalBytes: 100 } }
+        : { ...base, phase: "idle" },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Check and install" }).click();
+  const bar = card.getByRole("progressbar", { name: "Installing 0.2.0…" });
+  await expect(bar).toHaveAttribute("aria-valuenow", "42");
+  await expect(card.getByText("42%", { exact: true })).toBeVisible();
+  finish();
+  await expect(card.getByRole("progressbar")).toHaveCount(0);
+});
+
+test("Settings: an install goes on when a proxy drops the request", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    current: "0.1.0",
+    latest: "0.2.0",
+    target: "0.2.0",
+    heldBack: null,
+    releases: [],
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+    download: null,
+  };
+  let reads = 0;
+  let posted = false;
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      posted = true;
+      // `tailscale serve` gave up on the long request. The download goes on.
+      await route.fulfill({ status: 502, body: "Bad Gateway" });
+      return;
+    }
+    if (!posted) {
+      await route.fulfill({ json: { ...base, phase: "idle" } });
+      return;
+    }
+    reads += 1;
+    // The download goes on for a moment, then the new Eva answers. Two loops read, so the
+    // page may never see "restarting": the new version alone must say that the install worked.
+    await route.fulfill({
+      json:
+        reads <= 2 ? { ...base, phase: "updating" } : { ...base, phase: "idle", current: "0.2.0", available: false },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Check and install" }).click();
+  await expect(card.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText(/Bad Gateway/)).toHaveCount(0);
+});
+
+test("Settings: an error of Eva herself during an install shows its reason", async ({ page }) => {
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 500, json: { error: "The release list is broken." } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        kind: "executable",
+        frequency: "daily",
+        install: "minor",
+        phase: "idle",
+        current: "0.1.0",
+        latest: "0.2.0",
+        target: "0.2.0",
+        heldBack: null,
+        releases: [],
+        available: true,
+        lastCheckAt: null,
+        lastError: null,
+        failedStep: null,
+        download: null,
+      },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Check and install" }).click();
+  await expect(card.getByText("The release list is broken.")).toBeVisible();
+  await expect(card.getByRole("progressbar")).toHaveCount(0);
+});
+
+test("Settings: the Versions card shows the shape of its list while it reads", async ({ page }) => {
+  let answer = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/api/versions", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card.getByRole("status")).toHaveText("Reading the versions…");
+  await expect(card.locator(".skeleton-fact").first()).toBeVisible();
+  answer();
+  await expect(card.locator("dl.facts")).toBeVisible();
+  await expect(card.locator(".skeleton")).toHaveCount(0);
 });
 
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {

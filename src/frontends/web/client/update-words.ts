@@ -1,4 +1,5 @@
 /** The words and the face of the Updates page, apart from the components so that unit tests reach them. */
+import { downloadShare } from "../../cli/client.ts";
 import type { UpdateStatus } from "./api.ts";
 import { chatGroup, chatTime } from "./chat-list.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -48,4 +49,19 @@ export function updatesFace(update: UpdateStatus | null, restarted: boolean): Fa
   if (restarted) return stateFaces.greeting;
   if (update !== null && update.available && update.lastError === null) return stateFaces.news;
   return stateFaces.idle;
+}
+
+/** The wait of the Eva updates card: its sentence and the share done, or null when nothing runs. */
+export function updateWait(
+  update: UpdateStatus | null,
+  work: string | null,
+): { readonly label: string; readonly share: number | null } | null {
+  // The phase comes first: it also shows an install that Eva started by herself.
+  if (update?.phase === "updating")
+    return {
+      label: `Installing ${update.target ?? update.latest ?? "the new version"}…`,
+      share: downloadShare(update.download),
+    };
+  if (update?.phase === "checking") return { label: work ?? "Looking for a new version…", share: null };
+  return work === null ? null : { label: work, share: null };
 }

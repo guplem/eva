@@ -14,6 +14,7 @@ import {
   type ComponentId,
 } from "./design-reference.ts";
 import { Icon, iconNames } from "./icons.tsx";
+import { FactsSkeleton, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { AppearanceCard } from "./PersonalizeSection.tsx";
 import { Card, ChoiceChips, CommandLine, StatusIcon, StatusPill, Steps } from "./SettingsParts.tsx";
 import { faces } from "./visor-faces.ts";
@@ -190,6 +191,20 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
           <li>Press the button.</li>
           <li>Copy the code.</li>
         </Steps>
+      );
+    case "progress":
+      return (
+        <div className="design-stack">
+          <ProgressBar label="Installing 1.4.0…" share={0.42} />
+          <ProgressBar label="Looking for a new version…" />
+        </div>
+      );
+    case "skeletons":
+      return (
+        <div className="design-stack">
+          <FactsSkeleton label="A sample of a facts list" rows={3} />
+          <ListSkeleton label="A sample of a list" rows={2} />
+        </div>
       );
     case "section-card":
       return (

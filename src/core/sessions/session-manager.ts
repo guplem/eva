@@ -22,7 +22,7 @@ import {
   type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
-import type { Redactor } from "../../shared/redaction.ts";
+import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 
@@ -127,6 +127,19 @@ export interface TaskSnapshot {
   readonly tasks: readonly BackgroundTask[];
 }
 
+/** The steps of each running turn so far, so a page that missed the events shows the answer again. */
+export interface TurnSnapshot {
+  /** The `seq` of the last event in the steps. The page applies its newer events again (lesson 83). */
+  readonly seq: number;
+  /** The steps are already redacted. */
+  readonly turns: readonly {
+    readonly sessionId: string;
+    readonly steps: readonly TurnStep[];
+    /** The sent text of the block that the engine writes now, or "". An older Eva sends none. */
+    readonly draft?: string;
+  }[];
+}
+
 type EventListener = (event: SessionEvent) => void;
 
 interface PendingBatch {
@@ -173,6 +186,9 @@ export class SessionManager {
    * The engine process ends with the turn. The stream drops each later event.
    */
   private readonly tasks = new Map<string, BackgroundTask>();
+  /** The steps of each running turn, by session id. The record gets them only at the turn end. */
+  private readonly turnSteps = new Map<string, readonly TurnStep[]>();
+  private readonly turnDrafts = new Map<string, string>();
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
@@ -415,8 +431,20 @@ export class SessionManager {
     return { seq: this.sequence.current(), tasks: [...this.tasks.values()] };
   }
 
-  private forgetTasks(sessionId: string): void {
+  /** The steps of the running turns, so a front end that missed the events still shows the answer. */
+  runningTurns(): TurnSnapshot {
+    const turns = [...this.turnSteps].map(([sessionId, steps]) => ({
+      sessionId,
+      steps,
+      draft: this.turnDrafts.get(sessionId) ?? "",
+    }));
+    return { seq: this.sequence.current(), turns };
+  }
+
+  private forgetRunningTurn(sessionId: string): void {
     for (const [key, task] of this.tasks) if (task.sessionId === sessionId) this.tasks.delete(key);
+    this.turnSteps.delete(sessionId);
+    this.turnDrafts.delete(sessionId);
   }
 
   private expireApprovals(sessionId: string): void {
@@ -485,6 +513,8 @@ export class SessionManager {
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
+    const draft = new TextStreamRedactor(this.options.redactor);
+    let blockStarts = false;
 
     const runtime = this.runtimeOf(sessionId);
     const emit = (payload: EngineEventPayload): void => {
@@ -492,8 +522,8 @@ export class SessionManager {
       if (isTurnEnd(payload)) {
         turn.ended = true;
         runtime.turnRunning = false;
-        // Before the event: a front end that reads the tasks after it must not get them back.
-        this.forgetTasks(sessionId);
+        // Before the event: a front end that reads the tasks or steps after it must not get them back.
+        this.forgetRunningTurn(sessionId);
       }
       this.emit(sessionId, payload);
     };
@@ -501,6 +531,7 @@ export class SessionManager {
     const controller = new AbortController();
     runtime.controller = controller;
     runtime.turnRunning = true;
+    this.turnSteps.set(sessionId, steps);
     // A stopped turn waits for no answer any more, so its open questions end now.
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
@@ -541,6 +572,23 @@ ${prompt}`,
       });
       for await (const raw of stream) {
         if (turn.ended) continue;
+        // A piece is live only: the block's final text is what the record keeps.
+        if (raw.kind === "text_delta") {
+          if (raw.startsBlock === true) {
+            draft.reset();
+            blockStarts = true;
+          }
+          const text = draft.push(raw.text);
+          if (text === "") continue;
+          // The first sent piece carries the mark, even when the engine's first piece was held back.
+          // A page that comes back reads the block so far, as the front ends build it from the pieces.
+          this.turnDrafts.set(sessionId, (blockStarts ? "" : (this.turnDrafts.get(sessionId) ?? "")) + text);
+          emit({ kind: "text_delta", text, ...(blockStarts ? { startsBlock: true } : {}) });
+          blockStarts = false;
+          continue;
+        }
+        if (raw.kind === "text") this.turnDrafts.delete(sessionId);
+        // A final text does not reset the stream: the next block can start before it comes.
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
         const payload = redactPayload(raw, this.options.redactor);
         if (payload.kind === "history_lost") {
@@ -563,6 +611,7 @@ ${prompt}`,
           this.tasks.set(`${sessionId}\n${taskId}`, { taskId, sessionId, description, state });
         }
         steps = addStep(steps, payload);
+        this.turnSteps.set(sessionId, steps);
         if (payload.kind === "turn_finished") {
           finished = payload;
           const recorded = {
@@ -599,7 +648,7 @@ ${prompt}`,
       clearTimeout(timeout);
       runtime.controller = null;
       runtime.turnRunning = false;
-      this.forgetTasks(sessionId);
+      this.forgetRunningTurn(sessionId);
     }
     if (finished === null)
       this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
@@ -758,7 +807,9 @@ function redactPayload(
   redactor: Redactor,
 ): EngineEventPayload | CoreEventPayload {
   switch (payload.kind) {
+    // The stream redactor of the turn already redacted the whole block of a text_delta. This pass is cheap.
     case "text":
+    case "text_delta":
     case "notice":
     case "message_received":
       return { ...payload, text: redactor.redact(payload.text) };

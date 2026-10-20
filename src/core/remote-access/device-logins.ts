@@ -67,7 +67,7 @@ interface PendingLogin {
   answer: { readonly state: "allowed"; readonly token: string } | { readonly state: "denied" } | null;
 }
 
-interface StoredDevice {
+export interface StoredDevice {
   readonly hash: string;
   readonly label: string;
   readonly createdAt: string;

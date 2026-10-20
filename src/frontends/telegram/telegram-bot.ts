@@ -88,7 +88,7 @@ const deviceExpiredText = "This request expired.";
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
 
-const commands: readonly { command: string; description: string }[] = [
+export const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this chat everywhere, with its topic" },
   { command: "rename", description: "Rename this chat and its topic: /rename <title>" },
@@ -689,6 +689,9 @@ export class TelegramBot {
   }
 
   private async onEvent(event: SessionEvent): Promise<void> {
+    // Telegram sends finished blocks only. A growing message would hit the edit limits and show
+    // half-written Markdown. A piece must also never release a held block (issue 117).
+    if (event.kind === "text_delta") return;
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));

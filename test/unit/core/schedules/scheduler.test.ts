@@ -259,6 +259,7 @@ describe("Scheduler", () => {
             file: null,
             prompt: "Plan my day.",
             model: null,
+            enabled: true,
           },
           nextRun: "2026-07-01T07:30",
           lastRun: null,
@@ -274,6 +275,129 @@ describe("Scheduler", () => {
     scheduler.save(morning);
     await scheduler.tick();
     expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(2);
+  });
+
+  test("a schedule that is off never fires, and turning it off needs no card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeSchedules([{ ...morning, enabled: false }]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    clock = new Date("2026-07-02T05:30:00Z");
+    await scheduler.tick();
+    expect(events.map((event) => event.kind)).toEqual(["schedule_card"]);
+    expect(scheduler.list().schedules[0]?.nextRun).toBeNull();
+  });
+
+  test("turning a schedule back on needs a new card that names the change (lesson 67)", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    writeSchedules([{ ...morning, enabled: false }]);
+    await scheduler.tick();
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
+    // The card skips the slot that was due when it showed, so nothing runs before the person saw it.
+    expect(events.some((event) => event.kind === "schedule_fired")).toBe(false);
+    clock = new Date("2026-07-02T05:30:00Z");
+    await scheduler.tick();
+    expect(events.at(-1)?.kind).toBe("schedule_fired");
+  });
+
+  test("a card that waits stops waiting when its schedule turns off, and cannot be confirmed", async () => {
+    shows = false;
+    writeSchedules([morning]);
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(scheduler.waitingCards()).toHaveLength(1);
+    const card = scheduler.waitingCards()[0];
+    writeSchedules([{ ...morning, enabled: false }]);
+    await scheduler.tick();
+    expect(scheduler.waitingCards()).toEqual([]);
+    expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
+  });
+
+  test("a pause through setEnabled counts at once, so off and on before a check still needs a card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
+  });
+
+  test("a pause made while a card goes out stays, so on again needs a card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    // A front end that takes long to show the card, such as Telegram opening a topic.
+    scheduler.subscribe(async () => {
+      await slow;
+      return true;
+    });
+    const sending = scheduler.tick();
+    await Bun.sleep(0);
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    release();
+    await sending;
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"], ["enabled"]]);
+  });
+
+  test("off changes the entry that runs, not an invalid one with the same id", () => {
+    writeSchedules([{ ...morning, at: "25:00" }, morning]);
+    const scheduler = createScheduler();
+    expect(scheduler.setEnabled("morning", false)).toBe(true);
+    expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(false);
+  });
+
+  test("a schedule that is off from the start gets a first card when it turns on", async () => {
+    writeSchedules([{ ...morning, enabled: false }]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(events).toEqual([]);
+    writeSchedules([morning]);
+    await scheduler.tick();
+    expect(events.map((event) => (event.kind === "schedule_card" ? event.changed : event.kind))).toEqual([[]]);
+  });
+
+  test("a state file from before the paused field keeps firing with no new card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    await createScheduler().tick();
+    const statePath = join(folder, "state", "schedules-state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as { schedules: Record<string, Record<string, unknown>> };
+    const { paused: _paused, ...old } = state.schedules["morning"] ?? {};
+    writeFileSync(statePath, JSON.stringify({ version: 1, schedules: { morning: old } }));
+    events = [];
+    clock = new Date("2026-07-01T05:30:00Z");
+    await createScheduler().tick();
+    expect(events.map((event) => event.kind)).toEqual(["schedule_fired"]);
+  });
+
+  test("setEnabled writes the vault file, and false means no such schedule", () => {
+    const scheduler = createScheduler();
+    scheduler.save(morning);
+    expect(scheduler.setEnabled("morning", false)).toBe(true);
+    expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(false);
+    expect(scheduler.setEnabled("nobody", true)).toBe(false);
   });
 
   test("a changed schedule that is already due shows its card and does not fire then (lessons 66, 67)", async () => {

@@ -17,6 +17,8 @@ const stateSchema = z.object({
   lastResult: z.object({ slot: z.string(), failed: z.boolean() }).nullable().optional(),
   /** The fields that the last setup card showed. Null: no card yet. */
   announced: z.record(z.string(), z.string()).nullable(),
+  /** True from a pause until the next card. Optional: a state file from before this field reads as not paused. */
+  paused: z.boolean().optional(),
 });
 
 export type ScheduleState = z.infer<typeof stateSchema>;

@@ -227,7 +227,7 @@ describe("ghApiRequest", () => {
 
   test("gh that does not start, or answers with no status, is an error that names gh", async () => {
     const failing: ProcessRunner = { run: () => Promise.reject(new Error("spawn gh ENOENT")) };
-    expect(String(await failure(ghApiRequest(failing, {})("repos/a/b")))).toContain("gh auth login");
+    expect(String(await failure(ghApiRequest(failing, {})("repos/a/b")))).toContain("press Log in with GitHub");
     const loggedOut: ProcessRunner = {
       run: () =>
         Promise.resolve({

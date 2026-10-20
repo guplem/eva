@@ -177,6 +177,14 @@ describe("buildQueryOptions", () => {
   test("a model alias other than default is passed through", () => {
     expect(buildQueryOptions(request({ model: "haiku" }), "c").model).toBe("haiku");
   });
+
+  test("Assistant and Project mode stream the text; a model call has no front end to stream to (issue 117)", () => {
+    expect(buildQueryOptions(request(), "c").includePartialMessages).toBe(true);
+    expect(buildQueryOptions(request({ mode: "project", appendSystemPrompt: null }), "c").includePartialMessages).toBe(
+      true,
+    );
+    expect(buildQueryOptions(request({ mode: "model-call" }), "c").includePartialMessages).toBeUndefined();
+  });
 });
 
 describe("mapSdkMessages", () => {
@@ -410,6 +418,41 @@ describe("mapSdkMessages", () => {
     } as SDKMessage;
     const events = await collect([bash, resultOf("new-turn-with-tool")]);
     expect(events[0]).toMatchObject({ kind: "tool_started", name: "Bash", category: "command", summary: "ls" });
+  });
+
+  /** A partial message as the SDK sends it with includePartialMessages. No capture holds one yet. */
+  function streamLine(event: unknown, parentToolUseId: string | null = null): SDKMessage {
+    return {
+      type: "stream_event",
+      event,
+      parent_tool_use_id: parentToolUseId,
+      uuid: "00000000-0000-4000-8000-000000000001",
+      session_id: "23f67f49-0cd8-446e-bb55-73d761e7c1a3",
+    } as SDKMessage;
+  }
+
+  test("each streamed piece of the main text becomes a text_delta; other stream events are ignored", async () => {
+    const lines = [
+      streamLine({ type: "message_start", message: {} }),
+      streamLine({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } }),
+      streamLine({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
+      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "" } }),
+      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "The first " } }),
+      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "step" } }),
+      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, "toolu_1"),
+      streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "inner" } }, "toolu_1"),
+      // A model call that runs again starts its text block again.
+      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+      streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The first " } }),
+      resultOf("new-turn-with-tool"),
+    ];
+    const events = await collect(lines);
+    expect(events.filter((event) => event.kind === "text_delta")).toEqual([
+      { kind: "text_delta", text: "The first ", startsBlock: true },
+      { kind: "text_delta", text: "step" },
+      { kind: "text_delta", text: "The first ", startsBlock: true },
+    ]);
+    expect(events).toHaveLength(4);
   });
 
   test("text from inside a subagent stays out of the conversation", async () => {

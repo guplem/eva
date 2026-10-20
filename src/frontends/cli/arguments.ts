@@ -78,12 +78,37 @@ Commands:
   help              Show this text
 `;
 
+/**
+ * Each command that a person types, as data. A script or a habit depends on each one, so
+ * `scripts/check-stored-names.ts` fails a branch that removes one without a breaking commit.
+ */
+export const cliCommands: readonly string[] = [
+  "setup",
+  "doctor",
+  "status",
+  "chat",
+  "projects",
+  "work",
+  "service install",
+  "supervise",
+  "update",
+  "sync",
+  "hub",
+  "link",
+  "settings",
+  "settings get",
+  "settings set",
+  "devices allow",
+  "version",
+  "help",
+];
+
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const engines: readonly EngineName[] = ["claude-code", "pi"];
 /** Options that take no value. */
-const switches: readonly string[] = ["--non-interactive", "--check"];
+export const switches: readonly string[] = ["--non-interactive", "--check"];
 /** Options that take a value. */
-const valueOptions: readonly string[] = ["--instance", "--project", "--clone", "--model", "--engine"];
+export const valueOptions: readonly string[] = ["--instance", "--project", "--clone", "--model", "--engine"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];

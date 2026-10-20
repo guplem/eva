@@ -28,6 +28,13 @@ describe("googleSetupSteps", () => {
     expect(consent?.text).toContain("In production");
     expect(client?.text).toContain("Desktop app");
   });
+
+  test("only the login step warns that Google's page ends on an error page", () => {
+    const steps = googleSetupSteps(["calendar"]);
+    expect(steps.map((step) => step.warning !== undefined)).toEqual([false, false, false, true]);
+    expect(steps[3]?.warning).toContain("error page");
+    expect(steps[3]?.warning).toContain("paste it below");
+  });
 });
 
 describe("the Google steps in docs/guide/reference.md", () => {

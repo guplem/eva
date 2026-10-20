@@ -18,7 +18,7 @@ import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
-import type { PendingApproval, TaskSnapshot } from "../../../core/sessions/session-manager.ts";
+import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
@@ -148,6 +148,7 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
   backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks"),
+  runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns"),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
@@ -218,6 +219,8 @@ export const api = {
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
+  setScheduleEnabled: (scheduleId: string, enabled: boolean): Promise<void> =>
+    request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
   scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards"),

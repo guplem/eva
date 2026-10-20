@@ -16,7 +16,7 @@ import { Icon } from "./icons.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
-import { countOf, projectSummary, statusPill } from "./project-format.ts";
+import { countOf, projectSummary, shownTags, statusPill, tagsByUse } from "./project-format.ts";
 import { ListSkeleton } from "./Loading.tsx";
 
 interface ProjectViewProps {
@@ -52,6 +52,9 @@ const statusChips = [
   { value: "closed", text: "Closed" },
 ] as const;
 
+/** About three rows of tag chips on a phone. */
+const shortTagListLength = 6;
+
 /** What the main column shows. No page means the list is the page on a phone. */
 type Page =
   | { readonly kind: "project" | "details" | "setup"; readonly project: Project }
@@ -75,6 +78,8 @@ export function ProjectView({
   const [status, setStatus] = useState("active");
   const [tag, setTag] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const tagChips = shownTags(allTags, tag, tagsOpen, shortTagListLength);
   /**
    * Null until the first read, so the list never says "No project matches." too early. "failed"
    * when the first read failed: no list is known, and a later failure keeps the list it has.
@@ -109,7 +114,7 @@ export function ProjectView({
 
   // The tags come from every project, so a tag of a closed project is offered too.
   useEffect(() => {
-    api.projects("", "").then((all) => setAllTags(tagsOf(all)), showError);
+    api.projects("", "").then((all) => setAllTags(tagsByUse(all)), showError);
   }, [listVersion, showError]);
 
   const openProjectId = page?.project.id ?? null;
@@ -277,7 +282,7 @@ export function ProjectView({
         </div>
         {allTags.length > 0 && (
           <div className="filter-chips" role="group" aria-label="Tag">
-            {allTags.map((candidate) => (
+            {tagChips.shown.map((candidate) => (
               <button
                 key={candidate}
                 className="filter-chip"
@@ -287,6 +292,11 @@ export function ProjectView({
                 #{candidate}
               </button>
             ))}
+            {(tagsOpen || tagChips.hidden > 0) && (
+              <button className="filter-chip more" aria-expanded={tagsOpen} onClick={() => setTagsOpen(!tagsOpen)}>
+                {tagsOpen ? "Fewer tags" : `+${tagChips.hidden} more`}
+              </button>
+            )}
           </div>
         )}
         {projects === null && <ListSkeleton label="Loading the projects…" rows={4} />}
@@ -417,13 +427,6 @@ export function ProjectView({
       {/* The inspector is about one chat, so a project page has none. */}
       {chat !== undefined && <ChatPanel {...chatDetails} />}
     </div>
-  );
-}
-
-/** Every tag of these projects once, in alphabetical order. The filter ignores case, so the list does too. */
-function tagsOf(projects: readonly Project[]): string[] {
-  return [...new Set(projects.flatMap((project) => project.frontMatter.tags.map((tag) => tag.toLowerCase())))].sort(
-    (first, second) => first.localeCompare(second),
   );
 }
 

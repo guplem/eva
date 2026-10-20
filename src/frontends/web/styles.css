@@ -2604,6 +2604,12 @@ button.small {
   font-weight: 600;
 }
 
+/* The toggle that opens a long tag list: an action, so it has no fill like a tag. */
+.filter-chip.more {
+  background: transparent;
+  color: var(--accent-ink);
+}
+
 .filter-chip[aria-pressed="true"] {
   background: var(--accent);
   color: var(--on-accent);

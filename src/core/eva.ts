@@ -766,7 +766,8 @@ export class Eva {
 
   createAssistantSession(input: NewChatInput): SessionRecord {
     const vaultPath = this.options.config.vaultPath;
-    if (vaultPath === null) throw new EvaError("vault_not_found", "No vault is configured. Run `eva setup`.");
+    if (vaultPath === null)
+      throw new EvaError("vault_not_found", "Eva needs your vault. Finish the setup in Settings, on Eva's page.");
     return this.sessions.createSession({
       mode: "assistant",
       engine: input.engine ?? this.options.config.engines.default,

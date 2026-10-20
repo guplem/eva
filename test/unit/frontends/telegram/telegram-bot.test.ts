@@ -2068,6 +2068,17 @@ describe("schedules (lessons 66, 70, 126)", () => {
     expect(telegram.callsTo("deleteForumTopic")).toEqual([]);
   });
 
+  test("a schedule turned back on gets a card that says so (#188)", async () => {
+    writeSchedules([morning]);
+    createBot();
+    await eva.schedules?.tick();
+    writeSchedules([{ ...morning, enabled: false }]);
+    await eva.schedules?.tick();
+    writeSchedules([morning]);
+    await eva.schedules?.tick();
+    expect(telegram.sentTexts().at(-1)).toStartWith("Schedule turned on: Morning");
+  });
+
   test("a schedule file sends its file; a changed schedule names the change", async () => {
     sandbox.write(vault(), "Methods/List.md", "- milk\n");
     writeSchedules([{ id: "list", name: "List", at: "10:45", file: "Methods/List.md" }]);

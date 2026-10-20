@@ -3,6 +3,8 @@
  * of the layers. A test checks each token, class and folder here against the code, so the page
  * never names a part that is gone.
  */
+import type { IconName } from "./icons.tsx";
+import type { VisorSize } from "./visor-faces.ts";
 
 export interface ColourToken {
   readonly name: string;
@@ -168,18 +170,81 @@ export const componentSamples: readonly ComponentSample[] = [
   {
     id: "visor",
     title: "EVE's visor",
-    classes: ["mk"],
+    classes: ["mk", "s", "l", "xl"],
     part: "Visor",
-    use: "EVE's face. Each state of Eva has one expression.",
+    use: "EVE's face. Each state of Eva has one expression. The white shell ring marks a large visor that stands alone on a page.",
   },
   {
     id: "icons",
     title: "Icons",
     classes: ["icon"],
     part: "Icon",
-    use: "Line icons in the colour of the text. Take each one from client/icons.tsx.",
+    use: "Eva's own line icons, in the colour of the text. Take each one from client/icons.tsx, for the use that it shows.",
   },
 ];
+
+export interface VisorSizeUse {
+  readonly size: VisorSize;
+  /** Large visors stand alone, so a white ring lifts them off the page. Small ones sit in a line of text. */
+  readonly shell: boolean;
+  readonly use: string;
+}
+
+export const visorSizes: readonly VisorSizeUse[] = [
+  { size: 28, shell: false, use: "Next to a message or a dialog title" },
+  { size: 36, shell: false, use: "Nav rail, a card or a notice" },
+  { size: 76, shell: true, use: "An empty page or a page-wide notice" },
+  { size: 128, shell: true, use: "Login and the new chat greeting" },
+];
+
+/** What each icon means, so one icon keeps one meaning on every page. */
+export const iconUses: Readonly<Record<IconName, string>> = {
+  chat: "A chat, assistant mode",
+  folder: "The vault, a folder",
+  clock: "A time, a schedule",
+  gear: "Settings",
+  plus: "Add, new chat",
+  search: "Search",
+  send: "Send a message",
+  clip: "Attach a file",
+  check: "Done, setup",
+  x: "Close, remove",
+  file: "A file, a note",
+  pen: "Edit, rename",
+  term: "Project mode, an engine",
+  fork: "Fork a chat",
+  branch: "A git branch",
+  sync: "Vault sync",
+  more: "More actions",
+  menu: "Open the menu",
+  back: "Go back, open (flipped)",
+  bolt: "Developer tools",
+  shield: "Permissions, security",
+  phone: "A phone, remote access",
+  laptop: "A computer, a device",
+  alert: "A problem",
+  "wifi-off": "No connection",
+  download: "Updates, download",
+  copy: "Copy",
+  sun: "Light theme",
+  moon: "Dark theme",
+  bell: "Notifications",
+  globe: "Connections, the web",
+  key: "A token, a login",
+  calendar: "A day, a date",
+  down: "Open a list",
+  restart: "Restart Eva",
+  palette: "Personalize, colours",
+  trash: "Delete for good",
+  info: "More information",
+  lock: "Private, locked",
+  eye: "Show a secret",
+  external: "Opens another site",
+  play: "Run now",
+  stop: "Stop a turn",
+  user: "The person, an account",
+  home: "Home page",
+};
 
 export interface ArchitectureLayer {
   readonly title: string;

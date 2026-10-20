@@ -172,7 +172,18 @@ All of them are in `reference.html`. The class names there are short; pick clear
 | Toggle            | `.tog`                                               |                                                                                                                           |
 | Diff              | `.diff`                                              | Added lines on `--ok-bg`, removed lines on `--bad-bg`.                                                                    |
 
-Icons are simple line icons on a 24 px grid, 1.8 px stroke, round caps. They replace the emoji that the web client uses today.
+Icons are simple line icons on a 24 px grid, 1.8 px stroke, round caps. They replace the emoji that the web client uses today. Eva draws her own icons: they come from no icon library. The design reference page of the web app (Settings, Developer) shows each icon with its use. Give each icon one meaning on every page.
+
+The visor has four sizes. A large visor stands alone on a page, so a white shell ring lifts it off the background. A small visor sits next to text, so it has no ring.
+
+| Size   | Class  | Shell ring | Use                                 |
+| ------ | ------ | ---------- | ----------------------------------- |
+| 28 px  | `s`    | No         | Next to a message or a dialog title |
+| 36 px  | (none) | No         | Nav rail, a card or a notice        |
+| 76 px  | `l`    | Yes        | An empty page or a page-wide notice |
+| 128 px | `xl`   | Yes        | Login and the new chat greeting     |
+
+The favicon and the app icons in `src/frontends/web/icons/` draw the visor in EVE blue. [`eva.svg`](eva.svg) is the animated face of the README.
 
 ## EVE's expressions
 

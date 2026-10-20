@@ -8,7 +8,9 @@ import {
   architectureLayers,
   colourGroups,
   componentSamples,
+  iconUses,
   messageFlow,
+  visorSizes,
   type ComponentId,
 } from "./design-reference.ts";
 import { Icon, iconNames } from "./icons.tsx";
@@ -205,12 +207,17 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
     case "visor":
       return (
         <div className="design-stack">
-          <div className="button-row">
-            <Visor size={28} />
-            <Visor size={36} />
-            <Visor size={76} />
-            <Visor size={128} />
-          </div>
+          <ul className="design-visor-sizes">
+            {visorSizes.map((entry) => (
+              <li key={entry.size}>
+                <Visor size={entry.size} />
+                <code>
+                  {entry.size} px{entry.shell ? ", shell" : ""}
+                </code>
+                <span className="field-hint">{entry.use}</span>
+              </li>
+            ))}
+          </ul>
           <ul className="design-icons">
             {faces.map((face) => (
               <li key={face}>
@@ -228,6 +235,7 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
             <li key={name}>
               <Icon name={name} />
               <code>{name}</code>
+              <span className="field-hint">{iconUses[name]}</span>
             </li>
           ))}
         </ul>

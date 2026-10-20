@@ -401,6 +401,23 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
   );
 });
 
+test("the answer shows its words while the engine writes them, then the whole text (issue 117)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("stream it");
+  await composer.press("Enter");
+  const answer = page.locator(".msg:has(.working)");
+  await expect(answer).toContainText("Streaming the words of this answer");
+  await expect(answer).not.toContainText("to end it.");
+  await page
+    .getByRole("region", { name: "Eva asks for permission" })
+    .getByRole("button", { name: "Allow once" })
+    .click();
+  await expect(page.locator(".msg", { hasText: "More words to end it." })).toBeVisible();
+  await expect(answer).toHaveCount(0);
+});
+
 test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

@@ -215,7 +215,7 @@ function EvaApp(): ReactElement {
   const lastRecovery = useRef(0);
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
-   * waits, with no event here. Read the state again, with the steps of the running turns, so
+   * waits, with no event here. Read the state again, with the steps and drafts of the running turns, so
    * the answer that the person already read stays (#118).
    * A note goes: a lost event can hide the turn start that clears it.
    */

@@ -674,6 +674,7 @@ describe("routes", () => {
         {
           sessionId: session.id,
           steps: [{ kind: "message", text: "First block.", isError: false, id: "m1" }],
+          draft: "",
         },
       ]);
     } finally {

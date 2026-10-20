@@ -122,6 +122,13 @@ export function TelegramCard({ context }: { readonly context: SettingsContext })
         <li>Pick a name for your bot. BotFather answers with a token. Copy it.</li>
         <li>Paste the token here, press Save, then press Restart Eva.</li>
         <li>Send the pairing code below to your bot, so that it talks only to you.</li>
+        <li>
+          Optional: give your bot Eva's face. Save{" "}
+          <a href="/icon-512.png" download="eva.png">
+            this picture
+          </a>
+          , send <code>/setuserpic</code> to BotFather, pick your bot and send the picture.
+        </li>
       </Steps>
       <SecretField
         name="telegramBotToken"

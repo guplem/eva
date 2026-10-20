@@ -7,6 +7,7 @@ import { useState, type ReactElement } from "react";
 import { githubLoginAccess } from "../../../core/vault/github-login.ts";
 import { api, ApiError } from "./api.ts";
 import { CommandLine, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
+import { restartNote } from "./notes.ts";
 
 /** The pause before the page asks again after a lost answer. */
 const retryPauseMs = 3000;
@@ -24,7 +25,7 @@ export function GitHubLogin({ context }: { readonly context: SettingsContext }):
       setShown(await api.startGitHubLogin());
       await waitForTheEnd();
       context.reloadSettings();
-      context.noteAndReload("Logged in to GitHub. Press Restart Eva to use the login in chats and sync.");
+      context.noteAndReload(restartNote("Logged in to GitHub. Press Restart Eva to use the login in chats and sync."));
     } catch (error) {
       // Eva may have saved the token before the error, as when she restarts: the card shows it.
       context.reloadSettings();

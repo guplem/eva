@@ -887,7 +887,13 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
   await expect(field).toHaveValue("");
-  await expect(page.getByRole("status").filter({ hasText: "Restart Eva" })).toBeVisible();
+  const notice = page.getByRole("status").filter({ hasText: "Restart Eva" });
+  await expect(notice).toBeVisible();
+  // The note asks for a restart, so one tap on it opens the restart question.
+  await notice.getByRole("button", { name: "Restart Eva" }).click();
+  const question = page.getByRole("alertdialog", { name: "Restart Eva" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Cancel" }).click();
   await page.reload();
   await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
   expect(await page.content()).not.toContain("e2e-example-token");

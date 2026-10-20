@@ -1,6 +1,7 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement } from "react";
 import { api, type PublicSettings } from "./api.ts";
+import { restartNote } from "./notes.ts";
 import {
   Card,
   CheckRow,
@@ -149,7 +150,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
       await api.finishClaudeLogin(code);
       setCode("");
       setLoginUrl(null);
-      context.noteAndReload("Logged in to Claude. Press Restart Eva so that chats use the new login.");
+      context.noteAndReload(restartNote("Logged in to Claude. Press Restart Eva so that chats use the new login."));
       // The setup steps reload above; the settings hold the "Saved" state of the token field.
       context.reloadSettings();
     } catch (error) {

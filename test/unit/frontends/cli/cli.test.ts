@@ -1878,6 +1878,7 @@ describe("describeStatusLines", () => {
     machine: "server",
     hub: "server",
     vaultSync: { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] },
+    vaultAutoSync: true,
     sessionCount: 2,
     busySessionIds: [],
     lastTurn: null,
@@ -1905,6 +1906,16 @@ describe("describeStatusLines", () => {
     expect(lines[0]).toBe("All good");
     expect(lines).toContain("Setup: 2 steps left. Open Settings on Eva's page to see them.");
     expect(describeStatusLines(status).join("\n")).not.toContain("Setup:");
+  });
+
+  test("says that the automatic sync is off, and how to send the notes (#215)", () => {
+    const off = "Automatic sync is off. Send /sync, or run eva sync, to send the notes.";
+    const lines = describeStatusLines({ ...status, vaultAutoSync: false });
+    expect(lines[0]).toBe("All good");
+    expect(lines[lines.indexOf("Vault sync: ok") + 1]).toBe(off);
+    expect(describeStatusLines(status)).not.toContain(off);
+    // With no vault there is nothing to sync.
+    expect(describeStatusLines({ ...status, vaultPath: null, vaultAutoSync: false })).not.toContain(off);
   });
 });
 

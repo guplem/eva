@@ -11,6 +11,8 @@ export interface FakeHost extends CliHost {
   readonly stopHandlers: (() => void)[];
   /** The commands that the runner got. */
   readonly commands: string[][];
+  /** Each question that a prompt asked, in order. */
+  readonly questions: string[];
 }
 
 /** Answers each command with `answer`, or with exit code 0 and no output. */
@@ -31,6 +33,7 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
   const errors: string[] = [];
   const stopHandlers: (() => void)[] = [];
   const commands: string[][] = [];
+  const questions: string[] = [];
   return {
     environment: gitEnvironment,
     platform: "linux",
@@ -44,7 +47,11 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
     write: (text) => output.push(text),
     writeError: (text) => errors.push(text),
     interactive: false,
-    withPrompt: (work) => work(() => Promise.resolve(answers.shift() ?? "")),
+    withPrompt: (work) =>
+      work((question) => {
+        questions.push(question);
+        return Promise.resolve(answers.shift() ?? "");
+      }),
     sleep: () => Promise.resolve(),
     standalone: false,
     execPath: "/usr/bin/bun",
@@ -58,5 +65,6 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
     errors,
     stopHandlers,
     commands,
+    questions,
   };
 }

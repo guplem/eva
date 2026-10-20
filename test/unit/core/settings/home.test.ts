@@ -12,6 +12,7 @@ import {
   instanceHome,
   instanceNameOf,
   instanceNameProblem,
+  suggestedInstanceName,
   instancesFolder,
   listInstances,
   loadConfig,
@@ -151,6 +152,15 @@ describe("instances", () => {
     for (const name of ["eva", "ana-2", "x"]) expect(instanceNameProblem(name)).toBeNull();
     for (const name of ["", "Ana", "ana bob", "-ana", "ana-", "a--b", "a/b", "x".repeat(33)])
       expect(instanceNameProblem(name)).not.toBeNull();
+  });
+
+  test("the suggested name is the computer user's name, made valid, and free", () => {
+    expect(suggestedInstanceName("guplem", [])).toBe("guplem");
+    expect(suggestedInstanceName("Guillem Poy", [])).toBe("guillem-poy");
+    expect(suggestedInstanceName("guplem", ["guplem", "guplem-1"])).toBe("guplem-2");
+    expect(suggestedInstanceName("", [])).toBe("eva");
+    expect(suggestedInstanceName("___", ["eva"])).toBe("eva-1");
+    expect(instanceNameProblem(suggestedInstanceName("x".repeat(40), []))).toBeNull();
   });
 
   test("the list holds each eva-<name> folder with a config, sorted", () => {

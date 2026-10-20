@@ -13,6 +13,12 @@ description: Implement a GitHub issue from plan to merged PR, with sub-agents to
 
 Add the `auto-developing` label to the issue, and assign yourself. Do the same for the PR when you open it.
 
+## Branches
+
+- Do the work on a new branch from the default branch. Name it `<issue-number>-<short-name>`, such as `42-fix-login`.
+- Push the captures to a second branch: `<issue-number>-<short-name>-captures`.
+- Create and push both branches without asking. They replace a branch name that your tool gives you.
+
 ## Steps
 
 1. **Understand the motivation.** Find why the reporter wants the change, and where it fits in the project goals and the architecture.
@@ -30,6 +36,6 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 ## Before and after captures
 
 - Capture each changed screen on `origin/main` and on the PR branch. If the repository has a way to take captures, use it. Capture only example data, never a person's real data.
-- GitHub cannot attach a file to a PR description through its API. So push the images to a branch of their own, open a PR from it, and close that PR at once. Never merge it.
+- GitHub cannot attach a file to a PR description through its API. So push the images to the captures branch, open a PR from it, and close that PR at once. Never merge it.
 - Link each image by its commit: `https://github.com/<owner>/<repo>/blob/<sha>/<path>?raw=true`. A closed PR keeps its commits, so the links keep working.
 - Show the images in a "Before and after" table in the PR description.

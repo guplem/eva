@@ -73,7 +73,7 @@ function VersionsCard(): ReactElement {
           <dd>{versions.eva}</dd>
           {versions.tools.map((tool) => (
             <Fragment key={tool.program}>
-              <dt title={`For ${tool.feature}`}>{tool.program}</dt>
+              <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
               <dd>{tool.version ?? "Not installed"}</dd>
             </Fragment>
           ))}

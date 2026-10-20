@@ -23,6 +23,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/frontends/web/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXOpeningElement[name.name=/^[a-z]/] > JSXAttribute[name.name='title']",
+          message:
+            "Use data-tooltip: the browser draws a title in its own box, outside the EVE theme (client/Tooltip.tsx).",
+        },
+      ],
+    },
+  },
+  {
     files: ["test/**/*.ts", "scripts/**/*.ts"],
     rules: {
       "no-console": "off",

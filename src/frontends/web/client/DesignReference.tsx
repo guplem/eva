@@ -199,6 +199,15 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
           <ProgressBar label="Looking for a new version…" />
         </div>
       );
+    case "tooltip":
+      return (
+        <div className="button-row">
+          <button className="icon-button" aria-label="More actions" data-tooltip="More actions">
+            <Icon name="more" />
+          </button>
+          <span data-tooltip="A hint can also sit on plain text.">Rest the pointer here</span>
+        </div>
+      );
     case "skeletons":
       return (
         <div className="design-stack">

@@ -66,14 +66,14 @@ export function Composer({ session, running, onSend, onStop, onChanged, blocker 
           <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />
           {showStop ? (
-            <button className="send stop" aria-label="Stop" title="Stop" onClick={onStop}>
+            <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
               <Icon name="x" />
             </button>
           ) : (
             <button
               className="send"
               aria-label="Send"
-              title="Send"
+              data-tooltip="Send"
               disabled={sending || text.trim() === "" || block !== null}
               onClick={() => void send()}
             >
@@ -161,7 +161,7 @@ function EngineChip({
         className={`chip${lock === null ? "" : " fixed"}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title={lock ?? "Pick the engine and the model"}
+        data-tooltip={lock ?? "Pick the engine and the model"}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="bolt" />

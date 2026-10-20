@@ -82,6 +82,7 @@ export type ComponentId =
   | "guide-steps"
   | "section-card"
   | "progress"
+  | "tooltip"
   | "skeletons"
   | "visor"
   | "icons";
@@ -175,6 +176,13 @@ export const componentSamples: readonly ComponentSample[] = [
     classes: ["progress", "progress-track", "running", "progress-fill"],
     part: "ProgressBar",
     use: "A wait inside a card, with its sentence. A known share fills the bar and shows the percentage. An unknown share runs lines across it.",
+  },
+  {
+    id: "tooltip",
+    title: "Tooltip",
+    classes: ["tooltip"],
+    part: "TooltipLayer",
+    use: "A short hint over an element. Give the element a data-tooltip attribute, never a title. A pointer that rests on it, or the keyboard focus, shows it.",
   },
   {
     id: "skeletons",

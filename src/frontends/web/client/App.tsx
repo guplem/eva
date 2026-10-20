@@ -36,6 +36,7 @@ import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
+import { TooltipLayer } from "./Tooltip.tsx";
 import { AppSkeleton } from "./Loading.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
@@ -49,6 +50,7 @@ export function App(): ReactElement {
   return (
     <ErrorToastProvider>
       <EvaApp />
+      <TooltipLayer />
     </ErrorToastProvider>
   );
 }

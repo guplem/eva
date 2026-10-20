@@ -96,6 +96,7 @@ function makeLogin(
       return terminal;
     },
     waitMs: 500,
+    enterPauseMs: 1,
     ...overrides,
   });
   return { login, terminals };
@@ -108,7 +109,8 @@ function showAddress(terminal: FakeTerminal): void {
 const happyScript: Parameters<typeof fakeTerminal>[2] = {
   onStart: showAddress,
   onWrite: (terminal, text) => {
-    if (text.endsWith("\r")) {
+    // claude 2.1 reads a long write as a paste: an Enter inside it becomes a line break, not a submit.
+    if (text === "\r") {
       printAll(terminal, tokenScreen);
       terminal.exit(0);
     }
@@ -130,7 +132,8 @@ describe("ClaudeLogin", () => {
     expect(terminal?.command).toEqual(["/opt/example/claude", "setup-token"]);
     expect(terminal?.options.environment).toEqual({ CLAUDE_CONFIG_DIR: "/tmp/example-eva/engines/claude" });
     expect(await login.finish("  example-code#example-state \n")).toEqual({ token });
-    expect(terminal?.written.join("")).toBe("example-code#example-state\r");
+    // The Enter key goes alone, after a pause: in one write with the code, claude reads it as a paste.
+    expect(terminal?.written).toEqual(["example-code#example-state", "\r"]);
   });
 
   test("says so when no claude program is on this machine", async () => {

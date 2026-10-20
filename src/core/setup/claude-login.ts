@@ -16,11 +16,19 @@ export interface ClaudeLoginOptions {
   readonly environment: () => Record<string, string>;
   /** The longest wait for the address, and for the token after the code. */
   readonly waitMs?: number;
+  /** The pause between the code and the Enter key. */
+  readonly enterPauseMs?: number;
 }
 
 /** Time to open Claude's page, log in and paste the code. */
 const lifetimeMs = 15 * 60_000;
 const defaultWaitMs = 60_000;
+/**
+ * claude 2.1 reads a long write as a paste, and an Enter inside a paste becomes a line break.
+ * Then claude waits with the code in its field, and never sends it. A pause before the Enter
+ * makes it a separate key press.
+ */
+const defaultEnterPauseMs = 500;
 const codeLimit = 2_000;
 /** A token is whole only when a character that no token holds follows it: output comes in pieces. */
 const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}(?=[^0-9A-Za-z_-])/;
@@ -98,7 +106,10 @@ export class ClaudeLogin {
     this.waitsForCode = false;
     // The screen before the code holds no token and no refusal, so only the new output counts.
     const from = terminal.received();
-    terminal.write(`${code}\r`);
+    terminal.write(code);
+    await Bun.sleep(this.options.enterPauseMs ?? defaultEnterPauseMs);
+    // A stop or a new start during the pause ended this login: the wait below reads its end.
+    if (this.current === terminal) terminal.write("\r");
     const result = await this.waitFor(
       terminal,
       (screen, exited) =>

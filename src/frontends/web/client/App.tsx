@@ -9,9 +9,12 @@ import {
   subscribeToEvents,
   type DeviceLoginEvent,
   type DeviceLoginRequest,
+  type EvaStatus,
+  type EventSubscription,
   type PendingApproval,
   type ScheduleCard,
   type SessionEvent,
+  type VaultSyncState,
   type ListedSession,
 } from "./api.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
@@ -23,6 +26,9 @@ import { LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
+import { NoteConflicts } from "./NoteConflicts.tsx";
+import type { ProblemAction } from "./problem-actions.ts";
+import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
@@ -58,7 +64,10 @@ function EvaApp(): ReactElement {
   const [allowedDevice, setAllowedDevice] = useState<DeviceLoginRequest | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
-  const [problems, setProblems] = useState<readonly string[]>([]);
+  const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
+  const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
+  const [conflictsOpen, setConflictsOpen] = useState(false);
+  const events = useRef<EventSubscription | null>(null);
   const [setupMissing, setSetupMissing] = useState(0);
   const [cards, setCards] = useState<ScheduleCard[]>([]);
   const [linkedChatId, setLinkedChatId] = useState(() => linkedChatIdOf(window.location.hash));
@@ -108,7 +117,9 @@ function EvaApp(): ReactElement {
   const refreshProblems = useCallback(async (): Promise<void> => {
     try {
       const status = await api.status();
-      setProblems(status.problems);
+      // An older Eva sends only the texts: show nothing rather than break the page.
+      setProblems((status as Partial<EvaStatus>).problemDetails ?? []);
+      setSyncState(status.vaultSync);
       setSetupMissing(status.setupMissing);
     } catch {
       // The next poll or the next reconnect tries again.
@@ -160,6 +171,29 @@ function EvaApp(): ReactElement {
       onLinkedChatOpened();
     })();
   }, [linkIsMissing, linkedChatId, showError, onLinkedChatOpened]);
+
+  // The conflict can end elsewhere, such as with a pick from Telegram: the dialog then has nothing to show.
+  const syncStatus = syncState?.status;
+  useEffect(() => {
+    // Not on "offline": a failed pull leaves the conflict open, and the picks still work.
+    if (syncStatus === "ok") setConflictsOpen(false);
+  }, [syncStatus]);
+
+  const hasDialogOnTop = deviceRequests.length > 0;
+  useEffect(() => {
+    if (!conflictsOpen) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      // A device request shows on top, and Escape must not close the dialog under it.
+      if (event.key === "Escape" && !hasDialogOnTop) setConflictsOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [conflictsOpen, hasDialogOnTop]);
+
+  // Another page has its own content: the dialog must not stay over it.
+  useEffect(() => {
+    setConflictsOpen(false);
+  }, [screen]);
 
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
@@ -213,7 +247,7 @@ function EvaApp(): ReactElement {
       // so ask over HTTP: a 401 there shows the login page and ends the retries.
       else void refreshSessions();
     };
-    return subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
+    const subscription = subscribeToEvents((event: SessionEvent | ScheduleCard | DeviceLoginEvent) => {
       if (event.kind === "device_login_request") {
         setDeviceRequests((current) => [...current.filter((entry) => entry.id !== event.request.id), event.request]);
         return;
@@ -253,6 +287,11 @@ function EvaApp(): ReactElement {
         void refreshSessions();
       }
     }, onConnectionChange);
+    events.current = subscription;
+    return () => {
+      subscription.close();
+      events.current = null;
+    };
   }, [authenticated, refreshSessions, recover]);
 
   useEffect(() => {
@@ -317,6 +356,26 @@ function EvaApp(): ReactElement {
   };
   const card = cards[0];
 
+  const runProblemAction = (action: ProblemAction): void => {
+    if (action === "pick_version") setConflictsOpen(true);
+    else openDestination(action === "open_schedules" ? "schedules" : "settings");
+  };
+  const notices = (
+    <ProblemNotices
+      isConnected={isConnected}
+      problems={problems}
+      syncStatus={syncState?.status ?? "ok"}
+      openPage={screen === "settings" || screen === "schedules" ? screen : null}
+      onRetryNow={() => events.current?.retryNow()}
+      onAction={runProblemAction}
+    />
+  );
+  /** A pick changes the sync state, and the problem list follows. The dialog closes with the conflict. */
+  const onConflictState = (state: VaultSyncState): void => {
+    setSyncState(state);
+    void refreshProblems();
+  };
+
   return (
     <div className="app">
       {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
@@ -328,22 +387,9 @@ function EvaApp(): ReactElement {
         isConnected={isConnected}
       />
       <div className="app-body">
-        {problems.length > 0 && (
-          <section className="problem-banner" aria-label="Problems">
-            <strong>{problems.length === 1 ? "1 problem" : `${String(problems.length)} problems`}</strong>
-            <ul>
-              {problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {/* The chat views put the notices in their main area, beside the list. */}
+        {(screen === "settings" || screen === "schedules") && notices}
         <ApprovalNotice entries={elsewhere} />
-        {!isConnected && (
-          <div className="connection-banner" role="status">
-            Reconnecting…
-          </div>
-        )}
         {screen === "chats" && (
           <AssistantView
             sessions={sessions}
@@ -354,6 +400,7 @@ function EvaApp(): ReactElement {
             onNavigate={() => setSidebarOpen(false)}
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
+            notices={notices}
             approvals={chatApprovals}
           />
         )}
@@ -367,6 +414,7 @@ function EvaApp(): ReactElement {
             onLinkedChatOpened={onLinkedChatOpened}
             onChanged={refreshSessions}
             onNavigate={() => setSidebarOpen(false)}
+            notices={notices}
             approvals={chatApprovals}
           />
         )}
@@ -375,6 +423,17 @@ function EvaApp(): ReactElement {
         )}
         {screen === "schedules" && <SchedulesView />}
       </div>
+      {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
+      {conflictsOpen && syncState !== null && (
+        <div className="dialog-backdrop">
+          <div className="dialog wide" role="dialog" aria-modal="true" aria-label="Note conflicts">
+            <NoteConflicts state={syncState} onState={onConflictState} />
+            <div className="message-actions">
+              <button onClick={() => setConflictsOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
       {deviceRequest !== undefined && (
         <NewDeviceDialog
           request={deviceRequest}

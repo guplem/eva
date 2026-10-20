@@ -71,6 +71,8 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
     setSyncing(true);
     try {
       setSyncState(await api.syncVault());
+      // A sync can end a problem, and the notice at the top must follow.
+      context.reloadSetup();
     } catch (error) {
       context.notify(errorText(error));
     } finally {
@@ -89,7 +91,15 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
 
   return (
     <Card item="vault-sync" title="Sync" description="Eva saves your notes and fetches the changes of other machines.">
-      {shown !== null && <VaultSyncView state={shown} onState={setSyncState} />}
+      {shown !== null && (
+        <VaultSyncView
+          state={shown}
+          onState={(state) => {
+            setSyncState(state);
+            context.reloadSetup();
+          }}
+        />
+      )}
       <div className="inline-form">
         <label className="field grow">
           <span className="field-label">Fetch the vault&apos;s changes</span>

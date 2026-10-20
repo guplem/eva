@@ -405,28 +405,81 @@ textarea {
   box-shadow: 0 0 0 4px var(--warn-bg);
 }
 
-.problem-banner {
-  padding: 6px 16px;
-  font-size: 13px;
-  background: var(--panel);
-  color: var(--bad);
-  border-bottom: 1px solid var(--bad);
+/* Offline and the open problems, at the top of the main area. Each says what happened and has the fix. */
+/* The notices come under the page title, which each view renders in its own branch. */
+.main > * {
+  order: 2;
+}
+
+.main > .main-header {
+  order: 0;
+}
+
+.main > .notices {
+  order: 1;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.notice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  border-radius: 18px;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  background: var(--warn-bg);
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
-.problem-banner ul {
-  margin: 2px 0 0;
-  padding-left: 18px;
-  color: var(--ink);
+.notice > .icon {
+  flex: none;
+  color: var(--warn);
 }
 
-.connection-banner {
-  padding: 4px 16px;
-  font-size: 13px;
-  text-align: center;
-  background: var(--chip);
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
+.notice.bad {
+  background: var(--bad-bg);
+}
+
+.notice.bad > .icon {
+  color: var(--bad);
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice > button {
+  flex: none;
+  font-size: var(--text-sm);
+}
+
+.problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.offline-note,
+.conflict-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.offline-note {
+  padding: var(--space-1) var(--space-1) 0 var(--space-2);
+}
+
+.narrow-only {
+  display: none;
 }
 
 /* The list (300 px), the main area, and the inspector, as in the EVE layout. */
@@ -1095,26 +1148,118 @@ textarea {
   opacity: 0.5;
 }
 
+/* The toast swaps the page colours, so it stands out from any page under it. */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom));
+  bottom: max(26px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: min(480px, calc(100vw - 32px));
+  width: max-content;
+  max-width: calc(100vw - 32px);
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--bad);
-  background: var(--panel);
-  color: var(--bad);
-  box-shadow: var(--shadow);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  box-shadow: 0 16px 40px -12px oklch(0.1 0.03 var(--h) / 0.5);
+}
+
+.toast > .icon {
+  flex: none;
 }
 
 .toast span {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast button {
+  flex: none;
+  font-size: var(--text-sm);
+}
+
+.toast .toast-close {
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.8;
+  padding: var(--space-1);
+  display: grid;
+}
+
+/* A note in a vault sync conflict: both versions side by side, and the three picks. */
+.note-conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.conflict-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+}
+
+.conflict-versions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.conflict-version .label {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.diff {
+  font: 400 var(--text-xs)/1.6 var(--mono);
+  border-radius: 14px;
+  background: var(--chip);
+  max-height: 320px;
+  overflow: auto;
+}
+
+.diff div {
+  padding: 0 var(--space-3);
+  white-space: pre;
+  /* A long line scrolls sideways: its highlight must reach its end. */
+  width: max-content;
+  min-width: 100%;
+}
+
+.diff .a {
+  background: var(--ok-bg);
+}
+
+.diff .gap {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.conflict-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dialog.wide {
+  max-width: 760px;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
 }
 
 .menu-button,
@@ -1125,6 +1270,19 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  /* On a phone the two versions of a note stack, and the offline face is small. */
+  .conflict-versions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wide-only {
+    display: none;
+  }
+
+  .narrow-only {
+    display: contents;
+  }
+
   .app {
     display: flex;
     flex-direction: column;

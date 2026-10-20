@@ -206,33 +206,54 @@ export const api = {
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
 };
 
-/** Opens the event stream, and opens it again after a drop. Returns a function that closes it. */
+export interface EventSubscription {
+  readonly close: () => void;
+  /** Tries to connect at once, instead of at the next timed try. */
+  readonly retryNow: () => void;
+}
+
+/** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
   onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
-): () => void {
+): EventSubscription {
   let socket: WebSocket | null = null;
   let closed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   const connect = (): void => {
+    retryTimer = undefined;
     // A retry that the timer started can run after the page closed the stream, such as at a logout.
     if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
-    socket.addEventListener("open", () => {
+    const opened = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
+    socket = opened;
+    opened.addEventListener("open", () => {
       onConnectionChange(true);
     });
-    socket.addEventListener("message", (message) => {
+    opened.addEventListener("message", (message) => {
       onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard | DeviceLoginEvent);
     });
-    socket.addEventListener("close", () => {
-      if (closed) return;
+    opened.addEventListener("close", () => {
+      // A socket that Try now replaced closes late, and must not start a second retry.
+      if (closed || socket !== opened) return;
       onConnectionChange(false);
-      setTimeout(connect, 2_000);
+      retryTimer = setTimeout(connect, 2_000);
     });
   };
   connect();
-  return () => {
-    closed = true;
-    socket?.close();
+  return {
+    close: () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      socket?.close();
+    },
+    retryNow: () => {
+      if (socket?.readyState === WebSocket.OPEN) return;
+      // An address that left the network can hang while it opens: start again instead of waiting.
+      const stale = socket;
+      clearTimeout(retryTimer);
+      connect();
+      stale?.close();
+    },
   };
 }

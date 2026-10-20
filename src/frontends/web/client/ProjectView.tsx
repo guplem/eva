@@ -3,7 +3,7 @@
  * clone, the chat of a clone with a header that says where it runs, the project details, and the
  * repository setup.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState } from "./chat-list.ts";
@@ -28,6 +28,8 @@ interface ProjectViewProps {
   /** The chat that the address names; its project and clone open with it. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
+  /** Offline and the open problems, shown at the top of the main area. */
+  readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
 }
 
@@ -59,6 +61,7 @@ export function ProjectView({
   onNavigate,
   linkedChat,
   onLinkedChatOpened,
+  notices,
   approvals,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
@@ -297,6 +300,7 @@ export function ProjectView({
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
       )}
       <main className="main">
+        {notices}
         {page === null ? (
           <div className="empty">Pick a project.</div>
         ) : page.kind === "details" ? (

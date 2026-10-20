@@ -4,10 +4,31 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
-import { Icon } from "./icons.tsx";
+import type { EvaErrorCode } from "../../../shared/errors.ts";
+import { Icon, type IconName } from "./icons.tsx";
+import { addressOf, destinationOf } from "./navigation.ts";
 
 /** A toast hides itself after this time; the person can close it sooner. */
 const toastVisibleMs = 8_000;
+
+/** The failures that a person fixes in Settings, so the toast offers the way there. */
+const fixedInSettings: ReadonlySet<EvaErrorCode> = new Set([
+  "engine_failed",
+  "engine_install_failed",
+  "github_failed",
+  "google_failed",
+  "tailscale_install_failed",
+  "update_failed",
+]);
+
+/** A failed login shows a key, as the guide does for an expired login. */
+const loginCodes: ReadonlySet<EvaErrorCode> = new Set(["github_failed", "google_failed"]);
+
+interface Toast {
+  readonly message: string;
+  readonly icon: IconName;
+  readonly fixInSettings: boolean;
+}
 
 type ShowError = (caught: unknown) => void;
 
@@ -19,24 +40,43 @@ export function useShowError(): ShowError {
 }
 
 export function ErrorToastProvider({ children }: { readonly children: ReactNode }): ReactElement {
-  const [message, setMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  // On the Settings page, a button to it would do nothing.
+  const [settingsIsOpen, setSettingsIsOpen] = useState(() => destinationOf(window.location.hash) === "settings");
+  useEffect(() => {
+    const onHashChange = (): void => setSettingsIsOpen(destinationOf(window.location.hash) === "settings");
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const showError = useCallback((caught: unknown): void => {
-    setMessage(describeError(caught));
+    setToast(describeError(caught));
   }, []);
 
   useEffect(() => {
-    if (message === null) return undefined;
-    const timer = setTimeout(() => setMessage(null), toastVisibleMs);
+    if (toast === null) return undefined;
+    const timer = setTimeout(() => setToast(null), toastVisibleMs);
     return () => clearTimeout(timer);
-  }, [message]);
+  }, [toast]);
 
   return (
     <ShowErrorContext.Provider value={showError}>
       {children}
-      {message !== null && (
+      {toast !== null && (
         <div className="toast" role="alert">
-          <span>{message}</span>
-          <button aria-label="Close the message" onClick={() => setMessage(null)}>
+          <Icon name={toast.icon} />
+          <span>{toast.message}</span>
+          {toast.fixInSettings && !settingsIsOpen && (
+            <button
+              className="primary"
+              onClick={() => {
+                setToast(null);
+                window.location.hash = addressOf("settings");
+              }}
+            >
+              Open Settings
+            </button>
+          )}
+          <button className="toast-close" aria-label="Close the message" onClick={() => setToast(null)}>
             <Icon name="x" />
           </button>
         </div>
@@ -45,9 +85,22 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
   );
 }
 
-function describeError(caught: unknown): string {
-  if (caught instanceof ApiError) return caught.message;
+function describeError(caught: unknown): Toast {
+  if (caught instanceof ApiError) {
+    const code = caught.code;
+    return {
+      message: caught.message,
+      icon: code !== null && loginCodes.has(code) ? "key" : "alert",
+      fixInSettings: code !== null && fixedInSettings.has(code),
+    };
+  }
   // fetch rejects with a TypeError when the request never reaches Eva.
-  if (caught instanceof TypeError) return "Eva cannot be reached. Check the connection and try again.";
-  return caught instanceof Error ? caught.message : String(caught);
+  if (caught instanceof TypeError) {
+    return {
+      message: "Eva cannot be reached. Check the connection and try again.",
+      icon: "wifi-off",
+      fixInSettings: false,
+    };
+  }
+  return { message: caught instanceof Error ? caught.message : String(caught), icon: "alert", fixInSettings: false };
 }

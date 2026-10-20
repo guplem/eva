@@ -1773,6 +1773,7 @@ describe("describeStatusLines", () => {
     remoteAccess: null,
     localUrl: "http://127.0.0.1:7420",
     problems: [],
+    problemDetails: [],
     setupMissing: 0,
   };
 

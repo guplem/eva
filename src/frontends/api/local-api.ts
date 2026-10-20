@@ -111,6 +111,9 @@ const conflictPickSchema = z.object({ path: z.string().min(1), choice: z.enum(["
 const scheduleEntrySchema = z.record(z.string(), z.unknown());
 /** The rules go to a model with each first turn, so they stay short. */
 const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
+/** Eva sends the rules with every Assistant turn, so a huge text would make each turn slow and costly. */
+const assistantRulesSchema = z.object({ version: z.string().min(1).max(100), text: z.string().max(50_000) });
+const restoreRulesSchema = z.object({ version: z.string().min(1).max(100), backup: z.boolean() });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -595,6 +598,9 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     return json(await eva.runCheck(name));
   }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
+  if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
+    return assistantRulesRoute(request, method, parts[2], eva);
+  }
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
@@ -614,6 +620,27 @@ async function chatNamesRoute(request: Request, method: string, eva: Eva): Promi
     const { rules } = chatNameRulesSchema.parse(await request.json());
     chatNames.saveRules(rules);
     return json({ rules: chatNames.rules() });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The person's rules for Eva, in `.eva/assistant.md`: read, replace, or restore the default. */
+async function assistantRulesRoute(
+  request: Request,
+  method: string,
+  action: string | undefined,
+  eva: Eva,
+): Promise<Response> {
+  const rules = eva.assistantRules;
+  if (rules === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET" && action === undefined) return json(rules.read());
+  if (method === "PUT" && action === undefined) {
+    const { version, text } = assistantRulesSchema.parse(await request.json());
+    return json(rules.save(version, text));
+  }
+  if (method === "POST" && action === "restore") {
+    const { version, backup } = restoreRulesSchema.parse(await request.json());
+    return json(rules.restoreDefault(version, backup));
   }
   return json({ error: "Not found." }, 404);
 }

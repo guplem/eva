@@ -115,7 +115,8 @@ function readContinueMessage(stdout: string): string | null {
   }
 }
 
-function formatLocalTime(date: Date, timeZone: string): string {
+/** Such as `2026-10-14 12:30`, in the person's time zone. */
+export function formatLocalTime(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",

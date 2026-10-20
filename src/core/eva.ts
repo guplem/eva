@@ -10,6 +10,7 @@ import { EvaError } from "../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../shared/files.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
+import { systemTerminalProcessStarter, type TerminalProcessStarter } from "../shared/terminal-process.ts";
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
@@ -62,6 +63,7 @@ import { Scheduler } from "./schedules/scheduler.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
+import { ClaudeLogin } from "./setup/claude-login.ts";
 import { googleScopes } from "./google/google-scopes.ts";
 import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
@@ -117,6 +119,8 @@ export interface EvaOptions {
   readonly githubRequest?: GithubRequest;
   /** Google's address for the Google login and check; a test points it at a fake server. */
   readonly googleBaseUrl?: string;
+  /** Starts a program in a pseudo-terminal, for the Claude login. Default: Bun's terminal. */
+  readonly startTerminal?: TerminalProcessStarter;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -181,6 +185,7 @@ export class Eva {
   /** The web UI's device logins, which the Telegram bot confirms. */
   readonly deviceLogins: DeviceLogins;
   private readonly googleLogin: GoogleLogin;
+  private readonly claudeLogin: ClaudeLogin;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -272,6 +277,12 @@ export class Eva {
       credentialsFolder: googleCredentialsFolder(options.paths),
       now: options.now,
       ...(options.googleBaseUrl === undefined ? {} : { baseUrl: options.googleBaseUrl }),
+    });
+    this.claudeLogin = new ClaudeLogin({
+      start: options.startTerminal ?? systemTerminalProcessStarter,
+      program: options.claudeExecutable ?? null,
+      cwd: options.paths.root,
+      environment: () => engineToolEnvironment(this.facts),
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
@@ -632,6 +643,7 @@ export class Eva {
   }
 
   stop(): void {
+    this.claudeLogin.stop();
     if (this.sweepTimer !== null) clearInterval(this.sweepTimer);
     if (this.scheduleTimer !== null) clearInterval(this.scheduleTimer);
     if (this.backgroundTimer !== null) clearInterval(this.backgroundTimer);
@@ -843,6 +855,20 @@ export class Eva {
     const { email } = await this.googleLogin.finish(pasted, client);
     if (this.settings.config.google.email !== email) this.settings.update({ google: { email } });
     return { email, restartNeeded: this.googleRestartNeeded() };
+  }
+
+  /** The address of Claude's login page, from `claude setup-token`. */
+  startClaudeLogin(): Promise<{ url: string }> {
+    return this.claudeLogin.start();
+  }
+
+  /**
+   * Types the code from Claude's page and saves the token, the same as a pasted token. The
+   * engines read the token at start, so it needs a restart.
+   */
+  async finishClaudeLogin(code: string): Promise<{ restartNeeded: true }> {
+    const { token } = await this.claudeLogin.finish(code);
+    return { restartNeeded: this.settings.saveSecret("claudeOauthToken", token).restartNeeded };
   }
 
   private googleClient(): { clientId: string; clientSecret: string } | null {

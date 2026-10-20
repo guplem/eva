@@ -5,6 +5,8 @@
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
+import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
+import { chatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -25,6 +27,7 @@ interface ProjectViewProps {
   readonly onLinkedChatOpened: () => void;
   /** Offline and the open problems, shown at the top of the main area. */
   readonly notices: ReactNode;
+  readonly approvals: ChatApprovals;
 }
 
 /**
@@ -55,6 +58,7 @@ export function ProjectView({
   linkedChat,
   onLinkedChatOpened,
   notices,
+  approvals,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -162,6 +166,15 @@ export function ProjectView({
   // The newest chat opens first, as in Assistant mode.
   const chat = cloneChats.find((candidate) => candidate.id === selectedChatId) ?? cloneChats[0];
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
+  // A project page takes the place of the conversation, so then no chat is on screen.
+  useShownChat(approvals.onShowChat, panel === null ? tree.map((session) => session.id) : []);
+  const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
+  const needsYou = (candidate: SessionRecord): boolean =>
+    chatState(
+      chatTree(candidate, sessions).map((session) => session.id),
+      () => false,
+      approvalSessionIds,
+    ) === "needs-you";
   const chatDetails = {
     tree,
     onChanged,
@@ -252,6 +265,7 @@ export function ProjectView({
                           >
                             {candidate.title}
                             <div className="muted">{candidate.source}</div>
+                            {needsYou(candidate) && <span className="status-pill needs-you">Needs you</span>}
                           </button>
                         ))}
                         <button onClick={() => void startChat(selection)}>New chat</button>
@@ -320,7 +334,7 @@ export function ProjectView({
                 </button>
               </div>
             ) : (
-              <Conversation root={chat} sessions={sessions} live={live} onChanged={onChanged} />
+              <Conversation root={chat} sessions={sessions} live={live} onChanged={onChanged} approvals={approvals} />
             )}
           </>
         )}

@@ -172,23 +172,23 @@ Only the eyes change. The visor stays round and still. All faces blink. A transi
 
 ![All expressions](screenshots/expressions-light.webp)
 
-| Class        | Name      | Eyes                                                  | Motion                                                            | Use                                                        |
-| ------------ | --------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
-| (none)       | Neutral   | Ovals, tilted 14°                                     | Blink every 7 s                                                   | At rest. The icon and each answer.                         |
-| `e-joy`      | Happy     | Filled crescents (an oval with the lower part masked) | Small bounce                                                      | A new chat, a greeting, a finished task, a complete setup. |
-| `e-wink`     | Wink      | Two ovals                                             | One eye closes every 2.6 s and holds; the other squeezes a little | Done and saved.                                            |
-| `e-love`     | Delighted | Hearts                                                | Heartbeat                                                         | Thanks, a device allowed.                                  |
-| `e-surprise` | Surprised | Large circles                                         | A pop every 3 s                                                   | A new version, a new message.                              |
-| `e-think`    | Thinking  | Small, looking up                                     | Drift between the upper corners                                   | The engine thinks, with no text yet.                       |
-| `e-scan`     | Searching | Ovals                                                 | Look left, right, up and down, with pauses                        | Pairing a device, a search in the vault.                   |
-| `e-listen`   | Listening | Circles                                               | Grow and shrink                                                   | Waiting for a message or an answer.                        |
-| `e-focus`    | Focused   | Thin lines                                            | None                                                              | Project mode, tests.                                       |
-| `e-firm`     | Firm      | Flat top, tilted inward                               | None                                                              | Asks permission for something important.                   |
-| `e-skeptic`  | Skeptical | One line, one raised oval                             | None                                                              | A note conflict, an unconfirmed schedule.                  |
-| `e-worry`    | Worried   | Inner ends raised                                     | Small tremble                                                     | No connection to the hub.                                  |
-| `e-sad`      | Sad       | Flat top, outer ends down                             | None                                                              | A schedule failed, a denied permission.                    |
-| `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                      |
-| `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled.                       |
+| Class        | Name      | Eyes                                                  | Motion                                                            | Use                                                          |
+| ------------ | --------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| (none)       | Neutral   | Ovals, tilted 14°                                     | Blink every 7 s                                                   | At rest. The icon and each answer.                           |
+| `e-joy`      | Happy     | Filled crescents (an oval with the lower part masked) | Small bounce                                                      | A new chat, a greeting, a finished task, a complete setup.   |
+| `e-wink`     | Wink      | Two ovals                                             | One eye closes every 2.6 s and holds; the other squeezes a little | Done and saved.                                              |
+| `e-love`     | Delighted | Hearts                                                | Heartbeat                                                         | Thanks, a device allowed.                                    |
+| `e-surprise` | Surprised | Large circles                                         | A pop every 3 s                                                   | A new version, a new message.                                |
+| `e-think`    | Thinking  | Small, looking up                                     | Drift between the upper corners                                   | The engine thinks, with no text yet.                         |
+| `e-scan`     | Searching | Ovals                                                 | Look left, right, up and down, with pauses                        | Pairing a device, a search in the vault.                     |
+| `e-listen`   | Listening | Circles                                               | Grow and shrink                                                   | Waiting for a message or an answer.                          |
+| `e-focus`    | Focused   | Thin lines                                            | None                                                              | Project mode, tests.                                         |
+| `e-firm`     | Firm      | Flat top, tilted inward                               | None                                                              | Asks permission for something important.                     |
+| `e-skeptic`  | Skeptical | One line, one raised oval                             | None                                                              | A note conflict, an unconfirmed schedule.                    |
+| `e-worry`    | Worried   | Inner ends raised                                     | Small tremble                                                     | No connection to the hub.                                    |
+| `e-sad`      | Sad       | Flat top, outer ends down                             | None                                                              | A schedule failed, a denied permission.                      |
+| `e-error`    | Error     | Two crosses                                           | None                                                              | Something broke and needs the person.                        |
+| `e-sleep`    | Asleep    | Thin lines and a floating "z"                         | The lines breathe                                                 | The hub rests, nothing is scheduled. A chat waits for setup. |
 
 The login page rotates faces while it waits: searching (5 s), thinking (3 s), happy, wink, surprised, listening and delighted.
 
@@ -213,6 +213,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 - EVE greets with happy eyes instead of a blank page.
 - Four suggestions show what Eva does well: notes, calendar, projects and reminders.
+- With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks.
 - The engine and the mode show in the composer, and change there.
 
 ### A conversation at work

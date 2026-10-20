@@ -33,4 +33,18 @@ The login text stops promising that the agents never get the token, and says wha
 
 ## Decisions
 
-(Filled in after the gap research.)
+- G1. Every save of the GitHub token logs in `gh`: the browser login and a pasted token. `gh` accepts a fine-grained token (it has no scopes to check). It refuses a classic token without `read:org`. A `gh` failure never blocks the save: the vault works with the token alone.
+- G2. Replace. `gh auth login --with-token` makes the new account the active one in the instance's own `gh` folder (lesson 111). Eva never changes `gh` at start, so a hand-made login stays until the person saves a token.
+- G3. No migration: a migration cannot add scopes to a stored token. The GitHub step shows "missing" while the token is saved but `gh` is not logged in, and says to press Log in with GitHub again.
+- G4. Removing the token also logs out the instance's `gh` (`gh auth logout --hostname github.com --user <login>`, the login read from `hosts.yml`). The guide says that a logout does not revoke the token on GitHub.
+- G5. A new core module, `src/core/vault/github-cli-login.ts`, runs `gh` through `ProcessRunner`: the token on stdin, `GH_CONFIG_DIR` set to the instance's `gh` folder, `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`, a 30-second timeout, and an environment from `buildChildEnvironment` without the token. It returns a problem text and never throws.
+  - `Eva.saveSecret` calls it after the save, and logs a warning on a problem.
+  - `eva setup` calls it after it saves the token, and prints one line.
+  - Tests never run a real `gh`: each test that saves a token gets a runner that fakes `gh`, and so does the e2e demo server.
+- G6. The state comes from a file read, not from a process, because the page reads the setup state often.
+  - `githubCliLoggedIn(ghFolder)` in `src/core/setup/logins.ts` reads `hosts.yml` tolerantly: a `github.com` entry with a `user`.
+  - The GitHub step: no token is "optional". A token and a `gh` login is "done". A token without a `gh` login is "missing".
+  - The GitHub Test also runs `gh auth status --hostname github.com`.
+  - The card's pill follows the step, as the Claude Code card does.
+- Scopes: `repo read:org gist workflow`. `workflow` lets an agent push a change to a workflow file.
+- Words: the login text, the card, the guide and the lesson 96 comments say that the agents use the login too. `eva setup` keeps its hand step for `gh` as a fallback.

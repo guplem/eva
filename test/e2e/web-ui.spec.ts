@@ -2,6 +2,11 @@ import { expect, test, type Locator, type Page, type WebSocketRoute } from "@pla
 
 const token = "e2e-demo-token";
 
+// A route handler can still run as its test ends, and its error then fails the next test.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 async function logIn(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByLabel(/Token/).fill(token);
@@ -12,6 +17,27 @@ async function logIn(page: Page): Promise<void> {
 async function openList(page: Page): Promise<void> {
   const menu = page.getByRole("button", { name: "Show the list" });
   if (await menu.isVisible()) await menu.click();
+}
+
+/**
+ * Starts a new Assistant chat, and returns its id once the page shows it. Until then the page
+ * shows the chat before it, which can be an empty chat also named "New chat". Text typed then
+ * goes into that chat, and is lost when the new one opens.
+ */
+async function clickNewChat(page: Page): Promise<string> {
+  await openList(page);
+  const items = page.locator(".sidebar .list-item");
+  const before = await items.count();
+  const created = page.waitForResponse(
+    (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
+  );
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
+  const id = ((await (await created).json()) as { id: string }).id;
+  // A new chat goes first in the list, and the page selects it.
+  await expect(items).toHaveCount(before + 1);
+  await expect(items.first()).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  return id;
 }
 
 /**
@@ -115,9 +141,7 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
 
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   await expect(page.locator(".main-header .sub")).toHaveText("Claude Code · Assistant");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
@@ -167,9 +191,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   // Both screen sizes share one demo server, so each size names its own chats.
   const title = `A chat to delete (${test.info().project.name})`;
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
@@ -254,9 +276,7 @@ async function chatIdNamed(page: Page, title: string): Promise<string> {
 /** A new Assistant chat with one answer. Each screen size names its own chats, on the shared demo server. */
 async function newAnsweredChat(page: Page, text: string): Promise<string> {
   const title = `${text} (${test.info().project.name})`;
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
@@ -330,9 +350,7 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   page,
 }) => {
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
 
   await chooseFromMore(page, "Rename");
   await page.getByLabel("Chat title").fill("Draft");
@@ -362,9 +380,7 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
 
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("show me a list");
   await composer.press("Enter");
@@ -375,9 +391,7 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
 
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("near the limit");
   await composer.press("Enter");
@@ -389,9 +403,7 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
 
 test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
-  await openList(page);
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
   await composer.press("Enter");
@@ -1395,13 +1407,7 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
 
 /** Starts a new Assistant chat and returns its session id. */
 async function newChat(page: Page): Promise<string> {
-  await openList(page);
-  const created = page.waitForResponse(
-    (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
-  );
-  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  return ((await (await created).json()) as { id: string }).id;
+  return clickNewChat(page);
 }
 
 function textEvent(sessionId: string, text: string): string {

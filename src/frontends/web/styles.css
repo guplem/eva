@@ -2131,23 +2131,16 @@ button.link-button {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: none;
-  border-left: 4px solid var(--line);
   border-radius: var(--radius-input);
   background: var(--panel);
   text-align: left;
 }
 
-.step-link.done {
-  border-left-color: var(--ok);
-}
-
 .step-link.missing {
-  border-left-color: var(--warn);
   background: var(--warn-bg);
 }
 
 .step-link.failed {
-  border-left-color: var(--bad);
   background: var(--bad-bg);
 }
 
@@ -2316,19 +2309,6 @@ button.link-button {
 .step-header {
   flex-direction: row;
   align-items: flex-start;
-  border-top: 4px solid var(--line);
-}
-
-.step-header.done {
-  border-top-color: var(--ok);
-}
-
-.step-header.missing {
-  border-top-color: var(--warn);
-}
-
-.step-header.failed {
-  border-top-color: var(--bad);
 }
 
 .step-header-text {

@@ -40,20 +40,20 @@ Eva runs on Linux and Windows, not on macOS. If your Linux user has no `sudo`, o
 
 ## 2. Answer the setup
 
-Setup asks only what it needs, in this order. Press Enter to keep the value in brackets, or to skip a question.
+Setup first asks for a name for this Eva. Enter keeps the name of your computer user, such as `ana`. Then it goes through 8 numbered steps, and says which ones are done.
 
-1. **A name for this Eva.** Enter keeps `eva`. A second Eva on the same computer needs another name: see [More than one Eva on a computer](#more-than-one-eva-on-a-computer).
-2. **The programs.** Setup checks the tools, and installs what is missing with no question: Claude Code and pi (the harnesses), and uv (for the Google tools).
-3. **Tailscale.** Press Enter to install it, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
-4. **Start Eva.** Press Enter. Eva starts now, and each time the computer starts.
-5. **Let your phone in.** Setup shows Eva's address and a QR code. Install the Tailscale app on your phone, sign in with the same account, and open the address. The page shows a short code. Type it in the terminal.
+In the terminal, a line that starts with `>` is a question: type the answer, or press Enter to keep the value in `[brackets]` or to skip it. `[ok]` marks what is done. `>> Your turn:` means that setup waits for you to do something in a browser, and goes on by itself when you are done.
 
-Then finish where it suits you. Each answer is saved at once, in both places:
+1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), and uv (for the Google tools).
+2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
+3. **Start Eva.** Press Enter. Eva starts now, and each time the computer starts.
+4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in.
+5. **Notebook and GitHub.** Your time zone, the GitHub login, your notebook, and the GitHub accounts that you trust (your own user name, so that Eva opens your projects without a question).
+6. **AI login.** The Claude token, or the pi login.
+7. **Telegram** (optional). Your bot.
+8. **Google and voice notes** (optional).
 
-- **On the page:** **Settings** lists each step that is left, with what to do: your AI login, your notebook, GitHub, Telegram and Google.
-- **In the terminal:** setup goes on with the same steps. It asks for your time zone, the GitHub login and your notebook, a few words about you for a new notebook, the GitHub accounts that you trust (your own user name, so that Eva opens your projects without a question), the Claude token, the Telegram bot, Google and voice notes.
-
-You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
+From step 5 on, you can also finish on the page: **Settings** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
 
 The next sections explain each step in more detail.
 
@@ -63,7 +63,7 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 
 **Claude Code**, for a Claude subscription. Log in from Eva's page, also on a phone:
 
-1. Open **AI engines** in Settings, and press **Log in to Claude**.
+1. Open **AI engines** in Settings, and press **Start the login** under Claude Code. Eva makes a login link.
 2. Press **Open Claude's page**, log in with your Claude account, and allow the access.
 3. Claude's page shows a code. Paste it into Eva's page, and press **Finish**. Then press **Restart Eva**.
 
@@ -123,9 +123,9 @@ Some features need one more program on Eva's computer. For example, voice notes 
 
 ## More than one Eva on a computer
 
-Each Eva has a name, such as `eva` or `ana`, and her own notebook, bot, settings, logins and port. Two people can share a computer, each with their own Eva. All Evas on a computer share the same programs: git, Claude Code, pi, uv and Tailscale.
+Each Eva has a name, such as `ana` or `ana-1`, and her own notebook, bot, settings, logins and port. Two people can share a computer, each with their own Eva. All Evas on a computer share the same programs: git, Claude Code, pi, uv and Tailscale.
 
-To make another Eva, run `eva setup` (the computer has Eva already, so skip the install command). Setup lists the Evas on this computer. Type a new name, such as `ana`, and answer setup as for the first Eva.
+To make another Eva, run `eva setup` (the computer has Eva already, so skip the install command). Setup lists the Evas on this computer. Type a new name, and answer setup as for the first Eva. Setup suggests a free name, such as `ana-1` when `ana` exists.
 
 With more than one Eva, each command asks which Eva. To skip the question, name her: `eva --instance ana status`, or set `EVA_INSTANCE=ana` in the terminal.
 

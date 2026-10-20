@@ -4,17 +4,18 @@
  * Eva; with more than one, a person picks one and a script must name one.
  */
 import {
-  firstInstanceName,
   homePaths,
   instanceHome,
   instanceNameProblem,
   instancesFolder,
   instanceVariable,
   listInstances,
+  suggestedInstanceName,
   type HomePaths,
 } from "../../core/settings/home.ts";
 import { EvaError } from "../../shared/errors.ts";
 import { writeLine, type CliHost } from "./host.ts";
+import { questionText } from "./setup-output.ts";
 
 /** A closed or broken terminal answers "" for ever, so the questions stop after this many. */
 const maxAttempts = 5;
@@ -58,18 +59,21 @@ function checkedName(name: string, existing: readonly string[], creates: boolean
 /** Setup asks for the name of a new Eva, or which Eva to set up again. */
 async function nameForSetup(host: CliHost, existing: readonly string[], interactive: boolean): Promise<string> {
   const [only] = existing;
+  const suggested = suggestedInstanceName(host.userName, existing);
   if (!interactive) {
-    if (only === undefined) return firstInstanceName;
+    if (only === undefined) return suggested;
     if (existing.length === 1) return only;
     throw refusal(`This computer has more than one Eva: ${existing.join(", ")}. ${nameOption}.`);
   }
   if (only === undefined)
-    return ask(host, `Name of this Eva, such as your first name [${firstInstanceName}]: `, (answer) =>
-      answer === "" ? firstInstanceName : newName(host, answer),
+    return ask(host, `Name of this Eva [${suggested}]: `, (answer) =>
+      answer === "" ? suggested : newName(host, answer),
     );
   writeList(host, existing);
-  return ask(host, "Type a number to set up that Eva again, or a new name to make a new Eva: ", (answer) =>
-    answer === "" ? null : (fromList(answer, existing) ?? newName(host, answer)),
+  return ask(
+    host,
+    `Type a number to set up that Eva again, or a new name for a new Eva, such as ${suggested}: `,
+    (answer) => (answer === "" ? null : (fromList(answer, existing) ?? newName(host, answer))),
   );
 }
 
@@ -104,7 +108,7 @@ async function ask(host: CliHost, question: string, read: (answer: string) => st
   const chosen: { name: string | null } = { name: null };
   await host.withPrompt(async (prompt) => {
     for (let attempt = 0; attempt < maxAttempts && chosen.name === null; attempt += 1) {
-      chosen.name = read((await prompt(question)).trim());
+      chosen.name = read((await prompt(questionText(question))).trim());
     }
   });
   if (chosen.name === null) throw refusal(`No Eva was chosen. ${nameOption}.`);

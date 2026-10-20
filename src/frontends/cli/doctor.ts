@@ -2,6 +2,7 @@
  * `eva doctor`: checks each tool that Eva uses, grouped by feature, so a missing optional
  * tool never blocks the core (lesson 94).
  */
+import { doneLine } from "./setup-output.ts";
 import type { CheckResult } from "../../core/checks.ts";
 import { firstOutputLine, readToolLine, usedTools } from "../../core/tool-versions.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
@@ -25,6 +26,11 @@ export interface DoctorOptions {
    * optional, so its state never fails the doctor.
    */
   readonly google: () => Promise<CheckResult | null>;
+  /**
+   * True at the start of `eva setup`: only the required tools that setup cannot install, one line
+   * each. Setup installs the others itself, so a "missing" line for them would only alarm.
+   */
+  readonly forSetup?: boolean;
 }
 
 /** Prints one line per tool. Returns false when a required tool is missing. */
@@ -34,6 +40,18 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
     ...tool,
     required: tool.required || tool.engine === options.defaultEngine,
   }));
+  if (options.forSetup === true) {
+    for (const tool of needed.filter((each) => each.required && each.installOnLinux !== "eva setup")) {
+      const version = await readToolLine(tool, options);
+      if (version === null) healthy = false;
+      options.write(
+        version === null
+          ? `  [missing] ${tool.program} (for ${tool.feature}): install it from ${tool.install}, then run \`eva setup\` again.`
+          : doneLine(`${tool.program}: ${version}`),
+      );
+    }
+    return healthy;
+  }
   for (const group of [true, false]) {
     options.write(group ? "Required:" : "Optional:");
     for (const tool of needed.filter((candidate) => candidate.required === group)) {

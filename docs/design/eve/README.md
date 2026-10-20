@@ -75,7 +75,8 @@ Semantic colours do not follow the seed:
 | `--bad` / `--bad-bg`   | `oklch(0.56 0.19 25)` / `oklch(0.95 0.03 25)`   | `oklch(0.74 0.16 25)` / `oklch(0.32 0.07 25)` |
 
 - `--ok` shows a thing that is done or passed.
-- `--warn` shows a thing that waits for the person: a step that is left, an approval, a warning, offline.
+- `--warn` shows a thing that waits for the person or the network: a step that is left, an approval, a warning, offline.
+- `--chip` shows a thing that is optional.
 - `--bad` shows a failure, or a button that deletes or refuses.
 - `--warn-ink` is small text on `--warn-bg`. `--on-warn` is text on a solid `--warn`.
 

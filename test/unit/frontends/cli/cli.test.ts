@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
-import { loadGitHubAccount } from "../../../../src/core/instance/commit-identity.ts";
+import { loadGitHubAccount, saveGitHubAccount } from "../../../../src/core/instance/commit-identity.ts";
 import { defaultConfig, homePaths, loadSecrets, saveSecrets } from "../../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
@@ -343,16 +343,23 @@ describe("runSetup", () => {
   const githubApi: {
     server: ReturnType<typeof Bun.serve> | null;
     list: { status: number; body: unknown };
+    user: { status: number; body: unknown };
     create: (name: string) => { status: number; body: unknown };
     created: string[];
-  } = { server: null, list: { status: 200, body: [] }, create: () => ({ status: 500, body: {} }), created: [] };
+  } = {
+    server: null,
+    list: { status: 200, body: [] },
+    user: { status: 200, body: {} },
+    create: () => ({ status: 500, body: {} }),
+    created: [],
+  };
   beforeAll(() => {
     githubApi.server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       fetch: async (request) => {
         if (request.method === "GET" && new URL(request.url).pathname === "/user")
-          return Response.json({ id: 1234, login: "example-user", name: "Example User" });
+          return Response.json(githubApi.user.body, { status: githubApi.user.status });
         if (request.method === "GET") return Response.json(githubApi.list.body, { status: githubApi.list.status });
         const { name } = (await request.json()) as { name: string };
         githubApi.created.push(name);
@@ -366,6 +373,7 @@ describe("runSetup", () => {
   });
   beforeEach(() => {
     githubApi.list = { status: 200, body: [] };
+    githubApi.user = { status: 200, body: { id: 1234, login: "example-user", name: "Example User" } };
     githubApi.create = () => ({ status: 500, body: { message: "No create in this test." } });
     githubApi.created = [];
   });
@@ -1344,6 +1352,20 @@ describe("runSetup", () => {
     expect(githubApi.created).toEqual(["scripted"]);
     const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
     expect(pushed.stdout.toString()).toContain("Start the vault");
+    // The first commit carries the account's name, not the computer user's git settings.
+    const author = Bun.spawnSync(["git", "log", "-1", "--format=%an <%ae>", "main"], {
+      cwd: bare,
+      env: gitEnvironment,
+    });
+    expect(author.stdout.toString().trim()).toBe("Example User <1234+example-user@users.noreply.github.com>");
+  });
+
+  test("a setup with a new token never keeps the old account when GitHub does not answer", async () => {
+    saveGitHubAccount(homePaths(home), { id: 1, login: "old-account", name: "Old Account" });
+    githubApi.user = { status: 401, body: { message: "Bad credentials" } };
+    await setup({ vault: existingVault, githubToken: "a-new-token" });
+    expect(loadSecrets(homePaths(home)).githubToken).toBe("a-new-token");
+    expect(loadGitHubAccount(homePaths(home))).toBeNull();
   });
 
   test("each instance hears about its own engine logins first, and gets a login report at the end", async () => {

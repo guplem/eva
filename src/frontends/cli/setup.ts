@@ -16,6 +16,7 @@ import {
   type EngineFolders,
   loadSecrets,
   saveSecrets,
+  type CommitIdentity,
   type EvaConfig,
   type EvaSecrets,
   type HomePaths,
@@ -30,7 +31,8 @@ import {
 } from "../../core/engine-install/engine-install.ts";
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
-import { commitIdentity, loadGitHubAccount, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
+import { commitIdentityVariables } from "../../core/instance/child-environments.ts";
+import { commitIdentity, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
 import {
   checkVaultRepository,
@@ -155,6 +157,16 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     progress.changedAfterStart ||= progress.started;
     saveSecrets(paths, { ...secrets(), [name]: value });
   };
+  // Once for each token: a new login, and a token from before Eva kept the account, which a rerun reads.
+  const tokenAtStart = secrets().githubToken;
+  let recordedToken: string | undefined;
+  const recordAccount = async (): Promise<void> => {
+    const token = secrets().githubToken;
+    if (token === undefined || token === recordedToken) return;
+    recordedToken = token;
+    if (await recordGithubAccount(options, token, token !== tokenAtStart))
+      progress.changedAfterStart ||= progress.started;
+  };
   // Only the machine's file: a merge with defaults would write over the vault's own settings.
   const saveVaultPath = (folder: string): void => {
     progress.changedAfterStart ||= progress.started;
@@ -216,7 +228,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   };
   // Only a person: a script answers every question again on each run.
   const vaultWasReady = done(vaultReady());
-  if (!vaultWasReady) await askVault(options, ask, saveVaultPath, saveSecret);
+  if (!vaultWasReady) await askVault(options, ask, saveVaultPath, saveSecret, recordAccount);
   else if (!done(secrets().githubToken !== undefined)) {
     // Private projects need the token too, so a ready vault still gets the question.
     if (options.interactive && options.githubLogin !== null)
@@ -226,10 +238,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
       if (githubToken !== "") saveSecret("githubToken", githubToken);
     }
   }
-  // Each setup reads the account again: a new login, and a token from before Eva kept the account.
-  const githubToken = secrets().githubToken;
-  if (githubToken !== undefined && (await recordGithubAccount(options, githubToken)))
-    progress.changedAfterStart ||= progress.started;
+  await recordAccount();
   const readyVault = config().vaultPath;
   // A new vault that had no GitHub login yet gets the push now. One with a remote has its push from sync.
   if (
@@ -346,18 +355,21 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
 
 /**
  * Saves the token's GitHub account, which gives the commit name and email, and says which they
- * are. Returns whether the account changed. A failed read changes nothing: the next setup tries again.
+ * are. Returns whether the commit identity changed. A failed read for the same token keeps the old
+ * account, and the next setup tries again.
  */
-async function recordGithubAccount(options: SetupOptions, token: string): Promise<boolean> {
+async function recordGithubAccount(options: SetupOptions, token: string, replacesToken: boolean): Promise<boolean> {
   const paths = homePaths(options.paths.root);
-  const before = loadGitHubAccount(paths);
+  const identity = (): CommitIdentity => commitIdentity(paths, loadSettings(paths).config);
+  const before = identity();
   const read = await refreshGitHubAccount(paths, token, {
+    replacesToken,
     ...(options.githubApiBaseUrl === undefined ? {} : { baseUrl: options.githubApiBaseUrl }),
   });
-  if (!read) return false;
-  const { name, email } = commitIdentity(paths, loadSettings(paths).config);
-  if (name !== null && email !== null) options.write(`Eva signs her commits as ${name} <${email}>.`);
-  return JSON.stringify(before) !== JSON.stringify(loadGitHubAccount(paths));
+  const after = identity();
+  if (read && after.name !== null && after.email !== null)
+    options.write(`Eva signs her commits as ${after.name} <${after.email}>.`);
+  return before.name !== after.name || before.email !== after.email;
 }
 
 /**
@@ -415,6 +427,7 @@ async function askVault(
   ask: (key: SetupQuestion, question: string) => Promise<string>,
   saveVaultPath: (folder: string) => void,
   saveSecret: (name: keyof EvaSecrets, value: string) => void,
+  recordAccount: () => Promise<void>,
 ): Promise<void> {
   const paths = homePaths(options.paths.root);
   const githubToken = (): string | undefined => loadSecrets(paths).githubToken;
@@ -432,6 +445,8 @@ async function askVault(
     if (options.interactive && options.githubLogin !== null)
       await askGithubLoginOf(options, ask, saveSecret, options.githubLogin, true);
     else await askGithubToken();
+    // Before a new vault's first commit, which then carries the account's name.
+    await recordAccount();
     const token = githubToken();
     if (options.interactive && token !== undefined) {
       const picked = await pickRepository(options, ask, token);
@@ -653,7 +668,13 @@ async function offerNewVault(
     folder,
     answers: { name, language, timeZone, topics },
     runner: options.runner,
-    environment: options.environment,
+    // The first commit carries this Eva's commit identity, as each later one does.
+    environment: {
+      ...options.environment,
+      ...commitIdentityVariables(
+        commitIdentity(homePaths(options.paths.root), loadSettings(homePaths(options.paths.root)).config),
+      ),
+    },
   });
   options.write(`Created a new vault in ${folder}.`);
   await offerVaultPush(options, folder, ask);

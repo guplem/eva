@@ -35,7 +35,7 @@ export function gitEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Recor
     // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
     GH_CONFIG_DIR: engineFolders(facts.paths).gh,
     ...(token === undefined ? {} : { [githubTokenVariable]: token }),
-    ...identityVariables(facts.commitIdentity),
+    ...commitIdentityVariables(facts.commitIdentity),
   });
 }
 
@@ -51,12 +51,12 @@ export function gitEnvironmentWithToken(
   const token = secrets.githubToken;
   return buildChildEnvironment(processEnvironment, baseEnvironmentAllowlist, {
     ...(token === undefined ? {} : { [githubTokenVariable]: token }),
-    ...identityVariables(identity),
+    ...commitIdentityVariables(identity),
   });
 }
 
-/** Eva's own git reads no instance config file, so the variables carry the identity. */
-function identityVariables(identity: CommitIdentity | undefined): Record<string, string> {
+/** Eva's own git reads no instance config file, so the variables carry the identity. A null part adds none. */
+export function commitIdentityVariables(identity: CommitIdentity | undefined): Record<string, string> {
   const name = identity?.name ?? null;
   const email = identity?.email ?? null;
   return {

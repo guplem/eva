@@ -31,6 +31,7 @@ import {
 } from "../../core/engine-install/engine-install.ts";
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { doneLine, indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts";
+import type { FinishPlace } from "./setup-start.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { commitIdentityVariables } from "../../core/instance/child-environments.ts";
 import { commitIdentity, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
@@ -131,12 +132,18 @@ export interface SetupOptions {
   readonly githubApiBaseUrl?: string;
   /** The pi release downloads; a test points it at a fake server. */
   readonly piReleasesBaseUrl?: string;
-  /** Runs once the engines, the port and the local token are in place, before the other questions. */
-  readonly afterEssentials?: () => Promise<void>;
+  /**
+   * Runs once the engines, the port and the local token are in place, before the other questions.
+   * Returns where the person finishes the setup: "page" asks nothing more here.
+   */
+  readonly afterEssentials?: () => Promise<FinishPlace>;
 }
 
-/** Returns whether setup saved anything after `afterEssentials`, when a running Eva would need a restart. */
-export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart: boolean }> {
+/**
+ * Returns whether setup saved anything after `afterEssentials`, when a running Eva would need a
+ * restart, and whether the person finishes the setup on the web page.
+ */
+export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart: boolean; finishOnPage: boolean }> {
   // Inside a step, each line lines up under the step's title.
   const options: SetupOptions = { ...given, write: indented(given.write) };
   const paths = homePaths(options.paths.root);
@@ -207,7 +214,12 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
   saveSetting({ port: options.interactive ? freePort : await readPort(ask, freePort) });
   // Before Eva can start: her page and the `eva` commands need this token.
   if (secrets().localApiToken === undefined) saveSecret("localApiToken", options.newToken());
-  await options.afterEssentials?.();
+  const place = (await options.afterEssentials?.()) ?? "terminal";
+  if (place === "page") {
+    if (refusal.error !== null) throw refusal.error;
+    // The page asks the rest, so a running Eva needs no restart for setup's answers.
+    return { changedAfterStart: false, finishOnPage: true };
+  }
   progress.started = true;
 
   for (const line of stepLines("Notebook and GitHub")) options.write(line);
@@ -359,7 +371,7 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
     ...(vaultPath !== null && existsSync(vaultPath) ? [vaultSettingsPath(vaultPath)] : []),
   ];
   options.write(`Saved ${files.join(", ")}.`);
-  return { changedAfterStart: progress.changedAfterStart };
+  return { changedAfterStart: progress.changedAfterStart, finishOnPage: false };
 }
 
 /**

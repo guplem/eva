@@ -47,6 +47,7 @@ describe("setupProgress", () => {
     expect(step(fresh, "engine")?.detail).toContain("Start the login");
     expect(step(fresh, "engine")?.detail).toContain("claude setup-token");
     expect(step(fresh, "remoteAccess")?.detail).toContain("Sign in to Tailscale");
+    expect(step(fresh, "engine")?.detail).not.toContain("eva setup");
     expect(step(fresh, "device")?.detail).toContain("eva devices allow");
     expect(step(fresh, "github")?.detail).toBe(
       "A vault on this computer alone, or a public one, needs no GitHub login.",

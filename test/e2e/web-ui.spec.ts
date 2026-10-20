@@ -1714,6 +1714,26 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
   ).toHaveAttribute("aria-current", "page");
 });
 
+test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.route("**/api/sessions", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 404,
+          json: {
+            error: "Eva needs your vault. Finish the setup in Settings, on Eva's page.",
+            code: "vault_not_found",
+          },
+        })
+      : route.continue(),
+  );
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("alert").getByRole("button", { name: "Set up your vault" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
+});
+
 test("no banner shows while all is good", async ({ page }) => {
   const statusRead = page.waitForResponse("**/api/status");
   await logIn(page);

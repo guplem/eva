@@ -10,19 +10,25 @@ export function fileAddressOf(path: string): string {
   return `${filesPrefix}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-/** The path that the address names, or null for an address of another page. */
+/**
+ * The path that the address names, or null for an address of another page. A `.` or `..` part
+ * folds away, so the crumbs and the child links name the folder that the core lists.
+ */
 export function filePathOf(hash: string): string | null {
   if (hash !== filesPrefix && !hash.startsWith(`${filesPrefix}/`)) return null;
-  const parts = hash
-    .slice(filesPrefix.length)
-    .split("/")
-    .filter((part) => part !== "" && part !== ".");
+  let parts: string[];
   try {
-    return parts.map(decodeURIComponent).join("/");
+    parts = hash.slice(filesPrefix.length).split("/").map(decodeURIComponent);
   } catch {
     // A hand-typed address with a bad `%` escape.
     return "";
   }
+  const folded: string[] = [];
+  for (const part of parts) {
+    if (part === "..") folded.pop();
+    else if (part !== "" && part !== ".") folded.push(part);
+  }
+  return folded.join("/");
 }
 
 export interface PathCrumb {
@@ -60,7 +66,7 @@ export function sizeWords(bytes: number): string {
 
 /** The YAML block at the start of a note. Markdown would read its closing `---` as a rule. */
 export function splitFrontMatter(text: string): { frontMatter: string | null; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  const match = /^---\r?\n(?:([\s\S]*?)\r?\n)?---(?:\r?\n|$)/.exec(text);
   if (match === null) return { frontMatter: null, body: text };
   return { frontMatter: match[1] ?? "", body: text.slice(match[0].length) };
 }

@@ -16,6 +16,8 @@ describe("fileAddressOf and filePathOf", () => {
     expect(filePathOf("#/files")).toBe("");
     expect(filePathOf("#/files/")).toBe("");
     expect(filePathOf("#/files/./Projects/.")).toBe("Projects");
+    expect(filePathOf("#/files/Projects/../Methods")).toBe("Methods");
+    expect(filePathOf("#/files/../..")).toBe("");
   });
 
   test("a path keeps its slashes, and each part is encoded", () => {
@@ -89,6 +91,10 @@ describe("splitFrontMatter", () => {
       frontMatter: "status: active",
       body: "# A\r\n",
     });
+  });
+
+  test("an empty front matter comes apart too", () => {
+    expect(splitFrontMatter("---\n---\nbody\n")).toEqual({ frontMatter: "", body: "body\n" });
   });
 
   test("a rule that is not at the start, or never closes, is no front matter", () => {

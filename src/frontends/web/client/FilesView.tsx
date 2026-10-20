@@ -23,6 +23,8 @@ export function FilesView(): ReactElement {
   const [shown, setShown] = useState<{ asked: string; answer: BrowsedPath } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [plain, setPlain] = useState(false);
+  /** A tap on the same link changes no address, so a failed read needs its own way to run again. */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const onHashChange = (): void => {
@@ -51,7 +53,7 @@ export function FilesView(): ReactElement {
     return () => {
       isLatest = false;
     };
-  }, [path]);
+  }, [path, attempt]);
 
   const parent = parentOf(path);
   // A file of the folder that the person left must not show under the new path.
@@ -82,8 +84,9 @@ export function FilesView(): ReactElement {
         </div>
         <div className="files-column">
           {failure !== null && (
-            <div role="alert" className="callout danger">
-              {failure}
+            <div role="alert" className="callout danger callout-action">
+              <span>{failure}</span>
+              <button onClick={() => setAttempt((count) => count + 1)}>Try again</button>
             </div>
           )}
           {failure === null && current === null && <div className="empty">Loading…</div>}
@@ -116,7 +119,7 @@ function FolderList({
         <li key={entry.name}>
           {entry.kind === "other" ? (
             <span className="files-entry other">
-              <Icon name="x" />
+              <Icon name="info" />
               <span className="files-name">{entry.name}</span>
               <span className="files-size">Does not open</span>
             </span>

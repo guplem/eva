@@ -2636,7 +2636,7 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
 });
 
-test("Files: folders open, a Markdown file shows formatted or plain, and Back goes up (issue 253)", async ({
+test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({
   page,
 }) => {
   await logIn(page);
@@ -2660,9 +2660,24 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back go
   await expect(list.getByRole("link", { name: ".git" })).toHaveCount(0);
 });
 
-test("Files: a typed address with a dot part still opens its folder (issue 253)", async ({ page }) => {
+test("Files: a path that the core tidies still shows its folder (issue 253)", async ({ page }) => {
   await logIn(page);
-  await page.goto("/#/files/./Projects");
-  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  // The page keeps `Projects\`, and the core answers for `Projects`.
+  await page.goto("/#/files/Projects%5C");
   await expect(page.getByRole("list", { name: "Folder contents" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+});
+
+test("Files: Try again reads a folder again after a failed read (issue 253)", async ({ page }) => {
+  await logIn(page);
+  let failNext = true;
+  await page.route("**/api/files?**", async (route) => {
+    if (!failNext) return route.continue();
+    failNext = false;
+    return route.fulfill({ status: 500, json: { error: "Eva failed to handle the request." } });
+  });
+  await page.goto("/#/files/Projects");
+  await expect(page.getByRole("alert").filter({ hasText: "Eva failed to handle the request." })).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
 });

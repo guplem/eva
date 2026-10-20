@@ -54,6 +54,7 @@ import {
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import { scriptedRunner } from "../../../support/fake-host.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -814,6 +815,29 @@ describe("runSetup", () => {
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
       expect(tokens.every((token) => token === "gho_browser_token_1")).toBe(true);
+    });
+
+    test("the login also logs in the agents' gh, and setup says so (#244)", async () => {
+      const lines: string[] = [];
+      const gh = fakeGh(okRunner);
+      await setup({ vaultRepository: githubVault }, { lines, runner: gh, githubLogin: browserLogin([]) });
+      expect(gh.calls.map((call) => call.command.slice(0, 3))).toContainEqual(["gh", "auth", "login"]);
+      expect(gh.calls.find((call) => call.command[2] === "login")?.stdin).toBe("gho_browser_token_1\n");
+      expect(lines.join("\n")).toContain("Your agents use the same GitHub login.");
+    });
+
+    test("a token that gh refuses stays saved, and setup says how to fix the agents' login", async () => {
+      const lines: string[] = [];
+      const gh = fakeGh(okRunner, "error validating token: missing required scope 'read:org'");
+      await setup(
+        { githubToken: "ghp_without-scopes", vaultRepository: githubVault },
+        { lines, runner: gh, githubLogin: browserLogin([]) },
+      );
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("ghp_without-scopes");
+      const text = lines.join("\n");
+      expect(text).toContain("missing required scope 'read:org'");
+      expect(text).toContain("type login at the GitHub question");
+      expect(text).not.toContain("Your agents use the same GitHub login.");
     });
 
     test("with a saved token, Enter keeps it, and login logs in again", async () => {

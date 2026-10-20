@@ -29,7 +29,7 @@ import {
   installUv,
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
-import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
+import { claudeLoggedIn, githubCliAccount, piLoginState } from "../../core/setup/logins.ts";
 import { doneLine, indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts";
 import type { FinishPlace } from "./setup-start.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
@@ -49,6 +49,7 @@ import {
   listGitHubRepositories,
   type GitHubRepository,
 } from "../../core/vault/github-repositories.ts";
+import { logInGitHubCli } from "../../core/vault/github-cli-login.ts";
 import { githubLoginAccess } from "../../core/vault/github-login.ts";
 import { createVaultFromTemplate } from "../../core/vault/vault-template.ts";
 import type { EngineName } from "../../shared/engine-port.ts";
@@ -247,6 +248,7 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
     }
   }
   await recordAccount();
+  await logInAgentsGh(options, secrets().githubToken, tokenAtStart, engineFolders.gh);
   const readyVault = config().vaultPath;
   // A new vault that had no GitHub login yet gets the push now. One with a remote has its push from sync.
   if (
@@ -835,4 +837,23 @@ function commandLine(program: string, platform: NodeJS.Platform): string {
 /** The pi command for a login. Each instance keeps its pi login in its own folder. */
 function piLogin(run: string, engineFolders: EngineFolders, platform: NodeJS.Platform): string {
   return withVariable("PI_CODING_AGENT_DIR", engineFolders.piAgent, [run], platform);
+}
+
+/**
+ * One GitHub login serves Eva and her agents (#244). A new token, or a saved one that the
+ * instance's gh lacks, logs in gh too. A gh problem leaves the token saved: the vault needs no gh.
+ */
+async function logInAgentsGh(
+  options: SetupOptions,
+  token: string | undefined,
+  tokenAtStart: string | undefined,
+  ghFolder: string,
+): Promise<void> {
+  if (token === undefined || (token === tokenAtStart && githubCliAccount(ghFolder) !== null)) return;
+  const problem = await logInGitHubCli({ token, ghFolder, runner: options.runner, environment: options.environment });
+  if (problem === null) options.write(doneLine("Your agents use the same GitHub login."));
+  else
+    options.write(
+      `Eva could not log in your agents' gh. ${problem}\nRun eva setup again, and type login at the GitHub question.`,
+    );
 }

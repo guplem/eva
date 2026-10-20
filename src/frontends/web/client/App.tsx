@@ -211,6 +211,8 @@ function EvaApp(): ReactElement {
     setConflictsOpen(false);
   }, [screen]);
 
+  // Recoveries overlap, such as on a visibility change and a reconnect: only the newest one sets the steps.
+  const lastRecovery = useRef(0);
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
    * waits, with no event here. Read the state again, with the steps of the running turns, so
@@ -218,13 +220,15 @@ function EvaApp(): ReactElement {
    * A note goes: a lost event can hide the turn start that clears it.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }));
+    lastRecovery.current += 1;
+    const id = lastRecovery.current;
+    setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));
     try {
       const snapshot = await api.runningTurns();
-      setLive((state) => withRunningTurns(state, snapshot));
+      setLive((state) => withRunningTurns(state, id, snapshot));
     } catch {
       // An older Eva has no such route. The page shows the steps that come from now on.
-      setLive((state) => withRunningTurns(state, null));
+      setLive((state) => withRunningTurns(state, id, null));
     }
     await refreshSessions();
     await refreshProblems();

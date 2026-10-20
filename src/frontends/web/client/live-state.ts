@@ -22,10 +22,10 @@ export interface LiveState {
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
   /**
-   * While the page reads the running turns again: the open reads, and each event that came
-   * since the first one started. Null when no read is open.
+   * While the page reads the running turns again: the id of the newest read, and each event that
+   * came since it started. Null when no read is open.
    */
-  readonly recovery: { readonly pending: number; readonly events: readonly SessionEvent[] } | null;
+  readonly recovery: { readonly id: number; readonly events: readonly SessionEvent[] } | null;
 }
 
 export const emptyLiveState: LiveState = {
@@ -63,25 +63,27 @@ export function forgetTaskEvents(state: LiveState): LiveState {
 }
 
 /**
- * Starts a read of the running turns. The steps stay until the reply, so the answer does not
- * blink. The page keeps each later event, because the reply and the events travel apart.
+ * Starts a read of the running turns, with a new id. The steps stay until the reply, so the
+ * answer does not blink. The page keeps each later event, because the reply and the events
+ * travel apart. A newer read replaces an older one: its snapshot is newer, also after a restart
+ * of Eva, whose `seq` then starts again.
  */
-export function startRecovery(state: LiveState): LiveState {
-  const { pending = 0, events = [] } = state.recovery ?? {};
-  return { ...state, recovery: { pending: pending + 1, events } };
+export function startRecovery(state: LiveState, id: number): LiveState {
+  return { ...state, recovery: { id, events: [] } };
 }
 
 /**
- * Ends a read of the running turns. The steps of the core replace the ones that this page knew,
- * and the kept events newer than the snapshot apply again on top of them (lesson 83). With no
- * snapshot, as after a failed read, the page knows only the kept events.
+ * Ends the read with this id. The steps of the core replace the ones that this page knew, and
+ * the kept events newer than the snapshot apply again on top of them (lesson 83). With no
+ * snapshot, as after a failed read, the page knows only the kept events. The reply of a read
+ * that a newer one replaced changes nothing.
  */
-export function withRunningTurns(state: LiveState, snapshot: TurnSnapshot | null): LiveState {
-  const { pending = 1, events = [] } = state.recovery ?? {};
+export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSnapshot | null): LiveState {
+  if (state.recovery?.id !== id) return state;
+  const { events } = state.recovery;
   const newer = snapshot === null ? events : events.filter((event) => event.seq > snapshot.seq);
   const fromCore = Object.fromEntries((snapshot?.turns ?? []).map((turn) => [turn.sessionId, turn.steps]));
-  const steps = newer.reduce(stepsAfter, fromCore);
-  return { ...state, steps, recovery: pending > 1 ? { pending: pending - 1, events } : null };
+  return { ...state, steps: newer.reduce(stepsAfter, fromCore), recovery: null };
 }
 
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */

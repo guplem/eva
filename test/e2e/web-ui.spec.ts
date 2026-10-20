@@ -1683,8 +1683,12 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
   await expect(hero).toContainText("Finish setting up Eva");
   expect(await style(hero, "borderTopColor")).not.toBe(bad);
   expect(await style(hero, "backgroundImage")).toBe("none");
-  const count = page.getByLabel(/to set up$/).first();
-  expect(await style(count, "backgroundColor")).toBe(await token("--warn"));
+  const count = (section: string): Locator =>
+    page.locator(".section-card", { hasText: section }).getByLabel(/to set up/);
+  expect(await style(count("Vault and sync"), "backgroundColor")).toBe(await token("--warn"));
+  // The engine step failed its test, so its section's count is red, as the step is.
+  await expect(count("AI engines")).toHaveAttribute("aria-label", "1 to set up, 1 failed");
+  expect(await style(count("AI engines"), "backgroundColor")).toBe(bad);
 
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });

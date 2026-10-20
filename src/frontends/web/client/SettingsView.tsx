@@ -297,7 +297,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   updates: "download",
 };
 
-/** The state of a section's setup steps: an amber count when a step needs the person, a green check when all are done. */
+/** The state of a section's setup steps: a count when a step needs the person, a green check when all are done. */
 function sectionState(section: SettingsSection, steps: readonly ProgressStep[]): "missing" | "done" | null {
   const own = section.id === "setup" ? steps : steps.filter((step) => section.steps.some((key) => key === step.key));
   if (own.length === 0) return null;
@@ -320,12 +320,15 @@ function SectionMark({
         <Icon name="check" />
       </span>
     );
-  const missing = steps.filter(
-    (step) => needsYou(step) && (section.id === "setup" || section.steps.includes(step.key)),
-  ).length;
+  const own = steps.filter((step) => needsYou(step) && (section.id === "setup" || section.steps.includes(step.key)));
+  const failed = own.filter((step) => stepMark(step) === "failed").length;
+  // A failed step is red on its own page, so its section's count is red too.
   return (
-    <span className="nav-mark missing" aria-label={`${String(missing)} to set up`}>
-      {missing}
+    <span
+      className={`nav-mark ${failed > 0 ? "failed" : "missing"}`}
+      aria-label={`${String(own.length)} to set up${failed > 0 ? `, ${String(failed)} failed` : ""}`}
+    >
+      {own.length}
     </span>
   );
 }

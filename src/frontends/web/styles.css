@@ -1907,6 +1907,11 @@ button.link-button {
   color: var(--on-warn);
 }
 
+.nav-mark.failed {
+  background: var(--bad);
+  color: var(--panel);
+}
+
 .nav-mark.done {
   color: var(--ok);
 }

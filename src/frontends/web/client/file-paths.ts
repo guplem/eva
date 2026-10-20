@@ -16,7 +16,7 @@ export function filePathOf(hash: string): string | null {
   const parts = hash
     .slice(filesPrefix.length)
     .split("/")
-    .filter((part) => part !== "");
+    .filter((part) => part !== "" && part !== ".");
   try {
     return parts.map(decodeURIComponent).join("/");
   } catch {
@@ -56,4 +56,11 @@ export function sizeWords(bytes: number): string {
   if (bytes < 1_000) return `${String(bytes)} B`;
   if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+/** The YAML block at the start of a note. Markdown would read its closing `---` as a rule. */
+export function splitFrontMatter(text: string): { frontMatter: string | null; body: string } {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (match === null) return { frontMatter: null, body: text };
+  return { frontMatter: match[1] ?? "", body: text.slice(match[0].length) };
 }

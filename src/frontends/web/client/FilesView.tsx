@@ -4,13 +4,23 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type BrowsedPath, type FileEntry } from "./api.ts";
-import { childPath, fileAddressOf, filePathOf, isMarkdown, parentOf, pathCrumbs, sizeWords } from "./file-paths.ts";
+import {
+  childPath,
+  fileAddressOf,
+  filePathOf,
+  isMarkdown,
+  parentOf,
+  pathCrumbs,
+  sizeWords,
+  splitFrontMatter,
+} from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
 import { toWebHtml } from "./web-format.ts";
 
 export function FilesView(): ReactElement {
   const [path, setPath] = useState(() => filePathOf(window.location.hash) ?? "");
-  const [shown, setShown] = useState<BrowsedPath | null>(null);
+  /** The answer with the path that asked for it: the core tidies a path, such as `./Projects`. */
+  const [shown, setShown] = useState<{ asked: string; answer: BrowsedPath } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [plain, setPlain] = useState(false);
 
@@ -30,7 +40,7 @@ export function FilesView(): ReactElement {
     setPlain(false);
     api.files(path).then(
       (answer) => {
-        if (isLatest) setShown(answer);
+        if (isLatest) setShown({ asked: path, answer });
       },
       (error: unknown) => {
         if (!isLatest) return;
@@ -44,8 +54,8 @@ export function FilesView(): ReactElement {
   }, [path]);
 
   const parent = parentOf(path);
-  // Until the new answer comes, the old one stays out of view.
-  const current = shown !== null && shown.path === path ? shown : null;
+  // A file of the folder that the person left must not show under the new path.
+  const current = shown?.asked === path ? shown.answer : null;
   return (
     <div className="main">
       <div className="files-page">
@@ -105,9 +115,10 @@ function FolderList({
       {entries.map((entry) => (
         <li key={entry.name}>
           {entry.kind === "other" ? (
-            <span className="files-entry other" title="This entry leads out of the vault, so it does not open.">
-              <Icon name="external" />
+            <span className="files-entry other">
+              <Icon name="x" />
               <span className="files-name">{entry.name}</span>
+              <span className="files-size">Does not open</span>
             </span>
           ) : (
             <a className="files-entry" href={fileAddressOf(childPath(path, entry.name))}>
@@ -136,19 +147,23 @@ function FileText({
   readonly onPlain: (plain: boolean) => void;
 }): ReactElement {
   const markdown = isMarkdown(path);
+  const { frontMatter, body } = splitFrontMatter(text);
   return (
     <section className="files-file" aria-label="File text">
       <div className="files-file-bar">
         <span className="files-size">{sizeWords(size)}</span>
         {markdown && (
-          <button className="ghost" aria-pressed={plain} onClick={() => onPlain(!plain)}>
+          <button className="ghost" onClick={() => onPlain(!plain)}>
             {plain ? "Show formatted" : "Show plain text"}
           </button>
         )}
       </div>
       {markdown && !plain ? (
-        // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-        <div className="answer-body files-markdown" dangerouslySetInnerHTML={{ __html: toWebHtml(text) }} />
+        <>
+          {frontMatter !== null && <pre className="files-text files-front-matter">{frontMatter}</pre>}
+          {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
+          <div className="answer-body files-markdown" dangerouslySetInnerHTML={{ __html: toWebHtml(body) }} />
+        </>
       ) : (
         <pre className="files-text">{text}</pre>
       )}

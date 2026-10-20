@@ -7,6 +7,7 @@ import {
   parentOf,
   pathCrumbs,
   sizeWords,
+  splitFrontMatter,
 } from "../../../../../src/frontends/web/client/file-paths.ts";
 
 describe("fileAddressOf and filePathOf", () => {
@@ -14,6 +15,7 @@ describe("fileAddressOf and filePathOf", () => {
     expect(fileAddressOf("")).toBe("#/files");
     expect(filePathOf("#/files")).toBe("");
     expect(filePathOf("#/files/")).toBe("");
+    expect(filePathOf("#/files/./Projects/.")).toBe("Projects");
   });
 
   test("a path keeps its slashes, and each part is encoded", () => {
@@ -71,5 +73,26 @@ describe("file words", () => {
     [2_400_000, "2.4 MB"],
   ])("%p bytes read as %s", (bytes, words) => {
     expect(sizeWords(bytes)).toBe(words);
+  });
+});
+
+describe("splitFrontMatter", () => {
+  test("a note's front matter comes apart from its body", () => {
+    expect(splitFrontMatter("---\nstatus: active\n---\n# Example app\n")).toEqual({
+      frontMatter: "status: active",
+      body: "# Example app\n",
+    });
+  });
+
+  test("Windows line endings split the same way", () => {
+    expect(splitFrontMatter("---\r\nstatus: active\r\n---\r\n# A\r\n")).toEqual({
+      frontMatter: "status: active",
+      body: "# A\r\n",
+    });
+  });
+
+  test("a rule that is not at the start, or never closes, is no front matter", () => {
+    expect(splitFrontMatter("# A\n---\nb\n---\n")).toEqual({ frontMatter: null, body: "# A\n---\nb\n---\n" });
+    expect(splitFrontMatter("---\nstatus: active\n")).toEqual({ frontMatter: null, body: "---\nstatus: active\n" });
   });
 });

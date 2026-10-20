@@ -2648,7 +2648,8 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back go
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
   await page.getByRole("button", { name: "Show plain text" }).click();
-  await expect(file.getByText("status: active")).toBeVisible();
+  await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
+  await expect(file.getByText("# Example app")).toBeVisible();
   // The address holds the path, so a reload keeps the file and Back goes up a folder.
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "AGENTS.md" })).toBeVisible();
@@ -2657,4 +2658,11 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back go
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
   await expect(list.getByRole("link", { name: ".eva" })).toBeVisible();
   await expect(list.getByRole("link", { name: ".git" })).toHaveCount(0);
+});
+
+test("Files: a typed address with a dot part still opens its folder (issue 253)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/./Projects");
+  await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Folder contents" })).toBeVisible();
 });

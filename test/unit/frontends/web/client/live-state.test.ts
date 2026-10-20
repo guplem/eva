@@ -3,6 +3,8 @@ import {
   applyEvent,
   emptyLiveState,
   forgetTaskEvents,
+  startRecovery,
+  withRunningTurns,
   withTasks,
   type LiveState,
 } from "../../../../../src/frontends/web/client/live-state.ts";
@@ -186,5 +188,70 @@ describe("applyEvent", () => {
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
+  });
+});
+
+describe("withRunningTurns", () => {
+  const firstBlock = { kind: "message" as const, text: "First block.", isError: false, id: "m1" };
+
+  test("a page that missed the events shows the steps that the core kept", () => {
+    const state = startRecovery(emptyLiveState);
+    const after = withRunningTurns(state, { seq, turns: [{ sessionId: "s1", steps: [firstBlock] }] });
+    expect(after.steps).toEqual({ s1: [firstBlock] });
+  });
+
+  test("the page keeps its steps while it waits, so the answer does not blink", () => {
+    const state = run([{ kind: "text", text: "First block.", messageId: "m1" }]);
+    expect(startRecovery(state).steps).toEqual(state.steps);
+  });
+
+  test("the snapshot replaces the steps of a turn that ended while the page slept", () => {
+    const state = startRecovery(run([{ kind: "text", text: "Old.", messageId: "m0" }]));
+    expect(withRunningTurns(state, { seq, turns: [] }).steps).toEqual({});
+  });
+
+  test("an event newer than the snapshot, which came first, is applied again on top of it (lesson 83)", () => {
+    const read = seq;
+    let state = startRecovery(emptyLiveState);
+    state = applyEvent(state, event({ kind: "text", text: "Second block.", messageId: "m2" }));
+    const after = withRunningTurns(state, { seq: read, turns: [{ sessionId: "s1", steps: [firstBlock] }] });
+    expect(after.steps["s1"]?.map((step) => step.text)).toEqual(["First block.", "Second block."]);
+  });
+
+  test("an event that the snapshot holds already is not applied twice", () => {
+    let state = startRecovery(emptyLiveState);
+    state = applyEvent(state, event({ kind: "text", text: "First block.", messageId: "m1" }));
+    const after = withRunningTurns(state, { seq, turns: [{ sessionId: "s1", steps: [firstBlock] }] });
+    expect(after.steps).toEqual({ s1: [firstBlock] });
+  });
+
+  test("a turn end newer than the snapshot keeps the turn ended", () => {
+    const read = seq;
+    let state = startRecovery(emptyLiveState);
+    state = applyEvent(state, event({ kind: "turn_finished", ...finished }));
+    const after = withRunningTurns(state, { seq: read, turns: [{ sessionId: "s1", steps: [firstBlock] }] });
+    expect(after.steps).toEqual({});
+  });
+
+  test("a failed read clears the old steps and keeps the newer events, as before", () => {
+    let state = startRecovery(run([{ kind: "text", text: "Old.", messageId: "m0" }]));
+    state = applyEvent(state, event({ kind: "text", text: "New.", messageId: "m1" }));
+    expect(withRunningTurns(state, null).steps["s1"]?.map((step) => step.text)).toEqual(["New."]);
+  });
+
+  test("the page keeps the events until the last of two recoveries ends", () => {
+    const read = seq;
+    let state = startRecovery(startRecovery(emptyLiveState));
+    state = applyEvent(state, event({ kind: "text", text: "Second block.", messageId: "m2" }));
+    state = withRunningTurns(state, null);
+    expect(state.recovery).not.toBeNull();
+    state = withRunningTurns(state, { seq: read, turns: [{ sessionId: "s1", steps: [firstBlock] }] });
+    expect(state.steps["s1"]?.map((step) => step.text)).toEqual(["First block.", "Second block."]);
+    expect(state.recovery).toBeNull();
+  });
+
+  test("with no recovery, events are not kept", () => {
+    const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
+    expect(state.recovery).toBeNull();
   });
 });

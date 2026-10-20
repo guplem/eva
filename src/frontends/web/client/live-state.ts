@@ -1,5 +1,5 @@
 /** What the web UI learns from the event stream while turns run. */
-import type { TaskSnapshot } from "../../../core/sessions/session-manager.ts";
+import type { TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 import { addStep, type TurnStep } from "../../../shared/turn-steps.ts";
 import type { UsageLimit } from "../../../shared/usage-limit.ts";
@@ -21,9 +21,21 @@ export interface LiveState {
    * They outlive the turn, because a short turn ends before the person reads them.
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
+  /**
+   * While the page reads the running turns again: the open reads, and each event that came
+   * since the first one started. Null when no read is open.
+   */
+  readonly recovery: { readonly pending: number; readonly events: readonly SessionEvent[] } | null;
 }
 
-export const emptyLiveState: LiveState = { steps: {}, tasks: {}, taskSeqs: {}, usageLimits: {}, notes: {} };
+export const emptyLiveState: LiveState = {
+  steps: {},
+  tasks: {},
+  taskSeqs: {},
+  usageLimits: {},
+  notes: {},
+  recovery: null,
+};
 
 const historyLostNote = "The earlier history of this chat is lost.";
 
@@ -50,9 +62,52 @@ export function forgetTaskEvents(state: LiveState): LiveState {
   return { ...state, taskSeqs: {} };
 }
 
+/**
+ * Starts a read of the running turns. The steps stay until the reply, so the answer does not
+ * blink. The page keeps each later event, because the reply and the events travel apart.
+ */
+export function startRecovery(state: LiveState): LiveState {
+  const { pending = 0, events = [] } = state.recovery ?? {};
+  return { ...state, recovery: { pending: pending + 1, events } };
+}
+
+/**
+ * Ends a read of the running turns. The steps of the core replace the ones that this page knew,
+ * and the kept events newer than the snapshot apply again on top of them (lesson 83). With no
+ * snapshot, as after a failed read, the page knows only the kept events.
+ */
+export function withRunningTurns(state: LiveState, snapshot: TurnSnapshot | null): LiveState {
+  const { pending = 1, events = [] } = state.recovery ?? {};
+  const newer = snapshot === null ? events : events.filter((event) => event.seq > snapshot.seq);
+  const fromCore = Object.fromEntries((snapshot?.turns ?? []).map((turn) => [turn.sessionId, turn.steps]));
+  const steps = newer.reduce(stepsAfter, fromCore);
+  return { ...state, steps, recovery: pending > 1 ? { pending: pending - 1, events } : null };
+}
+
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
-  return applyToTurn(applyToNotes(state, event), event);
+  const next = applyToTurn(applyToNotes(state, event), event);
+  if (next.recovery === null) return next;
+  return { ...next, recovery: { ...next.recovery, events: [...next.recovery.events, event] } };
+}
+
+/** The steps of the running turns after one event. A key means that a turn runs. */
+function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["steps"] {
+  // The core's own events are no step of a turn: the list shows their effect after a reload.
+  if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
+    return steps;
+  if (event.kind === "turn_finished" || event.kind === "turn_failed") {
+    if (!(event.sessionId in steps)) return steps;
+    const rest = { ...steps };
+    Reflect.deleteProperty(rest, event.sessionId);
+    return rest;
+  }
+  const current = steps[event.sessionId] ?? [];
+  const next =
+    event.kind === "history_lost"
+      ? [...current, { kind: "message" as const, text: historyLostNote, isError: false, id: null }]
+      : addStep(current, event);
+  return next === current ? steps : { ...steps, [event.sessionId]: next };
 }
 
 /** A notice is no step: the answer must stay the last message, and the whole answer must not hold it. */
@@ -85,37 +140,21 @@ function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
     Reflect.deleteProperty(usageLimits, event.sessionId);
     return { ...state, usageLimits };
   }
-  // The core's own events are no step of a turn: the list shows their effect after a reload.
-  if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
-    return state;
+  const steps = stepsAfter(state.steps, event);
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     // The engine process ends with the turn, so its tasks end too. The turn's steps keep them.
-    const steps = { ...state.steps };
-    Reflect.deleteProperty(steps, event.sessionId);
     const tasks = Object.fromEntries(
       Object.entries(state.tasks).filter(([, task]) => task.sessionId !== event.sessionId),
     );
     // Each turn end counts, also with no task here: a late snapshot may still hold its tasks.
     return { ...state, steps, tasks, taskSeqs: { ...state.taskSeqs, [event.sessionId]: event.seq } };
   }
-  const tasks =
-    event.kind === "task_changed"
-      ? {
-          ...state.tasks,
-          [event.taskId]: { description: event.description, state: event.state, sessionId: event.sessionId },
-        }
-      : state.tasks;
-  const taskSeqs = event.kind === "task_changed" ? { ...state.taskSeqs, [event.sessionId]: event.seq } : state.taskSeqs;
-  const current = state.steps[event.sessionId] ?? [];
-  const next =
-    event.kind === "history_lost"
-      ? [...current, { kind: "message" as const, text: historyLostNote, isError: false, id: null }]
-      : addStep(current, event);
-  if (next === current && tasks === state.tasks) return state;
+  if (event.kind !== "task_changed") return steps === state.steps ? state : { ...state, steps };
+  const task = { description: event.description, state: event.state, sessionId: event.sessionId };
   return {
     ...state,
-    tasks,
-    taskSeqs,
-    steps: next === current ? state.steps : { ...state.steps, [event.sessionId]: next },
+    steps,
+    tasks: { ...state.tasks, [event.taskId]: task },
+    taskSeqs: { ...state.taskSeqs, [event.sessionId]: event.seq },
   };
 }

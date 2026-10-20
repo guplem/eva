@@ -9,7 +9,7 @@ import { readGitHubAccount, type GitHubAccount } from "../vault/github-repositor
 
 const accountReadTimeoutMs = 10_000;
 
-/** The account record, or null when there is none or it is broken. */
+/** A broken record gives no account, so a bad file never stops a start. */
 export function loadGitHubAccount(paths: HomePaths): GitHubAccount | null {
   const read = readJsonTolerant(paths.githubAccount);
   if (!read.ok || typeof read.value !== "object" || read.value === null) return null;

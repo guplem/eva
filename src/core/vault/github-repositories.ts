@@ -61,7 +61,7 @@ export interface GitHubAccount {
   readonly name: string | null;
 }
 
-/** The account that the token belongs to. */
+/** Only the id, login and name of the token's account: the commit identity needs no more. */
 export async function readGitHubAccount(options: GitHubApiOptions): Promise<GitHubAccount> {
   const body = await request(options, "GET", "/user");
   const fields = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};

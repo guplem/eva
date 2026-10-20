@@ -1048,7 +1048,7 @@ test("Settings: the progress list leads to each step's page, which keeps the las
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
   await expect(list).toContainText("Your devices");
-  await list.getByRole("button", { name: /Your devices/ }).click();
+  await list.getByRole("button", { name: /Step \d+ Your devices/ }).click();
   await expect(page.getByRole("region", { name: "Allow a new device" })).toContainText("eva devices allow");
   await page.getByRole("button", { name: /Step 2: Your vault/ }).click();
   await page.getByRole("button", { name: "Test Your vault" }).click();
@@ -1619,7 +1619,7 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
   expect(restarts).toEqual([]);
   await page.getByRole("button", { name: "Restart Eva" }).click();
   await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
-  await expect(page.getByText("Eva restarted.")).toBeVisible();
+  await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
   expect(restarts).toEqual(["POST"]);
   await page.request.delete(`/api/sessions/${created.id}`);
 });

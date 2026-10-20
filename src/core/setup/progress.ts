@@ -21,6 +21,8 @@ export interface ProgressInput {
   readonly defaultEngine: EngineName;
   readonly vaultPath: string | null;
   readonly githubToken: boolean;
+  /** Whether the instance's gh, which the agents use, has a GitHub login. */
+  readonly githubCli: boolean;
   /** Null when phone access is off on this machine. */
   readonly remoteAccess: RemoteAccess | null;
   /** How many browsers may open Eva with a device login. */
@@ -62,15 +64,24 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
   return [
     engineStep(input, make),
     // Before the vault: the GitHub login lists the repositories that the vault step picks from.
-    input.githubToken
-      ? make("github", "GitHub", "done", "The token is saved.", "github")
-      : make(
+    !input.githubToken
+      ? make(
           "github",
           "GitHub",
           "optional",
           "A vault on this computer alone, or a public one, needs no GitHub login.",
           "github",
-        ),
+        )
+      : input.githubCli
+        ? make("github", "GitHub", "done", "The token is saved. Your agents use the same login.", "github")
+        : // An old login lacks the scopes that the agents' gh needs (#244): a new login gets them.
+          make(
+            "github",
+            "GitHub",
+            "missing",
+            "The token is saved, but your agents cannot push their work yet. Press Log in with GitHub again.",
+            "github",
+          ),
     input.vaultPath === null
       ? make(
           "vault",

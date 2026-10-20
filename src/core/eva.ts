@@ -53,7 +53,7 @@ import {
   saveGitHubAccount,
   loadGitHubAccount,
 } from "./instance/commit-identity.ts";
-import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
+import { claudeLoggedIn, githubCliAccount, piLoginState } from "./setup/logins.ts";
 import {
   chatBlocker,
   missingSteps,
@@ -99,6 +99,7 @@ import {
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
+import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
@@ -948,6 +949,7 @@ export class Eva {
       defaultEngine: config.engines.default,
       vaultPath: vaultReady ? vaultPath : null,
       githubToken: secretsSet.githubToken,
+      githubCli: githubCliAccount(folders.gh) !== null,
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       devices: this.deviceLogins.count(),
       telegram: { token: secretsSet.telegramBotToken, paired: config.telegram.allowedChatId !== null },
@@ -959,15 +961,30 @@ export class Eva {
   /**
    * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
    * also waits for its account, so a restart right after the save still has the commit identity.
+   * It also logs the agents' gh in or out: one login serves Eva and her agents (#244).
    */
   async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
     const before = this.settings.secrets.githubToken;
     const result = this.settings.saveSecret(name, value);
     if (name !== "githubToken") return result;
     const token = this.settings.secrets.githubToken;
-    if (token === undefined) saveGitHubAccount(this.options.paths, null);
-    else if (!(await this.refreshGitHubAccount(token, token !== before)))
+    const gh = {
+      ghFolder: engineFolders(this.options.paths).gh,
+      runner: this.options.runner,
+      environment: this.options.processEnvironment,
+    };
+    if (token === undefined) {
+      saveGitHubAccount(this.options.paths, null);
+      const problem = await logOutGitHubCli(gh);
+      if (problem !== null) this.options.logger?.log("warn", `Eva could not log out the agents' gh. ${problem}`);
+      return result;
+    }
+    if (!(await this.refreshGitHubAccount(token, token !== before)))
       this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
+    // The vault works with the token alone, so a gh problem never fails the save. The GitHub step shows it.
+    const problem = await logInGitHubCli({ ...gh, token });
+    if (problem !== null)
+      this.options.logger?.log("warn", `Eva could not log in the agents' gh. ${this.redactor.redact(problem)}`);
     return result;
   }
 

@@ -5,6 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
 import { api } from "./api.ts";
+import { restartNote } from "./notes.ts";
 import { Card, CheckRow, errorText, SecretField, StatusPill, type SettingsContext } from "./SettingsParts.tsx";
 
 export function GooglePanel({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -34,9 +35,8 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       const result = await api.finishGoogleLogin(address);
       setAddress("");
       setLoginUrl(null);
-      onChanged(
-        `Logged in to Google as ${result.email}.${result.restartNeeded ? " Press Restart Eva to use Google in chats." : ""}`,
-      );
+      const loggedIn = `Logged in to Google as ${result.email}.`;
+      onChanged(result.restartNeeded ? restartNote(`${loggedIn} Press Restart Eva to use Google in chats.`) : loggedIn);
       reload();
     } catch (error) {
       onChanged(errorText(error));

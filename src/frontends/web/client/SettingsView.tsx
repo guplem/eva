@@ -31,6 +31,7 @@ import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
 import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
+import { noteActionLabels, noteParts, restartNote, type Note } from "./notes.ts";
 
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
@@ -46,7 +47,7 @@ export function SettingsView({
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [setup, setSetup] = useState<EvaSetupState | null>(null);
   const [status, setStatus] = useState<EvaStatus | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Note | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [route, setRoute] = useState<SettingsRoute>(() => parseSettingsHash(window.location.hash));
   const [query, setQuery] = useState("");
@@ -80,7 +81,7 @@ export function SettingsView({
     return () => clearTimeout(timer);
   }, [route, settings]);
 
-  const notify = useCallback((note: string): void => setNotice(note), []);
+  const notify = useCallback((note: Note): void => setNotice(note), []);
 
   // A failed load must reach the person, because every problem must reach the phone.
   const loadSettings = useCallback((): void => {
@@ -133,7 +134,7 @@ export function SettingsView({
       setNotice(errorText(error));
       return false;
     }
-    setNotice(result.restartNeeded ? "Saved. Press Restart Eva to use the new setting." : "Saved.");
+    setNotice(result.restartNeeded ? restartNote("Saved. Press Restart Eva to use the new setting.") : "Saved.");
     reloadSetup();
     try {
       setSettings(await api.settings());
@@ -293,7 +294,12 @@ export function SettingsView({
             // Sticky, so a phone shows the result of a control near the bottom of the screen.
             // The restart question takes its place, so the notice never covers its buttons.
             <div className="settings-notice" role="status">
-              <span>{notice}</span>
+              <span>{noteParts(notice).text}</span>
+              {noteParts(notice).action === "restart" && (
+                <button className="primary" disabled={restarting} onClick={askRestart}>
+                  {noteActionLabels.restart}
+                </button>
+              )}
               <button className="ghost" aria-label="Close the notice" onClick={() => setNotice(null)}>
                 <Icon name="x" />
               </button>

@@ -30,10 +30,7 @@ const defaultWaitMs = 60_000;
  */
 const defaultEnterPauseMs = 500;
 const codeLimit = 2_000;
-/** A token is whole only when a character that no token holds follows it: output comes in pieces. */
-const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}(?=[^0-9A-Za-z_-])/;
-/** After the end of the program, nothing more comes, so the end of the output ends the token too. */
-const endedTokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}/;
+const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}/;
 const addressPattern = /https:\/\/\S*oauth\/authorize\S*/;
 /** claude prints its prompt after the address, so the address is whole once the prompt shows. */
 const promptPattern = /paste\s+code\s+here/i;
@@ -106,7 +103,7 @@ export class ClaudeLogin {
         `No Claude login waits for a code. A login ends after 15 minutes, and after each Finish. ${tryAgain}`,
       );
     this.waitsForCode = false;
-    // The screen before the code holds no token and no refusal, so only the new output counts.
+    // Only the output after the code goes into the last words: the old screen holds the address.
     const from = terminal.received();
     terminal.write(code);
     await Bun.sleep(this.options.enterPauseMs ?? defaultEnterPauseMs);
@@ -115,8 +112,8 @@ export class ClaudeLogin {
     const result = await this.waitFor(
       terminal,
       (screen, exited) =>
-        match(screen.text, exited ? endedTokenPattern : tokenPattern) ??
-        (refusedPattern.test(screen.text) ? refused : null),
+        // Output comes in pieces, so a line is whole only after claude moved on, or ended.
+        match(exited ? screen.text : screen.drawn, tokenPattern) ?? (refusedPattern.test(screen.text) ? refused : null),
       { from, hide: code },
     );
     this.stopTerminal(terminal);
@@ -144,8 +141,9 @@ export class ClaudeLogin {
   }
 
   /**
-   * Waits until `read` finds a value in the output, the program ends, or the wait ends. Only the
-   * output after `from`, a count of `received` characters, counts. A line with `hide` in it never goes into the error message.
+   * Waits until `read` finds a value on the screen, the program ends, or the wait ends. The last
+   * words come only from lines that the output after `from`, a count of `received` characters,
+   * wrote. A line with `hide` in it never goes into the error message.
    */
   private waitFor<T>(
     terminal: TerminalProcess,
@@ -154,7 +152,10 @@ export class ClaudeLogin {
   ): Promise<T | { readonly reason: "exited" | "timeout"; readonly lastWords: string }> {
     return new Promise((resolve) => {
       let finished = false;
-      const screen = (): Screen => screenOf(outputSince(terminal, from));
+      const screen = (): Screen => {
+        const output = terminal.output();
+        return screenOf(output, output.length - (terminal.received() - from));
+      };
       const done = (value: { found: T } | { reason: "exited" | "timeout" }): void => {
         if (finished) return;
         finished = true;
@@ -181,15 +182,14 @@ export class ClaudeLogin {
   }
 }
 
-/** The output after the first `from` characters, as far as the cap on the output kept it. */
-function outputSince(terminal: TerminalProcess, from: number): string {
-  const output = terminal.output();
-  return output.slice(Math.max(0, output.length - (terminal.received() - from)));
-}
-
-/** The output as a person reads it, and the targets of its terminal links. */
+/** The output as a person sees it on the screen, and the targets of its terminal links. */
 interface Screen {
+  /** All the lines on the screen. */
   readonly text: string;
+  /** The lines above the cursor: claude drew them and moved on, so none of them is half drawn. */
+  readonly drawn: string;
+  /** The lines that the new output wrote, from the top. */
+  readonly fresh: readonly string[];
   readonly links: readonly string[];
 }
 
@@ -197,12 +197,21 @@ const escapeCharacter = "\u001b";
 const bellCharacter = "\u0007";
 
 /**
- * Removes the terminal codes, such as colors and cursor moves. A terminal link (OSC 8) keeps
- * its whole target, even where the visible text breaks a long address into lines.
+ * Plays the output on a grid of character cells. claude 2.1 redraws only the cells that changed,
+ * and jumps over a cell that already holds the right character. So a line, such as the token, is
+ * whole only on the grid, never in the output text. The output from index `from` on is new.
+ * A terminal link (OSC 8) keeps its whole target, even where the screen breaks a long address.
  */
-function screenOf(output: string): Screen {
-  let text = "";
+function screenOf(output: string, from: number): Screen {
+  const rows: string[][] = [];
+  const fresh = new Set<number>();
   const links: string[] = [];
+  let row = 0;
+  let column = 0;
+  const cells = (): string[] => {
+    while (rows.length <= row) rows.push([]);
+    return rows[row] ?? [];
+  };
   let index = 0;
   while (index < output.length) {
     const character = output.charAt(index);
@@ -218,21 +227,62 @@ function screenOf(output: string): Screen {
       }
       index = output.charAt(end) === escapeCharacter ? end + 2 : end + 1;
     } else if (character === escapeCharacter && output.charAt(index + 1) === "[") {
-      // A control sequence ends with one character from @ to ~. A cursor move becomes a space.
+      // A control sequence ends with one character from @ to ~.
       let end = index + 2;
       while (end < output.length && !/[@-~]/.test(output.charAt(end))) end++;
-      if (output.charAt(end) === "G" || output.charAt(end) === "C") text += " ";
+      const parameter = output.slice(index + 2, end);
+      const count = Math.max(1, Number.parseInt(parameter, 10) || 1);
+      const line = cells();
+      switch (output.charAt(end)) {
+        case "A":
+          row = Math.max(0, row - count);
+          break;
+        case "B":
+          row += count;
+          break;
+        case "C":
+          column += count;
+          break;
+        case "D":
+          column = Math.max(0, column - count);
+          break;
+        case "G":
+          column = count - 1;
+          break;
+        case "K":
+          // Erase in line: 0 or none to the end, 1 from the start, 2 the whole line.
+          if (parameter === "2") line.length = 0;
+          else if (parameter === "1") line.fill(" ", 0, column + 1);
+          else line.length = Math.min(line.length, column);
+          break;
+      }
       index = end + 1;
     } else if (character === escapeCharacter) {
       // A character set choice, such as ESC ( B, has one more character than other short codes.
       index += "()".includes(output.charAt(index + 1)) ? 3 : 2;
     } else {
-      if (character === "\r" || character === "\n") text += "\n";
-      else if (character >= " ") text += character;
+      if (character === "\r") column = 0;
+      else if (character === "\n") row++;
+      else if (character >= " ") {
+        const line = cells();
+        while (line.length < column) line.push(" ");
+        line[column] = character;
+        column++;
+        if (index >= from) fresh.add(row);
+      }
       index++;
     }
   }
-  return { text, links };
+  const lines = rows.map((line) => line.join(""));
+  return {
+    text: lines.join("\n"),
+    drawn: lines
+      .slice(0, row)
+      .map((line) => `${line}\n`)
+      .join(""),
+    fresh: lines.filter((_line, number) => fresh.has(number)),
+    links,
+  };
 }
 
 function isLoginAddress(link: string): boolean {
@@ -245,8 +295,7 @@ function match(text: string, pattern: RegExp): string | null {
 
 /** The last line that claude printed, which names the problem. */
 function lastWords(screen: Screen, hide: string | undefined): string {
-  const lines = screen.text
-    .split("\n")
+  const lines = screen.fresh
     .map((line) => line.trim())
     .filter(
       (line) =>

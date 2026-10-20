@@ -165,7 +165,7 @@ describe("repository setup", () => {
     });
     const reports = await withoutGh.repositorySetup("2025-04-01-0900-other-app");
     withoutGh.stop();
-    expect(reports[0]?.problem).toContain("gh auth login");
+    expect(reports[0]?.problem).toContain("press Log in with GitHub");
     expect(reports[0]?.sections).toEqual([]);
   });
 });

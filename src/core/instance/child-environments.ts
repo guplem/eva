@@ -28,7 +28,10 @@ export interface InstanceFacts {
   readonly commitIdentity?: CommitIdentity;
 }
 
-/** Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96). */
+/**
+ * Only Eva's own git commands get the GitHub token in a variable; an agent's environment never does
+ * (lesson 96). The agents push with the instance's gh, which Eva logs in with the same token (#244).
+ */
 export function gitEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Record<string, string> {
   const token = secrets.githubToken;
   return buildChildEnvironment(facts.processEnvironment, baseEnvironmentAllowlist, {

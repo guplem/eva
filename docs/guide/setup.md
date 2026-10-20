@@ -94,9 +94,9 @@ In the terminal, setup first logs in to GitHub:
 
 On the page, open **Connect GitHub** and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the notebook in **Set up your vault**. To use a token instead, press **Paste a token instead**.
 
-The GitHub login lets Eva read and write all your repositories, private ones too, so that she can also clone your projects. Eva keeps it on this computer, and never gives it to her AI agents. You can remove it on GitHub under **Settings → Applications**.
+The GitHub login lets Eva and her agents read and write all your repositories, private ones too. Eva clones your projects with it, and logs in the agents' `gh` with it, so that they push their work and open pull requests. Eva keeps it on this computer. To remove it, press **Remove** on the GitHub card: Eva logs the agents out too. Then revoke it on GitHub under **Settings → Applications**.
 
-To give Eva only your notebook, paste a token at the GitHub question instead. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Pick your notebook under **Repository access**, choose **Read and write** under **Permissions → Contents**, and generate the token.
+To give Eva only some repositories, paste a token at the GitHub question instead. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Pick your notebook and your projects under **Repository access**, choose **Read and write** under **Permissions → Contents** and **Permissions → Pull requests**, and generate the token.
 
 ## Connect Telegram (optional)
 

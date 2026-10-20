@@ -45,7 +45,9 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
             Give the token a name, such as Eva. Pick the repositories of your vault and projects: the token reaches only
             those.
           </li>
-          <li>Under the permissions, allow at least Contents: read and write. Then create the token and copy it.</li>
+          <li>
+            Under the permissions, allow Contents and Pull requests: read and write. Then create the token and copy it.
+          </li>
           <li>Paste the token here, and press Save.</li>
         </Steps>
       )}

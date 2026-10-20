@@ -47,6 +47,12 @@ import {
   gitEnvironment,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
+import {
+  commitIdentity,
+  refreshGitHubAccount,
+  saveGitHubAccount,
+  loadGitHubAccount,
+} from "./instance/commit-identity.ts";
 import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
 import { missingSteps, setupProgress, type CheckRecord, type ProgressStep } from "./setup/progress.ts";
 import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
@@ -230,6 +236,7 @@ export class Eva {
       paths: options.paths,
       processEnvironment: options.processEnvironment,
       ...(options.evaCommand === undefined ? {} : { evaCommand: options.evaCommand }),
+      commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
 
@@ -870,7 +877,21 @@ export class Eva {
 
   /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
   saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
-    return this.settings.saveSecret(name, value);
+    const result = this.settings.saveSecret(name, value);
+    if (name === "githubToken") {
+      const token = this.settings.secrets.githubToken;
+      if (token === undefined) saveGitHubAccount(this.options.paths, null);
+      else this.inBackground("Reading the GitHub account", () => this.refreshGitHubAccount(token));
+    }
+    return result;
+  }
+
+  /** The account gives the commit name and email from the next start on. */
+  private refreshGitHubAccount(token: string): Promise<boolean> {
+    return refreshGitHubAccount(this.options.paths, token, {
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
+      isCurrent: () => this.settings.secrets.githubToken === token,
+    });
   }
 
   async runCheck(name: CheckName): Promise<CheckResult> {
@@ -885,6 +906,7 @@ export class Eva {
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { githubBaseUrl: this.options.githubApiBaseUrl }),
       google: {
         config: this.settings.config.google,
         client: this.googleClient(),
@@ -893,6 +915,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
+    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    const token = secrets.githubToken;
+    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+      await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =
       name === "google" && result.ok && this.googleRestartNeeded()

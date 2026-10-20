@@ -4,14 +4,8 @@
  */
 import { rmSync } from "node:fs";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
-import type { EvaConfig, HomePaths } from "../settings/home.ts";
+import type { CommitIdentity, EvaConfig, HomePaths } from "../settings/home.ts";
 import { readGitHubAccount, type GitHubAccount } from "../vault/github-repositories.ts";
-
-/** A null part leaves that part to git's own settings. */
-export interface CommitIdentity {
-  readonly name: string | null;
-  readonly email: string | null;
-}
 
 /** The account record, or null when there is none or it is broken. */
 export function loadGitHubAccount(paths: HomePaths): GitHubAccount | null {
@@ -31,14 +25,25 @@ export function saveGitHubAccount(paths: HomePaths, account: GitHubAccount | nul
 /**
  * Reads the token's account and saves it. Eva calls this only when a login happens, never at
  * start, so she starts offline. A failed read keeps the old record and returns false.
+ * `isCurrent`: false when the token changed during the read, whose account then is no longer wanted.
  */
-export async function refreshGitHubAccount(paths: HomePaths, token: string, baseUrl?: string): Promise<boolean> {
+export async function refreshGitHubAccount(
+  paths: HomePaths,
+  token: string,
+  options: { readonly baseUrl?: string; readonly isCurrent?: () => boolean } = {},
+): Promise<boolean> {
+  let account: GitHubAccount;
   try {
-    saveGitHubAccount(paths, await readGitHubAccount({ token, ...(baseUrl === undefined ? {} : { baseUrl }) }));
-    return true;
+    account = await readGitHubAccount({
+      token,
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+    });
   } catch {
     return false;
   }
+  if (options.isCurrent?.() === false) return false;
+  saveGitHubAccount(paths, account);
+  return true;
 }
 
 /** The person's own name and email first, then the GitHub account's. */

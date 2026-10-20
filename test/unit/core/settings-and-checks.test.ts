@@ -7,6 +7,7 @@ import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
+import { loadGitHubAccount, saveGitHubAccount } from "../../../src/core/instance/commit-identity.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
@@ -851,6 +852,99 @@ describe("the vault step on the page", () => {
       sandbox.git(bare, "init", "-q", "--bare");
       expect((await instance.pushVault(bare)).repository).toBe(bare);
       expect((await instance.setupState()).vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+    }
+  });
+});
+
+describe("the commit identity of an Eva", () => {
+  const account = { id: 1234, login: "example-user", name: "Example User" };
+  const email = "1234+example-user@users.noreply.github.com";
+  let github: ReturnType<typeof Bun.serve> | null = null;
+  afterEach(async () => {
+    await github?.stop(true);
+    github = null;
+  });
+  /** A fake GitHub API that answers `GET /user` for one token. */
+  const fakeAccountApi = (): string => {
+    github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer a-page-token"
+          ? Response.json(account)
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    return `http://127.0.0.1:${String(github.port)}`;
+  };
+  const instanceWith = (secrets: Record<string, string>, githubApiBaseUrl?: string): Eva =>
+    new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC" },
+      secrets,
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
+    });
+  const agentGitConfig = (): string => readFileSync(join(home, "engines", "git", "gitconfig"), "utf8");
+  const waitForRecord = async (present: boolean): Promise<void> => {
+    for (let attempt = 0; attempt < 200 && (loadGitHubAccount(homePaths(home)) === null) === present; attempt++)
+      await Bun.sleep(10);
+  };
+
+  test("a start signs the agents' commits with the saved account", () => {
+    saveGitHubAccount(homePaths(home), account);
+    const instance = instanceWith({});
+    try {
+      expect(agentGitConfig()).toContain('name = "Example User"');
+      expect(agentGitConfig()).toContain(`email = "${email}"`);
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("the name and email that the person sets win over the account", () => {
+    saveGitHubAccount(homePaths(home), account);
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC", git: { name: "Another Name", email: "another@example.com" } },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      expect(agentGitConfig()).toContain('name = "Another Name"');
+      expect(agentGitConfig()).toContain('email = "another@example.com"');
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a token saved on the page reads its account, and a removed token removes it", async () => {
+    const instance = instanceWith({}, fakeAccountApi());
+    try {
+      instance.saveSecret("githubToken", "a-page-token");
+      await waitForRecord(true);
+      expect(loadGitHubAccount(homePaths(home))).toEqual(account);
+      instance.saveSecret("githubToken", null);
+      expect(loadGitHubAccount(homePaths(home))).toBeNull();
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("the GitHub check of an older install fills a missing account", async () => {
+    const instance = instanceWith({ githubToken: "a-page-token" }, fakeAccountApi());
+    try {
+      expect((await instance.runCheck("github")).ok).toBe(true);
+      expect(loadGitHubAccount(homePaths(home))).toEqual(account);
     } finally {
       instance.stop();
     }

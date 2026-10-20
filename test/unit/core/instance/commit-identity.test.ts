@@ -85,14 +85,20 @@ describe("commitIdentity", () => {
 describe("refreshGitHubAccount", () => {
   test("saves the token's account", async () => {
     const baseUrl = fakeApi(200, account);
-    expect(await refreshGitHubAccount(paths, "secret-token", baseUrl)).toBe(true);
+    expect(await refreshGitHubAccount(paths, "secret-token", { baseUrl })).toBe(true);
     expect(loadGitHubAccount(paths)).toEqual(account);
   });
 
   test("a failed read keeps the old record", async () => {
     saveGitHubAccount(paths, account);
     const baseUrl = fakeApi(401, { message: "Bad credentials" });
-    expect(await refreshGitHubAccount(paths, "secret-token", baseUrl)).toBe(false);
+    expect(await refreshGitHubAccount(paths, "secret-token", { baseUrl })).toBe(false);
     expect(loadGitHubAccount(paths)).toEqual(account);
+  });
+
+  test("a token that changed during the read saves nothing", async () => {
+    const baseUrl = fakeApi(200, account);
+    expect(await refreshGitHubAccount(paths, "secret-token", { baseUrl, isCurrent: () => false })).toBe(false);
+    expect(loadGitHubAccount(paths)).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Eva, type EvaStatus } from "../../../../src/core/eva.ts";
+import { loadGitHubAccount } from "../../../../src/core/instance/commit-identity.ts";
 import { defaultConfig, homePaths, loadSecrets, saveSecrets } from "../../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings } from "../../../../src/core/settings/settings.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
@@ -350,6 +351,8 @@ describe("runSetup", () => {
       hostname: "127.0.0.1",
       port: 0,
       fetch: async (request) => {
+        if (request.method === "GET" && new URL(request.url).pathname === "/user")
+          return Response.json({ id: 1234, login: "example-user", name: "Example User" });
         if (request.method === "GET") return Response.json(githubApi.list.body, { status: githubApi.list.status });
         const { name } = (await request.json()) as { name: string };
         githubApi.created.push(name);
@@ -721,9 +724,19 @@ describe("runSetup", () => {
       expect(lines.join("\n")).toContain("Cloned the vault into");
       // With a repository, the folder has a default, so a person is not asked for it.
       expect(asked).not.toContain("vault");
+      expect(loadGitHubAccount(homePaths(home))).toEqual({ id: 1234, login: "example-user", name: "Example User" });
+      expect(lines.join("\n")).toContain(
+        "Eva signs her commits as Example User <1234+example-user@users.noreply.github.com>.",
+      );
     } finally {
       remote.dispose();
     }
+  });
+
+  test("a setup that keeps a saved token reads its account, so an older install gets its commit identity", async () => {
+    saveSecrets(homePaths(home), { githubToken: "token-for-the-test" });
+    await setup({ vault: existingVault }, { interactive: false });
+    expect(loadGitHubAccount(homePaths(home))?.login).toBe("example-user");
   });
 
   test("a repository that git cannot read is asked again, with git's reason, and nothing is lost", async () => {

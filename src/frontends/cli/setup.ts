@@ -30,6 +30,7 @@ import {
 } from "../../core/engine-install/engine-install.ts";
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
+import { commitIdentity, loadGitHubAccount, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../core/settings/settings.ts";
 import {
   checkVaultRepository,
@@ -225,6 +226,10 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
       if (githubToken !== "") saveSecret("githubToken", githubToken);
     }
   }
+  // Each setup reads the account again: a new login, and a token from before Eva kept the account.
+  const githubToken = secrets().githubToken;
+  if (githubToken !== undefined && (await recordGithubAccount(options, githubToken)))
+    progress.changedAfterStart ||= progress.started;
   const readyVault = config().vaultPath;
   // A new vault that had no GitHub login yet gets the push now. One with a remote has its push from sync.
   if (
@@ -337,6 +342,22 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   ];
   options.write(`Saved ${files.join(", ")}.`);
   return { changedAfterStart: progress.changedAfterStart };
+}
+
+/**
+ * Saves the token's GitHub account, which gives the commit name and email, and says which they
+ * are. Returns whether the account changed. A failed read changes nothing: the next setup tries again.
+ */
+async function recordGithubAccount(options: SetupOptions, token: string): Promise<boolean> {
+  const paths = homePaths(options.paths.root);
+  const before = loadGitHubAccount(paths);
+  const read = await refreshGitHubAccount(paths, token, {
+    ...(options.githubApiBaseUrl === undefined ? {} : { baseUrl: options.githubApiBaseUrl }),
+  });
+  if (!read) return false;
+  const { name, email } = commitIdentity(paths, loadSettings(paths).config);
+  if (name !== null && email !== null) options.write(`Eva signs her commits as ${name} <${email}>.`);
+  return JSON.stringify(before) !== JSON.stringify(loadGitHubAccount(paths));
 }
 
 /**

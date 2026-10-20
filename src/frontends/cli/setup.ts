@@ -854,6 +854,5 @@ async function logInAgentsGh(
   const problem = await logInGitHubCli({ token, ghFolder, runner: options.runner, environment: options.environment });
   if (problem === null) options.write(doneLine("Your agents use the same GitHub login."));
   // A rerun skips the GitHub question while a token is saved, so the page is the place to fix it.
-  else
-    options.write(`Eva could not log in GitHub for your agents. ${problem}\nPress Log in with GitHub on Eva's page.`);
+  else options.write(`Eva could not log your agents in to GitHub. ${problem}\nPress Log in with GitHub on Eva's page.`);
 }

@@ -24,5 +24,5 @@ The web page shows "No vault is configured. Run `eva setup`." A person on the pa
   - Allow a new device. The page shows the device step text only while phone access is off. Then only `eva devices allow` works, so the text stays.
 - **G2. Does a core message name the web page or stay neutral?** Decision: say "in Settings, on Eva's page". `progress.ts` and `cli/client.ts` use this phrase already. `eva chat` relays the same text, and the phrase is true there too.
 - **G3. Is a change to an error message a schema change?** No. `AGENTS.md` lists only the `EvaErrorCode` value as a schema, and it stays the same. The toast branches on the code.
-- **G4. Other `vault_not_found` errors.** The folder errors happen in the vault step, where the toast hides its Settings button. A missing `.eva/assistant.md` uses the same code during a turn. Decision: accept it. The vault step is the nearest place to fix a vault, and a new code needs the owner.
+- **G4. Other `vault_not_found` errors.** The folder errors happen in the vault step, where the toast hides its Settings button. A missing `.eva/assistant.md` uses the same code, but it fails a turn, and `turn_failed` carries no code. So it never gets the toast button.
 - **G5. Which label?** Decision: reuse "Set up your vault" from `new-chat.ts`, so one place has one label.

@@ -42,13 +42,15 @@ G1, the core and the API:
 - `finish()` waits for that save. Two calls get the same result. A settled error stays until a `finish()` reads it. With no login, it throws `github_failed`.
 - Cancel through the sleep: the login's sleep rejects once the login is stale. `stop()` runs in `Eva.stop`. Catch every background rejection.
 - A null client id throws `github_failed` with a hint to paste a token. The page needs no capability flag.
-- New `Eva` options, each with a default, so `src/main.ts` stays as it is: `githubLoginClientId`, `githubLoginBaseUrl`, `sleep`.
+- One new `Eva` option, `githubBrowserLogin` (the whole device flow), with a default, so `src/main.ts` stays as it is. Tests and the demo server replace the whole flow.
+- `finish()` keeps the result until the next `start()`: a phone can lose the answer of the long request, and the page asks again.
 - Routes: `POST /api/github/login` and `POST /api/github/login/finish`. Add `/api/github/` to the no-timeout list. Gate them as the other secret saves: the token or a device cookie.
 - Do not log or register the user code: it is not a secret, and the redactor would hide it.
 
 G2, the page:
 
-- One shared `GitHubLogin` component in a new leaf file `client/GitHubLogin.tsx`. The GitHub card, the vault card without a token and the vault push callout use it.
+- One shared `GitHubLogin` component in a new leaf file `client/GitHubLogin.tsx`. The GitHub card and the vault card without a token use it. The vault push callout keeps its link to the GitHub step.
+- The page asks for the end again after a network error, for at most the life of the code.
 - Copy the Claude login layout: `Steps`, a `primary` button, the code with a Copy button, an `a.button-link` to GitHub's page (a phone blocks a late `window.open`), and a `role="status"` wait line.
 - The page starts `finish` right after `start`. On success: `reloadSettings()`, then `noteAndReload` with the restart words.
 - Keep the hand-made token behind a `link-button`, "Paste a token instead", as in `ClaudeCodeCard`. The `SecretField` stays visible when a token is saved, so Remove works.
@@ -61,3 +63,11 @@ G3, the order:
 - GitHub stays optional: `nextToDo` skips it, and the vault card offers the login.
 - Update `progress.test.ts` and the e2e tests that use step numbers or index 1.
 - Keep "notebook" in the CLI, the README and the guide: there it is a deliberate plain word. Use "vault" on the page and in `progress.ts`.
+
+## Rejected review findings
+
+- Rewrite a commit subject, or fold the e2e mock fix into the step-order commit. The rules forbid a history rewrite.
+- Add `sleep` and base URL options to `Eva` to test the default login. The default is a three-line adapter. `githubDeviceLogin` and `GitHubBrowserLogin` each have their own tests.
+- Put the login in the vault push callout. The callout is a short warning, and the GitHub step is one tap away.
+- Guard `start()` against a device flow that never calls `show`. The real flow always calls it first. The `DeviceLogin` type now states this.
+- Drop the card description on the step page. The card also stands alone in the Connections section, where it needs the description.

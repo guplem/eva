@@ -79,6 +79,8 @@ export interface HomePaths {
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
+  /** The GitHub account of the saved token, which gives the commit name and email. */
+  readonly githubAccount: string;
   readonly logsFolder: string;
   readonly enginesFolder: string;
 }
@@ -101,6 +103,7 @@ export function homePaths(root: string): HomePaths {
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
+    githubAccount: join(stateFolder, "github-account.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
   };
@@ -235,6 +238,13 @@ const configSchema = z.object({
   trust: z
     .object({ trustedRepositoryOwners: z.array(z.string().min(1)).default([]) })
     .default({ trustedRepositoryOwners: [] }),
+  /** The name and email of this Eva's commits. Null: the GitHub account's, then the computer user's git settings. */
+  git: z
+    .object({
+      name: z.string().min(1).nullable().default(null),
+      email: z.string().min(1).nullable().default(null),
+    })
+    .default({ name: null, email: null }),
   google: z
     .object({
       /** The Google account that the Google tools act for. Google stays off until it is set. */

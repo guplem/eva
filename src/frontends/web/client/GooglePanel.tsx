@@ -158,7 +158,7 @@ function GoogleAccessFields({
   readonly services: readonly (keyof GoogleAccess)[];
   readonly onChange: (access: Partial<GoogleAccess>) => void;
 }): ReactElement {
-  const preset = matchingGoogleAccessPreset(access);
+  const preset = matchingGoogleAccessPreset(access, services);
   // "Custom" opens the service selects before any level differs from the preset.
   const [customOpen, setCustomOpen] = useState(false);
   const custom = customOpen || preset === null;

@@ -24,9 +24,9 @@ export const googleLevelLabels: { readonly [S in GoogleService]: Readonly<Record
   gmail: {
     readonly: "Read only",
     organize: "Read and sort, such as labels and archive",
-    drafts: "Sort and write drafts",
-    send: "Sort, write drafts and send",
-    full: "Everything, also the mail settings",
+    drafts: "Read, sort and write drafts",
+    send: "Read, sort, write drafts and send",
+    full: "Everything, including the mail settings",
   },
 };
 
@@ -59,9 +59,11 @@ export const googleAccessPresets: readonly GoogleAccessPreset[] = [
   },
 ];
 
-/** The preset with exactly these levels, or null for a custom choice. */
-export function matchingGoogleAccessPreset(access: GoogleAccess): GoogleAccessPreset | null {
-  const services = Object.keys(access) as (keyof GoogleAccess)[];
+/** The preset with the same levels for each service that is on, or null for a custom choice. */
+export function matchingGoogleAccessPreset(
+  access: GoogleAccess,
+  services: readonly GoogleService[],
+): GoogleAccessPreset | null {
   return (
     googleAccessPresets.find((preset) => services.every((service) => preset.access[service] === access[service])) ??
     null

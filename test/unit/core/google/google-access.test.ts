@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { googleAccessPresets, matchingGoogleAccessPreset } from "../../../../src/core/google/google-access.ts";
 import { defaultConfig, googleAccessLevels } from "../../../../src/core/settings/home.ts";
 
+const allServices = ["calendar", "drive", "contacts", "tasks", "gmail"] as const;
+
 describe("googleAccessPresets", () => {
   test("climb from read only to everything, and each step gives no less than the step before", () => {
     expect(googleAccessPresets.map((preset) => preset.id)).toEqual(["read", "lists", "drafts", "everything"]);
@@ -29,19 +31,28 @@ describe("googleAccessPresets", () => {
 
 describe("matchingGoogleAccessPreset", () => {
   test("names the preset with the same levels", () => {
-    expect(matchingGoogleAccessPreset(defaultConfig.google.access)?.id).toBe("read");
+    expect(matchingGoogleAccessPreset(defaultConfig.google.access, allServices)?.id).toBe("read");
     expect(
-      matchingGoogleAccessPreset({
-        calendar: "full",
-        drive: "readonly",
-        contacts: "full",
-        tasks: "manage",
-        gmail: "organize",
-      })?.id,
+      matchingGoogleAccessPreset(
+        {
+          calendar: "full",
+          drive: "readonly",
+          contacts: "full",
+          tasks: "manage",
+          gmail: "organize",
+        },
+        allServices,
+      )?.id,
     ).toBe("lists");
   });
 
   test("gives null when one level differs from every preset", () => {
-    expect(matchingGoogleAccessPreset({ ...defaultConfig.google.access, contacts: "full" })).toBeNull();
+    expect(matchingGoogleAccessPreset({ ...defaultConfig.google.access, contacts: "full" }, allServices)).toBeNull();
+  });
+
+  test("skips the services that are off: their levels have no select", () => {
+    const access = { ...defaultConfig.google.access, gmail: "organize" } as const;
+    expect(matchingGoogleAccessPreset(access, ["calendar", "drive", "contacts", "tasks"])?.id).toBe("read");
+    expect(matchingGoogleAccessPreset(access, allServices)).toBeNull();
   });
 });

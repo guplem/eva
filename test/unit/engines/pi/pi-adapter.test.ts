@@ -181,7 +181,7 @@ describe("PiEngine", () => {
       },
     ]);
     const events = await drain(engine(fake).runTurn(request({ prompt: "plain hello" })));
-    expect(events[0]).toMatchObject({ kind: "text", messageId: "session-1:1" });
+    expect(events.find((event) => event.kind === "text")).toMatchObject({ messageId: "session-1:1" });
     expect(events.at(-1)).toMatchObject({
       kind: "turn_finished",
       engineSessionId: "session-1",
@@ -197,6 +197,15 @@ describe("PiEngine", () => {
     expect(run.command[0]).toBe("pi");
     expect(run.cwd).toBe("/demo-vault");
     expect(run.environment).toEqual({ PATH: "/bin" });
+  });
+
+  test("each streamed piece of the answer comes as a text_delta before the whole text (issue 117)", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain") }]);
+    const events = await drain(engine(fake).runTurn(request()));
+    const textAt = events.findIndex((event) => event.kind === "text");
+    const pieces = events.slice(0, textAt).filter((event) => event.kind === "text_delta");
+    expect(pieces.length).toBeGreaterThan(1);
+    expect(pieces.map((event) => event.text).join("")).toBe((events[textAt] as { text: string }).text);
   });
 
   test("the chat's model name picks the pi model, with the default entry as fallback (lesson 41)", async () => {
@@ -488,7 +497,7 @@ describe("PiEngine", () => {
     const kept = await drain(
       engine(fake).runTurn(request({ history: { kind: "continue", engineSessionId: "session-1" } })),
     );
-    expect(kept[0]?.kind).toBe("text");
+    expect(kept.find((event) => event.kind !== "text_delta")?.kind).toBe("text");
     expect(fake.runs[0]?.command).toContain(join(sessions, "session-1.jsonl"));
     const lost = await drain(engine(fake).runTurn(request({ history: { kind: "continue", engineSessionId: "gone" } })));
     expect(lost[0]).toEqual({ kind: "history_lost" });

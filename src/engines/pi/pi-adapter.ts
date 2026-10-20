@@ -195,6 +195,10 @@ export class PiEngine implements EnginePort {
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };
       } else if (type === "response" && record["id"] === settleRequestId && pendingError !== null) {
         end = { kind: "failed", reason: pendingError };
+      } else if (type === "message_update") {
+        const update = record["assistantMessageEvent"] as { type?: unknown; delta?: unknown } | undefined;
+        if (update?.type === "text_delta" && typeof update.delta === "string" && update.delta.length > 0)
+          yield { kind: "text_delta", text: update.delta };
       } else if (type === "message_end") {
         const message = record["message"] as PiMessage | undefined;
         if (message === undefined) continue;

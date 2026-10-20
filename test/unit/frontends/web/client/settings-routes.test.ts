@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   cardId,
+  designReferenceItem,
   isSettingsHash,
   parentRoute,
   parseSettingsHash,
@@ -79,5 +80,18 @@ describe("settings search", () => {
     const places = searchEntries.map((entry) => `${entry.section}/${entry.item}`);
     expect(searchEntries.every((entry) => sections.has(entry.section))).toBe(true);
     expect(new Set(places).size).toBe(places.length);
+  });
+});
+
+describe("the development section", () => {
+  test("the design reference has its own address, and Back goes to the section", () => {
+    const route = parseSettingsHash("#/settings/developer/design");
+    expect(route).toEqual({ section: "developer", item: designReferenceItem });
+    expect(parentRoute(route)).toEqual({ section: "developer", item: null });
+  });
+
+  test("the search finds the report link and the design reference", () => {
+    expect(searchSettings("bug").map((entry) => entry.item)).toEqual(["report-problem"]);
+    expect(searchSettings("colours components").map((entry) => entry.item)).toEqual([designReferenceItem]);
   });
 });

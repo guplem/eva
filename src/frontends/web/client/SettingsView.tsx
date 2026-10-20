@@ -7,11 +7,14 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
 import { ConnectionsSection } from "./ConnectionsSection.tsx";
+import { DesignReference } from "./DesignReference.tsx";
+import { DeveloperSection } from "./DeveloperSection.tsx";
 import { EnginesSection } from "./EnginesSection.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { PersonalizeSection } from "./PersonalizeSection.tsx";
 import {
   cardId,
+  designReferenceItem,
   parentRoute,
   parseSettingsHash,
   searchSettings,
@@ -59,7 +62,12 @@ export function SettingsView({
 
   // A card that a search result or a link names scrolls into view, and shows for a moment.
   useEffect(() => {
-    if (route.item === null || route.section === "setup") {
+    // A setup step and the design reference are pages of their own, not cards to scroll to.
+    if (
+      route.item === null ||
+      route.section === "setup" ||
+      (route.section === "developer" && route.item === designReferenceItem)
+    ) {
       document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }
@@ -233,7 +241,7 @@ export function SettingsView({
                 <Icon name="back" />
               </button>
             )}
-            <h1>{section === null ? "Settings" : section.title}</h1>
+            <h1>{pageTitle(section, route.item)}</h1>
             <label className="search-field">
               <Icon name="search" />
               <input
@@ -287,6 +295,11 @@ export function SettingsView({
   );
 }
 
+function pageTitle(section: SettingsSection | null, item: string | null): string {
+  if (section === null) return "Settings";
+  return section.id === "developer" && item === designReferenceItem ? "Design reference" : section.title;
+}
+
 const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   setup: "check",
   engines: "term",
@@ -295,6 +308,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   access: "phone",
   personalize: "sun",
   updates: "download",
+  developer: "bolt",
 };
 
 /** The state of a section's setup steps: a red count when a step needs the person, a green check when all are done. */
@@ -423,6 +437,8 @@ function SectionPage({
       return <PersonalizeSection context={context} />;
     case "updates":
       return <UpdatesSection context={context} />;
+    case "developer":
+      return item === designReferenceItem ? <DesignReference /> : <DeveloperSection context={context} />;
   }
 }
 

@@ -1,6 +1,7 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
-import type { EvaStatus } from "../../core/eva.ts";
+import type { EvaStatus, EvaVersions } from "../../core/eva.ts";
 import type { ProgressStep } from "../../core/setup/progress.ts";
+import type { ToolVersion } from "../../core/tool-versions.ts";
 import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
@@ -21,8 +22,10 @@ interface ProjectBody {
 
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
+  const versions = await getJson<EvaVersions>(options, "/api/versions");
   return [
     ...describeStatusLines(status),
+    describeToolVersions(versions.tools),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
@@ -49,6 +52,13 @@ export function describeStatusLines(status: EvaStatus): string[] {
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ...describeRemoteAccess(status.remoteAccess),
   ];
+}
+
+/** One line with the version of each tool that is there. `eva doctor` names the missing ones. */
+export function describeToolVersions(tools: readonly ToolVersion[]): string {
+  const found = tools.filter((tool) => tool.version !== null);
+  if (found.length === 0) return "Tools: none found";
+  return `Tools: ${found.map((tool) => `${tool.program} ${tool.version ?? ""}`).join(", ")}`;
 }
 
 /** One line for each log entry: the time (UTC), the level, the message and its details. */

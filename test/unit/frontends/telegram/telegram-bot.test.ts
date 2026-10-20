@@ -1609,6 +1609,8 @@ describe("alerts, logs and restart", () => {
     telegram.sendText(owner, "/status");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     expect(telegram.sentTexts()[0]).toStartWith("All good\nEva ");
+    // A phone sees the version of Claude Code and the other tools too.
+    expect(telegram.sentTexts()[0]).toMatch(/\nTools: /);
     eva.reportProblem("vault_sync", problem);
     telegram.sendText(owner, "/status");
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("1 problem\n")));

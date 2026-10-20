@@ -40,7 +40,7 @@ const turnSchema = z.object({
   at: z.string(),
 });
 
-const sessionSchema = z.object({
+export const sessionSchema = z.object({
   id: z.string(),
   engineSessionId: z.string(),
   engine: z.enum(["claude-code", "pi"]),
@@ -66,7 +66,7 @@ const sessionSchema = z.object({
 export type SessionRecord = z.infer<typeof sessionSchema>;
 
 /** Each session is checked on its own, so one bad entry never empties the list (lesson 69). */
-const storeSchema = z.object({ version: z.literal(1), sessions: z.array(z.unknown()) });
+export const storeSchema = z.object({ version: z.literal(1), sessions: z.array(z.unknown()) });
 
 export interface SessionStoreOptions {
   /** Names the copy of a broken file. */

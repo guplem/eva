@@ -205,7 +205,7 @@ export function createHomeFolders(paths: HomePaths): void {
 
 const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);
 
-const configSchema = z.object({
+export const configSchema = z.object({
   version: z.literal(1).default(1),
   vaultPath: z.string().min(1).nullable().default(null),
   /** This machine's name in `.eva/hub.json`. Null: the computer's host name. */
@@ -342,7 +342,7 @@ export function saveConfig(paths: HomePaths, config: EvaConfig): void {
   writeFileAtomic(paths.config, JSON.stringify(config, null, 2) + "\n");
 }
 
-const secretsSchema = z
+export const secretsSchema = z
   .object({
     telegramBotToken: z.string().min(1),
     claudeOauthToken: z.string().min(1),

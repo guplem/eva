@@ -149,10 +149,13 @@ export function removeScheduleDefinition(path: string, scheduleId: string): bool
   return true;
 }
 
-/** Turns one schedule off or on, and keeps every other key. False when no entry has the id. */
+/** Turns one schedule off or on, and keeps every other key. False when no valid entry has the id. */
 export function setScheduleEnabled(path: string, scheduleId: string, enabled: boolean): boolean {
   const file = readWritableFile(path);
-  const index = file.schedules.findIndex((entry) => isEntryWithId(entry, scheduleId));
+  // The first valid entry with the id is the one that runs, as `readScheduleDefinitions` reads it.
+  const index = file.schedules.findIndex(
+    (entry) => isEntryWithId(entry, scheduleId) && typeof parseScheduleEntry(entry, 1) !== "string",
+  );
   const entry = file.schedules[index] as Record<string, unknown> | undefined;
   if (entry === undefined) return false;
   // On is the default, so the key leaves the entry and the file stays as the person wrote it.

@@ -360,6 +360,13 @@ describe("Scheduler", () => {
     expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"], ["enabled"]]);
   });
 
+  test("off changes the entry that runs, not an invalid one with the same id", () => {
+    writeSchedules([{ ...morning, at: "25:00" }, morning]);
+    const scheduler = createScheduler();
+    expect(scheduler.setEnabled("morning", false)).toBe(true);
+    expect(scheduler.list().schedules[0]?.schedule.enabled).toBe(false);
+  });
+
   test("a schedule that is off from the start gets a first card when it turns on", async () => {
     writeSchedules([{ ...morning, enabled: false }]);
     clock = new Date("2026-07-01T05:30:00Z");

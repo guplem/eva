@@ -14,7 +14,7 @@ import { systemTerminalProcessStarter, type TerminalProcessStarter } from "../sh
 import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
-import { AlertCenter, type Alert, type AlertProblem } from "./alerts/alert-center.ts";
+import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
 import {
   scheduleCardProblem,
   engineUpdateProblem,
@@ -152,6 +152,8 @@ export interface EvaStatus {
   readonly localUrl: string;
   /** One line for each open problem; empty when all is good. */
   readonly problems: readonly string[];
+  /** The same problems with their keys. */
+  readonly problemDetails: readonly ProblemDetail[];
   /** How many setup steps still need the person; the Settings page lists them. */
   readonly setupMissing: number;
 }
@@ -251,6 +253,8 @@ export class Eva {
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,
+      // The start value, as the sweep timer reads it: a change of the setting waits for a restart.
+      syncEnabled: () => options.config.sync.enabled,
       assistantBusy: () => this.assistantBusy(),
       reportProblem: (problem) => {
         this.alerts.report("vault_sync", problem);
@@ -471,7 +475,8 @@ export class Eva {
     if (this.backgroundTicking) return;
     this.backgroundTicking = true;
     try {
-      await this.vault.pullIfDue(this.settings.config.sync);
+      // The interval applies at once; sync.enabled waits for a restart, as the sweep and the turn sync do.
+      await this.vault.pullIfDue({ ...this.settings.config.sync, enabled: this.options.config.sync.enabled });
       this.noticeRoleChange();
       this.cleanUpIfDue();
       // The engine update starts first, so Eva's own update sees it and waits. It runs apart:
@@ -697,6 +702,7 @@ export class Eva {
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       localUrl: `http://127.0.0.1:${String(this.options.config.port)}`,
       problems: this.alerts.openProblems(),
+      problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
       setupMissing: missingSteps(this.setupProgress()),
     };
   }

@@ -62,6 +62,42 @@ describe("pick update", () => {
       "Fixes and other changes:\n• fix: a crash (1.0.1)",
     ]);
   });
+
+  test("each newer release carries its own first change as one sentence, a breaking change first", () => {
+    const newer = pickUpdate(
+      "1.0.0",
+      [
+        release("2.0.0", "fix(web): a typo", "feat(core)!: rename the settings keys"),
+        release("1.1.0", "feat: voice notes"),
+        release("1.0.1"),
+      ],
+      "minor",
+    ).newer;
+    expect(newer.map(({ headline }) => headline)).toEqual(["Rename the settings keys.", "Voice notes.", null]);
+  });
+
+  test("a pull request title loses its number, and a sentence keeps its own end mark", () => {
+    const notes = releaseNotes([
+      { subject: "feat: x", body: "", pullRequest: { number: 7, title: "feat(web): what is new?" } },
+    ]);
+    expect(pickUpdate("1.0.0", [{ version: "1.1.0", notes }], "minor").newer[0]?.headline).toBe("What is new?");
+  });
+
+  test("a hand-written line keeps a first word that is not a commit type", () => {
+    const notes = "https://example.com/blog/1.1\n";
+    expect(pickUpdate("1.0.0", [{ version: "1.1.0", notes }], "minor").newer[0]?.headline).toBe(
+      "Https://example.com/blog/1.1.",
+    );
+  });
+
+  test("each newer release carries its publish date, or null when GitHub sent none", () => {
+    const newer = pickUpdate(
+      "1.0.0",
+      [{ ...release("1.1.0"), publishedAt: "2026-10-12T09:00:00Z" }, release("1.0.1")],
+      "minor",
+    ).newer;
+    expect(newer.map(({ publishedAt }) => publishedAt)).toEqual(["2026-10-12T09:00:00Z", null]);
+  });
 });
 
 describe("a vault that needs a newer Eva (#119)", () => {

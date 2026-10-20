@@ -1729,8 +1729,22 @@ describe("describeUpdate and describeSync", () => {
       kind: "executable" as const,
       current: "1.2.0",
       releases: [
-        { version: "2.0.0", notes: "", level: "major" as const, summary: "Breaking changes:\n• feat!: x (2.0.0)" },
-        { version: "1.3.0", notes: "", level: "minor" as const, summary: "New features:\n• feat: y (1.3.0)" },
+        {
+          version: "2.0.0",
+          notes: "",
+          level: "major" as const,
+          summary: "Breaking changes:\n• feat!: x (2.0.0)",
+          headline: "X.",
+          publishedAt: null,
+        },
+        {
+          version: "1.3.0",
+          notes: "",
+          level: "minor" as const,
+          summary: "New features:\n• feat: y (1.3.0)",
+          headline: "Y.",
+          publishedAt: null,
+        },
       ],
     };
     expect(describeRelease(release, "2.0.0")).toBe(
@@ -1773,6 +1787,7 @@ describe("describeStatusLines", () => {
     remoteAccess: null,
     localUrl: "http://127.0.0.1:7420",
     problems: [],
+    problemDetails: [],
     setupMissing: 0,
   };
 

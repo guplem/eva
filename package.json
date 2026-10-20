@@ -34,8 +34,8 @@
     "deadcode": "knip",
     "public-content": "bun run scripts/check-public-content.ts",
     "commits": "bun run scripts/check-commits.ts",
-    "test": "bun test --timeout 30000",
-    "test:coverage": "bun test --coverage --timeout 30000",
+    "test": "bun test --timeout 30000 --parallel",
+    "test:coverage": "bun test --coverage --timeout 30000 --parallel",
     "test:e2e": "playwright test",
     "smoke:live": "bun run scripts/smoke-live.ts",
     "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"

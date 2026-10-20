@@ -14,6 +14,7 @@ import type { SessionManager } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 import {
   createClone,
+  countChanges,
   describeClone,
   githubSlug,
   isCleanFolder,
@@ -208,11 +209,18 @@ export class ProjectWork {
     );
   }
 
-  /** The clones of a project, with their branch and pull request. */
+  /** The clones of a project, with their branch, pull request and number of changed files. */
   async clones(projectId: string): Promise<CloneDetails[]> {
     const project = this.project(projectId);
+    const { runner, gitEnvironment } = this.options;
     return Promise.all(
-      listClones(project.path).map((clone) => describeClone(clone, this.options.runner, this.options.gitEnvironment)),
+      listClones(project.path).map(async (clone) => {
+        const [details, changes] = await Promise.all([
+          describeClone(clone, runner, gitEnvironment),
+          countChanges(clone, runner, gitEnvironment),
+        ]);
+        return { ...details, changes };
+      }),
     );
   }
 

@@ -28,6 +28,9 @@ export interface OpenAlert extends AlertProblem {
   readonly key: string;
 }
 
+/** An open problem as the status shows it: the key tells a front end which button fixes it. */
+export type ProblemDetail = Pick<OpenAlert, "key" | "level" | "message">;
+
 type AlertListener = (alert: Alert) => Promise<void> | void;
 
 export interface AlertCenterOptions {

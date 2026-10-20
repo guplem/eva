@@ -26,6 +26,8 @@ export interface VaultUpkeepOptions {
   /** Null when no vault is configured. */
   readonly vaultSync: VaultSync | null;
   readonly now: () => Date;
+  /** The `sync.enabled` setting. Off stops the automatic steps, never a request from the person. */
+  readonly syncEnabled: () => boolean;
   /** True while an Assistant chat runs a turn. */
   readonly assistantBusy: () => boolean;
   readonly reportProblem: (problem: AlertProblem | null) => void;
@@ -53,18 +55,22 @@ export class VaultUpkeep {
     return this.options.vaultSync?.currentState ?? noVaultState;
   }
 
-  /** The pull before an Assistant turn. */
+  /** The pull before an Assistant turn. With sync off, the turn reads the vault as it is. */
   async pull(): Promise<VaultSyncState> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return noVaultState;
+    // No log line: a skip says nothing new, and logSyncState would clear a sync alert.
+    if (!this.options.syncEnabled()) return vaultSync.currentState;
     this.lastPullAt = this.options.now();
     return this.logSyncState(await vaultSync.pull());
   }
 
-  /** The save after an Assistant turn. */
+  /** The save after an Assistant turn. With sync off, the changes wait for "Sync now". */
   async save(): Promise<VaultSyncState> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return noVaultState;
+    // As in pull: no log line.
+    if (!this.options.syncEnabled()) return vaultSync.currentState;
     return this.logSyncState(await vaultSync.save());
   }
 

@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
+import { BackButton } from "./ProjectPage.tsx";
 
 const statusChoices = [
   { value: "", label: "None" },
@@ -23,9 +24,11 @@ interface ProjectDetailsEditorProps {
   readonly projectId: string;
   /** Runs after each save, so the project list can show the new title and status. */
   readonly onSaved: () => void;
+  /** Goes back to the project page. */
+  readonly onBack: () => void;
 }
 
-export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEditorProps): ReactElement {
+export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDetailsEditorProps): ReactElement {
   const [file, setFile] = useState<ProjectFile | Loading>({ state: "loading" });
   const [details, setDetails] = useState<ProjectDetails>(emptyDetails);
   const [tagDraft, setTagDraft] = useState("");
@@ -120,6 +123,7 @@ export function ProjectDetailsEditor({ projectId, onSaved }: ProjectDetailsEdito
   return (
     <>
       <div className="main-header">
+        <BackButton label="Back" onClick={onBack} />
         <h1>{titleOf(file, projectId)} · Details</h1>
         <button onClick={() => void load()} disabled={busy}>
           Load again

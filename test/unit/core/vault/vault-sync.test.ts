@@ -338,7 +338,9 @@ describe("VaultSync conflicts", () => {
     await committedConflict(sync);
     expect(sync.currentState.lastError).toContain("AGENTS.md");
     const report = await sync.conflicts();
-    expect(report.conflicts).toEqual([{ path: "AGENTS.md", kind: "committed", picked: null }]);
+    expect(report.conflicts).toEqual([
+      { path: "AGENTS.md", kind: "committed", picked: null, mine: "# Mine\n", theirs: "# Theirs\n" },
+    ]);
   });
 
   test("lists no conflict when the vault is in sync", async () => {
@@ -416,7 +418,7 @@ describe("VaultSync conflicts", () => {
     sandbox.write(vault, "AGENTS.md", "# Mine\n");
     const sync = createSync(vault);
     await sync.save();
-    expect((await sync.conflicts()).conflicts.map((conflict) => conflict.path)).toEqual(["AGENTS.md"]);
+    expect((await sync.conflicts()).conflicts).toMatchObject([{ path: "AGENTS.md", mine: "# Mine\n", theirs: null }]);
     expect((await sync.resolve("AGENTS.md", "theirs")).state.status).toBe("ok");
     expect(existsSync(join(vault, "AGENTS.md"))).toBe(false);
     expect(remoteFiles()).not.toContain("AGENTS.md");
@@ -432,6 +434,19 @@ describe("VaultSync conflicts", () => {
     expect((await sync.resolve("AGENTS.md", "both")).state.status).toBe("ok");
     expect(sandbox.git(sandbox.remote, "show", "main:AGENTS.md")).toBe("# Mine");
     expect(remoteFiles()).not.toContain("conflict copy");
+  });
+
+  test("shows no text for a version that is binary or too long to read on a phone", async () => {
+    pushFromOther("photo.png", "a\0b\n");
+    pushFromOther("Long.md", "theirs\n");
+    sandbox.write(vault, "photo.png", "c\0d\n");
+    sandbox.write(vault, "Long.md", "x".repeat(300_000));
+    const sync = createSync(vault);
+    await sync.save();
+    expect((await sync.conflicts()).conflicts).toMatchObject([
+      { path: "Long.md", mine: null, theirs: "theirs\n" },
+      { path: "photo.png", mine: null, theirs: null },
+    ]);
   });
 
   test("answers found: false for a note with no conflict, and changes nothing", async () => {
@@ -477,7 +492,9 @@ describe("VaultSync conflicts", () => {
   test("lists an edit that is not committed as an uncommitted conflict", async () => {
     const sync = createSync(vault);
     await uncommittedConflict(sync);
-    expect((await sync.conflicts()).conflicts).toEqual([{ path: "AGENTS.md", kind: "uncommitted", picked: null }]);
+    expect((await sync.conflicts()).conflicts).toEqual([
+      { path: "AGENTS.md", kind: "uncommitted", picked: null, mine: "# Mine\n", theirs: "# Theirs\n" },
+    ]);
   });
 
   test("keep mine on an uncommitted conflict takes this machine's edit, pushes it, and keeps the stash", async () => {
@@ -559,10 +576,13 @@ describe("VaultSync conflict edge cases", () => {
     await sync.save();
     const result = await sync.resolve("b.md", "mine");
     expect(result.state.status).toBe("conflict");
+    // A pick answers with no texts: a phone that taps through many notes must not wait for them.
     expect(result.conflicts).toEqual([
       { path: "a.md", kind: "committed", picked: null },
       { path: "b.md", kind: "committed", picked: "mine" },
     ]);
+    // The list shows the remote's new version, so the person reads it before picking again.
+    expect((await sync.conflicts()).conflicts[0]).toMatchObject({ theirs: "a theirs, with an important change\n" });
   });
 });
 

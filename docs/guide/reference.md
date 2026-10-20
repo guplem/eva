@@ -64,7 +64,7 @@ On this computer:
 | `machineName`                                        | The computer's name                        | This computer's name in `.eva/hub.json`.                                                       |
 | `port`                                               | `7420`                                     | The port of the web page on this computer.                                                     |
 | `projectRoots`                                       | `[]`                                       | More folders of projects, beside `Projects/` in the notebook.                                  |
-| `sync.enabled`                                       | `true`                                     | `false` stops the notebook sync on this computer.                                              |
+| `sync.enabled`                                       | `true`                                     | `false` stops the automatic notebook sync on this computer. "Sync now" still works.            |
 | `engines.claudeCode.executable`                      | `null`                                     | The program that starts Claude Code. `null`: `claude`.                                         |
 | `engines.pi.executable`                              | `null`                                     | The program that starts pi. `null`: `pi`.                                                      |
 | `telegram.allowedChatId`, `telegram.allowedUserId`   | Set when you pair the chat                 | The Telegram chat, and the person in it who may act.                                           |

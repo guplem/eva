@@ -1,4 +1,4 @@
-import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
+import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
 
 const token = "e2e-demo-token";
 
@@ -12,6 +12,51 @@ async function logIn(page: Page): Promise<void> {
 async function openList(page: Page): Promise<void> {
   const menu = page.getByRole("button", { name: "Show the list" });
   if (await menu.isVisible()) await menu.click();
+}
+
+/**
+ * Opens Projects and waits for its list. With no project open, the list shows with no menu tap on
+ * both sizes. openList would race: the menu button of the page before can still show for a moment.
+ */
+async function openProjects(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
+}
+
+/**
+ * Waits for the answer to a first message in a new clone, and denies the trust question if it comes.
+ * Only the first chat in a clone asks; both screen sizes share one demo server. The live answer card
+ * shows at once, so wait for the text of the answer, not for its card: an open question stops the turn.
+ */
+async function answerInNewClone(page: Page, text: string): Promise<void> {
+  const answer = page.locator(".message.answer").filter({ hasText: text }).first();
+  const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(answer.or(trustQuestion)).toBeVisible();
+  if (await trustQuestion.isVisible()) {
+    await expect(trustQuestion).toContainText("Trust this repository");
+    await trustQuestion.getByRole("button", { name: "Deny" }).click();
+  }
+  await expect(answer).toBeVisible();
+}
+
+/** Opens the page of the Example app project in Project mode. */
+async function openExampleApp(page: Page): Promise<void> {
+  await openProjects(page);
+  await page.getByLabel("Search projects").fill("example");
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+}
+
+/** Clones the project's repository with "New clone", and gives the card of the new clone. */
+async function newCloneCard(page: Page): Promise<Locator> {
+  const cards = page.locator(".clone-card");
+  // The clones load after the page opens, so wait for the cards or for the empty text first.
+  await expect(cards.first().or(page.locator("main").getByText(/^No clones yet\./))).toBeVisible();
+  const before = await cards.count();
+  await page.getByRole("button", { name: "New clone" }).click();
+  await expect(cards).toHaveCount(before + 1);
+  // The clones sort by number, so the new one is the last.
+  return cards.last();
 }
 
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
@@ -180,22 +225,12 @@ test("a link to a deleted chat says so", async ({ page }) => {
 test("the address #/chat/<id> opens a Project chat in its clone", async ({ page }) => {
   const title = `Linked project work (${test.info().project.name})`;
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
-  await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
-  await page.getByRole("button", { name: "New clone" }).click();
-  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  await openExampleApp(page);
+  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
-  // Only the first chat in a new clone asks for trust; both screen sizes share one demo server.
-  const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
-  // The working card shows at once, so only the finished answer tells that no trust question comes.
-  await Promise.race([answer.filter({ hasText: title }).waitFor(), trustQuestion.waitFor()]);
-  if (await trustQuestion.isVisible()) await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  await expect(answer).toContainText(title);
+  await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
 
   await page.goto("/");
@@ -203,6 +238,7 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await page.goto(`/#/chat/${chatId}`);
   await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".message.user").first()).toContainText(title);
+  await expect(page.getByText("Project mode")).toBeVisible();
 });
 
 test("a chat gets a new title in the header and the list, and Escape keeps the old one (issue 46)", async ({
@@ -424,27 +460,20 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
 
 test("Project mode: search, a new clone with its branch, and a chat in it", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
-  await page.getByLabel("Search projects").fill("example");
-  await page.getByRole("button", { name: /Example app/ }).click();
-  await page.getByRole("button", { name: "New clone" }).click();
-  await expect(page.getByRole("heading", { name: /Example app · remote-\d+/ })).toBeVisible();
-  await expect(page.locator(".badge", { hasText: "main" })).toBeVisible();
-  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
+  await openExampleApp(page);
+  await expect(page.getByText("Projects/2025-03-02-1015-example-app")).toBeVisible();
+  await expect(page.getByText("A web app for the client portal.")).toBeVisible();
+  const card = await newCloneCard(page);
+  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
+  await expect(card).toContainText("main");
+  await expect(card.locator(".pill", { hasText: "Clean" })).toBeVisible();
+  await card.getByRole("button", { name: "New chat here" }).click();
+  await expect(page.locator(".main-header .sub")).toHaveText(`Example app › ${cloneName} · main`);
+  await expect(page.getByText("Project mode")).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
-  // The first chat in a clone of an unknown repository asks for trust. Both screen
-  // sizes share one demo server, so only the first of them sees the question.
-  const answer = page.locator(".message.answer").first();
-  const trustQuestion = page.getByRole("region", { name: "Eva asks for permission" });
-  await Promise.race([answer.filter({ hasText: "Fix the bug" }).waitFor(), trustQuestion.waitFor()]);
-  if (await trustQuestion.isVisible()) {
-    await expect(trustQuestion).toContainText("Trust this repository");
-    await trustQuestion.getByRole("button", { name: "Deny" }).click();
-  }
-  await expect(answer).toContainText("Fix the bug");
+  await answerInNewClone(page, "Fix the bug");
   // Project mode shows the same activity as Assistant mode.
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
     "title",
@@ -453,8 +482,12 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await expectBackgroundTasks(page);
 
   // Another chat's tasks stay out of view. A project chat keeps the Assistant chat list unchanged.
-  await openList(page);
-  await page.getByRole("group", { name: "Chats in this clone" }).getByRole("button", { name: "New chat" }).click();
+  await page.getByRole("button", { name: "Example app", exact: true }).click();
+  await page
+    .getByRole("region", { name: `Clone ${cloneName}` })
+    .getByRole("button", { name: "New chat here" })
+    .click();
+  await expect(page.getByText("Project mode")).toBeVisible();
   if (test.info().project.name === "desktop") {
     await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
       "Nothing runs in the background.",
@@ -462,32 +495,84 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   }
 });
 
-test("a clone lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
+test("a clone card lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openExampleApp(page);
+  const card = await newCloneCard(page);
+  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
+  await card.getByRole("button", { name: "New chat here" }).click();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await page.getByRole("button", { name: "Example app", exact: true }).click();
+  const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
+  await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
+  await sameCard.getByRole("button", { name: "New chat here" }).click();
+  await page.getByRole("button", { name: "Example app", exact: true }).click();
+  await expect(sameCard.locator(".clone-chat")).toHaveCount(2);
+  await sameCard.locator(".clone-chat").last().click();
+  await expect(page.locator(".main-header .sub")).toContainText(cloneName);
+});
+
+test("a deleted project chat shows its project page again", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Delete chat" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+});
+
+test("the project page says that the clones load, not that there are none", async ({ page }) => {
+  await logIn(page);
+  let release = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/projects/*/clones", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await openProjects(page);
   await page.getByLabel("Search projects").fill("example");
   await page.getByRole("button", { name: /Example app/ }).click();
-  await page.getByRole("button", { name: "New clone" }).click();
-  await page.getByRole("button", { name: "Start a chat in this clone" }).click();
-  await openList(page);
-  const chats = page.getByRole("group", { name: "Chats in this clone" });
-  await expect(chats.locator(".list-item")).toHaveCount(1);
-  await chats.getByRole("button", { name: "New chat", exact: true }).click();
-  await openList(page);
-  await expect(chats.locator(".list-item")).toHaveCount(2);
-  await expect(chats.locator(".list-item").first()).toHaveAttribute("aria-current", "true");
-  await chats.locator(".list-item").last().click();
-  await openList(page);
-  await expect(chats.locator(".list-item").last()).toHaveAttribute("aria-current", "true");
+  await expect(page.getByText("Loading the clones…")).toBeVisible();
+  await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
+  release();
+  await expect(page.getByText("Loading the clones…")).toHaveCount(0);
+});
+
+test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
+  const title = `Forked project work (${test.info().project.name})`;
+  await logIn(page);
+  await openExampleApp(page);
+  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(title);
+  await composer.press("Enter");
+  await answerInNewClone(page, title);
+  const chatId = await chatIdNamed(page, title);
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  await expect(page.locator(".branch")).toHaveCount(2);
+  let forkId: string | undefined;
+  await expect
+    .poll(async () => {
+      const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; parentId: string }[];
+      forkId = sessions.find((session) => session.parentId === chatId)?.id;
+      return forkId;
+    })
+    .toBeDefined();
+
+  await page.goto("/");
+  await page.goto(`/#/chat/${forkId ?? ""}`);
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await expect(page.locator(".message.user").first()).toContainText(title);
 });
 
 test("Project mode: the repository setup shows each item's light and copies its fix", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
-  await page.getByRole("button", { name: /Example app/ }).click();
+  await openExampleApp(page);
   await page.getByRole("button", { name: "Repository setup" }).click();
   await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
   // The local remote is not on GitHub, so its report only says why.
@@ -506,34 +591,41 @@ test("Project mode: the repository setup shows each item's light and copies its 
   await expect(
     report.locator(".setup-item", { hasText: "Malware alerts" }).getByRole("img", { name: "Not checked" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
-test("the status filter hides a closed project until Any status", async ({ page }) => {
+test("the status chips hide a closed project until a tap clears the filter", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
+  const active = page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" });
+  await expect(active).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
-  await page.getByLabel("Status").selectOption("");
+  await active.click();
+  await expect(active).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  // A status word typed in the search wins over the select.
-  await page.getByLabel("Status").selectOption("active");
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Closed" }).click();
+  await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
+  // A status word typed in the search wins over the chip.
+  await active.click();
   await page.getByLabel("Search projects").fill("status:closed");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
 });
 
-test("the tag filter shows only the projects with that tag", async ({ page }) => {
+test("the tag chips show only the projects with that tag", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
-  await page.getByLabel("Status").selectOption("");
+  await openProjects(page);
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  await page.getByLabel("Tag").selectOption("web");
+  const web = page.getByRole("group", { name: "Tag" }).getByRole("button", { name: "#web" });
+  await web.click();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Old tool/ })).toHaveCount(0);
-  await page.getByLabel("Tag").selectOption("");
+  await web.click();
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
-  // A tag word typed in the search wins over the select.
-  await page.getByLabel("Tag").selectOption("web");
+  // A tag word typed in the search wins over the chip.
+  await web.click();
   await page.getByLabel("Search projects").fill("#legacy");
   await expect(page.getByRole("button", { name: /Old tool/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toHaveCount(0);
@@ -541,12 +633,29 @@ test("the tag filter shows only the projects with that tag", async ({ page }) =>
 
 test("a project with a bad front matter field shows its warnings", async ({ page }) => {
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
+  await openProjects(page);
   const project = page.getByRole("button", { name: /Broken notes/ });
   await expect(project).toContainText("1 warning");
   await project.click();
   await expect(page.getByRole("list", { name: "Warnings of Broken notes" })).toHaveText("repos must be a list of URLs");
+});
+
+test("on a phone, the project list is the page, and Back to the list returns to it", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  // No tap on the menu: with no project open, the list is already on the screen.
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  const heights = await page
+    .locator("button:visible")
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  await page.getByRole("button", { name: /Example app/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await page.getByRole("button", { name: "Back to the list" }).click();
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
@@ -660,6 +769,14 @@ test("Settings: the default model saves at once", async ({ page }) => {
   }
 });
 
+const planConflict = {
+  path: "Notes/plan.md",
+  kind: "committed",
+  picked: null,
+  mine: "- [ ] Review pull request #42\n- [ ] Thursday demo at 9\n",
+  theirs: "- [ ] Review pull request #42\n- [ ] Buy coffee\n",
+};
+
 test("Settings: the vault sync state shows a conflict, its picks and the held-back files", async ({ page }) => {
   let conflictState: Record<string, unknown> = {};
   await page.route("**/api/status", async (route) => {
@@ -680,13 +797,16 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   // The demo vault has no conflict, so the browser plays the conflict list as well.
   await page.route("**/api/vault/conflicts", (route) =>
     route.fulfill({
-      json: { state: conflictState, conflicts: [{ path: "Notes/plan.md", kind: "committed", picked: null }] },
+      json: { state: conflictState, conflicts: [planConflict] },
     }),
   );
   await logIn(page);
   await openSettings(page, "Vault and sync");
   const sync = page.getByRole("region", { name: "Vault sync" });
   await expect(sync).toContainText("Conflict: Notes/plan.md has a conflict.");
+  const card = sync.getByRole("region", { name: "Conflict: Notes/plan.md" });
+  await expect(card).toContainText("plan.md changed here and on the remote");
+  await expect(card.locator(".diff .a")).toHaveText(["- [ ] Thursday demo at 9", "- [ ] Buy coffee"]);
   await expect(sync.getByRole("group", { name: "Notes/plan.md" })).toBeVisible();
   await expect(sync.getByRole("button", { name: "Keep mine: Notes/plan.md" })).toBeVisible();
   await expect(sync.getByRole("button", { name: "Keep theirs: Notes/plan.md" })).toBeVisible();
@@ -1163,7 +1283,7 @@ async function routeEvents(page: Page): Promise<WebSocketRoute[]> {
   return sockets;
 }
 
-test("a dropped connection shows Reconnecting…, and the reconnect clears a stale answer", async ({ page }) => {
+test("a dropped connection says Eva does not answer, and the reconnect clears a stale answer", async ({ page }) => {
   const sockets = await routeEvents(page);
   await logIn(page);
   const sessionId = await newChat(page);
@@ -1171,9 +1291,31 @@ test("a dropped connection shows Reconnecting…, and the reconnect clears a sta
   await expect(page.getByText("half an answer")).toBeVisible();
 
   await sockets.at(-1)?.close();
-  await expect(page.getByText("Reconnecting…")).toBeVisible();
-  await expect(page.getByText("Reconnecting…")).toBeHidden();
+  await expect(page.getByText("Eva does not answer.")).toBeVisible();
+  await expect(page.getByText("Your message stays in the box")).toBeVisible();
+  await expect(page.getByText("Eva does not answer.")).toBeHidden();
   await expect(page.getByText("half an answer")).toHaveCount(0);
+});
+
+test("Try now connects at once, before the next timed try", async ({ page }) => {
+  let refuse = false;
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
+    sockets.push(socket);
+    if (refuse) void socket.close();
+    else socket.connectToServer();
+  });
+  await logIn(page);
+  refuse = true;
+  await sockets.at(-1)?.close();
+  const banner = page.getByRole("status").filter({ hasText: "Eva does not answer." });
+  await expect(banner).toBeVisible();
+  // A timed try just failed, so the next one is 2 seconds away: only Try now can connect sooner.
+  const dropped = sockets.length;
+  await expect.poll(() => sockets.length).toBeGreaterThan(dropped);
+  refuse = false;
+  await banner.getByRole("button", { name: "Try now" }).click();
+  await expect(banner).toBeHidden({ timeout: 1_000 });
 });
 
 test("back on the page, a stale answer from before the sleep is cleared", async ({ page }) => {
@@ -1321,16 +1463,96 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
 });
 
-test("open problems show in a banner at the top", async ({ page }) => {
+/** Plays the status with these open problems, and with the sync state changed as given. */
+async function routeProblems(
+  page: Page,
+  problems: readonly { key: string; level: "warn" | "error"; message: string }[],
+  vaultSync: Record<string, unknown> = {},
+): Promise<void> {
   await page.route("**/api/status", async (route) => {
     const response = await route.fetch();
-    const status = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...status, problems: ["The vault sync failed: disk full."] } });
+    const status = (await response.json()) as Record<string, unknown> & { vaultSync: Record<string, unknown> };
+    await route.fulfill({
+      response,
+      json: {
+        ...status,
+        vaultSync: { ...status.vaultSync, ...vaultSync },
+        problems: problems.map((problem) => problem.message),
+        problemDetails: problems,
+      },
+    });
   });
+}
+
+test("open problems show in a banner at the top, each with the button that fixes it", async ({ page }) => {
+  await routeProblems(page, [
+    { key: "update", level: "error", message: "The update install failed." },
+    { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed." },
+  ]);
   await logIn(page);
   const banner = page.getByRole("region", { name: "Problems" });
-  await expect(banner).toContainText("1 problem");
-  await expect(banner).toContainText("The vault sync failed: disk full.");
+  await expect(banner).toContainText("The update install failed.");
+  await banner.getByRole("button", { name: "Open schedules" }).click();
+  await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Open Settings" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
+  ).toHaveAttribute("aria-current", "page");
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
+  await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
+    status: "conflict",
+  });
+  await page.route("**/api/vault/conflicts", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { state: { status: "conflict" }, conflicts: [planConflict] } });
+      return;
+    }
+    await page.unroute("**/api/status");
+    await route.fulfill({
+      json: {
+        found: true,
+        conflicts: [],
+        state: { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] },
+      },
+    });
+  });
+  await logIn(page);
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
+  const dialog = page.getByRole("dialog", { name: "Note conflicts" });
+  await expect(dialog).toContainText("Eva kept both. Pick the one to keep.");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("region", { name: "Problems" }).getByRole("button", { name: "Pick a version" }).click();
+  await expect(dialog.getByText("- [ ] Buy coffee")).toBeVisible();
+  await dialog.getByRole("button", { name: "Keep mine: Notes/plan.md" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("a failure that Settings fixes offers the way there", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  await page.route("**/api/sessions", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 500,
+          json: { error: "The engine claude-code is not available.", code: "engine_failed" },
+        })
+      : route.continue(),
+  );
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
+  await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("no banner shows while all is good", async ({ page }) => {
@@ -1502,7 +1724,7 @@ test("Settings: a vault step that cannot list the repositories leads to the GitH
   await expect(page.getByRole("region", { name: "GitHub", exact: true }).first()).toBeVisible();
 });
 
-test("Settings: Update to a version shows each newer release, warns on a major one, and installs it", async ({
+test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({
   page,
 }) => {
   const status = {
@@ -1521,8 +1743,18 @@ test("Settings: Update to a version shows each newer release, warns on a major o
         notes: "",
         level: "major",
         summary: "Breaking changes:\n• feat!: rename the keys (1.0.0)\n\nNew features:\n• feat: voice notes (0.3.0)",
+        headline: "Rename the keys.",
+        // The browser uses the time zone of the test machine, so the day is the 12th or the 13th.
+        publishedAt: "2025-10-12T12:00:00Z",
       },
-      { version: "0.3.0", notes: "", level: "minor", summary: "New features:\n• feat: voice notes (0.3.0)" },
+      {
+        version: "0.3.0",
+        notes: "",
+        level: "minor",
+        summary: "New features:\n• feat: voice notes (0.3.0)",
+        headline: "Voice notes.",
+        publishedAt: null,
+      },
     ],
     lastCheckAt: null,
     lastError: null,
@@ -1538,28 +1770,71 @@ test("Settings: Update to a version shows each newer release, warns on a major o
   });
   await logIn(page);
   await openSettings(page, "Updates");
-  await expect(page.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
-  await page.getByRole("button", { name: "Update to a version…" }).click();
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await expect(card.getByText("1.0.0 is held back by the update policy (minor)")).toBeVisible();
+  // A version waits, so EVE looks surprised.
+  await expect(card.locator(".mk.e-surprise")).toHaveCount(1);
+  await card.getByRole("button", { name: "Update to a version…" }).click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
-  await dialog.getByRole("combobox").press("Escape");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Update to a version…" }).click();
+  // Focus goes back to the button that opened the dialog.
+  await expect(card.getByRole("button", { name: "Update to a version…" })).toBeFocused();
+  await card.getByRole("button", { name: "Update to a version…" }).click();
+  const versions = dialog.getByRole("radiogroup", { name: "Version" });
+  await expect(versions.getByRole("radio")).toHaveCount(2);
+  // Focus starts on the picked version.
+  await expect(versions.getByRole("radio", { checked: true })).toBeFocused();
+  await expect(versions).toContainText("v1.0.0");
+  await expect(versions).toContainText(/1[23] Oct 2025/);
+  await expect(versions).toContainText("Rename the keys.");
+  await expect(versions).toContainText("Voice notes.");
+  await expect(dialog.locator(".version-row.installed")).toContainText("v0.2.0");
+  await expect(dialog.locator(".version-row.installed")).toContainText("Installed");
+  await expect(versions.getByText("New", { exact: true })).toHaveCount(2);
   await expect(dialog.getByRole("alert")).toContainText("It can break things");
+  await dialog.getByText("Every change up to v1.0.0").click();
   await expect(dialog.getByText("feat!: rename the keys (1.0.0)")).toBeVisible();
-  await dialog.getByRole("combobox").selectOption("0.3.0");
+  await expect(dialog).toContainText("Your chats stay as they are.");
+  if (test.info().project.name === "phone") {
+    // A phone shows the dialog as a bottom sheet, with its buttons at full width.
+    const box = await dialog.boundingBox();
+    expect(Math.abs((box?.y ?? 0) + (box?.height ?? 0) - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1);
+    const heights = await dialog
+      .locator("button, summary")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  }
+  // The arrow keys move the pick, as in any radio group.
+  await versions.getByRole("radio", { checked: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(versions.getByRole("radio", { checked: true })).toHaveValue("0.3.0");
+  await versions.getByRole("radio", { name: /v1\.0\.0/ }).check();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await versions.getByRole("radio", { name: /v0\.3\.0/ }).check();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Install 0.3.0" }).click();
+  await dialog.getByRole("button", { name: "Update to v0.3.0 and restart" }).click();
   await expect.poll(() => installs).toEqual([{ version: "0.3.0" }]);
   await expect(dialog).toHaveCount(0);
 });
 
-test("Settings: the major update policy shows a warning", async ({ page }) => {
+test("Settings: the update choices are chips, and the major update policy shows a warning", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Updates");
+  const policy = page.getByRole("group", { name: "Eva installs by herself" });
   await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
-  await page.getByLabel("Eva installs by herself").selectOption("major");
+  await policy.getByRole("button", { name: "Every release, even major ones" }).click();
+  await expect(page.getByRole("region", { name: "Eva updates" }).getByRole("alert")).toContainText("A major update");
+  await expect(policy.getByRole("button", { name: "Every release, even major ones" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByText("With this choice, Eva installs it by herself.")).toBeVisible();
-  await page.getByLabel("Eva installs by herself").selectOption("minor");
+  await policy.getByRole("button", { name: "Fixes and new features" }).click();
+  await expect(page.getByText("With this choice, Eva installs it by herself.")).toHaveCount(0);
+  const frequency = page.getByRole("group", { name: "Install updates automatically" });
+  await expect(frequency.getByRole("button")).toHaveCount(4);
 });
 
 test("Settings: Check and install waits until the new Eva answers, not the old one", async ({ page }) => {
@@ -1596,6 +1871,8 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
   await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
   await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
   expect(readsWhileRestarting).toBe(3);
+  // The install worked, so EVE looks happy.
+  await expect(page.getByRole("region", { name: "Eva updates" }).locator(".mk.e-joy")).toHaveCount(1);
 });
 
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
@@ -1706,8 +1983,12 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("button", { name: "Show the list" })).toBeHidden();
     await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
     await tabs.getByRole("button", { name: "Projects", exact: true }).click();
-    // The project list stays one tap away in its drawer. Wait for the menu button: openList only
-    // checks it once, and the Projects page may not have drawn it yet.
+    // With no project open, the project list is the page.
+    await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
+    // With a chat open, the list stays one tap away in its drawer.
+    await openExampleApp(page);
+    await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+    await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
     const menu = page.getByRole("button", { name: "Show the list" });
     await expect(menu).toBeVisible();
     await menu.click();
@@ -1780,11 +2061,10 @@ test.describe("on a touch screen", () => {
 test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
   const run = test.info().project.name;
   await logIn(page);
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await openList(page);
-  await page.getByLabel("Status").selectOption("");
+  await openProjects(page);
+  await page.getByRole("group", { name: "Status" }).getByRole("button", { name: "Active" }).click();
   await page.getByRole("button", { name: new RegExp(`Draft ${run}`) }).click();
-  await page.getByRole("button", { name: "Project details" }).click();
+  await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
   await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
 
@@ -1846,7 +2126,9 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await file.fill(`${await file.inputValue()}\nMore notes.\n`);
   await page.getByRole("button", { name: "Save the file" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved.");
-  await openList(page);
+  // Back goes to the project page; on a phone, the list is one more step back.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  if (run === "phone") await page.getByRole("button", { name: "Back to the list" }).click();
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });
 
@@ -1910,6 +2192,7 @@ test("each page shows line icons, never an emoji or a symbol mark", async ({ pag
 
 test("device login: an open page shows a new device's code, and Allow answers it", async ({ page }) => {
   const answers: unknown[] = [];
+  const sockets = await routeEvents(page);
   // The demo server has no Tailscale, so the browser plays the server's side of the request.
   await page.route("**/api/devices/requests", (route) =>
     route.fulfill({
@@ -1918,6 +2201,13 @@ test("device login: an open page shows a new device's code, and Allow answers it
   );
   await page.route("**/api/devices/requests/request-3", async (route) => {
     answers.push(route.request().postDataJSON());
+    // The server tells every page that the request settled before it answers this page.
+    sockets.at(-1)?.send(JSON.stringify({ kind: "device_login_settled", id: "request-3", answer: "allow" }));
+    // Give the page time to handle the event: the notice must stay, with its buttons off.
+    await page.waitForTimeout(300);
+    await expect(
+      page.getByRole("dialog", { name: "New device" }).getByRole("button", { name: "Allow" }),
+    ).toBeDisabled();
     await route.fulfill({ status: 204 });
   });
   await logIn(page);
@@ -1925,6 +2215,8 @@ test("device login: an open page shows a new device's code, and Allow answers it
   await expect(dialog).toContainText("A new device wants to get in. Allow it?");
   await expect(dialog).toContainText("R4WZ");
   await dialog.getByRole("button", { name: "Allow" }).click();
+  // EVE shows her delighted face a moment, then the notice closes.
+  await expect(dialog).toContainText("Allowed. The new device opens Eva now.");
   await expect(dialog).toHaveCount(0);
   expect(answers).toEqual([{ answer: "allow" }]);
 });
@@ -1955,7 +2247,13 @@ test("Settings: the device list marks this device, and Remove logs out another o
   await openSettings(page, "Access");
   const list = page.getByRole("list", { name: "Devices" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
-  await expect(list.getByRole("listitem").nth(1)).toContainText("This device");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("This one");
+  await expect(
+    list
+      .getByRole("listitem")
+      .nth(1)
+      .getByRole("button", { name: /Remove/ }),
+  ).toHaveCount(0);
   page.once("dialog", (dialog) => void dialog.accept());
   await list.getByRole("listitem").first().getByRole("button", { name: "Remove" }).click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
@@ -1985,25 +2283,70 @@ test("a page whose login ended shows the login view when its socket drops", asyn
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
-test("Settings: removing this device logs this browser out", async ({ page }) => {
+test("Settings: the device list names each device from its browser", async ({ page }) => {
   await page.route("**/api/devices", (route) =>
     route.fulfill({
       json: [
         {
           id: "cccccccccccccccc",
-          label: "owner@example.com, this browser",
+          label:
+            "owner@example.com, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
           createdAt: "2026-10-17T10:00:00.000Z",
-          current: true,
+          current: false,
         },
       ],
     }),
   );
-  await page.route("**/api/devices/cccccccccccccccc", (route) => route.fulfill({ status: 204 }));
   await logIn(page);
   await openSettings(page, "Access");
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("list", { name: "Devices" }).getByRole("button", { name: "Remove" }).click();
-  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  const row = page.getByRole("list", { name: "Devices" }).getByRole("listitem");
+  await expect(row).toContainText("Windows computer");
+  await expect(row).toContainText("Chrome · owner@example.com · allowed");
+  await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
+});
+
+test("device login: a failed Allow never says Allowed, and shows why", async ({ page }) => {
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-5", code: "W2PX", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-5", (route) =>
+    route.fulfill({ status: 404, json: { error: "That request expired." } }),
+  );
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await dialog.getByRole("button", { name: "Allow" }).click();
+  await expect(page.getByRole("alert")).toContainText("That request expired.");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Allowed. The new device opens Eva now.")).toHaveCount(0);
+});
+
+test("device login: Deny answers the new device, and the notice closes at once", async ({ page }) => {
+  const answers: unknown[] = [];
+  await page.route("**/api/devices/requests", (route) =>
+    route.fulfill({
+      json: [{ id: "request-4", code: "T7KM", account: "owner@example.com", expiresAt: "2099-01-01T00:00:00.000Z" }],
+    }),
+  );
+  await page.route("**/api/devices/requests/request-4", async (route) => {
+    answers.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await logIn(page);
+  const dialog = page.getByRole("dialog", { name: "New device" });
+  await expect(dialog).toContainText("T7KM");
+  if (test.info().project.name === "phone") {
+    // A phone shows the notice as a bottom sheet, with buttons a finger can hit.
+    const box = await dialog.boundingBox();
+    const viewport = page.viewportSize();
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeCloseTo(viewport?.height ?? 0, 0);
+    const deny = await dialog.getByRole("button", { name: "Deny" }).boundingBox();
+    expect(deny?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  await dialog.getByRole("button", { name: "Deny" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(answers).toEqual([{ answer: "deny" }]);
 });
 
 test("Settings: Claude Code logs in from the page, with a pasted code", async ({ page }) => {

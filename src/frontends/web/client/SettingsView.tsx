@@ -31,7 +31,7 @@ import { VaultSection } from "./VaultSection.tsx";
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
 
-/** `onSetupChanged` lets the page around it count the setup steps again, as for the badge on Settings. */
+/** `onSetupChanged` lets the page around it read the setup steps and the problems again, as for the badge on Settings. */
 export function SettingsView({
   onLoggedOut,
   onSetupChanged,
@@ -184,6 +184,7 @@ export function SettingsView({
       setNotice(note);
       reloadSetup();
     },
+    reloadSetup,
     reloadSettings: () => {
       api
         .settings()

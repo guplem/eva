@@ -9,6 +9,8 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
+  // One stuck dialog can fail every later test at its full timeout, for hours: stop early instead.
+  maxFailures: 10,
   reporter: [["list"]],
   use: { baseURL: "http://127.0.0.1:7499", trace: "retain-on-failure" },
   projects: [

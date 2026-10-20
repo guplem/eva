@@ -39,15 +39,30 @@ export function cloneFolderName(projectPath: string, repository: string): string
   }
 }
 
+/** A broken link or a folder without rights is not a clone. It must not break the project list (lesson 54). */
+function isFolder(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** The clones of a project, sorted by repository and number. */
 export function listClones(projectPath: string): Clone[] {
   const reposFolder = join(projectPath, "repos");
-  if (!existsSync(reposFolder)) return [];
+  if (!isFolder(reposFolder)) return [];
+  let names: string[];
+  try {
+    names = readdirSync(reposFolder);
+  } catch {
+    return [];
+  }
   const clones: Clone[] = [];
-  for (const name of readdirSync(reposFolder)) {
+  for (const name of names) {
     const match = cloneNamePattern.exec(name);
     const path = join(reposFolder, name);
-    if (!match || !statSync(path).isDirectory()) continue;
+    if (!match || !isFolder(path)) continue;
     clones.push({ name, path, repository: match[1] ?? name, index: Number(match[2]) });
   }
   return clones.sort(
@@ -90,19 +105,24 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   return { name, path, repository, index: Number(name.slice(repository.length + 1)) };
 }
 
-export interface CloneDetails extends Clone {
+export interface CloneBranch extends Clone {
   readonly branch: string | null;
   /** The number of the open pull request of the branch, when `gh` finds one. */
   readonly pullRequest: number | null;
 }
 
-/** A clone with its current branch and pull request, for the project view. */
+export interface CloneDetails extends CloneBranch {
+  /** The files that `git status` lists: changed, staged or new. Null when git fails. */
+  readonly changes: number | null;
+}
+
+/** A clone with its current branch and pull request, for a project work report and the project view. */
 export async function describeClone(
   clone: Clone,
   runner: ProcessRunner,
   environment: Readonly<Record<string, string>>,
-): Promise<CloneDetails> {
-  const options = { cwd: clone.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
+): Promise<CloneBranch> {
+  const options = gitOptions(clone, environment);
   let branch: string | null = null;
   let pullRequest: number | null = null;
   try {
@@ -115,6 +135,36 @@ export async function describeClone(
     // No git or no gh: the clone still shows, without the missing detail.
   }
   return { ...clone, branch, pullRequest };
+}
+
+/**
+ * The number of changed files of a clone, for its card in the project view, or null when git fails.
+ * Apart from describeClone, so a project work report does not wait for it: git is slow on Windows.
+ */
+export async function countChanges(
+  clone: Clone,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<number | null> {
+  try {
+    // No index refresh, so no index.lock: a timeout kill would leave the lock and block the agent's git (lesson 81).
+    // A new folder counts once, so a big folder that is not ignored stays fast.
+    const status = await runner.run(
+      ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"],
+      gitOptions(clone, environment),
+    );
+    if (status.exitCode !== 0) return null;
+    return status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
+  } catch {
+    return null;
+  }
+}
+
+function gitOptions(
+  clone: Clone,
+  environment: Readonly<Record<string, string>>,
+): { cwd: string; environment: Record<string, string>; timeoutMs: number } {
+  return { cwd: clone.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
 }
 
 /** The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102). */

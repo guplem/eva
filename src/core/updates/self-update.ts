@@ -48,6 +48,7 @@ interface ReleaseAsset {
 interface Release {
   readonly tag_name: string;
   readonly body?: string | null;
+  readonly published_at?: string | null;
   readonly draft?: boolean;
   readonly prerelease?: boolean;
   readonly assets: readonly ReleaseAsset[];
@@ -111,7 +112,11 @@ export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
         current: inputs.currentVersion,
         latest: releases[0] === undefined ? inputs.currentVersion : versionOf(releases[0]),
         available: newer.length > 0,
-        releases: newer.map((release) => ({ version: versionOf(release), notes: release.body ?? "" })),
+        releases: newer.map((release) => ({
+          version: versionOf(release),
+          notes: release.body ?? "",
+          publishedAt: release.published_at ?? null,
+        })),
       };
     },
     async apply(version) {

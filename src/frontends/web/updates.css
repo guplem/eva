@@ -1,0 +1,220 @@
+/**
+ * The "Update to a version" dialog of the EVE design: one row per version, a main button that
+ * names the action, and a note on the restart. A phone shows it as a bottom sheet.
+ */
+.update-backdrop {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.dialog.update-version {
+  max-width: 460px;
+  /* A long summary must never push the buttons off a phone screen. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding: var(--space-6);
+  gap: var(--space-3);
+  box-shadow: var(--shadow);
+}
+
+.update-version-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.update-version-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.update-version p {
+  margin: 0;
+}
+
+.version-list,
+.version-choices {
+  display: flex;
+  flex-direction: column;
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.version-list .version-row {
+  box-shadow: inset 0 1px 0 var(--line);
+}
+
+/* The rows sit in two boxes: the choices, then the installed version. Only the very first row has no line. */
+.version-list > .version-row:first-child,
+.version-list > .version-choices:first-child > .version-row:first-child,
+.version-choices:has(> .version-row:last-child input:checked) + .version-row {
+  box-shadow: none;
+}
+
+label.version-row {
+  position: relative;
+  cursor: pointer;
+}
+
+/* The radio stays for the keyboard and screen readers. The row shows the choice. */
+.version-row input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* The phone rule gives each input 44 px; this one covers its row instead. */
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.version-row:has(input:checked) {
+  background: var(--soft);
+  border-radius: var(--radius-input);
+  color: var(--soft-ink);
+  box-shadow: none;
+}
+
+.version-row:has(input:checked) + .version-row {
+  box-shadow: none;
+}
+
+.version-row:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.version-number {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: var(--text-sm);
+}
+
+.version-day {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.version-row:has(input:checked) .version-day {
+  color: inherit;
+}
+
+/* The "New" pill has the fill of a picked row, so it takes the panel colour there to keep its shape. */
+.version-row:has(input:checked) .status-pill.live {
+  background: var(--panel);
+}
+
+.version-row .status-pill {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.version-headline {
+  grid-column: 2 / 4;
+  grid-row: 2;
+}
+
+.update-changes summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.release-summary {
+  white-space: pre-wrap;
+  max-height: 40dvh;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.update-version-actions {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.update-version-actions button.primary {
+  flex: 1;
+  justify-content: center;
+  box-shadow: var(--button-glow);
+}
+
+.update-version-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.update-note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .update-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .dialog.update-version {
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: var(--space-3) var(--space-5) max(var(--space-6), env(safe-area-inset-bottom));
+  }
+
+  /* The grab handle says that the sheet came up from the bottom. */
+  .dialog.update-version::before {
+    content: "";
+    flex: none;
+    width: 40px;
+    height: 5px;
+    border-radius: 9px;
+    background: var(--line);
+    align-self: center;
+  }
+
+  .update-version-title h2 {
+    font-size: var(--text-lg);
+  }
+
+  /* A tap target, as each button is. */
+  .update-changes summary {
+    /* A list item keeps the arrow that a flex box drops. */
+    display: list-item;
+    min-height: 44px;
+    line-height: 44px;
+  }
+
+  /* The sheet scrolls already. A second scroll area inside it traps a finger. */
+  .release-summary {
+    max-height: none;
+  }
+
+  /* The buttons of a sheet stack at full width. */
+  .update-version-actions {
+    flex-direction: column;
+  }
+
+  .update-version-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -23,6 +23,8 @@ export class FakeTelegram {
   readonly token = "123456:fake-telegram-token-for-tests";
   private readonly updates: Record<string, unknown>[] = [];
   private readonly errors = new Map<string, ScriptedError>();
+  /** A slow connection: each sendMessage answers after this wait, so the order of the sends shows. */
+  sendDelayMs = 0;
   private nextUpdateId = 1;
   private nextMessageId = 100;
   private nextTopicId = 500;
@@ -43,6 +45,7 @@ export class FakeTelegram {
         const params = await readParams(request);
         const call: RecordedCall = { method, params };
         this.calls.push(call);
+        if (method === "sendMessage" && this.sendDelayMs > 0) await Bun.sleep(this.sendDelayMs);
         const error = this.errors.get(method);
         if (error !== undefined && error.remaining > 0) {
           error.remaining -= 1;

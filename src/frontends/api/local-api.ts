@@ -40,6 +40,8 @@ export interface LocalApiOptions {
    * after the start. With no configured identities, only the owner gets in (plug and play).
    */
   readonly tailnet?: () => TailnetSnapshot | null;
+  /** Seconds before Bun closes an idle request. Default: 255, the maximum. A test sets a short one. */
+  readonly idleTimeoutSeconds?: number;
 }
 
 export interface LocalApi {
@@ -158,7 +160,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
     development: false,
     // Bun closes a request after 10 idle seconds by default. Some routes run git or gh for longer,
     // such as a new clone or a setup report, so allow Bun's maximum.
-    idleTimeout: 255,
+    idleTimeout: options.idleTimeoutSeconds ?? 255,
     fetch: async (request, bunServer) => {
       const siteRefusal = guardSite(request, options);
       if (siteRefusal !== null) return siteRefusal;

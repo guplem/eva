@@ -84,7 +84,10 @@ describe("checkGoogle", () => {
     expect(
       (await checkGoogle({ ...inputs, client: { ...client, clientSecret: "GOCSPX-new-secret-value" } })).detail,
     ).toContain("older client secret");
-    const writes = { ...inputs, config: { ...inputs.config, readOnly: false } };
+    const writes = {
+      ...inputs,
+      config: { ...inputs.config, access: { ...inputs.config.access, calendar: "full" as const } },
+    };
     expect((await checkGoogle(writes)).detail).toContain("Log in to Google again");
     expect(google.tokenRequests).toEqual([]);
   });

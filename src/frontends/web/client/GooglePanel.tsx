@@ -3,9 +3,27 @@
  * its Test, in one numbered list. Every step works from a phone.
  */
 import { useState, type ReactElement } from "react";
+import {
+  googleAccessPresets,
+  googleLevelLabels,
+  googleServiceLabels,
+  matchingGoogleAccessPreset,
+  type GoogleAccessPreset,
+} from "../../../core/google/google-access.ts";
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
+import { googleAccessLevels, type EvaConfig } from "../../../core/settings/home.ts";
 import { api } from "./api.ts";
-import { Card, CheckRow, errorText, SecretField, StatusPill, type SettingsContext } from "./SettingsParts.tsx";
+import {
+  Card,
+  CheckRow,
+  errorText,
+  SecretField,
+  SelectField,
+  StatusPill,
+  type SettingsContext,
+} from "./SettingsParts.tsx";
+
+type GoogleAccess = EvaConfig["google"]["access"];
 
 export function GooglePanel({ context }: { readonly context: SettingsContext }): ReactElement {
   const { settings, saveNow, noteAndReload: onChanged, reloadSettings: reload } = context;
@@ -46,9 +64,9 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
   };
 
   /** The old login holds the old access, so a change needs a new login. */
-  const changeAccess = async (readOnly: boolean): Promise<void> => {
+  const changeAccess = async (access: Partial<GoogleAccess>): Promise<void> => {
     // Before the first login, the login itself asks for the new access.
-    if ((await saveNow({ google: { readOnly } })) && google.email !== null)
+    if ((await saveNow({ google: { access } })) && google.email !== null)
       onChanged("Saved. Log in to Google again below, then press Restart Eva.");
   };
 
@@ -80,20 +98,11 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
                   help="It starts with GOCSPX-."
                   onChanged={onChanged}
                 />
-                <label className="field">
-                  <span className="field-label">Google access</span>
-                  <select
-                    value={google.readOnly ? "read" : "write"}
-                    onChange={(event) => void changeAccess(event.target.value === "read")}
-                  >
-                    <option value="read">Read only</option>
-                    <option value="write">Read and change, such as add events</option>
-                  </select>
-                  <span className="field-hint">
-                    Eva asks you before any change that reaches other people, such as an invitation. After a change of
-                    access, log in to Google again.
-                  </span>
-                </label>
+                <GoogleAccessFields
+                  access={google.access}
+                  services={google.services}
+                  onChange={(access) => void changeAccess(access)}
+                />
               </>
             )}
           </li>
@@ -134,6 +143,58 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       </ol>
       <CheckRow name="google" label="Test Google" />
     </Card>
+  );
+}
+
+type PresetChoice = GoogleAccessPreset["id"] | "custom";
+
+/** A preset select, and one select for each service that is on when the levels match no preset. */
+function GoogleAccessFields({
+  access,
+  services,
+  onChange,
+}: {
+  readonly access: GoogleAccess;
+  readonly services: readonly (keyof GoogleAccess)[];
+  readonly onChange: (access: Partial<GoogleAccess>) => void;
+}): ReactElement {
+  const preset = matchingGoogleAccessPreset(access);
+  // "Custom" opens the service selects before any level differs from the preset.
+  const [customOpen, setCustomOpen] = useState(false);
+  const custom = customOpen || preset === null;
+
+  const choosePreset = (choice: PresetChoice): void => {
+    setCustomOpen(choice === "custom");
+    const chosen = googleAccessPresets.find((candidate) => candidate.id === choice);
+    if (chosen !== undefined) onChange(chosen.access);
+  };
+
+  return (
+    <>
+      <SelectField<PresetChoice>
+        label="Google access"
+        value={custom ? "custom" : preset.id}
+        choices={[
+          ...googleAccessPresets.map((candidate) => ({ value: candidate.id, label: candidate.label })),
+          { value: "custom", label: "Custom: choose for each service" },
+        ]}
+        onChange={choosePreset}
+        hint="Eva asks you before any change that reaches other people, such as an invitation or a sent mail. After a change of access, log in to Google again."
+      />
+      {custom &&
+        services.map((service) => {
+          const labels: Readonly<Record<string, string>> = googleLevelLabels[service];
+          return (
+            <SelectField<string>
+              key={service}
+              label={googleServiceLabels[service]}
+              value={access[service]}
+              choices={googleAccessLevels[service].map((level) => ({ value: level, label: labels[level] ?? level }))}
+              onChange={(level) => onChange({ [service]: level })}
+            />
+          );
+        })}
+    </>
   );
 }
 

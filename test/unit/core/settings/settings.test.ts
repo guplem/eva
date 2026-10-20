@@ -127,7 +127,7 @@ describe("security settings stay on the machine", () => {
   const vaultSecurity = {
     remoteAccess: { allowedTailscaleIdentities: ["intruder@example.com"] },
     trust: { trustedRepositoryOwners: ["intruder"] },
-    google: { email: "owner@example.com", readOnly: false, services: ["gmail"] },
+    google: { email: "owner@example.com", access: { calendar: "full" }, services: ["gmail"] },
   };
 
   function writeVaultSettings(value: unknown): void {
@@ -149,11 +149,15 @@ describe("security settings stay on the machine", () => {
       ...defaultConfig,
       vaultPath: vault,
       trust: { trustedRepositoryOwners: ["example-owner"] },
-      google: { email: "owner@example.com", readOnly: false, services: ["calendar"] },
+      google: {
+        email: "owner@example.com",
+        access: { ...defaultConfig.google.access, calendar: "full" },
+        services: ["calendar"],
+      },
     });
     expect(readJson(paths.config)).toMatchObject({
       trust: { trustedRepositoryOwners: ["example-owner"] },
-      google: { readOnly: false, services: ["calendar"] },
+      google: { access: { calendar: "full" }, services: ["calendar"] },
       remoteAccess: { allowedTailscaleIdentities: [] },
     });
     const shared = readJson(vaultSettingsPath(vault));
@@ -162,7 +166,7 @@ describe("security settings stay on the machine", () => {
     expect(shared).toMatchObject({ google: { email: "owner@example.com" } });
     expect(shared["google"]).toEqual({ email: "owner@example.com" });
     expect(isSharedSettingKey("trust.trustedRepositoryOwners")).toBe(false);
-    expect(isSharedSettingKey("google.readOnly")).toBe(false);
+    expect(isSharedSettingKey("google.access.calendar")).toBe(false);
     expect(isSharedSettingKey("google.email")).toBe(true);
   });
 });

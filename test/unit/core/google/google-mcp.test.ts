@@ -17,12 +17,11 @@ describe("googleMcpServer", () => {
       args: [
         `workspace-mcp==${workspaceMcpVersion}`,
         "--single-user",
-        "--tools",
-        "calendar",
-        "drive",
-        "contacts",
-        "tasks",
-        "--read-only",
+        "--permissions",
+        "calendar:readonly",
+        "drive:readonly",
+        "contacts:readonly",
+        "tasks:readonly",
       ],
       environment: {
         PATH: "/bin",
@@ -35,12 +34,22 @@ describe("googleMcpServer", () => {
     expect(workspaceMcpVersion).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  test("write access drops the read-only flag", () => {
+  test("gives each service that is on its own level", () => {
     const server = googleMcpServer({
       ...inputs,
-      config: { ...inputs.config, readOnly: false, services: ["calendar"] },
+      config: {
+        ...inputs.config,
+        access: { ...inputs.config.access, contacts: "full", gmail: "drafts" },
+        services: ["contacts", "gmail"],
+      },
     });
-    expect(server?.args).toEqual([`workspace-mcp==${workspaceMcpVersion}`, "--single-user", "--tools", "calendar"]);
+    expect(server?.args).toEqual([
+      `workspace-mcp==${workspaceMcpVersion}`,
+      "--single-user",
+      "--permissions",
+      "contacts:full",
+      "gmail:drafts",
+    ]);
   });
 
   test("Google stays off without an account, a service, or an OAuth client", () => {

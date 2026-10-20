@@ -6,6 +6,7 @@
 import { isEvaError } from "../../shared/errors.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { googleUrls, postToken, readGoogleCredential, type GoogleClient, type GoogleUrls } from "./google-login.ts";
+import { googleServiceLabels } from "./google-access.ts";
 import { coversScopes, googleScopes } from "./google-scopes.ts";
 import { googleStep } from "./google-steps.ts";
 
@@ -26,14 +27,6 @@ export interface GoogleCheckResult {
   readonly ok: boolean;
   readonly detail: string;
 }
-
-const serviceLabels: Readonly<Record<GoogleService, string>> = {
-  calendar: "Calendar",
-  drive: "Drive",
-  contacts: "Contacts",
-  tasks: "Tasks",
-  gmail: "Gmail",
-};
 
 /** The API names in Google Cloud's library, for the "turn on" step. */
 const apiNames: Readonly<Record<GoogleService, string>> = {
@@ -108,7 +101,7 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
   const problems = await Promise.all(config.services.map((service) => readService(service, urls, accessToken)));
   const problem = problems.find((found) => found !== null);
   if (problem !== undefined) return failed(problem);
-  const labels = config.services.map((service) => serviceLabels[service]);
+  const labels = config.services.map((service) => googleServiceLabels[service]);
   return { ok: true, detail: `Eva can read ${listText(labels)} of ${config.email}.` };
 }
 
@@ -127,8 +120,8 @@ async function readService(service: GoogleService, urls: GoogleUrls, accessToken
   const body = (await response.json().catch(() => ({}))) as unknown;
   if (isServiceDisabled(body)) return `Turn on the ${apiNames[service]} (step ${String(googleStep.apis)}).`;
   if (response.status === 401 || response.status === 403)
-    return `Google refused to show ${serviceLabels[service]}. Log in to Google again (step ${String(googleStep.login)}).`;
-  return `Google answered ${String(response.status)} for ${serviceLabels[service]}. Try again later.`;
+    return `Google refused to show ${googleServiceLabels[service]}. Log in to Google again (step ${String(googleStep.login)}).`;
+  return `Google answered ${String(response.status)} for ${googleServiceLabels[service]}. Try again later.`;
 }
 
 /** Google names a turned-off API with a reason code in the error details. */

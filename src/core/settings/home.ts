@@ -205,6 +205,18 @@ export function createHomeFolders(paths: HomePaths): void {
 
 const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);
 
+/**
+ * The access levels of each Google service, lowest first, from `auth/permissions.py` of `workspace-mcp`.
+ * Each level holds the levels below it. Change them together with `workspaceMcpVersion`.
+ */
+export const googleAccessLevels = {
+  calendar: ["readonly", "full"],
+  drive: ["readonly", "full"],
+  contacts: ["readonly", "full"],
+  tasks: ["readonly", "manage", "full"],
+  gmail: ["readonly", "organize", "drafts", "send", "full"],
+} as const;
+
 export const configSchema = z.object({
   version: z.literal(1).default(1),
   vaultPath: z.string().min(1).nullable().default(null),
@@ -285,10 +297,28 @@ export const configSchema = z.object({
       services: z
         .array(z.enum(["calendar", "drive", "contacts", "tasks", "gmail"]))
         .default(["calendar", "drive", "contacts", "tasks"]),
-      /** Start with read-only scopes. */
-      readOnly: z.boolean().default(true),
+      /** The access level of each service. Every service starts read-only. */
+      access: z
+        .object({
+          calendar: z.enum(googleAccessLevels.calendar).default("readonly"),
+          drive: z.enum(googleAccessLevels.drive).default("readonly"),
+          contacts: z.enum(googleAccessLevels.contacts).default("readonly"),
+          tasks: z.enum(googleAccessLevels.tasks).default("readonly"),
+          gmail: z.enum(googleAccessLevels.gmail).default("readonly"),
+        })
+        .default({
+          calendar: "readonly",
+          drive: "readonly",
+          contacts: "readonly",
+          tasks: "readonly",
+          gmail: "readonly",
+        }),
     })
-    .default({ email: null, services: ["calendar", "drive", "contacts", "tasks"], readOnly: true }),
+    .default({
+      email: null,
+      services: ["calendar", "drive", "contacts", "tasks"],
+      access: { calendar: "readonly", drive: "readonly", contacts: "readonly", tasks: "readonly", gmail: "readonly" },
+    }),
   voice: z
     .object({
       /** A whisper.cpp model file. Voice notes stay off until it is set. */

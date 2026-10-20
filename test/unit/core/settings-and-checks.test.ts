@@ -724,8 +724,11 @@ describe("the Google setup", () => {
         email: "person@example.com",
         restartNeeded: false,
       });
-      started.updateSettings({ google: { readOnly: false } });
-      google.grantedScope = googleScopes({ ...defaultConfig.google, readOnly: false }).join(" ");
+      started.updateSettings({ google: { access: { calendar: "full" } } });
+      google.grantedScope = googleScopes({
+        ...defaultConfig.google,
+        access: { ...defaultConfig.google.access, calendar: "full" },
+      }).join(" ");
       started.startGoogleLogin();
       expect(await started.finishGoogleLogin("the-code")).toEqual({ email: "person@example.com", restartNeeded: true });
     } finally {

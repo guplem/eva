@@ -2,6 +2,9 @@
  * The standard waits: the progress bar inside a card, and the skeletons that copy the content
  * to come. The EVE design has no wait part, so these use its parts: a pill track in --chip, an
  * accent fill with the glow of the "now" line of the day timeline, and soft grey shapes.
+ *
+ * A size in px copies the part that a skeleton stands for, such as a chat bubble in
+ * conversation.css, so the page does not jump when the content comes.
  */
 
 /* Progress bar */
@@ -30,7 +33,7 @@
 
 .progress-track {
   position: relative;
-  height: 8px;
+  height: var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--chip);
   overflow: hidden;
@@ -56,7 +59,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
+  left: -45%;
   border-radius: inherit;
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
@@ -69,16 +72,18 @@
 
 .progress-track.running::after {
   width: 18%;
-  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) 0.75s infinite;
+  /* "backwards" keeps the second line off the track until its turn, so it never stands still at the start. */
+  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) 0.75s infinite backwards;
 }
 
+/* "left" is a share of the track, so each line crosses all of it, whatever its own width. */
 @keyframes progress-run {
   from {
-    transform: translateX(-100%);
+    left: -45%;
   }
 
   to {
-    transform: translateX(560%);
+    left: 100%;
   }
 }
 
@@ -94,15 +99,9 @@
   display: block;
   height: 10px;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--chip) 30%, var(--panel) 50%, var(--chip) 70%) 0 0 / 300% 100%;
+  /* --line shows on the page, on a card and in dark mode. The light passes in --chip. */
+  background: linear-gradient(90deg, var(--line) 30%, var(--chip) 50%, var(--line) 70%) 0 0 / 300% 100%;
   animation: skeleton-shimmer 1.6s linear infinite;
-}
-
-/* A shape on a panel shows the shimmer in the page colour, or it would not show. */
-.skeleton-bubble .skeleton-line,
-.skeleton-card .skeleton-line,
-.skeleton-card .skeleton-block {
-  background-image: linear-gradient(90deg, var(--chip) 30%, var(--bg) 50%, var(--chip) 70%);
 }
 
 .skeleton-line.title {

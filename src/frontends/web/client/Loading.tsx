@@ -180,7 +180,7 @@ export function AppSkeleton({ page }: { readonly page: "chat" | "list" | "cards"
             </div>
           </div>
         ) : (
-          <div className="layout">
+          <div className={page === "list" ? "layout list-home" : "layout"}>
             <div className="sidebar has-list">
               <div className="sidebar-list">
                 <ListSkeleton />

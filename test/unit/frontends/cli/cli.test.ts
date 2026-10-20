@@ -1908,8 +1908,8 @@ describe("describeStatusLines", () => {
     expect(describeStatusLines(status).join("\n")).not.toContain("Setup:");
   });
 
-  test("says that the automatic sync is off, and that Sync now sends the notes (#215)", () => {
-    const off = "Automatic sync is off. Sync now sends the notes.";
+  test("says that the automatic sync is off, and how to send the notes (#215)", () => {
+    const off = "Automatic sync is off. Send /sync, or run eva sync, to send the notes.";
     const lines = describeStatusLines({ ...status, vaultAutoSync: false });
     expect(lines[0]).toBe("All good");
     expect(lines[lines.indexOf("Vault sync: ok") + 1]).toBe(off);

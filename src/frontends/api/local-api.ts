@@ -67,6 +67,8 @@ const newSessionSchema = z.object({
   clone: z.string().min(1).optional(),
 });
 const messageSchema = z.object({ text: z.string().min(1) });
+/** About 20 minutes of the page's Opus recording: more than any voice note needs. */
+const maxVoiceNoteBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const renameSchema = z.object({ title: z.string() });
@@ -506,6 +508,12 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       const { repositoryUrl } = newCloneSchema.parse(await request.json());
       return json(await eva.newClone(projectId, repositoryUrl), 201);
     }
+  }
+  if (method === "POST" && url.pathname === "/api/transcribe") {
+    // The audio stays in memory and in the transcriber's own temporary folder (lesson 123).
+    const audio = new Uint8Array(await request.arrayBuffer());
+    if (audio.byteLength > maxVoiceNoteBytes) return json({ error: "The voice note is too long." }, 413);
+    return json({ text: await eva.transcribeVoiceNote(audio) });
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));

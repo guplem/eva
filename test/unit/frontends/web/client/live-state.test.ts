@@ -3,6 +3,7 @@ import {
   applyEvent,
   emptyLiveState,
   forgetTaskEvents,
+  stepsWithDraft,
   withTasks,
   type LiveState,
 } from "../../../../../src/frontends/web/client/live-state.ts";
@@ -44,6 +45,28 @@ describe("applyEvent", () => {
       { kind: "text", text: "Done.", messageId: "m1" },
     ]);
     expect(state.steps["s1"]?.map((step) => step.kind)).toEqual(["command", "message"]);
+  });
+
+  test("the pieces of a block build its draft, which the block's final text replaces (issue 117)", () => {
+    const drafting = run([
+      { kind: "text_delta", text: "Here " },
+      { kind: "text_delta", text: "is " },
+    ]);
+    expect(drafting.drafts["s1"]).toBe("Here is ");
+    // A turn whose first event is a piece runs too.
+    expect(drafting.steps["s1"]).toEqual([]);
+    const done = applyEvent(drafting, event({ kind: "text", text: "Here is the answer.", messageId: "m1" }));
+    expect(done.drafts).toEqual({});
+    expect(done.steps["s1"]?.map((step) => step.text)).toEqual(["Here is the answer."]);
+  });
+
+  test("the end of a turn drops its draft, and an event of another chat keeps it", () => {
+    const drafting = run([{ kind: "text_delta", text: "Half " }]);
+    expect(applyEvent(drafting, event({ kind: "text", text: "Other.", messageId: "m9" }, "s2")).drafts).toEqual({
+      s1: "Half ",
+    });
+    expect(applyEvent(drafting, event({ kind: "turn_failed", reason: "stopped" })).drafts).toEqual({});
+    expect(applyEvent(drafting, event({ kind: "turn_finished", ...finished })).drafts).toEqual({});
   });
 
   test("a lost history is a message step, so the person sees the note", () => {
@@ -186,5 +209,19 @@ describe("applyEvent", () => {
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
+  });
+});
+
+describe("stepsWithDraft", () => {
+  test("adds the draft as the last message, and keeps the steps as they are with no draft", () => {
+    const steps = run([{ kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "a" }]).steps[
+      "s1"
+    ]!;
+    expect(stepsWithDraft(steps, undefined)).toBe(steps);
+    expect(stepsWithDraft(steps, "")).toBe(steps);
+    expect(stepsWithDraft(steps, "Here is ").map((step) => [step.kind, step.text])).toEqual([
+      ["tool", "a"],
+      ["message", "Here is "],
+    ]);
   });
 });

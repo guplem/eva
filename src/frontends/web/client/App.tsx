@@ -206,10 +206,11 @@ function EvaApp(): ReactElement {
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
    * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
-   * A note goes too: a lost event can hide the turn start that clears it.
+   * A note goes too: a lost event can hide the turn start that clears it. A draft goes, because
+   * it misses the pieces sent meanwhile.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...forgetTaskEvents(state), steps: {}, notes: {} }));
+    setLive((state) => ({ ...forgetTaskEvents(state), steps: {}, notes: {}, drafts: {} }));
     await refreshSessions();
     await refreshProblems();
     try {

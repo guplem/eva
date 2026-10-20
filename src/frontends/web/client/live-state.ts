@@ -21,9 +21,18 @@ export interface LiveState {
    * They outlive the turn, because a short turn ends before the person reads them.
    */
   readonly notes: Readonly<Record<string, readonly string[]>>;
+  /** The text of the block that the engine writes now, by session id. It is live only: the core never stores it. */
+  readonly drafts: Readonly<Record<string, string>>;
 }
 
-export const emptyLiveState: LiveState = { steps: {}, tasks: {}, taskSeqs: {}, usageLimits: {}, notes: {} };
+export const emptyLiveState: LiveState = {
+  steps: {},
+  tasks: {},
+  taskSeqs: {},
+  usageLimits: {},
+  notes: {},
+  drafts: {},
+};
 
 const historyLostNote = "The earlier history of this chat is lost.";
 
@@ -52,7 +61,32 @@ export function forgetTaskEvents(state: LiveState): LiveState {
 
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
-  return applyToTurn(applyToNotes(state, event), event);
+  if (event.kind === "text_delta") return applyToDraft(state, event);
+  return applyToTurn(applyToNotes(applyToDraft(state, event), event), event);
+}
+
+/**
+ * The pieces of a block build its draft. The block's final text, the turn end or a delete drops it.
+ * A turn whose first event is a piece runs too, so the piece also opens the turn's steps.
+ */
+function applyToDraft(state: LiveState, event: SessionEvent): LiveState {
+  const id = event.sessionId;
+  if (event.kind === "text_delta") {
+    return {
+      ...state,
+      drafts: { ...state.drafts, [id]: (state.drafts[id] ?? "") + event.text },
+      steps: id in state.steps ? state.steps : { ...state.steps, [id]: [] },
+    };
+  }
+  const ends =
+    event.kind === "text" ||
+    event.kind === "turn_finished" ||
+    event.kind === "turn_failed" ||
+    event.kind === "session_deleted";
+  if (!ends || !(id in state.drafts)) return state;
+  const drafts = { ...state.drafts };
+  Reflect.deleteProperty(drafts, id);
+  return { ...state, drafts };
 }
 
 /** A notice is no step: the answer must stay the last message, and the whole answer must not hold it. */
@@ -118,4 +152,10 @@ function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
     taskSeqs,
     steps: next === current ? state.steps : { ...state.steps, [event.sessionId]: next },
   };
+}
+
+/** The steps of a running turn, with its draft as the last message, so the answer shows the words as they come. */
+export function stepsWithDraft(steps: readonly TurnStep[], draft: string | undefined): readonly TurnStep[] {
+  if (draft === undefined || draft === "") return steps;
+  return [...steps, { kind: "message", text: draft, isError: false, id: null }];
 }

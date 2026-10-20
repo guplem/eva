@@ -26,6 +26,9 @@ export function GitHubLogin({ context }: { readonly context: SettingsContext }):
       context.reloadSettings();
       context.noteAndReload("Logged in to GitHub. Press Restart Eva to use the login in chats and sync.");
     } catch (error) {
+      // Eva may have saved the token before the error, as when she restarts: the card shows it.
+      context.reloadSettings();
+      context.reloadSetup();
       context.notify(errorText(error));
     } finally {
       setShown(null);

@@ -80,7 +80,10 @@ export class GitHubBrowserLogin {
   async finish(): Promise<void> {
     const attempt = this.current;
     if (attempt === null)
-      throw new EvaError("github_failed", "No GitHub login waits. Press Log in with GitHub to start one.");
+      throw new EvaError(
+        "github_failed",
+        "No GitHub login waits. If you allowed the access already, the GitHub card shows the saved token.",
+      );
     await attempt.done;
   }
 

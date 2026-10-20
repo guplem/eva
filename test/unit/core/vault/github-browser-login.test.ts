@@ -148,7 +148,7 @@ describe("the GitHub browser login of the page", () => {
   test("the end with no login says so", async () => {
     const error = await failure(makeLogin(fakeDeviceFlow().login).finish());
     expect(isEvaError(error, "github_failed")).toBe(true);
-    expect(String(error)).toContain("Log in with GitHub");
+    expect(String(error)).toContain("shows the saved token");
   });
 
   test("with no OAuth App, start points to a pasted token", async () => {

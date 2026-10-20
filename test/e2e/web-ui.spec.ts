@@ -2080,6 +2080,71 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
   await expect(page.getByRole("region", { name: "Eva updates" }).locator(".mk.e-joy")).toHaveCount(1);
 });
 
+test("Settings: an install shows a bar that fills with the download", async ({ page }) => {
+  const base = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    current: "0.1.0",
+    latest: "0.2.0",
+    target: "0.2.0",
+    heldBack: null,
+    releases: [],
+    available: true,
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  let installing = false;
+  let finish = (): void => undefined;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      installing = true;
+      // The request ends only after the download, as in Eva.
+      await finished;
+      installing = false;
+      await route.fulfill({ json: { ...base, phase: "idle", current: "0.2.0", available: false } });
+      return;
+    }
+    await route.fulfill({
+      json: installing
+        ? { ...base, phase: "updating", download: { receivedBytes: 42, totalBytes: 100 } }
+        : { ...base, phase: "idle" },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Check and install" }).click();
+  const bar = card.getByRole("progressbar", { name: "Installing 0.2.0…" });
+  await expect(bar).toHaveAttribute("aria-valuenow", "42");
+  await expect(card.getByText("42%", { exact: true })).toBeVisible();
+  finish();
+  await expect(card.getByRole("progressbar")).toHaveCount(0);
+});
+
+test("Settings: the Versions card shows the shape of its list while it reads", async ({ page }) => {
+  let answer = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/api/versions", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card.getByRole("status")).toHaveText("Reading the versions…");
+  await expect(card.locator(".skeleton-fact")).toHaveCount(11);
+  answer();
+  await expect(card.locator("dl.facts")).toBeVisible();
+  await expect(card.locator(".skeleton")).toHaveCount(0);
+});
+
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;

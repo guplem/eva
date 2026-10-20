@@ -1,9 +1,17 @@
 /** The updates page: the versions of Eva and her tools, Eva's update policy, the Claude Code update, and a restart. */
 import { Fragment, useEffect, useState, type ReactElement } from "react";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
-import { api, type EngineUpdateStatus, type EvaVersions, type PublicSettings, type UpdateStatus } from "./api.ts";
+import {
+  ApiError,
+  api,
+  type EngineUpdateStatus,
+  type EvaVersions,
+  type PublicSettings,
+  type UpdateStatus,
+} from "./api.ts";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
-import { updatesFace } from "./update-words.ts";
+import { FactsSkeleton, ProgressBar } from "./Loading.tsx";
+import { updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 
@@ -23,6 +31,8 @@ const installChoices: readonly { value: Updates["install"]; label: string }[] = 
 ];
 
 const statusPollMs = 3_000;
+/** A download moves fast, so the bar reads its share more often. */
+const downloadPollMs = 1_000;
 const restartPollLimit = 60;
 
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -49,7 +59,8 @@ function VersionsCard(): ReactElement {
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
       {versions === "loading" ? (
-        <div role="status">Reading the versions…</div>
+        // Eva and the ten tools of `tool-versions.ts`, so the card keeps its height when they come.
+        <FactsSkeleton label="Reading the versions…" rows={11} />
       ) : versions === "failed" ? (
         <div role="status">Eva could not read the versions. Open this page again to retry.</div>
       ) : (
@@ -72,6 +83,12 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   const config = context.settings.config;
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** The sentence of a wait that this page started, such as a check. */
+  const [work, setWork] = useState<string | null>(null);
+  /** True while the request to update runs. It ends only after the download. */
+  const [posting, setPosting] = useState(false);
+  /** Counts the failed status reads, so a failed read asks again. */
+  const [readFailures, setReadFailures] = useState(0);
   const [pickingVersion, setPickingVersion] = useState(false);
   /** Only an answer from the new Eva proves the install, so only then does the card look happy. */
   const [restarted, setRestarted] = useState(false);
@@ -86,6 +103,20 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
       })
       .catch((error: unknown) => setNote(errorText(error)));
   }, [config.updates.frequency, config.updates.install]);
+
+  // The bar follows the download, also one that Eva started by herself or that a reload left open.
+  const isBusy = update?.phase === "checking" || update?.phase === "updating";
+  useEffect(() => {
+    if (!posting && !isBusy) return;
+    const timer = setTimeout(() => {
+      api.updateStatus().then(setUpdate, () => {
+        setReadFailures((count) => count + 1);
+      });
+    }, downloadPollMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [posting, isBusy, update, readFailures]);
 
   /** The old Eva answers "restarting" until she stops; only the new one answers otherwise. */
   const waitForNewEva = async (): Promise<"restarted" | "waiting" | "silent"> => {
@@ -104,18 +135,43 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
     return answered ? "waiting" : "silent";
   };
 
+  /**
+   * The status once the install ends. A long download can outlast the request, which the server
+   * then closes, while the download goes on. So a lost answer reads the status until it ends.
+   */
+  const installResult = async (version?: string): Promise<UpdateStatus> => {
+    try {
+      return await api.updateNow(version);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, statusPollMs));
+        const status = await api.updateStatus().catch(() => undefined);
+        if (status === null) break;
+        if (status !== undefined && status.phase !== "checking" && status.phase !== "updating") return status;
+      }
+      throw error;
+    }
+  };
+
   /** Installs `version`, or what the update policy allows when it is undefined. */
   const updateNow = async (version?: string): Promise<void> => {
     setPickingVersion(false);
     setRestarted(false);
-    setNote(version === undefined ? "Checking…" : `Installing ${version}…`);
+    setNote(null);
+    setWork(version === undefined ? "Looking for a new version…" : `Installing ${version}…`);
+    setPosting(true);
     try {
-      const status = await api.updateNow(version);
+      const status = await installResult(version);
+      setPosting(false);
       setUpdate(status);
-      setNote(null);
-      if (status.phase !== "restarting") return;
-      setNote("Eva restarts with the new version when no chat runs…");
+      if (status.phase !== "restarting") {
+        setWork(null);
+        return;
+      }
+      setWork("Eva restarts with the new version when no chat runs…");
       const result = await waitForNewEva();
+      setWork(null);
       setRestarted(result === "restarted");
       setNote(
         result === "restarted"
@@ -125,21 +181,27 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
             : "Eva did not answer after the update. Check her log.",
       );
     } catch (error) {
+      setPosting(false);
+      setWork(null);
       setNote(errorText(error));
     }
   };
 
   /** Checks first, so the dialog lists the releases of now. */
   const pickVersion = async (): Promise<void> => {
-    setNote("Checking…");
+    setNote(null);
+    setWork("Looking for the versions…");
     try {
       setUpdate(await api.checkForUpdate());
-      setNote(null);
       setPickingVersion(true);
     } catch (error) {
       setNote(errorText(error));
+    } finally {
+      setWork(null);
     }
   };
+
+  const wait = updateWait(update, work);
 
   return (
     <Card
@@ -177,6 +239,7 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
       {update?.kind === "source" && (
         <div className="field-hint">This Eva runs from a git checkout, so she follows the main branch.</div>
       )}
+      {wait !== null && <ProgressBar label={wait.label} share={wait.share} />}
       {note !== null && <div role="status">{note}</div>}
       {pickingVersion && update !== null && (
         <UpdateVersionDialog
@@ -228,13 +291,16 @@ function EngineUpdateCard(): ReactElement {
 
   return (
     <Card item="engine-update" title="Claude Code update">
-      <div role="status">
-        {engineUpdate === "loading"
-          ? "Claude Code: reading the update status…"
-          : engineUpdate === null
-            ? "No claude program was found."
-            : describeEngineUpdate(engineUpdate)}
-      </div>
+      {engineUpdate === "loading" ? (
+        <ProgressBar label="Claude Code: reading the update status…" />
+      ) : engineUpdate === null ? (
+        <div role="status">No claude program was found.</div>
+      ) : engineUpdate.phase === "idle" ? (
+        <div role="status">{describeEngineUpdate(engineUpdate)}</div>
+      ) : (
+        // `claude update` says nothing until it ends, so its share is unknown.
+        <ProgressBar label={describeEngineUpdate(engineUpdate)} />
+      )}
       <div className="button-row">
         <button
           disabled={engineUpdate === "loading" || engineUpdate?.phase !== "idle"}

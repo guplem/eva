@@ -556,10 +556,7 @@ ${prompt}`,
           blockStarts = false;
           continue;
         }
-        if (raw.kind === "text") {
-          draft.reset();
-          blockStarts = false;
-        }
+        // A final text does not reset the stream: the next block can start before it comes.
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
         const payload = redactPayload(raw, this.options.redactor);
         if (payload.kind === "history_lost") {

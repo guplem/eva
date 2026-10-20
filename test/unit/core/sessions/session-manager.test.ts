@@ -1237,3 +1237,22 @@ describe("a block that starts again", () => {
     ]);
   });
 });
+
+describe("a final text during the next block", () => {
+  test("a final text that comes during the next block never splits a secret in that block", async () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "First. ", startsBlock: true },
+        { kind: "text_delta", text: `Then ${token.slice(0, 20)}`, startsBlock: true },
+        { kind: "text", text: "First.", messageId: "m1" },
+        { kind: "text_delta", text: `${token.slice(20)} and more words to come here ` },
+        ...FakeEngine.answer(request, `Then ${token} and more words to come here.`),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const sent = events.filter((event) => event.kind === "text_delta").map((event) => event.text);
+    expect(sent.join("")).not.toContain("aaaa");
+  });
+});

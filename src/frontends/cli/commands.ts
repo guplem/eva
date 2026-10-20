@@ -36,7 +36,7 @@ import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
 import { doneLine, questionText, stepLines } from "./setup-output.ts";
-import { startAndLetIn } from "./setup-start.ts";
+import { startAndLetIn, type FinishPlace } from "./setup-start.ts";
 
 export interface CliWiring {
   /** `eva` and `eva run`: starts Eva and resolves with her exit code when she stops. */
@@ -183,12 +183,12 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
   };
   const start =
     (interactive: boolean, ask: (question: string) => Promise<string>, script: (key: SetupQuestion) => string) =>
-    async (): Promise<void> => {
-      await startAndLetIn({
+    (): Promise<FinishPlace> =>
+      startAndLetIn({
         interactive,
-        // A script never waits for a device code: nobody is there to read the page.
+        // A script never waits for a device code or a choice: nobody is there to read the page.
         ask: (key, question) =>
-          interactive ? ask(question) : Promise.resolve(key === "deviceCode" ? "" : script(key)),
+          interactive ? ask(question) : Promise.resolve(key === "deviceCode" || key === "finishOn" ? "" : script(key)),
         write,
         // Setup publishes too, so the address that it prints works as soon as Eva runs.
         network: () =>
@@ -212,8 +212,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
         },
         sleep: host.sleep,
       });
-    };
-  let result = { changedAfterStart: false };
+  let result = { changedAfterStart: false, finishOnPage: false };
   if (nonInteractive) {
     const script = (key: SetupQuestion): string => host.environment[setupEnvironmentNames[key]] ?? "";
     result = await runSetup({
@@ -234,6 +233,8 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
       });
     });
   }
+  // The steps for the page are the last lines, so the person sees them without a scroll.
+  if (result.finishOnPage) return;
   const client = runningClient(host, paths);
   if (client === null) {
     write("Run `eva doctor` to check the tools, then start Eva with `eva service install` or `eva`.");

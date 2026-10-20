@@ -1181,7 +1181,9 @@ describe("runSetup", () => {
     });
 
     test("setup reports whether it changed anything after Eva started", async () => {
-      const run = (answers: Partial<Record<SetupQuestion, string>>): Promise<{ changedAfterStart: boolean }> =>
+      const run = (
+        answers: Partial<Record<SetupQuestion, string>>,
+      ): Promise<{ changedAfterStart: boolean; finishOnPage: boolean }> =>
         runSetup({
           paths: homePaths(home),
           ask: (key) => Promise.resolve(answers[key] ?? ""),
@@ -1195,11 +1197,40 @@ describe("runSetup", () => {
           userHome: home,
           installEnvironment: gitEnvironment,
           arch: "x64",
-          afterEssentials: () => Promise.resolve(),
+          afterEssentials: () => Promise.resolve("terminal"),
         });
-      expect(await run({ claudeToken: "a-claude-setup-token-value" })).toEqual({ changedAfterStart: true });
+      expect(await run({ claudeToken: "a-claude-setup-token-value" })).toEqual({
+        changedAfterStart: true,
+        finishOnPage: false,
+      });
       // Every step is done now, so a rerun saves nothing.
-      expect(await run({})).toEqual({ changedAfterStart: false });
+      expect(await run({})).toEqual({ changedAfterStart: false, finishOnPage: false });
+    });
+
+    test("a person who finishes on the web page gets no more questions here", async () => {
+      const asked: SetupQuestion[] = [];
+      const lines: string[] = [];
+      const result = await runSetup({
+        paths: homePaths(home),
+        ask: (key) => {
+          asked.push(key);
+          return Promise.resolve("");
+        },
+        write: (line) => lines.push(line),
+        newToken: () => "generated-token",
+        interactive: true,
+        runner: okRunner,
+        environment: gitEnvironment,
+        githubLogin: null,
+        platform: "linux",
+        userHome: home,
+        installEnvironment: gitEnvironment,
+        arch: "x64",
+        afterEssentials: () => Promise.resolve("page"),
+      });
+      expect(result).toEqual({ changedAfterStart: false, finishOnPage: true });
+      expect(asked).toEqual([]);
+      expect(lines.join("\n")).not.toContain("Setup is over.");
     });
   });
 

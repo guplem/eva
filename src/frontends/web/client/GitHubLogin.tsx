@@ -5,19 +5,24 @@
  */
 import { useState, type ReactElement } from "react";
 import { githubLoginAccess } from "../../../core/vault/github-login.ts";
-import { api } from "./api.ts";
+import { api, ApiError } from "./api.ts";
 import { CommandLine, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
+
+/** The pause before the page asks again after a lost answer. */
+const retryPauseMs = 3000;
+/** GitHub's code lasts 15 minutes, so a longer wait cannot end well. */
+const lastAskMs = 16 * 60_000;
 
 export function GitHubLogin({ context }: { readonly context: SettingsContext }): ReactElement {
   const [shown, setShown] = useState<{ code: string; url: string } | null>(null);
-  // One request at a time. Eva gives the same code again while a login waits, so a reload loses nothing.
+  // Blocks a second press while a request runs. After a reload, Eva gives the same code again.
   const [busy, setBusy] = useState(false);
 
   const logIn = async (): Promise<void> => {
     setBusy(true);
     try {
       setShown(await api.startGitHubLogin());
-      await api.finishGitHubLogin();
+      await waitForTheEnd();
       context.reloadSettings();
       context.noteAndReload("Logged in to GitHub. Press Restart Eva to use the login in chats and sync.");
     } catch (error) {
@@ -31,7 +36,7 @@ export function GitHubLogin({ context }: { readonly context: SettingsContext }):
   return (
     <Steps>
       <li>
-        Press Log in with GitHub. Eva gets a short code from GitHub.
+        Eva gets a short code from GitHub.
         <div className="button-row">
           <button className="primary" disabled={busy} onClick={() => void logIn()}>
             {busy && shown === null ? "Getting the code…" : "Log in with GitHub"}
@@ -55,10 +60,27 @@ export function GitHubLogin({ context }: { readonly context: SettingsContext }):
         </div>
         {shown !== null && (
           <div className="field-hint" role="status">
-            Eva waits until you allow the access on GitHub. Then she saves the login by herself.
+            Eva waits for GitHub, and then saves the login by herself.
           </div>
         )}
       </li>
     </Steps>
   );
+}
+
+/**
+ * Waits for the end of the login. A phone can cut the long request when the browser goes to the
+ * background, while Eva goes on, so the page asks again until Eva answers.
+ */
+async function waitForTheEnd(): Promise<void> {
+  const deadline = Date.now() + lastAskMs;
+  for (;;) {
+    try {
+      await api.finishGitHubLogin();
+      return;
+    } catch (error) {
+      if (error instanceof ApiError || Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryPauseMs));
+    }
+  }
 }

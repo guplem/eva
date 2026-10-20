@@ -1911,6 +1911,8 @@ test("Settings: the GitHub step logs in with a code, with no token to make (#243
   });
   await page.route("**/api/github/login/finish", async (route) => {
     finishes += 1;
+    // A phone cuts the first long request when the browser goes to the background.
+    if (finishes === 1) return route.abort("connectionreset");
     await allowed;
     await route.fulfill({ json: { restartNeeded: true } });
   });
@@ -1929,13 +1931,32 @@ test("Settings: the GitHub step logs in with a code, with no token to make (#243
     "href",
     "https://github.com/login/device",
   );
-  await expect(page.getByRole("status").filter({ hasText: "Eva waits until you allow" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Eva waits for GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeDisabled();
+  // The page asks again after the lost answer, and keeps the code meanwhile.
+  await expect.poll(() => finishes).toBe(2);
+  await expect(page.getByText("WXYZ-1234")).toBeVisible();
   allow();
   await expect(page.getByRole("status").filter({ hasText: "Logged in to GitHub" })).toBeVisible();
   await expect(page.getByText("WXYZ-1234")).toHaveCount(0);
-  expect(finishes).toBe(1);
+  expect(finishes).toBe(2);
   await page.getByRole("button", { name: "Paste a token instead" }).click();
   await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
+});
+
+test("Settings: a GitHub login that fails says why, and the button works again", async ({ page }) => {
+  await page.route("**/api/github/login", (route) =>
+    route.fulfill({ json: { code: "WXYZ-1234", url: "https://github.com/login/device" } }),
+  );
+  await page.route("**/api/github/login/finish", (route) =>
+    route.fulfill({ status: 409, json: { error: "The GitHub login code expired.", code: "github_failed" } }),
+  );
+  await logIn(page);
+  await openSettings(page, "Connections");
+  await page.getByRole("button", { name: "Log in with GitHub" }).click();
+  await expect(page.getByText("The GitHub login code expired.")).toBeVisible();
+  await expect(page.getByText("WXYZ-1234")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeEnabled();
 });
 
 test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {

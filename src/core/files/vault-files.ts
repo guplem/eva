@@ -42,6 +42,11 @@ const secretScanBytes = 2 * 1024 * 1024;
 const secretNamePattern =
   /^\.env(\..*)?$|\.(pem|key|p12|pfx)$|^(\.npmrc|\.pypirc|\.netrc|secrets?\.json|credentials\.json|client_secret.*\.json)$/i;
 
+/** True for a file name that holds secrets by convention, such as `.env` or `id.pem`. */
+export function looksLikeSecretsFile(name: string): boolean {
+  return secretNamePattern.test(name);
+}
+
 /** Reads the marker lines of an answer block. A marker inside a code fence stays text. */
 export function extractFileMarkers(answer: string): FileMarkers {
   const kept: string[] = [];
@@ -81,7 +86,7 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
   if (parts.includes(".git") || (parts[0] === "Projects" && parts[2] === "repos"))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
-  if (secretNamePattern.test(basename(resolved)))
+  if (looksLikeSecretsFile(basename(resolved)))
     return { ok: false, reason: `${requested} looks like a secrets file, so Eva does not send it.` };
   const stats = statSync(resolved);
   if (!stats.isFile()) return { ok: false, reason: `${requested} is not a file.` };

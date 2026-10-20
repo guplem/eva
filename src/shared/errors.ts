@@ -24,7 +24,8 @@ export type EvaErrorCode =
   | "project_changed"
   | "title_invalid"
   | "vault_ahead"
-  | "vault_setup_busy";
+  | "vault_setup_busy"
+  | "file_not_found";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

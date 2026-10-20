@@ -2697,3 +2697,49 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   await expect(page.getByText("claude setup-token").first()).toBeVisible();
   await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
 });
+
+test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  const list = page.getByRole("list", { name: "Folder contents" });
+  await list.getByRole("link", { name: "Projects" }).click();
+  await list.getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
+  await list.getByRole("link", { name: /AGENTS\.md/ }).click();
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  await page.getByRole("button", { name: "Show plain text" }).click();
+  await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
+  await expect(file.getByText("# Example app")).toBeVisible();
+  // The address holds the path, so a reload keeps the file and Back goes up a folder.
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "AGENTS.md" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
+  await expect(list.getByRole("link", { name: ".eva" })).toBeVisible();
+  await expect(list.getByRole("link", { name: ".git" })).toHaveCount(0);
+});
+
+test("Files: a path that the core tidies still shows its folder (issue 253)", async ({ page }) => {
+  await logIn(page);
+  // The page keeps `Projects\`, and the core answers for `Projects`.
+  await page.goto("/#/files/Projects%5C");
+  await expect(page.getByRole("list", { name: "Folder contents" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+});
+
+test("Files: Try again reads a folder again after a failed read (issue 253)", async ({ page }) => {
+  await logIn(page);
+  let failNext = true;
+  await page.route("**/api/files?**", async (route) => {
+    if (!failNext) return route.continue();
+    failNext = false;
+    return route.fulfill({ status: 500, json: { error: "Eva failed to handle the request." } });
+  });
+  await page.goto("/#/files/Projects");
+  await expect(page.getByRole("alert").filter({ hasText: "Eva failed to handle the request." })).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+});

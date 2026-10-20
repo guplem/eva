@@ -1080,6 +1080,18 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
   });
 
+  test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {
+    const root = await json<{ kind: string; entries: { name: string }[] }>(await call("/api/files"));
+    expect(root.kind).toBe("folder");
+    expect(root.entries.map((entry) => entry.name)).toEqual([".eva", "Projects", "AGENTS.md"]);
+    const file = await call(`/api/files?path=${encodeURIComponent(".eva/assistant.md")}`);
+    expect(await json(file)).toEqual({ kind: "file", path: ".eva/assistant.md", size: 14, text: "# You are Eva\n" });
+    const outside = await call(`/api/files?path=${encodeURIComponent("../")}`);
+    expect(outside.status).toBe(404);
+    expect(await json<{ code: string }>(outside)).toMatchObject({ code: "file_not_found" });
+    expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
+  });
+
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     await call("/api/schedules", { method: "POST", body: entry });
@@ -1162,6 +1174,8 @@ describe("without a vault", () => {
       expect(response.status).toBe(409);
       const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
       expect(chatNames.status).toBe(409);
+      const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });
+      expect(await files.json()).toMatchObject({ code: "vault_not_found" });
     } finally {
       bareApi.stop();
     }

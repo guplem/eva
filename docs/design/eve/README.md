@@ -141,7 +141,7 @@ A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) an
 
 ### Phone
 
-From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Schedules and Settings. List pages use a large 30 px title.
+From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with Chats, Projects, Files, Schedules and Settings. List pages use a large 30 px title.
 
 Dialogs become bottom sheets on a phone. Their buttons stack at full width.
 

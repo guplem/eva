@@ -35,6 +35,7 @@ describe("addressOf", () => {
     expect(destinations.map((destination) => addressOf(destination.id))).toEqual([
       "#/chats",
       "#/projects",
+      "#/files",
       "#/schedules",
       "#/settings",
     ]);

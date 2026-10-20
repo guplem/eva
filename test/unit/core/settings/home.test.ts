@@ -97,6 +97,31 @@ describe("engine folders of an instance (lesson 111)", () => {
     const gitConfig = join(home, "engines", "git", "gitconfig");
     expect(engineGitConfig({ GIT_CONFIG_GLOBAL: gitConfig }, gitConfig)).toContain('path = "~/.gitconfig"');
   });
+
+  test("the instance's commit identity wins over the person's global one, which keeps its other settings", () => {
+    const global = join(home, "global.gitconfig");
+    writeFileSync(global, "[user]\n\tname = Global Name\n\temail = global@example.com\n[alias]\n\tst = status\n");
+    const gitConfig = join(home, "gitconfig");
+    const identity = { name: 'Example "User"', email: "1234+example-user@users.noreply.github.com" };
+    writeFileSync(gitConfig, engineGitConfig({ GIT_CONFIG_GLOBAL: global }, gitConfig, identity));
+    const read = (key: string): string =>
+      Bun.spawnSync(["git", "config", "--global", "--includes", key], {
+        cwd: home,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "1" },
+      })
+        .stdout.toString()
+        .trim();
+
+    expect(read("user.name")).toBe('Example "User"');
+    expect(read("user.email")).toBe("1234+example-user@users.noreply.github.com");
+    expect(read("alias.st")).toBe("status");
+  });
+
+  test("a part of the identity that is null stays with the person's global settings", () => {
+    const config = engineGitConfig({}, join(home, "gitconfig"), { name: "Example User", email: null });
+    expect(config).toContain('name = "Example User"');
+    expect(config).not.toContain("email");
+  });
 });
 
 describe("instances", () => {

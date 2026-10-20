@@ -12,6 +12,7 @@ import {
   engineGitConfig,
   instanceNameOf,
   instanceVariable,
+  type CommitIdentity,
   type EvaSecrets,
   type HomePaths,
 } from "../settings/home.ts";
@@ -23,6 +24,8 @@ export interface InstanceFacts {
   readonly processEnvironment: EnvironmentMap;
   /** The command that starts this Eva, for the `eva` scripts of the agents. Null: no script. */
   readonly evaCommand?: readonly string[] | null;
+  /** The name and email of this instance's commits. Absent: git's own settings. */
+  readonly commitIdentity?: CommitIdentity;
 }
 
 /** Only Eva's own git commands get the GitHub token; an agent's environment never does (lesson 96). */
@@ -32,23 +35,34 @@ export function gitEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Recor
     // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
     GH_CONFIG_DIR: engineFolders(facts.paths).gh,
     ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+    ...identityVariables(facts.commitIdentity),
   });
 }
 
 /**
  * The git environment of a step that runs before the core starts, or with no Eva running: the
- * allowlist and the GitHub token, without the instance's `gh` folder.
+ * allowlist, the GitHub token and the commit identity, without the instance's `gh` folder.
  */
 export function gitEnvironmentWithToken(
   processEnvironment: EnvironmentMap,
   secrets: EvaSecrets,
+  identity?: CommitIdentity,
 ): Record<string, string> {
   const token = secrets.githubToken;
-  return buildChildEnvironment(
-    processEnvironment,
-    baseEnvironmentAllowlist,
-    token === undefined ? {} : { [githubTokenVariable]: token },
-  );
+  return buildChildEnvironment(processEnvironment, baseEnvironmentAllowlist, {
+    ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+    ...identityVariables(identity),
+  });
+}
+
+/** Eva's own git reads no instance config file, so the variables carry the identity. */
+function identityVariables(identity: CommitIdentity | undefined): Record<string, string> {
+  const name = identity?.name ?? null;
+  const email = identity?.email ?? null;
+  return {
+    ...(name === null ? {} : { GIT_AUTHOR_NAME: name, GIT_COMMITTER_NAME: name }),
+    ...(email === null ? {} : { GIT_AUTHOR_EMAIL: email, GIT_COMMITTER_EMAIL: email }),
+  };
 }
 
 /** The engine's environment: the allowlist, the Claude token, and the instance's own engine folders. */
@@ -56,7 +70,7 @@ export function engineEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Re
   const folders = engineFolders(facts.paths);
   // An agent's own `git push` uses the instance's gh login, not the OS user's git login.
   const gitConfig = join(folders.git, "gitconfig");
-  writeFileAtomic(gitConfig, engineGitConfig(facts.processEnvironment, gitConfig));
+  writeFileAtomic(gitConfig, engineGitConfig(facts.processEnvironment, gitConfig, facts.commitIdentity));
   const extra: Record<string, string> = {
     ...engineFolderVariables(folders),
     GIT_CONFIG_GLOBAL: gitConfig,

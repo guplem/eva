@@ -131,9 +131,14 @@ export function engineFolders(paths: HomePaths): EngineFolders {
  * The global git config of an instance's agents. With `GIT_CONFIG_GLOBAL`, git reads only
  * this file, so it includes the person's own global config first. Then it resets the GitHub
  * helpers: without this, a push asks the OS user's helper and goes out as the first person.
- * Other hosts keep the person's helpers.
+ * Other hosts keep the person's helpers. The instance's commit identity comes after the include,
+ * so it wins over the person's global name and email.
  */
-export function engineGitConfig(environment: Readonly<Record<string, string | undefined>>, file: string): string {
+export function engineGitConfig(
+  environment: Readonly<Record<string, string | undefined>>,
+  file: string,
+  identity: CommitIdentity = { name: null, email: null },
+): string {
   // Git expands `~/` in an include path itself, on Windows too.
   // An Eva started from this instance's own agent gets this file; including it again would loop.
   const fromEnvironment = environment["GIT_CONFIG_GLOBAL"];
@@ -152,8 +157,17 @@ export function engineGitConfig(environment: Readonly<Record<string, string | un
     '[credential "https://github.com"]',
     "\thelper =",
     "\thelper = !gh auth git-credential",
+    ...(identity.name === null && identity.email === null ? [] : ["[user]"]),
+    ...(identity.name === null ? [] : [`\tname = ${quote(identity.name)}`]),
+    ...(identity.email === null ? [] : [`\temail = ${quote(identity.email)}`]),
     "",
   ].join("\n");
+}
+
+/** The name and email of an instance's commits. A null part leaves that part to git's own settings. */
+export interface CommitIdentity {
+  readonly name: string | null;
+  readonly email: string | null;
 }
 
 /** The variables that point each engine at its folder. */

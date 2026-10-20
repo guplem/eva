@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ClaudeLogin, type ClaudeLoginOptions } from "../../../../src/core/setup/claude-login.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import type { TerminalProcess, TerminalProcessOptions } from "../../../../src/shared/terminal-process.ts";
@@ -353,6 +355,83 @@ describe("ClaudeLogin with output in pieces", () => {
     login.stop();
     expect(terminals[0]?.stopped).toBe(true);
     expect(isEvaError(await finished, "claude_login_failed")).toBe(true);
+  });
+});
+
+/**
+ * The screens of claude 2.1.304, with no colors, as Eva runs it (a fake token server made the
+ * token). claude redraws only the cells that changed, so the token row jumps over a cell that
+ * already holds its letter.
+ */
+function screen(name: "address" | "token" | "refused"): string {
+  return readFileSync(
+    join(import.meta.dir, "..", "..", "..", "fixtures", "claude-code", `setup-token-${name}.txt`),
+    "utf8",
+  );
+}
+const drawnToken = /sk-ant-\S*/.exec(screen("token"))?.[0]?.replace(`${escape}[10G`, "o").replace(`${escape}[K`, "");
+
+describe("ClaudeLogin with the real screens of claude 2.1", () => {
+  const showRealAddress = (terminal: FakeTerminal): void => {
+    terminal.print(screen("address"));
+  };
+
+  test("reads the address", async () => {
+    const { login } = makeLogin({ onStart: showRealAddress });
+    expect((await login.start()).url).toContain("state=example-state");
+  });
+
+  test("reads a token that claude draws over its old screen", async () => {
+    const { login } = makeLogin({
+      onStart: showRealAddress,
+      onWrite: (terminal, text) => {
+        if (text !== "\r") return;
+        terminal.print(screen("token"));
+        terminal.exit(0);
+      },
+    });
+    await login.start();
+    expect(drawnToken).toStartWith("sk-ant-oat01-");
+    expect(await login.finish("example-code")).toEqual({ token: drawnToken ?? "" });
+  });
+
+  test("waits for the end of a token that comes in pieces over the old screen", async () => {
+    const { login, terminals } = makeLogin({ onStart: showRealAddress });
+    await login.start();
+    const finished = login.finish("example-code");
+    const output = screen("token");
+    const cut = output.indexOf("sk-ant-") + 30;
+    terminals[0]?.print(output.slice(0, cut));
+    await Bun.sleep(5);
+    terminals[0]?.print(output.slice(cut));
+    expect(await finished).toEqual({ token: drawnToken ?? "" });
+  });
+
+  test("says so when claude refuses the code", async () => {
+    const { login } = makeLogin({
+      onStart: showRealAddress,
+      onWrite: (terminal, text) => {
+        if (text === "\r") terminal.print(screen("refused"));
+      },
+    });
+    await login.start();
+    const error = await failure(login.finish("example-code"));
+    expect((error as Error).message).toContain("did not accept the code");
+  });
+
+  test("says what claude said last, not what its old screen held", async () => {
+    const { login } = makeLogin(
+      {
+        onStart: showRealAddress,
+        onWrite: (terminal, text) => {
+          if (text === "\r") terminal.print(`\r${escape}[1C${escape}[6AError: example failure${escape}[K\r\n`);
+        },
+      },
+      { waitMs: 30 },
+    );
+    await login.start();
+    const error = await failure(login.finish("example-code"));
+    expect((error as Error).message).toContain('It said: "Error: example failure"');
   });
 });
 

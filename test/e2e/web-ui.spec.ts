@@ -2759,6 +2759,30 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await expect(googleRow).toContainText("Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
 });
 
+test("Settings: Google access takes a preset, or a level for each service", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const access = page.getByRole("combobox", { name: /^Google access/ });
+  await expect(access).toHaveValue("read");
+  await expect(page.getByRole("combobox", { name: /^Contacts/ })).toHaveCount(0);
+  await access.selectOption("custom");
+  const contacts = page.getByRole("combobox", { name: /^Contacts/ });
+  await expect(contacts).toHaveValue("readonly");
+  // Gmail is off in the demo, so it has no select.
+  await expect(page.getByRole("combobox", { name: /^Gmail/ })).toHaveCount(0);
+  await contacts.selectOption("full");
+  await expect(page.getByRole("status").filter({ hasText: "Log in to Google again" })).toBeVisible();
+  await page.reload();
+  // The levels match no preset, so the page shows "Custom" after a reload too.
+  await expect(access).toHaveValue("custom");
+  await expect(contacts).toHaveValue("full");
+  await access.selectOption("lists");
+  await expect(page.getByRole("combobox", { name: /^Contacts/ })).toHaveCount(0);
+  // The next tests log in with read-only access.
+  await access.selectOption("read");
+  await expect(access).toHaveValue("read");
+});
+
 // Emoji and symbol marks look different on each system and ignore the theme colours (#164).
 const symbolMark = /[\p{Extended_Pictographic}\u2190-\u21ff\u2300-\u23ff\u2460-\u27bf\u2b00-\u2bff]/u;
 

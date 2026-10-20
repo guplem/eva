@@ -33,9 +33,9 @@ export function googleMcpServer(inputs: GoogleMcpInputs): McpServerSpec | null {
     args: [
       `workspace-mcp==${workspaceMcpVersion}`,
       "--single-user",
-      "--tools",
-      ...config.services,
-      ...(config.readOnly ? ["--read-only"] : []),
+      // The levels also pick the services, so this flag replaces `--tools` and `--read-only`.
+      "--permissions",
+      ...[...new Set(config.services)].map((service) => `${service}:${config.access[service]}`),
     ],
     environment: {
       ...inputs.environment,

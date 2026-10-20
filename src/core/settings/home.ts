@@ -7,6 +7,7 @@ import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { googleAccessLevels } from "../google/google-access.ts";
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";
@@ -285,10 +286,30 @@ export const configSchema = z.object({
       services: z
         .array(z.enum(["calendar", "drive", "contacts", "tasks", "gmail"]))
         .default(["calendar", "drive", "contacts", "tasks"]),
-      /** Start with read-only scopes. */
-      readOnly: z.boolean().default(true),
+      /** The access level of each service. Every service starts read-only. */
+      access: z
+        .object({
+          calendar: z.enum(googleAccessLevels.calendar).default("readonly"),
+          drive: z.enum(googleAccessLevels.drive).default("readonly"),
+          contacts: z.enum(googleAccessLevels.contacts).default("readonly"),
+          tasks: z.enum(googleAccessLevels.tasks).default("readonly"),
+          gmail: z.enum(googleAccessLevels.gmail).default("readonly"),
+        })
+        .default({
+          calendar: "readonly",
+          drive: "readonly",
+          contacts: "readonly",
+          tasks: "readonly",
+          gmail: "readonly",
+        }),
+      /** The old single switch. Only the 2026-10-20 migration reads it. A save before that migration keeps it. */
+      readOnly: z.boolean().optional(),
     })
-    .default({ email: null, services: ["calendar", "drive", "contacts", "tasks"], readOnly: true }),
+    .default({
+      email: null,
+      services: ["calendar", "drive", "contacts", "tasks"],
+      access: { calendar: "readonly", drive: "readonly", contacts: "readonly", tasks: "readonly", gmail: "readonly" },
+    }),
   voice: z
     .object({
       /** A whisper.cpp model file. Voice notes stay off until it is set. */

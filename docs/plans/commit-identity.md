@@ -39,4 +39,23 @@ Two people who share a computer then sign each other's commits.
 
 ## Decisions
 
-(Filled in after the gap research.)
+Three research agents looked at each gap.
+
+- **G1.** The machine's `config.json`, under `git.name` and `git.email`, both null by default.
+  Not in `sharedSettingKeys`. Reason: AGENTS.md says each Eva keeps her commit identity in
+  her own folder, and the account record is per machine too, so one value has one home.
+  Each key wins on its own: a set name with no email keeps the account's email.
+- **G2.** A state file, `state/github-account.json`, with `id`, `login` and `name`.
+  `HomePaths.githubAccount` names it. Not `secrets.json`: these are no secrets.
+  Not `config.json`: the person does not edit it.
+- **G3.** No API call at start (the owner's note). The record is filled at each token save,
+  at each `eva setup` that keeps a saved token, and by the GitHub check of the settings page
+  when the record is missing. All three reach the phone or need setup anyway.
+- **G4.** `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables, as the `evaIdentity` fallback in
+  `VaultSync` already does. With them set, its `git var GIT_COMMITTER_IDENT` probe passes, so
+  the fallback applies only when no identity exists. `vault-template.ts` stays as it is.
+- **G5.** Every `githubToken` save: the `saveSecret` closure of `eva setup`, and
+  `Eva.saveSecret` of the web page, in the background. A removed token deletes the record.
+  A failed read keeps the token and changes nothing else.
+
+The identity applies at the next start, as each token change does today.

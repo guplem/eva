@@ -279,6 +279,18 @@
     display: none;
   }
 
+  /* The project list is the page on a phone, with one card per project. */
+  .layout.list-home .list-skeleton .skeleton-shapes {
+    gap: var(--space-2);
+  }
+
+  .layout.list-home .skeleton-item {
+    padding: 14px 16px;
+    border-radius: var(--radius-card);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
   /* The tab bar of a phone: the icon pill of each destination. */
   .skeleton-nav-button {
     justify-self: center;
@@ -316,10 +328,15 @@
   .skeleton .skeleton-visor,
   .skeleton .skeleton-nav-button {
     animation: none;
-    background: var(--chip);
+    background: var(--line);
   }
 
   .skeleton .skeleton-bubble.user .skeleton-line {
     background: var(--panel);
   }
+}
+
+/* A bar in a notice takes the whole row, as its sentence would. */
+.settings-notice > .progress {
+  flex: 1;
 }

@@ -30,7 +30,7 @@ import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./s
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
-import { CardsSkeleton } from "./Loading.tsx";
+import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
@@ -161,8 +161,8 @@ export function SettingsView({
     setRestartAsk(null);
     setRestarting(true);
     try {
+      setNotice(null);
       await api.restart();
-      setNotice("Eva restarts…");
       for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, statusPollMs));
         try {
@@ -282,6 +282,11 @@ export function SettingsView({
                   Yes, restart
                 </button>
               </div>
+            </div>
+          )}
+          {restarting && notice === null && restartAsk === null && (
+            <div className="settings-notice">
+              <ProgressBar label="Eva restarts…" />
             </div>
           )}
           {notice !== null && restartAsk === null && (

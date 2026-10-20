@@ -73,7 +73,7 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           "github",
         )
       : input.githubCli
-        ? make("github", "GitHub", "done", "The token is saved. Your agents use the same login.", "github")
+        ? make("github", "GitHub", "done", "The token is saved.", "github")
         : // An old login lacks the scopes that the agents' gh needs (#244): a new login gets them.
           make(
             "github",

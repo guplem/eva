@@ -1983,6 +1983,8 @@ test("Settings: a GitHub token without the agents' login needs the person (#244)
   await openSettings(page, "Connections");
   const card = page.getByRole("region", { name: "GitHub", exact: true });
   await expect(card.getByText("Needs you", { exact: true })).toBeVisible();
+  // The step page hides the step detail of a step to do, so the card says what to do.
+  await expect(card).toContainText("Your agents cannot push their work yet. Press Log in with GitHub.");
   await expect(card).toContainText("The agents use it to push their work");
 });
 

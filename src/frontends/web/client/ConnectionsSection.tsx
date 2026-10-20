@@ -27,6 +27,10 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
       description="Eva uses your GitHub login for your private vault and projects."
       aside={<StatusPill state={step?.state ?? (saved ? "done" : "optional")} />}
     >
+      {/* "missing" means a saved token that the agents' gh lacks (#244): the step page hides that detail. */}
+      {step?.state === "missing" && (
+        <div className="callout warning">Your agents cannot push their work yet. Press Log in with GitHub.</div>
+      )}
       <GitHubLogin context={context} />
       {!tokenSteps ? (
         <button className="link-button" onClick={() => setTokenSteps(true)}>

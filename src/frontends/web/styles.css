@@ -236,9 +236,11 @@ samp {
   box-sizing: border-box;
 }
 
+/* A phone browser draws a blue box on each tap. The press rule below gives the feedback instead. */
 body {
   margin: 0;
   background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -249,6 +251,18 @@ button {
   border-radius: var(--radius-pill);
   padding: 6px 12px;
   cursor: pointer;
+  transition: transform 80ms ease-out;
+}
+
+button:active:not(:disabled),
+a.button-link:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
 }
 
 button.primary {

@@ -44,6 +44,10 @@ export function describeStatusLines(status: EvaStatus): string[] {
       : []),
     `Vault: ${status.vaultPath ?? "not configured"}`,
     describeSync(status.vaultSync),
+    // An older Eva sends no field: read it as on.
+    ...(status.vaultPath !== null && (status as Partial<EvaStatus>).vaultAutoSync === false
+      ? ["Automatic sync is off. Sync now sends the notes."]
+      : []),
     // Over JSON the date arrives as text; new Date reads both forms.
     `Last push: ${status.vaultSync.lastPushAt === null ? "none since start" : new Date(status.vaultSync.lastPushAt).toISOString()}`,
     ...heldBackLines(status.vaultSync.withheldFiles),

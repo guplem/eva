@@ -20,39 +20,28 @@ Eva can also work in your coding projects. Each project gets its own copy of the
 
 ## What you need
 
-Before you start, have these ready. Each one takes a few minutes.
-
-1. **A computer that stays on.** Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
-2. **An AI subscription** for the harness that does the thinking. Use a Claude subscription (Pro or Max) from [claude.ai](https://claude.ai) with Claude Code, or another provider with pi, such as ChatGPT or OpenRouter.
-3. **A GitHub account** from [github.com](https://github.com). Eva keeps a private copy of your notes there.
-4. **Telegram** on your phone, and [a bot of your own](docs/guide/setup.md#create-your-telegram-bot). It is optional, but it is the easiest way to talk to Eva.
-
-To open Eva's web page from your phone, you also need **Tailscale** (free). You can add it later. `eva setup` installs it for you.
+1. **A computer that stays on,** with Windows or Linux: an old laptop, a desktop, or a rented server in the cloud.
+2. **An AI subscription:** Claude (Pro or Max), or another provider through pi, such as ChatGPT.
+3. **A GitHub account.** Eva keeps a private copy of your notes there.
+4. **Optional:** Telegram on your phone, to chat with Eva, and Tailscale (free), to open her page from your phone.
 
 ## Get started
 
-The full guide, with every step, is [docs/guide/setup.md](docs/guide/setup.md). In short:
+Run one command on the computer that stays on. It works over SSH too.
 
-1. **Run one command** on the computer that stays on. It works over SSH too, on a computer with no screen.
-   - Linux:
+- Linux:
 
-     ```bash
-     curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
-     ```
+  ```bash
+  curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
+  ```
 
-   - Windows, in PowerShell:
+- Windows, in PowerShell:
 
-     ```powershell
-     irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
-     ```
+  ```powershell
+  irm https://github.com/guplem/eva/releases/latest/download/install.ps1 | iex
+  ```
 
-   The command installs git when it is missing, downloads Eva from the latest release, and starts `eva setup`. On Linux, when git or curl is missing, `sudo` asks for your password, because their install needs administrator rights.
-
-2. **Answer the setup.** Setup installs the harnesses (Claude Code and pi), uv and Tailscale, starts Eva, and shows her address. Open that address on your phone. The page shows a short code: type it in the terminal, and the phone is in.
-
-3. **Finish on the page, or in the terminal.** Settings on the page lists each step that is left, such as your AI login and the optional Telegram bot. Your notebook still needs the terminal: setup asks for it. Each answer is saved at once, in both places.
-
-4. **With a Telegram bot, pair your chat.** Run `eva status`. It shows a short pairing code; send it to your bot. From then on, Eva answers only you.
+The command installs what Eva needs, and starts `eva setup`. Setup starts Eva and shows her address. Open it on your phone, and finish there, or in the terminal. [docs/guide/setup.md](docs/guide/setup.md) explains each step.
 
 Eva updates herself from new releases. You choose which ones in Settings.
 
@@ -84,13 +73,11 @@ You can also send voice notes, photos and files.
 
 ### On the web page
 
-Eva's web page shows all your conversations, your projects and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`. Send `/link` in Telegram to get it. [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone) gives the steps.
+Eva's web page shows your conversations, your projects, your reminders and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
 
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
-To change a project's title, status, tags or repositories, open the project in the list and press **Details**.
-
-Open **Settings** on the web page to change the updates, the notebook sync, the hub and the tokens. [Settings](docs/guide/reference.md#settings) explains each one.
+[Settings](docs/guide/reference.md#settings) explains each setting.
 
 ## Words you will see
 

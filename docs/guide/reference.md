@@ -1,36 +1,37 @@
 # Eva reference
 
-Every command and setting, for when the [README](../../README.md) is not enough. On a computer where Eva runs from source, type `bun run eva` where this page says `eva`.
+Every command and setting, for when the [README](../../README.md) is not enough. The README lists the Telegram commands. On a computer where Eva runs from source, type `bun run eva` where this page says `eva`.
 
 ## Commands
 
-Run these on the computer where Eva runs. `eva status`, `eva chat`, `eva projects` and `eva work` need Eva to run. The other commands also work when Eva is stopped.
+Run these on the computer where Eva runs. `eva status`, `eva link`, `eva chat`, `eva projects`, `eva work` and `eva devices allow` need Eva to run. The other commands also work when Eva is stopped.
 
-| Command                           | What it does                                                                                         |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `eva setup`                       | Asks each question again. Enter keeps the current answer.                                            |
-| `eva setup --non-interactive`     | Reads each answer from an `EVA_*` variable, for scripts.                                             |
-| `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                          |
-| `eva`                             | Runs Eva in this terminal (the service does this for you).                                           |
-| `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                            |
-| `eva supervise`                   | Runs Eva, and starts her again after a crash (the Windows service does this for you).                |
-| `eva status`                      | Starts with "All good" or the problems, then the sync, updates and phone address.                    |
-| `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                  |
-| `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.            |
-| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                      |
-| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                             |
-| `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                             |
-| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                  |
-| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                          |
-| `eva sync`                        | Brings in other computers' notes, then saves and pushes this computer's notes.                       |
-| `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                         |
-| `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                  |
-| `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                        |
-| `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                      |
-| `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                            |
-| `eva version`                     | Shows Eva's version.                                                                                 |
-| `eva help`                        | Shows every command.                                                                                 |
-| `eva --instance <name> <command>` | Runs the command for the Eva with this name. Without it, `eva` asks which Eva, or uses the only one. |
+| Command                           | What it does                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `eva setup`                       | Asks each question again. Enter keeps the current answer.                                                                           |
+| `eva setup --non-interactive`     | Reads each answer from an `EVA_*` variable, for scripts.                                                                            |
+| `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                                                         |
+| `eva`                             | Runs Eva in this terminal (the service does this for you).                                                                          |
+| `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                                                           |
+| `eva supervise`                   | Runs Eva, and starts her again after a crash (the Windows service does this for you).                                               |
+| `eva status`                      | Starts with "All good" or the problems, then the sync, updates, phone address and Telegram pairing code.                            |
+| `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                                                 |
+| `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                      |
+| `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                           |
+| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                                                     |
+| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                                                            |
+| `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                            |
+| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                 |
+| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                                                         |
+| `eva sync`                        | Brings in other computers' notes, then saves and pushes this computer's notes.                                                      |
+| `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                        |
+| `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                                                 |
+| `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                                                       |
+| `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                                                     |
+| `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                                                           |
+| `eva version`                     | Shows Eva's version.                                                                                                                |
+| `eva help`                        | Shows every command.                                                                                                                |
+| `eva --instance <name> <command>` | Runs the command for the Eva with this name, as `EVA_INSTANCE=<name>` does. Without it, `eva` asks which Eva, or uses the only one. |
 
 ## Settings
 
@@ -167,16 +168,19 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 ## Logging in to the web page
 
-- **A new device** (your phone, another computer, or a browser on Eva's own computer): the first time, the page shows a short code. Allow it, and the device stays logged in for a year:
-  - In a terminal on Eva's computer, run `eva devices allow <code>`, or type the code where `eva setup` asks for it. This works for every device.
-  - In Telegram, tap **Allow** when the code matches. This needs the Telegram bot, and works only for a phone or another computer: a request from Eva's own computer can come from any program there, so only the terminal answers it.
-  - On an Eva page that is open and logged in on another device, tap **Allow** when the code matches. This also works only for a phone or another computer.
-- **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, list them all in `remoteAccess.allowedTailscaleIdentities`.
-- **On the computer itself,** the page listens at `http://127.0.0.1:7420` (or that Eva's port), for that computer only.
-- **The token** `localApiToken` from `secrets.json` in Eva's home folder always works as the last way in. The `eva` commands on that computer read it by themselves.
-- **See the devices:** the **Devices** section of Settings lists each allowed device, with the date. Tap **Remove** to log out one device, such as a lost phone. The others stay logged in.
-- **End every device login:** tap **Log out every device** in the same section.
-- **A lost phone** that is still logged in can allow new devices too. Remove it from Settings on another device at once.
+The first time a device opens Eva's page, the page shows a short code. Allow the device, and it stays logged in for a year:
+
+| Where you allow it                                                                | Which devices                                                    |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `eva devices allow <code>` on Eva's computer, or the code question of `eva setup` | Every device                                                     |
+| **Allow** in Telegram                                                             | A phone or another computer, not a browser on Eva's own computer |
+| **Allow** on Eva's page on another logged-in device                               | A phone or another computer, not a browser on Eva's own computer |
+
+A request from Eva's own computer can come from any program there, so only the terminal answers it.
+
+- **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, such as a partner's, list them all in `remoteAccess.allowedTailscaleIdentities`.
+- **On the computer itself,** the page listens at `http://127.0.0.1:7420` (or that Eva's port). The token `localApiToken` from `secrets.json` always works there as the last way in.
+- **Devices** in Settings lists each allowed device. Tap **Remove** to log out one, such as a lost phone, or **Log out every device**. A lost phone that is still logged in can allow new devices, so remove it at once.
 - **Keep Eva off Tailscale:** run `eva settings set remoteAccess.tailscaleServe false`.
 
 ## Conversations
@@ -191,8 +195,11 @@ From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warni
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.
 
-- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app, in the bar at the left on a computer or at the bottom on a phone. Eva writes them in `.eva/schedules.json` in the notebook. Before a new or changed one runs, Eva shows a card with every detail. The card goes to Telegram, or to a dialog in the web app. Check it. In the web app, tap **Got it**. If you did not make it, tap **Remove schedule**, then **Remove**. The Schedules page shows what runs today, when each schedule repeats, and how its last run went. A schedule waits until a card reaches you, and Eva sends an alert. Only the hub runs them.
-- **Chat names.** A chat takes the first line of its first message as its name. To name chats your way, write rules in **Settings** > **Chat names**, or ask Eva to. For example: "Lead every name with an emoji" or "Name an issue chat Implementing #N". After the first answer in a chat, a small model call names the chat by your rules. It uses your engine login: Haiku, the smallest Claude model, on Claude Code, and the chat's model on pi. The rules live in `.eva/chat-names.md` in the notebook. Your own rename always wins.
+- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. Eva keeps them in `.eva/schedules.json` in the notebook, and only the hub runs them.
+  - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
+  - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
+  - The Schedules page shows what runs today, when each schedule repeats, and how its last run went.
+- **Chat names.** A chat takes the first line of its first message as its name. To name chats your way, write rules in **Settings** > **Chat names**, or ask Eva to, such as "Lead every name with an emoji". After the first answer, a small AI call with your engine login names the chat by your rules. Your own rename always wins.
 - **Files.** Eva can send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp), download a model (for example `ggml-base.bin`, which reads Spanish and English), and put it at `voice/ggml-base.bin` in Eva's home folder. The audio never leaves the computer.

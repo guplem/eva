@@ -1,6 +1,6 @@
 /**
  * Installs Tailscale for the person. Windows uses winget. Linux gets the userspace build from
- * the guide (docs/guide/setup.md, Tailscale without root): a user service, no root, no sudo.
+ * the guide (docs/guide/setup.md, "Tailscale without sudo"): a user service, no root, no sudo.
  * Other systems get the steps only.
  */
 import { createHash } from "node:crypto";

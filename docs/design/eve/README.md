@@ -70,7 +70,14 @@ Semantic colours do not follow the seed:
 | ---------------------- | ----------------------------------------------- | --------------------------------------------- |
 | `--ok` / `--ok-bg`     | `oklch(0.56 0.14 150)` / `oklch(0.95 0.04 150)` | `oklch(0.8 0.15 150)` / `oklch(0.3 0.06 150)` |
 | `--warn` / `--warn-bg` | `oklch(0.6 0.14 65)` / `oklch(0.96 0.05 85)`    | `oklch(0.84 0.13 80)` / `oklch(0.32 0.06 75)` |
+| `--warn-ink`           | `oklch(0.45 0.12 65)`                           | same as `--warn`                              |
+| `--on-warn`            | `oklch(0.2 0.03 70)`                            | same                                          |
 | `--bad` / `--bad-bg`   | `oklch(0.56 0.19 25)` / `oklch(0.95 0.03 25)`   | `oklch(0.74 0.16 25)` / `oklch(0.32 0.07 25)` |
+
+- `--ok` shows a thing that is done or passed.
+- `--warn` shows a thing that waits for the person: a step that is left, an approval, a warning, offline.
+- `--bad` shows a failure, or a button that deletes or refuses.
+- `--warn-ink` is small text on `--warn-bg`. `--on-warn` is text on a solid `--warn`.
 
 ### The palette picker
 

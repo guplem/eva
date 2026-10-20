@@ -5,8 +5,7 @@
 - Follow the EVE design in `docs/design/eve/README.md`. It owns the colour tokens, the radii, the fonts and the icons.
 - Take every colour from the EVE tokens at the top of `styles.css`, such as `--panel`, `--ink`, `--accent` and `--ok`. Write no raw colour in a component rule.
 - Take each space and text size from the `--space-*` and `--text-*` scale in `styles.css`.
-- Use the state colours for one meaning each. `--ok` means done or passed. `--warn` means the person must act, or take care. `--bad` means a failure, or an action that deletes. `--chip` means optional.
-- Put small text on `--warn-bg` in `--warn-ink`, and text on a solid `--warn` in `--on-warn`.
+- Use each state colour for the one meaning that the EVE guide gives it. `--chip` means optional.
 - Show a state with a shape or a word too, never with colour alone.
 - Use the shared classes before you add one: `card`, `pill`, `callout`, `field`, `field-hint`, `inline-form`, `button-row`, `guide-steps`, `command-line`. Buttons take `primary`, `ghost`, `danger` or `large`.
 - Take each icon from `client/icons.tsx`.

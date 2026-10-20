@@ -107,7 +107,12 @@ describe("engine folders of an instance (lesson 111)", () => {
     const read = (key: string): string =>
       Bun.spawnSync(["git", "config", "--global", "--includes", key], {
         cwd: home,
-        env: { ...process.env, GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "1" },
+        env: {
+          // A GIT_CONFIG_COUNT or GIT_AUTHOR_NAME of the shell that runs the tests would win over the file.
+          ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"))),
+          GIT_CONFIG_GLOBAL: gitConfig,
+          GIT_CONFIG_NOSYSTEM: "1",
+        },
       })
         .stdout.toString()
         .trim();

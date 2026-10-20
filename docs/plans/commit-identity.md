@@ -54,8 +54,9 @@ Three research agents looked at each gap.
 - **G4.** `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables, as the `evaIdentity` fallback in
   `VaultSync` already does. With them set, its `git var GIT_COMMITTER_IDENT` probe passes, so
   the fallback applies only when no identity exists. `vault-template.ts` stays as it is.
-- **G5.** Every `githubToken` save: the `saveSecret` closure of `eva setup`, and
-  `Eva.saveSecret` of the web page, in the background. A removed token deletes the record.
-  A failed read keeps the token and changes nothing else.
+- **G5.** Every `githubToken` save: `eva setup` once for each token, before a new vault's
+  first commit, and `Eva.saveSecret` of the web page, which waits for the read (10 seconds at
+  most), so a quick restart keeps it. A removed token deletes the record. A new token drops the
+  old record before the read, so a failed read never signs with the old account (review).
 
 The identity applies at the next start, as each token change does today.

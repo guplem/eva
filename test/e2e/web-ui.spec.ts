@@ -155,6 +155,32 @@ async function chooseFromMore(page: Page, item: string): Promise<void> {
   await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item }).click();
 }
 
+test("the More actions menu works from the keyboard, and the focus never gets lost", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const more = page.getByRole("button", { name: "More actions" });
+  const menu = page.getByRole("menu", { name: "Chat actions" });
+  await more.click();
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(menu.getByRole("menuitem", { name: "Delete chat" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(more).toBeFocused();
+
+  await more.click();
+  await page.keyboard.press("Tab");
+  await expect(menu).toHaveCount(0);
+
+  await chooseFromMore(page, "Delete chat");
+  const keep = page.getByRole("group", { name: "Delete “New chat”?" }).getByRole("button", { name: "Keep" });
+  await expect(keep).toBeFocused();
+  await keep.click();
+  await expect(more).toBeFocused();
+});
+
 /** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
 async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
   await expect
@@ -418,7 +444,8 @@ test("the composer's chip picks the model before the first message, and is fixed
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Haiku/ })).toBeVisible();
+  // The chip is the one place that shows the model.
+  await expect(page.locator(".chip-picker").getByRole("button", { name: /Haiku/ })).toBeVisible();
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
@@ -523,8 +550,18 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   await openExampleApp(page);
   await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
   await expect(page.getByText("Project mode")).toBeVisible();
+  if (test.info().project.name === "phone") {
+    // The crumbs and the mode chip leave the title room to read, on one row.
+    const title = await page.getByRole("heading", { level: 1 }).boundingBox();
+    const more = await page.getByRole("button", { name: "More actions" }).boundingBox();
+    expect(title?.width ?? 0).toBeGreaterThanOrEqual(120);
+    expect(Math.abs((title?.y ?? 0) - (more?.y ?? 0))).toBeLessThan(44);
+  }
   await chooseFromMore(page, "Delete chat");
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("group", { name: /^Delete “/ })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 

@@ -2,7 +2,7 @@
  * The header of an open chat: the title, one subtitle line, and a "More actions" menu with Rename,
  * Chat info and Delete chat. On a phone it is one row, and a tap on the title opens the chat details.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { ChatInfoSheet, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -39,11 +39,21 @@ export function ChatHeader({ chat, details, subtitle, extra, onShowList, onChang
   const [draft, setDraft] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [asking, setAsking] = useState(false);
-  const closeInfo = useCallback(() => setInfoOpen(false), []);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  // A chosen menu item leaves the page, so focus goes back to the button that opened the sheet or the question.
+  const opener = useRef<HTMLElement | null>(null);
+  const closeInfo = useCallback(() => {
+    setInfoOpen(false);
+    opener.current?.focus();
+  }, []);
+  const openInfo = (from: HTMLElement | null): void => {
+    opener.current = from;
+    setInfoOpen(true);
+  };
 
   const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setDraft(chat.title) }];
   // A computer shows the details in the inspector column.
-  if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => setInfoOpen(true) });
+  if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
   items.push({ label: "Delete chat", icon: "x", danger: true, onChoose: () => setAsking(true) });
 
   return (
@@ -57,7 +67,7 @@ export function ChatHeader({ chat, details, subtitle, extra, onShowList, onChang
                 className="chat-title-button"
                 title="Show the chat details"
                 aria-haspopup="dialog"
-                onClick={() => setInfoOpen(true)}
+                onClick={(event) => openInfo(event.currentTarget)}
               >
                 {chat.title}
               </button>
@@ -71,8 +81,17 @@ export function ChatHeader({ chat, details, subtitle, extra, onShowList, onChang
         <RenameForm chat={chat} draft={draft} onDraft={setDraft} onChanged={onChanged} />
       )}
       {extra}
-      <MoreMenu items={items} />
-      {asking && <DeleteQuestion chat={chat} onKeep={() => setAsking(false)} onChanged={onChanged} />}
+      <MoreMenu items={items} toggle={moreButton} />
+      {asking && (
+        <DeleteQuestion
+          chat={chat}
+          onKeep={() => {
+            setAsking(false);
+            moreButton.current?.focus();
+          }}
+          onChanged={onChanged}
+        />
+      )}
       {infoOpen && <ChatInfoSheet {...details} onClose={closeInfo} />}
     </div>
   );
@@ -164,7 +183,10 @@ function DeleteQuestion({
       <button className="danger" disabled={deleting} onClick={() => void remove()}>
         Delete
       </button>
-      <button onClick={onKeep}>Keep</button>
+      {/* Focus comes here, so a keyboard or a screen reader reaches the question at once. */}
+      <button autoFocus onClick={onKeep}>
+        Keep
+      </button>
     </div>
   );
 }
@@ -177,10 +199,15 @@ interface MenuItem {
 }
 
 /** The less common actions of a chat. Escape or a tap outside closes it; the arrow keys move between the items. */
-function MoreMenu({ items }: { readonly items: readonly MenuItem[] }): ReactElement {
+function MoreMenu({
+  items,
+  toggle,
+}: {
+  readonly items: readonly MenuItem[];
+  readonly toggle: RefObject<HTMLButtonElement | null>;
+}): ReactElement {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const toggle = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -202,10 +229,13 @@ function MoreMenu({ items }: { readonly items: readonly MenuItem[] }): ReactElem
     };
   }, [open]);
 
-  const moveFocus = (step: number): void => {
+  /** Moves the focus by `step` items, or to the first or the last item. */
+  const moveFocus = (step: number | "first" | "last"): void => {
     const buttons = [...(menu.current?.querySelectorAll("button") ?? [])];
     const current = buttons.findIndex((button) => button === document.activeElement);
-    buttons[(current + step + buttons.length) % buttons.length]?.focus();
+    const next =
+      step === "first" ? 0 : step === "last" ? buttons.length - 1 : (current + step + buttons.length) % buttons.length;
+    buttons[next]?.focus();
   };
 
   return (
@@ -228,8 +258,15 @@ function MoreMenu({ items }: { readonly items: readonly MenuItem[] }): ReactElem
           aria-label="Chat actions"
           ref={menu}
           onKeyDown={(event) => {
+            // Tab leaves the menu, so the menu closes and does not stay over the chat.
+            if (event.key === "Tab") {
+              setOpen(false);
+              return;
+            }
             if (event.key === "ArrowDown") moveFocus(1);
             else if (event.key === "ArrowUp") moveFocus(-1);
+            else if (event.key === "Home") moveFocus("first");
+            else if (event.key === "End") moveFocus("last");
             else return;
             event.preventDefault();
           }}

@@ -729,7 +729,7 @@ textarea {
 .main-header {
   display: flex;
   align-items: center;
-  /* A long branch name and the Chat info button must not push the page wider than a phone. */
+  /* A long branch name and the buttons must not push the page wider than a phone. */
   flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
@@ -1424,8 +1424,26 @@ textarea {
     text-align: center;
   }
 
+  /* The title button clips its own text, so the heading must not clip the button's focus ring. */
+  .chat-header h1 {
+    overflow: visible;
+  }
+
+  /* The crumbs keep one line, so the header stays one row. */
   .chat-header .crumbs {
     justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */
+  .chat-header .mode-chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 
@@ -2553,7 +2571,7 @@ button.small {
 }
 
 .header-text {
-  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. */
+  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. A chat header keeps one row. */
   flex: 1 1 12em;
   min-width: 0;
 }
@@ -2588,12 +2606,15 @@ button.small {
 
 /* A phone opens the chat details from the title, so the title is a button that looks like text. */
 .chat-title-button {
-  max-width: 100%;
+  display: block;
+  width: 100%;
   border: none;
+  border-radius: var(--radius-input);
   background: transparent;
   padding: 0;
   font: inherit;
   color: inherit;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }

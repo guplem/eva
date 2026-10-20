@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Icon, iconNames, type IconName } from "../../../../../src/frontends/web/client/icons.tsx";
 
-// The icons that issue 164 asks for, by the names of the EVE design reference.
+// The icons of the EVE design reference: the ones that issue 164 asks for, and the ones added after.
 const designIcons: readonly IconName[] = [
   "chat",
   "folder",
@@ -40,6 +40,16 @@ const designIcons: readonly IconName[] = [
   "calendar",
   "down",
   "restart",
+  "palette",
+  "trash",
+  "info",
+  "lock",
+  "eye",
+  "external",
+  "play",
+  "stop",
+  "user",
+  "home",
 ];
 
 function render(name: IconName, label?: string): string {
@@ -61,6 +71,12 @@ describe("Icon", () => {
     expect(svg).toContain('stroke-linecap="round"');
     expect(svg).toContain('stroke-linejoin="round"');
     expect(svg).toMatch(/<(path|circle|rect) /);
+  });
+
+  test("the gear is a cog with teeth, so it does not look like the sun", () => {
+    const gear = render("gear");
+    expect(gear).not.toEqual(render("sun"));
+    expect(gear).toMatch(/<path d="M[^"]+z"/);
   });
 
   test("an icon without a name is hidden from a screen reader", () => {

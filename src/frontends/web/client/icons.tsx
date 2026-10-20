@@ -1,5 +1,6 @@
 /**
- * The line icons of the web page, copied from the EVE design reference (`const P`).
+ * Eva's own line icons, drawn for her: no icon library. The EVE design reference
+ * (`const P` in docs/design/eve/reference.html) holds the same drawings: change both together.
  * Emoji look different on each system and ignore the theme, so the page draws its own icons.
  */
 import type { ReactElement } from "react";
@@ -15,8 +16,8 @@ const drawings = {
   ),
   gear: (
     <>
+      <path d="M10 5.3l.2-2.6h3.6l.2 2.6a7 7 0 0 1 1.3.5l2-1.7 2.6 2.6-1.7 2a7 7 0 0 1 .5 1.3l2.6.2v3.6l-2.6.2a7 7 0 0 1-.5 1.3l1.7 2-2.6 2.6-2-1.7a7 7 0 0 1-1.3.5l-.2 2.6h-3.6l-.2-2.6a7 7 0 0 1-1.3-.5l-2 1.7-2.6-2.6 1.7-2a7 7 0 0 1-.5-1.3l-2.6-.2v-3.6l2.6-.2a7 7 0 0 1 .5-1.3l-1.7-2 2.6-2.6 2 1.7a7 7 0 0 1 1.3-.5z" />
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" />
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
@@ -147,6 +148,45 @@ const drawings = {
       <path d="M4 4v4h4" />
     </>
   ),
+  palette: (
+    <>
+      <path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.6-1-2.6 0-.9.7-1.5 1.6-1.5H17a3.5 3.5 0 0 0 3.5-3.5C20.5 7 16.7 3.5 12 3.5z" />
+      <circle cx="7.5" cy="11.5" r="1.1" />
+      <circle cx="9.8" cy="7.6" r="1.1" />
+      <circle cx="14.4" cy="7.6" r="1.1" />
+    </>
+  ),
+  trash: (
+    <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5A1.5 1.5 0 0 0 9 21h6a1.5 1.5 0 0 0 1.5-1.5l1-12.5M10 11v6M14 11v6" />
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5M12 8v.01" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="10.5" width="14" height="10" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  external: <path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />,
+  play: <path d="M8 5.5v13l10.5-6.5z" />,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  user: (
+    <>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </>
+  ),
+  home: <path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" />,
 } satisfies Record<string, ReactElement>;
 
 export type IconName = keyof typeof drawings;

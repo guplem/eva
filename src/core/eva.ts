@@ -87,6 +87,7 @@ import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
+import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
@@ -219,6 +220,8 @@ export class Eva {
   readonly schedules: Scheduler | null;
   /** The person's rules for chat names. Null when no vault is configured. */
   readonly chatNames: ChatNamer | null;
+  /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
+  readonly assistantRules: AssistantRules | null;
   /** One question to a model with one answer, for any feature that needs a short text. */
   readonly modelCalls: ModelCalls;
   /** Null until a whisper model is configured. */
@@ -357,6 +360,15 @@ export class Eva {
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
     this.chatNames = chatNamer;
+    this.assistantRules =
+      vaultPath === null
+        ? null
+        : new AssistantRules({
+            vaultPath,
+            basePrompt: options.basePrompt,
+            now: options.now,
+            timeZone: options.config.timeZone ?? "UTC",
+          });
 
     this.sessions = new SessionManager({
       ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),

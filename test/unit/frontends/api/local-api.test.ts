@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -1126,6 +1126,39 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
   });
 
+  test("assistant rules: read with the built-in prompt, save by version, and restore the default after a backup", async () => {
+    interface Rules {
+      text: string;
+      version: string;
+      builtIn: string;
+      defaultText: string;
+    }
+    const read = await json<Rules>(await call("/api/assistant-rules"));
+    expect(read).toMatchObject({ text: "# You are Eva\n", builtIn: "Base." });
+    expect(read.defaultText).toContain("## Learning");
+
+    const saved = await json<Rules>(
+      await call("/api/assistant-rules", { method: "PUT", body: { version: read.version, text: "# Mine\n" } }),
+    );
+    expect(saved.text).toBe("# Mine\n");
+    const stale = await call("/api/assistant-rules", {
+      method: "PUT",
+      body: { version: read.version, text: "# Old\n" },
+    });
+    expect(stale.status).toBe(409);
+    expect(await json(stale)).toMatchObject({ code: "rules_changed" });
+
+    const restored = await json<{ text: string; backup: string | null }>(
+      await call("/api/assistant-rules/restore", { method: "POST", body: { version: saved.version, backup: true } }),
+    );
+    expect(restored.text).toBe(read.defaultText);
+    expect(restored.backup).toMatch(/^\.eva\/assistant\.backup-.+\.md$/);
+    expect(readFileSync(join(eva.status().vaultPath ?? "", restored.backup ?? ""), "utf-8")).toBe("# Mine\n");
+
+    expect((await call("/api/assistant-rules", { method: "PUT", body: { text: "# No version\n" } })).status).toBe(400);
+    expect((await call("/api/assistant-rules/other", { method: "POST", body: {} })).status).toBe(404);
+  });
+
   test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {
     const root = await json<{ kind: string; entries: { name: string }[] }>(await call("/api/files"));
     expect(root.kind).toBe("folder");
@@ -1220,6 +1253,8 @@ describe("without a vault", () => {
       expect(response.status).toBe(409);
       const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
       expect(chatNames.status).toBe(409);
+      const rules = await fetch(`${bareApi.url}/api/assistant-rules`, { headers: headers() });
+      expect(rules.status).toBe(409);
       const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });
       expect(await files.json()).toMatchObject({ code: "vault_not_found" });
     } finally {

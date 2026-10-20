@@ -120,6 +120,11 @@ export function migrationsAhead(
   return { unknown: unknown.map((entry) => entry.id), version: newest === "" ? null : newest, readable: true };
 }
 
+/** True when the record lists the migration. A broken record counts as not applied. */
+export function migrationApplied(recordPath: string, id: string): boolean {
+  return readRecord(recordPath)?.entries.some((entry) => entry.id === id) ?? false;
+}
+
 /**
  * Where a migration keeps the copy of a file before its first change. The copies stay in the
  * machine's home, also for a vault file: a copy in the vault would sync, and it could hold the

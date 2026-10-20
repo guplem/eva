@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toWebHtml } from "../../../../../src/frontends/web/client/web-format.ts";
+import { nestedWebHtml, toWebHtml } from "../../../../../src/frontends/web/client/web-format.ts";
 
 describe("toWebHtml", () => {
   test("a single line break shows as a line break, and a blank line starts a new paragraph", () => {
@@ -149,5 +149,12 @@ describe("toWebHtml", () => {
     expect(toWebHtml("- ```make\n  all:\n  \tbun test\n  ```")).toBe(
       '<ul><li><pre><code class="language-make">all:\n\tbun test</code></pre></li></ul>',
     );
+  });
+});
+
+describe("nestedWebHtml", () => {
+  test("moves each heading down, stops at h6, and leaves an escaped tag in the text alone", () => {
+    expect(nestedWebHtml("# Title\n\n## Part\n\n###### Deep", 2)).toBe("<h3>Title</h3><h4>Part</h4><h6>Deep</h6>");
+    expect(nestedWebHtml("A <h1> tag", 2)).toBe(toWebHtml("A <h1> tag"));
   });
 });

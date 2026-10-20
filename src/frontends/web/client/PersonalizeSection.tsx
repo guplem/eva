@@ -1,9 +1,10 @@
 /**
- * The personalize page: this browser's look, then the time zone, the rules for chat names and
- * the extra project folders. The text fields wait for Save; the look applies at once.
+ * The personalize page: this browser's look, the person's rules for Eva, then the time zone, the
+ * rules for chat names and the extra project folders. The text fields wait for Save; the look applies at once.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, ApiError } from "./api.ts";
+import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
@@ -28,6 +29,7 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
   return (
     <>
       <AppearanceCard />
+      <AssistantRulesCard context={context} />
       <PreferencesForm context={context} />
     </>
   );

@@ -26,7 +26,8 @@ export type EvaErrorCode =
   | "vault_ahead"
   | "vault_setup_busy"
   | "file_not_found"
-  | "voice_unavailable";
+  | "voice_unavailable"
+  | "rules_changed";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

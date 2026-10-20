@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createVaultFromTemplate, vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
+import {
+  createVaultFromTemplate,
+  defaultAssistantRules,
+  vaultTemplateFiles,
+} from "../../../../src/core/vault/vault-template.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 
@@ -47,19 +51,22 @@ describe("the vault template", () => {
       ".gitignore",
       "AGENTS.md",
       "Library/.gitkeep",
-      "Life/.gitkeep",
+      "Life/About me.md",
       "Methods/.gitkeep",
       "Principles/.gitkeep",
       "Projects/.gitkeep",
       "README.md",
       "Toolbox/.gitkeep",
     ]);
-    expect(files[".eva/assistant.md"]).toContain("- **Name:** Alex");
-    expect(files[".eva/assistant.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
-    expect(vaultTemplateFiles({ ...answers, topics: [] })[".eva/assistant.md"]).toContain(
+    expect(files["Life/About me.md"]).toContain("- **Name:** Alex");
+    expect(files["Life/About me.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
+    // The rules hold no setup answer, so the settings page can restore them as they are.
+    expect(files[".eva/assistant.md"]).toBe(defaultAssistantRules);
+    expect(defaultAssistantRules).toContain("`Life/About me.md`");
+    expect(vaultTemplateFiles({ ...answers, topics: [] })["Life/About me.md"]).toContain(
       "## Main topics\n\nNone yet.\n",
     );
-    expect(files[".eva/assistant.md"]).toContain("Europe/Madrid");
+    expect(files["Life/About me.md"]).toContain("Europe/Madrid");
     expect(Object.values(files).join("\n")).not.toContain("{{");
     expect(JSON.parse(files[".eva/schedules.json"] ?? "")).toEqual({ version: 1, schedules: [] });
     expect(files[".gitignore"]).toContain("Projects/*/repos/");
@@ -86,7 +93,7 @@ describe("the vault template", () => {
   test("a new vault is a git repository with one commit, even with no git identity", async () => {
     const vault = join(folder, "vault");
     await createVaultFromTemplate({ folder: vault, answers, runner: systemProcessRunner, environment });
-    expect(readFileSync(join(vault, ".eva", "assistant.md"), "utf8")).toContain("Alex");
+    expect(readFileSync(join(vault, "Life", "About me.md"), "utf8")).toContain("Alex");
     expect(git(vault, "log", "--format=%an %s")).toBe("Eva Start the vault from Eva's template");
     expect(git(vault, "status", "--porcelain")).toBe("");
     expect(git(vault, "branch", "--show-current")).toBe("main");

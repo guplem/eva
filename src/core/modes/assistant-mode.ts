@@ -12,6 +12,8 @@ import type { ProcessRunner } from "../../shared/process-runner.ts";
 import type { PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
+import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
+import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
 
 export interface VaultSyncPort {
   pull(): Promise<VaultSyncState>;
@@ -57,8 +59,7 @@ export class AssistantPreparer implements TurnPreparer {
     // Fixed for the session, even when the agent edits .eva/assistant.md in it (lesson 115), so the
     // appended text stays byte-identical and the prompt cache holds (lesson 40). A restart reads it again.
     const appendSystemPrompt =
-      this.promptBySession.get(session.id) ??
-      `${this.options.basePrompt}\n\n${readFileSync(personalRulesPath, "utf-8")}`;
+      this.promptBySession.get(session.id) ?? `${this.options.basePrompt}\n\n${this.personalRules(personalRulesPath)}`;
     this.promptBySession.set(session.id, appendSystemPrompt);
     return {
       startFolder: session.startFolder,
@@ -71,6 +72,16 @@ export class AssistantPreparer implements TurnPreparer {
       // `eva work` reads it, so a project's result comes back to this chat.
       environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };
+  }
+
+  /**
+   * Only the hub migrates the vault. Until it does, a satellite adds the sections that left the
+   * built-in prompt itself, so its rules stay whole. Remove this after one release.
+   */
+  private personalRules(path: string): string {
+    const text = readFileSync(path, "utf-8");
+    const migrated = migrationApplied(vaultMigrationRecordPath(this.options.vaultPath), moveAssistantPersonality.id);
+    return migrated ? text : (withMovedSections(text) ?? text);
   }
 
   async afterTurn(session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
@@ -115,7 +126,8 @@ function readContinueMessage(stdout: string): string | null {
   }
 }
 
-function formatLocalTime(date: Date, timeZone: string): string {
+/** Such as `2026-10-14 12:30`, in the person's time zone. */
+export function formatLocalTime(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",

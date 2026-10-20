@@ -12,6 +12,7 @@ import {
   type Migration,
   type MigrationRun,
 } from "./migration-runner.ts";
+import { moveAssistantPersonality } from "./assistant-rules-move.ts";
 import {
   copySecuritySettingsFromVault,
   dropSecuritySettingsFromVault,
@@ -27,6 +28,7 @@ export const migrations: readonly Migration[] = [
   copySecuritySettingsFromVault,
   dropSecuritySettingsFromVault,
   googleAccessPerService,
+  moveAssistantPersonality,
 ];
 
 export interface VaultAhead {

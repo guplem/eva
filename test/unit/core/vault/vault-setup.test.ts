@@ -119,7 +119,7 @@ describe("VaultSetup", () => {
     const result = await setup(api.baseUrl).create({ ...answers, repository: "my-vault" });
     const folder = join(paths.root, "vault");
     expect(result).toEqual({ folder, repository: join(sandbox.root, "my-vault.git"), problem: null });
-    expect(readFileSync(join(folder, ".eva", "assistant.md"), "utf8")).toContain("Sam");
+    expect(readFileSync(join(folder, "Life", "About me.md"), "utf8")).toContain("Sam");
     expect(loadConfig(paths).vaultPath).toBe(folder);
     expect(sandbox.git(join(sandbox.root, "my-vault.git"), "log", "--oneline", "main")).toContain("template");
     expect(await setup(api.baseUrl).needsPush()).toBe(false);

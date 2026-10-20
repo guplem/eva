@@ -1,19 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
+import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
 
 describe("assistantBasePrompt", () => {
   test("holds the rules every person needs", () => {
     expect(assistantBasePrompt).toStartWith("# You are Eva");
     for (const section of [
-      "## Answering from the notes",
-      "## Learning",
       "## Acting in the world",
       "## Projects",
-      "## Sending files",
       "## Your own state",
+      "## Your files in the vault",
+      "## Sending files",
     ]) {
       expect(assistantBasePrompt).toContain(section);
     }
+  });
+
+  test("leaves the personality to the person's rules, which can change it", () => {
+    for (const section of ["## Answering from the notes", "## Learning", "## Style"]) {
+      expect(assistantBasePrompt).not.toContain(section);
+      expect(defaultAssistantRules).toContain(section);
+    }
+    expect(assistantBasePrompt).toContain("the person's rules win");
   });
 
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {

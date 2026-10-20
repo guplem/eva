@@ -199,6 +199,10 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
   - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
   - The Schedules page shows what runs today, when each schedule repeats, and how its last run went.
+- **Eva's rules.** Your rules for Eva set her personality, how she answers and how she stores what she learns. Read and change them in **Settings** > **Eva's rules**, or ask Eva to change them. They live in `.eva/assistant.md` in the notebook.
+  - They apply to each chat with Eva, in Telegram, on the web page and from a schedule, from the next new chat. A project chat never uses them: it uses the harness's own prompt and the project's `AGENTS.md` or `CLAUDE.md`.
+  - Eva's built-in rules come first and say how Eva works, such as how she gives work to a project. The page shows them, but only an update of Eva changes them. Where the two disagree, your rules win.
+  - **Restore the default** replaces your rules with Eva's default rules. It first offers to save your old rules in a backup file in `.eva/`.
 - **Chat names.** A chat takes the first line of its first message as its name. To name chats your way, write rules in **Settings** > **Chat names**, or ask Eva to, such as "Lead every name with an emoji". After the first answer, a small AI call with your engine login names the chat by your rules. Your own rename always wins.
 - **Files.** Open **Files** on the web page to browse the notebook and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and does not show a secrets file, such as `.env`. Eva can also send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.

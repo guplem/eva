@@ -90,7 +90,7 @@ In the terminal, setup first logs in to GitHub:
    - **To start a new notebook,** type `0`, and answer the questions about you. Then type a name for its private repository, such as `vault`. Eva creates it from her template.
    - **For no notebook now,** press Enter.
 
-On the page, paste a GitHub token in **Connect GitHub**, then pick or create the notebook in **Set up your vault**.
+On the page, press **Log in with GitHub** in **Connect GitHub**, and enter the code on GitHub. Then pick or create the notebook in **Set up your vault**. To use a token instead, press **Paste a token instead**.
 
 The GitHub login lets Eva read and write all your repositories, private ones too, so that she can also clone your projects. Eva keeps it on this computer, and never gives it to her AI agents. You can remove it on GitHub under **Settings → Applications**.
 

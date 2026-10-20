@@ -188,7 +188,7 @@ function NewVault({
         Eva starts a vault from her template.
         {hasToken
           ? " She keeps it in a new private repository on your GitHub account."
-          : " With a GitHub token, she also keeps it in a new private repository."}
+          : " With a GitHub login, she also keeps it in a new private repository."}
       </p>
       <label className="field">
         <span className="field-label">What should Eva call you?</span>

@@ -100,12 +100,13 @@ describe("updateExecutable", () => {
           tag: string,
           body: string,
           assets: Record<string, unknown>,
-          flags: { draft?: boolean; prerelease?: boolean } = {},
+          flags: { draft?: boolean; prerelease?: boolean; published?: string } = {},
         ): unknown => ({
           tag_name: tag,
           body,
           draft: flags.draft ?? false,
           prerelease: flags.prerelease ?? false,
+          ...(flags.published === undefined ? {} : { published_at: flags.published }),
           assets: Object.keys(assets).map((name) => ({
             name,
             browser_download_url: `http://127.0.0.1:${String(server.port)}/download/${tag}/${name}`,
@@ -116,7 +117,9 @@ describe("updateExecutable", () => {
             [
               release("v0.3.0", "", files, { draft: true }),
               release("v0.2.1-rc", "", files, { prerelease: true }),
-              release("v0.2.0", "## New features\n\n- feat: voice notes\n", files),
+              release("v0.2.0", "## New features\n\n- feat: voice notes\n", files, {
+                published: "2026-10-12T09:00:00Z",
+              }),
               release("v0.1.5", "## Fixes and other changes\n\n- fix: a crash\n", olderFiles),
               release("v0.1.0", "", {}),
             ],
@@ -155,7 +158,7 @@ describe("updateExecutable", () => {
     );
   }
 
-  test("as an update channel, a check lists the newer published releases and installs nothing", async () => {
+  test("as an update channel, a check lists the newer published releases with their dates, and installs nothing", async () => {
     const channel = executableUpdateChannel(inputs());
     expect(channel.kind).toBe("executable");
     expect(await channel.check()).toEqual({
@@ -163,8 +166,8 @@ describe("updateExecutable", () => {
       latest: "0.2.0",
       available: true,
       releases: [
-        { version: "0.2.0", notes: "## New features\n\n- feat: voice notes\n" },
-        { version: "0.1.5", notes: "## Fixes and other changes\n\n- fix: a crash\n" },
+        { version: "0.2.0", notes: "## New features\n\n- feat: voice notes\n", publishedAt: "2026-10-12T09:00:00Z" },
+        { version: "0.1.5", notes: "## Fixes and other changes\n\n- fix: a crash\n", publishedAt: null },
       ],
     });
     expect(await executableUpdateChannel(inputs("0.2.0")).check()).toMatchObject({ available: false, releases: [] });

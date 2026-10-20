@@ -13,14 +13,9 @@ description: Implement a GitHub issue from plan to merged PR, with sub-agents to
 
 Add the `auto-developing` label to the issue, and assign yourself. Do the same for the PR when you open it.
 
-## Branches
-
-- Do the work on a new branch from the default branch. Name it `<issue-number>-<short-name>`, such as `42-fix-login`.
-- Push the captures to a second branch: `<issue-number>-<short-name>-captures`.
-- Create and push both branches without asking. They replace a branch name that your tool gives you.
-
 ## Steps
 
+0. **Create the issue branch.** Name it `<issue-number>-<short-name>`, such as `42-fix-login`. Create it from the default branch, and switch to it. Keep the current branch only when it already is the branch of this issue. The default branch and a generic branch, such as one that a tool named, are not.
 1. **Understand the motivation.** Find why the reporter wants the change, and where it fits in the project goals and the architecture.
 2. **Write a plan** in `docs/plans/<name>.md`. List each gap: a missing fact or an open decision. Push the plan as the first commit of a draft PR.
 3. **Fill the gaps.** For each gap, start 3 sub-agents (2 mid-tier, 1 top-tier). Each looks for an obvious answer: a rule in `AGENTS.md`, a pattern in the code, a past decision, or a similar solved case. Write the decisions in the plan.
@@ -36,6 +31,6 @@ Add the `auto-developing` label to the issue, and assign yourself. Do the same f
 ## Before and after captures
 
 - Capture each changed screen on `origin/main` and on the PR branch. If the repository has a way to take captures, use it. Capture only example data, never a person's real data.
-- GitHub cannot attach a file to a PR description through its API. So push the images to the captures branch, open a PR from it, and close that PR at once. Never merge it.
+- GitHub cannot attach a file to a PR description through its API. So push the images to a new branch, `<issue-branch>-captures`, such as `42-fix-login-captures`. Open a PR from it, and close that PR at once. Never merge it.
 - Link each image by its commit: `https://github.com/<owner>/<repo>/blob/<sha>/<path>?raw=true`. A closed PR keeps its commits, so the links keep working.
 - Show the images in a "Before and after" table in the PR description.

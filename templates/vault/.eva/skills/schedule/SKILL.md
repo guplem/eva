@@ -64,7 +64,7 @@ Eva skips an entry that fails a check. It says so once in the main chat, in a me
 
 To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog.
 
-To pause one, set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new card. The schedule runs only after that card reaches the person.
+To pause one (turn it off), set `"enabled": false`. Within a minute it stops, and Eva posts no card. To start it again, delete the `enabled` key. Eva then posts a new card. The schedule runs only after that card reaches the person.
 
 To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 

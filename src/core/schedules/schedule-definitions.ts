@@ -36,7 +36,10 @@ export interface ScheduleDefinitions {
 /** The order of the fields in a setup card. */
 export const scheduleFieldOrder = ["id", "name", "at", "days", "text", "file", "prompt", "model"] as const;
 export type ScheduleFieldName = (typeof scheduleFieldOrder)[number];
-/** What a card names as changed. `enabled` is no field of a card, so a pause never changes `announcedFields` (lesson 66). */
+/**
+ * What a card names as changed. A card shows no `enabled` field, so a pause never changes
+ * `announcedFields` (lesson 66). A card can still name `enabled` as the change.
+ */
 export type ScheduleChange = ScheduleFieldName | "enabled";
 
 const formatVersion = 1;

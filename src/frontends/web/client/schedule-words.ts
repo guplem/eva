@@ -76,12 +76,17 @@ export interface DayLineRun {
 
 /** Today's runs as pills on a 24-hour line, and where now is on it. */
 export function dayLine(
-  schedules: readonly { readonly name: string; readonly at: string; readonly days: readonly number[] }[],
+  schedules: readonly {
+    readonly name: string;
+    readonly at: string;
+    readonly days: readonly number[];
+    readonly enabled?: boolean;
+  }[],
   now: string,
 ): { now: number; runs: DayLineRun[] } {
   const today = weekdayOf(now);
   const runs = schedules
-    .filter((schedule) => schedule.days.includes(today))
+    .filter((schedule) => schedule.enabled !== false && schedule.days.includes(today))
     .map((schedule) => ({ minutes: minutesOf(schedule.at), text: `${schedule.at} ${schedule.name}` }))
     .sort((first, second) => first.minutes - second.minutes);
   const groups: { minutes: number; texts: string[] }[] = [];

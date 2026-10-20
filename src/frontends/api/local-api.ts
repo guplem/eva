@@ -114,6 +114,7 @@ const scheduleEntrySchema = z.record(z.string(), z.unknown());
 /** The rules go to a model with each first turn, so they stay short. */
 const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
+const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -625,7 +626,7 @@ async function chatNamesRoute(request: Request, method: string, eva: Eva): Promi
   return json({ error: "Not found." }, 404);
 }
 
-/** The schedules of `.eva/schedules.json`: list, add or replace, remove. */
+/** The schedules of `.eva/schedules.json`: list, add or replace, turn off or on, remove. */
 async function schedulesRoute(
   request: Request,
   method: string,
@@ -637,6 +638,12 @@ async function schedulesRoute(
   if (method === "GET" && scheduleId === undefined) return json(schedules.list());
   if (method === "POST" && scheduleId === undefined) {
     return json(schedules.save(scheduleEntrySchema.parse(await request.json())), 201);
+  }
+  if (method === "PATCH" && scheduleId !== undefined) {
+    const { enabled } = scheduleEnabledSchema.parse(await request.json());
+    return schedules.setEnabled(decodeURIComponent(scheduleId), enabled)
+      ? new Response(null, { status: 204 })
+      : json({ error: "No such schedule." }, 404);
   }
   if (method === "DELETE" && scheduleId !== undefined) {
     return schedules.remove(decodeURIComponent(scheduleId))

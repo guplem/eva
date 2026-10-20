@@ -100,7 +100,7 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
         ))}
         {steps[3] !== undefined && (
           <li>
-            <GoogleStepView title={steps[3].title} text={steps[3].text} links={[]} />
+            <GoogleStepView {...steps[3]} />
             <div className="field-hint">Account: {google.email ?? "none yet. The login sets it."}</div>
             <div className="button-row">
               <button disabled={busy} onClick={() => void startLogin()}>
@@ -137,11 +137,12 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
   );
 }
 
-function GoogleStepView({ title, text, links }: ReturnType<typeof googleSetupSteps>[number]): ReactElement {
+function GoogleStepView({ title, text, links, warning }: ReturnType<typeof googleSetupSteps>[number]): ReactElement {
   return (
     <>
       <strong>{title.replace(/^\d+\.\s*/, "")}</strong>
       <div className="field-hint">{text}</div>
+      {warning !== undefined && <div className="callout warning">{warning}</div>}
       {links.length > 0 && (
         <ul className="link-list">
           {links.map((link) => (

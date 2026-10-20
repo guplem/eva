@@ -12,7 +12,7 @@ import { Composer } from "./Composer.tsx";
 import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import type { LiveState } from "./live-state.ts";
+import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { StepFold } from "./TurnSteps.tsx";
@@ -207,7 +207,9 @@ function Branch({
         </div>
       ))}
       {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
-      {working && <LiveAnswer steps={liveSteps ?? []} mode={session.mode} startedAt={startedAt} />}
+      {working && (
+        <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
+      )}
       {waiting.length > 0 && (
         <ApprovalRequests approvals={waiting} place={approvalPlace(session)} onAnswer={approvals.onAnswer} />
       )}
@@ -365,14 +367,18 @@ function AnswerBody({
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
-  steps,
+  steps: liveSteps,
+  draft,
   mode,
   startedAt,
 }: {
   readonly steps: readonly TurnStep[];
+  /** The block that the engine writes now. It shows as the last message until its final text comes. */
+  readonly draft: string | undefined;
   readonly mode: SessionRecord["mode"];
   readonly startedAt: number;
 }): ReactElement {
+  const steps = useMemo(() => stepsWithDraft(liveSteps, draft), [liveSteps, draft]);
   // A tick of the clock renders the branch again, so compute this only when a step arrives.
   const shown = useMemo(() => storedSteps(steps), [steps]);
   const wholeAnswer = useMemo(

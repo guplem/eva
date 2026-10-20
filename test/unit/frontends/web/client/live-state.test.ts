@@ -3,6 +3,7 @@ import {
   applyEvent,
   emptyLiveState,
   forgetTaskEvents,
+  stepsWithDraft,
   startRecovery,
   withRunningTurns,
   withTasks,
@@ -46,6 +47,37 @@ describe("applyEvent", () => {
       { kind: "text", text: "Done.", messageId: "m1" },
     ]);
     expect(state.steps["s1"]?.map((step) => step.kind)).toEqual(["command", "message"]);
+  });
+
+  test("the pieces of a block build its draft, which the block's final text replaces (issue 117)", () => {
+    const drafting = run([
+      { kind: "text_delta", text: "Here " },
+      { kind: "text_delta", text: "is " },
+    ]);
+    expect(drafting.drafts["s1"]).toBe("Here is ");
+    // A turn whose first event is a piece runs too.
+    expect(drafting.steps["s1"]).toEqual([]);
+    const done = applyEvent(drafting, event({ kind: "text", text: "Here is the answer.", messageId: "m1" }));
+    expect(done.drafts).toEqual({});
+    expect(done.steps["s1"]?.map((step) => step.text)).toEqual(["Here is the answer."]);
+  });
+
+  test("a block that starts again replaces the draft, and a draft of blanks shows nothing", () => {
+    const state = run([
+      { kind: "text_delta", text: "Hello ", startsBlock: true },
+      { kind: "text_delta", text: "Hello world ", startsBlock: true },
+    ]);
+    expect(state.drafts["s1"]).toBe("Hello world ");
+    expect(stepsWithDraft([], "\n ")).toEqual([]);
+  });
+
+  test("the end of a turn drops its draft, and an event of another chat keeps it", () => {
+    const drafting = run([{ kind: "text_delta", text: "Half " }]);
+    expect(applyEvent(drafting, event({ kind: "text", text: "Other.", messageId: "m9" }, "s2")).drafts).toEqual({
+      s1: "Half ",
+    });
+    expect(applyEvent(drafting, event({ kind: "turn_failed", reason: "stopped" })).drafts).toEqual({});
+    expect(applyEvent(drafting, event({ kind: "turn_finished", ...finished })).drafts).toEqual({});
   });
 
   test("a lost history is a message step, so the person sees the note", () => {
@@ -191,6 +223,20 @@ describe("applyEvent", () => {
   });
 });
 
+describe("stepsWithDraft", () => {
+  test("adds the draft as the last message, and keeps the steps as they are with no draft", () => {
+    const steps = run([{ kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "a" }]).steps[
+      "s1"
+    ]!;
+    expect(stepsWithDraft(steps, undefined)).toBe(steps);
+    expect(stepsWithDraft(steps, "")).toBe(steps);
+    expect(stepsWithDraft(steps, "Here is ").map((step) => [step.kind, step.text])).toEqual([
+      ["tool", "a"],
+      ["message", "Here is "],
+    ]);
+  });
+});
+
 describe("withRunningTurns", () => {
   const firstBlock = { kind: "message" as const, text: "First block.", isError: false, id: "m1" };
 
@@ -266,5 +312,24 @@ describe("withRunningTurns", () => {
   test("with no recovery, events are not kept", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(state.recovery).toBeNull();
+  });
+});
+
+describe("withRunningTurns and drafts", () => {
+  test("a page that comes back shows the draft that the core kept, with the newer pieces on top", () => {
+    const read = seq;
+    let state = startRecovery(run([{ kind: "text_delta", text: "Stale ", startsBlock: true }]), 1);
+    state = applyEvent(state, event({ kind: "text_delta", text: "so far " }));
+    const after = withRunningTurns(state, 1, { seq: read, turns: [{ sessionId: "s1", steps: [], draft: "Here is " }] });
+    expect(after.drafts).toEqual({ s1: "Here is so far " });
+  });
+
+  test("an older Eva sends no draft, so the page keeps only the newer pieces", () => {
+    let state = startRecovery(run([{ kind: "text_delta", text: "Stale " }]), 1);
+    state = applyEvent(state, event({ kind: "text_delta", text: "new " }));
+    expect(withRunningTurns(state, 1, null).drafts).toEqual({ s1: "new " });
+    expect(
+      withRunningTurns(startRecovery(emptyLiveState, 2), 2, { seq, turns: [{ sessionId: "s1", steps: [] }] }).drafts,
+    ).toEqual({});
   });
 });

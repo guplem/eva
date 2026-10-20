@@ -674,6 +674,7 @@ describe("routes", () => {
         {
           sessionId: session.id,
           steps: [{ kind: "message", text: "First block.", isError: false, id: "m1" }],
+          draft: "",
         },
       ]);
     } finally {
@@ -1099,6 +1100,20 @@ describe("web routes", () => {
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(204);
     expect((await call("/api/schedules/morning", { method: "DELETE" })).status).toBe(404);
     expect((await call("/api/schedules/morning", { method: "PUT", body: {} })).status).toBe(404);
+  });
+
+  test("schedules: turn one off and on, and refuse a bad body or an unknown id (#188)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
+    await call("/api/schedules", { method: "POST", body: entry });
+    const off = await call("/api/schedules/morning", { method: "PATCH", body: { enabled: false } });
+    expect(off.status).toBe(204);
+    const listed = await json<{ schedules: { schedule: { enabled: boolean }; nextRun: string | null }[] }>(
+      await call("/api/schedules"),
+    );
+    expect(listed.schedules.map((view) => [view.schedule.enabled, view.nextRun])).toEqual([[false, null]]);
+    expect((await call("/api/schedules/morning", { method: "PATCH", body: { enabled: true } })).status).toBe(204);
+    expect((await call("/api/schedules/morning", { method: "PATCH", body: { enabled: "no" } })).status).toBe(400);
+    expect((await call("/api/schedules/nobody", { method: "PATCH", body: { enabled: true } })).status).toBe(404);
   });
 
   test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {

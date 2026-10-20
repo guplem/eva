@@ -79,6 +79,11 @@ const captures: Capture[] = [
     options: { ...common, sessionId },
   },
   { name: "resumed-turn", prompt: "And the second step?", options: { ...common, resume: sessionId } },
+  {
+    name: "streamed-answer",
+    prompt: "Name three morning habits, one per line.",
+    options: { ...common, sessionId: crypto.randomUUID(), includePartialMessages: true },
+  },
   { name: "missing-session", prompt: "Hello.", options: { ...common, resume: crypto.randomUUID() } },
   {
     name: "subagent-task",

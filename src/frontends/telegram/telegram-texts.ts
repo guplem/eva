@@ -11,7 +11,9 @@ export function cardText(event: ScheduleCard): string {
   const heading =
     event.changed.length === 0
       ? `New schedule: ${event.name}`
-      : `Schedule changed (${event.changed.join(", ")}): ${event.name}`;
+      : event.changed.join() === "enabled"
+        ? `Schedule turned on: ${event.name}`
+        : `Schedule changed (${event.changed.join(", ")}): ${event.name}`;
   const fields = Object.entries(event.fields).map(([name, value]) => `${name}: ${value}`);
   const next = `Next run: ${event.nextRun?.replace("T", " ") ?? "never"} (${event.timeZone})`;
   // The card is the check against a schedule that someone else pushed to the vault (lesson 67).

@@ -21,6 +21,19 @@ export type UsageWindow = "five_hour" | "seven_day" | "seven_day_opus" | "seven_
 
 export type EngineEventPayload =
   | { readonly kind: "text"; readonly text: string; readonly messageId: string }
+  /**
+   * A piece of the text block that the engine writes now. The block's `text` event replaces the
+   * pieces. So the core sends the pieces but never stores them (issue 117).
+   */
+  | {
+      readonly kind: "text_delta";
+      readonly text: string;
+      /**
+       * The first piece of a new block. A model call that failed and runs again starts a new
+       * block before any final text, so each reader drops the pieces before this one.
+       */
+      readonly startsBlock?: true;
+    }
   | {
       readonly kind: "tool_started";
       readonly toolUseId: string;

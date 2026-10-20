@@ -80,6 +80,15 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     summary: "ls",
   };
   yield { kind: "tool_finished", toolUseId: `command-${String(turnNumber)}`, isError: false };
+  if (lastLine.includes("stream")) {
+    // The approval holds the turn, so the page shows the draft for as long as the test needs.
+    const words = "Streaming the words of this answer while the engine writes them. ".repeat(3);
+    yield { kind: "text_delta", text: words };
+    yield { kind: "text_delta", text: "More words " };
+    await request.requestApproval({ requestId: "", toolName: "Bash", summary: "echo streamed" });
+    yield* FakeEngine.answer(request, `${words}More words to end it.`);
+    return;
+  }
   if (lastLine.includes("approve")) {
     const answer = await request.requestApproval({ requestId: "", toolName: "Bash", summary: "gh issue create" });
     yield* FakeEngine.answer(request, `The person answered: ${answer}`);

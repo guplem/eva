@@ -1151,7 +1151,7 @@ test("Settings: the progress list leads to each step's page, which keeps the las
   await expect(list).toContainText("Your devices");
   await list.getByRole("button", { name: /Step \d+ Your devices/ }).click();
   await expect(page.getByRole("region", { name: "Allow a new device" })).toContainText("eva devices allow");
-  await page.getByRole("button", { name: /Step 2: Your vault/ }).click();
+  await page.getByRole("button", { name: /Step \d+: Your vault/ }).click();
   await page.getByRole("button", { name: "Test Your vault" }).click();
   await expect(page.getByRole("region", { name: "Your vault" })).toContainText("Last test:");
   // Back goes up one level, to the list, which shows the result too.
@@ -1757,9 +1757,9 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
 test("Settings: the setup ring counts the done steps, and a failed test has its own mark", async ({ page }) => {
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
-    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
-    const progress = setup.progress.map((step, index) =>
-      index === 0
+    const setup = (await response.json()) as { progress: { key: string; state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
         : step,
     );
@@ -1786,7 +1786,7 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
     const progress = setup.progress.map((step, index) =>
       index === 0
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
-        : index === 1
+        : step.key === "vault"
           ? { ...step, state: "missing", lastCheck: null }
           : step,
     );
@@ -1811,7 +1811,7 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
   const failed = list.getByRole("button").filter({ hasText: "Step 1" });
-  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  const left = list.getByRole("button").filter({ hasText: "Your vault" });
   expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));

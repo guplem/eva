@@ -144,6 +144,11 @@ const eva = new Eva({
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
   googleBaseUrl: google.url,
+  // GitHub shows a code, and nobody types it: the demo never reaches the real GitHub.
+  githubBrowserLogin: (show) => {
+    show("WXYZ-1234", "https://github.com/login/device");
+    return new Promise<string>(() => undefined);
+  },
   // The reference has a skill that the project's repository lacks, and auto-merge is off there.
   githubRequest: fakeGithub({
     [evaRepository]: {

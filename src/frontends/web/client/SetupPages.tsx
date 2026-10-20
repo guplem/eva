@@ -29,7 +29,7 @@ const whyItMatters: Readonly<Record<ProgressStep["key"], string>> = {
   vault: "The vault is the folder of your notes. Eva reads it and writes to it, and keeps it safe in git.",
   remoteAccess: "Phone access lets you open Eva on your phone, also away from home. It uses Tailscale, which is free.",
   device: "Each phone or computer asks once to open Eva. You allow it, so nobody else gets in.",
-  github: "With a GitHub token, Eva can reach a private vault and your private projects.",
+  github: "Your vault and your projects may live in private GitHub repositories.",
   telegram: "With a Telegram bot, you can chat with Eva from the Telegram app.",
   google: "With Google, Eva can read your calendar, files, contacts and tasks.",
 };

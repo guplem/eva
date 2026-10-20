@@ -61,6 +61,16 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
   });
   return [
     engineStep(input, make),
+    // Before the vault: the GitHub login lists the repositories that the vault step picks from.
+    input.githubToken
+      ? make("github", "GitHub", "done", "The token is saved.", "github")
+      : make(
+          "github",
+          "GitHub",
+          "optional",
+          "A vault on this computer alone, or a public one, needs no GitHub login.",
+          "github",
+        ),
     input.vaultPath === null
       ? make(
           "vault",
@@ -84,15 +94,6 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           // With phone access off, the page on this computer may be the only one the person needs.
           input.remoteAccess === null ? "optional" : "missing",
           "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
-        ),
-    input.githubToken
-      ? make("github", "GitHub", "done", "The token is saved.", "github")
-      : make(
-          "github",
-          "GitHub",
-          "optional",
-          "A GitHub token lets Eva reach a private notebook and private projects.",
-          "github",
         ),
     telegramStep(input.telegram, make),
     input.google

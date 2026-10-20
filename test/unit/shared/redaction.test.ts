@@ -31,6 +31,15 @@ describe("TextStreamRedactor", () => {
     expect(text).toContain("[redacted]");
   });
 
+  test("holds back enough when short secrets inside a longer one grow as they are redacted", () => {
+    const redactor = new Redactor();
+    const long = "PIN 11111111 22222222 33333333!";
+    for (const secret of [long, "11111111", "22222222", "33333333"]) redactor.addSecret(secret);
+    const stream = new TextStreamRedactor(redactor);
+    const text = streamed(stream, ["Here: ", ...long.split(""), " done "]);
+    expect(text).not.toContain("PIN");
+  });
+
   test("stops the block when a later piece changes text it already sent", () => {
     const stream = new TextStreamRedactor(new Redactor());
     const sent = streamed(stream, ["-----BEGIN RSA ", "PRIVATE ", "KEY-----\n", "MIIEowIBAAKCAQEA ", "more words "]);

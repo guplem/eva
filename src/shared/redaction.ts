@@ -5,6 +5,7 @@
  */
 
 const replacement = "[redacted]";
+const shortestSecretLength = 8;
 
 const secretPatterns: readonly RegExp[] = [
   /\b\d{6,12}:[A-Za-z0-9_-]{30,}\b/g, // Telegram bot token
@@ -31,7 +32,7 @@ export class Redactor {
 
   /** Adds a value to replace wherever it appears. Short values are ignored, to avoid hiding normal words. */
   addSecret(value: string | undefined): void {
-    if (value === undefined || value.length < 8 || this.knownSecrets.includes(value)) return;
+    if (value === undefined || value.length < shortestSecretLength || this.knownSecrets.includes(value)) return;
     this.knownSecrets.push(value);
     this.knownSecrets.sort((first, second) => second.length - first.length);
   }
@@ -82,13 +83,13 @@ export class TextStreamRedactor {
     if (this.stopped) return "";
     this.raw += piece;
     const redacted = this.redactor.redact(this.raw);
-    // A secret that starts in text already sent, such as a private key after its header: the
-    // stream cannot take it back, so the block waits for its final text.
+    // A secret can start in text that was already sent, such as a private key after its header.
+    // The stream cannot take that text back. So the block stops, and its final text shows it.
     if (!redacted.startsWith(this.sent)) {
       this.stopped = true;
       return "";
     }
-    const limit = redacted.length - Math.max(0, this.redactor.longestSecretLength() - 1);
+    const limit = redacted.length - holdBack(this.redactor.longestSecretLength());
     const safe = redacted.slice(0, lastWhitespaceEnd(redacted, limit));
     if (safe.length <= this.sent.length) return "";
     const next = safe.slice(this.sent.length);
@@ -110,4 +111,13 @@ function lastWhitespaceEnd(text: string, limit: number): number {
     if (/\s/.test(text.charAt(index))) return index + 1;
   }
   return 0;
+}
+
+/**
+ * The redacted text to hold back for a part of a known secret. Each short secret inside that part
+ * can grow to the replacement, so the part can be longer once redacted.
+ */
+function holdBack(longestSecret: number): number {
+  if (longestSecret === 0) return 0;
+  return Math.ceil(((longestSecret - 1) * replacement.length) / shortestSecretLength);
 }

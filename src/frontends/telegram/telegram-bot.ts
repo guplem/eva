@@ -689,7 +689,7 @@ export class TelegramBot {
   }
 
   private async onEvent(event: SessionEvent): Promise<void> {
-    // Telegram sends finished blocks only: editing a growing message hits the edit limits and
+    // Telegram sends finished blocks only. A growing message would hit the edit limits and show
     // half-written Markdown. A piece must also never release a held block (issue 117).
     if (event.kind === "text_delta") return;
     if (event.kind === "approval_resolved") {

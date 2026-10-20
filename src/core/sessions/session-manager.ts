@@ -777,7 +777,7 @@ function redactPayload(
   redactor: Redactor,
 ): EngineEventPayload | CoreEventPayload {
   switch (payload.kind) {
-    // The turn's TextStreamRedactor already redacted the block of a text_delta; this pass costs little.
+    // The stream redactor of the turn already redacted the whole block of a text_delta. This pass is cheap.
     case "text":
     case "text_delta":
     case "notice":

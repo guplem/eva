@@ -34,6 +34,8 @@ const statusPollMs = 3_000;
 /** A download moves fast, so the bar reads its share more often. */
 const downloadPollMs = 1_000;
 const restartPollLimit = 60;
+/** Eva gives a download 10 minutes, so a lost answer waits a little longer than that. */
+const downloadPollLimit = 220;
 
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
@@ -108,12 +110,20 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   const isBusy = update?.phase === "checking" || update?.phase === "updating";
   useEffect(() => {
     if (!posting && !isBusy) return;
+    // An answer that comes after the final status of the install is older than it, so it is dropped.
+    let isCurrent = true;
     const timer = setTimeout(() => {
-      api.updateStatus().then(setUpdate, () => {
-        setReadFailures((count) => count + 1);
-      });
+      api.updateStatus().then(
+        (status) => {
+          if (isCurrent) setUpdate(status);
+        },
+        () => {
+          if (isCurrent) setReadFailures((count) => count + 1);
+        },
+      );
     }, downloadPollMs);
     return () => {
+      isCurrent = false;
       clearTimeout(timer);
     };
   }, [posting, isBusy, update, readFailures]);
@@ -136,15 +146,16 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   };
 
   /**
-   * The status once the install ends. A long download can outlast the request, which the server
-   * then closes, while the download goes on. So a lost answer reads the status until it ends.
+   * The status once the install ends. A proxy on the way, such as `tailscale serve`, can close a
+   * long request while the download goes on. So a lost answer reads the status until it ends.
    */
   const installResult = async (version?: string): Promise<UpdateStatus> => {
     try {
       return await api.updateNow(version);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      for (let attempt = 0; attempt < restartPollLimit; attempt += 1) {
+      // Eva's own refusal has a code. A proxy that gave up answers with a gateway error.
+      if (error instanceof ApiError && (error.code !== null || error.status < 500)) throw error;
+      for (let attempt = 0; attempt < downloadPollLimit; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, statusPollMs));
         const status = await api.updateStatus().catch(() => undefined);
         if (status === null) break;

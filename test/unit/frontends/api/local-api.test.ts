@@ -11,6 +11,7 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -78,7 +79,7 @@ beforeEach(() => {
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: fakeGh(systemProcessRunner),
     processEnvironment: gitEnvironment,
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
@@ -1193,7 +1194,7 @@ describe("without a vault", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1285,7 +1286,7 @@ describe("an Eva with an update channel", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1439,7 +1440,7 @@ describe("problems, logs and restart", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1477,7 +1478,7 @@ describe("an Eva with releases to pick", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1546,7 +1547,7 @@ describe("remote access", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",

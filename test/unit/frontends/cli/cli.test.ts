@@ -55,6 +55,7 @@ import {
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner, type ProcessResult, type ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import { scriptedRunner } from "../../../support/fake-host.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -815,6 +816,39 @@ describe("runSetup", () => {
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
       expect(tokens.every((token) => token === "gho_browser_token_1")).toBe(true);
+    });
+
+    test("the login also logs in the agents' gh, and setup says so (#244)", async () => {
+      const lines: string[] = [];
+      const gh = fakeGh(okRunner);
+      await setup({ vaultRepository: githubVault }, { lines, runner: gh, githubLogin: browserLogin([]) });
+      expect(gh.calls.map((call) => call.command.slice(0, 3))).toContainEqual(["gh", "auth", "login"]);
+      expect(gh.calls.find((call) => call.command[2] === "login")?.stdin).toBe("gho_browser_token_1\n");
+      expect(lines.join("\n")).toContain("Your agents use the same GitHub login.");
+    });
+
+    test("a token that gh refuses stays saved, and setup says how to fix the agents' login", async () => {
+      const lines: string[] = [];
+      const gh = fakeGh(okRunner, "error validating token: missing required scope 'read:org'");
+      await setup(
+        { githubToken: "ghp_without-scopes", vaultRepository: githubVault },
+        { lines, runner: gh, githubLogin: browserLogin([]) },
+      );
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("ghp_without-scopes");
+      const text = lines.join("\n");
+      expect(text).toContain("missing required scope 'read:org'");
+      expect(text).toContain("Press Log in with GitHub on Eva's page");
+      expect(text).not.toContain("Your agents use the same GitHub login.");
+    });
+
+    test("a rerun with the same token leaves the agents' gh alone", async () => {
+      saveSecrets(homePaths(home), { githubToken: "gho_saved" });
+      const gh = fakeGh(okRunner);
+      const lines: string[] = [];
+      await setup({ vaultRepository: githubVault }, { lines, runner: gh, githubLogin: browserLogin([]) });
+      // A hand-made gh login stays, and an old token with too few scopes waits for a new login on the page.
+      expect(gh.calls.filter((call) => call.command[2] === "login")).toEqual([]);
+      expect(lines.join("\n")).not.toContain("Your agents use the same GitHub login.");
     });
 
     test("with a saved token, Enter keeps it, and login logs in again", async () => {

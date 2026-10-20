@@ -44,10 +44,13 @@ export function Card({
   item,
   title,
   description,
+  icon,
   aside,
   children,
 }: {
   readonly item?: string;
+  /** A round icon at the left of the title. */
+  readonly icon?: IconName;
   readonly title: string;
   readonly description?: ReactNode;
   /** Such as a status pill, at the right of the title. */
@@ -57,6 +60,11 @@ export function Card({
   return (
     <section className="card" id={item === undefined ? undefined : cardId(item)} aria-label={title}>
       <header className="card-header">
+        {icon !== undefined && (
+          <span className="card-icon">
+            <Icon name={icon} />
+          </span>
+        )}
         <div className="card-heading">
           <h2>{title}</h2>
           {description !== undefined && <p className="card-description">{description}</p>}

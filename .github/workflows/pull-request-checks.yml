@@ -71,6 +71,8 @@ jobs:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # The browser tests take about 4 minutes. A stuck page must not hold a runner for the default 6 hours.
+    timeout-minutes: 15
     env:
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:

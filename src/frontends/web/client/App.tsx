@@ -25,6 +25,7 @@ import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState
 import { LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
@@ -36,6 +37,8 @@ import { SettingsView } from "./SettingsView.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
+/** How long the notice of an allowed device shows the delighted face. */
+const allowedFaceMs = 1_500;
 
 export function App(): ReactElement {
   return (
@@ -47,6 +50,9 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  /** The server sends "settled" before its answer, so the notice keeps this request until the answer comes. */
+  const [answeringDevice, setAnsweringDevice] = useState<DeviceLoginRequest | null>(null);
+  const answering = useRef(false);
   const [screen, setScreen] = useState<Destination>(() => destinationOf(window.location.hash) ?? "chats");
   const [sessions, setSessions] = useState<ListedSession[]>([]);
   const [live, setLive] = useState<LiveState>(emptyLiveState);
@@ -54,6 +60,8 @@ function EvaApp(): ReactElement {
   /** The sessions of the chat on screen. Their requests show as cards, so they need no notice. */
   const [shownSessionIds, setShownSessionIds] = useState<readonly string[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<DeviceLoginRequest[]>([]);
+  /** The request that the person just allowed. Its notice stays a moment, with the delighted face. */
+  const [allowedDevice, setAllowedDevice] = useState<DeviceLoginRequest | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
@@ -286,6 +294,12 @@ function EvaApp(): ReactElement {
     };
   }, [authenticated, refreshSessions, recover]);
 
+  useEffect(() => {
+    if (allowedDevice === null) return undefined;
+    const timer = setTimeout(() => setAllowedDevice(null), allowedFaceMs);
+    return () => clearTimeout(timer);
+  }, [allowedDevice]);
+
   if (authenticated === null) return <div className="empty">Loading…</div>;
   if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
 
@@ -308,15 +322,24 @@ function EvaApp(): ReactElement {
   }));
 
   /** A failed answer drops the request too: it expired, or another approver answered it. */
-  const answerDevice = async (id: string, answer: "allow" | "deny"): Promise<void> => {
-    setDeviceRequests((current) => current.filter((entry) => entry.id !== id));
+  const answerDevice = async (request: DeviceLoginRequest, answer: "allow" | "deny"): Promise<void> => {
+    // The disabled buttons show only after a render, so two quick taps could send two answers.
+    if (answering.current) return;
+    answering.current = true;
+    setAnsweringDevice(request);
     try {
-      await api.answerDeviceRequest(id, answer);
+      await api.answerDeviceRequest(request.id, answer);
+      // Only a confirmed answer shows "Allowed": a slow phone link can still fail.
+      if (answer === "allow") setAllowedDevice(request);
     } catch (caught) {
       showError(caught);
+    } finally {
+      setDeviceRequests((current) => current.filter((entry) => entry.id !== request.id));
+      answering.current = false;
+      setAnsweringDevice(null);
     }
   };
-  const deviceRequest = deviceRequests[0];
+  const deviceRequest = allowedDevice ?? answeringDevice ?? deviceRequests[0];
 
   const answerCard = async (card: ScheduleCard, answer: "confirm" | "remove"): Promise<void> => {
     try {
@@ -412,21 +435,12 @@ function EvaApp(): ReactElement {
         </div>
       )}
       {deviceRequest !== undefined && (
-        <div className="dialog-backdrop">
-          <div className="dialog" role="dialog" aria-label="New device">
-            <strong>A new device wants to get in. Allow it?</strong>
-            <span>
-              Allow it only if the new device shows the code <code>{deviceRequest.code}</code>. Account:{" "}
-              {deviceRequest.account}.
-            </span>
-            <div className="message-actions">
-              <button className="primary" onClick={() => void answerDevice(deviceRequest.id, "allow")}>
-                Allow
-              </button>
-              <button onClick={() => void answerDevice(deviceRequest.id, "deny")}>Deny</button>
-            </div>
-          </div>
-        </div>
+        <NewDeviceDialog
+          request={deviceRequest}
+          allowed={deviceRequest === allowedDevice}
+          busy={answeringDevice !== null}
+          onAnswer={(answer) => void answerDevice(deviceRequest, answer)}
+        />
       )}
       {deviceRequest === undefined && card !== undefined && (
         <ScheduleCardDialog

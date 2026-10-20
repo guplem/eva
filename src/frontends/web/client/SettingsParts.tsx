@@ -306,9 +306,11 @@ const withheldReasons: Readonly<Record<VaultSyncState["withheldFiles"][number]["
 export function VaultSyncView({
   state,
   onState,
+  autoSync,
 }: {
   state: VaultSyncState;
   onState: (state: VaultSyncState) => void;
+  autoSync?: boolean | undefined;
 }): ReactElement {
   const label = statusLabels[state.status];
   return (
@@ -320,6 +322,9 @@ export function VaultSyncView({
       <div className="field-hint">
         Last commit: {formatTime(state.lastCommitAt)}. Last push: {formatTime(state.lastPushAt)}.
       </div>
+      {autoSync === false && (
+        <div className="callout warning">Automatic sync is off. Press Sync now to send your notes.</div>
+      )}
       {state.status === "conflict" && <NoteConflicts state={state} onState={onState} />}
       {state.withheldFiles.length > 0 && (
         <div className="callout warning">

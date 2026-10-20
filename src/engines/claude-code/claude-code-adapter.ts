@@ -120,6 +120,8 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     );
   }
   if (request.model !== "default") options.model = request.model;
+  // The pieces only change what the SDK reports to Eva, so Project mode stays a transparent wrapper.
+  if (request.mode !== "model-call") options.includePartialMessages = true;
 
   switch (request.history.kind) {
     case "new":
@@ -234,6 +236,14 @@ async function* mapEachTurn(
             };
           }
         }
+        break;
+      }
+      case "stream_event": {
+        // The finished assistant message follows with the whole block, so only text pieces matter here.
+        if (message.parent_tool_use_id !== null) break;
+        const event = message.event;
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text.length > 0)
+          yield { kind: "text_delta", text: event.delta.text };
         break;
       }
       case "user": {

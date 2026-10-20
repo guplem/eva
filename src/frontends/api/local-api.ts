@@ -186,12 +186,14 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
-      // a vault sync or pick waits for git's network steps, and the Google login waits for Google.
+      // a vault sync or pick waits for git's network steps, the Google login waits for Google, and the
+      // GitHub login waits until the person confirms the code.
       // Each ends at its own timeout.
       if (
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
-        url.pathname.startsWith("/api/google/")
+        url.pathname.startsWith("/api/google/") ||
+        url.pathname.startsWith("/api/github/")
       )
         bunServer.timeout(request, 0);
       try {
@@ -520,6 +522,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (url.pathname === "/api/google/login/finish")
       return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
   }
+  if (method === "POST" && url.pathname === "/api/github/login") return json(await eva.startGitHubLogin());
+  if (method === "POST" && url.pathname === "/api/github/login/finish") return json(await eva.finishGitHubLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login") return json(await eva.startClaudeLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login/finish")
     return json(await eva.finishClaudeLogin(claudeLoginSchema.parse(await request.json()).code));

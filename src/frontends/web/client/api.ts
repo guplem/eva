@@ -211,6 +211,10 @@ export const api = {
   /** Takes the address that Google sent the browser to, or its code alone. */
   finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>
     request("POST", "/api/google/login/finish", { address }),
+  /** Gives the code to type on GitHub's page; while a login waits, the same one. */
+  startGitHubLogin: (): Promise<{ code: string; url: string }> => request("POST", "/api/github/login", {}),
+  /** Waits until the person allows the access on GitHub, and Eva saves the token. */
+  finishGitHubLogin: (): Promise<{ restartNeeded: boolean }> => request("POST", "/api/github/login/finish", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),

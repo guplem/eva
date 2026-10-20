@@ -1151,7 +1151,7 @@ test("Settings: the progress list leads to each step's page, which keeps the las
   await expect(list).toContainText("Your devices");
   await list.getByRole("button", { name: /Step \d+ Your devices/ }).click();
   await expect(page.getByRole("region", { name: "Allow a new device" })).toContainText("eva devices allow");
-  await page.getByRole("button", { name: /Step 2: Your vault/ }).click();
+  await page.getByRole("button", { name: /Step \d+: Your vault/ }).click();
   await page.getByRole("button", { name: "Test Your vault" }).click();
   await expect(page.getByRole("region", { name: "Your vault" })).toContainText("Last test:");
   // Back goes up one level, to the list, which shows the result too.
@@ -1777,9 +1777,9 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
 test("Settings: the setup ring counts the done steps, and a failed test has its own mark", async ({ page }) => {
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
-    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
-    const progress = setup.progress.map((step, index) =>
-      index === 0
+    const setup = (await response.json()) as { progress: { key: string; state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
         : step,
     );
@@ -1802,11 +1802,11 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
 test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
-    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
-    const progress = setup.progress.map((step, index) =>
-      index === 0
+    const setup = (await response.json()) as { progress: { key: string; state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
-        : index === 1
+        : step.key === "vault"
           ? { ...step, state: "missing", lastCheck: null }
           : step,
     );
@@ -1831,7 +1831,7 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
   const failed = list.getByRole("button").filter({ hasText: "Step 1" });
-  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  const left = list.getByRole("button").filter({ hasText: "Your vault" });
   expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
@@ -1909,12 +1909,74 @@ test("Settings: a token saved in the vault step lists the repositories at once",
     .getByRole("region", { name: "Progress list" })
     .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeVisible();
+  await page.getByRole("button", { name: "Paste a token instead" }).click();
   await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByLabel("Your vault's repository")).toBeVisible();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
+});
+
+test("Settings: the GitHub step logs in with a code, with no token to make (#243)", async ({ page }) => {
+  let finishes = 0;
+  await page.route("**/api/github/login", (route) =>
+    route.fulfill({ json: { code: "WXYZ-1234", url: "https://github.com/login/device" } }),
+  );
+  // GitHub answers after the person types the code: the page shows the code while it waits.
+  let allow: () => void = () => undefined;
+  const allowed = new Promise<void>((resolve) => {
+    allow = resolve;
+  });
+  await page.route("**/api/github/login/finish", async (route) => {
+    finishes += 1;
+    // A phone cuts the first long request when the browser goes to the background.
+    if (finishes === 1) return route.abort("connectionreset");
+    await allowed;
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /GitHub/ })
+    .click();
+  await expect(page.getByText("read and write all your GitHub repositories")).toBeVisible();
+  // The hand-made token waits behind a link, and the login comes first.
+  await expect(page.getByRole("link", { name: "GitHub's new token page" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Log in with GitHub" }).click();
+  await expect(page.getByText("WXYZ-1234")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open GitHub's page" })).toHaveAttribute(
+    "href",
+    "https://github.com/login/device",
+  );
+  await expect(page.getByRole("status").filter({ hasText: "Eva waits for GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeDisabled();
+  // The page asks again after the lost answer, and keeps the code meanwhile.
+  await expect.poll(() => finishes).toBe(2);
+  await expect(page.getByText("WXYZ-1234")).toBeVisible();
+  allow();
+  await expect(page.getByRole("status").filter({ hasText: "Logged in to GitHub" })).toBeVisible();
+  await expect(page.getByText("WXYZ-1234")).toHaveCount(0);
+  expect(finishes).toBe(2);
+  await page.getByRole("button", { name: "Paste a token instead" }).click();
+  await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
+});
+
+test("Settings: a GitHub login that fails says why, and the button works again", async ({ page }) => {
+  await page.route("**/api/github/login", (route) =>
+    route.fulfill({ json: { code: "WXYZ-1234", url: "https://github.com/login/device" } }),
+  );
+  await page.route("**/api/github/login/finish", (route) =>
+    route.fulfill({ status: 409, json: { error: "The GitHub login code expired.", code: "github_failed" } }),
+  );
+  await logIn(page);
+  await openSettings(page, "Connections");
+  await page.getByRole("button", { name: "Log in with GitHub" }).click();
+  await expect(page.getByText("The GitHub login code expired.")).toBeVisible();
+  await expect(page.getByText("WXYZ-1234")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeEnabled();
 });
 
 test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {

@@ -83,7 +83,7 @@ On this computer:
 
 Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy and the notebook fetch apply at once. Any other change applies at the next restart.
 
-- **Tokens:** paste the GitHub, Telegram and Claude Code tokens on the Settings page. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
+- **Tokens:** log in to GitHub and Claude Code on the Settings page, or paste their tokens there. Paste the Telegram token there too. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
 - **A device that you allowed** has the same control as the terminal of Eva's computer: it can change every setting and token. If you lose a phone, tap "Log out every device" on the Settings page.
 - **Theme and density** stay in each browser, so a phone and a computer can differ.

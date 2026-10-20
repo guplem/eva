@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Create, change or remove a scheduled message by editing .eva/schedules.json. Use when the person asks for a reminder, a summary or any message at a set time, every day or on some days, in any wording, or asks to change or stop one.
+description: Create, change, pause or remove a scheduled message by editing .eva/schedules.json. Use when the person asks for a reminder, a summary or any message at a set time, every day or on some days, in any wording, or asks to change, pause, resume or stop one.
 ---
 
 # Schedule a message
@@ -41,6 +41,7 @@ Each schedule is one object in `schedules`:
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
 - **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `Scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh conversation, at that time. The steps run in that order.
 - **`model`**: optional, for a `prompt` only. Use `sonnet`, `opus` or `haiku`. Any other value means the default model.
+- **`enabled`**: optional. Write `false` to turn the schedule off. It then never runs, and it keeps its fields. Leave the key out to turn it on. Use only `true` or `false`, never text in quotes.
 
 **Prefer `text` or `file` for fixed content.** They cost nothing. A `prompt` costs a full model turn with no cache on every run. Use a `prompt` only when the content must change each time, such as a calendar summary or the news. Write the prompt so it stands alone, because each run starts with no memory of the last one.
 
@@ -55,12 +56,13 @@ Read the file again after you edit it, and check each point:
 - Every `id` is a slug of lowercase letters, digits or dashes, and no two entries share one.
 - `days` is absent, or a list that is not empty, of `mon` to `sun`.
 - Each entry has a `name`, and at least one step: `text`, `file` or `prompt`.
+- `enabled` is absent, `true` or `false`.
 
 Eva skips an entry that fails a check. It says so once in the main chat, in a message that starts "Schedules file problems:", and in `/schedules`.
 
 ## 4. Change or remove one
 
-To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
+To change a schedule, edit its entry and keep its `id`. Within a minute Eva posts a card in its chat that names what changed. Without Telegram, the web app shows that card in a dialog. To pause one, set `"enabled": false`. It stops at once, with no card. When the person asks to start it again, delete the `enabled` key. Eva then posts a new card, and the schedule runs only after it reaches them. To remove one, delete its entry. The topic stays in Telegram, and the person can delete it with `/delete` once the schedule is gone.
 
 ## 5. Reply
 

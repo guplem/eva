@@ -69,7 +69,7 @@ export class VaultSetup {
       if (reason !== null) throw new EvaError("git_failed", `git could not read ${repository}: ${reason}`);
       await this.orRemove(folder, () => cloneVault({ repository, folder, runner: this.options.runner, environment }));
       this.saveFolder(folder);
-      return { folder, repository, problem: null };
+      return { folder, repository: withoutLogin(repository), problem: null };
     });
   }
 
@@ -135,10 +135,10 @@ export class VaultSetup {
         runner: this.options.runner,
         environment: this.options.gitEnvironment(),
       });
-      return { folder, repository, problem: null };
+      return { folder, repository: withoutLogin(repository), problem: null };
     } catch (error) {
       if (!isEvaError(error, "github_failed") && !isEvaError(error, "git_failed")) throw error;
-      return { folder, repository: null, problem: error.message };
+      return { folder, repository: null, problem: withoutLogin(error.message) };
     }
   }
 
@@ -232,4 +232,9 @@ function removeNewEntries(folder: string, before: ReadonlySet<string>, existed: 
   } catch {
     // The page shows the git error; the next try names the files that stay in the folder.
   }
+}
+
+/** An address without its login part: a password of another service has no shape that the redactor knows. */
+function withoutLogin(text: string): string {
+  return text.replace(/\/\/[^/@\s]*@/g, "//");
 }

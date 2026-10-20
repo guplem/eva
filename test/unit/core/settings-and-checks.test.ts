@@ -8,6 +8,7 @@ import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/setting
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -824,11 +825,12 @@ describe("the vault step on the page", () => {
       expect(result.problem).toContain("could not push");
       expect(JSON.stringify(result)).not.toContain(token);
       // A password of another service has no known shape, so the login part of the address goes.
-      const bare = join(sandbox.root, "empty.git");
-      mkdirSync(bare);
-      sandbox.git(bare, "init", "-q", "--bare");
-      const pushed = await instance.pushVault(`file://person:plain-password@${bare}`.replace("@/", "@localhost/"));
-      expect(JSON.stringify(pushed)).not.toContain("plain-password");
+      // A failed push of the local vault throws, and its error goes to the page too.
+      const refused = await instance
+        .pushVault("https://person:plain-password@127.0.0.1:1/you/vault.git")
+        .catch((error: unknown) => error);
+      expect(isEvaError(refused, "github_failed")).toBe(true);
+      expect(String(refused)).not.toContain("plain-password");
     } finally {
       instance.stop();
     }

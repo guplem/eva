@@ -100,7 +100,7 @@ export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail
   );
 }
 
-/** A round mark: a green check, a red "!", a red "x" or a grey plus. The label names it for a screen reader. */
+/** A round mark: a green check, an amber "!", a red "x" or a grey plus. The label names it for a screen reader. */
 export function StatusIcon({
   state,
   size = "medium",

@@ -106,6 +106,8 @@
   --warn-bg: oklch(0.96 0.05 85);
   /* Darker than --warn: small bold text on --warn-bg needs a contrast of 4.5 to 1. */
   --warn-ink: oklch(0.45 0.12 65);
+  /* The dark ink stays readable on a solid --warn in both themes. */
+  --on-warn: oklch(0.2 0.03 70);
   --bad: oklch(0.56 0.19 25);
   --bad-bg: oklch(0.95 0.03 25);
 
@@ -368,7 +370,6 @@ textarea {
   white-space: nowrap;
 }
 
-/* The dark ink stays readable on the yellow in both themes. */
 .nav-badge {
   position: absolute;
   top: 6px;
@@ -377,7 +378,7 @@ textarea {
   height: 16px;
   border-radius: var(--radius-pill);
   background: var(--warn);
-  color: oklch(0.2 0.03 70);
+  color: var(--on-warn);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -1579,7 +1580,11 @@ button.link-button {
   color: var(--ok);
 }
 
-.pill.missing,
+.pill.missing {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .pill.failed {
   background: var(--bad-bg);
   color: var(--bad);
@@ -1618,7 +1623,11 @@ button.link-button {
   color: var(--panel);
 }
 
-.status-icon.missing,
+.status-icon.missing {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .status-icon.failed {
   background: var(--bad);
   color: var(--panel);
@@ -1894,8 +1903,8 @@ button.link-button {
 }
 
 .nav-mark.missing {
-  background: var(--bad);
-  color: var(--panel);
+  background: var(--warn);
+  color: var(--on-warn);
 }
 
 .nav-mark.done {
@@ -1996,20 +2005,6 @@ button.link-button {
 /* ==========================================================================
    Settings: the home page
    ========================================================================== */
-.hero {
-  border: 2px solid transparent;
-}
-
-.hero.missing {
-  border-color: var(--bad);
-  background: linear-gradient(var(--bad-bg), var(--panel) 70%);
-}
-
-.hero.done {
-  border-color: var(--ok);
-  background: linear-gradient(var(--ok-bg), var(--panel) 70%);
-}
-
 .hero h2 {
   font-size: var(--text-xl);
   margin: 0 0 var(--space-1);
@@ -2111,7 +2106,11 @@ button.link-button {
   border-left-color: var(--ok);
 }
 
-.step-link.missing,
+.step-link.missing {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
 .step-link.failed {
   border-left-color: var(--bad);
   background: var(--bad-bg);
@@ -2265,7 +2264,11 @@ button.link-button {
   background: var(--ok);
 }
 
-.stepper-dot.missing,
+.stepper-dot.missing {
+  border-color: var(--warn);
+  color: var(--warn-ink);
+}
+
 .stepper-dot.failed {
   border-color: var(--bad);
   color: var(--bad);
@@ -2285,7 +2288,10 @@ button.link-button {
   border-top-color: var(--ok);
 }
 
-.step-header.missing,
+.step-header.missing {
+  border-top-color: var(--warn);
+}
+
 .step-header.failed {
   border-top-color: var(--bad);
 }
@@ -2439,7 +2445,7 @@ button.small {
 
 .pill.warn {
   background: var(--warn-bg);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .pill.idle {

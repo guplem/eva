@@ -1620,6 +1620,59 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
 });
 
+test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step, index) =>
+      index === 0
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
+        : index === 1
+          ? { ...step, state: "missing", lastCheck: null }
+          : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  // The browser resolves a token to the same form as a computed style, so the two compare as text.
+  const token = (name: string): Promise<string> =>
+    page.evaluate((each) => {
+      const probe = document.createElement("i");
+      probe.style.color = `var(${each})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    }, name);
+  const style = (
+    locator: Locator,
+    property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+  ): Promise<string> => locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+  await logIn(page);
+  await openSettings(page);
+  const bad = await token("--bad");
+  const badBackground = await token("--bad-bg");
+  const hero = page.getByRole("region", { name: "Setup" });
+  await expect(hero).toContainText("Finish setting up Eva");
+  expect(await style(hero, "borderTopColor")).not.toBe(bad);
+  expect(await style(hero, "backgroundImage")).toBe("none");
+  const count = page.getByLabel(/to set up$/).first();
+  expect(await style(count, "backgroundColor")).toBe(await token("--warn"));
+
+  await openSettings(page, "Setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
+  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
+  await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
+  expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  await left.click();
+  const header = page.locator(".step-header");
+  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
+});
+
 test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({
   page,
 }) => {

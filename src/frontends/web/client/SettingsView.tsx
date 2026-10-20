@@ -297,7 +297,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   updates: "download",
 };
 
-/** The state of a section's setup steps: a red count when a step needs the person, a green check when all are done. */
+/** The state of a section's setup steps: an amber count when a step needs the person, a green check when all are done. */
 function sectionState(section: SettingsSection, steps: readonly ProgressStep[]): "missing" | "done" | null {
   const own = section.id === "setup" ? steps : steps.filter((step) => section.steps.some((key) => key === step.key));
   if (own.length === 0) return null;
@@ -337,7 +337,7 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
   return (
     <>
       {context.setup !== null && (
-        <section className={`card hero ${missing === 0 ? "done" : "missing"}`} aria-label="Setup">
+        <section className="card hero" aria-label="Setup">
           <div className="hero-text">
             <h2>{missing === 0 ? "Eva is set up" : "Finish setting up Eva"}</h2>
             <SetupRing steps={steps}>

@@ -34,4 +34,30 @@ The goal "Eva works from a phone" asks the web page to offer the same easy path.
 
 ## Decisions
 
-(Filled in after the gap research.)
+G1, the core and the API:
+
+- Put `GitHubBrowserLogin` in `src/core/vault/github-browser-login.ts`, beside `githubDeviceLogin`. Leave `githubDeviceLogin` as it is: the CLI uses it.
+- `start()` returns `{ code, url }`. While a login waits, `start()` returns the same code, so a page reload never kills a code that the person typed already.
+- Save the token as soon as GitHub gives it, through a `save` callback (`Eva.saveSecret`). A phone that closes the page during the login still gets the login.
+- `finish()` waits for that save. Two calls get the same result. A settled error stays until a `finish()` reads it. With no login, it throws `github_failed`.
+- Cancel through the sleep: the login's sleep rejects once the login is stale. `stop()` runs in `Eva.stop`. Catch every background rejection.
+- A null client id throws `github_failed` with a hint to paste a token. The page needs no capability flag.
+- New `Eva` options, each with a default, so `src/main.ts` stays as it is: `githubLoginClientId`, `githubLoginBaseUrl`, `sleep`.
+- Routes: `POST /api/github/login` and `POST /api/github/login/finish`. Add `/api/github/` to the no-timeout list. Gate them as the other secret saves: the token or a device cookie.
+- Do not log or register the user code: it is not a secret, and the redactor would hide it.
+
+G2, the page:
+
+- One shared `GitHubLogin` component in a new leaf file `client/GitHubLogin.tsx`. The GitHub card, the vault card without a token and the vault push callout use it.
+- Copy the Claude login layout: `Steps`, a `primary` button, the code with a Copy button, an `a.button-link` to GitHub's page (a phone blocks a late `window.open`), and a `role="status"` wait line.
+- The page starts `finish` right after `start`. On success: `reloadSettings()`, then `noteAndReload` with the restart words.
+- Keep the hand-made token behind a `link-button`, "Paste a token instead", as in `ClaudeCodeCard`. The `SecretField` stays visible when a token is saved, so Remove works.
+- Show `githubLoginAccess` under the login button. The `repo` scope is broad, and `eva setup` says the same.
+- Add "login browser code" to both GitHub search entries.
+
+G3, the order:
+
+- Move the github step between the engine and the vault in `setupProgress`. Do not fold it into the vault step: the Connections card must stay, and a fold gives one fact two homes.
+- GitHub stays optional: `nextToDo` skips it, and the vault card offers the login.
+- Update `progress.test.ts` and the e2e tests that use step numbers or index 1.
+- Keep "notebook" in the CLI, the README and the guide: there it is a deliberate plain word. Use "vault" on the page and in `progress.ts`.

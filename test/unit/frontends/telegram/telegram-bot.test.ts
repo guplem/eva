@@ -246,7 +246,8 @@ describe("a group chat (security review)", () => {
     telegram.sendText(group, "do something", undefined, 777);
     telegram.pressButton(group, "s:morning", undefined, 777);
     telegram.sendText(group, "/status", undefined, owner);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Vault sync")));
+    // The reply waits for the version of each real tool, which can take more than 5 seconds on Windows.
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Vault sync")), 1200);
     expect(engine.requests).toEqual([]);
     expect(telegram.sentTexts().filter((text) => text.includes("No schedule"))).toEqual([]);
   });

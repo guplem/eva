@@ -47,6 +47,12 @@ import {
   gitEnvironment,
   type InstanceFacts,
 } from "./instance/child-environments.ts";
+import {
+  commitIdentity,
+  refreshGitHubAccount,
+  saveGitHubAccount,
+  loadGitHubAccount,
+} from "./instance/commit-identity.ts";
 import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
 import {
   chatBlocker,
@@ -239,6 +245,7 @@ export class Eva {
       paths: options.paths,
       processEnvironment: options.processEnvironment,
       ...(options.evaCommand === undefined ? {} : { evaCommand: options.evaCommand }),
+      commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
 
@@ -373,8 +380,13 @@ export class Eva {
       paths: options.paths,
       runner: options.runner,
       savedVaultPath: () => this.savedVaultPath(),
-      // From the files, so a token that the page or `eva setup` saved since the start works at once.
-      gitEnvironment: () => gitEnvironment(this.facts, this.settings.saved().secrets),
+      // From the files, so a token that the page or `eva setup` saved since the start works at once,
+      // and a new vault's first commit carries that token's account.
+      gitEnvironment: () => {
+        const saved = this.settings.saved();
+        const identity = commitIdentity(options.paths, saved.config);
+        return gitEnvironment({ ...this.facts, commitIdentity: identity }, saved.secrets);
+      },
       githubToken: () => this.settings.saved().secrets.githubToken,
       ...(options.githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl: options.githubApiBaseUrl }),
     });
@@ -893,9 +905,28 @@ export class Eva {
     });
   }
 
-  /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
-  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
-    return this.settings.saveSecret(name, value);
+  /**
+   * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
+   * also waits for its account, so a restart right after the save still has the commit identity.
+   */
+  async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
+    const before = this.settings.secrets.githubToken;
+    const result = this.settings.saveSecret(name, value);
+    if (name !== "githubToken") return result;
+    const token = this.settings.secrets.githubToken;
+    if (token === undefined) saveGitHubAccount(this.options.paths, null);
+    else if (!(await this.refreshGitHubAccount(token, token !== before)))
+      this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
+    return result;
+  }
+
+  /** The account gives the commit name and email from the next start on. */
+  private refreshGitHubAccount(token: string, replacesToken = false): Promise<boolean> {
+    return refreshGitHubAccount(this.options.paths, token, {
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
+      replacesToken,
+      isCurrent: () => this.settings.secrets.githubToken === token,
+    });
   }
 
   async runCheck(name: CheckName): Promise<CheckResult> {
@@ -910,6 +941,7 @@ export class Eva {
       redact: (text) => this.redactor.redact(text),
       telegramToken: secrets.telegramBotToken ?? null,
       githubToken: secrets.githubToken ?? null,
+      ...(this.options.githubApiBaseUrl === undefined ? {} : { githubBaseUrl: this.options.githubApiBaseUrl }),
       google: {
         config: this.settings.config.google,
         client: this.googleClient(),
@@ -918,6 +950,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
+    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    const token = secrets.githubToken;
+    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+      await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =
       name === "google" && result.ok && this.googleRestartNeeded()

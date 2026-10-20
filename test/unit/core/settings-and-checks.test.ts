@@ -7,6 +7,7 @@ import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
+import { loadGitHubAccount, saveGitHubAccount } from "../../../src/core/instance/commit-identity.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
@@ -195,7 +196,7 @@ describe("settings", () => {
 
   test("a saved secret is redacted, kept apart from the others, and used by the next check", async () => {
     writeFileSync(homePaths(home).secrets, JSON.stringify({ localApiToken: "local-token-value" }));
-    expect(eva.saveSecret("claudeOauthToken", "  sk-ant-oat-new-token-value  ")).toEqual({
+    expect(await eva.saveSecret("claudeOauthToken", "  sk-ant-oat-new-token-value  ")).toEqual({
       saved: true,
       restartNeeded: true,
     });
@@ -206,10 +207,14 @@ describe("settings", () => {
     expect(eva.redact("token sk-ant-oat-new-token-value")).not.toContain("new-token-value");
     await eva.runCheck("claude-code");
     expect(engine.requests.at(-1)?.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("sk-ant-oat-new-token-value");
-    eva.saveSecret("claudeOauthToken", null);
+    await eva.saveSecret("claudeOauthToken", null);
     expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
     expect(JSON.parse(readFileSync(homePaths(home).secrets, "utf-8"))).toEqual({ localApiToken: "local-token-value" });
-    expect(() => eva.saveSecret("githubToken", "   ")).toThrow("empty");
+    const refused = await eva.saveSecret("githubToken", "   ").then(
+      () => "saved",
+      (error: unknown) => String(error),
+    );
+    expect(refused).toContain("empty");
   });
 
   test("the setup state names the vault's remote, the Telegram pairing and the engines found", async () => {
@@ -222,7 +227,7 @@ describe("settings", () => {
     writeFileSync(homePaths(home).telegramPairingCode, "EVA-1234ABCD\n");
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: "EVA-1234ABCD" });
     // Without a bot token no bot reads the code, so an old code file must not show.
-    eva.saveSecret("telegramBotToken", null);
+    await eva.saveSecret("telegramBotToken", null);
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: null });
     sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
     expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
@@ -234,10 +239,10 @@ describe("settings", () => {
     expect(steps.find((step) => step.key === "engine")?.state).toBe("missing");
     expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
     expect(eva.status().chatBlocker).toBe("engine");
-    eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+    await eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
     // The engine reads the token at start, so a chat still cannot answer before a restart.
     expect(eva.status().chatBlocker).toBe("restart");
-    eva.saveSecret("telegramBotToken", null);
+    await eva.saveSecret("telegramBotToken", null);
     await eva.runCheck("telegram");
     const after = (await eva.setupState()).progress;
     expect(after.find((step) => step.key === "engine")?.state).toBe("done");
@@ -817,7 +822,7 @@ describe("the vault step on the page", () => {
     const instance = withoutVault(`http://127.0.0.1:${String(github.port)}`);
     try {
       expect(await vaultStep(instance)).toBe("missing");
-      instance.saveSecret("githubToken", "a-page-token");
+      await instance.saveSecret("githubToken", "a-page-token");
       const [repository] = await instance.vaultRepositories();
       expect(repository?.fullName).toBe("you/vault");
       const result = await instance.cloneVault(repository?.cloneUrl ?? "");
@@ -874,6 +879,107 @@ describe("the vault step on the page", () => {
       sandbox.git(bare, "init", "-q", "--bare");
       expect((await instance.pushVault(bare)).repository).toBe(bare);
       expect((await instance.setupState()).vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+    }
+  });
+});
+
+describe("the commit identity of an Eva", () => {
+  const account = { id: 1234, login: "example-user", name: "Example User" };
+  const email = "1234+example-user@users.noreply.github.com";
+  let github: ReturnType<typeof Bun.serve> | null = null;
+  afterEach(async () => {
+    await github?.stop(true);
+    github = null;
+  });
+  /** A fake GitHub API that answers `GET /user` for one token. */
+  const fakeAccountApi = (): string => {
+    github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer a-page-token"
+          ? Response.json(account)
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    return `http://127.0.0.1:${String(github.port)}`;
+  };
+  const instanceWith = (secrets: Record<string, string>, githubApiBaseUrl?: string): Eva =>
+    new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC" },
+      secrets,
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
+    });
+  const agentGitConfig = (): string => readFileSync(join(home, "engines", "git", "gitconfig"), "utf8");
+
+  test("a start signs the agents' commits with the saved account", () => {
+    saveGitHubAccount(homePaths(home), account);
+    const instance = instanceWith({});
+    try {
+      expect(agentGitConfig()).toContain('name = "Example User"');
+      expect(agentGitConfig()).toContain(`email = "${email}"`);
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("the name and email that the person sets win over the account", () => {
+    saveGitHubAccount(homePaths(home), account);
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC", git: { name: "Another Name", email: "another@example.com" } },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      expect(agentGitConfig()).toContain('name = "Another Name"');
+      expect(agentGitConfig()).toContain('email = "another@example.com"');
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a token saved on the page reads its account, and a removed token removes it", async () => {
+    const instance = instanceWith({}, fakeAccountApi());
+    try {
+      await instance.saveSecret("githubToken", "a-page-token");
+      expect(loadGitHubAccount(homePaths(home))).toEqual(account);
+      await instance.saveSecret("githubToken", null);
+      expect(loadGitHubAccount(homePaths(home))).toBeNull();
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("a vault made on the page right after a token save carries the new account's name", async () => {
+    const instance = instanceWith({}, fakeAccountApi());
+    try {
+      await instance.saveSecret("githubToken", "a-page-token");
+      mkdirSync(join(home, "notes"));
+      writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
+      await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      expect(sandbox.git(join(home, "notes"), "log", "-1", "--format=%an <%ae>")).toBe(`Example User <${email}>`);
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("the GitHub check of an older install fills a missing account", async () => {
+    const instance = instanceWith({ githubToken: "a-page-token" }, fakeAccountApi());
+    try {
+      expect((await instance.runCheck("github")).ok).toBe(true);
+      expect(loadGitHubAccount(homePaths(home))).toEqual(account);
     } finally {
       instance.stop();
     }

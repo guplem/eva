@@ -122,6 +122,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "github", section: "connections", title: "GitHub token", words: "git private repository https" },
+  {
+    item: "commit-identity",
+    section: "connections",
+    title: "Commit name and email",
+    words: "git author signature user",
+  },
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
   { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },

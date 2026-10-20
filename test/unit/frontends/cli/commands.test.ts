@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import { readHubClaim } from "../../../../src/core/instance/hub.ts";
+import { saveGitHubAccount } from "../../../../src/core/instance/commit-identity.ts";
 import { acquireInstanceLock } from "../../../../src/core/instance/instance-lock.ts";
 import {
   createHomeFolders,
@@ -310,6 +311,22 @@ describe("with no Eva running", () => {
       expect(readHubClaim(vault)?.machine).toBe("server");
       saveConfig(paths, { ...defaultConfig, vaultPath: join(root, "missing-vault") });
       expect(await run(host, "sync")).toBe(exitCodes.crash);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  test("sync here signs the autosave with this Eva's commit identity", async () => {
+    const sandbox = createGitSandbox();
+    try {
+      const vault = sandbox.clone("vault");
+      saveConfig(paths, { ...defaultConfig, vaultPath: vault, git: { name: "Example User", email: null } });
+      saveGitHubAccount(paths, { id: 1234, login: "example-user", name: "Account Name" });
+      sandbox.write(vault, "note.md", "A note.\n");
+      expect(await run(fakeHost({ runner: systemProcessRunner }), "sync")).toBe(exitCodes.clean);
+      expect(sandbox.git(vault, "log", "-1", "--format=%an <%ae>")).toBe(
+        "Example User <1234+example-user@users.noreply.github.com>",
+      );
     } finally {
       sandbox.dispose();
     }

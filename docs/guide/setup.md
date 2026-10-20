@@ -261,4 +261,4 @@ eva --instance ana status
 
 Each Eva lives in her own folder, `eva-<name>`, in `~/.config` on Linux, or in `%APPDATA%` on Windows. Her Claude Code, pi and GitHub logins stay in the `engines` folder there, so two people never share a login or a subscription. Setup prints one command for each login that is missing. Run each command in another terminal while setup goes on. Run `eva --instance ana setup` again to check the logins later.
 
-The commits of each Eva carry the name and email of your global git settings, unless her clone sets its own with `git config user.name` and `git config user.email`. For hosts other than GitHub, git uses your own login. To keep everything apart, give each person a separate computer user.
+The commits of each Eva carry the name of her GitHub account and its private GitHub email. Eva reads the account when you log in to GitHub. To use another name or email, set it in **Settings**, **Connections**, **Commit name and email**. An Eva with no GitHub login uses the name and email of your global git settings. For hosts other than GitHub, git uses your own login. To keep everything apart, give each person a separate computer user.

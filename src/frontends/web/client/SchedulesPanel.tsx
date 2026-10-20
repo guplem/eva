@@ -9,6 +9,7 @@ import { Icon } from "./icons.tsx";
 import { dayLine, lastRunWords, nextRunWords, repeatWords } from "./schedule-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { CardsSkeleton } from "./Loading.tsx";
 
 /** Another part of the page, such as a setup card, fires this after it changes a schedule. */
 export const schedulesChangedEvent = "eva:schedules-changed";
@@ -68,6 +69,7 @@ export function SchedulesPanel(): ReactElement {
             {notice}
           </div>
         )}
+        {list === null && <CardsSkeleton label="Loading the schedules…" cards={2} />}
         {list?.problems.map((problem) => (
           <div key={problem} className="schedule-problem">
             {problem}

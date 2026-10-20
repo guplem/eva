@@ -111,7 +111,7 @@ async function tokenColour(page: Page, name: string): Promise<string> {
 
 async function style(
   locator: Locator,
-  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor" | "borderTopWidth" | "borderLeftWidth",
 ): Promise<string> {
   return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
 }
@@ -1816,9 +1816,11 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
   expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  // The status icon shows the state. A coloured stripe on one edge looks dated.
+  expect(await style(left, "borderLeftWidth")).toBe("0px");
   await left.click();
   const header = page.locator(".step-header");
-  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header, "borderTopWidth")).toBe("0px");
   expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
   expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
 });

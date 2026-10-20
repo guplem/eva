@@ -383,6 +383,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     );
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());
+  if (method === "GET" && url.pathname === "/api/turns") return json(eva.sessions.runningTurns());
   if (method === "GET" && url.pathname === "/api/projects") {
     const status = statusSchema.parse(url.searchParams.get("status") ?? undefined);
     const tag = url.searchParams.get("tag");

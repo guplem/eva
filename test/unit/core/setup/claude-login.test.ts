@@ -309,6 +309,23 @@ describe("ClaudeLogin with output in pieces", () => {
     expect((error as Error).message).not.toContain("secret-example-code");
   });
 
+  test("never puts the hidden code into the error", async () => {
+    const { login } = makeLogin(
+      {
+        onStart: showAddress,
+        // claude 2.1 shows a star for each character of the code, and sometimes the last few.
+        onWrite: (terminal, text) => {
+          if (text !== "\r") terminal.print(`\r${escape}[31C${"*".repeat(text.length - 3)}${text.slice(-3)}\r\n`);
+        },
+      },
+      { waitMs: 30 },
+    );
+    await login.start();
+    const error = await failure(login.finish("secret-example-code"));
+    expect((error as Error).message).not.toContain("***");
+    expect((error as Error).message).not.toContain('It said: "');
+  });
+
   test("a Finish before the address waits for no code", async () => {
     const { login, terminals } = makeLogin({});
     const started = login.start();

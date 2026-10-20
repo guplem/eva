@@ -862,6 +862,39 @@ describe("the GitHub login from the page", () => {
     }
   });
 
+  test("a removal during a slow save leaves the agents' gh logged out", async () => {
+    // GitHub answers the account read late, so the save's gh login would come after the removal.
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async () => {
+        await Bun.sleep(300);
+        return Response.json({ login: "example-user", id: 7 });
+      },
+    });
+    const gh = fakeGh(systemProcessRunner);
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: gh,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+    });
+    try {
+      await Promise.all([instance.saveSecret("githubToken", "gho_slow"), instance.saveSecret("githubToken", null)]);
+      expect(loadSecrets(homePaths(home)).githubToken).toBeUndefined();
+      expect(gh.calls.filter((call) => call.command[2] === "login")).toEqual([]);
+      expect((await instance.setupState()).progress.find((step) => step.key === "github")?.state).toBe("optional");
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
   test("a token that gh refuses is still saved, and the step says what to do", async () => {
     const instance = new Eva({
       paths: homePaths(home),

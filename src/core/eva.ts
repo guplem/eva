@@ -224,6 +224,8 @@ export class Eva {
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
+  /** The gh logins and logouts, one after the other. */
+  private githubCliChanges: Promise<void>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -326,6 +328,7 @@ export class Eva {
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
     });
+    this.githubCliChanges = Promise.resolve();
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -968,24 +971,36 @@ export class Eva {
     const result = this.settings.saveSecret(name, value);
     if (name !== "githubToken") return result;
     const token = this.settings.secrets.githubToken;
-    const gh = {
-      ghFolder: engineFolders(this.options.paths).gh,
-      runner: this.options.runner,
-      environment: this.options.processEnvironment,
-    };
-    if (token === undefined) {
-      saveGitHubAccount(this.options.paths, null);
-      const problem = await logOutGitHubCli(gh);
-      if (problem !== null) this.options.logger?.log("warn", `Eva could not log out the agents' gh. ${problem}`);
-      return result;
-    }
-    if (!(await this.refreshGitHubAccount(token, token !== before)))
+    if (token === undefined) saveGitHubAccount(this.options.paths, null);
+    else if (!(await this.refreshGitHubAccount(token, token !== before)))
       this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
-    // The vault works with the token alone, so a gh problem never fails the save. The GitHub step shows it.
-    const problem = await logInGitHubCli({ ...gh, token });
-    if (problem !== null)
-      this.options.logger?.log("warn", `Eva could not log in the agents' gh. ${this.redactor.redact(problem)}`);
+    await this.updateGitHubCli(token);
     return result;
+  }
+
+  /**
+   * Logs the agents' gh in with the saved token, or out when none is saved. One change runs at a
+   * time, and only the token that is still saved reaches gh: a quick second save wins. The vault
+   * works with the token alone, so a gh problem never fails the save. The GitHub step shows it.
+   */
+  private updateGitHubCli(token: string | undefined): Promise<void> {
+    const run = async (): Promise<void> => {
+      if (this.settings.secrets.githubToken !== token) return;
+      const gh = {
+        ghFolder: engineFolders(this.options.paths).gh,
+        runner: this.options.runner,
+        environment: this.options.processEnvironment,
+      };
+      const problem = token === undefined ? await logOutGitHubCli(gh) : await logInGitHubCli({ ...gh, token });
+      if (problem !== null)
+        this.options.logger?.log(
+          "warn",
+          `Eva could not log ${token === undefined ? "out" : "in"} the agents' gh. ${this.redactor.redact(problem)}`,
+        );
+    };
+    const next = this.githubCliChanges.then(run);
+    this.githubCliChanges = next;
+    return next;
   }
 
   /** The account gives the commit name and email from the next start on. */

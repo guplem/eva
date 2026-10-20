@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import { errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 type Listing =
   | { readonly state: "loading" }
@@ -102,11 +103,7 @@ function PickRepository({
   return (
     <div className="vault-choice">
       <h3>Use your vault from GitHub</h3>
-      {listing.state === "loading" && (
-        <p className="field-hint" role="status">
-          Reading your GitHub repositories…
-        </p>
-      )}
+      {listing.state === "loading" && <ProgressBar label="Reading your GitHub repositories…" />}
       {listing.state === "failed" && (
         <div className="callout danger callout-action">
           <span>Eva could not list your repositories. {listing.reason}</span>

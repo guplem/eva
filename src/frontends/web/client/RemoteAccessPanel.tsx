@@ -16,6 +16,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { qrCodeShape } from "./qr-code.ts";
 import { Card, StatusIcon } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 /** An action, such as an install, shows its progress soon after. */
 const waitingPollMs = 3_000;
@@ -107,6 +108,7 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
           </button>
         )}
       </div>
+      {access.busy === "installing" && <ProgressBar label="Installing Tailscale…" />}
       {url !== null ? (
         <div className="access-share">
           <QrCode text={url} />

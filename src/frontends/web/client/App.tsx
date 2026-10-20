@@ -35,6 +35,7 @@ import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
 import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
+import { AppSkeleton } from "./Loading.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -312,7 +313,8 @@ function EvaApp(): ReactElement {
     return () => clearTimeout(timer);
   }, [allowedDevice]);
 
-  if (authenticated === null) return <div className="empty">Loading…</div>;
+  if (authenticated === null)
+    return <AppSkeleton page={screen === "chats" ? "chat" : screen === "projects" ? "list" : "cards"} />;
   if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (requestId: string, answer: "allow" | "deny"): Promise<void> => {

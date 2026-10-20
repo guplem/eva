@@ -30,6 +30,7 @@ import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./s
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
+import { CardsSkeleton } from "./Loading.tsx";
 
 const statusPollMs = 3_000;
 const restartPollLimit = 60;
@@ -113,7 +114,11 @@ export function SettingsView({
 
   if (settings === null)
     return loadError === null ? (
-      <div className="empty">Loading the settings…</div>
+      <div className="main settings-main">
+        <div className="page-skeleton">
+          <CardsSkeleton label="Loading the settings…" />
+        </div>
+      </div>
     ) : (
       <div className="empty" role="status">
         The settings did not load: {loadError} <button onClick={loadSettings}>Try again</button>

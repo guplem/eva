@@ -7,6 +7,7 @@ import { api, type DeviceSummary } from "./api.ts";
 import { allowedWords, describeDevice } from "./device-words.ts";
 import { Icon } from "./icons.tsx";
 import { Card } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 
 interface DevicesPanelProps {
   readonly onChanged: (note: string) => void;
@@ -66,7 +67,7 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
       }
     >
       {devices === null ? (
-        <div className="field-hint">Loading…</div>
+        <ProgressBar label="Reading the devices…" />
       ) : devices.length === 0 ? (
         <div className="field-hint">No device has logged in with a code yet.</div>
       ) : (

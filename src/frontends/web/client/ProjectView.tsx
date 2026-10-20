@@ -17,6 +17,7 @@ import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, statusPill } from "./project-format.ts";
+import { ListSkeleton } from "./Loading.tsx";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -71,7 +72,8 @@ export function ProjectView({
   const [status, setStatus] = useState("active");
   const [tag, setTag] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  /** Null until the first read, so the list never says "No project matches." too early. */
+  const [projects, setProjects] = useState<Project[] | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [loaded, setLoaded] = useState<{ readonly projectId: string; readonly clones: CloneDetails[] } | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -82,7 +84,11 @@ export function ProjectView({
     const timer = setTimeout(() => {
       api
         .projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag)
-        .then(setProjects, showError);
+        .then(setProjects, (caught: unknown) => {
+          // The toast names the failure. The list stops waiting, so the filters still work.
+          setProjects((current) => current ?? []);
+          showError(caught);
+        });
     }, 200);
     return () => clearTimeout(timer);
   }, [search, status, tag, listVersion, showError]);
@@ -269,8 +275,9 @@ export function ProjectView({
             ))}
           </div>
         )}
-        {projects.length === 0 && <span className="muted">No project matches.</span>}
-        {projects.map((project) => (
+        {projects === null && <ListSkeleton label="Loading the projects…" rows={4} />}
+        {projects?.length === 0 && <span className="muted">No project matches.</span>}
+        {projects?.map((project) => (
           <button
             key={project.id}
             className="project-card"

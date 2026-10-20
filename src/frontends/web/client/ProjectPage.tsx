@@ -4,6 +4,7 @@ import type { CloneDetails, Project, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { changesPill, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
 import { chatTime } from "./chat-list.ts";
+import { CardsSkeleton } from "./Loading.tsx";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -82,7 +83,7 @@ export function ProjectPage({
           </div>
         )}
         {clones === null ? (
-          <p className="muted">Loading the clones…</p>
+          <CardsSkeleton label="Loading the clones…" cards={2} />
         ) : clones.length === 0 ? (
           <p className="muted">No clones yet. "New clone" copies the repository into this project.</p>
         ) : (

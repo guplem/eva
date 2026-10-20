@@ -7,6 +7,7 @@ import { api, type ConflictChoice, type VaultConflict, type VaultSyncState } fro
 import { compareVersions, type DiffRow } from "./line-diff.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
+import { ProgressBar } from "./Loading.tsx";
 
 const pickLabels: Readonly<Record<ConflictChoice, string>> = {
   mine: "Keep mine",
@@ -76,7 +77,7 @@ export function NoteConflicts({
 
   return (
     <div className="note-conflicts">
-      {conflicts === null && note === null && <div>Loading the conflicts…</div>}
+      {conflicts === null && note === null && <ProgressBar label="Loading the conflicts…" />}
       {conflicts?.length === 0 && <div>No note conflicts now.</div>}
       {conflicts?.map((conflict) => (
         <NoteConflictCard

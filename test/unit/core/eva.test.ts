@@ -1057,8 +1057,9 @@ describe("Eva", () => {
     expect(eva.status().vaultPath).toBeNull();
     expect(() => eva?.createAssistantSession({ source: "cli", model: "default" })).toThrow("vault");
     // The page and Telegram read this text too, and neither can run a terminal command.
-    expect(() => eva?.createAssistantSession({ source: "web", model: "default" })).toThrow("Settings");
-    expect(() => eva?.createAssistantSession({ source: "web", model: "default" })).not.toThrow("eva setup");
+    expect(() => eva?.createAssistantSession({ source: "web", model: "default" })).toThrow(
+      "Finish the setup in Settings, on Eva's page.",
+    );
   });
 });
 

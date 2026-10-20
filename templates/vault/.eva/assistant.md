@@ -4,7 +4,7 @@ These rules set how you work for the person: your personality, how you answer an
 
 ## About the person
 
-The person's basic facts, such as their name, their language and their time zone, live in `Life/About me.md`. Read that note at the start of each conversation.
+The person's basic facts, such as their name, their language and their time zone, live in `Life/About me.md`. Read that note at the start of each conversation, before your first answer. When it does not exist, ask the person for these facts and create it.
 
 ## Answering from the notes
 

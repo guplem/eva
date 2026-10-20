@@ -34,14 +34,14 @@ So "how we priced the shop" lives in the project. "How I decide prices" moves to
 
 ### Where things go
 
-| Folder           | Why the person opens it                                                                       |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `Principles/`    | To remember who they want to be: values, mantras, philosophy.                                 |
-| `Methods/`       | To do or decide something their way: their own procedures and frameworks.                     |
-| `Toolbox/`       | To grab something and use it: commands, scripts, prompts, cheat sheets, lookup facts.         |
-| `Library/`       | To understand something: explanations worth keeping.                                          |
-| `Projects/<id>/` | To work on one project: everything about it, any purpose, together.                           |
-| `Life/<name>/`   | The same shape, for personal contexts, such as `Life/Home/`, `Life/Health/` or `Life/Diary/`. |
+| Folder           | Why the person opens it                                                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Principles/`    | To remember who they want to be: values, mantras, philosophy.                                                                                            |
+| `Methods/`       | To do or decide something their way: their own procedures and frameworks.                                                                                |
+| `Toolbox/`       | To grab something and use it: commands, scripts, prompts, cheat sheets, lookup facts.                                                                    |
+| `Library/`       | To understand something: explanations worth keeping.                                                                                                     |
+| `Projects/<id>/` | To work on one project: everything about it, any purpose, together.                                                                                      |
+| `Life/<name>/`   | The same shape, for personal contexts, such as `Life/Home/`, `Life/Health/` or `Life/Diary/`. `Life/About me.md` holds the basic facts about the person. |
 
 Inside each folder, group by topic. Purpose first, topic second.
 

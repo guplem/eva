@@ -53,8 +53,18 @@ describe("moveAssistantPersonality (vault)", () => {
     expect(text.replaceAll("\r\n", "")).not.toContain("\n");
   });
 
-  test("leaves rules alone that already say how Eva learns", () => {
-    const own = "# Rules\n\n  ## Learning\n\nMy own way.\n";
+  test("adds only the sections that the rules lack, and reads a heading of the person's own as theirs", () => {
+    writeFileSync(rulesFile, "# Rules\n\n## Learning\n\nI study German.\n\n- Keep answers chat-sized.\n");
+    migrate();
+    const text = readFileSync(rulesFile, "utf-8");
+    expect(text).toContain("## Answering from the notes");
+    // The person's "## Learning" is about German, so Eva's own Learning section is still added.
+    expect(text).toContain("The person never has to tell you the same thing twice.");
+    expect(text).not.toContain("## Style");
+  });
+
+  test("leaves rules alone that already hold every section", () => {
+    const own = "# Rules\n\nSearch the vault first.\n\nNever tell me the same thing twice.\n\nBe chat-sized.\n";
     writeFileSync(rulesFile, own);
     migrate();
     expect(readFileSync(rulesFile, "utf-8")).toBe(own);

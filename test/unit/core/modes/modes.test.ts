@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ApprovalAnswer } from "../../../../src/shared/engine-port.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
+import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
 import { AssistantPreparer } from "../../../../src/core/modes/assistant-mode.ts";
 import { ProjectPreparer } from "../../../../src/core/modes/project-mode.ts";
 import { CloneOriginStore, TrustStore } from "../../../../src/core/projects/clones.ts";
@@ -89,6 +91,10 @@ beforeEach(() => {
   vault = sandbox.clone("vault");
   mkdirSync(join(vault, ".eva", ".claude-plugin"), { recursive: true });
   writeFileSync(join(vault, ".eva", "assistant.md"), "# You are Eva\n");
+  writeFileSync(
+    vaultMigrationRecordPath(vault),
+    JSON.stringify({ applied: [{ id: moveAssistantPersonality.id, at: "", version: "" }] }),
+  );
 }, gitHookTimeoutMs);
 afterEach(() => {
   sandbox.dispose();
@@ -115,6 +121,14 @@ describe("Assistant mode", () => {
       trusted: true,
       environment: { PATH: "/bin" },
     });
+  });
+
+  test("before the hub migrates the vault, the prompt adds the sections that left the built-in prompt", async () => {
+    rmSync(vaultMigrationRecordPath(vault));
+    const prompt = (await assistant(silentRunner).prepare(session())).appendSystemPrompt ?? "";
+    expect(prompt.startsWith("Base rules.\n\n# You are Eva\n\n## Answering from the notes\n")).toBe(true);
+    expect(prompt).toContain("\n## Learning\n");
+    expect(prompt).toContain("\n## Style\n");
   });
 
   test("the prompt is byte-identical every turn, and the local time goes in the message (lesson 40)", async () => {

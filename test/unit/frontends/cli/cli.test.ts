@@ -836,8 +836,18 @@ describe("runSetup", () => {
       expect(loadSecrets(homePaths(home)).githubToken).toBe("ghp_without-scopes");
       const text = lines.join("\n");
       expect(text).toContain("missing required scope 'read:org'");
-      expect(text).toContain("type login at the GitHub question");
+      expect(text).toContain("Press Log in with GitHub on Eva's page");
       expect(text).not.toContain("Your agents use the same GitHub login.");
+    });
+
+    test("a rerun with the same token leaves the agents' gh alone", async () => {
+      saveSecrets(homePaths(home), { githubToken: "gho_saved" });
+      const gh = fakeGh(okRunner);
+      const lines: string[] = [];
+      await setup({ vaultRepository: githubVault }, { lines, runner: gh, githubLogin: browserLogin([]) });
+      // A hand-made gh login stays, and an old token with too few scopes waits for a new login on the page.
+      expect(gh.calls.filter((call) => call.command[2] === "login")).toEqual([]);
+      expect(lines.join("\n")).not.toContain("Your agents use the same GitHub login.");
     });
 
     test("with a saved token, Enter keeps it, and login logs in again", async () => {

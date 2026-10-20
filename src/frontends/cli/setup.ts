@@ -29,7 +29,7 @@ import {
   installUv,
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
-import { claudeLoggedIn, githubCliAccount, piLoginState } from "../../core/setup/logins.ts";
+import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
 import { doneLine, indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts";
 import type { FinishPlace } from "./setup-start.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
@@ -840,8 +840,9 @@ function piLogin(run: string, engineFolders: EngineFolders, platform: NodeJS.Pla
 }
 
 /**
- * One GitHub login serves Eva and her agents (#244). A new token, or a saved one that the
- * instance's gh lacks, logs in gh too. A gh problem leaves the token saved: the vault needs no gh.
+ * One GitHub login serves Eva and her agents (#244): a token that this run saved logs in gh too.
+ * A saved one stays as it is: it may lack the scopes that gh needs, and a hand-made gh login may
+ * serve the agents already. A gh problem leaves the token saved: the vault needs no gh.
  */
 async function logInAgentsGh(
   options: SetupOptions,
@@ -849,11 +850,10 @@ async function logInAgentsGh(
   tokenAtStart: string | undefined,
   ghFolder: string,
 ): Promise<void> {
-  if (token === undefined || (token === tokenAtStart && githubCliAccount(ghFolder) !== null)) return;
+  if (token === undefined || token === tokenAtStart) return;
   const problem = await logInGitHubCli({ token, ghFolder, runner: options.runner, environment: options.environment });
   if (problem === null) options.write(doneLine("Your agents use the same GitHub login."));
+  // A rerun skips the GitHub question while a token is saved, so the page is the place to fix it.
   else
-    options.write(
-      `Eva could not log in your agents' gh. ${problem}\nRun eva setup again, and type login at the GitHub question.`,
-    );
+    options.write(`Eva could not log in GitHub for your agents. ${problem}\nPress Log in with GitHub on Eva's page.`);
 }

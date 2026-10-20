@@ -35,7 +35,7 @@ export function googleMcpServer(inputs: GoogleMcpInputs): McpServerSpec | null {
       "--single-user",
       // The levels also pick the services, so this flag replaces `--tools` and `--read-only`.
       "--permissions",
-      ...config.services.map((service) => `${service}:${config.access[service]}`),
+      ...[...new Set(config.services)].map((service) => `${service}:${config.access[service]}`),
     ],
     environment: {
       ...inputs.environment,

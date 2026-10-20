@@ -52,6 +52,16 @@ describe("googleMcpServer", () => {
     ]);
   });
 
+  test("names each service once: workspace-mcp stops at a repeated one", () => {
+    const server = googleMcpServer({ ...inputs, config: { ...inputs.config, services: ["calendar", "calendar"] } });
+    expect(server?.args).toEqual([
+      `workspace-mcp==${workspaceMcpVersion}`,
+      "--single-user",
+      "--permissions",
+      "calendar:readonly",
+    ]);
+  });
+
   test("Google stays off without an account, a service, or an OAuth client", () => {
     expect(googleMcpServer({ ...inputs, config: { ...inputs.config, email: null } })).toBeNull();
     expect(googleMcpServer({ ...inputs, config: { ...inputs.config, services: [] } })).toBeNull();

@@ -28,8 +28,27 @@ The person wants Eva to change some Google services but only read others. For ex
 
 ## Decisions
 
-To be filled in.
+Three sub-agents agreed on gaps 1, 2, 4 and 5. The owner chose gap 3 and approved the key change.
+
+1. **Storage shape.** A new machine key, `google.access`, holds one level for each of the 5 services. Each service has its own enum, because the level lists differ. The default is `readonly` everywhere. No preset name is stored: the card finds the preset that matches the levels, or shows "Custom". `google.services` stays the list of services that are on.
+2. **Migration.** A dated machine migration replaces `google.readOnly`. `false` becomes `full` for every service, which gives the same scopes as before. `true`, or a bad value, becomes the default. The owner approved the key change. Nobody acts by hand and nobody loses access, so the change is not breaking. An old Eva that reads the new file drops `google.access` and falls back to read only.
+3. **Presets.** The owner chose 4 steps on one ladder, plus "Custom":
+
+   | Preset           | calendar | drive    | contacts | tasks    | gmail    |
+   | ---------------- | -------- | -------- | -------- | -------- | -------- |
+   | Read only        | readonly | readonly | readonly | readonly | readonly |
+   | Keep my lists    | full     | readonly | full     | manage   | organize |
+   | Change and draft | full     | full     | full     | full     | drafts   |
+   | Everything       | full     | full     | full     | full     | full     |
+
+   Eva still asks before each tool call that reaches other people, in every preset.
+
+4. **User interface.** Step 3 of the Google card shows one preset select, a `SelectField`. It shows one select per service that is on only for "Custom", or when the levels match no preset. A change still asks the person to log in again.
+5. **Other front ends.** The terminal setup and Telegram need no change. `eva config set google.access.calendar full` works through the dotted keys.
 
 ## Steps
 
-To be filled in.
+1. Core: the `google.access` schema, the cumulative scopes of each level, `--permissions` for `workspace-mcp`, and the presets.
+2. Migration: `2026-10-20-google-access-per-service`, and the stored-names file.
+3. Web: the preset select and the per-service selects.
+4. Docs: `docs/guide/reference.md`.

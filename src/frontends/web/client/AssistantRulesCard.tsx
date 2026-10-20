@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import type { AssistantRulesView } from "../../../core/modes/assistant-rules.ts";
 import { api, ApiError } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { nestedWebHtml } from "./web-format.ts";
 
@@ -19,8 +20,8 @@ const scope =
   "A change applies from the next new chat.";
 
 export function AssistantRulesCard({ context }: { readonly context: SettingsContext }): ReactElement | null {
-  /** Null until loaded, and when no vault holds the rules. */
-  const [rules, setRules] = useState<AssistantRulesView | null>(null);
+  /** "loading" until the first answer, and "none" when no vault holds the rules. */
+  const [rules, setRules] = useState<AssistantRulesView | "loading" | "none">("loading");
   /** The text being edited, or null when the card shows the formatted rules. */
   const [draft, setDraft] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -33,12 +34,22 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
       .then(setRules)
       .catch((error: unknown) => {
         // Without a vault, the page shows no card for the rules.
-        if (!(error instanceof ApiError && error.status === 409)) notify(errorText(error));
+        if (error instanceof ApiError && error.status === 409) setRules("none");
+        else notify(errorText(error));
       });
   }, [notify]);
   useEffect(load, [load]);
+  // A new function at each render would make the dialog move the focus back to Cancel.
+  const closeRestore = useCallback((): void => setRestoring(false), []);
 
-  if (rules === null) return null;
+  if (rules === "none") return null;
+  if (rules === "loading") {
+    return (
+      <Card item="assistant-rules" title="Eva's rules" description={scope}>
+        <ProgressBar label="Reading your rules…" />
+      </Card>
+    );
+  }
 
   /** Eva can change the rules in a chat, so a save from an old version loads the new text instead. */
   const run = async (action: () => Promise<string>): Promise<void> => {
@@ -110,15 +121,17 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
             onChange={(event) => setDraft(event.target.value)}
           />
           <span className="field-hint">The rules live in your vault, in .eva/assistant.md.</span>
-          <div className="button-row">
-            <button className="primary" disabled={busy} onClick={() => void save(draft)}>
-              Save
-            </button>
-            <button disabled={busy} onClick={() => setDraft(null)}>
-              Cancel
-            </button>
-          </div>
         </label>
+      )}
+      {draft !== null && (
+        <div className="button-row">
+          <button className="primary" disabled={busy} onClick={() => void save(draft)}>
+            Save
+          </button>
+          <button disabled={busy} onClick={() => setDraft(null)}>
+            Cancel
+          </button>
+        </div>
       )}
       <details>
         <summary>Eva's built-in rules (read only)</summary>
@@ -131,11 +144,13 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
           dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.builtIn, cardHeadingLevel) }}
         />
       </details>
-      {restoring && (
-        <RestoreDialog busy={busy} onRestore={(backup) => void restore(backup)} onClose={() => setRestoring(false)} />
-      )}
+      {restoring && <RestoreDialog busy={busy} onRestore={(backup) => void restore(backup)} onClose={closeRestore} />}
     </Card>
   );
+}
+
+function ignore(): void {
+  // Nothing to do: see RestoreDialog.
 }
 
 function RestoreDialog({
@@ -149,10 +164,12 @@ function RestoreDialog({
 }): ReactElement {
   const [backup, setBackup] = useState(true);
   return (
-    <Dialog label="Restore the default rules" onClose={onClose} closeLabel="Cancel">
+    // While the restore runs, Escape and Cancel do nothing: the dialog closes when it ends.
+    <Dialog label="Restore the default rules" onClose={busy ? ignore : onClose} closeLabel="Cancel">
       <h2>Restore the default rules?</h2>
       <div className="callout warning">
         Eva replaces all your rules with her default rules. Every rule and fact that you or Eva wrote in them goes away.
+        A backup keeps a copy that you can read in Files.
       </div>
       <label className="check-row">
         <input type="checkbox" checked={backup} onChange={(event) => setBackup(event.target.checked)} />

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chatSubtitle,
   contextShare,
   contextFigure,
   engineLabel,
@@ -135,5 +136,16 @@ describe("tasksOfTurn", () => {
       k1: { description: "look around", state: "ended", sessionId: "s1" },
       k2: { description: "npm test", state: "failed", sessionId: "s1" },
     });
+  });
+});
+
+describe("chatSubtitle", () => {
+  test("names the engine and the mode", () => {
+    expect(chatSubtitle({ engine: "claude-code", mode: "assistant" }, false)).toBe("Claude Code · Assistant");
+    expect(chatSubtitle({ engine: "pi", mode: "project" }, false)).toBe("pi · Project");
+  });
+
+  test("starts with Working while a turn runs", () => {
+    expect(chatSubtitle({ engine: "claude-code", mode: "assistant" }, true)).toBe("Working · Claude Code · Assistant");
   });
 });

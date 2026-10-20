@@ -59,6 +59,12 @@ export function titleCase(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/** The line under a chat's title, such as "Claude Code · Assistant". The model shows only in the composer chip. */
+export function chatSubtitle(chat: Pick<SessionRecord, "engine" | "mode">, running: boolean): string {
+  const words = `${engineLabel(chat.engine)} · ${titleCase(chat.mode)}`;
+  return running ? `Working · ${words}` : words;
+}
+
 export type StatusTone = "live" | "ok" | "bad" | "idle";
 
 const statuses: Readonly<Record<string, { label: string; tone: StatusTone }>> = {

@@ -5,21 +5,12 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
+import { errorFix, type ErrorFix } from "./error-fixes.ts";
 import { Icon, type IconName } from "./icons.tsx";
-import { addressOf, destinationOf } from "./navigation.ts";
+import { destinationOf } from "./navigation.ts";
 
 /** A toast hides itself after this time; the person can close it sooner. */
 const toastVisibleMs = 8_000;
-
-/** The failures that a person fixes in Settings, so the toast offers the way there. */
-const fixedInSettings: ReadonlySet<EvaErrorCode> = new Set([
-  "engine_failed",
-  "engine_install_failed",
-  "github_failed",
-  "google_failed",
-  "tailscale_install_failed",
-  "update_failed",
-]);
 
 /** A failed login shows a key, as the guide does for an expired login. */
 const loginCodes: ReadonlySet<EvaErrorCode> = new Set(["github_failed", "google_failed"]);
@@ -27,7 +18,7 @@ const loginCodes: ReadonlySet<EvaErrorCode> = new Set(["github_failed", "google_
 interface Toast {
   readonly message: string;
   readonly icon: IconName;
-  readonly fixInSettings: boolean;
+  readonly fix: ErrorFix | null;
 }
 
 type ShowError = (caught: unknown) => void;
@@ -58,6 +49,7 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const fix = toast?.fix ?? null;
   return (
     <ShowErrorContext.Provider value={showError}>
       {children}
@@ -65,15 +57,15 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
         <div className="toast" role="alert">
           <Icon name={toast.icon} />
           <span>{toast.message}</span>
-          {toast.fixInSettings && !settingsIsOpen && (
+          {fix !== null && !settingsIsOpen && (
             <button
               className="primary"
               onClick={() => {
                 setToast(null);
-                window.location.hash = addressOf("settings");
+                window.location.hash = fix.address;
               }}
             >
-              Open Settings
+              {fix.label}
             </button>
           )}
           <button className="toast-close" aria-label="Close the message" onClick={() => setToast(null)}>
@@ -91,7 +83,7 @@ function describeError(caught: unknown): Toast {
     return {
       message: caught.message,
       icon: code !== null && loginCodes.has(code) ? "key" : "alert",
-      fixInSettings: code !== null && fixedInSettings.has(code),
+      fix: errorFix(code),
     };
   }
   // fetch rejects with a TypeError when the request never reaches Eva.
@@ -99,8 +91,8 @@ function describeError(caught: unknown): Toast {
     return {
       message: "Eva cannot be reached. Check the connection and try again.",
       icon: "wifi-off",
-      fixInSettings: false,
+      fix: null,
     };
   }
-  return { message: caught instanceof Error ? caught.message : String(caught), icon: "alert", fixInSettings: false };
+  return { message: caught instanceof Error ? caught.message : String(caught), icon: "alert", fix: null };
 }

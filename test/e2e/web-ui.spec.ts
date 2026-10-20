@@ -1782,9 +1782,9 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
 test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
   await page.route("**/api/settings/setup", async (route) => {
     const response = await route.fetch();
-    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
-    const progress = setup.progress.map((step, index) =>
-      index === 0
+    const setup = (await response.json()) as { progress: { key: string; state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "engine"
         ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
         : step.key === "vault"
           ? { ...step, state: "missing", lastCheck: null }

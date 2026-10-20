@@ -142,9 +142,17 @@ describe("browseVault: refusals (lesson 72)", () => {
     expect(browseVault(vault, "harmless.txt", keep)).toMatchObject({ kind: "unreadable" });
   });
 
-  test("a path part with a colon is not found: Windows reads it as a file stream", () => {
-    expect(refusal(() => browseVault(vault, ".git::$INDEX_ALLOCATION/config", keep))).not.toBeNull();
+  test.skipIf(process.platform === "win32")("elsewhere, a listed name with a colon opens", () => {
+    write("Meeting 10:30.md", "# Notes\n");
+    expect(browseVault(vault, "Meeting 10:30.md", keep)).toMatchObject({ kind: "file", text: "# Notes\n" });
   });
+
+  test.if(process.platform === "win32")(
+    "on Windows, a path part with a colon is a file stream, so it is not found",
+    () => {
+      expect(refusal(() => browseVault(vault, ".git::$INDEX_ALLOCATION/config", keep))).not.toBeNull();
+    },
+  );
 
   test("a vault that does not exist is not found", () => {
     expect(refusal(() => browseVault(join(folder, "none"), "", keep))).not.toBeNull();

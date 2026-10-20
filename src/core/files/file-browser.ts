@@ -38,7 +38,8 @@ export function browseVault(vaultPath: string, requested: string, redact: (text:
   const path = normalizedPath(requested);
   const notFound = new EvaError("file_not_found", `${path === "" ? "The vault" : path} was not found.`);
   // Windows reads a colon in a name as a file stream, which a name check cannot see through.
-  if (path.split("/").some((part) => part.includes(":"))) throw notFound;
+  // Elsewhere a colon is a plain character, such as in `Meeting 10:30.md`.
+  if (process.platform === "win32" && path.split("/").some((part) => part.includes(":"))) throw notFound;
   let root: string;
   let resolved: string;
   try {

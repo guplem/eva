@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
+import { GitHubLogin } from "./GitHubLogin.tsx";
 import { errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
 type Listing =
@@ -15,6 +16,7 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
   const hasToken = context.settings.secretsSet.githubToken;
   /** Which action runs now, so a second click never starts a second clone. */
   const [busy, setBusy] = useState<"clone" | "create" | null>(null);
+  const [pasteToken, setPasteToken] = useState(false);
 
   const run = async (kind: "clone" | "create", work: () => Promise<VaultSetupResult>): Promise<void> => {
     setBusy(kind);
@@ -45,21 +47,28 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
       ) : (
         <div className="vault-choice">
           <h3>Use your vault from GitHub</h3>
-          <p className="field-hint">
-            Save a GitHub token first, so Eva can list your repositories. The GitHub step shows how to make one.
-          </p>
-          <GitHubStepLink context={context} />
-          <SecretField
-            name="githubToken"
-            label="GitHub token"
-            saved={false}
-            help="Eva uses it to list, clone and create your vault's repository."
-            onChanged={(note) => {
-              // The card reads whether a token is saved from the settings, so they load again too.
-              context.reloadSettings();
-              context.noteAndReload(note);
-            }}
-          />
+          <p className="field-hint">Log in to GitHub first, so that Eva can list your repositories.</p>
+          <GitHubLogin context={context} />
+          {!pasteToken ? (
+            <button className="link-button" onClick={() => setPasteToken(true)}>
+              Paste a token instead
+            </button>
+          ) : (
+            <>
+              <GitHubStepLink context={context} />
+              <SecretField
+                name="githubToken"
+                label="GitHub token"
+                saved={false}
+                help="Eva uses it to list, clone and create your vault's repository. The GitHub step shows how to make one."
+                onChanged={(note) => {
+                  // The card reads whether a token is saved from the settings, so they load again too.
+                  context.reloadSettings();
+                  context.noteAndReload(note);
+                }}
+              />
+            </>
+          )}
         </div>
       )}
       <NewVault
@@ -228,7 +237,7 @@ export function VaultPush({ context }: { readonly context: SettingsContext }): R
     return (
       <div className="callout warning">
         <p>
-          Your vault is only on this computer. Save a GitHub token in the GitHub step, and Eva keeps it in a private
+          Your vault is only on this computer. Log in to GitHub in the GitHub step, and Eva keeps it in a private
           repository.
         </p>
         <GitHubStepLink context={context} />

@@ -1,5 +1,6 @@
 /** The connections page: GitHub, Telegram and Google. Each one is optional, and each card says why it helps. */
 import { useEffect, useState, type ReactElement } from "react";
+import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { Card, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -16,30 +17,38 @@ export function ConnectionsSection({ context }: { readonly context: SettingsCont
 
 export function GitHubCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const saved = context.settings.secretsSet.githubToken;
+  const [tokenSteps, setTokenSteps] = useState(false);
   return (
     <Card
       item="github"
       title="GitHub"
-      description="A GitHub token lets Eva reach a private vault and your private projects."
+      description="Eva uses your GitHub login to reach your private vault and projects."
       aside={<StatusPill state={saved ? "done" : "optional"} />}
     >
-      <Steps>
-        <li>
-          Open{" "}
-          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">
-            GitHub&apos;s new token page
-          </a>
-          . Log in if GitHub asks.
-        </li>
-        <li>Give the token a name, such as Eva. Pick the repositories of your vault and projects.</li>
-        <li>Under the permissions, allow at least Contents: read and write. Then create the token and copy it.</li>
-        <li>Paste the token here, and press Save.</li>
-      </Steps>
+      <GitHubLogin context={context} />
+      {!tokenSteps ? (
+        <button className="link-button" onClick={() => setTokenSteps(true)}>
+          Paste a token instead
+        </button>
+      ) : (
+        <Steps>
+          <li>
+            Open{" "}
+            <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">
+              GitHub&apos;s new token page
+            </a>
+            . Log in if GitHub asks.
+          </li>
+          <li>Give the token a name, such as Eva. Pick the repositories of your vault and projects.</li>
+          <li>Under the permissions, allow at least Contents: read and write. Then create the token and copy it.</li>
+          <li>Paste the token here, and press Save.</li>
+        </Steps>
+      )}
       <SecretField
         name="githubToken"
         label="GitHub token"
         saved={saved}
-        help="Eva's git commands use it for a private vault over HTTPS."
+        help="The login above saves it here. A token that you make yourself reaches only the repositories that you pick."
         check="github"
         onChanged={context.noteAndReload}
       />

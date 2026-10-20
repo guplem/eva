@@ -1889,12 +1889,53 @@ test("Settings: a token saved in the vault step lists the repositories at once",
     .getByRole("region", { name: "Progress list" })
     .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeVisible();
+  await page.getByRole("button", { name: "Paste a token instead" }).click();
   await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByLabel("Your vault's repository")).toBeVisible();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
+});
+
+test("Settings: the GitHub step logs in with a code, with no token to make (#243)", async ({ page }) => {
+  let finishes = 0;
+  await page.route("**/api/github/login", (route) =>
+    route.fulfill({ json: { code: "WXYZ-1234", url: "https://github.com/login/device" } }),
+  );
+  // GitHub answers after the person types the code: the page shows the code while it waits.
+  let allow: () => void = () => undefined;
+  const allowed = new Promise<void>((resolve) => {
+    allow = resolve;
+  });
+  await page.route("**/api/github/login/finish", async (route) => {
+    finishes += 1;
+    await allowed;
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /GitHub/ })
+    .click();
+  await expect(page.getByText("read and write all your GitHub repositories")).toBeVisible();
+  // The hand-made token waits behind a link, and the login comes first.
+  await expect(page.getByRole("link", { name: "GitHub's new token page" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Log in with GitHub" }).click();
+  await expect(page.getByText("WXYZ-1234")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open GitHub's page" })).toHaveAttribute(
+    "href",
+    "https://github.com/login/device",
+  );
+  await expect(page.getByRole("status").filter({ hasText: "Eva waits until you allow" })).toBeVisible();
+  allow();
+  await expect(page.getByRole("status").filter({ hasText: "Logged in to GitHub" })).toBeVisible();
+  await expect(page.getByText("WXYZ-1234")).toHaveCount(0);
+  expect(finishes).toBe(1);
+  await page.getByRole("button", { name: "Paste a token instead" }).click();
+  await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
 });
 
 test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {

@@ -6,8 +6,8 @@ import type { IconName } from "./icons.tsx";
 
 export const destinations = [
   { id: "chats", label: "Chats", icon: "chat" },
-  { id: "projects", label: "Projects", icon: "folder" },
-  { id: "files", label: "Files", icon: "file" },
+  { id: "projects", label: "Projects", icon: "briefcase" },
+  { id: "files", label: "Files", icon: "folder" },
   { id: "schedules", label: "Schedules", icon: "clock" },
   { id: "settings", label: "Settings", icon: "gear" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];

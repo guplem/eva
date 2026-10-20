@@ -346,7 +346,7 @@ export function ProjectView({
                   {page.clone.pullRequest !== null && <span className="pill idle">PR #{page.clone.pullRequest}</span>}
                   {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
                   <span className="mode-chip soft">
-                    <Icon name="folder" /> <span className="mode-chip-label">Project mode</span>
+                    <Icon name="briefcase" /> <span className="mode-chip-label">Project mode</span>
                   </span>
                 </>
               }

@@ -32,7 +32,7 @@ const calendar: Suggestion = {
   icon: "calendar",
 };
 // Eva makes the project's folder from the vault's rules. She cannot make a repository yet.
-const project: Suggestion = { title: "Create a project", detail: "Makes its folder in the vault", icon: "folder" };
+const project: Suggestion = { title: "Create a project", detail: "Makes its folder in the vault", icon: "briefcase" };
 const reminder: Suggestion = {
   title: "Remind me of something",
   detail: "Sets a schedule that messages you",

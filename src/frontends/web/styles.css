@@ -1449,7 +1449,7 @@ textarea {
     padding: var(--space-1);
   }
 
-  /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */
+  /* The briefcase icon alone says "Project mode" on a phone, so the title keeps its room. */
   .chat-header .mode-chip-label {
     position: absolute;
     width: 1px;

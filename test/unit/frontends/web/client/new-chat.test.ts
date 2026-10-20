@@ -16,12 +16,12 @@ describe("greeting", () => {
 
 describe("suggestions", () => {
   test("offer notes, calendar, projects and reminders, in the order of the design", () => {
-    expect(suggestions(true).map((suggestion) => suggestion.icon)).toEqual(["file", "calendar", "folder", "clock"]);
+    expect(suggestions(true).map((suggestion) => suggestion.icon)).toEqual(["file", "calendar", "briefcase", "clock"]);
   });
 
   test("hide the calendar when Google is not set up", () => {
     const shown = suggestions(false);
-    expect(shown.map((suggestion) => suggestion.icon)).toEqual(["file", "folder", "clock"]);
+    expect(shown.map((suggestion) => suggestion.icon)).toEqual(["file", "briefcase", "clock"]);
   });
 
   test("each has a title to send and one line that says what Eva does", () => {

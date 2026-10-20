@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { githubCliAccount } from "../../../../src/core/setup/logins.ts";
@@ -83,22 +83,10 @@ describe("the gh login of the instance", () => {
     expect(problem).toContain("did not end");
   });
 
-  test("logs out the account that the gh folder holds", async () => {
+  test("logs out by removing github.com from its own file, with no gh process", () => {
     mkdirSync(folder, { recursive: true });
-    writeFileSync(
-      join(folder, "hosts.yml"),
-      "github.com:\n    users:\n        example-user:\n            oauth_token: gho_example\n    git_protocol: https\n    oauth_token: gho_example\n    user: example-user\n",
-    );
-    const { runner, calls } = recordingRunner();
-    expect(await logOutGitHubCli({ ghFolder: folder, runner, environment })).toBeNull();
-    expect(calls[0]?.command).toEqual(["gh", "auth", "logout", "--hostname", "github.com", "--user", "example-user"]);
-    expect(calls[0]?.options.environment["GH_CONFIG_DIR"]).toBe(folder);
-  });
-
-  test("logs out every account whose token sits in the file, never one in the system keyring", async () => {
-    mkdirSync(folder, { recursive: true });
-    // gh keeps more than one account per host. A login without --insecure-storage keeps its token in the
-    // system keyring, which the person's own gh and other instances share: a logout there would reach them.
+    // `gh auth logout` also deletes the account from the system keyring, which the person's own gh and
+    // other instances share. Eva owns this folder, so she edits its file instead.
     writeFileSync(
       join(folder, "hosts.yml"),
       [
@@ -108,22 +96,27 @@ describe("the gh login of the instance", () => {
         "            oauth_token: gho_example",
         "        other-user:",
         "            oauth_token: gho_other",
-        "        keyring-user:",
         "    git_protocol: https",
         "    oauth_token: gho_example",
+        "    user: example-user",
+        "github.example.com:",
         "    user: example-user",
         "",
       ].join("\n"),
     );
-    const { runner, calls } = recordingRunner();
-    expect(await logOutGitHubCli({ ghFolder: folder, runner, environment })).toBeNull();
-    expect(calls.map((call) => call.command.at(-1))).toEqual(["example-user", "other-user"]);
+    expect(logOutGitHubCli(folder)).toBeNull();
+    expect(githubCliAccount(folder)).toBeNull();
+    const left = readFileSync(join(folder, "hosts.yml"), "utf8");
+    expect(left).not.toContain("gho_");
+    expect(left).toContain("github.example.com");
   });
 
-  test("with no gh login, there is nothing to log out", async () => {
-    const { runner, calls } = recordingRunner();
-    expect(await logOutGitHubCli({ ghFolder: folder, runner, environment })).toBeNull();
-    expect(calls).toHaveLength(0);
+  test("with no gh login, there is nothing to log out", () => {
+    expect(logOutGitHubCli(folder)).toBeNull();
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "hosts.yml"), "github.com: [unclosed");
+    // A file that Eva cannot read is not hers to rewrite.
+    expect(logOutGitHubCli(folder)).toContain("hosts.yml");
   });
 });
 

@@ -991,15 +991,16 @@ export class Eva {
         runner: this.options.runner,
         environment: this.options.processEnvironment,
       };
-      const problem = token === undefined ? await logOutGitHubCli(gh) : await logInGitHubCli({ ...gh, token });
+      const problem = token === undefined ? logOutGitHubCli(gh.ghFolder) : await logInGitHubCli({ ...gh, token });
       if (problem !== null)
         this.options.logger?.log(
           "warn",
           `Eva could not log ${token === undefined ? "out" : "in"} the agents' gh. ${this.redactor.redact(problem)}`,
         );
     };
-    const next = this.githubCliChanges.then(run);
-    this.githubCliChanges = next;
+    // A change that failed must not stop the ones after it.
+    const next = this.githubCliChanges.then(run, run);
+    this.githubCliChanges = next.catch(() => undefined);
     return next;
   }
 

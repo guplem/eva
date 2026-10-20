@@ -844,17 +844,10 @@ describe("the GitHub login from the page", () => {
       expect(gh.calls.map((call) => call.command.slice(0, 3))).toEqual([["gh", "auth", "login"]]);
       expect(gh.calls[0]?.stdin).toBe("gho_page_login\n");
       expect(await githubStep()).toBe("done");
-      // Removing the token logs the agents out too.
+      // Removing the token logs the agents out too, with no gh process: gh's logout reaches the keyring.
       await instance.saveSecret("githubToken", null);
-      expect(gh.calls.at(-1)?.command).toEqual([
-        "gh",
-        "auth",
-        "logout",
-        "--hostname",
-        "github.com",
-        "--user",
-        "example-user",
-      ]);
+      expect(gh.calls).toHaveLength(1);
+      expect(readFileSync(join(home, "engines", "gh", "hosts.yml"), "utf8")).not.toContain("github.com");
       expect(await githubStep()).toBe("optional");
     } finally {
       instance.stop();

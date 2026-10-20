@@ -2,7 +2,7 @@
  * A runner that answers `gh` as gh would, and sends every other command to `base`, such as the
  * real git. No test may log in a real gh: it needs the network, and a real GitHub account.
  */
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ProcessResult, ProcessRunOptions, ProcessRunner } from "../../src/shared/process-runner.ts";
 
@@ -12,8 +12,8 @@ export interface FakeGh extends ProcessRunner {
 }
 
 /**
- * `gh auth login` writes the account to `hosts.yml` in `GH_CONFIG_DIR`, and `gh auth logout`
- * removes it. `refuse` makes the login fail, as for a token without the scopes that gh needs.
+ * `gh auth login` writes the account to `hosts.yml` in `GH_CONFIG_DIR`, and `gh auth status`
+ * reads it. `refuse` makes the login fail, as for a token without the scopes that gh needs.
  */
 export function fakeGh(base: ProcessRunner, refuse: string | null = null): FakeGh {
   const calls: { command: readonly string[]; stdin: string | undefined }[] = [];
@@ -32,8 +32,6 @@ export function fakeGh(base: ProcessRunner, refuse: string | null = null): FakeG
           "github.com:\n    users:\n        example-user:\n            oauth_token: gho_fake\n    git_protocol: https\n    oauth_token: gho_fake\n    user: example-user\n",
         );
       }
-      if (command[1] === "auth" && command[2] === "logout" && folder !== undefined)
-        rmSync(join(folder, "hosts.yml"), { force: true });
       // A real gh would send the fake token to GitHub.
       if (command[1] === "auth" && command[2] === "status")
         return Promise.resolve(

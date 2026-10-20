@@ -3,7 +3,10 @@
  * it in with her own GitHub token, so one login serves Eva and her agents (#244). It lives in the
  * instance's own gh folder, never in the person's own gh login (lesson 111).
  */
-import { githubCliFileAccounts } from "../setup/logins.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseDocument } from "yaml";
+import { writeFileAtomic } from "../../shared/files.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
@@ -30,18 +33,24 @@ export async function logInGitHubCli(options: GitHubCliOptions & { readonly toke
 }
 
 /**
- * Logs out each account of the instance's gh: one left behind would become the active one again.
- * Only an account whose token sits in the instance's file: a logout of a keyring account would also
- * log out the person's own gh. Returns why it failed, or null.
+ * Logs out every github.com account of the instance's gh, by removing it from gh's file. No gh
+ * process: `gh auth logout` also deletes the account from the system keyring, which the person's
+ * own gh and other instances share. Returns why it failed, or null.
  */
-export async function logOutGitHubCli(options: GitHubCliOptions): Promise<string | null> {
-  const problems: string[] = [];
-  for (const account of githubCliFileAccounts(options.ghFolder)) {
-    // With more than one account, gh asks which one, and nobody is there to answer.
-    const problem = await runGh(options, ["auth", "logout", "--hostname", "github.com", "--user", account]);
-    if (problem !== null) problems.push(problem);
+export function logOutGitHubCli(ghFolder: string): string | null {
+  const file = join(ghFolder, "hosts.yml");
+  if (!existsSync(file)) return null;
+  try {
+    const hosts = parseDocument(readFileSync(file, "utf8"));
+    // A file that Eva cannot read is not hers to rewrite.
+    if (hosts.errors.length > 0) return `Eva could not read ${file}: ${hosts.errors[0]?.message ?? ""}`;
+    if (!hosts.has("github.com")) return null;
+    hosts.delete("github.com");
+    writeFileAtomic(file, hosts.toString());
+    return null;
+  } catch (error) {
+    return `Eva could not change ${file}: ${error instanceof Error ? error.message : String(error)}`;
   }
-  return problems.length === 0 ? null : problems.join(" ");
 }
 
 async function runGh(options: GitHubCliOptions, args: readonly string[], stdin?: string): Promise<string | null> {

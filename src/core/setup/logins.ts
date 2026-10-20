@@ -36,26 +36,6 @@ export function githubCliAccount(ghFolder: string): string | null {
   return typeof user === "string" && user !== "" ? user : null;
 }
 
-/**
- * The gh accounts whose token sits in the instance's file. An account without one keeps its token
- * in the system keyring, which the person's own gh and other instances share.
- */
-export function githubCliFileAccounts(ghFolder: string): string[] {
-  const host = githubHost(ghFolder);
-  if (host === null) return [];
-  const users = host["users"];
-  // gh before 2.40 kept one account per host, with no `users` map.
-  if (typeof users !== "object" || users === null) {
-    const user = githubCliAccount(ghFolder);
-    return user !== null && typeof host["oauth_token"] === "string" ? [user] : [];
-  }
-  return Object.entries(users as Record<string, unknown>).flatMap(([name, entry]) =>
-    typeof entry === "object" && entry !== null && typeof (entry as Record<string, unknown>)["oauth_token"] === "string"
-      ? [name]
-      : [],
-  );
-}
-
 function githubHost(ghFolder: string): Record<string, unknown> | null {
   let hosts: unknown;
   try {

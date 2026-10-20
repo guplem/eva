@@ -20,8 +20,9 @@ export const googleAccessPerService: Migration = {
   store: "machine",
   run: (context) => {
     const read = readJsonTolerant(context.paths.config);
-    if (!read.ok && read.reason !== "missing") return "later";
-    const machine = read.ok ? read.value : {};
+    // Without a file it waits, as the 2026-10-18 copy migration does: a later file can bring `readOnly`.
+    if (!read.ok) return "later";
+    const machine = read.value;
     if (!isObject(machine)) return "later";
     const google = machine["google"];
     if (!isObject(google) || !("readOnly" in google)) {
@@ -30,9 +31,9 @@ export const googleAccessPerService: Migration = {
       return vaultPath === null || !existsSync(vaultPath) ? "later" : "done";
     }
     const { readOnly, ...rest } = google;
-    const access = isObject(rest["access"]) ? rest["access"] : {};
-    // Only `false` gave write access. A bad value falls back to the default, read only.
-    const migrated = readOnly === false ? { ...rest, access: { ...topLevels, ...access } } : rest;
+    // Only `false` gave write access. A bad value falls back to the default, read only. The old key
+    // wins: only a save before the first start of this version writes `access`, with its defaults.
+    const migrated = readOnly === false ? { ...rest, access: topLevels } : rest;
     const changed = { ...machine, google: migrated };
     // Eva does not start with a bad file. The migration runs again after the person fixes it.
     if (!isValidConfig(changed)) return "later";

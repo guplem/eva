@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { homePaths, parseConfig, type HomePaths } from "../../../../src/core/settings/home.ts";
+import { changeSettings } from "../../../../src/core/settings/settings.ts";
 import { runMigrations } from "../../../../src/core/migrations/migration-runner.ts";
 import { googleAccessPerService } from "../../../../src/core/migrations/google-access.ts";
 
@@ -64,19 +65,26 @@ describe("googleAccessPerService (machine)", () => {
     expect(readConfig()).toEqual({ google: { email: "person@example.com" } });
   });
 
-  test("a level that is already set wins over the old key", () => {
-    writeFileSync(paths.config, JSON.stringify({ google: { readOnly: false, access: { contacts: "readonly" } } }));
+  test("the old key wins over the levels that a save before the first start wrote", () => {
+    // `eva setup` after an update saves the default levels next to the old key.
+    writeFileSync(paths.config, JSON.stringify({ google: { readOnly: false } }));
+    changeSettings(paths, { port: 7500 });
+    expect(readConfig()).toMatchObject({ google: { readOnly: false, access: { calendar: "readonly" } } });
     expect(migrate()).toBe("done");
-    expect(readConfig()).toEqual({
-      google: { access: { calendar: "full", drive: "full", contacts: "readonly", tasks: "full", gmail: "full" } },
+    expect(readConfig()).toMatchObject({
+      port: 7500,
+      google: { access: { calendar: "full", drive: "full", contacts: "full", tasks: "full", gmail: "full" } },
     });
+    expect(readConfig()["google"]).not.toHaveProperty("readOnly");
   });
 
-  test("a file without the old key, or no file, stays as it is", () => {
-    expect(migrate()).toBe("done");
+  test("no file waits, as the copy from the vault does: a later file can bring the old key", () => {
+    expect(migrate()).toBe("later");
     expect(existsSync(paths.config)).toBe(false);
+  });
+
+  test("a file without the old key stays as it is", () => {
     writeFileSync(paths.config, JSON.stringify({ google: { services: ["calendar"] } }));
-    rmSync(paths.migrationRecord, { force: true });
     expect(migrate()).toBe("done");
     expect(readConfig()).toEqual({ google: { services: ["calendar"] } });
   });

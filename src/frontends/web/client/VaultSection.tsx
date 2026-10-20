@@ -1,15 +1,8 @@
 /** The vault page: where the notes live and their repository, then how and when Eva syncs them. */
 import { useState, type ReactElement } from "react";
 import { api, type VaultSyncState } from "./api.ts";
-import {
-  Card,
-  CheckRow,
-  CommandLine,
-  errorText,
-  Steps,
-  VaultSyncView,
-  type SettingsContext,
-} from "./SettingsParts.tsx";
+import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
+import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
   { value: "null", label: "Only before each Assistant turn" },
@@ -30,21 +23,26 @@ export function VaultSection({ context }: { readonly context: SettingsContext })
 
 export function VaultFolderCard({ context }: { readonly context: SettingsContext }): ReactElement {
   const folder = context.settings.config.vaultPath;
+  // The step reads the files, so it sees a vault that the page cloned before the restart.
+  const step = context.setup?.progress.find((each) => each.key === "vault");
+  const ready = step === undefined ? folder !== null : step.state === "done";
   return (
     <Card
       item="vault-folder"
       title="Vault folder and repository"
       description="Your vault is the folder of your notes. Eva keeps a copy in a git repository, so each machine shares it."
     >
-      {folder === null ? (
-        <Steps>
-          <li>
-            On Eva&apos;s computer, open a terminal and run:
-            <CommandLine command="eva setup" />
-          </li>
-          <li>Pick your vault, or make a new one. Eva clones it for you.</li>
-          <li>Come back here and press Test.</li>
-        </Steps>
+      {!ready ? (
+        <VaultChooser context={context} />
+      ) : folder === null ? (
+        <div className="callout warning callout-action">
+          <span>
+            <RichText text={step?.detail ?? ""} /> Eva uses it after a restart.
+          </span>
+          <button className="primary" onClick={context.askRestart}>
+            Restart now
+          </button>
+        </div>
       ) : (
         <dl className="facts">
           <dt>Folder</dt>
@@ -53,6 +51,7 @@ export function VaultFolderCard({ context }: { readonly context: SettingsContext
           <dd>{context.setup?.vaultRemote ?? "no remote"}</dd>
         </dl>
       )}
+      {context.setup?.vaultNeedsPush === true && <VaultPush context={context} />}
       <CheckRow name="vault" label="Test the vault repository" />
     </Card>
   );

@@ -63,7 +63,11 @@ export function SettingsView({
   // A card that a search result or a link names scrolls into view, and shows for a moment.
   useEffect(() => {
     // A setup step and the design reference are pages of their own, not cards to scroll to.
-    if (route.item === null || route.section === "setup" || route.item === designReferenceItem) {
+    if (
+      route.item === null ||
+      route.section === "setup" ||
+      (route.section === "developer" && route.item === designReferenceItem)
+    ) {
       document.querySelector(".settings-content")?.scrollTo({ top: 0 });
       return;
     }

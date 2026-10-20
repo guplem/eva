@@ -1047,9 +1047,11 @@ test("Settings: Development links to a GitHub report and opens the design refere
   await logIn(page);
   await openSettings(page, "Development");
   const report = page.getByRole("link", { name: "Report a bug" });
-  const href = (await report.getAttribute("href")) ?? "";
-  expect(href).toContain("https://github.com/guplem/eva/issues/new");
-  expect(new URL(href).searchParams.get("body")).toMatch(/Eva version: \d/);
+  await expect(report).toHaveAttribute("href", /^https:\/\/github\.com\/guplem\/eva\/issues\/new\?/);
+  // The status loads after the settings, so the version reaches the link a moment later.
+  await expect
+    .poll(async () => new URL((await report.getAttribute("href")) ?? "").searchParams.get("body"))
+    .toMatch(/Eva version: \d/);
   await page.getByRole("button", { name: "Open the design reference" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Design reference");
   await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");

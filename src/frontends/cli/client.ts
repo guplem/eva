@@ -252,8 +252,12 @@ export async function requestDeviceAllow(options: ClientOptions, code: string): 
 /** The setup progress list of the running Eva, one line per step, as the page shows it. */
 export async function describeSetupProgress(options: ClientOptions): Promise<string[]> {
   const state = await getJson<{ progress: readonly ProgressStep[] }>(options, "/api/settings/setup");
-  const marks = { done: "✓", missing: "✗", optional: "○" } as const;
-  return ["Setup progress:", ...state.progress.map((step) => `${marks[step.state]} ${step.title}: ${step.detail}`)];
+  // Plain ASCII, as in the rest of setup, so an old Windows console shows the marks too.
+  const marks = { done: "[ok]", missing: "[to do]", optional: "[optional]" } as const;
+  return [
+    "Where each step stands, also in Settings on Eva's page:",
+    ...state.progress.map((step) => `  ${marks[step.state]} ${step.title}: ${step.detail}`),
+  ];
 }
 
 /** True when the running Eva's page answers, as it does a few seconds after her start. */

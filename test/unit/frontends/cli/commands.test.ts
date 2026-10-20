@@ -144,7 +144,7 @@ describe("doctor and setup", () => {
     // Enter at the GitHub question would start a real browser login, so this person skips it.
     const host = fakeHost({
       userHome: join(root, "user"),
-      withPrompt: (work) => work((question) => Promise.resolve(question.startsWith("GitHub login") ? "skip" : "")),
+      withPrompt: (work) => work((question) => Promise.resolve(question.includes("GitHub login") ? "skip" : "")),
     });
     expect(await run(host, "setup")).toBe(exitCodes.clean);
     expect(loadSecrets(paths).localApiToken).toBeString();
@@ -243,9 +243,9 @@ describe("with a running Eva", () => {
     expect(await run(answering, "setup", "--non-interactive")).toBe(exitCodes.clean);
     expect(printed(answering)).toContain("Restarting Eva, so she uses the new answers.");
     // The same list as on the page, before the restart takes the page away.
-    expect(printed(answering)).toContain("Setup progress:");
+    expect(printed(answering)).toContain("Where each step stands");
     // Phone access is off in this test, so a device is optional.
-    expect(printed(answering)).toContain("○ Your devices: Open Eva's page on your phone.");
+    expect(printed(answering)).toContain("[optional] Your devices: Open Eva's page on your phone.");
   });
 
   test("a page that does not answer at the end never fails a setup that saved every answer", async () => {

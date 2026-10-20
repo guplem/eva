@@ -30,6 +30,7 @@ import {
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
 import { claudeLoggedIn, piLoginState } from "../../core/setup/logins.ts";
+import { doneLine, indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts";
 import { isProcessAlive, readBootId, runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { commitIdentityVariables } from "../../core/instance/child-environments.ts";
 import { commitIdentity, refreshGitHubAccount } from "../../core/instance/commit-identity.ts";
@@ -135,7 +136,9 @@ export interface SetupOptions {
 }
 
 /** Returns whether setup saved anything after `afterEssentials`, when a running Eva would need a restart. */
-export async function runSetup(options: SetupOptions): Promise<{ changedAfterStart: boolean }> {
+export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart: boolean }> {
+  // Inside a step, each line lines up under the step's title.
+  const options: SetupOptions = { ...given, write: indented(given.write) };
   const paths = homePaths(options.paths.root);
   // Each answer is saved at once, on top of the files as they are now: Ctrl+C loses nothing, and
   // a change from the web page, which writes the same files, is never undone.
@@ -176,8 +179,6 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     (await options.ask(key, question)).trim();
   /** A person is not asked again for a step done already, on the page or in an earlier setup. */
   const done = (isDone: boolean): boolean => options.interactive && isDone;
-  options.write(`Eva setup. Press Enter to keep the value in brackets. Home: ${paths.root}`);
-  // First, so the person knows every login that this instance still needs before the questions.
   const engineFolders = engineFoldersOf(paths);
   const loginState = (folders: EngineFolders): Promise<EngineLoginState> =>
     engineLoginState({
@@ -186,13 +187,6 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
       runner: options.runner,
       environment: options.environment,
     });
-  // A script gets no steps: setup ends at once, and the report at the end says what to run.
-  if (options.interactive) {
-    for (const line of engineLoginSteps(await loginState(engineFolders), engineFolders, options.platform)) {
-      options.write(line);
-    }
-  }
-
   // Only a script picks the default engine. For a person, the engine with a login wins (below).
   const engine = options.interactive ? "" : await ask("engine", "Default engine, claude-code or pi: ");
   if (engine === "claude-code" || engine === "pi") saveSetting({ engines: { default: engine } });
@@ -216,6 +210,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   await options.afterEssentials?.();
   progress.started = true;
 
+  for (const line of stepLines("Notebook and GitHub")) options.write(line);
   const detectedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timeZone = done(config().timeZone !== null)
     ? ""
@@ -228,6 +223,7 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   };
   // Only a person: a script answers every question again on each run.
   const vaultWasReady = done(vaultReady());
+  if (vaultWasReady) options.write(doneLine(`Notebook: ${config().vaultPath ?? ""}`));
   if (!vaultWasReady) await askVault(options, ask, saveVaultPath, saveSecret, recordAccount);
   else if (!done(secrets().githubToken !== undefined)) {
     // Private projects need the token too, so a ready vault still gets the question.
@@ -263,6 +259,13 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     if (owners !== "") saveSetting({ trust: { trustedRepositoryOwners: splitList(owners) } });
   }
 
+  for (const line of stepLines("AI login")) options.write(line);
+  // A script gets no steps: setup ends at once, and the report at the end says what to run.
+  if (options.interactive) {
+    const steps = engineLoginSteps(await loginState(engineFolders), engineFolders, options.platform);
+    if (steps.length === 0) options.write(doneLine("Each engine and GitHub tool has its login."));
+    for (const line of steps.map(noteLine)) options.write(line);
+  }
   if (!done(secrets().claudeOauthToken !== undefined)) {
     const claudeToken = await ask(
       "claudeToken",
@@ -287,6 +290,8 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     }
   }
 
+  for (const line of stepLines("Telegram")) options.write(line);
+  if (done(secrets().telegramBotToken !== undefined)) options.write(doneLine("The Telegram bot is set up."));
   if (!done(secrets().telegramBotToken !== undefined)) {
     const telegramToken = await ask(
       "telegramToken",
@@ -308,9 +313,11 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
     }
   }
 
+  for (const line of stepLines("Google and voice notes")) options.write(line);
+  if (done(config().google.email !== null)) options.write(doneLine(`Google: ${config().google.email ?? ""}`));
   if (!done(config().google.email !== null)) {
     options.write(
-      "Google is optional. To skip the Google questions, press Enter. Settings in the web app show each Google step, with its links.",
+      noteLine("Press Enter to skip Google. Settings on Eva's page show each Google step, with its links."),
     );
     const googleEmail = await ask(
       "googleEmail",
@@ -336,6 +343,8 @@ export async function runSetup(options: SetupOptions): Promise<{ changedAfterSta
   }
 
   if (refusal.error !== null) throw refusal.error;
+  given.write("");
+  given.write("Setup is over.");
   const state = await loginState(engineFolders);
   const claudeTokenHint = options.interactive
     ? `run \`eva --instance ${instanceNameOf(paths)} setup\` again, and give it the token`
@@ -404,12 +413,11 @@ async function askGithubLoginOf(
       saveSecret(
         "githubToken",
         await githubLogin((code, link) => {
-          options.write(
-            `Open ${link} and enter the code ${code}. Setup waits until you confirm. Press Ctrl+C to stop setup.`,
-          );
+          for (const line of yourTurnLines(`open ${link} on any device, and enter the code ${code}.`))
+            options.write(line);
         }),
       );
-      options.write("Logged in to GitHub.");
+      options.write(doneLine("Logged in to GitHub."));
       return;
     } catch (error) {
       if (!isEvaError(error, "github_failed")) throw error;
@@ -594,23 +602,28 @@ async function installEngines(options: SetupOptions, config: EvaConfig, engineFo
       configured: engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable,
       ...(options.piReleasesBaseUrl === undefined ? {} : { piReleasesBaseUrl: options.piReleasesBaseUrl }),
     };
-    if ((await findEngineProgram(engine, inputs)) !== null) continue;
     const name = engineProgramNames[engine];
-    options.write(`Installing ${name}. This can take a few minutes.`);
+    if ((await findEngineProgram(engine, inputs)) !== null) {
+      options.write(doneLine(`${name} is installed.`));
+      continue;
+    }
+    options.write(noteLine(`Installing ${name}. This can take a few minutes.`));
     let program: string;
     try {
       program = await installEngine(engine, inputs);
     } catch (error) {
       if (!isEvaError(error, "engine_install_failed")) throw error;
-      options.write(`${error.message} Setup goes on without it.`);
+      options.write(noteLine(`${error.message} Setup goes on without it.`));
       continue;
     }
-    options.write(`Installed ${name}: ${program}.`);
+    options.write(doneLine(`Installed ${name}: ${program}.`));
     const run = commandLine(program, options.platform);
     options.write(
-      engine === "claude-code"
-        ? `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`
-        : `For another provider, run \`${piLogin(run, engineFolders, options.platform)}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
+      noteLine(
+        engine === "claude-code"
+          ? `For a Claude subscription, run \`${run} setup-token\` in another terminal. It makes the token for the Claude question.`
+          : `For another provider, run \`${piLogin(run, engineFolders, options.platform)}\` in another terminal, and type /login. Never choose Anthropic: a Claude login in pi bills as extra usage.`,
+      ),
     );
   }
   await installMissingUv(options);
@@ -625,13 +638,16 @@ async function installMissingUv(options: SetupOptions): Promise<void> {
     arch: options.arch,
     homeFolder: options.userHome,
   };
-  if ((await findUv(inputs)) !== null) return;
-  options.write("Installing uv, for the Google tools.");
+  if ((await findUv(inputs)) !== null) {
+    options.write(doneLine("uv is installed."));
+    return;
+  }
+  options.write(noteLine("Installing uv, for the Google tools."));
   try {
-    options.write(`Installed uv: ${await installUv(inputs)}.`);
+    options.write(doneLine(`Installed uv: ${await installUv(inputs)}.`));
   } catch (error) {
     if (!isEvaError(error, "engine_install_failed")) throw error;
-    options.write(`${error.message} Setup goes on without it.`);
+    options.write(noteLine(`${error.message} Setup goes on without it.`));
   }
 }
 

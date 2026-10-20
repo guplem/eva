@@ -34,12 +34,13 @@ asset_name() {
 }
 
 # Under `curl | sh`, the input is the rest of this script: a package manager that reads its
-# input would eat it. sudo asks for the password on the terminal, not on the input.
+# input would eat it. sudo asks for the password on the terminal, not on the input. The package
+# manager's own lines stay hidden, so that the install reads as a few clear lines; errors still show.
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then
-    "$@" </dev/null
+    "$@" </dev/null >/dev/null
   elif command -v sudo >/dev/null 2>&1; then
-    sudo "$@" </dev/null
+    sudo "$@" </dev/null >/dev/null
   else
     fail "git needs an administrator to install. Install git, then run this command again."
   fi
@@ -52,11 +53,12 @@ install_tools() {
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
   done
   [ -n "$missing" ] || return 0
-  say "Installing$missing. It needs administrator rights, so it can ask for your password."
-  # $missing is a list of words on purpose.
+  say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
+  # $missing is a list of words on purpose. NEEDRESTART_SUSPEND keeps Ubuntu's service check
+  # (needrestart) from taking over the screen after the install.
   if command -v apt-get >/dev/null 2>&1; then
-    as_root env DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $missing
+    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq
+    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $missing
   elif command -v dnf >/dev/null 2>&1; then
     as_root dnf install -y $missing
   elif command -v pacman >/dev/null 2>&1; then
@@ -70,6 +72,7 @@ install_tools() {
   fi
   for tool in $missing; do
     command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
+    say "  [ok] Installed $tool."
   done
 }
 
@@ -132,25 +135,27 @@ add_to_path() {
 
 run_setup() {
   if [ "${EVA_INSTALL_SKIP_SETUP:-}" = "1" ]; then
-    say "Eva is installed. Run \`eva setup\` to set her up."
+    say "  Run \`eva setup\` to set Eva up."
     return 0
   fi
   # `curl | sh` gives this script as the input, so setup reads the terminal instead.
   if (exec </dev/tty) 2>/dev/null; then
     "$bin_folder/eva" setup </dev/tty
   else
-    say "Eva is installed. Open a terminal, and run \`eva setup\`."
+    say "  Open a terminal, and run \`eva setup\` to set Eva up."
   fi
 }
 
 main() {
-  say "Installing Eva."
+  say ""
+  say "Eva install"
   install_tools
   install_eva
   add_to_path
-  say "Installed Eva $("$bin_folder/eva" version) in $bin_folder."
+  say "  [ok] Installed Eva $("$bin_folder/eva" version) in $bin_folder, and checked the download."
   run_setup
   if [ -n "$path_added" ]; then
+    say ""
     say "To run eva in this terminal, run: export PATH=\"\$HOME/.local/bin:\$PATH\". New terminals find it by themselves."
   fi
 }

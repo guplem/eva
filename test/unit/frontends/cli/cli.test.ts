@@ -493,7 +493,7 @@ describe("runSetup", () => {
   test("without a Google account, the OAuth client is not asked", async () => {
     const lines: string[] = [];
     await setup({ googleClientId: "client-id" }, { lines });
-    expect(lines.join("\n")).toContain("Settings in the web app show each Google step");
+    expect(lines.join("\n")).toContain("Settings on Eva's page show each Google step");
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
 
@@ -807,8 +807,9 @@ describe("runSetup", () => {
       const text = lines.join("\n");
       expect(text).toContain("read and write all your GitHub repositories");
       expect(text).toContain(
-        "Open https://github.com/login/device and enter the code ABCD-1234. Setup waits until you confirm. Press Ctrl+C to stop setup.",
+        ">> Your turn: open https://github.com/login/device on any device, and enter the code ABCD-1234.",
       );
+      expect(text).toContain("Setup goes on by itself when you are done.");
       expect(logins).toEqual(["login"]);
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_browser_token_1");
       expect(tokens.every((token) => token === "gho_browser_token_1")).toBe(true);
@@ -1368,7 +1369,7 @@ describe("runSetup", () => {
     expect(loadGitHubAccount(homePaths(home))).toBeNull();
   });
 
-  test("each instance hears about its own engine logins first, and gets a login report at the end", async () => {
+  test("each instance hears about its own engine logins in the AI login step, and gets a login report at the end", async () => {
     const lines: string[] = [];
     const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const runner: ProcessRunner = {
@@ -1384,8 +1385,10 @@ describe("runSetup", () => {
     );
     const ghFolder = join(home, "engines", "gh");
     const firstStep = lines.findIndex((line) => line.includes("keeps her own logins"));
-    expect(firstStep).toBeGreaterThan(-1);
-    expect(firstStep).toBeLessThan(lines.findIndex((line) => line.startsWith("Created a new vault")));
+    // The login steps come under their own step, before its first question.
+    expect(firstStep).toBeGreaterThan(lines.indexOf("Step 6 of 8: AI login"));
+    expect(lines.indexOf("Step 6 of 8: AI login")).toBeGreaterThan(-1);
+    expect(firstStep).toBeLessThan(lines.indexOf("Step 7 of 8: Telegram (optional)"));
     expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
     // The gh login check uses this instance's gh folder.
     expect(ghEnvironments.length).toBeGreaterThan(0);

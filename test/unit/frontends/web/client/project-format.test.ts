@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import type { Project } from "../../../../../src/frontends/web/client/api.ts";
 import {
   changesPill,
   countOf,
   projectFolder,
   projectSummary,
+  shownTags,
+  tagsByUse,
   repositoryLabel,
   statusPill,
 } from "../../../../../src/frontends/web/client/project-format.ts";
@@ -63,5 +66,34 @@ describe("projectFolder", () => {
       "Projects/2026-10-12-0930-example-app",
     );
     expect(projectFolder("2026-10-12-0930-example-app")).toBe("2026-10-12-0930-example-app");
+  });
+});
+
+describe("tagsByUse", () => {
+  const withTags = (...tags: string[]): Project => ({ frontMatter: { tags } }) as unknown as Project;
+
+  test("puts the most used tag first, then sorts by name, and ignores case", () => {
+    const projects = [withTags("game", "App"), withTags("app", "hobby"), withTags("zoo", "app"), withTags("hobby")];
+    expect(tagsByUse(projects)).toEqual(["app", "hobby", "game", "zoo"]);
+  });
+});
+
+describe("shownTags", () => {
+  const tags = ["a", "b", "c", "d", "e"];
+
+  test("shows only the first tags while the list is short", () => {
+    expect(shownTags(tags, "", false, 3)).toEqual({ shown: ["a", "b", "c"], hidden: 2 });
+  });
+
+  test("keeps the chosen tag in view when it is hidden", () => {
+    expect(shownTags(tags, "e", false, 3)).toEqual({ shown: ["a", "b", "c", "e"], hidden: 1 });
+  });
+
+  test("shows every tag when the list is open", () => {
+    expect(shownTags(tags, "", true, 3)).toEqual({ shown: tags, hidden: 0 });
+  });
+
+  test("hides nothing when the tags fit", () => {
+    expect(shownTags(["a", "b"], "", false, 3)).toEqual({ shown: ["a", "b"], hidden: 0 });
   });
 });

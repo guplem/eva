@@ -35,6 +35,15 @@ describe("schemaNames", () => {
       "token",
     ]);
   });
+
+  test("reads the schema after a preprocess step", () => {
+    const schema = z.object({ mode: z.preprocess((value) => value, z.enum(["on"])) });
+    expect(schemaNames(schema)).toEqual(["mode", "mode=on"]);
+  });
+
+  test("throws on a type whose names it cannot read, so no name goes unchecked", () => {
+    expect(() => schemaNames(z.object({ models: z.record(z.string(), z.string()) }))).toThrow("record");
+  });
 });
 
 describe("currentNames", () => {
@@ -48,6 +57,7 @@ describe("currentNames", () => {
     "machine state/devices.json devices[].hash",
     "vault .eva/settings.json updates.install",
     "vault .eva/schedules.json schedules[].at",
+    "vault .eva/schedules.json schedules[].days=thu",
     "vault .eva/hub.json machine",
     "typed cli settings set",
     "typed cli --check",
@@ -86,6 +96,10 @@ describe("hasBreakingCommit", () => {
     expect(hasBreakingCommit(record("feat: move a key", "Why.\n\nBREAKING CHANGE: the key moved."))).toBe(true);
   });
 
+  test("reads real `git log` output, which puts a line end before each later record", () => {
+    expect(hasBreakingCommit(`feat: add a thing\u0000\u0001\nfix!: drop a key\u0000Why.\n\u0001\n`)).toBe(true);
+  });
+
   test("finds none in plain commits", () => {
     expect(hasBreakingCommit(record("feat: add a thing") + record("docs: explain it"))).toBe(false);
     expect(hasBreakingCommit("")).toBe(false);
@@ -119,6 +133,14 @@ describe("judgeNames", () => {
       ...before.filter((name) => name !== "machine config.json port"),
       "machine config.json network.port",
       "migration machine 2026-10-20-move-port",
+    ];
+    expect(judgeNames({ before, after, breaking: false }).ok).toBe(true);
+  });
+
+  test("passes a removed vault name with a new vault migration", () => {
+    const after = [
+      ...before.filter((name) => name !== "vault .eva/hub.json machine"),
+      "migration vault 2026-10-20-rename-hub-machine",
     ];
     expect(judgeNames({ before, after, breaking: false }).ok).toBe(true);
   });

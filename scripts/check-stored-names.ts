@@ -15,6 +15,7 @@ import type { HubClaim } from "../src/core/instance/hub.ts";
 import { migrations } from "../src/core/migrations/migrations.ts";
 import type { StoredDevice } from "../src/core/remote-access/device-logins.ts";
 import {
+  dayNames,
   formatVersion as scheduleFormatVersion,
   scheduleFieldOrder,
 } from "../src/core/schedules/schedule-definitions.ts";
@@ -40,11 +41,12 @@ interface SchemaNode {
       readonly values?: readonly unknown[];
       readonly options?: readonly SchemaNode[];
       readonly in?: SchemaNode;
+      readonly out?: SchemaNode;
     };
   };
 }
 
-/** Each key path of a schema, such as `sync.enabled`, and each enum or literal value, such as `updates.install=minor`. */
+/** Each key path of a schema, such as `sync.enabled`. Each enum or literal value adds a name, such as `updates.install=minor`. */
 export function schemaNames(schema: z.ZodType): string[] {
   return walkSchema(schema, "");
 }
@@ -66,12 +68,30 @@ function walkSchema(node: SchemaNode, path: string): string[] {
     case "union":
       return (def.options ?? []).flatMap((option) => walkSchema(option, path));
     case "pipe":
-      return def.in === undefined ? [] : walkSchema(def.in, path);
+      // A preprocess step is a pipe from a transform, so the real schema can sit on either side.
+      return [def.in, def.out].flatMap((side) => (side === undefined ? [] : walkSchema(side, path)));
     default:
-      // A default, nullable, optional or catch wraps the real type; a plain value has no names inside.
-      return def.innerType === undefined ? [] : walkSchema(def.innerType, path);
+      // A default, nullable, optional or catch wraps the real type.
+      if (def.innerType !== undefined) return walkSchema(def.innerType, path);
+      if (leafTypes.has(def.type)) return [];
+      // A record, tuple or lazy type holds names that the walk cannot list. A throw keeps them in sight.
+      throw new Error(`The stored-name check cannot read the names in a zod ${def.type} at ${path || "(root)"}.`);
   }
 }
+
+/** The zod types that hold no names inside. */
+const leafTypes = new Set([
+  "string",
+  "number",
+  "boolean",
+  "bigint",
+  "date",
+  "null",
+  "undefined",
+  "unknown",
+  "any",
+  "transform",
+]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
@@ -105,6 +125,7 @@ export function currentNames(): string[] {
       `version=${String(scheduleFormatVersion)}`,
       "schedules",
       ...scheduleFieldOrder.map((field) => `schedules[].${field}`),
+      ...dayNames.map((day) => `schedules[].days=${day}`),
     ].map((name) => `vault .eva/schedules.json ${name}`),
     ...hubFields.map((field) => `vault .eva/hub.json ${field}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
@@ -153,8 +174,8 @@ export interface NamesChange {
 
 /**
  * A removed stored name passes with a new migration of its store, or with a breaking commit.
- * A removed typed name or migration passes only with a breaking commit: no migration repairs a
- * person's habit or script, and an older record with an unknown id stops the vault writes.
+ * A removed typed name or migration passes only with a breaking commit. No migration repairs a
+ * person's script. A removed migration id makes an older record look newer, and that stops the vault writes.
  */
 export function judgeNames(change: NamesChange): NamesVerdict {
   const kept = new Set(change.after);

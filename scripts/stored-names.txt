@@ -178,6 +178,13 @@ vault .eva/hub.json since
 vault .eva/schedules.json schedules
 vault .eva/schedules.json schedules[].at
 vault .eva/schedules.json schedules[].days
+vault .eva/schedules.json schedules[].days=fri
+vault .eva/schedules.json schedules[].days=mon
+vault .eva/schedules.json schedules[].days=sat
+vault .eva/schedules.json schedules[].days=sun
+vault .eva/schedules.json schedules[].days=thu
+vault .eva/schedules.json schedules[].days=tue
+vault .eva/schedules.json schedules[].days=wed
 vault .eva/schedules.json schedules[].file
 vault .eva/schedules.json schedules[].id
 vault .eva/schedules.json schedules[].model

@@ -79,8 +79,8 @@ Commands:
 `;
 
 /**
- * Each command that a person types. A script can call one, so `scripts/check-stored-names.ts`
- * fails a pull request that removes one without a breaking commit.
+ * Each command that a person types, as data. A script or a habit depends on each one, so
+ * `scripts/check-stored-names.ts` fails a branch that removes one without a breaking commit.
  */
 export const cliCommands: readonly string[] = [
   "setup",

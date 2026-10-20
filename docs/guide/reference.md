@@ -59,27 +59,27 @@ In the notebook:
 
 On this computer:
 
-| Setting                                              | Default                                    | What it does                                                                                   |
-| ---------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `vaultPath`                                          | `vault` in Eva's home folder               | The notebook folder.                                                                           |
-| `machineName`                                        | The computer's name                        | This computer's name in `.eva/hub.json`.                                                       |
-| `port`                                               | `7420`                                     | The port of the web page on this computer.                                                     |
-| `projectRoots`                                       | `[]`                                       | More folders of projects, beside `Projects/` in the notebook.                                  |
-| `sync.enabled`                                       | `true`                                     | `false` stops the automatic notebook sync on this computer. "Sync now" still works.            |
-| `engines.claudeCode.executable`                      | `null`                                     | The program that starts Claude Code. `null`: `claude`.                                         |
-| `engines.pi.executable`                              | `null`                                     | The program that starts pi. `null`: `pi`.                                                      |
-| `telegram.allowedChatId`, `telegram.allowedUserId`   | Set when you pair the chat                 | The Telegram chat, and the person in it who may act.                                           |
-| `git.name`, `git.email`                              | `null`                                     | This Eva's commit name and email. `null`: the GitHub account's, then your git settings.        |
-| `trust.trustedRepositoryOwners` (security)           | `[]`                                       | GitHub owners whose repositories Eva trusts at once, so their own agent settings apply.        |
-| `google.services` (security)                         | `calendar`, `drive`, `contacts`, `tasks`   | The Google services that Eva may use. `gmail` is the fifth choice.                             |
-| `google.readOnly` (security)                         | `true`                                     | `false` lets Eva change things, such as add events. Log in to Google again after a change.     |
-| `voice.modelPath`                                    | `voice/ggml-base.bin` in Eva's home folder | The whisper.cpp model. Voice notes stay off without it.                                        |
-| `voice.vadModelPath`                                 | `null`                                     | A whisper.cpp model that finds the silence, so that whisper skips it.                          |
-| `voice.whisperExecutable`                            | `whisper-cli`                              | The whisper.cpp program.                                                                       |
-| `voice.ffmpegExecutable`                             | `ffmpeg`                                   | The ffmpeg program.                                                                            |
-| `remoteAccess.tailscaleServe`                        | `true`                                     | Publishes the web page to your Tailscale devices at start.                                     |
-| `remoteAccess.allowedTailscaleIdentities` (security) | `[]`                                       | The Tailscale accounts that may ask for a device login. `[]`: only the owner of this computer. |
-| `remoteAccess.hostNames`                             | `[]`                                       | More host names that reach the web page, beside `127.0.0.1` and the Tailscale name.            |
+| Setting                                              | Default                                    | What it does                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `vaultPath`                                          | `vault` in Eva's home folder               | The notebook folder.                                                                                        |
+| `machineName`                                        | The computer's name                        | This computer's name in `.eva/hub.json`.                                                                    |
+| `port`                                               | `7420`                                     | The port of the web page on this computer.                                                                  |
+| `projectRoots`                                       | `[]`                                       | More folders of projects, beside `Projects/` in the notebook.                                               |
+| `sync.enabled`                                       | `true`                                     | `false` stops the automatic notebook sync on this computer, and the status says so. "Sync now" still works. |
+| `engines.claudeCode.executable`                      | `null`                                     | The program that starts Claude Code. `null`: `claude`.                                                      |
+| `engines.pi.executable`                              | `null`                                     | The program that starts pi. `null`: `pi`.                                                                   |
+| `telegram.allowedChatId`, `telegram.allowedUserId`   | Set when you pair the chat                 | The Telegram chat, and the person in it who may act.                                                        |
+| `git.name`, `git.email`                              | `null`                                     | This Eva's commit name and email. `null`: the GitHub account's, then your git settings.                     |
+| `trust.trustedRepositoryOwners` (security)           | `[]`                                       | GitHub owners whose repositories Eva trusts at once, so their own agent settings apply.                     |
+| `google.services` (security)                         | `calendar`, `drive`, `contacts`, `tasks`   | The Google services that Eva may use. `gmail` is the fifth choice.                                          |
+| `google.readOnly` (security)                         | `true`                                     | `false` lets Eva change things, such as add events. Log in to Google again after a change.                  |
+| `voice.modelPath`                                    | `voice/ggml-base.bin` in Eva's home folder | The whisper.cpp model. Voice notes stay off without it.                                                     |
+| `voice.vadModelPath`                                 | `null`                                     | A whisper.cpp model that finds the silence, so that whisper skips it.                                       |
+| `voice.whisperExecutable`                            | `whisper-cli`                              | The whisper.cpp program.                                                                                    |
+| `voice.ffmpegExecutable`                             | `ffmpeg`                                   | The ffmpeg program.                                                                                         |
+| `remoteAccess.tailscaleServe`                        | `true`                                     | Publishes the web page to your Tailscale devices at start.                                                  |
+| `remoteAccess.allowedTailscaleIdentities` (security) | `[]`                                       | The Tailscale accounts that may ask for a device login. `[]`: only the owner of this computer.              |
+| `remoteAccess.hostNames`                             | `[]`                                       | More host names that reach the web page, beside `127.0.0.1` and the Tailscale name.                         |
 
 Change a setting on the web Settings page, or with `eva settings set`. The update frequency, the update policy and the notebook fetch apply at once. Any other change applies at the next restart.
 

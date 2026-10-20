@@ -111,6 +111,7 @@ describe("Eva", () => {
     expect(engine.requests[0]?.prompt).toBe("[Local time: 2026-10-14 12:30, Europe/Madrid]\n\nStore a note.");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
     expect(instance.status().vaultSync.status).toBe("ok");
+    expect(instance.status().vaultAutoSync).toBe(true);
   });
 
   test("with sync off, an Assistant turn neither pulls nor pushes the vault, but Sync now still works", async () => {
@@ -130,6 +131,8 @@ describe("Eva", () => {
 
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).not.toContain("Methods/New.md");
     expect(existsSync(join(vault, "Remote.md"))).toBe(false);
+    // The old "ok" of the pull at start is not the whole truth, so the status says that sync is off (#215).
+    expect(instance.status().vaultAutoSync).toBe(false);
     // A request from the person still syncs: the setting stops only the automatic steps.
     expect((await instance.syncVault()).status).toBe("ok");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");

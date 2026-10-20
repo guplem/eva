@@ -981,6 +981,25 @@ test("Settings: a vault sync error is red, and a conflict that waits for the per
   expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
 });
 
+test("Settings: with the automatic sync off, the sync card says so, and that Sync now sends the notes (#215)", async ({
+  page,
+}) => {
+  let autoSync = false;
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...body, vaultAutoSync: autoSync } });
+  });
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Automatic sync is off. Press Sync now to send your notes.");
+  autoSync = true;
+  await page.reload();
+  await expect(sync.locator(".pill")).toBeVisible();
+  await expect(sync).not.toContainText("Automatic sync is off");
+});
+
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");
@@ -2011,6 +2030,30 @@ test("Settings: the GitHub step logs in with a code, with no token to make (#243
   expect(finishes).toBe(2);
   await page.getByRole("button", { name: "Paste a token instead" }).click();
   await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
+});
+
+test("Settings: a GitHub token without the agents' login needs the person (#244)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "github"
+        ? {
+            ...step,
+            state: "missing",
+            detail: "The token is saved, but your agents cannot push their work yet. Press Log in with GitHub again.",
+          }
+        : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "GitHub", exact: true });
+  await expect(card.getByText("Needs you", { exact: true })).toBeVisible();
+  // The step page hides the step detail of a step to do, so the card says what to do.
+  await expect(card).toContainText("Your agents cannot push their work yet. Press Log in with GitHub.");
+  await expect(card).toContainText("The agents use it to push their work");
 });
 
 test("Settings: a GitHub login that fails says why, and the button works again", async ({ page }) => {

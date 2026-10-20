@@ -42,7 +42,7 @@ export type ScheduleFieldName = (typeof scheduleFieldOrder)[number];
  */
 export type ScheduleChange = ScheduleFieldName | "enabled";
 
-const formatVersion = 1;
+export const formatVersion = 1;
 /** The id travels in Telegram button data, which Telegram caps at 64 bytes. */
 const idPattern = /^[a-z0-9-]{1,32}$/;
 const timePattern = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;

@@ -335,6 +335,31 @@ describe("Scheduler", () => {
     expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
   });
 
+  test("a pause made while a card goes out stays, so on again needs a card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    // A front end that takes long to show the card, such as Telegram opening a topic.
+    scheduler.subscribe(async () => {
+      await slow;
+      return true;
+    });
+    const sending = scheduler.tick();
+    await Bun.sleep(0);
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    release();
+    await sending;
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"], ["enabled"]]);
+  });
+
   test("a schedule that is off from the start gets a first card when it turns on", async () => {
     writeSchedules([{ ...morning, enabled: false }]);
     clock = new Date("2026-07-01T05:30:00Z");

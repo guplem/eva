@@ -1,0 +1,23 @@
+# Eva commits everything else, so anything secret, per-machine or generated must be listed here.
+
+# Cloned project repositories: each one is its own git repository.
+Projects/*/repos/
+
+# Files made only to send to a chat, and files received from it. Eva removes them after a week.
+Scratch/
+
+# Secrets and local settings. A project folder may hold its own secrets, so the secret
+# patterns apply only outside Projects/.
+.env
+*.env
+*.pem
+*.key
+!Projects/**/.env
+!Projects/**/*.env
+!Projects/**/*.pem
+!Projects/**/*.key
+settings.local.json
+
+# Operating system leftovers.
+desktop.ini
+.DS_Store

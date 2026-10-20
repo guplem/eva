@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "scripts/*.ts",
+    "test/**/*.test.ts",
+    "test/e2e/**/*.ts",
+    "test/support/fake-google-mcp.ts",
+    "src/frontends/web/client/main.tsx"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.ts"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": ["@fontsource-variable/quicksand", "@fontsource/ibm-plex-mono"]
+}

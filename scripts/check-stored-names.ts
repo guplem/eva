@@ -1,11 +1,11 @@
 /**
  * Fails when a branch removes a stored or typed name without a migration or a breaking commit (#98).
- * The release workflow raises the major version only for a breaking commit, so a forgotten `!`
- * would ship a break as a minor release, and the update policy would install it by itself.
+ * The release workflow raises the major version only for a breaking commit. A forgotten `!` ships
+ * a break as a minor release. The update policy then installs it by itself.
  *
  * Each name is one line of `stored-names.txt`: `<kind> <where> <name>`. The kinds are `machine`
  * and `vault` (files of that store), `typed` (what a person types) and `migration`.
- * Event kinds and error codes are not here: the web page that reads them updates with Eva.
+ * Event kinds and error codes are not here. The web page ships in the same release as the core.
  * Run with `--write` to update the file.
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -74,7 +74,7 @@ function walkSchema(node: SchemaNode, path: string): string[] {
       // A default, nullable, optional or catch wraps the real type.
       if (def.innerType !== undefined) return walkSchema(def.innerType, path);
       if (leafTypes.has(def.type)) return [];
-      // A record, tuple or lazy type holds names that the walk cannot list. A throw keeps them in sight.
+      // The walk cannot list the names in a record, tuple or lazy type. It throws, so that no name slips past.
       throw new Error(`The stored-name check cannot read the names in a zod ${def.type} at ${path || "(root)"}.`);
   }
 }
@@ -91,6 +91,13 @@ const leafTypes = new Set([
   "unknown",
   "any",
   "transform",
+  "custom",
+  "never",
+  "void",
+  "nan",
+  "symbol",
+  "file",
+  "template_literal",
 ]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
@@ -190,18 +197,17 @@ export function judgeNames(change: NamesChange): NamesVerdict {
     return !((kind === "machine" || kind === "vault") && migratedStores.has(kind));
   });
   const list = (names: readonly string[]): string => names.map((name) => `  ${name}\n`).join("");
-  if (change.breaking)
-    return { ok: true, message: `A breaking commit marks that these names go away:\n${list(removed)}` };
+  if (change.breaking) return { ok: true, message: `A breaking commit covers these removed names:\n${list(removed)}` };
   if (uncovered.length === 0)
-    return { ok: true, message: `A new migration covers each name that goes away:\n${list(removed)}` };
+    return { ok: true, message: `A new migration covers these removed names:\n${list(removed)}` };
   return {
     ok: false,
     message:
       "These names go away, so a person's data, commands or scripts can break after the update:\n" +
       list(uncovered) +
       "Do one of these:\n" +
-      "  - Add a migration of the same store (machine or vault) in src/core/migrations/. It covers stored names only.\n" +
-      "  - Mark a commit as breaking with `!`, such as `feat!: ...`, or with a `BREAKING CHANGE:` footer.\n",
+      "  - Mark a commit as breaking with `!`, such as `feat!: ...`, or with a `BREAKING CHANGE:` footer. This covers every name.\n" +
+      "  - For a `machine` or `vault` name only: add a migration of that store in src/core/migrations/.\n",
   };
 }
 
@@ -226,7 +232,9 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (readSnapshotFile()?.join("\n") !== names.join("\n")) {
-    process.stderr.write(`${snapshotFile} is not up to date. Run: bun run scripts/check-stored-names.ts --write\n`);
+    process.stderr.write(
+      `${snapshotFile} does not match the code. Run \`bun run scripts/check-stored-names.ts --write\`, then commit the file.\n`,
+    );
     process.exit(1);
   }
   const base = git(["merge-base", "origin/main", "HEAD"]);

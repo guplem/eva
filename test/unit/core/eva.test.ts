@@ -894,6 +894,37 @@ describe("Eva", () => {
     expect(restarts).toEqual(["restart"]);
   });
 
+  test("gives her own version and the version of each tool, from the claude program that she runs", async () => {
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        if (command[0] === "/opt/claude")
+          return Promise.resolve({ exitCode: 0, stdout: "2.1.300 (Claude Code)\n", stderr: "" });
+        // The other tools are missing, so the answer does not depend on this machine.
+        if (command.length === 2 && ["--version", "-version", "--help", "version"].includes(command[1] ?? ""))
+          return Promise.reject(new Error("not found"));
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      claudeExecutable: "/opt/claude",
+      toolPlaces: { platform: "linux", userHome: "/srv/person", standalone: true },
+    });
+    eva = instance;
+    const versions = await instance.versions();
+    expect(versions.eva).toBe(instance.status().version);
+    expect(versions.tools.find((tool) => tool.program === "claude")?.version).toBe("2.1.300");
+    expect(versions.tools.find((tool) => tool.program === "git")?.version).toBeNull();
+    expect(versions.tools.some((tool) => tool.program === "bun")).toBe(false);
+  });
+
   test("an engine update pressed during Eva's own install runs before her restart", async () => {
     const finishInstallGate: { open: (() => void) | null } = { open: null };
     const claudeRuns: string[] = [];

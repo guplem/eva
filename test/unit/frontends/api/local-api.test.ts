@@ -1163,6 +1163,12 @@ describe("updates and the vault sync", () => {
     expect(await json<unknown>(refused)).toEqual({ error: "No claude program was found." });
   });
 
+  test("the versions hold Eva's own and one entry for each tool", async () => {
+    const versions = await json<{ eva: string; tools: { program: string }[] }>(await call("/api/versions"));
+    expect(versions.eva).toMatch(/^\d+\.\d+\.\d+/);
+    expect(versions.tools.map((tool) => tool.program)).toContain("claude");
+  });
+
   test("Make this machine the hub answers with the new status", async () => {
     const response = await call("/api/hub", { method: "POST", body: {} });
     expect(await json<{ role: string }>(response)).toMatchObject({ role: "hub" });

@@ -373,6 +373,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   const method = request.method;
 
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
+  if (method === "GET" && url.pathname === "/api/versions") return json(await eva.versions());
   if (method === "GET" && url.pathname === "/api/sessions")
     return json(
       withRunState(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps), (id) => eva.sessions.isTurnRunning(id)),

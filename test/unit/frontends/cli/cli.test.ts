@@ -19,6 +19,7 @@ import {
   describeStatus,
   describeEngineUpdate,
   describeStatusLines,
+  describeToolVersions,
   describeSync,
   describeRelease,
   describeUpdate,
@@ -1584,6 +1585,8 @@ repos:
     expect(before).toContain("Vault sync: ok");
     expect(before).toMatch(/^All good\nEva \d+\.\d+\.\d+, hub: this machine \(\S+\)/);
     expect(before).toContain("Last turn: none since start");
+    // The versions of Claude Code and the other tools show too, as on the Updates page.
+    expect(before).toMatch(/\nTools: /);
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
     // The cache counts show in every status, so a broken prompt cache is visible (lesson 120).
@@ -1842,6 +1845,18 @@ describe("describeStatusLines", () => {
     expect(lines[0]).toBe("All good");
     expect(lines).toContain("Setup: 2 steps left. Open Settings on Eva's page to see them.");
     expect(describeStatusLines(status).join("\n")).not.toContain("Setup:");
+  });
+});
+
+describe("describeToolVersions", () => {
+  test("names each tool that is there, with its version, on one line", () => {
+    const tools = [
+      { program: "git", feature: "the vault and clones", version: "2.50.0" },
+      { program: "claude", feature: "the Claude Code engine", version: "2.1.300" },
+      { program: "pi", feature: "the pi engine", version: null },
+    ];
+    expect(describeToolVersions(tools)).toBe("Tools: git 2.50.0, claude 2.1.300");
+    expect(describeToolVersions([])).toBe("Tools: none found");
   });
 });
 

@@ -3,7 +3,7 @@
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
 import { existsSync, readdirSync } from "node:fs";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
 import { EvaError } from "../shared/errors.ts";
@@ -99,6 +99,7 @@ import {
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
+import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/release-verification.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
@@ -139,6 +140,14 @@ export interface EvaOptions {
   readonly githubApiBaseUrl?: string;
   /** Starts a program in a pseudo-terminal, for the Claude login. Default: Bun's terminal. */
   readonly startTerminal?: TerminalProcessStarter;
+  /** Where the tools live, for their versions. Default: this machine, not the single executable. */
+  readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
+}
+
+/** Eva's version and each tool's, for the status and the Updates page. */
+export interface EvaVersions {
+  readonly eva: string;
+  readonly tools: readonly ToolVersion[];
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -697,6 +706,25 @@ export class Eva {
   /** Saves changes made outside a turn. It never runs during an Assistant turn (lessons 22, 30). */
   sweep(): Promise<VaultSyncState["status"]> {
     return this.vault.sweep();
+  }
+
+  /** Asks each tool for its version, so a phone sees them as `eva doctor` does. */
+  async versions(): Promise<EvaVersions> {
+    const claude = this.options.claudeExecutable ?? null;
+    const pi = this.options.config.engines.pi.executable;
+    const tools = await readToolVersions({
+      platform: process.platform,
+      userHome: homedir(),
+      standalone: false,
+      ...this.options.toolPlaces,
+      runner: this.options.runner,
+      environment: engineToolEnvironment(this.facts),
+      executables: { ...(claude === null ? {} : { "claude-code": claude }), ...(pi === null ? {} : { pi }) },
+    });
+    return {
+      eva: evaVersion,
+      tools: tools.map((tool) => ({ ...tool, version: tool.version === null ? null : this.redact(tool.version) })),
+    };
   }
 
   /** Removes secrets from a text that leaves the core, such as an error message (lesson 95). */

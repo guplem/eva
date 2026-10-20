@@ -71,6 +71,25 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
 }
 
+/** The browser resolves a token to the same form as a computed style, so the two compare as text. */
+async function tokenColour(page: Page, name: string): Promise<string> {
+  return page.evaluate((each) => {
+    const probe = document.createElement("i");
+    probe.style.color = `var(${each})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+}
+
+async function style(
+  locator: Locator,
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+): Promise<string> {
+  return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+}
+
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
@@ -813,6 +832,28 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   await expect(sync.getByRole("button", { name: "Keep both: Notes/plan.md" })).toBeVisible();
   await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
+});
+
+test("Settings: a vault sync error is red, and a conflict that waits for the person is amber (issue #208)", async ({
+  page,
+}) => {
+  let status: "error" | "conflict" = "error";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { vaultSync: Record<string, unknown> };
+    body.vaultSync = { ...body.vaultSync, status, lastError: "The push failed." };
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/vault/conflicts", (route) => route.fulfill({ json: { state: null, conflicts: [] } }));
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const pill = page.getByRole("region", { name: "Vault sync" }).locator(".pill");
+  await expect(pill).toHaveText("Error");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--bad-bg"));
+  status = "conflict";
+  await page.reload();
+  await expect(pill).toHaveText("Conflict");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
 });
 
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
@@ -1639,6 +1680,50 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(first).toContainText("Set up");
   await first.click();
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
+});
+
+test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step, index) =>
+      index === 0
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
+        : index === 1
+          ? { ...step, state: "missing", lastCheck: null }
+          : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  const token = (name: string): Promise<string> => tokenColour(page, name);
+  await logIn(page);
+  await openSettings(page);
+  const bad = await token("--bad");
+  const badBackground = await token("--bad-bg");
+  const hero = page.getByRole("region", { name: "Setup" });
+  await expect(hero).toContainText("Finish setting up Eva");
+  expect(await style(hero, "borderTopColor")).not.toBe(bad);
+  expect(await style(hero, "backgroundImage")).toBe("none");
+  const count = (section: string): Locator =>
+    page.locator(".section-card", { hasText: section }).getByLabel(/to set up/);
+  expect(await style(count("Vault and sync"), "backgroundColor")).toBe(await token("--warn"));
+  // The engine step failed its test, so its section's count is red, as the step is.
+  await expect(count("AI engines")).toHaveAttribute("aria-label", "1 to set up, 1 failed");
+  expect(await style(count("AI engines"), "backgroundColor")).toBe(bad);
+
+  await openSettings(page, "Setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
+  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
+  await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
+  expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  await left.click();
+  const header = page.locator(".step-header");
+  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
 });
 
 test("Settings: the vault step lists the repositories and clones the picked one, with no terminal", async ({

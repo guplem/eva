@@ -175,7 +175,7 @@ describe("ClaudeLogin", () => {
     const { login } = makeLogin(happyScript);
     const error = await failure(login.finish("example-code"));
     expect(isEvaError(error, "claude_login_failed")).toBe(true);
-    expect((error as Error).message).toContain("Log in to Claude");
+    expect((error as Error).message).toContain("Start the login");
   });
 
   test("asks for a new start after the login ended on its own", async () => {
@@ -184,7 +184,7 @@ describe("ClaudeLogin", () => {
     terminals[0]?.exit(0);
     await Bun.sleep(0);
     const error = await failure(login.finish("example-code"));
-    expect((error as Error).message).toContain("Log in to Claude");
+    expect((error as Error).message).toContain("Start the login");
   });
 
   test("refuses an empty code or one with a line break inside", async () => {
@@ -212,7 +212,7 @@ describe("ClaudeLogin", () => {
     expect((error as Error).message).toContain("did not accept the code");
     expect(terminals[0]?.stopped).toBe(true);
     const again = await failure(login.finish("wrong-code"));
-    expect((again as Error).message).toContain("Log in to Claude");
+    expect((again as Error).message).toContain("Start the login");
     expect(terminals).toHaveLength(1);
   });
 

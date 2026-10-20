@@ -43,7 +43,7 @@ const maskedPattern = /^\*{3,}\S{0,8}$/;
 const refusedPattern = /press\s+enter\s+to\s+retry/i;
 /** What `read` returns when claude refused the code. */
 const refused = Symbol("refused");
-const tryAgain = 'Press "Log in to Claude" to try again.';
+const tryAgain = 'Press "Start the login" to try again.';
 
 export class ClaudeLogin {
   private readonly options: ClaudeLoginOptions;

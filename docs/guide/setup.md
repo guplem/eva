@@ -63,7 +63,7 @@ Eva does not think by herself. She runs a harness: a program that runs an AI age
 
 **Claude Code**, for a Claude subscription. Log in from Eva's page, also on a phone:
 
-1. Open **AI engines** in Settings, and press **Log in to Claude**.
+1. Open **AI engines** in Settings, and press **Start the login** under Claude Code. Eva makes a login link.
 2. Press **Open Claude's page**, log in with your Claude account, and allow the access.
 3. Claude's page shows a code. Paste it into Eva's page, and press **Finish**. Then press **Restart Eva**.
 

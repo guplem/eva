@@ -83,7 +83,7 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           "Your devices",
           // With phone access off, the page on this computer may be the only one the person needs.
           input.remoteAccess === null ? "optional" : "missing",
-          "Open Eva's page on your phone. It shows a short code. Keep Eva's page open on another device, and tap Allow when it shows the same code. You can also tap Allow in Telegram, or run `eva devices allow <code>` on Eva's computer.",
+          "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
         ),
     input.githubToken
       ? make("github", "GitHub", "done", "The token is saved.", "github")

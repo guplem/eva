@@ -72,8 +72,11 @@ export function ProjectView({
   const [status, setStatus] = useState("active");
   const [tag, setTag] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
-  /** Null until the first read, so the list never says "No project matches." too early. */
-  const [projects, setProjects] = useState<Project[] | null>(null);
+  /**
+   * Null until the first read, so the list never says "No project matches." too early. "failed"
+   * when the first read failed: no list is known, and a later failure keeps the list it has.
+   */
+  const [projects, setProjects] = useState<Project[] | "failed" | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [loaded, setLoaded] = useState<{ readonly projectId: string; readonly clones: CloneDetails[] } | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -81,16 +84,24 @@ export function ProjectView({
   const showError = useShowError();
 
   useEffect(() => {
+    // A slow answer to an older search must not replace the answer to a newer one.
+    let isCurrent = true;
     const timer = setTimeout(() => {
-      api
-        .projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag)
-        .then(setProjects, (caught: unknown) => {
-          // The toast names the failure. The list stops waiting, so the filters still work.
-          setProjects((current) => current ?? []);
+      api.projects(search, statusWordPattern.test(search) ? "" : status, tagWordPattern.test(search) ? "" : tag).then(
+        (found) => {
+          if (isCurrent) setProjects(found);
+        },
+        (caught: unknown) => {
+          if (!isCurrent) return;
+          setProjects((current) => current ?? "failed");
           showError(caught);
-        });
+        },
+      );
     }, 200);
-    return () => clearTimeout(timer);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [search, status, tag, listVersion, showError]);
 
   // The tags come from every project, so a tag of a closed project is offered too.
@@ -276,35 +287,49 @@ export function ProjectView({
           </div>
         )}
         {projects === null && <ListSkeleton label="Loading the projects…" rows={4} />}
-        {projects?.length === 0 && <span className="muted">No project matches.</span>}
-        {projects?.map((project) => (
-          <button
-            key={project.id}
-            className="project-card"
-            aria-current={page?.project.id === project.id}
-            onClick={() => open({ kind: "project", project })}
-          >
-            <span className="card-row">
-              <b>{project.title}</b>
-              <StatusPill pill={statusPill(project.frontMatter.status)} />
-            </span>
-            <span className="card-row muted">
-              <span>{projectSummary(project.clones.length, chatCount(project))}</span>
-              {project.warnings.length > 0 && (
-                <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>
-              )}
-            </span>
-            {project.frontMatter.tags.length > 0 && (
-              <span className="tags">
-                {project.frontMatter.tags.map((candidate) => (
-                  <span key={candidate} className="tag">
-                    #{candidate}
-                  </span>
-                ))}
+        {projects === "failed" && (
+          <div className="muted" role="status">
+            Eva could not read the projects.{" "}
+            <button
+              onClick={() => {
+                setProjects(null);
+                setListVersion((version) => version + 1);
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+        {Array.isArray(projects) && projects.length === 0 && <span className="muted">No project matches.</span>}
+        {Array.isArray(projects) &&
+          projects.map((project) => (
+            <button
+              key={project.id}
+              className="project-card"
+              aria-current={page?.project.id === project.id}
+              onClick={() => open({ kind: "project", project })}
+            >
+              <span className="card-row">
+                <b>{project.title}</b>
+                <StatusPill pill={statusPill(project.frontMatter.status)} />
               </span>
-            )}
-          </button>
-        ))}
+              <span className="card-row muted">
+                <span>{projectSummary(project.clones.length, chatCount(project))}</span>
+                {project.warnings.length > 0 && (
+                  <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>
+                )}
+              </span>
+              {project.frontMatter.tags.length > 0 && (
+                <span className="tags">
+                  {project.frontMatter.tags.map((candidate) => (
+                    <span key={candidate} className="tag">
+                      #{candidate}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </button>
+          ))}
       </nav>
       {sidebarOpen && page !== null && (
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />

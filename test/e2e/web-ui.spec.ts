@@ -630,6 +630,42 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
+test("the project list shows its shape while it reads, not that no project matches", async ({ page }) => {
+  let answer = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/api/projects?*", async (route) => {
+    await answered;
+    await route.continue();
+  });
+  await logIn(page);
+  await openProjects(page);
+  const list = page.getByRole("navigation", { name: "Projects" });
+  await expect(list.getByText("Loading the projects…")).toBeAttached();
+  await expect(list.locator(".skeleton-item").first()).toBeVisible();
+  await expect(list.getByText("No project matches.")).toHaveCount(0);
+  answer();
+  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+  await expect(list.locator(".skeleton")).toHaveCount(0);
+});
+
+test("a failed first read of the projects says so, and Try again reads them", async ({ page }) => {
+  let failing = true;
+  await page.route("**/api/projects?*", async (route) => {
+    if (failing) await route.fulfill({ status: 500, json: { error: "The vault is busy." } });
+    else await route.continue();
+  });
+  await logIn(page);
+  await openProjects(page);
+  const list = page.getByRole("navigation", { name: "Projects" });
+  await expect(list.getByText("Eva could not read the projects.")).toBeVisible();
+  await expect(list.getByText("No project matches.")).toHaveCount(0);
+  failing = false;
+  await list.getByRole("button", { name: "Try again" }).click();
+  await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
+});
+
 test("the project page says that the clones load, not that there are none", async ({ page }) => {
   await logIn(page);
   let release = (): void => undefined;

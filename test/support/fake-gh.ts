@@ -26,7 +26,11 @@ export function fakeGh(base: ProcessRunner, refuse: string | null = null): FakeG
       if (command[1] === "auth" && command[2] === "login" && folder !== undefined) {
         if (refuse !== null) return Promise.resolve({ exitCode: 1, stdout: "", stderr: refuse });
         mkdirSync(folder, { recursive: true });
-        writeFileSync(join(folder, "hosts.yml"), "github.com:\n    git_protocol: https\n    user: example-user\n");
+        // As with --insecure-storage: the token sits in the file, per account and for the active one.
+        writeFileSync(
+          join(folder, "hosts.yml"),
+          "github.com:\n    users:\n        example-user:\n            oauth_token: gho_fake\n    git_protocol: https\n    oauth_token: gho_fake\n    user: example-user\n",
+        );
       }
       if (command[1] === "auth" && command[2] === "logout" && folder !== undefined)
         rmSync(join(folder, "hosts.yml"), { force: true });

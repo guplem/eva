@@ -95,6 +95,31 @@ describe("the gh login of the instance", () => {
     expect(calls[0]?.options.environment["GH_CONFIG_DIR"]).toBe(folder);
   });
 
+  test("logs out every account whose token sits in the file, never one in the system keyring", async () => {
+    mkdirSync(folder, { recursive: true });
+    // gh keeps more than one account per host. A login without --insecure-storage keeps its token in the
+    // system keyring, which the person's own gh and other instances share: a logout there would reach them.
+    writeFileSync(
+      join(folder, "hosts.yml"),
+      [
+        "github.com:",
+        "    users:",
+        "        example-user:",
+        "            oauth_token: gho_example",
+        "        other-user:",
+        "            oauth_token: gho_other",
+        "        keyring-user:",
+        "    git_protocol: https",
+        "    oauth_token: gho_example",
+        "    user: example-user",
+        "",
+      ].join("\n"),
+    );
+    const { runner, calls } = recordingRunner();
+    expect(await logOutGitHubCli({ ghFolder: folder, runner, environment })).toBeNull();
+    expect(calls.map((call) => call.command.at(-1))).toEqual(["example-user", "other-user"]);
+  });
+
   test("with no gh login, there is nothing to log out", async () => {
     const { runner, calls } = recordingRunner();
     expect(await logOutGitHubCli({ ghFolder: folder, runner, environment })).toBeNull();

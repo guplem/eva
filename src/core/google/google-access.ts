@@ -2,10 +2,22 @@
  * The ready-made Google access levels. Each preset gives no less than the one before it. Eva stores
  * only the level of each service, so a preset name can never disagree with the levels.
  */
-import type { EvaConfig } from "../settings/home.ts";
 
-type GoogleService = EvaConfig["google"]["services"][number];
-type GoogleAccess = EvaConfig["google"]["access"];
+/**
+ * The access levels of each Google service, lowest first, from `auth/permissions.py` of `workspace-mcp`.
+ * Each level holds the levels below it. Change them together with `workspaceMcpVersion`.
+ * The config schema reads them. This file imports nothing, so the web page loads only these lists.
+ */
+export const googleAccessLevels = {
+  calendar: ["readonly", "full"],
+  drive: ["readonly", "full"],
+  contacts: ["readonly", "full"],
+  tasks: ["readonly", "manage", "full"],
+  gmail: ["readonly", "organize", "drafts", "send", "full"],
+} as const;
+
+type GoogleService = keyof typeof googleAccessLevels;
+type GoogleAccess = { readonly [S in GoogleService]: (typeof googleAccessLevels)[S][number] };
 
 export const googleServiceLabels: Readonly<Record<GoogleService, string>> = {
   calendar: "Calendar",

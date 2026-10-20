@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { googleAccessPresets, matchingGoogleAccessPreset } from "../../../../src/core/google/google-access.ts";
-import { defaultConfig, googleAccessLevels } from "../../../../src/core/settings/home.ts";
+import {
+  googleAccessLevels,
+  googleAccessPresets,
+  matchingGoogleAccessPreset,
+} from "../../../../src/core/google/google-access.ts";
+import { defaultConfig } from "../../../../src/core/settings/home.ts";
 
 const allServices = ["calendar", "drive", "contacts", "tasks", "gmail"] as const;
 

@@ -4,6 +4,7 @@
  */
 import { useState, type ReactElement } from "react";
 import {
+  googleAccessLevels,
   googleAccessPresets,
   googleLevelLabels,
   googleServiceLabels,
@@ -11,7 +12,7 @@ import {
   type GoogleAccessPreset,
 } from "../../../core/google/google-access.ts";
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
-import { googleAccessLevels, type EvaConfig } from "../../../core/settings/home.ts";
+import type { EvaConfig } from "../../../core/settings/home.ts";
 import { api } from "./api.ts";
 import {
   Card,

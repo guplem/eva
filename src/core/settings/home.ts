@@ -7,6 +7,7 @@ import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { googleAccessLevels } from "../google/google-access.ts";
 
 /** The variable that names the instance of an `eva` command, as `--instance` does. */
 export const instanceVariable = "EVA_INSTANCE";
@@ -204,18 +205,6 @@ export function createHomeFolders(paths: HomePaths): void {
 }
 
 const modelAliasSchema = z.enum(["default", "opus", "sonnet", "haiku"]);
-
-/**
- * The access levels of each Google service, lowest first, from `auth/permissions.py` of `workspace-mcp`.
- * Each level holds the levels below it. Change them together with `workspaceMcpVersion`.
- */
-export const googleAccessLevels = {
-  calendar: ["readonly", "full"],
-  drive: ["readonly", "full"],
-  contacts: ["readonly", "full"],
-  tasks: ["readonly", "manage", "full"],
-  gmail: ["readonly", "organize", "drafts", "send", "full"],
-} as const;
 
 export const configSchema = z.object({
   version: z.literal(1).default(1),

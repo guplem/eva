@@ -2204,6 +2204,39 @@ test("Settings: an install goes on when a proxy drops the request", async ({ pag
   await expect(card.getByText(/Bad Gateway/)).toHaveCount(0);
 });
 
+test("Settings: an error of Eva herself during an install shows its reason", async ({ page }) => {
+  await page.route("**/api/update", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 500, json: { error: "The release list is broken." } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        kind: "executable",
+        frequency: "daily",
+        install: "minor",
+        phase: "idle",
+        current: "0.1.0",
+        latest: "0.2.0",
+        target: "0.2.0",
+        heldBack: null,
+        releases: [],
+        available: true,
+        lastCheckAt: null,
+        lastError: null,
+        failedStep: null,
+        download: null,
+      },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Check and install" }).click();
+  await expect(card.getByText("The release list is broken.")).toBeVisible();
+  await expect(card.getByRole("progressbar")).toHaveCount(0);
+});
+
 test("Settings: the Versions card shows the shape of its list while it reads", async ({ page }) => {
   let answer = (): void => undefined;
   const answered = new Promise<void>((resolve) => {

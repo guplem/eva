@@ -36,6 +36,8 @@ const downloadPollMs = 1_000;
 const restartPollLimit = 60;
 /** Eva gives a download 10 minutes, so a lost answer waits a little longer than that. */
 const downloadPollLimit = 220;
+/** What a proxy answers when the server behind it does not. */
+const gatewayErrors = new Set([502, 503, 504]);
 
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
@@ -61,7 +63,7 @@ function VersionsCard(): ReactElement {
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
       {versions === "loading" ? (
-        // Eva and the ten tools of `tool-versions.ts`, so the card keeps its height when they come.
+        // About as many rows as Eva and her tools in `tool-versions.ts`, so the card keeps its height.
         <FactsSkeleton label="Reading the versions…" rows={11} />
       ) : versions === "failed" ? (
         <div role="status">Eva could not read the versions. Open this page again to retry.</div>
@@ -153,8 +155,8 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
     try {
       return await api.updateNow(version);
     } catch (error) {
-      // Eva's own refusal has a code. A proxy that gave up answers with a gateway error.
-      if (error instanceof ApiError && (error.code !== null || error.status < 500)) throw error;
+      // A proxy that gave up answers with a gateway error. Any other answer comes from Eva herself.
+      if (error instanceof ApiError && !gatewayErrors.has(error.status)) throw error;
       for (let attempt = 0; attempt < downloadPollLimit; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, statusPollMs));
         const status = await api.updateStatus().catch(() => undefined);

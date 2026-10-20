@@ -1,0 +1,145 @@
+/*
+ * The Files page: the folder path, the folder list and the text of a file. A long file name
+ * or a long line has no break points, so each wraps or scrolls inside its own box.
+ */
+
+.files-page {
+  overflow-wrap: anywhere;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.files-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.files-up {
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+}
+
+.files-crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.files-crumb {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.files-crumbs a {
+  color: var(--accent-ink);
+}
+
+.files-crumbs h1 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.files-column {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.files-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.files-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.files-entry:hover,
+a.files-entry:focus-visible {
+  background: var(--soft);
+}
+
+.files-entry .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.files-entry.other {
+  color: var(--muted);
+}
+
+.files-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.files-size {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.files-file {
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.files-file-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+/* Code keeps its lines, so a long line scrolls inside the box and the page never scrolls sideways. */
+.files-text {
+  margin: 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  overflow-wrap: normal;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+.files-markdown {
+  padding: var(--space-4);
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .files-page {
+    padding: var(--space-3) var(--space-3) var(--space-4);
+  }
+}

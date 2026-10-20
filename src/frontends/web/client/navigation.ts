@@ -1,5 +1,5 @@
 /**
- * The four destinations of the nav rail and the tab bar, and their addresses. Each destination
+ * The destinations of the nav rail and the tab bar, and their addresses. Each destination
  * has an address, so the back button and a reload work.
  */
 import type { IconName } from "./icons.tsx";
@@ -7,6 +7,7 @@ import type { IconName } from "./icons.tsx";
 export const destinations = [
   { id: "chats", label: "Chats", icon: "chat" },
   { id: "projects", label: "Projects", icon: "folder" },
+  { id: "files", label: "Files", icon: "file" },
   { id: "schedules", label: "Schedules", icon: "clock" },
   { id: "settings", label: "Settings", icon: "gear" },
 ] as const satisfies readonly { id: string; label: string; icon: IconName }[];

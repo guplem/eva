@@ -2635,3 +2635,26 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   await expect(page.getByText("claude setup-token").first()).toBeVisible();
   await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
 });
+
+test("Files: folders open, a Markdown file shows formatted or plain, and Back goes up (issue 253)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  const list = page.getByRole("list", { name: "Folder contents" });
+  await list.getByRole("link", { name: "Projects" }).click();
+  await list.getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
+  await list.getByRole("link", { name: /AGENTS\.md/ }).click();
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  await page.getByRole("button", { name: "Show plain text" }).click();
+  await expect(file.getByText("status: active")).toBeVisible();
+  // The address holds the path, so a reload keeps the file and Back goes up a folder.
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "AGENTS.md" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
+  await expect(list.getByRole("link", { name: ".eva" })).toBeVisible();
+  await expect(list.getByRole("link", { name: ".git" })).toHaveCount(0);
+});

@@ -48,7 +48,7 @@ describe("createEventPrinter", () => {
     ).toBe("-----BEGIN RSA \n[redacted]\n");
   });
 
-  test("another line during the pieces ends the open line first", () => {
+  test("another line during the pieces ends the open line, and the block never prints twice", () => {
     expect(
       printed([
         { kind: "text_delta", text: "Let me " },
@@ -56,7 +56,7 @@ describe("createEventPrinter", () => {
         { kind: "notice", text: "A server did not start." },
         { kind: "text", text: "Let me look.", messageId: "m1" },
       ]),
-    ).toBe("Let me \n  (A server did not start.)\nLet me look.\n");
+    ).toBe("Let me \n  (A server did not start.)\nlook.\n");
   });
 
   test("a turn that fails during the pieces ends the open line", () => {

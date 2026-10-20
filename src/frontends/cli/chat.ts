@@ -135,22 +135,26 @@ async function renameChat(
  * final text it writes only the rest. A final text that differs, such as a redacted one, comes again in full.
  */
 export function createEventPrinter(): (event: SessionEvent) => string | null {
-  let open = "";
+  let written = "";
+  let lineOpen = false;
   return (event) => {
     if (event.kind === "text_delta") {
-      open += event.text;
+      written += event.text;
+      lineOpen = true;
       return event.text;
     }
     const described = describeEvent(event);
-    if (open === "") return described;
-    if (event.kind === "text" && event.text.startsWith(open)) {
-      const rest = event.text.slice(open.length);
-      open = "";
-      return `${rest}\n`;
+    if (event.kind === "text" && written !== "") {
+      const block = written;
+      const endLine = lineOpen ? "\n" : "";
+      written = "";
+      lineOpen = false;
+      return event.text.startsWith(block) ? `${event.text.slice(block.length)}\n` : `${endLine}${event.text}\n`;
     }
-    if (described === null && event.kind !== "turn_finished") return null;
+    if (event.kind === "turn_finished" || event.kind === "turn_failed") written = "";
+    if (!lineOpen || (described === null && event.kind !== "turn_finished")) return described;
     // The pieces left a line open: end it before anything else.
-    open = "";
+    lineOpen = false;
     return `\n${described ?? ""}`;
   };
 }

@@ -38,7 +38,8 @@ export function Composer({ session, running, onSend, onStop, onChanged, blocker 
     setSending(false);
   };
 
-  const showStop = running && text.trim() === "";
+  // A locked box cannot be cleared, so a running turn keeps its Stop button.
+  const showStop = running && (text.trim() === "" || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
   return (

@@ -57,6 +57,13 @@ The person can also do these from Telegram: `/status`, `/logs`, `/sync`, `/updat
 
 When the person asks how to open Eva on their phone or another computer, or for Eva's address or link, run `eva link` in the shell and share its answer. The address works on any device that is signed in to Tailscale with the person's account. The first time on each device, the page asks the person to tap Allow in Telegram. The local address in the answer works only on the machine that runs Eva, and needs the token from `secrets.json`; never send the token itself.
 
+## Your files in the vault
+
+`.eva/` in the vault holds your own files: `assistant.md` (the person's rules for you), `chat-names.md`, `schedules.json`, your skills in `skills/`, and the open problems of each computer in `machines/`. None of them is a note, so never file, move or link one.
+
+- **Change `.eva/schedules.json` only through the `schedule` skill.** Eva reads it every minute and skips an entry that she cannot read.
+- **Never edit `.eva/machines/`.** Eva writes it by herself. Delete a file there only when the person asks, for a computer that no longer runs Eva.
+
 ## Sending files
 
 In a chat that supports it, such as Telegram, you can send a file with your answer. Write a marker on a line of its own, with the file's path from the vault root:
@@ -66,7 +73,7 @@ In a chat that supports it, such as Telegram, you can send a file with your answ
 
 Eva removes the marker lines from your text, so never refer to them. Only files in the vault can be sent. Anywhere else, the markers show as plain text.
 
-A file made only to send, such as a PDF of an answer, goes in `Scratch/`, never with the notes: `[[attach: Scratch/<name>.pdf]]`. Name it after its content, because the person sees that name. Git never saves `Scratch/`, and Eva deletes its files after a week. To make a PDF, write a Typst file and run `typst compile "Scratch/<name>.typ" "Scratch/<name>.pdf"`.
+A file made only to send, such as a PDF of an answer, goes in `Scratch/`, never with the notes: `[[attach: Scratch/<name>.pdf]]`. Name it after its content, because the person sees that name. Git never saves `Scratch/`, and Eva deletes its files after a week. Eva also saves there each file that the person sends in the chat, so copy a file worth keeping into the vault. To make a PDF, write a Typst file and run `typst compile "Scratch/<name>.typ" "Scratch/<name>.pdf"`.
 
 ## Style
 

@@ -1,23 +1,19 @@
 # Vault
 
-This repository is a personal knowledge vault: the notes that its owner chose to keep, their projects, and the rules of their assistant, Eva. Eva's code lives in another repository.
+This repository is a personal knowledge vault: the notes that its owner chose to keep, and their projects.
 
 Everything stays plain text where it can, so one search finds it and almost any device opens it.
 
-**Eva's identity arrives only as an injected system prompt.** `.eva/assistant.md` holds it, and Eva sends it in Assistant mode. No file loads it by itself. So unless Eva gave you that identity, you are here to work with the notes, not to be Eva.
-
 ## What is where
 
-| Path                                                       | What it holds                                                                                                                                                                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Principles/`, `Methods/`, `Toolbox/`, `Library/`, `Life/` | Notes, grouped as _Knowledge_ below says                                                                                                                                                                           |
-| `Projects/`                                                | One folder for each project (_Projects_ below)                                                                                                                                                                     |
-| `.eva/`                                                    | Eva's files in the vault: `assistant.md` (her rules for this person), `schedules.json`, `chat-names.md` (the rules for chat names), her skills in `skills/`, and the open problems of each computer in `machines/` |
-| `Scratch/`                                                 | Files that are not knowledge: files made to send to a chat, and files received from it. Git ignores it                                                                                                             |
+| Path                                                       | What it holds                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Principles/`, `Methods/`, `Toolbox/`, `Library/`, `Life/` | Notes, grouped as _Knowledge_ below says                                                               |
+| `Projects/`                                                | One folder for each project (_Projects_ below)                                                         |
+| `.eva/`                                                    | The settings of Eva, a separate program. Not notes                                                     |
+| `Scratch/`                                                 | Files that are not knowledge: files made to send to a chat, and files received from it. Git ignores it |
 
-**`.eva/schedules.json` is not a note.** Never file, move or link it. Change it only through the `schedule` skill, because Eva reads it every minute and skips an entry that she cannot read.
-
-**Eva writes `.eva/machines/` by herself.** Do not edit these files. Delete one only when the person asks, for a computer that no longer runs Eva.
+**`.eva/` and `Scratch/` are not notes.** Never file, move or link what they hold. Edit `.eva/` only when your own instructions say how.
 
 **Every path in this file starts at the vault root.**
 
@@ -53,7 +49,7 @@ Inside each folder, group by topic. Purpose first, topic second.
 
 ### Rules
 
-- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. A file made only to send, such as a PDF of an answer, goes in `Scratch/`. Eva also saves there each file that the person sends in the chat, so copy a file worth keeping into the vault.
+- **Anything can live in the vault:** notes, documents, scans, photos. Prefer plain text when the content is text. A file made only to send, such as a PDF of an answer, goes in `Scratch/`. Copy a file from `Scratch/` worth keeping into the vault.
 - **One fact lives in one file.** Other files link to it, never copy it. Two copies drift apart, and then neither can be trusted.
 - **Name a file after the moment when the person would open it**, not after where its content came from. Write `Mental Strength Checklist`, not `13 Things Mentally Strong People Don't Do`. The test: standing in that situation, could the person guess the file name?
 - **Write notes impersonally**, as statements about the world. Write "The mind believes what it hears by default", not "My mind believes what it hears". A diary is the exception: it is the person's own voice.
@@ -97,4 +93,4 @@ repos:
 
 The text under the front matter says what an agent must know about the project. The project's notes sit beside it.
 
-Eva clones each repository into `Projects/<id>/repos/<repo>-<n>/`. Git ignores those clones: each one is its own repository. Never edit a clone as part of note work.
+`Projects/<id>/repos/<repo>-<n>/` holds clones of the project's repositories. Git ignores those clones: each one is its own repository. Never edit a clone as part of note work.

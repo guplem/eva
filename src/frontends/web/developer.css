@@ -97,6 +97,31 @@
   color: var(--muted);
 }
 
+/* The large visors draw their shell ring outside their box, so the sizes need a wide gap. */
+.design-visor-sizes {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-4) 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-8);
+}
+
+.design-visor-sizes li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 10em;
+  text-align: center;
+  font-size: var(--text-xs);
+}
+
+.design-icons .field-hint {
+  text-align: center;
+}
+
 .design-icons .icon {
   width: 24px;
   height: 24px;

@@ -1,5 +1,7 @@
 # Eva
 
+<p align="center"><img src="docs/design/eve/eva.svg" width="160" height="160" alt="Eva's face: a black visor with two glowing blue eyes that look around and blink."></p>
+
 **Eva is a personal AI assistant that runs on a computer of your own.** You talk to her from your phone, your computer or any other device, through Telegram or her web page. She remembers everything in a private notebook (a vault) that only you own.
 
 **Eva is a "super harness".** A harness is a program that runs an AI agent, such as Claude Code or pi. Eva does not think by herself: she runs these harnesses for you, and organizes their work. You can change the harness, and keep the same chats, notes and projects.

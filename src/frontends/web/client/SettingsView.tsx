@@ -306,7 +306,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   vault: "folder",
   connections: "globe",
   access: "phone",
-  personalize: "sun",
+  personalize: "palette",
   updates: "download",
   developer: "bolt",
 };

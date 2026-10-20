@@ -23,7 +23,17 @@ $originalKind = if ($null -ne $originalPath) { $key.GetValueKind('Path') } else 
 $key.Close()
 $server = Start-Process python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', $root -PassThru -WindowStyle Hidden
 try {
-  Start-Sleep -Seconds 3
+  # A slow runner can take more than a few seconds to start the server: wait until it answers.
+  $deadline = (Get-Date).AddSeconds(60)
+  while ($true) {
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/release/SHA256SUMS' | Out-Null
+      break
+    } catch {
+      if ((Get-Date) -gt $deadline) { throw 'The local web server did not start within 60 seconds.' }
+      Start-Sleep -Milliseconds 500
+    }
+  }
   # Eva goes into a new LOCALAPPDATA, so the check sees only this install.
   $env:LOCALAPPDATA = Join-Path $root 'local'
   New-Item -ItemType Directory -Path $env:LOCALAPPDATA | Out-Null

@@ -2,7 +2,7 @@
  * Starts Eva for the Playwright tests: a neutral demo vault in a temporary folder, a local
  * bare remote, a scripted engine, and the local API on a fixed port. No real login is used.
  */
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
@@ -129,6 +129,9 @@ const google = fakeGoogle();
 google.grantedScope = googleScopes(defaultConfig.google).join(" ");
 
 const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
+// The demo engine counts as logged in, so the chats can answer (issue 214).
+mkdirSync(join(home, "engines", "claude"), { recursive: true });
+writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
 const eva = new Eva({
   remoteAccess: demoRemoteAccess,
   paths: homePaths(home),

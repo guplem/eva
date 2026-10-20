@@ -97,11 +97,9 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByLabel("Model for a new chat").selectOption("haiku");
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  // The model comes first, and the chat keeps it (lesson 41).
-  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
+  await expect(page.locator(".main-header .sub")).toHaveText("Claude Code · Assistant");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
@@ -122,7 +120,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   const title = `A chat to delete (${test.info().project.name})`;
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
@@ -138,16 +136,24 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
     if (request.method() === "DELETE") deletes.push(request.url());
   });
 
-  page.once("dialog", (dialog) => void dialog.dismiss());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  const question = page.getByRole("group", { name: `Delete “${title}”?` });
+  await chooseFromMore(page, "Delete chat");
+  await question.getByRole("button", { name: "Keep" }).click();
+  await expect(question).toHaveCount(0);
   await expect(listed).toHaveCount(1);
   expect(deletes).toEqual([]);
 
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  await chooseFromMore(page, "Delete chat");
+  await question.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(listed).toHaveCount(0);
   expect(deletes).toHaveLength(1);
 });
+
+/** Opens the "More actions" menu of the chat header and picks an item. */
+async function chooseFromMore(page: Page, item: string): Promise<void> {
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item }).click();
+}
 
 /** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
 async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
@@ -170,7 +176,7 @@ async function chatIdNamed(page: Page, title: string): Promise<string> {
 async function newAnsweredChat(page: Page, text: string): Promise<string> {
   const title = `${text} (${test.info().project.name})`;
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
@@ -246,15 +252,15 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
 }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
-  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await chooseFromMore(page, "Rename");
   await page.getByLabel("Chat title").fill("Draft");
   await page.getByLabel("Chat title").press("Escape");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
-  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await chooseFromMore(page, "Rename");
   // The field is selected, so typing replaces the old title.
   await page.getByLabel("Chat title").pressSequentially("Trip");
   await expect(page.getByLabel("Chat title")).toHaveValue("Trip");
@@ -278,7 +284,7 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("show me a list");
@@ -291,7 +297,7 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("near the limit");
@@ -305,7 +311,7 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
 test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
@@ -410,9 +416,9 @@ test("the composer's chip picks the model before the first message, and is fixed
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
-  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Haiku/ })).toBeVisible();
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
@@ -517,8 +523,8 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   await openExampleApp(page);
   await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
   await expect(page.getByText("Project mode")).toBeVisible();
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  await chooseFromMore(page, "Delete chat");
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
@@ -1147,7 +1153,7 @@ test("the Chats badge counts the approvals that wait, and the dot says that Eva 
   }
 });
 
-test("the New chat button sits in the list header, and the model menu at the bottom", async ({ page }) => {
+test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -1156,20 +1162,14 @@ test("the New chat button sits in the list header, and the model menu at the bot
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
   await openList(page);
-  const sidebar = await page.getByRole("navigation", { name: "Chats" }).boundingBox();
-  const model = page.getByLabel("Model for a new chat");
-  const button = page.getByRole("button", { name: "New chat", exact: true });
-  await expect(model).toBeInViewport();
+  const button = page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true });
   await expect(button).toBeInViewport();
-  const modelBox = await model.boundingBox();
+  // The composer chip is the one place to pick the model.
+  await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("combobox")).toHaveCount(0);
   const buttonBox = await button.boundingBox();
   const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
-  if (sidebar === null || modelBox === null || buttonBox === null || firstChatBox === null) {
-    throw new Error("A sidebar part is not on the screen.");
-  }
+  if (buttonBox === null || firstChatBox === null) throw new Error("A sidebar part is not on the screen.");
   expect(buttonBox.y).toBeLessThan(firstChatBox.y);
-  expect(sidebar.y + sidebar.height - (modelBox.y + modelBox.height)).toBeLessThanOrEqual(24);
-  expect(firstChatBox.y).toBeLessThan(modelBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
@@ -1237,10 +1237,12 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
   // The header stays at the top of the scrolled list, so the click needs no scroll back.
   expect(await page.locator(".sidebar-list").evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeInViewport();
+  await expect(
+    page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }),
+  ).toBeInViewport();
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   // Every chat is called "New chat", so the heading shows before the new chat exists.
   // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
   await expect(chats).toHaveCount(before + 1);
@@ -1264,7 +1266,7 @@ async function newChat(page: Page): Promise<string> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   return ((await (await created).json()) as { id: string }).id;
 }
@@ -1358,7 +1360,7 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(steps).toHaveCount(0);
 });
 
-test("the chat panel shows the context ring, the engine and the model, and a phone opens it from Chat info", async ({
+test("the chat panel shows the context ring, the engine and the model, and a phone opens it from the title or the menu", async ({
   page,
 }) => {
   await logIn(page);
@@ -1373,14 +1375,29 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
     // The engine names its window, so the ring shows a share.
     await expect(panel).toContainText("15 of 200k tokens");
     await expect(panel.getByRole("img", { name: "0% of the context window in use" })).toBeVisible();
-    // getByRole skips hidden elements, so count the button by its class.
-    await expect(page.locator(".chat-info-button")).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    // The inspector shows the details, so the menu does not offer them, and the title is no button.
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Chat info" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("heading", { level: 1 }).getByRole("button")).toHaveCount(0);
     await panel.getByRole("button", { name: "Fork this chat" }).click();
     await expect(panel).toContainText("1, with 1 fork");
     return;
   }
-  await page.getByRole("button", { name: "Chat info" }).click();
+  // One row: the list button, the title with its subtitle, and the more button.
+  const header = page.locator(".main-header").first();
+  const rows = await header.locator(":scope > *").evaluateAll((parts) => {
+    const boxes = parts.map((part) => part.getBoundingClientRect());
+    return {
+      count: boxes.length,
+      lowestTop: Math.max(...boxes.map((box) => box.top)),
+      highestBottom: Math.min(...boxes.map((box) => box.bottom)),
+    };
+  });
+  expect(rows.count).toBe(3);
+  expect(rows.lowestTop).toBeLessThan(rows.highestBottom);
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
   const sheet = page.getByRole("dialog", { name: "This chat" });
   await expect(sheet).toContainText("Assistant");
   await expect(sheet).toContainText("15 of 200k tokens");
@@ -1388,7 +1405,7 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   // A tap on the scrim above the sheet closes it too.
-  await page.getByRole("button", { name: "Chat info" }).click();
+  await chooseFromMore(page, "Chat info");
   await expect(sheet).toBeVisible();
   await page.mouse.click(20, 20);
   await expect(sheet).toHaveCount(0);
@@ -1546,7 +1563,7 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
         })
       : route.continue(),
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
   await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -1821,7 +1838,7 @@ test("a new chat that cannot reach Eva says so, and the message closes", async (
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST" ? route.abort() : route.continue(),
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Eva cannot be reached");
   await page.getByRole("button", { name: "Close the message" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);

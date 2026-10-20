@@ -1251,6 +1251,44 @@ describe("an Eva with an update channel", () => {
       updating.stop();
     }
   });
+
+  test("an install may take longer than Bun's idle timeout", async () => {
+    // A download of the new executable can run for minutes. A short idle timeout keeps the test fast.
+    const updating = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: null },
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: async () => {
+          await Bun.sleep(8_000);
+          return { current: "0.1.0", latest: "0.2.0", available: false, releases: null };
+        },
+      },
+      restartForUpdate: () => undefined,
+    });
+    const updatingApi = startLocalApi({
+      eva: updating,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+      idleTimeoutSeconds: 1,
+    });
+    try {
+      const answer = await fetch(`${updatingApi.url}/api/update`, { method: "POST", headers: headers() });
+      expect(await json<unknown>(answer)).toMatchObject({ phase: "restarting" });
+    } finally {
+      updatingApi.stop();
+      updating.stop();
+    }
+  }, 30_000);
 });
 
 describe("an Eva with a claude program", () => {

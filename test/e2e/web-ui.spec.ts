@@ -148,7 +148,7 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
-    "title",
+    "data-tooltip",
     "1 command, 1 tool",
   );
   await expectBackgroundTasks(page);
@@ -591,7 +591,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await answerInNewClone(page, "Fix the bug");
   // Project mode shows the same activity as Assistant mode.
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
-    "title",
+    "data-tooltip",
     "1 command, 1 tool",
   );
   await expectBackgroundTasks(page);

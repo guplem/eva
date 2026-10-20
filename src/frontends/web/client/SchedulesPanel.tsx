@@ -21,6 +21,8 @@ export function SchedulesPanel(): ReactElement {
   const [list, setList] = useState<ScheduleList | null>(null);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The schedules whose switch waits for its change and the new list. */
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
   const reload = (): void => {
     void api.schedules().then(setList, (error: unknown) => {
@@ -46,15 +48,28 @@ export function SchedulesPanel(): ReactElement {
     reload();
   };
 
-  const setEnabled = async (scheduleId: string, enabled: boolean): Promise<void> => {
+  const setEnabled = async (view: ScheduleView, enabled: boolean): Promise<void> => {
+    const { id, name } = view.schedule;
+    setPending((current) => new Set(current).add(id));
     try {
-      await api.setScheduleEnabled(scheduleId, enabled);
-      // Someone who can push could turn on a paused schedule, so on always asks again (lesson 67).
-      setNotice(enabled ? "Turned on. Eva shows its setup card. The schedule runs only after you confirm it." : null);
+      await api.setScheduleEnabled(id, enabled);
+      // A push can turn a paused schedule on too, so on always asks again (lesson 67).
+      if (enabled)
+        setNotice(`Turned on ${name}. Eva shows its setup card first. It runs only after the card reaches you.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
-    reload();
+    // The switch waits for the new list, so a second tap never sends the same state again.
+    void api
+      .schedules()
+      .then(setList, () => undefined)
+      .finally(() => {
+        setPending((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      });
   };
 
   const schedules = list?.schedules ?? [];
@@ -101,7 +116,8 @@ export function SchedulesPanel(): ReactElement {
                 key={view.schedule.id}
                 view={view}
                 now={list.now}
-                onToggle={() => void setEnabled(view.schedule.id, !view.schedule.enabled)}
+                busy={pending.has(view.schedule.id)}
+                onToggle={() => void setEnabled(view, !view.schedule.enabled)}
                 onRemove={() => void remove(view.schedule.id)}
               />
             ))}
@@ -186,6 +202,7 @@ function percent(share: number): string {
 function ScheduleRow(props: {
   view: ScheduleView;
   now: string;
+  busy: boolean;
   onToggle: () => void;
   onRemove: () => void;
 }): ReactElement {
@@ -206,9 +223,11 @@ function ScheduleRow(props: {
       </div>
       <div className="schedule-row-actions">
         <button
-          className="schedule-toggle"
+          className="toggle"
           role="switch"
           aria-checked={schedule.enabled}
+          aria-busy={props.busy}
+          disabled={props.busy}
           aria-label={`Run ${schedule.name}`}
           onClick={props.onToggle}
         />

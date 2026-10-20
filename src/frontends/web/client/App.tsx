@@ -315,7 +315,11 @@ function EvaApp(): ReactElement {
   }, [allowedDevice]);
 
   if (authenticated === null)
-    return <AppSkeleton page={screen === "chats" ? "chat" : screen === "projects" ? "list" : "cards"} />;
+    return (
+      <AppSkeleton
+        page={screen === "chats" ? "chat" : screen === "projects" ? "list" : screen === "files" ? "files" : "cards"}
+      />
+    );
   if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (requestId: string, answer: "allow" | "deny"): Promise<void> => {

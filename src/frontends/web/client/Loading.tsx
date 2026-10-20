@@ -3,6 +3,7 @@
  * content that fills a large area shows a skeleton with the shape of that content.
  */
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { destinations } from "./navigation.ts";
 
 /**
  * A pill bar with the sentence of the wait. A known share (0 to 1) fills the bar and shows the
@@ -158,26 +159,24 @@ export function CardsSkeleton({
 
 /**
  * The first load of the page, before Eva answers: the navigation, then the shape of the page
- * that opens. A chat page shows the list and a chat, a project page the list and cards, and
- * any other page its cards.
+ * that opens. A chat page shows the list and a chat, a project page the list and cards, the
+ * files page a list, and any other page its cards.
  */
-export function AppSkeleton({ page }: { readonly page: "chat" | "list" | "cards" }): ReactElement {
+export function AppSkeleton({ page }: { readonly page: "chat" | "list" | "files" | "cards" }): ReactElement {
   return (
     <Skeleton label="Loading Eva…" className="app">
       <div className="main-nav">
         <span className="main-nav-visor">
           <span className="skeleton-visor large" />
         </span>
-        {[0, 1, 2, 3].map((index) => (
-          <span key={index} className="skeleton-nav-button" />
+        {destinations.map((destination) => (
+          <span key={destination.id} className="skeleton-nav-button" />
         ))}
       </div>
       <div className="app-body">
-        {page === "cards" ? (
+        {page === "cards" || page === "files" ? (
           <div className="main">
-            <div className="page-skeleton">
-              <CardsSkeleton />
-            </div>
+            <div className="page-skeleton">{page === "files" ? <ListSkeleton rows={8} /> : <CardsSkeleton />}</div>
           </div>
         ) : (
           <div className={page === "list" ? "layout list-home" : "layout"}>

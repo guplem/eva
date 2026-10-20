@@ -263,7 +263,8 @@
   background: var(--main-gradient);
 }
 
-.page-skeleton .cards-skeleton {
+.page-skeleton .cards-skeleton,
+.page-skeleton .list-skeleton {
   max-width: 760px;
   margin: 0 auto;
 }

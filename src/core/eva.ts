@@ -74,6 +74,7 @@ import {
   type ProjectWorkInput,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
+import { browseVault, type BrowsedPath } from "./files/file-browser.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
@@ -805,6 +806,14 @@ export class Eva {
   /** Clones a project's repository into its next free folder (the "New clone" button). */
   newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     return this.projectWork.newClone(projectId, repositoryUrl);
+  }
+
+  /** A vault folder's entries, or a text file, for the file explorer of the web page. */
+  browseFiles(path: string): BrowsedPath {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null)
+      throw new EvaError("vault_not_found", "Eva needs your vault. Finish the setup in Settings, on Eva's page.");
+    return browseVault(vaultPath, path, (text) => this.redactor.redact(text));
   }
 
   /** A project's `AGENTS.md` with its version, for the details editor. */

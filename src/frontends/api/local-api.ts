@@ -502,6 +502,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json(await eva.newClone(projectId, repositoryUrl), 201);
     }
   }
+  if (method === "GET" && url.pathname === "/api/files")
+    return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
@@ -657,7 +659,12 @@ function errorResponse(error: unknown, eva: Eva): Response {
   if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
   // The code lets a page tell one failure from another that shares its status.
   const body = { error: eva.redact(error.message), code: error.code };
-  if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
+  if (
+    isEvaError(error, "session_not_found") ||
+    isEvaError(error, "project_not_found") ||
+    isEvaError(error, "file_not_found")
+  )
+    return json(body, 404);
   if (
     isEvaError(error, "config_invalid") ||
     isEvaError(error, "schedule_invalid") ||

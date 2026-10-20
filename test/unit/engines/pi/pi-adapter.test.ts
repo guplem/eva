@@ -206,6 +206,8 @@ describe("PiEngine", () => {
     const pieces = events.slice(0, textAt).filter((event) => event.kind === "text_delta");
     expect(pieces.length).toBeGreaterThan(1);
     expect(pieces.map((event) => event.text).join("")).toBe((events[textAt] as { text: string }).text);
+    // Only the first piece after the block start starts the block.
+    expect(pieces.map((event) => event.startsBlock)).toEqual([true, ...pieces.slice(1).map(() => undefined)]);
   });
 
   test("the chat's model name picks the pi model, with the default entry as fallback (lesson 41)", async () => {

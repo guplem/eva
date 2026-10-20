@@ -66,7 +66,8 @@ export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
 }
 
 /**
- * The pieces of a block build its draft. The block's final text, the turn end or a delete drops it.
+ * The pieces of a block build its draft. A new block, the block's final text, the turn end or a
+ * delete drops it.
  * A turn whose first event is a piece runs too, so the piece also opens the turn's steps.
  */
 function applyToDraft(state: LiveState, event: SessionEvent): LiveState {
@@ -74,7 +75,7 @@ function applyToDraft(state: LiveState, event: SessionEvent): LiveState {
   if (event.kind === "text_delta") {
     return {
       ...state,
-      drafts: { ...state.drafts, [id]: (state.drafts[id] ?? "") + event.text },
+      drafts: { ...state.drafts, [id]: (event.startsBlock === true ? "" : (state.drafts[id] ?? "")) + event.text },
       steps: id in state.steps ? state.steps : { ...state.steps, [id]: [] },
     };
   }
@@ -156,6 +157,6 @@ function applyToTurn(state: LiveState, event: SessionEvent): LiveState {
 
 /** The steps of a running turn, with its draft as the last message, so the answer shows the words as they come. */
 export function stepsWithDraft(steps: readonly TurnStep[], draft: string | undefined): readonly TurnStep[] {
-  if (draft === undefined || draft === "") return steps;
+  if (draft === undefined || draft.trim() === "") return steps;
   return [...steps, { kind: "message", text: draft, isError: false, id: null }];
 }

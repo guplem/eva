@@ -207,6 +207,8 @@ async function* mapEachTurn(
   // no answer. So the second check goes out at the first answer, and the result waits for it.
   let laterStatus: Promise<McpServerStatus[]> | null = null;
   let lastMessageId: string | null = null;
+  // True from the start of a text block until its first piece.
+  let textBlockStarts = false;
   let contextTokens: number | null = null;
   let answeringModel: string | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
@@ -242,8 +244,11 @@ async function* mapEachTurn(
         // The finished assistant message follows with the whole block, so only text pieces matter here.
         if (message.parent_tool_use_id !== null) break;
         const event = message.event;
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text.length > 0)
-          yield { kind: "text_delta", text: event.delta.text };
+        if (event.type === "content_block_start" && event.content_block.type === "text") textBlockStarts = true;
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text.length > 0) {
+          yield { kind: "text_delta", text: event.delta.text, ...(textBlockStarts ? { startsBlock: true } : {}) };
+          textBlockStarts = false;
+        }
         break;
       }
       case "user": {

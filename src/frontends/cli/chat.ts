@@ -139,9 +139,11 @@ export function createEventPrinter(): (event: SessionEvent) => string | null {
   let lineOpen = false;
   return (event) => {
     if (event.kind === "text_delta") {
-      written += event.text;
+      // A block that starts again leaves the old pieces on their own line.
+      const endLine = event.startsBlock === true && lineOpen ? "\n" : "";
+      written = (event.startsBlock === true ? "" : written) + event.text;
       lineOpen = true;
-      return event.text;
+      return `${endLine}${event.text}`;
     }
     const described = describeEvent(event);
     if (event.kind === "text" && written !== "") {

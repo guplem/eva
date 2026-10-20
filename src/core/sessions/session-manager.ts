@@ -486,6 +486,7 @@ export class SessionManager {
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
     const draft = new TextStreamRedactor(this.options.redactor);
+    let blockStarts = false;
 
     const runtime = this.runtimeOf(sessionId);
     const emit = (payload: EngineEventPayload): void => {
@@ -544,11 +545,21 @@ ${prompt}`,
         if (turn.ended) continue;
         // A piece is live only: the block's final text is what the record keeps.
         if (raw.kind === "text_delta") {
+          if (raw.startsBlock === true) {
+            draft.reset();
+            blockStarts = true;
+          }
           const text = draft.push(raw.text);
-          if (text !== "") emit({ kind: "text_delta", text });
+          if (text === "") continue;
+          // The first sent piece carries the mark, even when the engine's first piece was held back.
+          emit({ kind: "text_delta", text, ...(blockStarts ? { startsBlock: true } : {}) });
+          blockStarts = false;
           continue;
         }
-        if (raw.kind === "text") draft.reset();
+        if (raw.kind === "text") {
+          draft.reset();
+          blockStarts = false;
+        }
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
         const payload = redactPayload(raw, this.options.redactor);
         if (payload.kind === "history_lost") {

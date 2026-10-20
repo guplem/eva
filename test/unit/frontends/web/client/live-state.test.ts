@@ -60,6 +60,15 @@ describe("applyEvent", () => {
     expect(done.steps["s1"]?.map((step) => step.text)).toEqual(["Here is the answer."]);
   });
 
+  test("a block that starts again replaces the draft, and a draft of blanks shows nothing", () => {
+    const state = run([
+      { kind: "text_delta", text: "Hello ", startsBlock: true },
+      { kind: "text_delta", text: "Hello world ", startsBlock: true },
+    ]);
+    expect(state.drafts["s1"]).toBe("Hello world ");
+    expect(stepsWithDraft([], "\n ")).toEqual([]);
+  });
+
   test("the end of a turn drops its draft, and an event of another chat keeps it", () => {
     const drafting = run([{ kind: "text_delta", text: "Half " }]);
     expect(applyEvent(drafting, event({ kind: "text", text: "Other.", messageId: "m9" }, "s2")).drafts).toEqual({

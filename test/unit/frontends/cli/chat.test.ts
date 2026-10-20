@@ -35,6 +35,16 @@ describe("createEventPrinter", () => {
     ).toBe("Hello there friend.\n");
   });
 
+  test("a block that starts again goes on a new line, and its final text follows it", () => {
+    expect(
+      printed([
+        { kind: "text_delta", text: "Hello ", startsBlock: true },
+        { kind: "text_delta", text: "Hello world ", startsBlock: true },
+        { kind: "text", text: "Hello world now.", messageId: "m1" },
+      ]),
+    ).toBe("Hello \nHello world now.\n");
+  });
+
   test("a block with no pieces prints whole, as before", () => {
     expect(printed([{ kind: "text", text: "Done.", messageId: "m1" }, finished])).toBe("Done.\n");
   });

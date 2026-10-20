@@ -1215,3 +1215,25 @@ describe("streamed text", () => {
     ]);
   });
 });
+
+describe("a block that starts again", () => {
+  test("drops the pieces before it and marks its first sent piece", async () => {
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "Hello w", startsBlock: true },
+        // The model call failed and runs again: its block starts with a word still held back.
+        { kind: "text_delta", text: "Hel", startsBlock: true },
+        { kind: "text_delta", text: "lo world " },
+        ...FakeEngine.answer(request, "Hello world."),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(
+      events.filter((event) => event.kind === "text_delta").map(({ text, startsBlock }) => ({ text, startsBlock })),
+    ).toEqual([
+      { text: "Hello ", startsBlock: true },
+      { text: "Hello world ", startsBlock: true },
+    ]);
+  });
+});

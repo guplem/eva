@@ -435,18 +435,24 @@ describe("mapSdkMessages", () => {
     const lines = [
       streamLine({ type: "message_start", message: {} }),
       streamLine({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } }),
+      streamLine({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
+      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "" } }),
       streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "The first " } }),
       streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "step" } }),
-      streamLine({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "" } }),
+      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, "toolu_1"),
       streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "inner" } }, "toolu_1"),
+      // A model call that runs again starts its text block again.
+      streamLine({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+      streamLine({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The first " } }),
       resultOf("new-turn-with-tool"),
     ];
     const events = await collect(lines);
     expect(events.filter((event) => event.kind === "text_delta")).toEqual([
-      { kind: "text_delta", text: "The first " },
+      { kind: "text_delta", text: "The first ", startsBlock: true },
       { kind: "text_delta", text: "step" },
+      { kind: "text_delta", text: "The first ", startsBlock: true },
     ]);
-    expect(events).toHaveLength(3);
+    expect(events).toHaveLength(4);
   });
 
   test("text from inside a subagent stays out of the conversation", async () => {

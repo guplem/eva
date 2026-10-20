@@ -25,7 +25,15 @@ export type EngineEventPayload =
    * A piece of the text block that the engine writes now. The block's `text` event follows and
    * replaces the pieces, so the core sends them but never stores them (issue 117).
    */
-  | { readonly kind: "text_delta"; readonly text: string }
+  | {
+      readonly kind: "text_delta";
+      readonly text: string;
+      /**
+       * The first piece of a new block. A model call that failed and runs again starts a new
+       * block before any final text, so each reader drops the pieces before this one.
+       */
+      readonly startsBlock?: true;
+    }
   | {
       readonly kind: "tool_started";
       readonly toolUseId: string;

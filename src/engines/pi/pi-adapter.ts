@@ -180,6 +180,8 @@ export class PiEngine implements EnginePort {
     let costUsd = 0;
     let contextTokens: number | null = null;
     let answers = 0;
+    // True from the start of an answer until its first text piece.
+    let messageStarts = false;
     let pendingError: string | null = null;
     let end: TurnEnd | null = null;
 
@@ -195,10 +197,15 @@ export class PiEngine implements EnginePort {
         end = { kind: "failed", reason: typeof error === "string" ? error : "pi refused the message." };
       } else if (type === "response" && record["id"] === settleRequestId && pendingError !== null) {
         end = { kind: "failed", reason: pendingError };
+      } else if (type === "message_start") {
+        // The final text joins every text part of a message, so a new message starts the block.
+        if ((record["message"] as PiMessage | undefined)?.role === "assistant") messageStarts = true;
       } else if (type === "message_update") {
         const update = record["assistantMessageEvent"] as { type?: unknown; delta?: unknown } | undefined;
-        if (update?.type === "text_delta" && typeof update.delta === "string" && update.delta.length > 0)
-          yield { kind: "text_delta", text: update.delta };
+        if (update?.type === "text_delta" && typeof update.delta === "string" && update.delta.length > 0) {
+          yield { kind: "text_delta", text: update.delta, ...(messageStarts ? { startsBlock: true } : {}) };
+          messageStarts = false;
+        }
       } else if (type === "message_end") {
         const message = record["message"] as PiMessage | undefined;
         if (message === undefined) continue;

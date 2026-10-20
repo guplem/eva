@@ -1,6 +1,7 @@
 /**
  * The person's GitHub repositories, through the GitHub API with the setup login token: setup lists
- * them to pick the vault, and creates a private one for a new vault, with no GitHub CLI.
+ * them to pick the vault, and creates a private one for a new vault, with no GitHub CLI. Eva also
+ * reads the account, for the name and email of her commits.
  */
 import { EvaError } from "../../shared/errors.ts";
 
@@ -51,6 +52,24 @@ export async function createGitHubRepository(
   const repository = repositoryOf(body);
   if (repository === null) throw new EvaError("github_failed", "GitHub sent an answer that Eva cannot read.");
   return repository;
+}
+
+export interface GitHubAccount {
+  readonly id: number;
+  readonly login: string;
+  /** Null when the account has no display name. */
+  readonly name: string | null;
+}
+
+/** The account that the token belongs to. */
+export async function readGitHubAccount(options: GitHubApiOptions): Promise<GitHubAccount> {
+  const body = await request(options, "GET", "/user");
+  const fields = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const { id, login, name } = fields;
+  if (typeof id !== "number" || typeof login !== "string") {
+    throw new EvaError("github_failed", "GitHub sent an account that Eva cannot read.");
+  }
+  return { id, login, name: typeof name === "string" && name.trim() !== "" ? name : null };
 }
 
 async function request(

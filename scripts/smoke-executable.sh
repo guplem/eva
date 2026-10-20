@@ -26,7 +26,8 @@ EVA_TIME_ZONE="Europe/Madrid" \
 
 grep -q '"port": 7533' "$work/eva-smoke/config.json"
 grep -q '"timeZone": "Europe/Madrid"' "$work/vault/.eva/settings.json"
-grep -q 'Test Person' "$work/vault/.eva/assistant.md"
+grep -q 'Test Person' "$work/vault/Life/About me.md"
+test -s "$work/vault/.eva/assistant.md"
 git -C "$work/vault" log --oneline | grep -q "Start the vault"
 
 # A new machine has no engine yet, so doctor may fail; it must still run and find git.

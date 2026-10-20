@@ -152,7 +152,10 @@ export class Scheduler {
   /** Turns a schedule off or on. Turning it on brings a new setup card at the next check (lesson 67). */
   setEnabled(scheduleId: string, enabled: boolean): boolean {
     assertVaultWritable(this.options.vaultPath);
-    return setScheduleEnabled(this.definitionsPath, scheduleId, enabled);
+    const changed = setScheduleEnabled(this.definitionsPath, scheduleId, enabled);
+    // A check may not run between off and on, so the pause counts now, or on would need no card.
+    if (changed && !enabled) this.pause(scheduleId);
+    return changed;
   }
 
   /** The setup cards that wait for a front end to show them. */

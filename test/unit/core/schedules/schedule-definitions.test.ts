@@ -95,6 +95,8 @@ describe("parseScheduleEntry", () => {
     [{ ...morning, file: "Scratch\\today.pdf" }, "from Scratch/"],
     // A typo must never run a schedule that the person turned off.
     [{ ...morning, enabled: "false" }, "invalid enabled"],
+    [{ ...morning, enabled: null }, "invalid enabled"],
+    [{ ...morning, enabled: 0 }, "invalid enabled"],
   ])("entry %j is skipped: %s", (entry, reason) => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });

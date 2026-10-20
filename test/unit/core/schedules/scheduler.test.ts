@@ -323,6 +323,43 @@ describe("Scheduler", () => {
     expect(scheduler.confirmCard("morning", card?.fields ?? {})).toBe(false);
   });
 
+  test("a pause through setEnabled counts at once, so off and on before a check still needs a card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    scheduler.setEnabled("morning", false);
+    scheduler.setEnabled("morning", true);
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => card.changed)).toEqual([[], ["enabled"]]);
+  });
+
+  test("a schedule that is off from the start gets a first card when it turns on", async () => {
+    writeSchedules([{ ...morning, enabled: false }]);
+    clock = new Date("2026-07-01T05:30:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(events).toEqual([]);
+    writeSchedules([morning]);
+    await scheduler.tick();
+    expect(events.map((event) => (event.kind === "schedule_card" ? event.changed : event.kind))).toEqual([[]]);
+  });
+
+  test("a state file from before the paused field keeps firing with no new card", async () => {
+    writeSchedules([morning]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    await createScheduler().tick();
+    const statePath = join(folder, "state", "schedules-state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as { schedules: Record<string, Record<string, unknown>> };
+    const { paused: _paused, ...old } = state.schedules["morning"] ?? {};
+    writeFileSync(statePath, JSON.stringify({ version: 1, schedules: { morning: old } }));
+    events = [];
+    clock = new Date("2026-07-01T05:30:00Z");
+    await createScheduler().tick();
+    expect(events.map((event) => event.kind)).toEqual(["schedule_fired"]);
+  });
+
   test("setEnabled writes the vault file, and false means no such schedule", () => {
     const scheduler = createScheduler();
     scheduler.save(morning);

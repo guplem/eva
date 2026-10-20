@@ -94,7 +94,7 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   // Scratch empties after a week, so the file would be gone by a later firing.
   if (file?.replaceAll("\\", "/").split("/")[0] === "Scratch")
     return `Schedule ${id} sends a file from Scratch/: use a file outside Scratch/.`;
-  const enabled = fields["enabled"] ?? true;
+  const enabled = "enabled" in fields ? fields["enabled"] : true;
   // A typo such as "false" in quotes must never run a schedule that the person paused.
   if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;
   const model = optionalText(fields["model"]);

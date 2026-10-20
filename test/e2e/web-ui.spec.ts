@@ -134,6 +134,35 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
 });
 
+test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
+  // The demo engine has a login, so the browser plays a machine without one.
+  let blocker: string | null = "engine";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, chatBlocker: blocker } });
+  });
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await expect(page.getByLabel("Message").first()).toBeDisabled();
+  await expect(page.getByText("Set up an AI engine to send a message.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Set up an AI engine" }).click();
+  await expect(page).toHaveURL(/#\/settings\/setup\/engine$/);
+  await page.goBack();
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+
+  // The step is done elsewhere: the next status read unlocks the chat.
+  blocker = null;
+  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.getByLabel("Message").first()).toBeEnabled();
+  await expect(page.getByText("Set up an AI engine to send a message.")).toHaveCount(0);
+});
+
 test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
   // Both screen sizes share one demo server, so each size names its own chats.
   const title = `A chat to delete (${test.info().project.name})`;
@@ -1108,7 +1137,7 @@ test("Settings: the progress list leads to each step's page, which keeps the las
   await openSettings(page, "Setup");
   const list = page.getByRole("region", { name: "Progress list" });
   await expect(list).toContainText("Your devices");
-  await list.getByRole("button", { name: /Your devices/ }).click();
+  await list.getByRole("button", { name: /Step \d+ Your devices/ }).click();
   await expect(page.getByRole("region", { name: "Allow a new device" })).toContainText("eva devices allow");
   await page.getByRole("button", { name: /Step 2: Your vault/ }).click();
   await page.getByRole("button", { name: "Test Your vault" }).click();
@@ -1823,7 +1852,7 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   await openSettings(page, "Setup");
   await page
     .getByRole("region", { name: "Progress list" })
-    .getByRole("button", { name: /Your vault/ })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
   const clone = page.getByRole("button", { name: "Clone this vault" });
   await expect(clone).toBeDisabled();
@@ -1850,7 +1879,7 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await openSettings(page, "Setup");
   await page
     .getByRole("region", { name: "Progress list" })
-    .getByRole("button", { name: /Your vault/ })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
   await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
@@ -1884,7 +1913,7 @@ test("Settings: a vault step that cannot list the repositories leads to the GitH
   await openSettings(page, "Setup");
   await page
     .getByRole("region", { name: "Progress list" })
-    .getByRole("button", { name: /Your vault/ })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
   await expect(page.getByText("Bad credentials")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();

@@ -238,7 +238,10 @@ describe("settings", () => {
     expect(steps.find((step) => step.key === "vault")?.state).toBe("done");
     expect(steps.find((step) => step.key === "engine")?.state).toBe("missing");
     expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
+    expect(eva.status().chatBlocker).toBe("engine");
     await eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+    // The engine reads the token at start, so a chat still cannot answer before a restart.
+    expect(eva.status().chatBlocker).toBe("restart");
     await eva.saveSecret("telegramBotToken", null);
     await eva.runCheck("telegram");
     const after = (await eva.setupState()).progress;
@@ -247,6 +250,24 @@ describe("settings", () => {
       ok: false,
       detail: expect.stringContaining("No Telegram bot token") as string,
     });
+  });
+
+  test("a chat keeps working when the files lose the token that the running engine holds", () => {
+    const running = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { claudeOauthToken: "sk-ant-oat-running-token" },
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      expect(running.status().chatBlocker).toBeNull();
+    } finally {
+      running.stop();
+    }
   });
 
   test("the setup state says when Eva needs a restart to use a token that the files hold", async () => {
@@ -274,6 +295,8 @@ describe("settings", () => {
     mkdirSync(join(home, "engines", "claude"), { recursive: true });
     writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
     expect((await eva.setupState()).progress.find((step) => step.key === "engine")?.state).toBe("done");
+    // Claude Code reads its own login at each turn, so the chat needs no restart.
+    expect(eva.status().chatBlocker).toBeNull();
   });
 
   test("a settings change keeps a Telegram pairing that the bot saved meanwhile", () => {

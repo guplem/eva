@@ -71,6 +71,25 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
 }
 
+/** The browser resolves a token to the same form as a computed style, so the two compare as text. */
+async function tokenColour(page: Page, name: string): Promise<string> {
+  return page.evaluate((each) => {
+    const probe = document.createElement("i");
+    probe.style.color = `var(${each})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+}
+
+async function style(
+  locator: Locator,
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+): Promise<string> {
+  return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+}
+
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
@@ -813,6 +832,28 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   await expect(sync.getByRole("button", { name: "Keep both: Notes/plan.md" })).toBeVisible();
   await expect(sync).toContainText("Notes/keys.md (looks like a secret)");
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
+});
+
+test("Settings: a vault sync error is red, and a conflict that waits for the person is amber (issue #208)", async ({
+  page,
+}) => {
+  let status: "error" | "conflict" = "error";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { vaultSync: Record<string, unknown> };
+    body.vaultSync = { ...body.vaultSync, status, lastError: "The push failed." };
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/vault/conflicts", (route) => route.fulfill({ json: { state: null, conflicts: [] } }));
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const pill = page.getByRole("region", { name: "Vault sync" }).locator(".pill");
+  await expect(pill).toHaveText("Error");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--bad-bg"));
+  status = "conflict";
+  await page.reload();
+  await expect(pill).toHaveText("Conflict");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
 });
 
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
@@ -1633,20 +1674,7 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
     );
     await route.fulfill({ response, json: { ...setup, progress } });
   });
-  // The browser resolves a token to the same form as a computed style, so the two compare as text.
-  const token = (name: string): Promise<string> =>
-    page.evaluate((each) => {
-      const probe = document.createElement("i");
-      probe.style.color = `var(${each})`;
-      document.body.append(probe);
-      const colour = getComputedStyle(probe).color;
-      probe.remove();
-      return colour;
-    }, name);
-  const style = (
-    locator: Locator,
-    property: "backgroundColor" | "backgroundImage" | "borderTopColor",
-  ): Promise<string> => locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+  const token = (name: string): Promise<string> => tokenColour(page, name);
   await logIn(page);
   await openSettings(page);
   const bad = await token("--bad");

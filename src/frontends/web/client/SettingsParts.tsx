@@ -288,6 +288,15 @@ const statusLabels: Readonly<Record<VaultSyncState["status"], string>> = {
   skipped: "Skipped",
 };
 
+// Offline and a conflict wait for the network or the person, so only an error is red.
+const syncMarks: Readonly<Record<VaultSyncState["status"], StepMark>> = {
+  ok: "done",
+  offline: "missing",
+  conflict: "missing",
+  error: "failed",
+  skipped: "optional",
+};
+
 const withheldReasons: Readonly<Record<VaultSyncState["withheldFiles"][number]["reason"], string>> = {
   secret: "looks like a secret",
   too_large: "larger than 50 MB",
@@ -305,11 +314,7 @@ export function VaultSyncView({
   return (
     <section className="sync-state" aria-label="Vault sync">
       <div className="secret-state">
-        <span
-          className={`pill ${state.status === "ok" ? "done" : state.status === "skipped" ? "optional" : "missing"}`}
-        >
-          {label}
-        </span>
+        <span className={`pill ${syncMarks[state.status]}`}>{label}</span>
         <span>Vault sync: {state.lastError === null ? label : `${label}: ${state.lastError}`}</span>
       </div>
       <div className="field-hint">

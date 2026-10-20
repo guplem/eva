@@ -11,6 +11,7 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
 
@@ -78,7 +79,7 @@ beforeEach(() => {
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: fakeGh(systemProcessRunner),
     processEnvironment: gitEnvironment,
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
@@ -652,6 +653,37 @@ describe("routes", () => {
     expect((await json<{ tasks: unknown[] }>(await call("/api/tasks"))).tasks).toEqual([]);
   });
 
+  test("serves the steps of a running turn, for a page that missed their events", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      yield { kind: "text", text: "First block.", messageId: "m1" };
+      await released;
+      yield* FakeEngine.answer(request, "done");
+    };
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const turn = eva.sessions.send(session.id, "go");
+    try {
+      const deadline = Date.now() + 5_000;
+      while (eva.sessions.runningTurns().turns.at(0)?.steps.length !== 1 && Date.now() < deadline) await Bun.sleep(5);
+      expect((await json<{ turns: unknown[] }>(await call("/api/turns"))).turns).toEqual([
+        {
+          sessionId: session.id,
+          steps: [{ kind: "message", text: "First block.", isError: false, id: "m1" }],
+          draft: "",
+        },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
+    expect((await json<{ turns: unknown[] }>(await call("/api/turns"))).turns).toEqual([]);
+  });
+
   test("the session list says which chat runs a turn, for a page that reloads mid-turn", async () => {
     let release: () => void = () => undefined;
     const released = new Promise<void>((resolve) => {
@@ -1163,7 +1195,7 @@ describe("without a vault", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [engine],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1255,7 +1287,7 @@ describe("an Eva with an update channel", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1409,7 +1441,7 @@ describe("problems, logs and restart", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1447,7 +1479,7 @@ describe("an Eva with releases to pick", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",
@@ -1516,7 +1548,7 @@ describe("remote access", () => {
       config: { ...defaultConfig, vaultPath: null },
       secrets: {},
       engines: [new FakeEngine()],
-      runner: systemProcessRunner,
+      runner: fakeGh(systemProcessRunner),
       processEnvironment: gitEnvironment,
       now: () => new Date("2026-10-14T10:30:00Z"),
       basePrompt: "Base.",

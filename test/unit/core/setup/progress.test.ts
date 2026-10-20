@@ -19,6 +19,7 @@ const fresh: ProgressInput = {
   defaultEngine: "claude-code",
   vaultPath: null,
   githubToken: false,
+  githubCli: false,
   remoteAccess: { url: null, problem: null, step: "sign_in", link: "https://login.tailscale.com/a/x", account: null },
   devices: 0,
   telegram: { token: false, paired: false },
@@ -63,6 +64,7 @@ describe("setupProgress", () => {
       ],
       vaultPath: "/vaults/eva",
       githubToken: true,
+      githubCli: true,
       remoteAccess: ready,
       devices: 2,
       telegram: { token: true, paired: true },
@@ -75,6 +77,14 @@ describe("setupProgress", () => {
     expect(step(done, "engine")).toMatchObject({ check: "claude-code", lastCheck: { ok: true } });
     expect(step(done, "vault")).toMatchObject({ check: "vault", lastCheck: null });
     expect(step(done, "remoteAccess")?.detail).toContain("https://eva.example-tailnet.ts.net");
+  });
+
+  test("a token without the agents' gh login leaves the GitHub step to do (#244)", () => {
+    const github = step({ ...fresh, githubToken: true }, "github");
+    expect(github?.state).toBe("missing");
+    expect(github?.detail).toContain("Log in with GitHub");
+    // A hand-made gh login with no token for Eva leaves the step optional: the vault needs the token.
+    expect(step({ ...fresh, githubCli: true }, "github")?.state).toBe("optional");
   });
 
   test("the engine step is done with either engine's login, and tests that engine", () => {

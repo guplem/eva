@@ -13,6 +13,7 @@ import { systemProcessRunner, type ProcessRunner } from "../../src/shared/proces
 import { evaRepository } from "../../src/shared/version.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
+import { fakeGh } from "../support/fake-gh.ts";
 import { fakeGoogle } from "../support/fake-google.ts";
 import { googleScopes } from "../../src/core/google/google-scopes.ts";
 import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
@@ -126,11 +127,15 @@ const demoRemoteAccess = tailscale.watcher({
 await demoRemoteAccess.refresh();
 
 // The Google Test runs `uvx --version`, and a CI machine has no uv.
+// A saved GitHub token logs in gh, which must never reach the real GitHub (#244).
+const demoGh = fakeGh(systemProcessRunner);
 const demoRunner: ProcessRunner = {
   run: (command, options) =>
     command[0] === "uvx"
       ? Promise.resolve({ exitCode: 0, stdout: "uv 0.9.0\n", stderr: "" })
-      : systemProcessRunner.run(command, options),
+      : command[0] === "gh" && command[1] === "auth"
+        ? demoGh.run(command, options)
+        : systemProcessRunner.run(command, options),
 };
 
 // Google allows every scope that Eva asks for, so the Test passes after the login.

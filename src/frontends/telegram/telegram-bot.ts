@@ -88,7 +88,7 @@ const deviceExpiredText = "This request expired.";
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
 
-const commands: readonly { command: string; description: string }[] = [
+export const commands: readonly { command: string; description: string }[] = [
   { command: "new", description: "Start a new chat in its own topic" },
   { command: "delete", description: "Delete this chat everywhere, with its topic" },
   { command: "rename", description: "Rename this chat and its topic: /rename <title>" },

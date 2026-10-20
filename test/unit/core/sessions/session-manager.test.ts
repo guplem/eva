@@ -984,6 +984,106 @@ describe("background tasks", () => {
   });
 });
 
+describe("running turns", () => {
+  test("a front end that missed the events reads the steps of a running turn, redacted", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value");
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "text", text: "First block with the-secret-value.", messageId: "m1" };
+        yield { kind: "tool_started", toolUseId: "t1", name: "Bash", category: "command", summary: "ls" };
+        await released;
+        yield* FakeEngine.answer(request, "done");
+      }),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    try {
+      await waitUntil(() => events.some((event) => event.kind === "tool_started"));
+      // The page replays only the events newer than the snapshot.
+      expect(manager.runningTurns().seq).toBe(events.at(-1)?.seq ?? -1);
+      expect(manager.runningTurns().turns).toEqual([
+        {
+          sessionId,
+          steps: [
+            { kind: "message", text: "First block with [redacted].", isError: false, id: "m1" },
+            { kind: "command", text: "ls", isError: false, id: "t1" },
+          ],
+          draft: "",
+        },
+      ]);
+    } finally {
+      release();
+      await turn;
+    }
+    expect(manager.runningTurns().turns).toEqual([]);
+  });
+
+  test("the snapshot holds the sent text of the block that the engine writes now", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "text_delta", text: "Old try ", startsBlock: true };
+        yield { kind: "text_delta", text: "Here is ", startsBlock: true };
+        yield { kind: "text_delta", text: "the answer so far " };
+        await released;
+        yield* FakeEngine.answer(request, "Here is the answer so far.");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    try {
+      await waitUntil(() => events.filter((event) => event.kind === "text_delta").length === 3);
+      expect(manager.runningTurns().turns).toEqual([{ sessionId, steps: [], draft: "Here is the answer so far " }]);
+    } finally {
+      release();
+      await turn;
+    }
+  });
+
+  test("the end event forgets the steps, also while the engine stream still closes", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield* FakeEngine.answer(request, "done");
+        await released;
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    try {
+      await waitUntil(() => events.some((event) => event.kind === "turn_finished"));
+      expect(manager.runningTurns().turns).toEqual([]);
+    } finally {
+      release();
+      await turn;
+    }
+  });
+
+  test("a failed turn forgets its steps", async () => {
+    const manager = createManager(
+      new FakeEngine(() => [
+        { kind: "text", text: "partly", messageId: "m1" },
+        { kind: "turn_failed", reason: "boom" },
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(manager.runningTurns().turns).toEqual([]);
+  });
+});
+
 describe("after a turn", () => {
   test("a follow-up message from the mode goes to the same session as the next turn", async () => {
     followUps = ["continue the skill run", null];

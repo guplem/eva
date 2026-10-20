@@ -23,7 +23,15 @@ import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
-import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
+import {
+  applyEvent,
+  emptyLiveState,
+  forgetTaskEvents,
+  startRecovery,
+  withRunningTurns,
+  withTasks,
+  type LiveState,
+} from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
@@ -203,15 +211,25 @@ function EvaApp(): ReactElement {
     setConflictsOpen(false);
   }, [screen]);
 
+  // Recoveries overlap, such as on a visibility change and a reconnect: only the newest one sets the steps.
+  const lastRecovery = useRef(0);
   /**
    * A phone drops the socket when it sleeps, so events are lost: a turn ends, or an approval
-   * waits, with no event here. Read the state again, and drop the steps of turns that ran meanwhile.
-   * A note goes too: a lost event can hide the turn start that clears it. A draft goes, because
-   * it misses the pieces sent meanwhile. Until the final text, the later pieces then show only
-   * the end of the block (issue 118).
+   * waits, with no event here. Read the state again, with the steps and drafts of the running turns, so
+   * the answer that the person already read stays (#118).
+   * A note goes: a lost event can hide the turn start that clears it.
    */
   const recover = useCallback(async (): Promise<void> => {
-    setLive((state) => ({ ...forgetTaskEvents(state), steps: {}, notes: {}, drafts: {} }));
+    lastRecovery.current += 1;
+    const id = lastRecovery.current;
+    setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));
+    try {
+      const snapshot = await api.runningTurns();
+      setLive((state) => withRunningTurns(state, id, snapshot));
+    } catch {
+      // An older Eva has no such route. The page shows the steps that come from now on.
+      setLive((state) => withRunningTurns(state, id, null));
+    }
     await refreshSessions();
     await refreshProblems();
     try {

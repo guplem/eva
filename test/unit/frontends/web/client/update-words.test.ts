@@ -32,6 +32,7 @@ const status: UpdateStatus = {
   lastCheckAt: null,
   lastError: null,
   failedStep: null,
+  download: null,
 };
 
 describe("releaseDay", () => {

@@ -13,6 +13,7 @@ import {
   verifyChecksumsSignature,
 } from "../../../../src/core/updates/release-verification.ts";
 import { executableUpdateChannel, updateExecutable } from "../../../../src/core/updates/self-update.ts";
+import type { UpdateDownload } from "../../../../src/core/updates/updater.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 const keys = generateKeyPairSync("ed25519");
@@ -73,6 +74,10 @@ describe("updateExecutable", () => {
   let olderFiles: Record<string, Uint8Array<ArrayBuffer> | string>;
   let listStatus: number;
   let brokenDownloads: boolean;
+  /** The executable comes gzip-compressed, so the length of the reply is not the length of the file. */
+  let compressedExecutable: boolean;
+  /** GitHub lists the size of each asset. */
+  let listsSizes: boolean;
   let probeAnswer: string;
   let executable: string;
 
@@ -88,6 +93,8 @@ describe("updateExecutable", () => {
     writeFileSync(executable, "old build");
     listStatus = 200;
     brokenDownloads = false;
+    compressedExecutable = false;
+    listsSizes = true;
     probeAnswer = "0.2.0";
     files = signedFiles("0.2.0", "new build");
     olderFiles = signedFiles("0.1.5", "older build");
@@ -109,6 +116,7 @@ describe("updateExecutable", () => {
           ...(flags.published === undefined ? {} : { published_at: flags.published }),
           assets: Object.keys(assets).map((name) => ({
             name,
+            ...(listsSizes ? { size: sizeOf(assets[name]) } : {}),
             browser_download_url: `http://127.0.0.1:${String(server.port)}/download/${tag}/${name}`,
           })),
         });
@@ -129,6 +137,8 @@ describe("updateExecutable", () => {
         if (brokenDownloads) return new Response("broken", { status: 500 });
         const [, , tag, name = ""] = path.split("/");
         const body = (tag === "v0.1.5" ? olderFiles : files)[name];
+        if (compressedExecutable && name === "eva-linux-x64" && body !== undefined)
+          return new Response(Bun.gzipSync(body), { headers: { "content-encoding": "gzip" } });
         return body === undefined ? new Response("missing", { status: 404 }) : new Response(body);
       },
     });
@@ -277,4 +287,39 @@ describe("updateExecutable", () => {
     brokenDownloads = true;
     expect(String(await failure(updateExecutable(inputs())))).toContain("SHA256SUMS could not be downloaded (500)");
   });
+
+  test("the download of the new executable reports its share, from the length of the reply", async () => {
+    const reports: UpdateDownload[] = [];
+    await updateExecutable(inputs(), undefined, (download) => reports.push(download));
+    expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: 9 });
+  });
+
+  test("a compressed reply takes the size that GitHub lists", async () => {
+    compressedExecutable = true;
+    const reports: UpdateDownload[] = [];
+    await updateExecutable(inputs(), undefined, (download) => reports.push(download));
+    expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: 9 });
+  });
+
+  test("a download with no known size reports no total, so the share stays unknown", async () => {
+    compressedExecutable = true;
+    listsSizes = false;
+    const reports: UpdateDownload[] = [];
+    expect(await updateExecutable(inputs(), undefined, (download) => reports.push(download))).toEqual({
+      status: "updated",
+      from: "0.1.0",
+      to: "0.2.0",
+    });
+    expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: null });
+  });
+
+  test("as an update channel, apply passes the share on", async () => {
+    const reports: UpdateDownload[] = [];
+    await executableUpdateChannel(inputs()).apply("0.2.0", (download) => reports.push(download));
+    expect(reports.at(-1)).toEqual({ receivedBytes: 9, totalBytes: 9 });
+  });
 });
+
+function sizeOf(body: unknown): number {
+  return typeof body === "string" ? new TextEncoder().encode(body).length : (body as Uint8Array).length;
+}

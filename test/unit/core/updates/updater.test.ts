@@ -4,6 +4,7 @@ import {
   type UpdateChannel,
   type UpdateCheck,
   type UpdateFrequency,
+  type UpdateStatus,
 } from "../../../../src/core/updates/updater.ts";
 import type { UpdatePolicy } from "../../../../src/core/updates/release-policy.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -87,6 +88,7 @@ describe("Updater", () => {
       lastCheckAt: null,
       lastError: null,
       failedStep: null,
+      download: null,
     });
   });
 
@@ -211,6 +213,35 @@ describe("Updater restart", () => {
     await updater.tick();
     await updater.tick();
     expect(calls).toEqual(["restart"]);
+  });
+
+  test("the status shows the download while the install runs, and forgets it after", async () => {
+    let seen = null as UpdateStatus["download"];
+    let finish = (): void => undefined;
+    const updater: Updater = new Updater({
+      channel: {
+        kind: "executable",
+        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        apply: (_version, onDownload) => {
+          onDownload?.({ receivedBytes: 40, totalBytes: 100 });
+          seen = updater.status().download;
+          return new Promise((resolve) => {
+            finish = () => resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null });
+          });
+        },
+      },
+      frequency: () => "off",
+      policy: () => "minor",
+      isIdle: () => true,
+      restart: () => undefined,
+      now: () => new Date("2026-10-17T10:00:00Z"),
+    });
+    const install = updater.updateNow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual({ receivedBytes: 40, totalBytes: 100 });
+    finish();
+    expect((await install).download).toBeNull();
   });
 });
 

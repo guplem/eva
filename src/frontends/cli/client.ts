@@ -139,6 +139,16 @@ export async function requestHub(options: ClientOptions): Promise<string> {
 export const majorUpdateWarning =
   "This is a major update. It can break things that work today. It should be safe, but read the breaking changes first.";
 
+/**
+ * The share of the new version that Eva downloaded, from 0 to 1. Null when the size is unknown,
+ * or when an older Eva sends no download.
+ */
+export function downloadShare(download: UpdateStatus["download"] | undefined): number | null {
+  if (download === undefined || download === null) return null;
+  if (download.totalBytes === null || download.totalBytes <= 0) return null;
+  return Math.min(1, download.receivedBytes / download.totalBytes);
+}
+
 /** One line about Eva's version and her updates. */
 export function describeUpdate(update: UpdateStatus): string {
   const automatic = update.frequency === "off" ? "automatic updates off" : `checks ${update.frequency}`;
@@ -146,7 +156,12 @@ export function describeUpdate(update: UpdateStatus): string {
     return `Updates: ${automatic}; the last ${update.failedStep ?? "check"} failed: ${update.lastError}`;
   const next = update.target ?? update.latest ?? "?";
   if (update.phase === "waiting_for_idle") return `Updates: ${next} installs when the running chats end`;
-  if (update.phase === "updating") return `Updates: installing ${next}`;
+  if (update.phase === "updating") {
+    const share = downloadShare(update.download);
+    return share === null
+      ? `Updates: installing ${next}`
+      : `Updates: installing ${next} (${String(Math.round(share * 100))}% downloaded)`;
+  }
   // The restart waits for the running chats, which can take hours (lesson 92).
   if (update.phase === "restarting")
     return `Updates: ${update.latest ?? "?"} is installed; Eva restarts when no chat runs`;

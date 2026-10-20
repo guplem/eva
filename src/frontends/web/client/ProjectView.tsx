@@ -34,6 +34,8 @@ interface ProjectViewProps {
   readonly approvals: ChatApprovals;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
+  /** True when Eva's machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
 /**
@@ -67,6 +69,7 @@ export function ProjectView({
   notices,
   approvals,
   blocker,
+  voiceNotes,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -392,6 +395,7 @@ export function ProjectView({
               onChanged={onChanged}
               approvals={approvals}
               blocker={blocker}
+              voiceNotes={voiceNotes}
             />
           </>
         ) : (

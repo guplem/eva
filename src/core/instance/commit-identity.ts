@@ -7,6 +7,8 @@ import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { CommitIdentity, EvaConfig, HomePaths } from "../settings/home.ts";
 import { readGitHubAccount, type GitHubAccount } from "../vault/github-repositories.ts";
 
+const accountReadTimeoutMs = 10_000;
+
 /** The account record, or null when there is none or it is broken. */
 export function loadGitHubAccount(paths: HomePaths): GitHubAccount | null {
   const read = readJsonTolerant(paths.githubAccount);
@@ -24,18 +26,26 @@ export function saveGitHubAccount(paths: HomePaths, account: GitHubAccount | nul
 
 /**
  * Reads the token's account and saves it. Eva calls this only when a login happens, never at
- * start, so she starts offline. A failed read keeps the old record and returns false.
- * `isCurrent`: false when the token changed during the read, whose account then is no longer wanted.
+ * start, so she starts offline. A failed read returns false.
  */
 export async function refreshGitHubAccount(
   paths: HomePaths,
   token: string,
-  options: { readonly baseUrl?: string; readonly isCurrent?: () => boolean } = {},
+  options: {
+    readonly baseUrl?: string;
+    /** True for a token that replaces another: a failed read must never leave the old account's name. */
+    readonly replacesToken?: boolean;
+    /** False when the token changed during the read, so its account is no longer wanted. */
+    readonly isCurrent?: () => boolean;
+  } = {},
 ): Promise<boolean> {
+  if (options.replacesToken === true) saveGitHubAccount(paths, null);
   let account: GitHubAccount;
   try {
     account = await readGitHubAccount({
       token,
+      // A login waits for this read, and a network that drops packets must not stall it for long.
+      requestTimeoutMs: accountReadTimeoutMs,
       ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     });
   } catch {

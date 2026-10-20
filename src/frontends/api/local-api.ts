@@ -509,8 +509,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
     const name = pageSecretNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "The page cannot change this secret." }, 404);
-    if (method === "PUT") return json(eva.saveSecret(name, secretSchema.parse(await request.json()).value));
-    if (method === "DELETE") return json(eva.saveSecret(name, null));
+    if (method === "PUT") return json(await eva.saveSecret(name, secretSchema.parse(await request.json()).value));
+    if (method === "DELETE") return json(await eva.saveSecret(name, null));
   }
   if (method === "POST" && url.pathname.startsWith("/api/google/")) {
     if (url.pathname === "/api/google/login") return json(eva.startGoogleLogin());

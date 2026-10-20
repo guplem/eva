@@ -196,7 +196,7 @@ describe("settings", () => {
 
   test("a saved secret is redacted, kept apart from the others, and used by the next check", async () => {
     writeFileSync(homePaths(home).secrets, JSON.stringify({ localApiToken: "local-token-value" }));
-    expect(eva.saveSecret("claudeOauthToken", "  sk-ant-oat-new-token-value  ")).toEqual({
+    expect(await eva.saveSecret("claudeOauthToken", "  sk-ant-oat-new-token-value  ")).toEqual({
       saved: true,
       restartNeeded: true,
     });
@@ -207,10 +207,14 @@ describe("settings", () => {
     expect(eva.redact("token sk-ant-oat-new-token-value")).not.toContain("new-token-value");
     await eva.runCheck("claude-code");
     expect(engine.requests.at(-1)?.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("sk-ant-oat-new-token-value");
-    eva.saveSecret("claudeOauthToken", null);
+    await eva.saveSecret("claudeOauthToken", null);
     expect(eva.publicSettings().secretsSet.claudeOauthToken).toBe(false);
     expect(JSON.parse(readFileSync(homePaths(home).secrets, "utf-8"))).toEqual({ localApiToken: "local-token-value" });
-    expect(() => eva.saveSecret("githubToken", "   ")).toThrow("empty");
+    const refused = await eva.saveSecret("githubToken", "   ").then(
+      () => "saved",
+      (error: unknown) => String(error),
+    );
+    expect(refused).toContain("empty");
   });
 
   test("the setup state names the vault's remote, the Telegram pairing and the engines found", async () => {
@@ -223,7 +227,7 @@ describe("settings", () => {
     writeFileSync(homePaths(home).telegramPairingCode, "EVA-1234ABCD\n");
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: "EVA-1234ABCD" });
     // Without a bot token no bot reads the code, so an old code file must not show.
-    eva.saveSecret("telegramBotToken", null);
+    await eva.saveSecret("telegramBotToken", null);
     expect((await eva.setupState()).telegram).toEqual({ paired: false, pairingCode: null });
     sandbox.git(vault, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/example/vault.git");
     expect((await eva.setupState()).vaultRemote).toBe("https://github.com/example/vault.git");
@@ -234,8 +238,8 @@ describe("settings", () => {
     expect(steps.find((step) => step.key === "vault")?.state).toBe("done");
     expect(steps.find((step) => step.key === "engine")?.state).toBe("missing");
     expect(eva.status().setupMissing).toBe(steps.filter((step) => step.state === "missing").length);
-    eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
-    eva.saveSecret("telegramBotToken", null);
+    await eva.saveSecret("claudeOauthToken", "sk-ant-oat-a-token-value");
+    await eva.saveSecret("telegramBotToken", null);
     await eva.runCheck("telegram");
     const after = (await eva.setupState()).progress;
     expect(after.find((step) => step.key === "engine")?.state).toBe("done");
@@ -795,7 +799,7 @@ describe("the vault step on the page", () => {
     const instance = withoutVault(`http://127.0.0.1:${String(github.port)}`);
     try {
       expect(await vaultStep(instance)).toBe("missing");
-      instance.saveSecret("githubToken", "a-page-token");
+      await instance.saveSecret("githubToken", "a-page-token");
       const [repository] = await instance.vaultRepositories();
       expect(repository?.fullName).toBe("you/vault");
       const result = await instance.cloneVault(repository?.cloneUrl ?? "");
@@ -891,10 +895,6 @@ describe("the commit identity of an Eva", () => {
       ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
     });
   const agentGitConfig = (): string => readFileSync(join(home, "engines", "git", "gitconfig"), "utf8");
-  const waitForRecord = async (present: boolean): Promise<void> => {
-    for (let attempt = 0; attempt < 200 && (loadGitHubAccount(homePaths(home)) === null) === present; attempt++)
-      await Bun.sleep(10);
-  };
 
   test("a start signs the agents' commits with the saved account", () => {
     saveGitHubAccount(homePaths(home), account);
@@ -930,10 +930,9 @@ describe("the commit identity of an Eva", () => {
   test("a token saved on the page reads its account, and a removed token removes it", async () => {
     const instance = instanceWith({}, fakeAccountApi());
     try {
-      instance.saveSecret("githubToken", "a-page-token");
-      await waitForRecord(true);
+      await instance.saveSecret("githubToken", "a-page-token");
       expect(loadGitHubAccount(homePaths(home))).toEqual(account);
-      instance.saveSecret("githubToken", null);
+      await instance.saveSecret("githubToken", null);
       expect(loadGitHubAccount(homePaths(home))).toBeNull();
     } finally {
       instance.stop();

@@ -875,21 +875,26 @@ export class Eva {
     });
   }
 
-  /** Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. */
-  saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
+  /**
+   * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
+   * also waits for its account, so a restart right after the save still has the commit identity.
+   */
+  async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
+    const before = this.settings.secrets.githubToken;
     const result = this.settings.saveSecret(name, value);
-    if (name === "githubToken") {
-      const token = this.settings.secrets.githubToken;
-      if (token === undefined) saveGitHubAccount(this.options.paths, null);
-      else this.inBackground("Reading the GitHub account", () => this.refreshGitHubAccount(token));
-    }
+    if (name !== "githubToken") return result;
+    const token = this.settings.secrets.githubToken;
+    if (token === undefined) saveGitHubAccount(this.options.paths, null);
+    else if (!(await this.refreshGitHubAccount(token, token !== before)))
+      this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
     return result;
   }
 
   /** The account gives the commit name and email from the next start on. */
-  private refreshGitHubAccount(token: string): Promise<boolean> {
+  private refreshGitHubAccount(token: string, replacesToken = false): Promise<boolean> {
     return refreshGitHubAccount(this.options.paths, token, {
       ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
+      replacesToken,
       isCurrent: () => this.settings.secrets.githubToken === token,
     });
   }

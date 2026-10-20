@@ -96,6 +96,13 @@ describe("refreshGitHubAccount", () => {
     expect(loadGitHubAccount(paths)).toEqual(account);
   });
 
+  test("a failed read for a token that replaces another drops the old account", async () => {
+    saveGitHubAccount(paths, account);
+    const baseUrl = fakeApi(401, { message: "Bad credentials" });
+    expect(await refreshGitHubAccount(paths, "secret-token", { baseUrl, replacesToken: true })).toBe(false);
+    expect(loadGitHubAccount(paths)).toBeNull();
+  });
+
   test("a token that changed during the read saves nothing", async () => {
     const baseUrl = fakeApi(200, account);
     expect(await refreshGitHubAccount(paths, "secret-token", { baseUrl, isCurrent: () => false })).toBe(false);

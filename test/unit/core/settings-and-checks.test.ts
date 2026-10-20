@@ -246,6 +246,24 @@ describe("settings", () => {
     });
   });
 
+  test("a chat keeps working when the files lose the token that the running engine holds", () => {
+    const running = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { claudeOauthToken: "sk-ant-oat-running-token" },
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      expect(running.status().chatBlocker).toBeNull();
+    } finally {
+      running.stop();
+    }
+  });
+
   test("the setup state says when Eva needs a restart to use a token that the files hold", async () => {
     writeFileSync(homePaths(home).secrets, JSON.stringify({ telegramBotToken: "123:abc-telegram-token-value" }));
     expect((await eva.setupState()).restartNeeded).toBe(false);

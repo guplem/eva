@@ -785,13 +785,13 @@ export class Eva {
   }
 
   /**
-   * The step that stops every chat. The engines read the Claude token at start, so a token that
-   * the files hold but the running engine lacks needs a restart first.
+   * The step that stops every chat. The engines read the Claude token at start, so the running
+   * login decides. A token that only the files hold needs a restart first.
    */
   private chatBlocker(progress: readonly ProgressStep[]): ChatBlocker | null {
-    const missing = chatBlocker(progress);
-    if (missing !== null) return missing;
-    return chatBlocker(this.progressWith(this.options.secrets)) === "engine" ? "restart" : null;
+    const running = chatBlocker(this.progressWith(this.options.secrets));
+    if (running !== "engine") return running;
+    return chatBlocker(progress) === "engine" ? "engine" : "restart";
   }
 
   private progressWith(secrets: EvaSecrets): ProgressStep[] {

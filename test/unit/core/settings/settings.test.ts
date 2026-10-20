@@ -189,6 +189,15 @@ describe("settings by command", () => {
     expect(() => settingChange("nope", "1")).toThrow("nope is not a setting");
   });
 
+  test("a save keeps google.readOnly until its migration runs, so the old access is not lost", () => {
+    // `eva setup` after an update saves settings before the next start runs the migrations.
+    mkdirSync(paths.root, { recursive: true });
+    writeFileSync(paths.config, JSON.stringify({ google: { readOnly: false } }));
+    changeSettings(paths, { port: 7500 });
+    expect(readJson(paths.config)).toMatchObject({ port: 7500, google: { readOnly: false } });
+    expect(isSettingKey("google.readOnly")).toBe(false);
+  });
+
   test("the list marks the settings that the vault holds", () => {
     const lines = describeSettings(defaultConfig);
     expect(lines).toContain('updates.frequency = "daily"  (vault)');

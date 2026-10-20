@@ -302,6 +302,8 @@ export const configSchema = z.object({
           tasks: "readonly",
           gmail: "readonly",
         }),
+      /** The old single switch. Only the 2026-10-20 migration reads it. A save before that migration keeps it. */
+      readOnly: z.boolean().optional(),
     })
     .default({
       email: null,

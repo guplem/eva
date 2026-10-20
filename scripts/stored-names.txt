@@ -43,6 +43,7 @@ machine config.json google.access.tasks=full
 machine config.json google.access.tasks=manage
 machine config.json google.access.tasks=readonly
 machine config.json google.email
+machine config.json google.readOnly
 machine config.json google.services
 machine config.json google.services[]=calendar
 machine config.json google.services[]=contacts

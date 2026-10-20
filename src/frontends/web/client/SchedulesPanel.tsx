@@ -46,6 +46,17 @@ export function SchedulesPanel(): ReactElement {
     reload();
   };
 
+  const setEnabled = async (scheduleId: string, enabled: boolean): Promise<void> => {
+    try {
+      await api.setScheduleEnabled(scheduleId, enabled);
+      // Someone who can push could turn on a paused schedule, so on always asks again (lesson 67).
+      setNotice(enabled ? "Turned on. Eva shows its setup card. The schedule runs only after you confirm it." : null);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+    reload();
+  };
+
   const schedules = list?.schedules ?? [];
   const failed = schedules.filter((view) => view.lastRun?.failed === true).length;
 
@@ -90,6 +101,7 @@ export function SchedulesPanel(): ReactElement {
                 key={view.schedule.id}
                 view={view}
                 now={list.now}
+                onToggle={() => void setEnabled(view.schedule.id, !view.schedule.enabled)}
                 onRemove={() => void remove(view.schedule.id)}
               />
             ))}
@@ -171,27 +183,41 @@ function percent(share: number): string {
   return `${String(share * 100)}%`;
 }
 
-function ScheduleRow(props: { view: ScheduleView; now: string; onRemove: () => void }): ReactElement {
+function ScheduleRow(props: {
+  view: ScheduleView;
+  now: string;
+  onToggle: () => void;
+  onRemove: () => void;
+}): ReactElement {
   const { schedule, nextRun, lastRun } = props.view;
   const [asking, setAsking] = useState(false);
-  const result = lastRunWords(lastRun, props.now);
+  const result = schedule.enabled ? lastRunWords(lastRun, props.now) : { text: "Off", tone: "idle" };
   return (
-    <li className="schedule-panel schedule-row" aria-label={schedule.name}>
+    <li className={`schedule-panel schedule-row${schedule.enabled ? "" : " off"}`} aria-label={schedule.name}>
       <span className="schedule-row-icon">
         <Icon name="clock" />
       </span>
       <div>
         <div className="schedule-row-name">{schedule.name}</div>
         <div className="schedule-small">
-          {repeatWords(schedule.at, schedule.days)} · next {nextRunWords(nextRun, props.now)}
+          {repeatWords(schedule.at, schedule.days)} ·{" "}
+          {schedule.enabled ? `next ${nextRunWords(nextRun, props.now)}` : "off"}
         </div>
       </div>
-      {!asking && (
-        <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
-          <Icon name="x" />
-        </button>
-      )}
-      {asking && <span />}
+      <div className="schedule-row-actions">
+        <button
+          className="schedule-toggle"
+          role="switch"
+          aria-checked={schedule.enabled}
+          aria-label={`Run ${schedule.name}`}
+          onClick={props.onToggle}
+        />
+        {!asking && (
+          <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
+            <Icon name="x" />
+          </button>
+        )}
+      </div>
       <div className="schedule-row-result">
         <span className={`status-pill ${result.tone}`}>{result.text}</span>
       </div>

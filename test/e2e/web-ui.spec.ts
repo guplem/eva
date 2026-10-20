@@ -1286,6 +1286,19 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   const row = page.getByRole("listitem", { name: `Walk ${id}` });
   await expect(row).toContainText("Fridays at 07:30 · next");
   await expect(row).toContainText("Not run yet");
+  // Off needs no card, and the card says that it is off.
+  const toggle = row.getByRole("switch", { name: `Run Walk ${id}` });
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(row).toContainText("Fridays at 07:30 · off");
+  await expect(row.locator(".status-pill")).toHaveText("Off");
+  await expect(page.getByRole("dialog", { name: "Setup card" })).toHaveCount(0);
+  // On again needs a new card (lesson 67).
+  await toggle.click();
+  await expect(card).toContainText("enabled");
+  await card.getByRole("button", { name: "Got it" }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
   // Remove asks in the page first.
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
   await row.getByRole("button", { name: "Keep" }).click();

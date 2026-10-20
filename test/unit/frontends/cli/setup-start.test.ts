@@ -111,3 +111,47 @@ test("a script answers yes or no to the start, and nothing else", async () => {
   expect(isEvaError(error, "config_invalid")).toBe(true);
   expect(setup.started.count).toBe(0);
 });
+
+describe("where the person finishes the setup", () => {
+  test("Enter keeps the setup in the terminal", async () => {
+    const setup = fake({ running: true });
+    expect(await startAndLetIn(setup.options)).toBe("terminal");
+    expect(setup.asked).toContain("finishOn");
+    expect(setup.lines.join("\n")).not.toContain("#/settings/setup");
+  });
+
+  test("the web page gives its link, on this computer and on the other devices, with clear steps", async () => {
+    const setup = fake({ running: true, answers: { finishOn: ["2"] } });
+    expect(await startAndLetIn(setup.options)).toBe("page");
+    const text = setup.lines.join("\n");
+    expect(text).toContain("http://127.0.0.1:7420/#/settings/setup");
+    expect(text).toContain("https://eva.example-tailnet.ts.net/#/settings/setup");
+    expect(text).toContain("close this terminal");
+  });
+
+  test("with no Tailscale address, the page link is only the one on this computer", async () => {
+    const setup = fake({ running: true, answers: { finishOn: ["page"] } });
+    expect(await startAndLetIn({ ...setup.options, network: () => Promise.resolve(null) })).toBe("page");
+    const text = setup.lines.join("\n");
+    expect(text).toContain("http://127.0.0.1:7420/#/settings/setup");
+    expect(text).not.toContain("ts.net/#/settings/setup");
+  });
+
+  test("an unknown answer asks again", async () => {
+    const setup = fake({ running: true, answers: { finishOn: ["maybe", "1"] } });
+    expect(await startAndLetIn(setup.options)).toBe("terminal");
+    expect(setup.asked.filter((key) => key === "finishOn")).toHaveLength(2);
+  });
+
+  test("an Eva that does not run has no page, so setup goes on in the terminal without the question", async () => {
+    const setup = fake({ answers: { startService: ["n"] } });
+    expect(await startAndLetIn(setup.options)).toBe("terminal");
+    expect(setup.asked).not.toContain("finishOn");
+  });
+
+  test("a script never gets the question", async () => {
+    const setup = fake({ interactive: false, answers: { startService: ["yes"] } });
+    expect(await startAndLetIn(setup.options)).toBe("terminal");
+    expect(setup.asked).not.toContain("finishOn");
+  });
+});

@@ -217,6 +217,7 @@ export const visorSizes: readonly VisorSizeUse[] = [
 export const iconUses: Readonly<Record<IconName, string>> = {
   chat: "A chat, assistant mode",
   folder: "The vault, a folder",
+  briefcase: "A project, Project mode",
   clock: "A time, a schedule",
   gear: "Settings",
   plus: "Add, new chat",
@@ -227,7 +228,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   x: "Close, remove",
   file: "A file, a note",
   pen: "Edit, rename",
-  term: "Project mode, an engine",
+  term: "A terminal, an engine",
   fork: "Fork a chat",
   branch: "A git branch",
   sync: "Vault sync",

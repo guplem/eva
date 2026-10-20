@@ -61,6 +61,16 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
   });
   return [
     engineStep(input, make),
+    // Before the vault: the GitHub login lists the repositories that the vault step picks from.
+    input.githubToken
+      ? make("github", "GitHub", "done", "The token is saved.", "github")
+      : make(
+          "github",
+          "GitHub",
+          "optional",
+          "A vault on this computer alone, or a public one, needs no GitHub login.",
+          "github",
+        ),
     input.vaultPath === null
       ? make(
           "vault",
@@ -84,15 +94,6 @@ export function setupProgress(input: ProgressInput): ProgressStep[] {
           // With phone access off, the page on this computer may be the only one the person needs.
           input.remoteAccess === null ? "optional" : "missing",
           "Open Eva's page on your phone. It shows a short code: run `eva devices allow <code>` on Eva's computer.",
-        ),
-    input.githubToken
-      ? make("github", "GitHub", "done", "The token is saved.", "github")
-      : make(
-          "github",
-          "GitHub",
-          "optional",
-          "A GitHub token lets Eva reach a private notebook and private projects.",
-          "github",
         ),
     telegramStep(input.telegram, make),
     input.google
@@ -146,7 +147,7 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
     "engine",
     "An AI engine",
     "missing",
-    "For a Claude subscription, open Settings, AI engines, on Eva's page, and press Start the login under Claude Code. Or run `claude setup-token` on any computer with a browser, and paste the token in Settings or in `eva setup`. For another provider, run `pi` on Eva's computer and type /login.",
+    "For a Claude subscription, open Settings, AI engines, on Eva's page, and press Start the login under Claude Code. Or run `claude setup-token` on any computer with a browser, and paste the token in Settings. For another provider, run `pi` on Eva's computer and type /login.",
     input.defaultEngine,
   );
 }

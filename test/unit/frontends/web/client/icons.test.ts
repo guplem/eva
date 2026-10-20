@@ -7,6 +7,7 @@ import { Icon, iconNames, type IconName } from "../../../../../src/frontends/web
 const designIcons: readonly IconName[] = [
   "chat",
   "folder",
+  "briefcase",
   "clock",
   "gear",
   "plus",

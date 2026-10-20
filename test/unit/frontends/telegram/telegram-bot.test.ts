@@ -139,6 +139,8 @@ describe("access (lessons 63, 127)", () => {
     telegram.sendText(owner, "hello");
     telegram.sendText(owner, "PAIR-1234");
     await settle(bot, () => paired.length > 0);
+    // A person on a phone finds the code on Eva's page, not with a terminal command.
+    expect(telegram.sentTexts()[0]).toContain("Settings, Connections");
     expect(paired).toEqual([owner]);
     expect(telegram.sentTexts().at(-1)).toContain("Paired");
     telegram.sendText(owner, "now I am in");

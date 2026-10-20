@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
-import { defaultConfig, homePaths } from "../../../../src/core/settings/home.ts";
+import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
 import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
@@ -84,6 +84,11 @@ beforeEach(() => {
     basePrompt: "Base.",
     gatherMs: 5,
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
+    // GitHub gives the token at once: no test waits for a person.
+    githubBrowserLogin: (show) => {
+      show("ABCD-1234", "https://github.com/login/device");
+      return Promise.resolve("gho_example-page-login");
+    },
   });
   api = startLocalApi({
     eva,
@@ -978,6 +983,20 @@ describe("web routes", () => {
     expect((await json<{ error: string }>(early)).error).toContain("No Claude login waits");
   });
 
+  test("the GitHub login gives the code, then saves the token", async () => {
+    const finish = (): Promise<Response> => call("/api/github/login/finish", { method: "POST", body: {} });
+    const early = await finish();
+    expect(early.status).toBe(409);
+    expect(await json<{ code: string; error: string }>(early)).toMatchObject({ code: "github_failed" });
+    const started = await call("/api/github/login", { method: "POST", body: {} });
+    expect(await json<{ code: string; url: string }>(started)).toEqual({
+      code: "ABCD-1234",
+      url: "https://github.com/login/device",
+    });
+    expect(await json<{ restartNeeded: boolean }>(await finish())).toEqual({ restartNeeded: true });
+    expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_example-page-login");
+  });
+
   test("a device login changes the Google client and reaches the Google login", async () => {
     eva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
     const request = eva.deviceLogins.request("owner@example.com", "a phone");
@@ -1059,6 +1078,18 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "PUT", body: { rules: "x".repeat(5_000) } })).status).toBe(400);
     expect((await call("/api/chat-names", { method: "PUT", body: {} })).status).toBe(400);
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
+  });
+
+  test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {
+    const root = await json<{ kind: string; entries: { name: string }[] }>(await call("/api/files"));
+    expect(root.kind).toBe("folder");
+    expect(root.entries.map((entry) => entry.name)).toEqual([".eva", "Projects", "AGENTS.md"]);
+    const file = await call(`/api/files?path=${encodeURIComponent(".eva/assistant.md")}`);
+    expect(await json(file)).toEqual({ kind: "file", path: ".eva/assistant.md", size: 14, text: "# You are Eva\n" });
+    const outside = await call(`/api/files?path=${encodeURIComponent("../")}`);
+    expect(outside.status).toBe(404);
+    expect(await json<{ code: string }>(outside)).toMatchObject({ code: "file_not_found" });
+    expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
@@ -1143,6 +1174,8 @@ describe("without a vault", () => {
       expect(response.status).toBe(409);
       const chatNames = await fetch(`${bareApi.url}/api/chat-names`, { headers: headers() });
       expect(chatNames.status).toBe(409);
+      const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });
+      expect(await files.json()).toMatchObject({ code: "vault_not_found" });
     } finally {
       bareApi.stop();
     }

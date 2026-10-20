@@ -33,12 +33,13 @@ function step(input: ProgressInput, key: string): ReturnType<typeof setupProgres
 describe("setupProgress", () => {
   test("a new machine misses the engine login, the vault, Tailscale and a device; the rest is optional", () => {
     const steps = setupProgress(fresh);
+    // GitHub comes before the vault: its login lists the repositories to pick the vault from.
     expect(steps.map((found) => [found.key, found.state])).toEqual([
       ["engine", "missing"],
+      ["github", "optional"],
       ["vault", "missing"],
       ["remoteAccess", "missing"],
       ["device", "missing"],
-      ["github", "optional"],
       ["telegram", "optional"],
       ["google", "optional"],
     ]);
@@ -46,7 +47,11 @@ describe("setupProgress", () => {
     expect(step(fresh, "engine")?.detail).toContain("Start the login");
     expect(step(fresh, "engine")?.detail).toContain("claude setup-token");
     expect(step(fresh, "remoteAccess")?.detail).toContain("Sign in to Tailscale");
+    expect(step(fresh, "engine")?.detail).not.toContain("eva setup");
     expect(step(fresh, "device")?.detail).toContain("eva devices allow");
+    expect(step(fresh, "github")?.detail).toBe(
+      "A vault on this computer alone, or a public one, needs no GitHub login.",
+    );
   });
 
   test("everything set up: no step is missing, and each check shows its last result", () => {

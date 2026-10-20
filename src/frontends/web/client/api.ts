@@ -10,6 +10,7 @@ import type {
   DeviceSummary,
 } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
+import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
 import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
@@ -34,6 +35,7 @@ import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type {
+  BrowsedPath,
   ChatBlocker,
   CheckResult,
   CloneDetails,
@@ -44,6 +46,7 @@ export type {
   DeviceSummary,
   EngineUpdateStatus,
   EvaStatus,
+  FileEntry,
   EvaVersions,
   PageSecretName,
   PendingApproval,
@@ -167,6 +170,8 @@ export const api = {
     request("PUT", `/api/projects/${encodeURIComponent(projectId)}/file`, { version, text }),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  /** A vault folder or file, by its path from the vault root. The empty path is the root. */
+  files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
@@ -206,6 +211,10 @@ export const api = {
   /** Takes the address that Google sent the browser to, or its code alone. */
   finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>
     request("POST", "/api/google/login/finish", { address }),
+  /** Gives the code to type on GitHub's page; while a login waits, the same one. */
+  startGitHubLogin: (): Promise<{ code: string; url: string }> => request("POST", "/api/github/login", {}),
+  /** Waits until the person allows the access on GitHub, and Eva saves the token. */
+  finishGitHubLogin: (): Promise<{ restartNeeded: boolean }> => request("POST", "/api/github/login/finish", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
   saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),

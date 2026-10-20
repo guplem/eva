@@ -186,13 +186,15 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
-      // a vault sync or pick waits for git's network steps, the Google login waits for Google, and
-      // an update waits for the download of the new version. Each ends at its own timeout.
+      // a vault sync or pick waits for git's network steps, the Google login waits for Google, the
+      // GitHub login waits until the person confirms the code, and an update waits for the download
+      // of the new version. Each ends at its own timeout.
       if (
         url.pathname === "/api/update" ||
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
-        url.pathname.startsWith("/api/google/")
+        url.pathname.startsWith("/api/google/") ||
+        url.pathname.startsWith("/api/github/")
       )
         bunServer.timeout(request, 0);
       try {
@@ -503,6 +505,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json(await eva.newClone(projectId, repositoryUrl), 201);
     }
   }
+  if (method === "GET" && url.pathname === "/api/files")
+    return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
@@ -519,6 +523,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (url.pathname === "/api/google/login/finish")
       return json(await eva.finishGoogleLogin(googleLoginSchema.parse(await request.json()).address));
   }
+  if (method === "POST" && url.pathname === "/api/github/login") return json(await eva.startGitHubLogin());
+  if (method === "POST" && url.pathname === "/api/github/login/finish") return json(await eva.finishGitHubLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login") return json(await eva.startClaudeLogin());
   if (method === "POST" && url.pathname === "/api/engines/claude-code/login/finish")
     return json(await eva.finishClaudeLogin(claudeLoginSchema.parse(await request.json()).code));
@@ -658,7 +664,12 @@ function errorResponse(error: unknown, eva: Eva): Response {
   if (!isEvaError(error)) return json({ error: "Eva failed to handle the request." }, 500);
   // The code lets a page tell one failure from another that shares its status.
   const body = { error: eva.redact(error.message), code: error.code };
-  if (isEvaError(error, "session_not_found") || isEvaError(error, "project_not_found")) return json(body, 404);
+  if (
+    isEvaError(error, "session_not_found") ||
+    isEvaError(error, "project_not_found") ||
+    isEvaError(error, "file_not_found")
+  )
+    return json(body, 404);
   if (
     isEvaError(error, "config_invalid") ||
     isEvaError(error, "schedule_invalid") ||

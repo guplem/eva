@@ -47,13 +47,15 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), and uv (for the Google tools).
 2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
 3. **Start Eva.** Press Enter. Eva starts now, and each time the computer starts.
-4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in.
+4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in. Then setup asks where to go on:
+   - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
+   - Type `2` to finish on Eva's web page. Setup shows the link to the Setup page, and the steps to follow there. Then you can close the terminal.
 5. **Notebook and GitHub.** Your time zone, the GitHub login, your notebook, and the GitHub accounts that you trust (your own user name, so that Eva opens your projects without a question).
 6. **AI login.** The Claude token, or the pi login.
 7. **Telegram** (optional). Your bot.
 8. **Google and voice notes** (optional).
 
-From step 5 on, you can also finish on the page: **Settings** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
+On the page, **Settings → Setup** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
 
 The next sections explain each step in more detail.
 
@@ -90,7 +92,7 @@ In the terminal, setup first logs in to GitHub:
    - **To start a new notebook,** type `0`, and answer the questions about you. Then type a name for its private repository, such as `vault`. Eva creates it from her template.
    - **For no notebook now,** press Enter.
 
-On the page, paste a GitHub token in **Connect GitHub**, then pick or create the notebook in **Set up your vault**.
+On the page, open **Connect GitHub** and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the notebook in **Set up your vault**. To use a token instead, press **Paste a token instead**.
 
 The GitHub login lets Eva read and write all your repositories, private ones too, so that she can also clone your projects. Eva keeps it on this computer, and never gives it to her AI agents. You can remove it on GitHub under **Settings → Applications**.
 

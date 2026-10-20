@@ -1,5 +1,5 @@
 /**
- * The web UI: the main navigation, the four destinations, approvals, and the setup cards of
+ * The web UI: the main navigation, the destinations, approvals, and the setup cards of
  * schedules. The address names the destination, so the back button and a reload work.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
@@ -22,6 +22,7 @@ import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
+import { FilesView } from "./FilesView.tsx";
 import { applyEvent, emptyLiveState, forgetTaskEvents, withTasks, type LiveState } from "./live-state.ts";
 import { LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
@@ -402,7 +403,7 @@ function EvaApp(): ReactElement {
       />
       <div className="app-body">
         {/* The chat views put the notices in their main area, beside the list. */}
-        {(screen === "settings" || screen === "schedules") && notices}
+        {(screen === "settings" || screen === "schedules" || screen === "files") && notices}
         <ApprovalNotice entries={elsewhere} />
         {screen === "chats" && (
           <AssistantView
@@ -438,6 +439,7 @@ function EvaApp(): ReactElement {
           <SettingsView onLoggedOut={() => setAuthenticated(false)} onSetupChanged={() => void refreshProblems()} />
         )}
         {screen === "schedules" && <SchedulesView />}
+        {screen === "files" && <FilesView />}
       </div>
       {/* Before the other dialogs: a device request that comes meanwhile shows on top. */}
       {conflictsOpen && syncState !== null && (

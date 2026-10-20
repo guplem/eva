@@ -1291,12 +1291,12 @@ textarea {
     padding-left: env(safe-area-inset-left);
   }
 
-  /* The tab bar: the same four destinations, under the content, in reach of a thumb. */
+  /* The tab bar: the same destinations, under the content, in reach of a thumb. */
   .main-nav {
     order: 1;
     flex: none;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0;
     padding: 8px max(6px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
       max(6px, env(safe-area-inset-left));
@@ -1449,7 +1449,7 @@ textarea {
     padding: var(--space-1);
   }
 
-  /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */
+  /* The briefcase icon alone says "Project mode" on a phone, so the title keeps its room. */
   .chat-header .mode-chip-label {
     position: absolute;
     width: 1px;

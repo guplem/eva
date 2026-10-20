@@ -794,6 +794,63 @@ describe("the Claude Code login from the page", () => {
   });
 });
 
+describe("the GitHub login from the page", () => {
+  test("shows the code, then saves the token as a pasted one, with the account", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer gho_page_login"
+          ? Response.json({ login: "example-user", name: "Example User", id: 7 })
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+      githubBrowserLogin: (show) => {
+        show("ABCD-1234", "https://github.com/login/device");
+        return Promise.resolve("gho_page_login");
+      },
+    });
+    try {
+      expect(await instance.startGitHubLogin()).toEqual({ code: "ABCD-1234", url: "https://github.com/login/device" });
+      expect(await instance.finishGitHubLogin()).toEqual({ restartNeeded: true });
+      expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_page_login");
+      expect((await instance.setupState()).progress.find((step) => step.key === "github")?.state).toBe("done");
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
+  test("with no OAuth App, the error says to paste a token", async () => {
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubBrowserLogin: null,
+    });
+    try {
+      const error = await instance.startGitHubLogin().catch((caught: unknown) => caught);
+      expect(String(error)).toContain("Paste a token");
+    } finally {
+      instance.stop();
+    }
+  });
+});
+
 describe("the vault step on the page", () => {
   const withoutVault = (githubApiBaseUrl?: string): Eva =>
     new Eva({

@@ -887,7 +887,13 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
   await expect(field).toHaveValue("");
-  await expect(page.getByRole("status").filter({ hasText: "Restart Eva" })).toBeVisible();
+  const notice = page.getByRole("status").filter({ hasText: "Restart Eva" });
+  await expect(notice).toBeVisible();
+  // The note asks for a restart, so one tap on it opens the restart question.
+  await notice.getByRole("button", { name: "Restart Eva" }).click();
+  const question = page.getByRole("alertdialog", { name: "Restart Eva" });
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Cancel" }).click();
   await page.reload();
   await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
   expect(await page.content()).not.toContain("e2e-example-token");
@@ -1714,6 +1720,46 @@ test("a failed send shows the error and keeps the typed text", async ({ page }) 
   await expect(page.getByRole("alert")).toContainText("The chat is busy.");
   await expect(composer).toHaveValue("Keep this text");
   await expect(page.locator(".message.user", { hasText: "Keep this text" })).toHaveCount(0);
+});
+
+test("a voice note sends what Eva heard, and its message can play the recording", async ({ page }) => {
+  // A tone stands in for the microphone, so no browser flag and no real device is needed.
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () => {
+      const context = new AudioContext();
+      const tone = context.createOscillator();
+      const output = context.createMediaStreamDestination();
+      tone.connect(output);
+      tone.start();
+      return Promise.resolve(output.stream);
+    };
+  });
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, voiceNotes: true } });
+  });
+  let audioType = "";
+  await page.route("**/api/transcribe", async (route) => {
+    audioType = (await route.request().headerValue("content-type")) ?? "";
+    await route.fulfill({ json: { text: "Hello from my voice" } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page.getByRole("button", { name: "Record a voice note" }).first().click();
+  await expect(page.getByRole("status").filter({ hasText: /Recording \d:\d\d/ })).toBeVisible();
+  await page.getByRole("button", { name: "Send the voice note" }).click();
+
+  // The switch hides the text, so the message is found by its switch.
+  const message = page.locator(".message.user", { has: page.getByRole("group", { name: "Voice note" }) });
+  await expect(message).toContainText("Hello from my voice");
+  expect(audioType).toMatch(/^audio\//);
+  await expect(page.locator(".message.answer").first()).toContainText("Hello from my voice");
+  await message.getByRole("button", { name: "Recording" }).click();
+  await expect(message.locator("audio")).toBeVisible();
+  await expect(message).not.toContainText("Hello from my voice");
+  await message.getByRole("button", { name: "Heard" }).click();
+  await expect(message).toContainText("Hello from my voice");
 });
 
 /** Plays the status with these open problems, and with the sync state changed as given. */

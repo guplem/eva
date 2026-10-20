@@ -254,7 +254,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dots i {
+  .dots i,
+  .recording-dot {
     animation: none;
     opacity: 0.8;
   }
@@ -458,6 +459,12 @@ button.ghost .icon {
   min-width: 0;
 }
 
+/* On a narrow row the chip gets shorter, so it never covers the next chip. */
+.chip-picker > .chip {
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .chip-menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -518,6 +525,52 @@ button.ghost .icon {
 
 .send:disabled {
   opacity: 0.55;
+}
+
+/* The microphone sits next to Send, quieter, so Send stays the main action. */
+.send.voice {
+  background: var(--chip);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--glow);
+  animation: working-dot 1.3s infinite ease-in-out;
+}
+
+/* Under a voice note: what Eva heard, or the recording itself. */
+.voice-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.voice-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-xs);
+}
+
+.voice-switch button.on {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.voice-note {
+  display: block;
+  max-width: 100%;
 }
 
 @media (max-width: 760px) {

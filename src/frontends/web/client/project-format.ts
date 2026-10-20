@@ -55,3 +55,35 @@ export function repositoryLabel(url: string): string {
 export function projectFolder(path: string): string {
   return path.split(/[\\/]/).slice(-2).join("/");
 }
+
+/**
+ * Every tag of these projects once, the most used first, then by name. The filter ignores case, so
+ * the list does too.
+ */
+export function tagsByUse(projects: readonly Project[]): string[] {
+  const uses = new Map<string, number>();
+  for (const project of projects) {
+    for (const tag of new Set(project.frontMatter.tags.map((each) => each.toLowerCase()))) {
+      uses.set(tag, (uses.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...uses.keys()].sort(
+    (first, second) => (uses.get(second) ?? 0) - (uses.get(first) ?? 0) || first.localeCompare(second),
+  );
+}
+
+/**
+ * The tag chips to show. A long list hides all but the first `limit` tags until the person opens it,
+ * so the tags do not push the projects off a phone screen. The chosen tag always stays in view.
+ */
+export function shownTags(
+  tags: readonly string[],
+  chosen: string,
+  open: boolean,
+  limit: number,
+): { readonly shown: readonly string[]; readonly hidden: number } {
+  if (open || tags.length <= limit) return { shown: tags, hidden: 0 };
+  const shown = tags.slice(0, limit);
+  if (chosen !== "" && tags.includes(chosen) && !shown.includes(chosen)) shown.push(chosen);
+  return { shown, hidden: tags.length - shown.length };
+}

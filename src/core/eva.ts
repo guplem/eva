@@ -188,6 +188,8 @@ export interface EvaStatus {
   readonly setupMissing: number;
   /** The missing step that stops every chat, or null when a chat can answer. */
   readonly chatBlocker: ChatBlocker | null;
+  /** True when this machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
 /** The Setup section: the settings' state, and the progress list. */
@@ -776,7 +778,18 @@ export class Eva {
       problemDetails: this.alerts.openAlerts().map(({ key, level, message }) => ({ key, level, message })),
       setupMissing: missingSteps(progress),
       chatBlocker: this.chatBlocker(progress),
+      voiceNotes: this.transcribe !== null,
     };
+  }
+
+  /** Turns a voice note into text on this machine. Throws `voice_unavailable` with no whisper model. */
+  async transcribeVoiceNote(audio: Uint8Array): Promise<string> {
+    if (this.transcribe === null)
+      throw new EvaError(
+        "voice_unavailable",
+        "Voice notes are not set up on this machine. Run `eva doctor` to see why.",
+      );
+    return (await this.transcribe(audio)).trim();
   }
 
   projects(query: ProjectQuery = {}): Project[] {

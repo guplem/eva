@@ -2,6 +2,7 @@
  * The message box of a chat: the text, the engine and model chip, the mode chip, and the round
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
+ * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
@@ -9,24 +10,43 @@ import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chipLock, engineLabel, modelLabel } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
+import { recordingTime, recordingType } from "./voice-notes.ts";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 interface ComposerProps {
   readonly session: SessionRecord;
   readonly running: boolean;
-  /** Resolves false when the send failed, so the box gets its text back. */
-  readonly onSend: (text: string) => Promise<boolean>;
+  /**
+   * Resolves false when the send failed, so the box gets its text back. A voice note also
+   * gives the address of its recording in this tab.
+   */
+  readonly onSend: (text: string, recording?: string) => Promise<boolean>;
   readonly onStop: () => void;
   readonly onChanged: () => Promise<void>;
   /** The missing setup step that stops the chat. It locks the box, because a send would fail. */
   readonly blocker: ChatBlocker | null;
+  /** True when Eva's machine can turn a voice note into text. */
+  readonly voiceNotes: boolean;
 }
 
-export function Composer({ session, running, onSend, onStop, onChanged, blocker }: ComposerProps): ReactElement {
+export function Composer({
+  session,
+  running,
+  onSend,
+  onStop,
+  onChanged,
+  blocker,
+  voiceNotes,
+}: ComposerProps): ReactElement {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const voice = useVoiceNote(async (heard, recording) => {
+    // The person must not lose what they said.
+    if (!(await onSend(heard, recording))) setText(heard);
+  });
 
   const send = async (): Promise<void> => {
     const message = text.trim();
@@ -42,6 +62,37 @@ export function Composer({ session, running, onSend, onStop, onChanged, blocker 
   const showStop = running && (text.trim() === "" || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
+  const canRecord = voiceNotes && block === null && voice.isSupported;
+  const showMic = canRecord && text.trim() === "";
+  if (voice.state.phase !== "idle") {
+    return (
+      <div className="composer">
+        <div className="composer-box">
+          {voice.state.phase === "recording" ? (
+            <div className="composer-row">
+              <span className="recording-dot" aria-hidden="true" />
+              <span role="status">Recording {recordingTime(voice.state.elapsedMs)}</span>
+              <span className="grow" />
+              <button className="ghost" onClick={voice.cancel}>
+                <Icon name="x" />
+                Cancel
+              </button>
+              <button
+                className="send"
+                aria-label="Send the voice note"
+                data-tooltip="Send the voice note"
+                onClick={voice.finish}
+              >
+                <Icon name="send" />
+              </button>
+            </div>
+          ) : (
+            <ProgressBar label="Eva turns the voice note into text" />
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="composer">
       <div className="composer-box">
@@ -65,20 +116,33 @@ export function Composer({ session, running, onSend, onStop, onChanged, blocker 
           <EngineChip session={session} running={running} onChanged={onChanged} />
           <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />
+          {showMic && (
+            <button
+              // Beside Stop it stays quiet; alone it takes the place of Send.
+              className={showStop ? "send voice" : "send"}
+              aria-label="Record a voice note"
+              data-tooltip="Record a voice note"
+              onClick={() => void voice.start()}
+            >
+              <Icon name="mic" />
+            </button>
+          )}
           {showStop ? (
             <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
               <Icon name="x" />
             </button>
           ) : (
-            <button
-              className="send"
-              aria-label="Send"
-              data-tooltip="Send"
-              disabled={sending || text.trim() === "" || block !== null}
-              onClick={() => void send()}
-            >
-              <Icon name="send" />
-            </button>
+            !showMic && (
+              <button
+                className="send"
+                aria-label="Send"
+                data-tooltip="Send"
+                disabled={sending || text.trim() === "" || block !== null}
+                onClick={() => void send()}
+              >
+                <Icon name="send" />
+              </button>
+            )
           )}
         </div>
       </div>
@@ -209,6 +273,91 @@ function EngineChip({
       )}
     </div>
   );
+}
+
+type VoiceState =
+  | { readonly phase: "idle" }
+  | { readonly phase: "recording"; readonly elapsedMs: number }
+  | { readonly phase: "transcribing" };
+
+interface VoiceNote {
+  readonly state: VoiceState;
+  /** False on a page that cannot reach the microphone, such as one over plain HTTP. */
+  readonly isSupported: boolean;
+  readonly start: () => Promise<void>;
+  /** Stops the recording and sends what Eva heard. */
+  readonly finish: () => void;
+  readonly cancel: () => void;
+}
+
+/** Records a voice note in the browser, and hands Eva's text and the recording's address to `deliver`. */
+function useVoiceNote(deliver: (heard: string, recording: string) => Promise<void>): VoiceNote {
+  const [state, setState] = useState<VoiceState>({ phase: "idle" });
+  const recorder = useRef<MediaRecorder | null>(null);
+  const keep = useRef(false);
+  const showError = useShowError();
+  // A browser gives the microphone only to a secure page: HTTPS, or this computer itself.
+  const isSupported = window.isSecureContext && typeof MediaRecorder !== "undefined";
+
+  // The microphone light must go off when the person leaves the chat.
+  useEffect(
+    () => () => {
+      keep.current = false;
+      recorder.current?.stop();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (state.phase !== "recording") return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => setState({ phase: "recording", elapsedMs: Date.now() - startedAt }), 1_000);
+    return () => clearInterval(timer);
+  }, [state.phase]);
+
+  const transcribe = async (audio: Blob): Promise<void> => {
+    setState({ phase: "transcribing" });
+    try {
+      const { text } = await api.transcribe(audio);
+      if (text === "") throw new Error("Eva heard no speech in the voice note.");
+      await deliver(text, URL.createObjectURL(audio));
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setState({ phase: "idle" });
+    }
+  };
+
+  const start = async (): Promise<void> => {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      showError(new Error("The browser does not let Eva use the microphone. Allow it in the site settings."));
+      return;
+    }
+    const type = recordingType((candidate) => MediaRecorder.isTypeSupported(candidate));
+    const started = new MediaRecorder(stream, type === null ? undefined : { mimeType: type });
+    const chunks: Blob[] = [];
+    started.addEventListener("dataavailable", (event) => chunks.push(event.data));
+    started.addEventListener("stop", () => {
+      for (const track of stream.getTracks()) track.stop();
+      recorder.current = null;
+      if (keep.current) void transcribe(new Blob(chunks, { type: started.mimeType }));
+      else setState({ phase: "idle" });
+    });
+    recorder.current = started;
+    keep.current = false;
+    started.start();
+    setState({ phase: "recording", elapsedMs: 0 });
+  };
+
+  const stop = (send: boolean): void => {
+    keep.current = send;
+    recorder.current?.stop();
+  };
+
+  return { state, isSupported, start, finish: () => stop(true), cancel: () => stop(false) };
 }
 
 function isTouchScreen(): boolean {

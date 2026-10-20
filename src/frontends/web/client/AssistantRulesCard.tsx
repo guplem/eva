@@ -97,7 +97,7 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
           ) : (
             // nestedWebHtml escapes all text and adds only its own tags, so the HTML is safe.
             <div
-              className="answer-body files-markdown"
+              className="answer-body rules-text"
               dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.text, cardHeadingLevel) }}
             />
           )}
@@ -140,7 +140,7 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
           Eva can change these.
         </p>
         <div
-          className="answer-body files-markdown"
+          className="answer-body rules-text"
           dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.builtIn, cardHeadingLevel) }}
         />
       </details>

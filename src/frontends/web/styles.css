@@ -1082,6 +1082,17 @@ textarea {
   padding-left: 20px;
 }
 
+/* A long label wraps next to its box, not below it. */
+.check-row > input[type="checkbox"] + span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Markdown inside a card: the card gives the padding. */
+.rules-text {
+  line-height: 1.55;
+}
+
 .check-row .ok {
   color: var(--ok);
 }

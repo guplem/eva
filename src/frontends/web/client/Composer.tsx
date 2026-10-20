@@ -80,7 +80,7 @@ export function Composer({
               <button
                 className="send"
                 aria-label="Send the voice note"
-                title="Send the voice note"
+                data-tooltip="Send the voice note"
                 onClick={voice.finish}
               >
                 <Icon name="send" />
@@ -121,14 +121,14 @@ export function Composer({
               // Beside Stop it stays quiet; alone it takes the place of Send.
               className={showStop ? "send voice" : "send"}
               aria-label="Record a voice note"
-              title="Record a voice note"
+              data-tooltip="Record a voice note"
               onClick={() => void voice.start()}
             >
               <Icon name="mic" />
             </button>
           )}
           {showStop ? (
-            <button className="send stop" aria-label="Stop" title="Stop" onClick={onStop}>
+            <button className="send stop" aria-label="Stop" data-tooltip="Stop" onClick={onStop}>
               <Icon name="x" />
             </button>
           ) : (
@@ -136,7 +136,7 @@ export function Composer({
               <button
                 className="send"
                 aria-label="Send"
-                title="Send"
+                data-tooltip="Send"
                 disabled={sending || text.trim() === "" || block !== null}
                 onClick={() => void send()}
               >
@@ -225,7 +225,7 @@ function EngineChip({
         className={`chip${lock === null ? "" : " fixed"}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title={lock ?? "Pick the engine and the model"}
+        data-tooltip={lock ?? "Pick the engine and the model"}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="bolt" />

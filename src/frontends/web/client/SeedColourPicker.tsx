@@ -11,7 +11,7 @@ export function SeedColourPicker({ seed, onPick }: { seed: string; onPick: (seed
             key={colour.hex}
             type="button"
             className="seed-swatch"
-            title={colour.name}
+            data-tooltip={colour.name}
             aria-label={colour.name}
             aria-pressed={colour.hex === seed}
             style={{ background: colour.hex }}

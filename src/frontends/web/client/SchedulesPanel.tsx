@@ -168,7 +168,7 @@ function DayLine({ list }: { list: ScheduleList }): ReactElement {
           <span
             key={run.title}
             className="day-line-run"
-            title={run.title}
+            data-tooltip={run.title}
             // A pill near midnight would leave the bar, so it keeps the room of about one time.
             style={{
               left: `min(${percent(run.position)}, calc(100% - 4.5em))`,

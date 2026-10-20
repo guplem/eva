@@ -34,7 +34,8 @@ export function MainNav({ current, onOpen, approvals, setupMissing, isConnected 
           <button
             key={destination.id}
             className="nav-button"
-            title={destination.label}
+            data-tooltip={destination.label}
+            data-tooltip-side="right"
             aria-current={destination.id === current ? "page" : undefined}
             onClick={() => onOpen(destination.id)}
           >
@@ -56,7 +57,8 @@ export function MainNav({ current, onOpen, approvals, setupMissing, isConnected 
         className={`online-dot${isConnected ? "" : " offline"}`}
         role="img"
         aria-label={isConnected ? "Eva is online" : "Eva does not answer"}
-        title={isConnected ? "Eva is online" : "Eva does not answer"}
+        data-tooltip={isConnected ? "Eva is online" : "Eva does not answer"}
+        data-tooltip-side="right"
       />
     </nav>
   );

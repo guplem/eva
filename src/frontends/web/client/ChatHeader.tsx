@@ -65,7 +65,7 @@ export function ChatHeader({ chat, details, subtitle, extra, onShowList, onChang
             {isPhone ? (
               <button
                 className="chat-title-button"
-                title="Show the chat details"
+                data-tooltip="Show the chat details"
                 aria-haspopup="dialog"
                 onClick={(event) => openInfo(event.currentTarget)}
               >
@@ -258,7 +258,7 @@ function MoreMenu({
         ref={toggle}
         className="icon-button"
         aria-label="More actions"
-        title="More actions"
+        data-tooltip="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((isOpen) => !isOpen)}

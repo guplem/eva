@@ -2888,3 +2888,56 @@ button.small {
   padding-top: var(--space-4);
   border-top: 1px solid var(--line);
 }
+
+/* The one tooltip of the page: client/Tooltip.tsx places it. Dark, as the toast is, so it reads on every surface. */
+.tooltip {
+  position: fixed;
+  z-index: 40;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: var(--space-1) var(--space-2);
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--shadow);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: tooltip-in 120ms ease-out;
+}
+
+.tooltip.below {
+  animation-name: tooltip-in-below;
+}
+
+.tooltip.right {
+  animation-name: tooltip-in-right;
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes tooltip-in-below {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes tooltip-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    animation: none;
+  }
+}

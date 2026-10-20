@@ -45,7 +45,7 @@ export function StepFold({
         aria-expanded={open}
         aria-controls={listId}
         aria-label={`${open ? "Hide" : "Show"} ${counted(total, "step")}`}
-        title={summary}
+        data-tooltip={summary}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <span className={failed ? "failed" : undefined}>

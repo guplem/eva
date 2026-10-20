@@ -1,0 +1,343 @@
+/*
+ * The standard waits: the progress bar inside a card, and the skeletons that copy the content
+ * to come. The EVE design has no wait part, so these use its parts: a pill track in --chip, an
+ * accent fill with the glow of the "now" line of the day timeline, and soft grey shapes.
+ *
+ * A size in px copies the part that a skeleton stands for, such as a chat bubble in
+ * conversation.css, so the page does not jump when the content comes.
+ */
+
+/* Progress bar */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.progress-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.progress-percent {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--accent-ink);
+}
+
+.progress-track {
+  position: relative;
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+  transition: width 0.4s ease-out;
+}
+
+/* An unknown share: two lines of light run across the track, at two speeds, so it never looks stuck. */
+.progress-track.running .progress-fill {
+  display: none;
+}
+
+.progress-track.running::before,
+.progress-track.running::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -45%;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.progress-track.running::before {
+  width: 40%;
+  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) infinite;
+}
+
+.progress-track.running::after {
+  width: 18%;
+  /* "backwards" keeps the second line off the track until its turn, so it never stands still at the start. */
+  animation: progress-run 1.8s cubic-bezier(0.65, 0.05, 0.36, 1) 0.75s infinite backwards;
+}
+
+/* "left" is a share of the track, so each line crosses all of it, whatever its own width. */
+@keyframes progress-run {
+  from {
+    left: -45%;
+  }
+
+  to {
+    left: 100%;
+  }
+}
+
+/* Skeletons */
+.skeleton-shapes {
+  display: contents;
+}
+
+.skeleton-line,
+.skeleton-block,
+.skeleton-visor,
+.skeleton-nav-button {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  /* --line shows on the page, on a card and in dark mode. The light passes in --chip. */
+  background: linear-gradient(90deg, var(--line) 30%, var(--chip) 50%, var(--line) 70%) 0 0 / 300% 100%;
+  animation: skeleton-shimmer 1.6s linear infinite;
+}
+
+.skeleton-line.title {
+  height: 13px;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* The facts list of a card, such as the Versions card */
+.facts-skeleton .skeleton-shapes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeleton-fact {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.skeleton-fact .skeleton-line:last-child {
+  max-width: 160px;
+}
+
+/* The side list, as the chat items */
+.list-skeleton .skeleton-shapes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skeleton-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  padding: 12px;
+}
+
+.skeleton-item .skeleton-line:last-child {
+  grid-column: 1;
+  height: 8px;
+}
+
+.skeleton-item .skeleton-line.time {
+  height: 8px;
+}
+
+/* A chat, with the bubbles of the conversation */
+.conversation-skeleton {
+  flex: 1;
+  padding: 20px 28px;
+  background: var(--main-gradient);
+}
+
+.conversation-skeleton .skeleton-shapes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.skeleton-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skeleton-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 15px 16px;
+}
+
+.skeleton-bubble.user {
+  align-self: flex-end;
+  background: var(--soft);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail) var(--radius-bubble);
+}
+
+.skeleton-bubble.user .skeleton-line {
+  background-image: linear-gradient(90deg, var(--panel) 30%, var(--soft) 50%, var(--panel) 70%);
+  opacity: 0.7;
+}
+
+.skeleton-answer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.skeleton-visor {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.skeleton-bubble.answer {
+  flex: 1;
+  max-width: 86%;
+  background: var(--panel);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail);
+  box-shadow: var(--shadow);
+}
+
+/* A column of cards, such as the settings */
+.cards-skeleton .skeleton-shapes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.skeleton-card .skeleton-block {
+  height: 44px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-input);
+}
+
+/* The first load of the page, before the navigation shows */
+.skeleton-visor.large {
+  width: 36px;
+  height: 36px;
+}
+
+.skeleton-nav-button {
+  display: block;
+  width: 50px;
+  height: 50px;
+  border-radius: var(--radius-rail);
+}
+
+.page-skeleton {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 28px;
+  background: var(--main-gradient);
+}
+
+.page-skeleton .cards-skeleton,
+.page-skeleton .list-skeleton {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+@media (max-width: 760px) {
+  .conversation-skeleton,
+  .page-skeleton {
+    padding: 14px;
+  }
+
+  /* A phone hides the visor beside an answer, as the chat does. */
+  .skeleton-visor {
+    display: none;
+  }
+
+  /* The project list is the page on a phone, with one card per project. */
+  .layout.list-home .list-skeleton .skeleton-shapes {
+    gap: var(--space-2);
+  }
+
+  .layout.list-home .skeleton-item {
+    padding: 14px 16px;
+    border-radius: var(--radius-card);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  /* The tab bar of a phone: the icon pill of each destination. */
+  .skeleton-nav-button {
+    justify-self: center;
+    width: 58px;
+    height: 30px;
+    margin-bottom: 15px;
+    border-radius: var(--radius-pill);
+  }
+
+  .skeleton-bubble.answer {
+    max-width: none;
+  }
+}
+
+/* With reduced motion, nothing moves. The sentence and a still part of the fill still say that Eva works. */
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+
+  .progress-track.running::before {
+    animation: none;
+    left: 0;
+    width: 40%;
+    opacity: 0.6;
+  }
+
+  .progress-track.running::after {
+    display: none;
+  }
+
+  /* Each selector matches the strongest shimmer rule above, so it wins. */
+  .skeleton .skeleton-line,
+  .skeleton .skeleton-block,
+  .skeleton .skeleton-visor,
+  .skeleton .skeleton-nav-button {
+    animation: none;
+    background: var(--line);
+  }
+
+  .skeleton .skeleton-bubble.user .skeleton-line {
+    background: var(--panel);
+  }
+}
+
+/* A bar in a notice takes the whole row, as its sentence would. */
+.settings-notice > .progress {
+  flex: 1;
+}

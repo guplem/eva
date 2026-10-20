@@ -81,6 +81,8 @@ export type ComponentId =
   | "command-line"
   | "guide-steps"
   | "section-card"
+  | "progress"
+  | "skeletons"
   | "visor"
   | "icons";
 
@@ -166,6 +168,20 @@ export const componentSamples: readonly ComponentSample[] = [
     title: "Link card",
     classes: ["section-card", "section-icon", "chevron"],
     use: "A big button that opens a page, as on the Settings home.",
+  },
+  {
+    id: "progress",
+    title: "Progress bar",
+    classes: ["progress", "progress-track", "running", "progress-fill"],
+    part: "ProgressBar",
+    use: "A wait inside a card, with its sentence. A known share fills the bar and shows the percentage. An unknown share runs lines across it.",
+  },
+  {
+    id: "skeletons",
+    title: "Skeletons",
+    classes: ["skeleton", "skeleton-line", "skeleton-block"],
+    part: "FactsSkeleton, ListSkeleton, ConversationSkeleton, CardsSkeleton",
+    use: "A wait for content that fills a large area, such as a chat or a list. The grey shapes copy the content to come.",
   },
   {
     id: "visor",

@@ -1,6 +1,6 @@
 /** The vault page: where the notes live and their repository, then how and when Eva syncs them. */
 import { useState, type ReactElement } from "react";
-import { api, type VaultSyncState } from "./api.ts";
+import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
 import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
 
@@ -93,6 +93,8 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
       {shown !== null && (
         <VaultSyncView
           state={shown}
+          // An older Eva sends no field: the notice shows only for false. With no vault, nothing waits.
+          autoSync={config.vaultPath === null ? true : (context.status as Partial<EvaStatus> | null)?.vaultAutoSync}
           onState={(state) => {
             setSyncState(state);
             context.reloadSetup();

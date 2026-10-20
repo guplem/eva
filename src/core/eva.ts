@@ -171,6 +171,8 @@ export interface EvaStatus {
   /** The hub's machine name, or null before any machine claims it. */
   readonly hub: string | null;
   readonly vaultSync: VaultSyncState;
+  /** False when `sync.enabled` is off: the vault status then shows the last sync, not the notes that wait here. */
+  readonly vaultAutoSync: boolean;
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
   readonly lastTurn: LastTurnStatus | null;
@@ -763,6 +765,7 @@ export class Eva {
           ? this.machine
           : (readHubClaim(this.options.config.vaultPath)?.machine ?? null),
       vaultSync: this.vault.currentState,
+      vaultAutoSync: this.options.config.sync.enabled,
       sessionCount: sessions.length,
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,

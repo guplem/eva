@@ -23,6 +23,7 @@ import {
   describeSync,
   describeRelease,
   describeUpdate,
+  downloadShare,
   describeUpdateWithHint,
   majorUpdateWarning,
   requestHub,
@@ -1775,6 +1776,17 @@ describe("describeEngineUpdate", () => {
   });
 });
 
+describe("downloadShare", () => {
+  test("is the share of the bytes, between 0 and 1, or null when the total is unknown", () => {
+    expect(downloadShare({ receivedBytes: 25, totalBytes: 100 })).toBe(0.25);
+    expect(downloadShare({ receivedBytes: 150, totalBytes: 100 })).toBe(1);
+    expect(downloadShare({ receivedBytes: 5, totalBytes: null })).toBeNull();
+    expect(downloadShare({ receivedBytes: 5, totalBytes: 0 })).toBeNull();
+    expect(downloadShare(null)).toBeNull();
+    expect(downloadShare(undefined)).toBeNull();
+  });
+});
+
 describe("describeUpdate and describeSync", () => {
   const base: UpdateStatus = {
     kind: "source",
@@ -1790,6 +1802,7 @@ describe("describeUpdate and describeSync", () => {
     lastCheckAt: "2026-10-17T10:00:00.000Z",
     lastError: null,
     failedStep: null,
+    download: null,
   };
 
   test("a failed install never reads as a failed check", () => {
@@ -1811,6 +1824,19 @@ describe("describeUpdate and describeSync", () => {
       "Updates: bbb2222 installs when the running chats end",
     );
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "updating" })).toBe("Updates: installing bbb2222");
+    expect(
+      describeUpdate({
+        ...base,
+        latest: "bbb2222",
+        phase: "updating",
+        download: { receivedBytes: 42, totalBytes: 100 },
+      }),
+    ).toBe("Updates: installing bbb2222 (42% downloaded)");
+    // An older Eva sends no download.
+    const { download: _download, ...older } = base;
+    expect(describeUpdate({ ...older, latest: "bbb2222", phase: "updating" } as UpdateStatus)).toBe(
+      "Updates: installing bbb2222",
+    );
     expect(describeUpdate({ ...base, latest: "bbb2222", phase: "restarting" })).toBe(
       "Updates: bbb2222 is installed; Eva restarts when no chat runs",
     );
@@ -1886,6 +1912,7 @@ describe("describeStatusLines", () => {
     machine: "server",
     hub: "server",
     vaultSync: { status: "ok", lastCommitAt: null, lastPushAt: null, lastError: null, withheldFiles: [] },
+    vaultAutoSync: true,
     sessionCount: 2,
     busySessionIds: [],
     lastTurn: null,
@@ -1913,6 +1940,16 @@ describe("describeStatusLines", () => {
     expect(lines[0]).toBe("All good");
     expect(lines).toContain("Setup: 2 steps left. Open Settings on Eva's page to see them.");
     expect(describeStatusLines(status).join("\n")).not.toContain("Setup:");
+  });
+
+  test("says that the automatic sync is off, and how to send the notes (#215)", () => {
+    const off = "Automatic sync is off. Send /sync, or run eva sync, to send the notes.";
+    const lines = describeStatusLines({ ...status, vaultAutoSync: false });
+    expect(lines[0]).toBe("All good");
+    expect(lines[lines.indexOf("Vault sync: ok") + 1]).toBe(off);
+    expect(describeStatusLines(status)).not.toContain(off);
+    // With no vault there is nothing to sync.
+    expect(describeStatusLines({ ...status, vaultPath: null, vaultAutoSync: false })).not.toContain(off);
   });
 });
 

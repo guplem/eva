@@ -13,6 +13,7 @@ import { Icon } from "./icons.tsx";
 import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
 import { needsYou, nextToDo, setupSummary, stepMark, type StepMark } from "./setup-summary.ts";
 import { VaultFolderCard } from "./VaultSection.tsx";
+import { CardsSkeleton } from "./Loading.tsx";
 
 // A step that is left is work for the person, not an error: only a failed test is red.
 const calloutTone: Readonly<Record<StepMark, string>> = {
@@ -79,7 +80,7 @@ function RestartCallout({ context }: { readonly context: SettingsContext }): Rea
 
 export function SetupOverview({ context }: { readonly context: SettingsContext }): ReactElement {
   const setup = context.setup;
-  if (setup === null) return <div className="empty">Loading the setup…</div>;
+  if (setup === null) return <CardsSkeleton label="Loading the setup…" cards={2} />;
   const steps = setup.progress;
   const next = nextToDo(steps);
   return (
@@ -162,7 +163,7 @@ export function SetupStepPage({
   readonly stepKey: string;
 }): ReactElement {
   const setup = context.setup;
-  if (setup === null) return <div className="empty">Loading the setup…</div>;
+  if (setup === null) return <CardsSkeleton label="Loading the setup…" cards={2} />;
   const steps = setup.progress;
   const index = steps.findIndex((step) => step.key === stepKey);
   const step = steps[index];

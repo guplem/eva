@@ -188,6 +188,17 @@
   font-weight: 700;
 }
 
+.schedule-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.schedule-row.off .schedule-row-name,
+.schedule-row.off .schedule-row-icon {
+  opacity: 0.55;
+}
+
 .schedule-row-result {
   grid-column: 2 / 4;
 }

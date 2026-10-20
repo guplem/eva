@@ -108,6 +108,10 @@ describe("dayLine", () => {
     expect(dayLine([schedule("Friday", "08:00", [5])], now).runs).toEqual([]);
   });
 
+  test("leaves out a schedule that is off (#188)", () => {
+    expect(dayLine([{ ...schedule("Paused", "08:00"), enabled: false }], now).runs).toEqual([]);
+  });
+
   test("runs less than three hours apart share one pill, so no two pills cover each other", () => {
     const line = dayLine([schedule("Summary", "08:00"), schedule("News", "09:30"), schedule("Lunch", "13:00")], now);
     expect(line.runs.map((run) => [run.label, run.title])).toEqual([

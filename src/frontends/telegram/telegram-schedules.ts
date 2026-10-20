@@ -44,7 +44,8 @@ export class TelegramSchedules {
     }
     const { schedules, problems } = scheduler.list();
     const lines = schedules.map(
-      ({ schedule, nextRun }) => `• ${schedule.name} (${schedule.id}), next: ${nextRun?.replace("T", " ") ?? "never"}`,
+      ({ schedule, nextRun }) =>
+        `• ${schedule.name} (${schedule.id}), ${schedule.enabled ? `next: ${nextRun?.replace("T", " ") ?? "never"}` : "off"}`,
     );
     if (problems.length > 0) lines.push("", "Schedules file problems:", ...problems.map((problem) => `• ${problem}`));
     await this.options.sender.send(

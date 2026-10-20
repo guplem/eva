@@ -1014,6 +1014,7 @@ describe("running turns", () => {
             { kind: "message", text: "First block with [redacted].", isError: false, id: "m1" },
             { kind: "command", text: "ls", isError: false, id: "t1" },
           ],
+          draft: "",
         },
       ]);
     } finally {
@@ -1021,6 +1022,31 @@ describe("running turns", () => {
       await turn;
     }
     expect(manager.runningTurns().turns).toEqual([]);
+  });
+
+  test("the snapshot holds the sent text of the block that the engine writes now", async () => {
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = createManager(
+      new FakeEngine(async function* (request) {
+        yield { kind: "text_delta", text: "Old try ", startsBlock: true };
+        yield { kind: "text_delta", text: "Here is ", startsBlock: true };
+        yield { kind: "text_delta", text: "the answer so far " };
+        await released;
+        yield* FakeEngine.answer(request, "Here is the answer so far.");
+      }),
+    );
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    try {
+      await waitUntil(() => events.filter((event) => event.kind === "text_delta").length === 3);
+      expect(manager.runningTurns().turns).toEqual([{ sessionId, steps: [], draft: "Here is the answer so far " }]);
+    } finally {
+      release();
+      await turn;
+    }
   });
 
   test("the end event forgets the steps, also while the engine stream still closes", async () => {
@@ -1246,5 +1272,87 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     const stored = JSON.stringify(manager.get(sessionId).turns[0]?.steps);
     expect(stored).not.toContain("the-secret");
     expect(stored).toContain("look for [redacted]");
+  });
+});
+
+describe("streamed text", () => {
+  test("sends the pieces of a block redacted and held back, and keeps only the final text", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value");
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "Your key is the-sec" },
+        { kind: "text_delta", text: "ret-value and more " },
+        { kind: "text_delta", text: "words to come " },
+        ...FakeEngine.answer(request, "Your key is the-secret-value and more words to come."),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const pieces = events.filter((event) => event.kind === "text_delta").map((event) => event.text);
+    // The stream holds back one character less than the longest secret.
+    expect(pieces.join("")).toBe("Your key is [redacted] and ");
+    const turn = manager.get(sessionId).turns[0];
+    expect(turn?.answerText).toBe("Your key is [redacted] and more words to come.");
+    expect(turn?.steps.map((step) => step.kind)).toEqual(["message"]);
+  });
+
+  test("a new block after a final text starts from nothing", async () => {
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "First block " },
+        { kind: "text", text: "First block.", messageId: "m1" },
+        { kind: "text_delta", text: "Second block " },
+        ...FakeEngine.answer(request, "Second block."),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(events.filter((event) => event.kind === "text_delta").map((event) => event.text)).toEqual([
+      "First block ",
+      "Second block ",
+    ]);
+  });
+});
+
+describe("a block that starts again", () => {
+  test("drops the pieces before it and marks its first sent piece", async () => {
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "Hello w", startsBlock: true },
+        // The model call failed and runs again: its block starts with a word still held back.
+        { kind: "text_delta", text: "Hel", startsBlock: true },
+        { kind: "text_delta", text: "lo world " },
+        ...FakeEngine.answer(request, "Hello world."),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(
+      events.filter((event) => event.kind === "text_delta").map(({ text, startsBlock }) => ({ text, startsBlock })),
+    ).toEqual([
+      { text: "Hello ", startsBlock: true },
+      { text: "Hello world ", startsBlock: true },
+    ]);
+  });
+});
+
+describe("a final text during the next block", () => {
+  test("a final text that comes during the next block never splits a secret in that block", async () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "First. ", startsBlock: true },
+        { kind: "text_delta", text: `Then ${token.slice(0, 20)}`, startsBlock: true },
+        { kind: "text", text: "First.", messageId: "m1" },
+        { kind: "text_delta", text: `${token.slice(20)} and more words to come here ` },
+        ...FakeEngine.answer(request, `Then ${token} and more words to come here.`),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const sent = events.filter((event) => event.kind === "text_delta").map((event) => event.text);
+    expect(sent.join("")).not.toContain("aaaa");
   });
 });

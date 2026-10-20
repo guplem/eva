@@ -7,7 +7,7 @@ import { isEvaError } from "../../shared/errors.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { googleUrls, postToken, readGoogleCredential, type GoogleClient, type GoogleUrls } from "./google-login.ts";
 import { googleServiceLabels } from "./google-access.ts";
-import { coversScopes, googleScopes } from "./google-scopes.ts";
+import { coversScopes, extraScopes, googleScopes } from "./google-scopes.ts";
 import { googleStep } from "./google-steps.ts";
 
 type GoogleService = EvaConfig["google"]["services"][number];
@@ -80,9 +80,9 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
       `The login gives less access than Eva needs now. This happens after a change of access or of the services. Log in to Google again (step ${String(googleStep.login)}).`,
     );
   // The server hides the tools above the chosen levels, but a shell can use the login file directly.
-  if (credential.scopes.some((scope) => !needed.includes(scope)))
+  if (extraScopes(credential.scopes, config).length > 0)
     return failed(
-      `The login gives more access than you chose. Log in to Google again, so that it gives only the new access (step ${String(googleStep.login)}).`,
+      `The login gives more access than you chose. This happens after a change to a lower access. Log in to Google again, so that it gives only the new access (step ${String(googleStep.login)}).`,
     );
 
   const urls = googleUrls(inputs.baseUrl);

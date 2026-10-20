@@ -100,6 +100,16 @@ describe("checkGoogle", () => {
     expect(google.tokenRequests).toEqual([]);
   });
 
+  test("a service that is off does not count, so a login from before the update stays good", async () => {
+    saveLogin(googleScopes({ ...defaultConfig.google, services: [...defaultConfig.google.services, "gmail"] }));
+    expect((await checkGoogle(inputs)).ok).toBe(true);
+  });
+
+  test("a scope that gives no service access, such as a short name of a base scope, never fails the check", async () => {
+    saveLogin([...googleScopes(defaultConfig.google), "email", "profile"]);
+    expect((await checkGoogle(inputs)).ok).toBe(true);
+  });
+
   test("an API that is off names the API to turn on", async () => {
     google.disabled.add("drive");
     expect(await checkGoogle(inputs)).toEqual({ ok: false, detail: "Turn on the Google Drive API (step 1)." });

@@ -69,6 +69,25 @@ function serviceScopes(service: GoogleService, access: GoogleAccess): string[] {
   return scopes;
 }
 
+/**
+ * The granted scopes of the services that are on, above their chosen levels. A scope that Eva does
+ * not know, such as a short name for a base scope, never counts: it would fail every new login too.
+ * A service that is off does not count either, so a login from before an update stays good.
+ */
+export function extraScopes(
+  granted: readonly string[],
+  google: Pick<EvaConfig["google"], "services" | "access">,
+): string[] {
+  const needed = new Set(googleScopes(google));
+  const known = new Set(
+    google.services.flatMap((service) => {
+      const levels: Readonly<Record<string, readonly string[]>> = levelScopes[service];
+      return Object.values(levels).flat();
+    }),
+  );
+  return granted.filter((scope) => known.has(scope) && !needed.has(scope));
+}
+
 /** True when the granted scopes hold every needed scope. */
 export function coversScopes(granted: readonly string[], needed: readonly string[]): boolean {
   const expanded = new Set(granted.flatMap((scope) => [scope, ...(coveredScopes[scope] ?? [])]));

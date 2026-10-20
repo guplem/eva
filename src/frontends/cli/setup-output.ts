@@ -6,6 +6,7 @@
 
 /** The steps of `eva setup`, in their order. */
 export const setupSteps = [
+  "Name",
   "Programs",
   "Phone access",
   "Start Eva",
@@ -20,7 +21,7 @@ export type SetupStep = (typeof setupSteps)[number];
 
 const optionalSteps: ReadonlySet<SetupStep> = new Set(["Telegram", "Google and voice notes"]);
 
-/** A blank line, then "Step 3 of 8: Start Eva". */
+/** A blank line, then "Step 4 of 9: Start Eva". */
 export function stepLines(step: SetupStep): string[] {
   const number = setupSteps.indexOf(step) + 1;
   const optional = optionalSteps.has(step) ? " (optional)" : "";

@@ -152,6 +152,30 @@ describe("doctor and setup", () => {
     // The fake runs no real Eva, so she never answers, and setup goes on.
     expect(printed(host)).toContain("Eva did not start.");
   });
+
+  test("setup explains Enter before the first question, and asks the name in its own step", async () => {
+    const log: string[] = [];
+    // A config folder with no Eva yet, so setup asks the name.
+    const empty = join(root, "no-eva");
+    const host = fakeHost({
+      environment: { ...gitEnvironment, XDG_CONFIG_HOME: empty, APPDATA: empty },
+      userHome: join(root, "user"),
+      write: (text) => log.push(text),
+      withPrompt: (work) =>
+        work((question) => {
+          log.push(question);
+          return Promise.resolve(question.includes("GitHub login") ? "skip" : "");
+        }),
+    });
+    expect(await runCli(["setup"], host, noWiring)).toBe(exitCodes.clean);
+    const text = log.join("");
+    const at = (part: string): number => text.indexOf(part);
+    expect(at("Press Enter to keep")).toBeGreaterThan(-1);
+    expect(at("Press Enter to keep")).toBeLessThan(at("Step 1 of 9: Name"));
+    expect(at("Step 1 of 9: Name")).toBeLessThan(at("> Name of this Eva [example]: "));
+    expect(at("> Name of this Eva [example]: ")).toBeLessThan(at(join(empty, "eva-example")));
+    expect(at(join(empty, "eva-example"))).toBeLessThan(at("Step 2 of 9: Programs"));
+  });
 });
 
 describe("the client commands", () => {

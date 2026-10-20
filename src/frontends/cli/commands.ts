@@ -35,7 +35,7 @@ import { hub, link, runningClient, settings, sync, update } from "./local-comman
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
-import { questionText, stepLines } from "./setup-output.ts";
+import { doneLine, questionText, stepLines } from "./setup-output.ts";
 import { startAndLetIn } from "./setup-start.ts";
 
 export interface CliWiring {
@@ -60,6 +60,15 @@ export async function runCli(argv: readonly string[], host: CliHost, wiring: Cli
     writeLine(host, evaVersion);
     return exitCodes.clean;
   }
+  // The name is the first setup question, so the advice on Enter comes before it.
+  if (command.command === "setup")
+    for (const line of [
+      "",
+      "Eva setup",
+      "Press Enter to keep the value in [brackets], or to skip a question.",
+      ...stepLines("Name"),
+    ])
+      writeLine(host, line);
   const paths = await chooseInstance(host, {
     name: command.instance,
     creates: command.command === "setup",
@@ -153,9 +162,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
   const write = (text: string): void => {
     writeLine(host, text);
   };
-  write("");
-  write(`Eva setup, for the Eva in ${paths.root}`);
-  write("Press Enter to keep the value in [brackets], or to skip a question.");
+  write(doneLine(`This Eva lives in ${paths.root}`));
   for (const line of stepLines("Programs")) write(line);
   // The setup order starts with the tools: a missing one shows before any question.
   await doctor(host, paths, true);

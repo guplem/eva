@@ -1387,9 +1387,9 @@ describe("runSetup", () => {
     const ghFolder = join(home, "engines", "gh");
     const firstStep = lines.findIndex((line) => line.includes("keeps her own logins"));
     // The login steps come under their own step, before its first question.
-    expect(firstStep).toBeGreaterThan(lines.indexOf("Step 6 of 8: AI login"));
-    expect(lines.indexOf("Step 6 of 8: AI login")).toBeGreaterThan(-1);
-    expect(firstStep).toBeLessThan(lines.indexOf("Step 7 of 8: Telegram (optional)"));
+    expect(firstStep).toBeGreaterThan(lines.indexOf("Step 7 of 9: AI login"));
+    expect(lines.indexOf("Step 7 of 9: AI login")).toBeGreaterThan(-1);
+    expect(firstStep).toBeLessThan(lines.indexOf("Step 8 of 9: Telegram (optional)"));
     expect(lines.join("\n")).toContain(`GH_CONFIG_DIR='${ghFolder}' gh auth login --insecure-storage`);
     // The gh login check uses this instance's gh folder.
     expect(ghEnvironments.length).toBeGreaterThan(0);

@@ -10,9 +10,9 @@ import {
 
 describe("the look of eva setup", () => {
   test("numbers each step, and marks the optional ones", () => {
-    expect(stepLines("Programs")).toEqual(["", "Step 1 of 8: Programs"]);
-    expect(stepLines("Telegram")).toEqual(["", "Step 7 of 8: Telegram (optional)"]);
-    expect(setupSteps).toHaveLength(8);
+    expect(stepLines("Programs")).toEqual(["", "Step 2 of 9: Programs"]);
+    expect(stepLines("Telegram")).toEqual(["", "Step 8 of 9: Telegram (optional)"]);
+    expect(setupSteps).toHaveLength(9);
   });
 
   test("marks what is done, what waits for the person, and each question", () => {
@@ -29,13 +29,13 @@ describe("the look of eva setup", () => {
     write("Created a vault.");
     write("  [ok] Done.");
     write("");
-    write("Step 2 of 8: Phone access");
+    write("Step 3 of 9: Phone access");
     write("##  ##\n#    #");
     expect(lines).toEqual([
       "  Created a vault.",
       "  [ok] Done.",
       "",
-      "Step 2 of 8: Phone access",
+      "Step 3 of 9: Phone access",
       "  ##  ##\n  #    #",
     ]);
   });

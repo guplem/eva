@@ -96,6 +96,7 @@ function makeLogin(
       return terminal;
     },
     waitMs: 500,
+    enterPauseMs: 1,
     ...overrides,
   });
   return { login, terminals };
@@ -108,7 +109,8 @@ function showAddress(terminal: FakeTerminal): void {
 const happyScript: Parameters<typeof fakeTerminal>[2] = {
   onStart: showAddress,
   onWrite: (terminal, text) => {
-    if (text.endsWith("\r")) {
+    // claude 2.1 reads a long write as a paste: an Enter inside it becomes a line break, not a submit.
+    if (text === "\r") {
       printAll(terminal, tokenScreen);
       terminal.exit(0);
     }
@@ -130,7 +132,8 @@ describe("ClaudeLogin", () => {
     expect(terminal?.command).toEqual(["/opt/example/claude", "setup-token"]);
     expect(terminal?.options.environment).toEqual({ CLAUDE_CONFIG_DIR: "/tmp/example-eva/engines/claude" });
     expect(await login.finish("  example-code#example-state \n")).toEqual({ token });
-    expect(terminal?.written.join("")).toBe("example-code#example-state\r");
+    // The Enter key goes alone, after a pause: in one write with the code, claude reads it as a paste.
+    expect(terminal?.written).toEqual(["example-code#example-state", "\r"]);
   });
 
   test("says so when no claude program is on this machine", async () => {
@@ -172,7 +175,7 @@ describe("ClaudeLogin", () => {
     const { login } = makeLogin(happyScript);
     const error = await failure(login.finish("example-code"));
     expect(isEvaError(error, "claude_login_failed")).toBe(true);
-    expect((error as Error).message).toContain("Log in to Claude");
+    expect((error as Error).message).toContain("Start the login");
   });
 
   test("asks for a new start after the login ended on its own", async () => {
@@ -181,7 +184,7 @@ describe("ClaudeLogin", () => {
     terminals[0]?.exit(0);
     await Bun.sleep(0);
     const error = await failure(login.finish("example-code"));
-    expect((error as Error).message).toContain("Log in to Claude");
+    expect((error as Error).message).toContain("Start the login");
   });
 
   test("refuses an empty code or one with a line break inside", async () => {
@@ -209,7 +212,7 @@ describe("ClaudeLogin", () => {
     expect((error as Error).message).toContain("did not accept the code");
     expect(terminals[0]?.stopped).toBe(true);
     const again = await failure(login.finish("wrong-code"));
-    expect((again as Error).message).toContain("Log in to Claude");
+    expect((again as Error).message).toContain("Start the login");
     expect(terminals).toHaveLength(1);
   });
 
@@ -304,6 +307,23 @@ describe("ClaudeLogin with output in pieces", () => {
     await login.start();
     const error = await failure(login.finish("secret-example-code"));
     expect((error as Error).message).not.toContain("secret-example-code");
+  });
+
+  test("never puts the hidden code into the error", async () => {
+    const { login } = makeLogin(
+      {
+        onStart: showAddress,
+        // claude 2.1 shows a star for each character of the code, and sometimes the last few.
+        onWrite: (terminal, text) => {
+          if (text !== "\r") terminal.print(`\r${escape}[31C${"*".repeat(text.length - 3)}${text.slice(-3)}\r\n`);
+        },
+      },
+      { waitMs: 30 },
+    );
+    await login.start();
+    const error = await failure(login.finish("secret-example-code"));
+    expect((error as Error).message).not.toContain("***");
+    expect((error as Error).message).not.toContain('It said: "');
   });
 
   test("a Finish before the address waits for no code", async () => {

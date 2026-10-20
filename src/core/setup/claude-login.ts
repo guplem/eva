@@ -16,11 +16,19 @@ export interface ClaudeLoginOptions {
   readonly environment: () => Record<string, string>;
   /** The longest wait for the address, and for the token after the code. */
   readonly waitMs?: number;
+  /** The pause between the code and the Enter key. */
+  readonly enterPauseMs?: number;
 }
 
 /** Time to open Claude's page, log in and paste the code. */
 const lifetimeMs = 15 * 60_000;
 const defaultWaitMs = 60_000;
+/**
+ * claude 2.1 reads a long write as a paste, and an Enter inside a paste becomes a line break.
+ * Then claude waits with the code in its field, and never sends it. A pause before the Enter
+ * makes it a separate key press.
+ */
+const defaultEnterPauseMs = 500;
 const codeLimit = 2_000;
 /** A token is whole only when a character that no token holds follows it: output comes in pieces. */
 const tokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}(?=[^0-9A-Za-z_-])/;
@@ -29,11 +37,13 @@ const endedTokenPattern = /sk-ant-oat[0-9A-Za-z_-]{20,}/;
 const addressPattern = /https:\/\/\S*oauth\/authorize\S*/;
 /** claude prints its prompt after the address, so the address is whole once the prompt shows. */
 const promptPattern = /paste\s+code\s+here/i;
+/** claude 2.1 hides the code in its field as stars: such a line tells the person nothing. */
+const maskedPattern = /^\*{3,}\S{0,8}$/;
 /** After a refused code, claude waits on this line instead of ending. */
 const refusedPattern = /press\s+enter\s+to\s+retry/i;
 /** What `read` returns when claude refused the code. */
 const refused = Symbol("refused");
-const tryAgain = 'Press "Log in to Claude" to try again.';
+const tryAgain = 'Press "Start the login" to try again.';
 
 export class ClaudeLogin {
   private readonly options: ClaudeLoginOptions;
@@ -98,7 +108,10 @@ export class ClaudeLogin {
     this.waitsForCode = false;
     // The screen before the code holds no token and no refusal, so only the new output counts.
     const from = terminal.received();
-    terminal.write(`${code}\r`);
+    terminal.write(code);
+    await Bun.sleep(this.options.enterPauseMs ?? defaultEnterPauseMs);
+    // A stop or a new start during the pause ended this login: the wait below reads its end.
+    if (this.current === terminal) terminal.write("\r");
     const result = await this.waitFor(
       terminal,
       (screen, exited) =>
@@ -235,7 +248,13 @@ function lastWords(screen: Screen, hide: string | undefined): string {
   const lines = screen.text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line !== "" && !promptPattern.test(line) && (hide === undefined || !line.includes(hide)));
+    .filter(
+      (line) =>
+        line !== "" &&
+        !promptPattern.test(line) &&
+        !maskedPattern.test(line) &&
+        (hide === undefined || !line.includes(hide)),
+    );
   return (lines.at(-1) ?? "").slice(0, 300);
 }
 

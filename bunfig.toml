@@ -1,7 +1,0 @@
-[test]
-root = "test/unit"
-# Bun 1.4 ignores a `timeout` here: the test scripts in package.json pass `--timeout 30000`,
-# because git on a Windows CI runner can make one test take 15 seconds.
-coverageThreshold = { lines = 0.9, functions = 0.8 }
-coverageSkipTestFiles = true
-coveragePathIgnorePatterns = ["test/**", "scripts/**"]

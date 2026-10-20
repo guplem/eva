@@ -1,8 +1,0 @@
-[>0q[?u]7501;?[c[31C[1A**********************************************************************************************rstuvw
-[1C[6A[K[1C[1B✓[4GLong-lived[15Gauthentication[30Gtoken[36Gcreated[44Gsuccessfully![1B[K[1C[1BYour[7GOAuth[13Gtoken[19G(valid[26Gfor[30G1[32Gyear):[1C[2Bsk-ant-[10Gat01-Zq9xW3eRt5yU7iOpAsDfGhJkLzXcVbNm1234567890_-abcdefghijklmnopqrstuvwxyzABCDEFGHIJ[K
-
-[2GStore[8Gthis[13Gtoken[19Gsecurely.[29GYou[33Gwon't[39Gbe[42Gable[47Gto[50Gsee[54Git[57Gagain.
-
-[2GUse[6Gthis[11Gtoken[17Gby[20Gsetting:[29Gexport[36GCLAUDE_CODE_OAUTH_TOKEN=<token>
-
-[?25h[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8[?25h[?25h

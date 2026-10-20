@@ -1,9 +1,9 @@
 /**
  * The chat in view: how full its context is, its engine, model and mode, its background tasks,
  * such as subagents and background commands, and a way to fork it. A computer shows them in the
- * inspector column. A phone shows the same content in a bottom sheet from the "Chat info" button.
+ * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
@@ -50,7 +50,7 @@ function TaskList({ tasks, empty }: { readonly tasks: Tasks; readonly empty: str
   );
 }
 
-interface ChatProps {
+export interface ChatProps {
   /** The chat first, then each of its forks. Empty when no chat is open. */
   readonly tree: readonly SessionRecord[];
   readonly tasks: Tasks;
@@ -153,24 +153,15 @@ export function ChatPanel(props: ChatProps): ReactElement {
   );
 }
 
-/** A phone hides the inspector, so this button opens the same details in a bottom sheet. */
-export function ChatInfoButton(props: ChatProps): ReactElement {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
+/** A phone hides the inspector, so the chat header opens the same details in a bottom sheet. */
+export function ChatInfoSheet({ onClose, ...props }: ChatProps & { readonly onClose: () => void }): ReactElement {
   return (
-    <>
-      <button className="chat-info-button" onClick={() => setOpen(true)}>
-        Chat info
-      </button>
-      {open && (
-        <Dialog label="This chat" onClose={close} sheet>
-          <div className="chat-panel in-sheet">
-            <h2>This chat</h2>
-            <ChatDetails {...props} />
-          </div>
-        </Dialog>
-      )}
-    </>
+    <Dialog label="This chat" onClose={onClose} sheet>
+      <div className="chat-panel in-sheet">
+        <h2>This chat</h2>
+        <ChatDetails {...props} />
+      </div>
+    </Dialog>
   );
 }
 

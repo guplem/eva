@@ -8,6 +8,7 @@ import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/setting
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -785,5 +786,96 @@ describe("the Claude Code login from the page", () => {
   test("says so when this machine has no claude program", async () => {
     const error = await eva.startClaudeLogin().catch((caught: unknown) => caught);
     expect(String(error)).toContain("did not find the claude program");
+  });
+});
+
+describe("the vault step on the page", () => {
+  const withoutVault = (githubApiBaseUrl?: string): Eva =>
+    new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
+    });
+  const vaultStep = async (instance: Eva): Promise<string | undefined> =>
+    (await instance.setupState()).progress.find((step) => step.key === "vault")?.state;
+
+  test("a token saved on the page lists the repositories, and a clone shows the step as done", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer a-page-token"
+          ? Response.json([{ full_name: "you/vault", clone_url: sandbox.remote, private: true }])
+          : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    });
+    const instance = withoutVault(`http://127.0.0.1:${String(github.port)}`);
+    try {
+      expect(await vaultStep(instance)).toBe("missing");
+      instance.saveSecret("githubToken", "a-page-token");
+      const [repository] = await instance.vaultRepositories();
+      expect(repository?.fullName).toBe("you/vault");
+      const result = await instance.cloneVault(repository?.cloneUrl ?? "");
+      expect(result.folder).toBe(join(home, "vault"));
+      expect(existsSync(join(home, "vault", "AGENTS.md"))).toBe(true);
+      const state = await instance.setupState();
+      expect(state.progress.find((step) => step.key === "vault")?.state).toBe("done");
+      // The running Eva keeps the vault of her start.
+      expect(state.restartNeeded).toBe(true);
+      expect(state.vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
+  test("a failed push of a new vault never sends a token back to the page", async () => {
+    const instance = withoutVault();
+    try {
+      const token = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      const result = await instance.createVault({
+        name: "Sam",
+        language: "English",
+        topics: [],
+        repository: `https://x-access-token:${token}@127.0.0.1:1/you/vault.git`,
+      });
+      expect(result.repository).toBeNull();
+      expect(result.problem).toContain("could not push");
+      expect(JSON.stringify(result)).not.toContain(token);
+      // A password of another service has no known shape, so the login part of the address goes.
+      // A failed push of the local vault throws, and its error goes to the page too.
+      const refused = await instance
+        .pushVault("https://person:plain-password@127.0.0.1:1/you/vault.git")
+        .catch((error: unknown) => error);
+      expect(isEvaError(refused, "github_failed")).toBe(true);
+      expect(String(refused)).not.toContain("plain-password");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("an empty saved folder shows the step as missing, and a new local vault asks for its push", async () => {
+    const instance = withoutVault();
+    try {
+      mkdirSync(join(home, "notes"));
+      writeFileSync(homePaths(home).config, JSON.stringify({ vaultPath: join(home, "notes") }));
+      expect(await vaultStep(instance)).toBe("missing");
+      const result = await instance.createVault({ name: "Sam", language: "English", topics: [], repository: "" });
+      expect(result).toMatchObject({ folder: join(home, "notes"), repository: null });
+      expect(await vaultStep(instance)).toBe("done");
+      expect((await instance.setupState()).vaultNeedsPush).toBe(true);
+      const bare = join(sandbox.root, "empty.git");
+      mkdirSync(bare);
+      sandbox.git(bare, "init", "-q", "--bare");
+      expect((await instance.pushVault(bare)).repository).toBe(bare);
+      expect((await instance.setupState()).vaultNeedsPush).toBe(false);
+    } finally {
+      instance.stop();
+    }
   });
 });

@@ -8,11 +8,11 @@ import { api, type ChatBlocker, type CloneDetails, type Project, type SessionRec
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTree, Conversation, DeleteChatButton, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { ChatInfoButton, ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { ChatHeader } from "./ChatHeader.tsx";
+import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
-import { ShowListButton } from "./MainNav.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
@@ -322,11 +322,12 @@ export function ProjectView({
           />
         ) : page.kind === "chat" && chat !== undefined ? (
           <>
-            <div className="main-header">
-              <ShowListButton onClick={onShowList} />
-              <div className="header-text">
-                <h1>{chat.title}</h1>
-                <div className="sub crumbs">
+            <ChatHeader
+              key={chat.id}
+              chat={chat}
+              details={chatDetails}
+              subtitle={
+                <span className="crumbs">
                   <button className="crumb" onClick={() => open({ kind: "project", project: page.project })}>
                     {page.project.title}
                   </button>
@@ -338,16 +339,20 @@ export function ProjectView({
                       <span className="mono">{page.clone.branch}</span>
                     </>
                   )}
-                </div>
-              </div>
-              {page.clone.pullRequest !== null && <span className="pill idle">PR #{page.clone.pullRequest}</span>}
-              {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
-              <span className="mode-chip soft">
-                <Icon name="folder" /> Project mode
-              </span>
-              <ChatInfoButton {...chatDetails} />
-              <DeleteChatButton chat={chat} onChanged={onChanged} />
-            </div>
+                </span>
+              }
+              extra={
+                <>
+                  {page.clone.pullRequest !== null && <span className="pill idle">PR #{page.clone.pullRequest}</span>}
+                  {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
+                  <span className="mode-chip soft">
+                    <Icon name="folder" /> <span className="mode-chip-label">Project mode</span>
+                  </span>
+                </>
+              }
+              onShowList={onShowList}
+              onChanged={onChanged}
+            />
             <Conversation
               root={chat}
               sessions={sessions}

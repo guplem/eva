@@ -4,7 +4,8 @@
  */
 import type { ProgressStep } from "./api.ts";
 
-export type SectionId = "setup" | "engines" | "vault" | "connections" | "access" | "personalize" | "updates";
+export type SectionId =
+  "setup" | "engines" | "vault" | "connections" | "access" | "personalize" | "updates" | "developer";
 
 export interface SettingsSection {
   readonly id: SectionId;
@@ -43,7 +44,16 @@ export const settingsSections: readonly SettingsSection[] = [
     steps: [],
   },
   { id: "updates", title: "Updates", summary: "Eva and Claude Code versions, and a restart.", steps: [] },
+  {
+    id: "developer",
+    title: "Development",
+    summary: "Report a problem, and see the design parts.",
+    steps: [],
+  },
 ];
+
+/** The item of the Development section that opens the design reference page instead of a card. */
+export const designReferenceItem = "design";
 
 /** The section that holds each setup step's controls. */
 export function sectionOfStep(step: ProgressStep["key"]): SectionId {
@@ -130,6 +140,13 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
   { item: "engine-update", section: "updates", title: "Claude Code update", words: "version engine" },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },
+  { item: "report-problem", section: "developer", title: "Report a problem", words: "bug issue github idea feedback" },
+  {
+    item: designReferenceItem,
+    section: "developer",
+    title: "Design reference",
+    words: "colours colors palette components theme architecture",
+  },
 ];
 
 /** Every typed word must appear in the entry's title, its words or its section's title. */

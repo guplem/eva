@@ -71,6 +71,25 @@ async function openSettings(page: Page, section?: string): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(section ?? "Settings");
 }
 
+/** The browser resolves a token to the same form as a computed style, so the two compare as text. */
+async function tokenColour(page: Page, name: string): Promise<string> {
+  return page.evaluate((each) => {
+    const probe = document.createElement("i");
+    probe.style.color = `var(${each})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, name);
+}
+
+async function style(
+  locator: Locator,
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+): Promise<string> {
+  return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
+}
+
 /** The task chip under the answer opens the tasks of that answer, also on a phone. They ended with the turn. */
 async function expectBackgroundTasks(page: Page): Promise<void> {
   if (test.info().project.name === "desktop") {
@@ -97,11 +116,9 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
 test("Assistant mode: a chat, its answer, a retry branch and the background tasks", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByLabel("Model for a new chat").selectOption("haiku");
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  // The model comes first, and the chat keeps it (lesson 41).
-  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
+  await expect(page.locator(".main-header .sub")).toHaveText("Claude Code · Assistant");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
@@ -151,7 +168,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   const title = `A chat to delete (${test.info().project.name})`;
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
@@ -167,15 +184,54 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
     if (request.method() === "DELETE") deletes.push(request.url());
   });
 
-  page.once("dialog", (dialog) => void dialog.dismiss());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  const question = page.getByRole("group", { name: `Delete “${title}”?` });
+  await chooseFromMore(page, "Delete chat");
+  await question.getByRole("button", { name: "Keep" }).click();
+  await expect(question).toHaveCount(0);
   await expect(listed).toHaveCount(1);
   expect(deletes).toEqual([]);
 
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  await chooseFromMore(page, "Delete chat");
+  await question.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(listed).toHaveCount(0);
   expect(deletes).toHaveLength(1);
+});
+
+/** Opens the "More actions" menu of the chat header and picks an item. */
+async function chooseFromMore(page: Page, item: string): Promise<void> {
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item }).click();
+}
+
+test("the More actions menu works from the keyboard, and the focus never gets lost", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const more = page.getByRole("button", { name: "More actions" });
+  const menu = page.getByRole("menu", { name: "Chat actions" });
+  await more.click();
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(menu.getByRole("menuitem", { name: "Delete chat" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(more).toBeFocused();
+
+  await more.click();
+  await page.keyboard.press("Tab");
+  await expect(menu).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+
+  await chooseFromMore(page, "Rename");
+  await page.getByLabel("Chat title").press("Escape");
+  await expect(more).toBeFocused();
+
+  await chooseFromMore(page, "Delete chat");
+  const keep = page.getByRole("group", { name: "Delete “New chat”?" }).getByRole("button", { name: "Keep" });
+  await expect(keep).toBeFocused();
+  await keep.click();
+  await expect(more).toBeFocused();
 });
 
 /** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
@@ -199,7 +255,7 @@ async function chatIdNamed(page: Page, title: string): Promise<string> {
 async function newAnsweredChat(page: Page, text: string): Promise<string> {
   const title = `${text} (${test.info().project.name})`;
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
@@ -275,15 +331,15 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
 }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
-  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await chooseFromMore(page, "Rename");
   await page.getByLabel("Chat title").fill("Draft");
   await page.getByLabel("Chat title").press("Escape");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
 
-  await page.getByRole("button", { name: "Rename this chat" }).click();
+  await chooseFromMore(page, "Rename");
   // The field is selected, so typing replaces the old title.
   await page.getByLabel("Chat title").pressSequentially("Trip");
   await expect(page.getByLabel("Chat title")).toHaveValue("Trip");
@@ -307,7 +363,7 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("show me a list");
@@ -320,7 +376,7 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
 test("a usage warning shows under the chat after its answer (issue #67)", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("near the limit");
@@ -334,7 +390,7 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
 test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
   await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
@@ -439,9 +495,10 @@ test("the composer's chip picks the model before the first message, and is fixed
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
-  await expect(page.locator(".main-header .badge")).toHaveText("haiku");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+  // The chip is the one place that shows the model.
+  await expect(page.locator(".chip-picker").getByRole("button", { name: /Haiku/ })).toBeVisible();
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
@@ -546,8 +603,18 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   await openExampleApp(page);
   await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
   await expect(page.getByText("Project mode")).toBeVisible();
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Delete chat" }).click();
+  if (test.info().project.name === "phone") {
+    // The crumbs and the mode chip leave the title room to read, on one row.
+    const title = await page.getByRole("heading", { level: 1 }).boundingBox();
+    const more = await page.getByRole("button", { name: "More actions" }).boundingBox();
+    expect(title?.width ?? 0).toBeGreaterThanOrEqual(120);
+    expect(Math.abs((title?.y ?? 0) - (more?.y ?? 0))).toBeLessThan(44);
+  }
+  await chooseFromMore(page, "Delete chat");
+  await page
+    .getByRole("group", { name: /^Delete “/ })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 });
 
@@ -844,6 +911,28 @@ test("Settings: the vault sync state shows a conflict, its picks and the held-ba
   await expect(sync).toContainText("Media/film.mov (larger than 50 MB)");
 });
 
+test("Settings: a vault sync error is red, and a conflict that waits for the person is amber (issue #208)", async ({
+  page,
+}) => {
+  let status: "error" | "conflict" = "error";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { vaultSync: Record<string, unknown> };
+    body.vaultSync = { ...body.vaultSync, status, lastError: "The push failed." };
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/vault/conflicts", (route) => route.fulfill({ json: { state: null, conflicts: [] } }));
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const pill = page.getByRole("region", { name: "Vault sync" }).locator(".pill");
+  await expect(pill).toHaveText("Error");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--bad-bg"));
+  status = "conflict";
+  await page.reload();
+  await expect(pill).toHaveText("Conflict");
+  expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
+});
+
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");
@@ -1072,6 +1161,27 @@ test("Settings: search finds a setting and opens its page", async ({ page }) => 
   await expect(page.getByText("No setting matches “banana”.")).toBeVisible();
 });
 
+test("Settings: Development links to a GitHub report and opens the design reference", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page, "Development");
+  const report = page.getByRole("link", { name: "Report a bug" });
+  await expect(report).toHaveAttribute("href", /^https:\/\/github\.com\/guplem\/eva\/issues\/new\?/);
+  // The status loads after the settings, so the version reaches the link a moment later.
+  await expect
+    .poll(async () => new URL((await report.getAttribute("href")) ?? "").searchParams.get("body"))
+    .toMatch(/Eva version: \d/);
+  await page.getByRole("button", { name: "Open the design reference" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Design reference");
+  await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");
+  await expect(page.getByRole("region", { name: "Components" })).toContainText(".pill");
+  await expect(page.getByRole("list", { name: "Layers" })).toContainText("src/core");
+  // The theme switch on the page changes the colours of every sample.
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Development");
+});
+
 test("Settings: a token saved on a step's page shows at once in that step", async ({ page }) => {
   await logIn(page);
   await page.request.delete("/api/secrets/githubToken");
@@ -1085,7 +1195,7 @@ test("Settings: a token saved on a step's page shows at once in that step", asyn
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-progress-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(header).toContainText("The token is saved.");
-  await expect(page.getByText("Eva uses the new tokens after a restart.")).toBeVisible();
+  await expect(page.getByText("Eva uses the changes after a restart.")).toBeVisible();
   await page.request.delete("/api/secrets/githubToken");
 });
 
@@ -1176,7 +1286,7 @@ test("the Chats badge counts the approvals that wait, and the dot says that Eva 
   }
 });
 
-test("the New chat button sits in the list header, and the model menu at the bottom", async ({ page }) => {
+test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -1185,20 +1295,14 @@ test("the New chat button sits in the list header, and the model menu at the bot
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: viewport?.width ?? 1280, height: 400 });
   await openList(page);
-  const sidebar = await page.getByRole("navigation", { name: "Chats" }).boundingBox();
-  const model = page.getByLabel("Model for a new chat");
-  const button = page.getByRole("button", { name: "New chat", exact: true });
-  await expect(model).toBeInViewport();
+  const button = page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true });
   await expect(button).toBeInViewport();
-  const modelBox = await model.boundingBox();
+  // The composer chip is the one place to pick the model.
+  await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("combobox")).toHaveCount(0);
   const buttonBox = await button.boundingBox();
   const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
-  if (sidebar === null || modelBox === null || buttonBox === null || firstChatBox === null) {
-    throw new Error("A sidebar part is not on the screen.");
-  }
+  if (buttonBox === null || firstChatBox === null) throw new Error("A sidebar part is not on the screen.");
   expect(buttonBox.y).toBeLessThan(firstChatBox.y);
-  expect(sidebar.y + sidebar.height - (modelBox.y + modelBox.height)).toBeLessThanOrEqual(24);
-  expect(firstChatBox.y).toBeLessThan(modelBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
@@ -1266,10 +1370,12 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   await page.locator(".sidebar-list").evaluate((list) => list.scrollTo({ top: list.scrollHeight }));
   // The header stays at the top of the scrolled list, so the click needs no scroll back.
   expect(await page.locator(".sidebar-list").evaluate((list) => list.scrollTop)).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeInViewport();
+  await expect(
+    page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }),
+  ).toBeInViewport();
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   // Every chat is called "New chat", so the heading shows before the new chat exists.
   // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
   await expect(chats).toHaveCount(before + 1);
@@ -1293,7 +1399,7 @@ async function newChat(page: Page): Promise<string> {
   const created = page.waitForResponse(
     (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   return ((await (await created).json()) as { id: string }).id;
 }
@@ -1387,7 +1493,7 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(steps).toHaveCount(0);
 });
 
-test("the chat panel shows the context ring, the engine and the model, and a phone opens it from Chat info", async ({
+test("the chat panel shows the context ring, the engine and the model, and a phone opens it from the title or the menu", async ({
   page,
 }) => {
   await logIn(page);
@@ -1402,25 +1508,43 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
     // The engine names its window, so the ring shows a share.
     await expect(panel).toContainText("15 of 200k tokens");
     await expect(panel.getByRole("img", { name: "0% of the context window in use" })).toBeVisible();
-    // getByRole skips hidden elements, so count the button by its class.
-    await expect(page.locator(".chat-info-button")).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Chat info" })).toBeHidden();
+    // The inspector shows the details, so the menu does not offer them, and the title is no button.
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Chat info" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("heading", { level: 1 }).getByRole("button")).toHaveCount(0);
     await panel.getByRole("button", { name: "Fork this chat" }).click();
     await expect(panel).toContainText("1, with 1 fork");
     return;
   }
-  await page.getByRole("button", { name: "Chat info" }).click();
+  // One row: the list button, the title with its subtitle, and the more button.
+  const header = page.locator(".main-header").first();
+  const rows = await header.locator(":scope > *").evaluateAll((parts) => {
+    const boxes = parts.map((part) => part.getBoundingClientRect());
+    return {
+      count: boxes.length,
+      lowestTop: Math.max(...boxes.map((box) => box.top)),
+      highestBottom: Math.min(...boxes.map((box) => box.bottom)),
+    };
+  });
+  expect(rows.count).toBe(3);
+  expect(rows.lowestTop).toBeLessThan(rows.highestBottom);
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
   const sheet = page.getByRole("dialog", { name: "This chat" });
   await expect(sheet).toContainText("Assistant");
   await expect(sheet).toContainText("15 of 200k tokens");
   await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
+  // The focus goes back to what opened the sheet.
+  await expect(page.getByRole("heading", { level: 1 }).getByRole("button")).toBeFocused();
   // A tap on the scrim above the sheet closes it too.
-  await page.getByRole("button", { name: "Chat info" }).click();
+  await chooseFromMore(page, "Chat info");
   await expect(sheet).toBeVisible();
   await page.mouse.click(20, 20);
   await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More actions" })).toBeFocused();
 });
 
 test("a new message of a running turn replaces the shown one, and the older one becomes a step", async ({ page }) => {
@@ -1575,7 +1699,7 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
         })
       : route.continue(),
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("The engine claude-code is not available.");
   await page.getByRole("alert").getByRole("button", { name: "Open Settings" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -1647,6 +1771,154 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   await expect(first).toContainText("Set up");
   await first.click();
   await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
+});
+
+test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step, index) =>
+      index === 0
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "The token expired.", at: "2026-01-01T00:00:00Z" } }
+        : index === 1
+          ? { ...step, state: "missing", lastCheck: null }
+          : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  const token = (name: string): Promise<string> => tokenColour(page, name);
+  await logIn(page);
+  await openSettings(page);
+  const bad = await token("--bad");
+  const badBackground = await token("--bad-bg");
+  const hero = page.getByRole("region", { name: "Setup" });
+  await expect(hero).toContainText("Finish setting up Eva");
+  expect(await style(hero, "borderTopColor")).not.toBe(bad);
+  expect(await style(hero, "backgroundImage")).toBe("none");
+  const count = (section: string): Locator =>
+    page.locator(".section-card", { hasText: section }).getByLabel(/to set up/);
+  expect(await style(count("Vault and sync"), "backgroundColor")).toBe(await token("--warn"));
+  // The engine step failed its test, so its section's count is red, as the step is.
+  await expect(count("AI engines")).toHaveAttribute("aria-label", "1 to set up, 1 failed");
+  expect(await style(count("AI engines"), "backgroundColor")).toBe(bad);
+
+  await openSettings(page, "Setup");
+  const list = page.getByRole("region", { name: "Progress list" });
+  const failed = list.getByRole("button").filter({ hasText: "Step 1" });
+  const left = list.getByRole("button").filter({ hasText: "Step 2" });
+  expect(await style(failed.locator(".status-icon"), "backgroundColor")).toBe(bad);
+  await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
+  expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  await left.click();
+  const header = page.locator(".step-header");
+  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
+  expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
+});
+
+test("Settings: the vault step lists the repositories and clones the picked one, with no terminal", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      json: [
+        { fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true },
+        { fullName: "you/example-app", cloneUrl: "https://github.com/you/example-app.git", private: false },
+      ],
+    }),
+  );
+  const cloned: unknown[] = [];
+  await page.route("**/api/vault/clone", async (route) => {
+    cloned.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: { folder: "/eva-home/vault", repository: "https://github.com/you/vault.git", problem: null },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
+    .click();
+  const clone = page.getByRole("button", { name: "Clone this vault" });
+  await expect(clone).toBeDisabled();
+  await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
+  await clone.click();
+  await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
+  expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+});
+
+test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({ json: [{ fullName: "you/vault", cloneUrl: "https://github.com/you/vault.git", private: true }] }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
+    .click();
+  await expect(page.getByRole("button", { name: "Open the GitHub step" })).toBeVisible();
+  await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
+  await page.request.delete("/api/secrets/githubToken");
+});
+
+test("Settings: a vault step that cannot list the repositories leads to the GitHub step", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "vault" ? { ...step, state: "missing", detail: "No vault yet." } : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/vault/repositories", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: "GitHub refused the request (HTTP 401): Bad credentials", code: "github_failed" },
+    }),
+  );
+  await logIn(page);
+  await openSettings(page, "Setup");
+  await page
+    .getByRole("region", { name: "Progress list" })
+    .getByRole("button", { name: /Step \d+ Your vault/ })
+    .click();
+  await expect(page.getByText("Bad credentials")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.getByRole("button", { name: "Open the GitHub step" }).click();
+  await expect(page.getByRole("region", { name: "GitHub", exact: true }).first()).toBeVisible();
 });
 
 test("Settings: Update to a version lists each version in a row, warns on a major one, and installs it", async ({
@@ -1850,7 +2122,7 @@ test("a new chat that cannot reach Eva says so, and the message closes", async (
   await page.route("**/api/sessions", (route) =>
     route.request().method() === "POST" ? route.abort() : route.continue(),
   );
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Eva cannot be reached");
   await page.getByRole("button", { name: "Close the message" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -1937,6 +2209,8 @@ test.describe("on a phone", () => {
       "#/settings/connections",
       "#/settings/access",
       "#/settings/personalize",
+      "#/settings/developer/design",
+      "#/settings/developer",
       "#/settings/updates",
     ];
     for (const hash of pages) {

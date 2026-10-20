@@ -1,0 +1,170 @@
+/* The design reference page of the Development section in Settings. */
+
+.design-group h3,
+.design-sample h3 {
+  margin: 0 0 var(--space-2);
+}
+
+.design-swatches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15em), 1fr));
+  gap: var(--space-3);
+}
+
+.design-swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The ring shows a swatch whose colour is the same as the card. */
+.design-swatch-colour {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-input);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.design-swatch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.design-sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.design-sample-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.design-sample-head h3 {
+  margin: 0;
+}
+
+.design-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.design-names code {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  font-size: var(--text-xs);
+}
+
+.design-sample-body {
+  padding: var(--space-4);
+  border-radius: var(--radius-input);
+  background: var(--main-gradient);
+}
+
+.design-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.design-icons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5em, 1fr));
+  gap: var(--space-3);
+}
+
+.design-icons li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.design-icons .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--ink);
+}
+
+.design-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.design-layers li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-input);
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.design-layers .field-hint {
+  color: inherit;
+}
+
+.design-layer-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* Each step points to the next one, so the list reads as a path. */
+.design-flow {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: flow;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.design-flow li {
+  counter-increment: flow;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+}
+
+.design-flow li::before {
+  content: counter(flow);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: var(--text-xs);
+}

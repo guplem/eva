@@ -106,6 +106,8 @@
   --warn-bg: oklch(0.96 0.05 85);
   /* Darker than --warn: small bold text on --warn-bg needs a contrast of 4.5 to 1. */
   --warn-ink: oklch(0.45 0.12 65);
+  /* The dark ink stays readable on a solid --warn in both themes. */
+  --on-warn: oklch(0.2 0.03 70);
   --bad: oklch(0.56 0.19 25);
   --bad-bg: oklch(0.95 0.03 25);
 
@@ -254,13 +256,22 @@ button.primary {
 
 /* A link that does the work of a button, such as opening Google's login page. */
 a.button-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--on-accent);
   border-radius: var(--radius-pill);
   padding: 6px 12px;
   text-decoration: none;
+}
+
+/* The second link of a row, so the row keeps one main action. */
+a.button-link.plain {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
 }
 
 button.danger {
@@ -368,7 +379,6 @@ textarea {
   white-space: nowrap;
 }
 
-/* The dark ink stays readable on the yellow in both themes. */
 .nav-badge {
   position: absolute;
   top: 6px;
@@ -377,7 +387,7 @@ textarea {
   height: 16px;
   border-radius: var(--radius-pill);
   background: var(--warn);
-  color: oklch(0.2 0.03 70);
+  color: var(--on-warn);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -508,9 +518,8 @@ textarea {
   margin: 12px 0 4px;
 }
 
-/* Only the list scrolls, so the controls in the footer stay on the screen.
-   A very short screen still scrolls the whole sidebar, so the footer never gets out of reach. */
-.sidebar.has-footer {
+/* The list inside scrolls and holds the padding, so a new chat can scroll the list to its top. */
+.sidebar.has-list {
   overflow-y: auto;
   padding: 0;
   gap: 0;
@@ -529,15 +538,6 @@ textarea {
 /* A flex child with hidden overflow can shrink to nothing, so a long list would cut each chat. */
 .sidebar-list > * {
   flex-shrink: 0;
-}
-
-.sidebar-footer {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line);
 }
 
 /* The size of the EVE design. The colour comes from the text, through currentColor. */
@@ -739,7 +739,7 @@ textarea {
 .main-header {
   display: flex;
   align-items: center;
-  /* A long branch name and the Chat info button must not push the page wider than a phone. */
+  /* A long branch name and the buttons must not push the page wider than a phone. */
   flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
@@ -959,8 +959,7 @@ textarea {
   padding: 12px 16px;
 }
 
-.settings label,
-.sidebar-footer label {
+.settings label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1264,7 +1263,6 @@ textarea {
 
 .menu-button,
 .sidebar-backdrop,
-.chat-info-button,
 .phone-only {
   display: none;
 }
@@ -1422,9 +1420,42 @@ textarea {
     height: 44px;
   }
 
-  .menu-button,
-  .chat-info-button {
+  .menu-button {
     display: inline-block;
+  }
+
+  /* One row: the list button, the title with its subtitle in the centre, and the more button. */
+  .chat-header {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .chat-header .header-text {
+    text-align: center;
+  }
+
+  /* The title button clips its own text, so the heading must not clip the button's focus ring. */
+  .chat-header h1 {
+    overflow: visible;
+  }
+
+  /* The crumbs keep one line, so the header stays one row.
+     The padding keeps the focus ring of the project crumb inside the clipped box. */
+  .chat-header .crumbs {
+    justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+    padding: var(--space-1);
+  }
+
+  /* The folder icon alone says "Project mode" on a phone, so the title keeps its room. */
+  .chat-header .mode-chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
 
@@ -1579,7 +1610,11 @@ button.link-button {
   color: var(--ok);
 }
 
-.pill.missing,
+.pill.missing {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .pill.failed {
   background: var(--bad-bg);
   color: var(--bad);
@@ -1618,7 +1653,11 @@ button.link-button {
   color: var(--panel);
 }
 
-.status-icon.missing,
+.status-icon.missing {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .status-icon.failed {
   background: var(--bad);
   color: var(--panel);
@@ -1894,6 +1933,11 @@ button.link-button {
 }
 
 .nav-mark.missing {
+  background: var(--warn);
+  color: var(--on-warn);
+}
+
+.nav-mark.failed {
   background: var(--bad);
   color: var(--panel);
 }
@@ -1996,20 +2040,6 @@ button.link-button {
 /* ==========================================================================
    Settings: the home page
    ========================================================================== */
-.hero {
-  border: 2px solid transparent;
-}
-
-.hero.missing {
-  border-color: var(--bad);
-  background: linear-gradient(var(--bad-bg), var(--panel) 70%);
-}
-
-.hero.done {
-  border-color: var(--ok);
-  background: linear-gradient(var(--ok-bg), var(--panel) 70%);
-}
-
 .hero h2 {
   font-size: var(--text-xl);
   margin: 0 0 var(--space-1);
@@ -2111,7 +2141,11 @@ button.link-button {
   border-left-color: var(--ok);
 }
 
-.step-link.missing,
+.step-link.missing {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
 .step-link.failed {
   border-left-color: var(--bad);
   background: var(--bad-bg);
@@ -2265,7 +2299,11 @@ button.link-button {
   background: var(--ok);
 }
 
-.stepper-dot.missing,
+.stepper-dot.missing {
+  border-color: var(--warn);
+  color: var(--warn-ink);
+}
+
 .stepper-dot.failed {
   border-color: var(--bad);
   color: var(--bad);
@@ -2285,7 +2323,10 @@ button.link-button {
   border-top-color: var(--ok);
 }
 
-.step-header.missing,
+.step-header.missing {
+  border-top-color: var(--warn);
+}
+
 .step-header.failed {
   border-top-color: var(--bad);
 }
@@ -2439,7 +2480,7 @@ button.small {
 
 .pill.warn {
   background: var(--warn-bg);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .pill.idle {
@@ -2552,7 +2593,7 @@ button.small {
 }
 
 .header-text {
-  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. */
+  /* On a phone, the title keeps a row of its own, and the buttons go to the next row. A chat header keeps one row. */
   flex: 1 1 12em;
   min-width: 0;
 }
@@ -2572,6 +2613,84 @@ button.small {
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+/* The title takes the room that the buttons leave, so the header keeps one row. */
+.chat-header .header-text {
+  flex: 1 1 0;
+}
+
+.chat-header h1 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A phone opens the chat details from the title, so the title is a button that looks like text. */
+.chat-title-button {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more-picker {
+  position: relative;
+  flex: none;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  border-radius: var(--radius-input);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.more-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+  text-align: left;
+}
+
+.more-menu button:hover,
+.more-menu button:focus-visible {
+  background: var(--chip);
+}
+
+.more-menu button.danger {
+  color: var(--bad);
+}
+
+/* The delete question takes a row of its own under the title, as a schedule row asks. */
+.chat-delete-question {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chat-delete-question span {
+  flex: 1;
+  min-width: 12em;
 }
 
 /* A row, so the 44 px crumb of a phone keeps the clone and the branch on its centre line. */
@@ -2705,4 +2824,12 @@ button.small {
   .clone-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* The vault step: each choice is its own block, apart from the next one. */
+.vault-choice {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
 }

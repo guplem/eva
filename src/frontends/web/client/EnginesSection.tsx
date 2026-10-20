@@ -82,7 +82,7 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
       aside={<StatusPill state={!installed || (!saved && engineMissing) ? "missing" : saved ? "done" : "optional"} />}
     >
       {!installed && (
-        <div className="callout danger">
+        <div className="callout warning">
           Eva did not find the claude program on this machine. Run <code>eva setup</code> on Eva&apos;s computer to
           install it.
         </div>

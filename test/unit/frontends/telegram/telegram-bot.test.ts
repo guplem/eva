@@ -807,11 +807,15 @@ describe("/chats: every chat of the instance (#9)", () => {
     telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().includes("answer 1"));
     const long = `${"word ".repeat(1_500)}END`;
+    // On a slow connection, the answer must still wait for the last part of the message.
+    telegram.sendDelayMs = 30;
     void eva.sessions.send(sessionId, long, "api");
     await settle(bot, () => telegram.sentTexts().includes("answer 2"));
-    const parts = telegram.sentTexts().filter((text) => text.includes("word"));
+    const texts = telegram.sentTexts();
+    const parts = texts.filter((text) => text.includes("word"));
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.at(-1)).toEndWith("END");
+    expect(texts.indexOf("answer 2")).toBeGreaterThan(texts.lastIndexOf(parts.at(-1) ?? ""));
   });
 
   test("a message from another front end during a turn shows after that turn's answer (lesson 114)", async () => {

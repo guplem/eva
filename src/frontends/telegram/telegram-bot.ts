@@ -749,7 +749,10 @@ export class TelegramBot {
         // The web chat shows every message, so the topic shows the ones that Telegram did not send.
         // A schedule's setup card showed its prompt already.
         if (event.origin === "telegram" || event.origin === "schedule") return;
-        await this.sender.sendPlain(target.chatId, target.topicId, `Message: ${event.text}`);
+        // In the chat's order: a long message goes in parts, and the answer must not come between them.
+        await this.inOrder(event.sessionId, async () => {
+          await this.sender.sendPlain(target.chatId, target.topicId, `Message: ${event.text}`);
+        });
         return;
       case "history_lost":
         await this.inOrder(event.sessionId, async () => {

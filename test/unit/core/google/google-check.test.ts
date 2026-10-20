@@ -92,6 +92,14 @@ describe("checkGoogle", () => {
     expect(google.tokenRequests).toEqual([]);
   });
 
+  test("a login with more access than the person chose asks for a new login", async () => {
+    const everything = { calendar: "full", drive: "full", contacts: "full", tasks: "full", gmail: "full" } as const;
+    saveLogin(googleScopes({ ...defaultConfig.google, access: everything }));
+    // A shell can use the login file directly, so a lower access needs a new login.
+    expect((await checkGoogle(inputs)).detail).toContain("more access than you chose");
+    expect(google.tokenRequests).toEqual([]);
+  });
+
   test("an API that is off names the API to turn on", async () => {
     google.disabled.add("drive");
     expect(await checkGoogle(inputs)).toEqual({ ok: false, detail: "Turn on the Google Drive API (step 1)." });

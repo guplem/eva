@@ -74,9 +74,15 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
   // The refresh uses the secret in the login file, as `workspace-mcp` does, so a new secret needs a new login.
   if (credential.client_secret !== client.clientSecret)
     return failed(`The login uses an older client secret. Log in to Google again (step ${String(googleStep.login)}).`);
-  if (!coversScopes(credential.scopes, googleScopes(config)))
+  const needed = googleScopes(config);
+  if (!coversScopes(credential.scopes, needed))
     return failed(
       `The login gives less access than Eva needs now. This happens after a change of access or of the services. Log in to Google again (step ${String(googleStep.login)}).`,
+    );
+  // The server hides the tools above the chosen levels, but a shell can use the login file directly.
+  if (credential.scopes.some((scope) => !needed.includes(scope)))
+    return failed(
+      `The login gives more access than you chose. Log in to Google again, so that it gives only the new access (step ${String(googleStep.login)}).`,
     );
 
   const urls = googleUrls(inputs.baseUrl);

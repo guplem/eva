@@ -48,3 +48,17 @@ The login text stops promising that the agents never get the token, and says wha
   - The card's pill follows the step, as the Claude Code card does.
 - Scopes: `repo read:org gist workflow`. `workflow` lets an agent push a change to a workflow file.
 - Words: the login text, the card, the guide and the lesson 96 comments say that the agents use the login too. `eva setup` keeps its hand step for `gh` as a fallback.
+
+## Review decisions
+
+- G4 changed: a removal logs out each account whose token sits in the instance's file, and none in the system keyring. A keyring logout would also log out the person's own gh.
+- `Eva.saveSecret` runs the gh changes one at a time, and only for the token that is still saved.
+- `eva setup` logs in gh only for a token from this run, and points to the page on a problem.
+- The GitHub card shows a warning while the step is "missing": the step page hides that detail.
+- The change is breaking: an old token needs one new login. Commit 0bb88ac carries the `BREAKING CHANGE` line.
+
+## Rejected review findings
+
+- Move the token-steps text of cd2e447 into a `fix(web)` commit. The rules forbid a history rewrite, and the `feat` commits of this PR make a release anyway.
+- Drop the card description on the step page. The card also stands alone in the Connections section (as decided in #243).
+- Add "or paste the token again" to the Test text. The login is the main path, and the card shows both.

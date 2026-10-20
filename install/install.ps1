@@ -19,22 +19,25 @@ function Install-Eva {
   $folder = Join-Path $env:LOCALAPPDATA 'Programs\Eva'
   $target = Join-Path $folder 'eva.exe'
 
-  Write-Host 'Installing Eva.'
+  Write-Host ''
+  Write-Host 'Eva install'
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
       throw 'git is missing, and this computer has no winget to install it. Install git from https://git-scm.com/downloads, then run this command again.'
     }
-    Write-Host 'Installing git. Windows can ask for permission.'
+    Write-Host '  Installing git. Windows can ask for permission.'
     $wingetArguments = @('install', '--id', 'Git.Git', '-e', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements')
     # An install for this user needs no administrator, so it also works over SSH. When the package
     # has no such install, winget fails, and the install for every user follows.
-    winget @wingetArguments --scope user
-    if ($LASTEXITCODE -ne 0) { winget @wingetArguments }
+    # winget draws progress bars; the install reads better as a few clear lines.
+    winget @wingetArguments --scope user | Out-Null
+    if ($LASTEXITCODE -ne 0) { winget @wingetArguments | Out-Null }
     # This window keeps its old PATH, so read the new one.
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
       throw 'git did not install. Install git from https://git-scm.com/downloads, then run this command again.'
     }
+    Write-Host '  [ok] Installed git.'
   }
 
   $temp = Join-Path ([IO.Path]::GetTempPath()) ('eva-install-' + [guid]::NewGuid())
@@ -87,9 +90,9 @@ function Install-Eva {
   }
   if (($env:Path -split ';') -notcontains $folder) { $env:Path = "$env:Path;$folder" }
 
-  Write-Host "Installed Eva $(& $target version) in $folder."
+  Write-Host "  [ok] Installed Eva $(& $target version) in $folder, and checked the download."
   if ($env:EVA_INSTALL_SKIP_SETUP -eq '1') {
-    Write-Host 'Eva is installed. Run `eva setup` to set her up.'
+    Write-Host '  Run `eva setup` to set Eva up.'
     return
   }
   & $target setup

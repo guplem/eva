@@ -111,7 +111,7 @@ async function tokenColour(page: Page, name: string): Promise<string> {
 
 async function style(
   locator: Locator,
-  property: "backgroundColor" | "backgroundImage" | "borderTopColor",
+  property: "backgroundColor" | "backgroundImage" | "borderTopColor" | "borderTopWidth" | "borderLeftWidth",
 ): Promise<string> {
   return locator.evaluate((element, each) => getComputedStyle(element)[each], property);
 }
@@ -1816,9 +1816,11 @@ test("Settings: a step left is amber, and only a failed step is red (issue #208)
   await expect(left.locator(".status-icon")).toHaveAttribute("aria-label", "Needs you");
   expect(await style(left.locator(".status-icon"), "backgroundColor")).toBe(await token("--warn-bg"));
   expect(await style(left, "backgroundColor")).not.toBe(badBackground);
+  // The status icon shows the state. A coloured stripe on one edge looks dated.
+  expect(await style(left, "borderLeftWidth")).toBe("0px");
   await left.click();
   const header = page.locator(".step-header");
-  expect(await style(header, "borderTopColor")).toBe(await token("--warn"));
+  expect(await style(header, "borderTopWidth")).toBe("0px");
   expect(await style(header.locator(".callout"), "backgroundColor")).toBe(await token("--warn-bg"));
   expect(await style(header.locator(".pill"), "backgroundColor")).toBe(await token("--warn-bg"));
 });
@@ -2557,6 +2559,10 @@ test("device login: Deny answers the new device, and the notice closes at once",
 test("Settings: Claude Code logs in from the page, with a pasted code", async ({ page }) => {
   const codes: string[] = [];
   let refuse = true;
+  let answer: () => void = () => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
   await page.route("**/api/engines/claude-code/login", (route) =>
     route.fulfill({ json: { url: "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state" } }),
   );
@@ -2567,33 +2573,41 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
       await route.fulfill({
         status: 409,
         json: {
-          error: 'Claude did not accept the code. Press "Log in to Claude" to try again.',
+          error: 'Claude did not accept the code. Press "Start the login" to try again.',
           code: "claude_login_failed",
         },
       });
       return;
     }
+    // The real login takes seconds, and the page shows that it works meanwhile.
+    await answered;
     await route.fulfill({ json: { restartNeeded: true } });
   });
   await logIn(page);
   await openSettings(page, "AI engines");
-  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  // Each step has its own button: Claude's page waits for the link of step 1.
+  await expect(page.getByRole("button", { name: "Open Claude's page" })).toBeDisabled();
+  await page.getByRole("button", { name: "Start the login" }).click();
   await expect(page.getByRole("link", { name: "Open Claude's page" })).toHaveAttribute(
     "href",
     "https://claude.com/cai/oauth/authorize?code=true&state=e2e-state",
   );
+  await expect(page.getByRole("button", { name: "Start again" })).toBeVisible();
   const code = page.getByLabel("The code from Claude's page");
   await code.fill("wrong-code");
   await page.getByRole("button", { name: "Finish" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Claude did not accept the code." })).toBeVisible();
   // The refused code ended the login, so its link goes, and a new login starts.
   await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeHidden();
-  await page.getByRole("button", { name: "Log in to Claude" }).click();
+  await page.getByRole("button", { name: "Start the login" }).click();
   await expect(page.getByRole("link", { name: "Open Claude's page" })).toBeVisible();
   await code.fill("two words");
   await expect(page.getByRole("button", { name: "Finish" })).toBeDisabled();
   await code.fill("e2e-code#e2e-state");
   await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("button", { name: "Checking the code…" })).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "waits for the token" })).toBeVisible();
+  answer();
   await expect(page.getByRole("status").filter({ hasText: "Logged in to Claude." })).toBeVisible();
   expect(codes).toEqual(["wrong-code", "e2e-code#e2e-state"]);
   // The token stays the way that needs a terminal, one tap away.

@@ -1,6 +1,7 @@
 /** `eva status` and `eva projects`: short reads of the local API, as text for a terminal. */
-import type { EvaStatus } from "../../core/eva.ts";
+import type { EvaStatus, EvaVersions } from "../../core/eva.ts";
 import type { ProgressStep } from "../../core/setup/progress.ts";
+import type { ToolVersion } from "../../core/tool-versions.ts";
 import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
@@ -21,8 +22,10 @@ interface ProjectBody {
 
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
+  const versions = await getJson<EvaVersions>(options, "/api/versions");
   return [
     ...describeStatusLines(status),
+    describeToolVersions(versions.tools),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
   ].join("\n");
 }
@@ -49,6 +52,13 @@ export function describeStatusLines(status: EvaStatus): string[] {
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ...describeRemoteAccess(status.remoteAccess),
   ];
+}
+
+/** One line with the version of each tool that is there. `eva doctor` names the missing ones. */
+export function describeToolVersions(tools: readonly ToolVersion[]): string {
+  const found = tools.filter((tool) => tool.version !== null);
+  if (found.length === 0) return "Tools: none found";
+  return `Tools: ${found.map((tool) => `${tool.program} ${tool.version ?? ""}`).join(", ")}`;
 }
 
 /** One line for each log entry: the time (UTC), the level, the message and its details. */
@@ -252,8 +262,12 @@ export async function requestDeviceAllow(options: ClientOptions, code: string): 
 /** The setup progress list of the running Eva, one line per step, as the page shows it. */
 export async function describeSetupProgress(options: ClientOptions): Promise<string[]> {
   const state = await getJson<{ progress: readonly ProgressStep[] }>(options, "/api/settings/setup");
-  const marks = { done: "✓", missing: "✗", optional: "○" } as const;
-  return ["Setup progress:", ...state.progress.map((step) => `${marks[step.state]} ${step.title}: ${step.detail}`)];
+  // Plain ASCII, as in the rest of setup, so an old Windows console shows the marks too.
+  const marks = { done: "[ok]", missing: "[to do]", optional: "[optional]" } as const;
+  return [
+    "Where each step stands, also in Settings on Eva's page:",
+    ...state.progress.map((step) => `  ${marks[step.state]} ${step.title}: ${step.detail}`),
+  ];
 }
 
 /** True when the running Eva's page answers, as it does a few seconds after her start. */

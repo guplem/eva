@@ -43,7 +43,12 @@ export const settingsSections: readonly SettingsSection[] = [
     summary: "Theme, time zone, chat names and project folders.",
     steps: [],
   },
-  { id: "updates", title: "Updates", summary: "Eva and Claude Code versions, and a restart.", steps: [] },
+  {
+    id: "updates",
+    title: "Updates",
+    summary: "The versions of Eva and her tools, the updates, and a restart.",
+    steps: [],
+  },
   {
     id: "developer",
     title: "Development",
@@ -143,6 +148,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   { item: "project-folders", section: "personalize", title: "Project folders", words: "roots projects" },
+  {
+    item: "versions",
+    section: "updates",
+    title: "Versions",
+    words: "version eva claude code pi git bun tools installed",
+  },
   { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
   { item: "engine-update", section: "updates", title: "Claude Code update", words: "version engine" },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },

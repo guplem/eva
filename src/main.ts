@@ -179,6 +179,7 @@ async function serve(paths: HomePaths): Promise<number> {
     },
     claudeExecutable,
     remoteAccess,
+    toolPlaces: { platform: host.platform, userHome: host.userHome, standalone: host.standalone },
   });
   // A person at Eva's terminal can always allow a new browser, with or without Telegram.
   eva.deviceLogins.attachApprover(terminalDeviceApprover);

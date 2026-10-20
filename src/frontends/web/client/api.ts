@@ -1,6 +1,6 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaSetupState, EvaStatus } from "../../../core/eva.ts";
+import type { EvaSetupState, EvaStatus, EvaVersions } from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
 import type {
@@ -44,6 +44,7 @@ export type {
   DeviceSummary,
   EngineUpdateStatus,
   EvaStatus,
+  EvaVersions,
   PageSecretName,
   PendingApproval,
   Project,
@@ -183,6 +184,7 @@ export const api = {
     request("POST", "/api/update", version === undefined ? {} : { version }),
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
+  versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   installTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/install", {}),
   signInToTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/sign-in", {}),

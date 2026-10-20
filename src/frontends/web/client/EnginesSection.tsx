@@ -124,6 +124,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
   // One request at a time: a double tap would start a second login and end the first one.
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [finishing, setFinishing] = useState(false);
 
   const start = async (): Promise<void> => {
     setBusy(true);
@@ -143,6 +144,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
 
   const finish = async (): Promise<void> => {
     setBusy(true);
+    setFinishing(true);
     try {
       await api.finishClaudeLogin(code);
       setCode("");
@@ -156,6 +158,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
       context.notify(errorText(error));
     } finally {
       setBusy(false);
+      setFinishing(false);
     }
   };
   // The server checks this too; here a bad paste keeps the link, as it never reaches claude.
@@ -164,19 +167,28 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
   return (
     <Steps>
       <li>
-        Press the button. Eva prepares the login, which takes a few seconds.
+        Press Start the login. Eva makes a login link for you, which takes a few seconds.
         <div className="button-row">
-          <button className="primary" disabled={busy} onClick={() => void start()}>
-            {starting ? "Preparing the login…" : "Log in to Claude"}
+          {/* After the link comes, the main action moves to step 2, so this button steps back. */}
+          <button className={loginUrl === null ? "primary" : "ghost"} disabled={busy} onClick={() => void start()}>
+            {starting ? "Making the link…" : loginUrl === null ? "Start the login" : "Start again"}
           </button>
-          {loginUrl !== null && (
+          {loginUrl !== null && <span className="field-hint">The link is ready. Go to step 2.</span>}
+        </div>
+      </li>
+      <li>
+        Open Claude&apos;s page. Log in with your own Claude account, and allow the access.
+        <div className="button-row">
+          {loginUrl === null ? (
+            // A disabled button keeps the place of the link, so the person sees what comes.
+            <button disabled>Open Claude&apos;s page</button>
+          ) : (
             <a className="button-link" href={loginUrl} target="_blank" rel="noreferrer">
               Open Claude&apos;s page
             </a>
           )}
         </div>
       </li>
-      <li>On Claude&apos;s page, log in with your own Claude account, and allow the access.</li>
       <li>
         Claude&apos;s page shows a code. Copy it, paste it here, and press Finish:
         <div className="inline-form">
@@ -187,13 +199,19 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
+            disabled={finishing}
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />
           <button className="primary" disabled={busy || !codeReady} onClick={() => void finish()}>
-            Finish
+            {finishing ? "Checking the code…" : "Finish"}
           </button>
         </div>
+        {finishing && (
+          <div className="field-hint" role="status">
+            Eva gives the code to Claude and waits for the token. This takes a few seconds.
+          </div>
+        )}
       </li>
     </Steps>
   );

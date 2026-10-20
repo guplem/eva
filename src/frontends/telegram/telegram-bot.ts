@@ -6,7 +6,13 @@
 import { dirname, join } from "node:path";
 import type { Alert } from "../../core/alerts/alert-center.ts";
 import type { Eva } from "../../core/eva.ts";
-import { describeLogEntries, describeStatusLines, describeSync, describeUpdate } from "../cli/client.ts";
+import {
+  describeLogEntries,
+  describeStatusLines,
+  describeSync,
+  describeToolVersions,
+  describeUpdate,
+} from "../cli/client.ts";
 import { extractFileMarkers, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
@@ -484,7 +490,12 @@ export class TelegramBot {
         return;
       }
       case "status":
-        await this.send(chatId, topicId, describeStatusLines(this.options.eva.status()).join("\n"));
+        // A tool can take seconds to give its version, so the other messages do not wait for it.
+        this.inBackground(chatId, topicId, async () => {
+          const tools = (await this.options.eva.versions()).tools;
+          const lines = [...describeStatusLines(this.options.eva.status()), describeToolVersions(tools)];
+          await this.send(chatId, topicId, lines.join("\n"));
+        });
         return;
       case "schedules":
         await this.schedules.list(chatId, topicId);

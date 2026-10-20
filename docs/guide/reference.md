@@ -14,7 +14,7 @@ Run these on the computer where Eva runs. `eva status`, `eva link`, `eva chat`, 
 | `eva`                             | Runs Eva in this terminal (the service does this for you).                                                                          |
 | `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                                                           |
 | `eva supervise`                   | Runs Eva, and starts her again after a crash (the Windows service does this for you).                                               |
-| `eva status`                      | Starts with "All good" or the problems, then the sync, updates, phone address and Telegram pairing code.                            |
+| `eva status`                      | Starts with "All good" or the problems, then the sync, updates, phone address, tool versions and Telegram pairing code.             |
 | `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                                                 |
 | `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                      |
 | `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                           |
@@ -164,7 +164,7 @@ Eva sends each alert to your Telegram chat when the problem starts, again once a
 | Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                     |
 | Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                 |
 
-From a phone: `/status` shows the problems, `/logs [n]` shows the last `n` warnings and errors (20 by default), and `/restart` restarts Eva after you confirm. The Settings page has a **Restart Eva** button too.
+From a phone: `/status` shows the problems and the version of Eva and each tool, `/logs [n]` shows the last `n` warnings and errors (20 by default), and `/restart` restarts Eva after you confirm. The Settings page has a **Restart Eva** button too. Its **Updates** section shows the version of Eva and each tool.
 
 ## Logging in to the web page
 

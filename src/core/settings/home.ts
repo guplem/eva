@@ -34,6 +34,25 @@ export function instanceNameProblem(name: string): string | null {
   return `"${name}" is not a name for an Eva. Use up to ${String(nameMaxLength)} lower-case letters, digits and dashes, such as eva or ana.`;
 }
 
+/**
+ * The name that setup offers for a new Eva: the computer user's name, made valid, so that two
+ * people's Evas on one computer differ by default. A name already taken gets `-1`, `-2` and on.
+ */
+export function suggestedInstanceName(userName: string, taken: readonly string[]): string {
+  const cleaned = userName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // A number suffix needs room: the base keeps space for "-99".
+  const base = cleaned.slice(0, nameMaxLength - 3).replace(/-+$/, "");
+  const name = base === "" || instanceNameProblem(base) !== null ? firstInstanceName : base;
+  if (!taken.includes(name)) return name;
+  for (let number = 1; ; number += 1) {
+    const candidate = `${name}-${String(number)}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
 export function instanceHome(folder: string, name: string): string {
   return join(folder, `${homePrefix}${name}`);
 }

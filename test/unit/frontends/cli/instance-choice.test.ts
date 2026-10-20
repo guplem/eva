@@ -121,11 +121,11 @@ describe("a command with no name", () => {
 });
 
 describe("setup with no name", () => {
-  test("asks a person the name of the first Eva, and Enter gives eva", async () => {
+  test("asks a person the name of the first Eva, and Enter gives the computer user's name", async () => {
     const person = host([""]);
     const paths = await chooseInstance(person, { name: undefined, creates: true, interactive: true });
-    expect(paths.root).toBe(join(folder, "eva-eva"));
-    expect(person.output.join("")).toBe("");
+    expect(paths.root).toBe(join(folder, "eva-example"));
+    expect(person.questions).toEqual(["> Name of this Eva [example]: "]);
   });
 
   test("asks again after a bad name", async () => {
@@ -148,9 +148,17 @@ describe("setup with no name", () => {
     );
   });
 
-  test("a script sets up the first Eva as eva, and the only Eva again", async () => {
+  test("with an Eva of the computer user already here, setup suggests the next free name", async () => {
+    makeInstance("example");
+    const person = host(["1"]);
+    const paths = await chooseInstance(person, { name: undefined, creates: true, interactive: true });
+    expect(paths.root).toBe(join(folder, "eva-example"));
+    expect(person.questions[0]).toContain("such as example-1");
+  });
+
+  test("a script sets up the first Eva with the computer user's name, and the only Eva again", async () => {
     expect((await chooseInstance(host(), { name: undefined, creates: true, interactive: false })).root).toBe(
-      join(folder, "eva-eva"),
+      join(folder, "eva-example"),
     );
     makeInstance("ana");
     expect((await chooseInstance(host(), { name: undefined, creates: true, interactive: false })).root).toBe(

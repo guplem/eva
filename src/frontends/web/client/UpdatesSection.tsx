@@ -1,7 +1,7 @@
-/** The updates page: Eva's own version and policy, the Claude Code update, and a restart. */
-import { useEffect, useState, type ReactElement } from "react";
+/** The updates page: the versions of Eva and her tools, Eva's update policy, the Claude Code update, and a restart. */
+import { Fragment, useEffect, useState, type ReactElement } from "react";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
-import { api, type EngineUpdateStatus, type PublicSettings, type UpdateStatus } from "./api.ts";
+import { api, type EngineUpdateStatus, type EvaVersions, type PublicSettings, type UpdateStatus } from "./api.ts";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { updatesFace } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
@@ -28,10 +28,43 @@ const restartPollLimit = 60;
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
+      <VersionsCard />
       <EvaUpdatesCard context={context} />
       <EngineUpdateCard />
       <RestartCard context={context} />
     </>
+  );
+}
+
+/** The versions that `eva doctor` shows in a terminal, so a phone sees them too. */
+function VersionsCard(): ReactElement {
+  const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
+
+  useEffect(() => {
+    api.versions().then(setVersions, () => {
+      setVersions("failed");
+    });
+  }, []);
+
+  return (
+    <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
+      {versions === "loading" ? (
+        <div role="status">Reading the versions…</div>
+      ) : versions === "failed" ? (
+        <div role="status">Eva could not read the versions. Open this page again to retry.</div>
+      ) : (
+        <dl className="facts">
+          <dt>Eva</dt>
+          <dd>{versions.eva}</dd>
+          {versions.tools.map((tool) => (
+            <Fragment key={tool.program}>
+              <dt title={`For ${tool.feature}`}>{tool.program}</dt>
+              <dd>{tool.version ?? "Not installed"}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+    </Card>
   );
 }
 

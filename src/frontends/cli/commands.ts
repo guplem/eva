@@ -35,6 +35,7 @@ import { hub, link, runningClient, settings, sync, update } from "./local-comman
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
+import { questionText, stepLines } from "./setup-output.ts";
 import { startAndLetIn } from "./setup-start.ts";
 
 export interface CliWiring {
@@ -113,9 +114,10 @@ export function describeFailure(error: unknown): { readonly exitCode: number; re
   };
 }
 
-function doctor(host: CliHost, paths: HomePaths): Promise<boolean> {
+function doctor(host: CliHost, paths: HomePaths, forSetup = false): Promise<boolean> {
   const config = loadSettings(paths).config;
   return runDoctor({
+    forSetup,
     runner: host.runner,
     environment: childEnvironment(host),
     write: (text) => {
@@ -148,12 +150,16 @@ async function googleState(paths: HomePaths, google: EvaConfig["google"]): Promi
 }
 
 async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): Promise<void> {
-  // The setup order starts with the doctor: a missing tool shows before any question.
-  await doctor(host, paths);
-  createHomeFolders(paths);
   const write = (text: string): void => {
     writeLine(host, text);
   };
+  write("");
+  write(`Eva setup, for the Eva in ${paths.root}`);
+  write("Press Enter to keep the value in [brackets], or to skip a question.");
+  for (const line of stepLines("Programs")) write(line);
+  // The setup order starts with the tools: a missing one shows before any question.
+  await doctor(host, paths, true);
+  createHomeFolders(paths);
   const port = (): number => loadSettings(paths).config.port;
   const localUrl = (): string => `http://127.0.0.1:${String(port())}`;
   const setupOptions = {
@@ -210,7 +216,9 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
       afterEssentials: start(false, () => Promise.resolve(""), script),
     });
   } else {
-    await host.withPrompt(async (ask) => {
+    await host.withPrompt(async (prompt) => {
+      // Each question gets its mark, so a person sees when setup waits for an answer.
+      const ask = (question: string): Promise<string> => prompt(questionText(question));
       result = await runSetup({
         ...setupOptions,
         interactive: true,
@@ -228,6 +236,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
   try {
     if (!(await isAnswering(client))) throw new Error("no answer");
     for (const line of await describeSetupProgress(client)) write(line);
+    write("Run `eva setup` again at any time: it asks only for the steps that are not done.");
     // Only setup's own answers count: a save on the page meanwhile has its own Restart button.
     if (result.changedAfterStart) {
       write("Restarting Eva, so she uses the new answers. A conversation that runs now stops.");

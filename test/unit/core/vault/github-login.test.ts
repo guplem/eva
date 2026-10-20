@@ -87,7 +87,8 @@ describe("the GitHub browser login", () => {
     expect(shown).toEqual(["ABCD-1234 https://github.com/login/device"]);
     expect(slept).toEqual([5000, 5000]);
     expect(github.requests[0]?.get("client_id")).toBe("client-id-for-tests");
-    expect(github.requests[0]?.get("scope")).toBe("repo");
+    // gh needs read:org and gist to accept the token; workflow lets an agent push a workflow file.
+    expect(github.requests[0]?.get("scope")).toBe("repo read:org gist workflow");
     expect(github.requests[1]?.get("device_code")).toBe("device-code");
     expect(github.requests[1]?.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:device_code");
   });

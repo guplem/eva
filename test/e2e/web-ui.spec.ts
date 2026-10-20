@@ -401,6 +401,23 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
   );
 });
 
+test("the answer shows its words while the engine writes them, then the whole text (issue 117)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("stream it");
+  await composer.press("Enter");
+  const answer = page.locator(".msg:has(.working)");
+  await expect(answer).toContainText("Streaming the words of this answer");
+  await expect(answer).not.toContainText("to end it.");
+  await page
+    .getByRole("region", { name: "Eva asks for permission" })
+    .getByRole("button", { name: "Allow once" })
+    .click();
+  await expect(page.locator(".msg", { hasText: "More words to end it." })).toBeVisible();
+  await expect(answer).toHaveCount(0);
+});
+
 test("an approval shows as a card in its chat, and Allow once answers the turn", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);
@@ -981,6 +998,25 @@ test("Settings: a vault sync error is red, and a conflict that waits for the per
   expect(await style(pill, "backgroundColor")).toBe(await tokenColour(page, "--warn-bg"));
 });
 
+test("Settings: with the automatic sync off, the sync card says so, and that Sync now sends the notes (#215)", async ({
+  page,
+}) => {
+  let autoSync = false;
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...body, vaultAutoSync: autoSync } });
+  });
+  await logIn(page);
+  await openSettings(page, "Vault and sync");
+  const sync = page.getByRole("region", { name: "Vault sync" });
+  await expect(sync).toContainText("Automatic sync is off. Press Sync now to send your notes.");
+  autoSync = true;
+  await page.reload();
+  await expect(sync.locator(".pill")).toBeVisible();
+  await expect(sync).not.toContainText("Automatic sync is off");
+});
+
 test("Settings: the theme and the density apply at once and stay in this browser", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Personalize");
@@ -1286,6 +1322,19 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   const row = page.getByRole("listitem", { name: `Walk ${id}` });
   await expect(row).toContainText("Fridays at 07:30 · next");
   await expect(row).toContainText("Not run yet");
+  // Off needs no setup card, and the row says that it is off.
+  const toggle = row.getByRole("switch", { name: `Run Walk ${id}` });
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(row).toContainText("Fridays at 07:30 · off");
+  await expect(row.locator(".status-pill")).toHaveText("Off");
+  await expect(page.getByRole("dialog", { name: "Setup card" })).toHaveCount(0);
+  // On again needs a new setup card (lesson 67).
+  await toggle.click();
+  await expect(card).toContainText(`Schedule turned on: Walk ${id}`);
+  await card.getByRole("button", { name: "Got it" }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
   // Remove asks in the page first.
   await row.getByRole("button", { name: `Remove Walk ${id}` }).click();
   await row.getByRole("button", { name: "Keep" }).click();
@@ -1356,6 +1405,15 @@ test("the New chat button sits in the list header, and the list has no model men
     .locator(".sidebar .list-item")
     .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
   expect(cut).toBe(0);
+});
+
+test("the chat list header does not cover the search field", async ({ page }) => {
+  await logIn(page);
+  await openList(page);
+  const header = await page.locator(".chat-list-header").boundingBox();
+  const search = await page.locator(".chat-search").boundingBox();
+  if (header === null || search === null) throw new Error("A sidebar part is not on the screen.");
+  expect(header.y + header.height).toBeLessThanOrEqual(search.y);
 });
 
 test("the chat list shows each chat's time and last answer, and the search filters it", async ({ page }) => {
@@ -1998,6 +2056,30 @@ test("Settings: the GitHub step logs in with a code, with no token to make (#243
   expect(finishes).toBe(2);
   await page.getByRole("button", { name: "Paste a token instead" }).click();
   await expect(page.getByRole("link", { name: "GitHub's new token page" })).toBeVisible();
+});
+
+test("Settings: a GitHub token without the agents' login needs the person (#244)", async ({ page }) => {
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "github"
+        ? {
+            ...step,
+            state: "missing",
+            detail: "The token is saved, but your agents cannot push their work yet. Press Log in with GitHub again.",
+          }
+        : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "GitHub", exact: true });
+  await expect(card.getByText("Needs you", { exact: true })).toBeVisible();
+  // The step page hides the step detail of a step to do, so the card says what to do.
+  await expect(card).toContainText("Your agents cannot push their work yet. Press Log in with GitHub.");
+  await expect(card).toContainText("The agents use it to push their work");
 });
 
 test("Settings: a GitHub login that fails says why, and the button works again", async ({ page }) => {

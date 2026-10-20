@@ -1,6 +1,6 @@
 /**
- * Reads the facts of a setup report from GitHub, through `gh api`. `gh` uses the person's own
- * GitHub login: Eva's GitHub token reaches the vault only. An answer that GitHub refuses, such
+ * Reads the facts of a setup report from GitHub, through `gh api`. `gh` uses the instance's own
+ * login, which Eva's GitHub login sets up (#244). An answer that GitHub refuses, such
  * as an admin-only address, becomes a null fact, which the report shows grey.
  */
 import { parse as parseYaml } from "yaml";
@@ -55,7 +55,7 @@ export function ghApiRequest(runner: ProcessRunner, environment: Readonly<Record
     } catch (error) {
       const message = isEvaError(error, "process_timeout")
         ? "GitHub did not answer in time. Try again later."
-        : "Eva could not run gh, the GitHub CLI. Install it, then run gh auth login.";
+        : "Eva could not run gh, the GitHub CLI. Install it, then press Log in with GitHub on the GitHub card.";
       throw new EvaError("github_failed", message, { cause: error });
     }
     const status = /^HTTP\/[\d.]+ (\d{3})/.exec(output.stdout);

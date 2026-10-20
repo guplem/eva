@@ -103,10 +103,16 @@ async function runProgram(
   }
 }
 
-/** Eva's git commands use the saved token, not gh's login, so the token itself is what to check. */
+/**
+ * Eva's git commands use the saved token, so the token itself is what to check. The agents push
+ * with the instance's gh, which the same login logs in (#244), so the check asks gh too.
+ */
 async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
+  // One host only: an expired login to another host makes a plain `gh auth status` fail.
+  const ghStatus = ["gh", "auth", "status", "--hostname", "github.com"];
   if (inputs.githubToken === null)
-    return runProgram(["gh", "auth", "status"], process.cwd(), inputs.environment, inputs, "gh is logged in.");
+    return runProgram(ghStatus, process.cwd(), inputs.environment, inputs, "gh is logged in.");
+  let account: string;
   try {
     const response = await fetch(`${inputs.githubBaseUrl ?? "https://api.github.com"}/user`, {
       headers: { authorization: `Bearer ${inputs.githubToken}`, accept: "application/vnd.github+json" },
@@ -115,10 +121,17 @@ async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
     if (!response.ok) return { ok: false, detail: "GitHub refused the token." };
     // A proxy can answer 200 with a page that is not JSON; the account name is then unknown.
     const body = (await response.json().catch(() => ({}))) as { login?: string };
-    return { ok: true, detail: `The token belongs to @${body.login ?? "an unknown account"}.` };
+    account = `@${body.login ?? "an unknown account"}`;
   } catch {
     return { ok: false, detail: "GitHub could not be reached." };
   }
+  const gh = await runProgram(ghStatus, process.cwd(), inputs.environment, inputs, "");
+  return gh.ok
+    ? { ok: true, detail: `The token belongs to ${account}. Your agents use the same login.` }
+    : {
+        ok: false,
+        detail: `The token belongs to ${account}, but your agents cannot push their work yet. Press Log in with GitHub again.`,
+      };
 }
 
 async function checkTelegram(inputs: CheckInputs): Promise<CheckResult> {

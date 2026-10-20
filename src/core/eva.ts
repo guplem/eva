@@ -53,7 +53,7 @@ import {
   saveGitHubAccount,
   loadGitHubAccount,
 } from "./instance/commit-identity.ts";
-import { claudeLoggedIn, piLoginState } from "./setup/logins.ts";
+import { claudeLoggedIn, githubCliAccount, piLoginState } from "./setup/logins.ts";
 import {
   chatBlocker,
   missingSteps,
@@ -99,6 +99,7 @@ import {
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
+import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
@@ -170,6 +171,8 @@ export interface EvaStatus {
   /** The hub's machine name, or null before any machine claims it. */
   readonly hub: string | null;
   readonly vaultSync: VaultSyncState;
+  /** False when `sync.enabled` is off: the vault status then shows the last sync, not the notes that wait here. */
+  readonly vaultAutoSync: boolean;
   readonly sessionCount: number;
   readonly busySessionIds: readonly string[];
   readonly lastTurn: LastTurnStatus | null;
@@ -223,6 +226,8 @@ export class Eva {
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
+  /** The gh logins and logouts, one after the other. */
+  private githubCliChanges: Promise<void>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -325,6 +330,7 @@ export class Eva {
       cwd: options.paths.root,
       environment: () => engineToolEnvironment(this.facts),
     });
+    this.githubCliChanges = Promise.resolve();
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -759,6 +765,7 @@ export class Eva {
           ? this.machine
           : (readHubClaim(this.options.config.vaultPath)?.machine ?? null),
       vaultSync: this.vault.currentState,
+      vaultAutoSync: this.options.config.sync.enabled,
       sessionCount: sessions.length,
       busySessionIds: sessions.filter((session) => this.sessions.isBusy(session.id)).map((session) => session.id),
       lastTurn: this.lastTurn,
@@ -948,6 +955,7 @@ export class Eva {
       defaultEngine: config.engines.default,
       vaultPath: vaultReady ? vaultPath : null,
       githubToken: secretsSet.githubToken,
+      githubCli: githubCliAccount(folders.gh) !== null,
       remoteAccess: this.options.remoteAccess?.current() ?? null,
       devices: this.deviceLogins.count(),
       telegram: { token: secretsSet.telegramBotToken, paired: config.telegram.allowedChatId !== null },
@@ -959,6 +967,7 @@ export class Eva {
   /**
    * Saves or removes one secret of the settings page; see `LiveSettings.saveSecret`. A GitHub token
    * also waits for its account, so a restart right after the save still has the commit identity.
+   * It also logs the agents' gh in or out: one login serves Eva and her agents (#244).
    */
   async saveSecret(name: PageSecretName, value: string | null): Promise<{ saved: true; restartNeeded: true }> {
     const before = this.settings.secrets.githubToken;
@@ -968,7 +977,34 @@ export class Eva {
     if (token === undefined) saveGitHubAccount(this.options.paths, null);
     else if (!(await this.refreshGitHubAccount(token, token !== before)))
       this.options.logger?.log("warn", "Eva could not read the GitHub account, so commits keep git's own name.");
+    await this.updateGitHubCli(token);
     return result;
+  }
+
+  /**
+   * Logs the agents' gh in with the saved token, or out when none is saved. One change runs at a
+   * time, and only the token that is still saved reaches gh: a quick second save wins. The vault
+   * works with the token alone, so a gh problem never fails the save. The GitHub step shows it.
+   */
+  private updateGitHubCli(token: string | undefined): Promise<void> {
+    const run = async (): Promise<void> => {
+      if (this.settings.secrets.githubToken !== token) return;
+      const gh = {
+        ghFolder: engineFolders(this.options.paths).gh,
+        runner: this.options.runner,
+        environment: this.options.processEnvironment,
+      };
+      const problem = token === undefined ? logOutGitHubCli(gh.ghFolder) : await logInGitHubCli({ ...gh, token });
+      if (problem !== null)
+        this.options.logger?.log(
+          "warn",
+          `Eva could not log ${token === undefined ? "out" : "in"} the agents' gh. ${this.redactor.redact(problem)}`,
+        );
+    };
+    // A change that failed must not stop the ones after it.
+    const next = this.githubCliChanges.then(run, run);
+    this.githubCliChanges = next.catch(() => undefined);
+    return next;
   }
 
   /** The account gives the commit name and email from the next start on. */
@@ -1001,9 +1037,10 @@ export class Eva {
         ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
       },
     });
-    // A token from before Eva kept the account has no record, and Eva never reads it at start.
+    // A token from before Eva kept the account has no record, and Eva never reads it at start. The read
+    // checks the token itself: the Test can fail on the agents' gh alone (#244).
     const token = secrets.githubToken;
-    if (name === "github" && result.ok && token !== undefined && loadGitHubAccount(this.options.paths) === null)
+    if (name === "github" && token !== undefined && loadGitHubAccount(this.options.paths) === null)
       await this.refreshGitHubAccount(token);
     // The Test reads the saved settings, but chats keep the Google settings of the start.
     const shown =

@@ -28,7 +28,9 @@ export function ScheduleCardDialog(props: {
   const heading =
     card.changed.length === 0
       ? `New schedule: ${card.name}`
-      : `Schedule changed (${card.changed.join(", ")}): ${card.name}`;
+      : card.changed.join() === "enabled"
+        ? `Schedule turned on: ${card.name}`
+        : `Schedule changed (${card.changed.join(", ")}): ${card.name}`;
   const when = card.fields.at === undefined ? "" : repeatWords(card.fields.at, dayNumbersOf(card.fields.days ?? ""));
   const row = (name: string, label: string, value: string, isChanged: boolean): ReactElement => (
     <div key={name} style={{ display: "contents" }}>

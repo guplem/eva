@@ -1,11 +1,12 @@
 /**
  * The empty state of a new chat: EVE with happy eyes, a greeting for the time of day, and the
- * suggestions. A tap on a suggestion sends it as the first message.
+ * suggestions. A tap on a suggestion sends it as the first message. A chat that cannot answer
+ * yet shows the missing setup step instead.
  */
 import { useEffect, useId, useState, type ReactElement } from "react";
-import { api } from "./api.ts";
+import { api, type ChatBlocker } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { greeting, suggestions, type Suggestion } from "./new-chat.ts";
+import { greeting, setupBlock, suggestions, type Suggestion } from "./new-chat.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -43,6 +44,28 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** An empty chat that cannot answer yet: EVE asleep, what is missing, and a button to that step. */
+export function NewChatSetup({ blocker }: { readonly blocker: ChatBlocker }): ReactElement {
+  const block = setupBlock(blocker);
+  return (
+    <div className="new-chat">
+      <Visor size={128} face={stateFaces.notSetUp} />
+      <div>
+        <h2>Not ready yet</h2>
+        <p>{block.sentence}</p>
+      </div>
+      <button
+        className="primary large"
+        onClick={() => {
+          window.location.hash = block.address;
+        }}
+      >
+        {block.action}
+      </button>
     </div>
   );
 }

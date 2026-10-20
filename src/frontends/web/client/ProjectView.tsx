@@ -4,7 +4,7 @@
  * repository setup.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { api, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
@@ -31,6 +31,8 @@ interface ProjectViewProps {
   /** Offline and the open problems, shown at the top of the main area. */
   readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
+  /** The missing setup step that stops every chat, or null. */
+  readonly blocker: ChatBlocker | null;
 }
 
 /**
@@ -63,6 +65,7 @@ export function ProjectView({
   onLinkedChatOpened,
   notices,
   approvals,
+  blocker,
 }: ProjectViewProps): ReactElement {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -345,7 +348,14 @@ export function ProjectView({
               <ChatInfoButton {...chatDetails} />
               <DeleteChatButton chat={chat} onChanged={onChanged} />
             </div>
-            <Conversation root={chat} sessions={sessions} live={live} onChanged={onChanged} approvals={approvals} />
+            <Conversation
+              root={chat}
+              sessions={sessions}
+              live={live}
+              onChanged={onChanged}
+              approvals={approvals}
+              blocker={blocker}
+            />
           </>
         ) : (
           <ProjectPage

@@ -117,6 +117,35 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.getByText(/Branch after answer/)).toBeVisible();
 });
 
+test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
+  // The demo engine has a login, so the browser plays a machine without one.
+  let blocker: string | null = "engine";
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, chatBlocker: blocker } });
+  });
+  await logIn(page);
+  await openList(page);
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await expect(page.getByLabel("Message").first()).toBeDisabled();
+  await expect(page.getByText("Set up an AI engine to send a message.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Set up an AI engine" }).click();
+  await expect(page).toHaveURL(/#\/settings\/setup\/engine$/);
+  await page.goBack();
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+
+  // The step is done elsewhere: the next status read unlocks the chat.
+  blocker = null;
+  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.getByLabel("Message").first()).toBeEnabled();
+  await expect(page.getByText("Set up an AI engine to send a message.")).toHaveCount(0);
+});
+
 test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
   // Both screen sizes share one demo server, so each size names its own chats.
   const title = `A chat to delete (${test.info().project.name})`;
@@ -1590,7 +1619,7 @@ test("Settings: Restart Eva in the header names the running chats, then restarts
   expect(restarts).toEqual([]);
   await page.getByRole("button", { name: "Restart Eva" }).click();
   await page.getByRole("alertdialog", { name: "Restart Eva" }).getByRole("button", { name: "Yes, restart" }).click();
-  await expect(page.getByText("Eva restarted.")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Eva restarted.")).toBeVisible();
   expect(restarts).toEqual(["POST"]);
   await page.request.delete(`/api/sessions/${created.id}`);
 });

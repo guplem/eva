@@ -400,6 +400,18 @@ button.ghost .icon {
   color: var(--muted);
 }
 
+.composer-box textarea:disabled {
+  cursor: not-allowed;
+}
+
+/* Why the box is locked, with a link to the missing setup step. */
+.composer-blocked {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
 .composer-row {
   display: flex;
   align-items: center;

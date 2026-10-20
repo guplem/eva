@@ -1,7 +1,7 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { ModelAlias } from "../../../shared/engine-port.ts";
-import { api, type ListedSession, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type ListedSession, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
@@ -26,6 +26,8 @@ interface AssistantViewProps {
   /** Offline and the open problems, shown at the top of the main area. */
   readonly notices: ReactNode;
   readonly approvals: ChatApprovals;
+  /** The missing setup step that stops every chat, or null. */
+  readonly blocker: ChatBlocker | null;
 }
 
 export function AssistantView({
@@ -39,6 +41,7 @@ export function AssistantView({
   onLinkedChatOpened,
   notices,
   approvals,
+  blocker,
 }: AssistantViewProps): ReactElement {
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -164,7 +167,14 @@ export function AssistantView({
               <ChatInfoButton {...chat} />
               <DeleteChatButton chat={selected} onChanged={onChanged} />
             </div>
-            <Conversation root={selected} sessions={sessions} live={live} onChanged={onChanged} approvals={approvals} />
+            <Conversation
+              root={selected}
+              sessions={sessions}
+              live={live}
+              onChanged={onChanged}
+              approvals={approvals}
+              blocker={blocker}
+            />
           </>
         )}
       </main>

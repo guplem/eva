@@ -3,12 +3,13 @@
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
  */
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chipLock, engineLabel, modelLabel } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
+import { setupBlock } from "./new-chat.ts";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
@@ -19,15 +20,17 @@ interface ComposerProps {
   readonly onSend: (text: string) => Promise<boolean>;
   readonly onStop: () => void;
   readonly onChanged: () => Promise<void>;
+  /** The missing setup step that stops the chat. It locks the box, because a send would fail. */
+  readonly blocker: ChatBlocker | null;
 }
 
-export function Composer({ session, running, onSend, onStop, onChanged }: ComposerProps): ReactElement {
+export function Composer({ session, running, onSend, onStop, onChanged, blocker }: ComposerProps): ReactElement {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
   const send = async (): Promise<void> => {
     const message = text.trim();
-    if (message === "" || sending) return;
+    if (message === "" || sending || blocker !== null) return;
     setSending(true);
     setText("");
     // The person must not type the message again.
@@ -36,13 +39,17 @@ export function Composer({ session, running, onSend, onStop, onChanged }: Compos
   };
 
   const showStop = running && text.trim() === "";
+  const block = blocker === null ? null : setupBlock(blocker);
+  const lineId = useId();
   return (
     <div className="composer">
       <div className="composer-box">
         <textarea
           aria-label="Message"
-          placeholder="Message Eva"
+          aria-describedby={block === null ? undefined : lineId}
+          placeholder={block === null ? "Message Eva" : "Eva cannot answer yet"}
           rows={1}
+          disabled={block !== null}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
@@ -66,7 +73,7 @@ export function Composer({ session, running, onSend, onStop, onChanged }: Compos
               className="send"
               aria-label="Send"
               title="Send"
-              disabled={sending || text.trim() === ""}
+              disabled={sending || text.trim() === "" || block !== null}
               onClick={() => void send()}
             >
               <Icon name="send" />
@@ -74,6 +81,11 @@ export function Composer({ session, running, onSend, onStop, onChanged }: Compos
           )}
         </div>
       </div>
+      {block !== null && (
+        <p className="composer-blocked" id={lineId}>
+          {block.composerLine} <a href={block.address}>Open the step</a>
+        </p>
+      )}
     </div>
   );
 }

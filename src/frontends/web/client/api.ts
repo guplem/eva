@@ -1,7 +1,7 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
 import type { EvaSetupState, EvaStatus } from "../../../core/eva.ts";
-import type { ProgressStep } from "../../../core/setup/progress.ts";
+import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
 import type {
   DeviceLoginEvent,
@@ -32,6 +32,7 @@ import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
 export type {
+  ChatBlocker,
   CheckResult,
   CloneDetails,
   ConflictChoice,

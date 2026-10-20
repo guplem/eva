@@ -86,6 +86,8 @@ export const stateFaces = {
   broken: "error",
   /** The hub rests, and nothing is scheduled. */
   resting: "asleep",
+  /** A chat cannot answer until a setup step is done. */
+  notSetUp: "asleep",
 } as const satisfies Record<string, Face>;
 
 /** The faces of the login page while it waits, each with its time on screen in milliseconds. */

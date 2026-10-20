@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { greeting, suggestions } from "../../../../../src/frontends/web/client/new-chat.ts";
+import { greeting, setupBlock, suggestions } from "../../../../../src/frontends/web/client/new-chat.ts";
 
 describe("greeting", () => {
   test("follows the time of day", () => {
@@ -29,5 +29,24 @@ describe("suggestions", () => {
       expect(suggestion.title.length).toBeGreaterThan(0);
       expect(suggestion.detail.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("setupBlock", () => {
+  test("names the missing engine and opens its setup step", () => {
+    expect(setupBlock("engine")).toEqual({
+      sentence: "Eva needs an AI engine before she can answer.",
+      action: "Set up an AI engine",
+      composerLine: "Set up an AI engine to send a message.",
+      address: "#/settings/setup/engine",
+    });
+  });
+
+  test("names the missing vault and opens its setup step", () => {
+    expect(setupBlock("vault")).toMatchObject({
+      sentence: "Eva needs your vault before she can answer.",
+      action: "Set up your vault",
+      address: "#/settings/setup/vault",
+    });
   });
 });

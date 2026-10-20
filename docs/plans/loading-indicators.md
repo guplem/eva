@@ -27,17 +27,18 @@ Each wait on the web page is its own sentence, such as "Installing 1.4.0…". A 
 
 ## Decisions
 
-1. **Parts.** `client/Loading.tsx` holds `ProgressBar` and the skeletons. `loading.css` holds their style, linked in `index.html` so the executable bundles it. Visor.tsx and icons.tsx set the one-part-per-file precedent. The share math lives in `client/progress.ts`, so a unit test reaches it.
+1. **Parts.** `client/Loading.tsx` holds `ProgressBar` and the skeletons. `loading.css` holds their style, linked in `index.html` so the executable bundles it. Visor.tsx and icons.tsx set the one-part-per-file precedent. The share math is `downloadShare` in `cli/client.ts`, beside `describeUpdate`, so the CLI, Telegram and the web share it.
 2. **A real share for the Eva update.** Yes, for the executable download only.
    - `UpdateChannel.apply(version, onDownload)` reports `{ receivedBytes, totalBytes }`. The download reads the body as a stream.
-   - The total comes from `content-length`, else from the GitHub asset `size`. With neither, the total is null and the bar runs.
+   - The total comes from the GitHub asset `size`, else from `content-length` when the reply is not compressed. With neither, the total is null and the bar runs.
    - `UpdateStatus.download` carries it while the phase is `updating`, else null. The field is new and nullable, so it is additive. The web and the CLI read it tolerantly (`?? null`). Nothing is stored, so no migration.
-   - The web page polls `GET /api/update` each second while the POST runs. A dropped POST (the server idle timeout) keeps the poll going.
+   - The web page polls `GET /api/update` each second while the POST runs. The POST has no idle timeout. When a proxy drops it, the page reads the status until the install ends.
    - `describeUpdate` adds the percentage, for the CLI and Telegram.
    - The git checkout and `claude update` give no share: their bars run.
 3. **Bar or skeleton.**
-   - A wait inside a card gets `ProgressBar` with its sentence: the update check, the install, the restart wait, the Claude Code update, the clone list, the GitHub reads, the note conflicts, the project file, the device list, the phone access status, the Tailscale install.
-   - A wait for content that fills a page gets a skeleton: the first page load (chats or cards, by the address), the settings, the setup, the project list and the Versions card.
+   - A wait inside a card gets `ProgressBar` with its sentence: the update check, the install, the restart wait, the Claude Code update, the GitHub reads, the note conflicts, the project file, the device list, the phone access status, the Tailscale install.
+   - A wait for content that fills a page gets a skeleton: the first page load (a chat, a list or cards, by the address), the settings, the setup, the schedules, the project list, the clone grid and the Versions card.
+   - A chat has no wait of its own: its turns come with the chat list, at the first page load.
    - A button label for a short action stays, such as "Testing…". The login page keeps its faces. The chat keeps its working dots.
 4. **Look.** The track is `--chip`, a pill. The fill is `--accent` with a `--glow` shadow, as the "now" line of the day timeline. The skeleton blocks are `--chip` with a `--panel` shimmer, with the radius of the part they copy.
 5. **Reduced motion.** No shimmer. The running bar shows a still part of the fill. The sentence still says that Eva works.

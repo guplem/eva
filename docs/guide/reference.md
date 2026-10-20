@@ -68,6 +68,7 @@ On this computer:
 | `engines.claudeCode.executable`                      | `null`                                     | The program that starts Claude Code. `null`: `claude`.                                         |
 | `engines.pi.executable`                              | `null`                                     | The program that starts pi. `null`: `pi`.                                                      |
 | `telegram.allowedChatId`, `telegram.allowedUserId`   | Set when you pair the chat                 | The Telegram chat, and the person in it who may act.                                           |
+| `git.name`, `git.email`                              | `null`                                     | This Eva's commit name and email. `null`: the GitHub account's, then your git settings.        |
 | `trust.trustedRepositoryOwners` (security)           | `[]`                                       | GitHub owners whose repositories Eva trusts at once, so their own agent settings apply.        |
 | `google.services` (security)                         | `calendar`, `drive`, `contacts`, `tasks`   | The Google services that Eva may use. `gmail` is the fifth choice.                             |
 | `google.readOnly` (security)                         | `true`                                     | `false` lets Eva change things, such as add events. Log in to Google again after a change.     |

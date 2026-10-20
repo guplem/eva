@@ -22,7 +22,7 @@ import {
   type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
-import type { Redactor } from "../../shared/redaction.ts";
+import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
 
@@ -485,6 +485,7 @@ export class SessionManager {
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
+    const draft = new TextStreamRedactor(this.options.redactor);
 
     const runtime = this.runtimeOf(sessionId);
     const emit = (payload: EngineEventPayload): void => {
@@ -541,6 +542,13 @@ ${prompt}`,
       });
       for await (const raw of stream) {
         if (turn.ended) continue;
+        // A piece is live only: the block's final text is what the record keeps.
+        if (raw.kind === "text_delta") {
+          const text = draft.push(raw.text);
+          if (text !== "") emit({ kind: "text_delta", text });
+          continue;
+        }
+        if (raw.kind === "text") draft.reset();
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
         const payload = redactPayload(raw, this.options.redactor);
         if (payload.kind === "history_lost") {
@@ -758,7 +766,9 @@ function redactPayload(
   redactor: Redactor,
 ): EngineEventPayload | CoreEventPayload {
   switch (payload.kind) {
+    // The turn's TextStreamRedactor already redacted the block of a text_delta; this pass costs little.
     case "text":
+    case "text_delta":
     case "notice":
     case "message_received":
       return { ...payload, text: redactor.redact(payload.text) };

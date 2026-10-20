@@ -310,6 +310,25 @@ describe("chats", () => {
     expect(quiet("Here is the answer.")).toBeUndefined();
   });
 
+  test("ignores the streamed pieces, which never release a held block early (issue 117)", async () => {
+    createEva((request) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      return [
+        { kind: "text_delta", text: "Here is " },
+        { kind: "text", text: "Here is the answer.", messageId: "m1" },
+        { kind: "text_delta", text: "stray piece " },
+        ...(end === undefined ? [] : [end]),
+      ];
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "Look");
+    await settle(bot, () => telegram.sentTexts().includes("Here is the answer."));
+    const answer = telegram.callsTo("sendMessage").find((call) => call.params["text"] === "Here is the answer.");
+    expect(answer?.params["disable_notification"]).toBeUndefined();
+    expect(telegram.sentTexts().join("\n")).not.toContain("Here is \n");
+    expect(telegram.sentTexts().join("\n")).not.toContain("stray");
+  });
+
   test("a quiet block stays quiet when Telegram refuses its HTML (lesson 58)", async () => {
     createEva((request) => {
       const [, end] = FakeEngine.answer(request, "done");

@@ -689,6 +689,9 @@ export class TelegramBot {
   }
 
   private async onEvent(event: SessionEvent): Promise<void> {
+    // Telegram sends finished blocks only: editing a growing message hits the edit limits and
+    // half-written Markdown. A piece must also never release a held block (issue 117).
+    if (event.kind === "text_delta") return;
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));

@@ -150,6 +150,7 @@ export function describeEvent(event: SessionEvent): string | null {
     case "session_deleted":
       return "  (This chat was deleted elsewhere.)\n";
     // The person typed the message in this terminal, and `eva work` prints the Project chat it started.
+    case "text_delta":
     case "message_received":
     case "project_work_started":
     case "turn_finished":

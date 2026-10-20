@@ -1174,3 +1174,44 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     expect(stored).toContain("look for [redacted]");
   });
 });
+
+describe("streamed text", () => {
+  test("sends the pieces of a block redacted and held back, and keeps only the final text", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value");
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "Your key is the-sec" },
+        { kind: "text_delta", text: "ret-value and more " },
+        { kind: "text_delta", text: "words to come " },
+        ...FakeEngine.answer(request, "Your key is the-secret-value and more words to come."),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    const pieces = events.filter((event) => event.kind === "text_delta").map((event) => event.text);
+    // The stream holds back one character less than the longest secret.
+    expect(pieces.join("")).toBe("Your key is [redacted] and ");
+    const turn = manager.get(sessionId).turns[0];
+    expect(turn?.answerText).toBe("Your key is [redacted] and more words to come.");
+    expect(turn?.steps.map((step) => step.kind)).toEqual(["message"]);
+  });
+
+  test("a new block after a final text starts from nothing", async () => {
+    const manager = createManager(
+      new FakeEngine((request) => [
+        { kind: "text_delta", text: "First block " },
+        { kind: "text", text: "First block.", messageId: "m1" },
+        { kind: "text_delta", text: "Second block " },
+        ...FakeEngine.answer(request, "Second block."),
+      ]),
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "go");
+    expect(events.filter((event) => event.kind === "text_delta").map((event) => event.text)).toEqual([
+      "First block ",
+      "Second block ",
+    ]);
+  });
+});

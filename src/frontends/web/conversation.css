@@ -666,3 +666,12 @@ button.ghost .icon {
     padding: 4px 14px;
   }
 }
+
+/* The special suggestion asks for a fact that Eva still needs, so it stands out above the others. */
+.suggestion.fact-question {
+  width: 100%;
+  max-width: 640px;
+  box-shadow:
+    var(--shadow),
+    0 0 0 2px var(--accent);
+}

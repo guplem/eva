@@ -3,6 +3,7 @@ import {
   easterSunday,
   seasonInstant,
   specialDayOn,
+  type PersonalFacts,
   type SpecialDayId,
 } from "../../../../../src/frontends/web/client/special-days.ts";
 
@@ -149,5 +150,31 @@ describe("seasonInstant", () => {
     for (const [season, at] of published) {
       expect(Math.abs(seasonInstant(2024, season).getTime() - at)).toBeLessThan(3_600_000);
     }
+  });
+});
+
+describe("the person's place", () => {
+  const facts = (region: string | null, hemisphere: "north" | "south" | null = null): PersonalFacts => ({
+    birthDate: null,
+    installedOn: null,
+    region,
+    hemisphere,
+  });
+
+  test("shows a local day only where people keep it, or when Eva does not know the region", () => {
+    expect(specialDayOn(on(2023, 4, 23), facts("ES-CT"))?.id).toBe("santJordi");
+    expect(specialDayOn(on(2023, 4, 23), facts(null))?.id).toBe("santJordi");
+    expect(specialDayOn(on(2023, 4, 23), facts("ES-MD"))).toBeNull();
+    expect(specialDayOn(on(2023, 6, 24), facts("FI"))?.id).toBe("santJoan");
+    expect(specialDayOn(on(2023, 6, 24), facts("US"))).toBeNull();
+    expect(specialDayOn(on(2024, 1, 6), facts("MX"))?.id).toBe("kings");
+    expect(specialDayOn(on(2024, 1, 6), facts("GB"))).toBeNull();
+  });
+
+  test("turns the seasons around in the southern hemisphere", () => {
+    expect(specialDayOn(seasonInstant(2025, "december"), facts("AU", "south"))?.id).toBe("summerSolstice");
+    expect(specialDayOn(seasonInstant(2025, "march"), facts("AU", "south"))?.id).toBe("autumnEquinox");
+    expect(specialDayOn(seasonInstant(2025, "june"), facts("AU", "south"))?.id).toBe("winterSolstice");
+    expect(specialDayOn(seasonInstant(2025, "september"), facts("AU", "south"))?.id).toBe("springEquinox");
   });
 });

@@ -82,6 +82,7 @@ import {
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
 import { browseVault, saveVaultFile, type BrowsedPath } from "./files/file-browser.ts";
+import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
@@ -1042,6 +1043,11 @@ export class Eva {
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
+  }
+
+  /** A vault file, or a folder as one zip, for the Download button of the file explorer. */
+  downloadFile(path: string): VaultDownload {
+    return downloadVaultPath(this.browsedVault(), path, (text) => this.redactor.redact(text));
   }
 
   /** Replaces the text of a vault file from the file explorer. The idle sweep commits the change. */

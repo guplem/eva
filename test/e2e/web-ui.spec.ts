@@ -3873,3 +3873,24 @@ test("Files: Try again reads a folder again after a failed read (issue 253)", as
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
 });
+
+test("Files: a file and a folder download from their own button, and a failed download says why", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  const fileDownload = page.waitForEvent("download");
+  await file.getByRole("button", { name: "Download this file" }).click();
+  expect((await fileDownload).suggestedFilename()).toBe("AGENTS.md");
+
+  await page.goto("/#/files/Projects");
+  const folderDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  expect((await folderDownload).suggestedFilename()).toBe("Projects.zip");
+
+  await page.route("**/api/files/download?path=Projects", (route) =>
+    route.fulfill({ status: 409, json: { error: "This is larger than 200 MB, so Eva does not download it." } }),
+  );
+  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
+});

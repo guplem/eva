@@ -1207,6 +1207,46 @@ describe("web routes", () => {
     expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("files: a file downloads as itself, a folder as a zip, and a secrets file does not", async () => {
+    const file = await call(`/api/files/download?path=${encodeURIComponent(".eva/assistant.md")}`);
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toBe("application/octet-stream");
+    expect(file.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"assistant.md\"; filename*=UTF-8''assistant.md",
+    );
+    expect(file.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await file.text()).toBe("# You are Eva\n");
+
+    const folder = await call(`/api/files/download?path=${encodeURIComponent(".eva")}`);
+    expect(folder.headers.get("content-type")).toBe("application/zip");
+    expect(folder.headers.get("content-disposition")).toContain("filename*=UTF-8''.eva.zip");
+    expect(new Uint8Array(await folder.arrayBuffer()).subarray(0, 4)).toEqual(new Uint8Array([0x50, 0x4b, 3, 4]));
+
+    writeFileSync(join(eva.status().vaultPath ?? "", ".env"), "TOKEN=1\n");
+    const secrets = await call(`/api/files/download?path=${encodeURIComponent(".env")}`);
+    expect(secrets.status).toBe(409);
+    expect(await json(secrets)).toMatchObject({ code: "file_not_downloadable" });
+    const outside = await call(`/api/files/download?path=${encodeURIComponent("../")}`);
+    expect(outside.status).toBe(404);
+  });
+
+  test("files: a download name keeps its accents, an apostrophe and its brackets", async () => {
+    writeFileSync(join(eva.status().vaultPath ?? "", "Café 'plan' (1).md"), "# Plan\n");
+    const file = await call(`/api/files/download?path=${encodeURIComponent("Café 'plan' (1).md")}`);
+    expect(file.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"Caf_ 'plan' (1).md\"; filename*=UTF-8''Caf%C3%A9%20%27plan%27%20%281%29.md",
+    );
+  });
+
+  // Windows allows no quote in a file name.
+  test.skipIf(process.platform === "win32")("files: a quote in a download name cannot break the header", async () => {
+    writeFileSync(join(eva.status().vaultPath ?? "", 'Café "plan".md'), "# Plan\n");
+    const file = await call(`/api/files/download?path=${encodeURIComponent('Café "plan".md')}`);
+    expect(file.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"Caf_ _plan_.md\"; filename*=UTF-8''Caf%C3%A9%20%22plan%22.md",
+    );
+  });
+
   test("files: a save writes the text, and a save of an old version answers file_changed (issue 308)", async () => {
     const path = ".eva/assistant.md";
     const { version } = await json<{ version: string }>(await call(`/api/files?path=${encodeURIComponent(path)}`));

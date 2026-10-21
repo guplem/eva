@@ -43,7 +43,14 @@ export type BrowsedPath =
       /** False when the redactor changed the text: a save would write its mark over the secret. */
       readonly editable: boolean;
     }
-  | { readonly kind: "unreadable"; readonly path: string; readonly size: number; readonly reason: string };
+  | {
+      readonly kind: "unreadable";
+      readonly path: string;
+      readonly size: number;
+      readonly reason: string;
+      /** False for a secrets file or a file that Eva may not read: the Download button cannot fetch it either. */
+      readonly downloadable: boolean;
+    };
 
 /** A phone shows 1 MB of text slowly already, and a project file has the same limit. */
 export const maxShownBytes = 1_000_000;
@@ -52,7 +59,7 @@ const sniffBytes = 8_000;
 /** Git data is not for people to read, and can hold a remote's token. */
 const hiddenName = ".git";
 /** Windows has no such flag, and no named pipe in a folder either. */
-const noWait: number = (constants as Partial<typeof constants>).O_NONBLOCK ?? 0;
+export const noWait: number = (constants as Partial<typeof constants>).O_NONBLOCK ?? 0;
 
 /**
  * Lists the folder or shows the file at `requested`, a forward-slash path from the vault root.
@@ -66,7 +73,7 @@ export function browseVault(vaultPath: string, requested: string, redact: (text:
   } catch (error) {
     if (error instanceof EvaError) throw error;
     if (errorCode(error) === "ENOENT") throw notFound;
-    return { kind: "unreadable", path, size: 0, reason: "Eva has no permission to open this." };
+    return { kind: "unreadable", path, size: 0, reason: "Eva has no permission to open this.", downloadable: false };
   }
 }
 
@@ -128,7 +135,7 @@ function replaceText(resolved: string, text: string, stats: Stats): void {
 }
 
 /** The vault path of `requested` and the real path it leads to, inside the vault and outside git data. */
-function resolveInVault(
+export function resolveInVault(
   vaultPath: string,
   requested: string,
 ): { readonly root: string; readonly path: string; readonly resolved: string; readonly notFound: EvaError } {
@@ -152,10 +159,11 @@ function resolveInVault(
 
 type ReadFile =
   | { readonly kind: "text"; readonly stats: Stats; readonly text: string }
-  | { readonly kind: "unreadable"; readonly size: number; readonly reason: string };
+  | { readonly kind: "unreadable"; readonly size: number; readonly reason: string; readonly downloadable: boolean };
 
 function shownFile(path: string, read: ReadFile, redact: (text: string) => string): BrowsedPath {
-  if (read.kind === "unreadable") return { kind: "unreadable", path, size: read.size, reason: read.reason };
+  if (read.kind === "unreadable")
+    return { kind: "unreadable", path, size: read.size, reason: read.reason, downloadable: read.downloadable };
   // The byte order mark stays on disk only: a save puts it back.
   const plain = read.text.replace(/^\uFEFF/, "");
   const text = redact(plain);
@@ -178,9 +186,14 @@ function readFile(path: string, resolved: string, notFound: EvaError): ReadFile 
   try {
     const stats = fstatSync(handle);
     if (!stats.isFile()) throw notFound;
-    const unreadable = (reason: string): ReadFile => ({ kind: "unreadable", size: stats.size, reason });
+    const unreadable = (reason: string, downloadable = true): ReadFile => ({
+      kind: "unreadable",
+      size: stats.size,
+      reason,
+      downloadable,
+    });
     if (looksLikeSecretsFile(basename(resolved)) || looksLikeSecretsFile(basename(path)))
-      return unreadable("This looks like a secrets file, so Eva does not show it.");
+      return unreadable("This looks like a secrets file, so Eva does not show it.", false);
     if (stats.size > maxShownBytes) return unreadable("This file is larger than 1 MB, so Eva does not show it.");
     const bytes = Buffer.alloc(stats.size);
     const read = readSync(handle, bytes, 0, stats.size, 0);
@@ -200,7 +213,7 @@ function normalizedPath(requested: string): string {
     .join("/");
 }
 
-function isInside(root: string, resolved: string): boolean {
+export function isInside(root: string, resolved: string): boolean {
   const relativePath = relative(root, resolved);
   return (
     relativePath === "" || (!relativePath.startsWith(`..${sep}`) && relativePath !== ".." && !isAbsolute(relativePath))
@@ -208,13 +221,13 @@ function isInside(root: string, resolved: string): boolean {
 }
 
 /** Any part named `.git`, in any case: Windows and macOS read `.GIT` as the same folder. */
-function isGitData(root: string, resolved: string): boolean {
+export function isGitData(root: string, resolved: string): boolean {
   return relative(root, resolved)
     .split(sep)
     .some((part) => part.toLowerCase() === hiddenName);
 }
 
-function errorCode(error: unknown): string | null {
+export function errorCode(error: unknown): string | null {
   return error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : null;
 }
 
@@ -245,7 +258,7 @@ function describeEntry(root: string, path: string, name: string): FileEntry {
 }
 
 /** The UTF-8 text, or null for a binary file. A NUL byte near the start marks one, as git decides. */
-function textOf(bytes: Uint8Array): string | null {
+export function textOf(bytes: Uint8Array): string | null {
   if (bytes.subarray(0, sniffBytes).includes(0)) return null;
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);

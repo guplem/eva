@@ -187,6 +187,60 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
   await expect(page.getByText("Set up an AI engine to send a message.")).toHaveCount(0);
 });
 
+/** Plays a machine with no chat yet, until the page makes one. Returns the number of chats it made. */
+async function hideOldChats(page: Page): Promise<() => number> {
+  let made = 0;
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "POST") {
+      made += 1;
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    // A refused read must stay refused, or the page skips the login.
+    if (made > 0 || !response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
+    await route.fulfill({ response, json: [] });
+  });
+  return () => made;
+}
+
+test("with no chat yet, the page greets the person, and the first message makes the chat", async ({ page }) => {
+  const made = await hideOldChats(page);
+  await logIn(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.getByText("No chats yet.")).toHaveCount(0);
+  // An open page makes no empty chat.
+  expect(made()).toBe(0);
+
+  const text = `The first message (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(text);
+  expect(made()).toBe(1);
+  await openList(page);
+  await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
+});
+
+test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
+  await hideOldChats(page);
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, chatBlocker: "vault" } });
+  });
+  await logIn(page);
+  await expect(page.getByRole("heading", { name: "Not ready yet" })).toBeVisible();
+  await expect(page.getByText("Eva needs your vault before she can answer.")).toBeVisible();
+  await expect(page.getByLabel("Message").first()).toBeDisabled();
+  await page.getByRole("button", { name: "Set up your vault" }).click();
+  await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
+});
+
 test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
   // Both screen sizes share one demo server, so each size names its own chats.
   const title = `A chat to delete (${test.info().project.name})`;

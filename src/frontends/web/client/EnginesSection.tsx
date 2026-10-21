@@ -3,6 +3,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { restartNote } from "./notes.ts";
+import { stepMark } from "./setup-summary.ts";
 import {
   Card,
   CheckRow,
@@ -74,9 +75,9 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
   const installed = found(context, "claude-code");
   const [terminalSteps, setTerminalSteps] = useState(false);
   const [loggingInAgain, setLoggingInAgain] = useState(false);
+  const engineStep = context.setup?.progress.find((step) => step.key === "engine");
   // Without a token, Claude Code is the way to finish a missing engine step, so it needs the person too.
-  const engineMissing =
-    context.setup?.progress.some((step) => step.key === "engine" && step.state === "missing") ?? false;
+  const engineMissing = engineStep?.state === "missing";
   const card = (children: ReactNode): ReactElement => (
     <Card
       item="claude-code"
@@ -87,7 +88,10 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
       {children}
     </Card>
   );
-  if (installed && saved && !loggingInAgain)
+  // A failed last test, as of an expired token, keeps the steps. The engine step may test pi instead.
+  const failed = engineStep?.check === "claude-code" && stepMark(engineStep) === "failed";
+  const loginWorks = installed && saved && !failed;
+  if (loginWorks && !loggingInAgain)
     return card(
       <>
         <LoggedIn
@@ -108,7 +112,10 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
           install it.
         </div>
       )}
-      {installed && saved && (
+      {installed && failed && (
+        <div className="callout warning">The last test of the Claude Code token failed. Log in again.</div>
+      )}
+      {loginWorks && (
         <button className="link-button" onClick={() => setLoggingInAgain(false)}>
           Keep the current login
         </button>
@@ -135,6 +142,7 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
         help={`${installed ? "The login above saves it here. You can also paste a token. " : ""}It starts with sk-ant-oat. It stays on this machine, never in your vault.`}
         check="claude-code"
         onChanged={(note) => reloadAfterSave(context, note)}
+        onSaved={() => setLoggingInAgain(false)}
       />
     </>,
   );

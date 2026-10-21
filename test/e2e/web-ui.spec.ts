@@ -953,6 +953,11 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await loggedIn.getByRole("button", { name: "Log in again" }).click();
   await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
   await page.getByRole("button", { name: "Keep the current login" }).click();
+  // A new pasted token is a new login too, so the card shows as logged in again.
+  await loggedIn.getByRole("button", { name: "Log in again" }).click();
+  await field.fill("ghp_e2e-example-token");
+  await page.getByRole("button", { name: "Save the GitHub token" }).click();
+  await expect(loggedIn).toBeVisible();
   // Log out asks first, with a warning, and Cancel keeps the login.
   await loggedIn.getByRole("button", { name: "Log out of GitHub" }).click();
   const logOut = page.getByRole("dialog", { name: "Log out of GitHub" });
@@ -3165,6 +3170,31 @@ test("Settings: a done Claude Code login shows as logged in, and logs out after 
   await expect(page.getByRole("status").filter({ hasText: "Logged out of Claude Code." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start the login" })).toBeVisible();
   expect(removed).toEqual(["DELETE"]);
+});
+
+test("Settings: a saved GitHub token whose last test failed keeps the login steps", async ({ page }) => {
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({ response, json: { ...settings, secretsSet: { ...settings.secretsSet, githubToken: true } } });
+  });
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string; state: string; lastCheck: unknown }[] };
+    const progress = setup.progress.map((step) =>
+      step.key === "github"
+        ? { ...step, state: "done", lastCheck: { ok: false, detail: "Bad credentials.", at: "2026-01-01T00:00:00Z" } }
+        : step,
+    );
+    await route.fulfill({ response, json: { ...setup, progress } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "GitHub", exact: true });
+  // A revoked token is no done login: the fix is a new login, so its button stays in sight.
+  await expect(card).toContainText("The last test of the GitHub token failed.");
+  await expect(card.getByRole("button", { name: "Log in with GitHub" })).toBeVisible();
+  await expect(card.getByRole("group", { name: "GitHub login" })).toHaveCount(0);
 });
 
 test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({

@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
+import { stepMark } from "./setup-summary.ts";
 import { Card, CheckRow, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
 export function ConnectionsSection({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -32,8 +33,10 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
       {children}
     </Card>
   );
-  // A token that the agents' gh lacks (#244) still needs the login, so the card keeps its steps.
-  if (saved && step?.state !== "missing" && !loggingInAgain)
+  // The card keeps its steps for a token that the agents' gh lacks (#244), and for a failed last test,
+  // as of a revoked token: both fixes name Log in with GitHub.
+  const loginWorks = saved && (step === undefined || stepMark(step) === "done");
+  if (loginWorks && !loggingInAgain)
     return card(
       <>
         <LoggedIn
@@ -52,7 +55,10 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
       {step?.state === "missing" && (
         <div className="callout warning">Your agents cannot push their work yet. Press Log in with GitHub.</div>
       )}
-      {saved && step?.state !== "missing" && (
+      {step?.state === "done" && stepMark(step) === "failed" && (
+        <div className="callout warning">The last test of the GitHub token failed. Press Log in with GitHub.</div>
+      )}
+      {loginWorks && (
         <button className="link-button" onClick={() => setLoggingInAgain(false)}>
           Keep the current login
         </button>
@@ -88,6 +94,7 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
         help="The login above saves the token here. You can also paste a token."
         check="github"
         onChanged={(note) => reloadAfterSave(context, note)}
+        onSaved={() => setLoggingInAgain(false)}
       />
     </>,
   );

@@ -33,6 +33,7 @@ import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./s
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
 import { statusFacts } from "./status-overview.ts";
 import { Toast } from "./Toast.tsx";
+import { TrustSection } from "./TrustSection.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
 import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
@@ -331,6 +332,7 @@ const sectionIcons: Readonly<Record<SectionId, IconName>> = {
   engines: "term",
   vault: "folder",
   connections: "globe",
+  trust: "shield",
   access: "phone",
   personalize: "palette",
   updates: "download",
@@ -552,6 +554,8 @@ function SectionPage({
       return <VaultSection context={context} />;
     case "connections":
       return <ConnectionsSection context={context} />;
+    case "trust":
+      return <TrustSection context={context} />;
     case "access":
       return <AccessSection context={context} />;
     case "personalize":

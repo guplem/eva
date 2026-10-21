@@ -7,6 +7,7 @@ import type {
   InstallableTool,
   LatestToolVersion,
   ToolInstallResult,
+  TrustOverview,
 } from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
@@ -60,6 +61,7 @@ export type {
   FileEntry,
   InstallableTool,
   EvaVersions,
+  TrustOverview,
   PageSecretName,
   PendingApproval,
   NewProjectInput,
@@ -235,6 +237,8 @@ export const api = {
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
+  trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
+  forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),

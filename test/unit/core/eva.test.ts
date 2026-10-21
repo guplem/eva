@@ -369,6 +369,7 @@ describe("Eva", () => {
     const works = await Promise.all([instance.startProjectWork(input), instance.startProjectWork(input)]);
     expect(works.map((work) => work.clone).sort()).toEqual(["remote-0", "remote-1"]);
     await instance.idle();
+    clock = new Date("2026-10-14T10:40:00Z");
     const third = await instance.startProjectWork(input);
     expect(third.clone).toBe("remote-0");
   });
@@ -740,12 +741,44 @@ describe("Eva", () => {
     expect([first.clone, second.clone]).toEqual(["remote-0", "remote-1"]);
     release();
     await running;
+    clock = new Date("2026-10-14T10:40:00Z");
     const third = await instance.createProjectSession({
       projectId: "2025-03-02-1015-example-app",
       source: "cli",
       model: "default",
     });
     expect(third.clone).toBe("remote-0");
+  });
+
+  test("project work skips a clone whose chat was active in the last 10 minutes (issue 356)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    const instance = start(new FakeEngine());
+    const chat = await instance.createProjectSession({
+      projectId: "2025-03-02-1015-example-app",
+      source: "web",
+      model: "default",
+    });
+    await instance.sessions.send(chat.id, "fix it");
+    // The chat is idle and its clone is clean, but the person may write again at any moment.
+    clock = new Date("2026-10-14T10:39:59Z");
+    const soon = await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix the login bug.",
+      reportToSessionId: null,
+    });
+    expect([chat.clone, soon.clone]).toEqual(["remote-0", "remote-1"]);
+    await instance.idle();
+    clock = new Date("2026-10-14T10:50:00Z");
+    const later = await instance.startProjectWork({
+      projectId: "2025-03-02-1015-example-app",
+      request: "Fix the next bug.",
+      reportToSessionId: null,
+    });
+    expect(later.clone).toBe("remote-0");
   });
 
   test("an unknown project is an EvaError", async () => {

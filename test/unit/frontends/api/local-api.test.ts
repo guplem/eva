@@ -1027,6 +1027,17 @@ describe("web routes", () => {
     expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
   });
 
+  test("trust: the overview, and the removal of a saved answer", async () => {
+    expect(await json<unknown>(await call("/api/trust"))).toMatchObject({
+      githubAccount: null,
+      owners: [],
+      answers: [],
+    });
+    const removed = await call("/api/trust/answers", { method: "DELETE", body: { url: "https://github.com/x/y" } });
+    expect(await json<{ answers: unknown[] }>(removed)).toMatchObject({ answers: [] });
+    expect((await call("/api/trust/answers", { method: "DELETE", body: {} })).status).toBe(400);
+  });
+
   test("the Google login waits for a client, then gives Google's consent address", async () => {
     const early = await call("/api/google/login", { method: "POST", body: {} });
     expect(early.status).toBe(409);

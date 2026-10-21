@@ -236,8 +236,53 @@ export class TrustStore {
 
   remember(repositoryUrl: string, decision: "trusted" | "untrusted"): void {
     this.decisions[repositoryUrl] = decision;
+    this.save();
+  }
+
+  /** Each answer by its shown URL, so a token in a saved URL never leaves the core. */
+  answers(): TrustAnswer[] {
+    // Two URLs that differ only in their user part show as one row: one Remove forgets both.
+    const byUrl = new Map<string, TrustAnswer>();
+    for (const [url, decision] of Object.entries(this.decisions)) {
+      const shown = shownUrl(url);
+      // A denial wins, so the row never shows trust that one of the URLs lacks.
+      if (byUrl.get(shown)?.decision !== "untrusted") byUrl.set(shown, { url: shown, decision });
+    }
+    return [...byUrl.values()].sort((a, b) => a.url.localeCompare(b.url));
+  }
+
+  /** Removes every answer shown as this URL, so Eva asks again. */
+  forget(shown: string): void {
+    const urls = Object.keys(this.decisions).filter((url) => shownUrl(url) === shown);
+    if (urls.length === 0) return;
+    for (const url of urls) Reflect.deleteProperty(this.decisions, url);
+    this.save();
+  }
+
+  private save(): void {
     writeFileAtomic(this.path, JSON.stringify(this.decisions, null, 2) + "\n");
   }
+}
+
+export interface TrustAnswer {
+  readonly url: string;
+  readonly decision: "trusted" | "untrusted";
+}
+
+const shownUrlLimit = 200;
+
+/**
+ * A URL as the phone shows it. The clone writes its own `origin`, so the text can hold a token in
+ * its user part, line breaks that fake a second line, or a tail long enough to hide the question.
+ */
+export function shownUrl(url: string): string {
+  const clean = url
+    .replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, "$1")
+    // A short git address (`user:token@host:path`) has no scheme. A plain `git@` user carries no secret, so it stays.
+    .replace(/^[^@/:\s]+:[^@/\s]*@/, "")
+    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+    .trim();
+  return clean.length <= shownUrlLimit ? clean : `${clean.slice(0, shownUrlLimit)}…`;
 }
 
 function isDecisionMap(value: unknown): value is Record<string, "trusted" | "untrusted"> {

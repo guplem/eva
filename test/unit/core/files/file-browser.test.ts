@@ -240,6 +240,28 @@ describe("saveVaultFile (issue 308)", () => {
     expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
   });
 
+  test("a text that holds a secret is refused: the sweep would push it from the vault", () => {
+    const redact = (text: string): string => text.replace("ghp_secret", "[redacted]");
+    const save = (): unknown => saveVaultFile(vault, "notes.txt", versionOf("notes.txt"), "Token ghp_secret\n", redact);
+    expect(codeOf(save)).toBe("file_not_writable");
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test.skipIf(process.platform === "win32")("a save never writes through a link at its temporary name", () => {
+    write("../outside.txt", "Keep me.\n");
+    const now = Date.now;
+    Date.now = () => 1;
+    try {
+      symlinkSync(join(folder, "outside.txt"), join(vault, `notes.txt.${String(process.pid)}.1.tmp`));
+      saveVaultFile(vault, "notes.txt", versionOf("notes.txt"), "Buy bread.\n", keep);
+    } catch {
+      // A refusal is fine too: only the file outside matters.
+    } finally {
+      Date.now = now;
+    }
+    expect(readFileSync(join(folder, "outside.txt"), "utf-8")).toBe("Keep me.\n");
+  });
+
   test("a folder, a binary file, a secrets file and a text over the limit are refused", () => {
     write("photo.png", new Uint8Array([137, 80, 0, 71]));
     write(".env", "TOKEN=abc\n");

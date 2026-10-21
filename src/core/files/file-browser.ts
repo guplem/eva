@@ -91,6 +91,8 @@ export function saveVaultFile(
     if (fileVersion(before.text) !== version)
       throw new EvaError("file_changed", "The file changed since you opened it. Load it again, then redo your change.");
     const text = matchFileStyle(edited, before.text);
+    // The idle sweep would commit and push it, and a secret never goes in the vault.
+    if (redact(text) !== text) throw notWritable("The text holds a secret, such as a token, so Eva does not save it.");
     if (Buffer.byteLength(text) > maxShownBytes)
       throw notWritable("The text is larger than 1 MB, so Eva does not save it.");
     if (text !== before.text) replaceText(resolved, text, before.stats);
@@ -115,7 +117,8 @@ function notWritable(reason: string): EvaError {
 function replaceText(resolved: string, text: string, stats: Stats): void {
   const temporaryPath = `${resolved}.${String(process.pid)}.${String(Date.now())}.tmp`;
   try {
-    writeFileSync(temporaryPath, text, { encoding: "utf-8", mode: 0o600 });
+    // "wx" never opens a file that is there already, such as a link that another program put at this name.
+    writeFileSync(temporaryPath, text, { encoding: "utf-8", mode: 0o600, flag: "wx" });
     chmodSync(temporaryPath, stats.mode & 0o7777);
     renameSync(temporaryPath, resolved);
   } catch (error) {

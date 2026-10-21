@@ -10,9 +10,9 @@ import { dayNumbersOf, repeatWords, slotWords } from "./schedule-words.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
-/** The name is in the heading, and "When" says the time and the days together. */
+/** The name is in the heading, and "When" says the time, the days and the interval together. */
 const labels: Record<string, string> = { text: "Text", file: "File", prompt: "Prompt", model: "Model", id: "Id" };
-const inWhen = new Set(["name", "at", "days"]);
+const inWhen = new Set(["name", "at", "days", "every", "from"]);
 
 export function ScheduleCardDialog(props: {
   card: ScheduleCard;
@@ -31,7 +31,14 @@ export function ScheduleCardDialog(props: {
       : card.changed.join() === "enabled"
         ? `Schedule turned on: ${card.name}`
         : `Schedule changed (${card.changed.join(", ")}): ${card.name}`;
-  const when = card.fields.at === undefined ? "" : repeatWords(card.fields.at, dayNumbersOf(card.fields.days ?? ""));
+  const { at, days, every, from } = card.fields;
+  // An interval card names its first run too, so a start far in the future shows.
+  const when =
+    every !== undefined && from !== undefined
+      ? `${repeatWords({ at: null, days: null, every, from })}, from ${slotWords(from)}`
+      : at === undefined
+        ? ""
+        : repeatWords({ at, days: dayNumbersOf(days ?? ""), every: null, from: null });
   const row = (name: string, label: string, value: string, isChanged: boolean): ReactElement => (
     <div key={name} style={{ display: "contents" }}>
       <dt className={isChanged ? "changed" : undefined}>{label}</dt>
@@ -44,7 +51,12 @@ export function ScheduleCardDialog(props: {
         <Visor size={28} face={stateFaces.conflict} />
         <h2>{heading}</h2>
         <dl className="schedule-fields">
-          {row("when", "When", when, changed.has("at") || changed.has("days"))}
+          {row(
+            "when",
+            "When",
+            when,
+            [...inWhen].some((name) => name !== "name" && changed.has(name)),
+          )}
           {Object.entries(card.fields)
             .filter(([name]) => !inWhen.has(name))
             .map(([name, value]) => row(name, labels[name] ?? name, value, changed.has(name)))}

@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Create, change, pause or remove a scheduled message by editing .eva/schedules.json. Use when the person asks for a reminder, a summary or any message at a set time, every day or on some days, in any wording, or asks to change, pause, resume or stop one.
+description: Create, change, pause or remove a scheduled message by editing .eva/schedules.json. Use when the person asks for a reminder, a summary or any message at a set time, every day, on some days or every few hours, days or weeks, in any wording, or asks to change, pause, resume or stop one.
 ---
 
 # Schedule a message
@@ -39,6 +39,10 @@ Each schedule is one object in `schedules`:
 - **`name`**: required. It names the schedule's topic in Telegram. Eva names the topic when she opens it. A later change to `name` does not rename the topic, so tell the person to rename it in Telegram.
 - **`at`**: `HH:MM`, 24 hours, in the time zone that each prompt's first line names. Eva's settings hold it.
 - **`days`**: leave it out for every day. Otherwise list some of `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
+- **An interval instead of `at` and `days`.** To repeat every few hours, days or weeks, write `every` and `from`, and leave out `at` and `days`:
+  - **`every`**: a number from 1 to 999 and a unit: `h` for hours, `d` for days, `w` for weeks. Examples: `2h`, `3d`, `1w`.
+  - **`from`**: the first run, as `YYYY-MM-DDTHH:MM`, such as `2026-10-22T07:30`. Each later run comes one interval after the last. A day or week interval keeps the time of day of `from`.
+  - Example: `"every": "3d", "from": "2026-10-22T07:30"` runs at 07:30 every third day from 22 October.
 - **At least one step.** `text` is a fixed message. `file` is a path from the vault root, as an `[[attach:]]` marker names it. Never use `Scratch/`, because that folder empties after a week, and Eva skips such an entry. `prompt` is a message that you answer, in a fresh conversation, at that time. The steps run in that order.
 - **`model`**: optional, for a `prompt` only. Use `sonnet`, `opus` or `haiku`. Any other value means the default model.
 - **`enabled`**: optional. Write `false` to turn the schedule off. It then never runs, and it keeps its fields. Leave the key out to turn it on. Use only `true` or `false` as the value. Never write it in quotes.
@@ -52,7 +56,9 @@ Keep every other entry and key as it is. Write the file as JSON with two spaces 
 Read the file again after you edit it, and check each point:
 
 - The file is valid JSON.
+- The entry has `at`, or `every` and `from`, never both.
 - `at` has two digits on each side, such as `07:30` and never `7:30`.
+- `every` is a number and `h`, `d` or `w`, and `from` is a date and a time, such as `2026-10-22T07:30`.
 - Every `id` is a slug of lowercase letters, digits or dashes, and no two entries share one.
 - `days` is absent, or a list that is not empty, of `mon` to `sun`.
 - Each entry has a `name`, and at least one step: `text`, `file` or `prompt`.

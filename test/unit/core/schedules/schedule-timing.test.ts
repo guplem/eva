@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseScheduleEntry, type Schedule } from "../../../../src/core/schedules/schedule-definitions.ts";
-import { dueSlot, nextSlot, wallClockOf } from "../../../../src/core/schedules/schedule-timing.ts";
+import { dueSlot, nextSlot, runsOnDay, wallClockOf } from "../../../../src/core/schedules/schedule-timing.ts";
 
 function schedule(at: string, days?: string[]): Schedule {
   return parseScheduleEntry(
@@ -71,5 +71,53 @@ describe("nextSlot", () => {
     expect(nextSlot(schedule("07:30"), "2026-07-01T07:00")).toBe("2026-07-01T07:30");
     expect(nextSlot(schedule("07:30"), "2026-07-01T07:30")).toBe("2026-07-02T07:30");
     expect(nextSlot(schedule("07:30", ["mon"]), "2026-07-01T07:00")).toBe("2026-07-06T07:30");
+  });
+});
+
+function interval(every: string, from: string): Schedule {
+  return parseScheduleEntry({ id: "s", name: "S", every, from, text: "hi" }, 1) as Schedule;
+}
+
+describe("interval schedules", () => {
+  const seenLongAgo = { firstSeen: "2026-01-01T00:00", lastFired: null };
+
+  test("fire on the first run, then once each interval", () => {
+    const everyThreeDays = interval("3d", "2026-07-01T07:30");
+    expect(dueSlot(everyThreeDays, seenLongAgo, "2026-07-01T07:29")).toBeNull();
+    expect(dueSlot(everyThreeDays, seenLongAgo, "2026-07-01T07:30")).toBe("2026-07-01T07:30");
+    expect(dueSlot(everyThreeDays, seenLongAgo, "2026-07-02T07:30")).toBeNull();
+    expect(dueSlot(everyThreeDays, seenLongAgo, "2026-07-04T08:00")).toBe("2026-07-04T07:30");
+  });
+
+  test("a schedule seen after a run waits for the next one", () => {
+    const seen = { firstSeen: "2026-07-01T09:05", lastFired: null };
+    expect(dueSlot(interval("2h", "2026-07-01T08:00"), seen, "2026-07-01T09:10")).toBeNull();
+    expect(dueSlot(interval("2h", "2026-07-01T08:00"), seen, "2026-07-01T10:00")).toBe("2026-07-01T10:00");
+  });
+
+  test("the next run is the first run before it comes, then each interval", () => {
+    expect(nextSlot(interval("2h", "2026-07-01T08:00"), "2026-06-20T12:00")).toBe("2026-07-01T08:00");
+    expect(nextSlot(interval("2h", "2026-07-01T08:00"), "2026-07-01T08:00")).toBe("2026-07-01T10:00");
+    expect(nextSlot(interval("2w", "2026-07-01T07:30"), "2026-07-02T00:00")).toBe("2026-07-15T07:30");
+  });
+
+  test("days and weeks keep the wall-clock time across a clock change", () => {
+    expect(nextSlot(interval("1d", "2026-10-24T07:30"), "2026-10-25T07:00")).toBe("2026-10-25T07:30");
+  });
+});
+
+describe("runsOnDay", () => {
+  test("lists the times of today's runs", () => {
+    // 2026-07-01 is a Wednesday.
+    expect(runsOnDay(schedule("07:30", ["wed"]), "2026-07-01T12:00")).toEqual(["07:30"]);
+    expect(runsOnDay(schedule("07:30", ["mon"]), "2026-07-01T12:00")).toEqual([]);
+    expect(runsOnDay(interval("6h", "2026-06-30T03:00"), "2026-07-01T12:00")).toEqual([
+      "03:00",
+      "09:00",
+      "15:00",
+      "21:00",
+    ]);
+    expect(runsOnDay(interval("6h", "2026-07-01T13:00"), "2026-07-01T12:00")).toEqual(["13:00", "19:00"]);
+    expect(runsOnDay(interval("2d", "2026-06-30T07:30"), "2026-07-01T12:00")).toEqual([]);
   });
 });

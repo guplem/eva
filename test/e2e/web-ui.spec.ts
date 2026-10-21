@@ -1649,6 +1649,30 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   await expect(row).toHaveCount(0);
 });
 
+test("Schedules page: add a schedule that repeats every few days", async ({ page }, testInfo) => {
+  const id = `water-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Water ${id}`);
+  await form.getByRole("button", { name: "At an interval" }).click();
+  await expect(form.getByLabel("Time (HH:MM)")).toHaveCount(0);
+  await form.getByLabel("Every").fill("3");
+  await form.getByLabel("Unit").selectOption("d");
+  await form.getByLabel("First run").fill("2030-01-02T07:30");
+  await form.getByLabel("Fixed text").fill("Water the plants.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Every 3 days at 07:30, from Wed 2 Jan, 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  const row = page.getByRole("listitem", { name: `Water ${id}` });
+  await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("the main navigation opens each destination at its own address, and the back button returns", async ({ page }) => {
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });

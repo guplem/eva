@@ -3,6 +3,7 @@ import {
   dayLine,
   dayNumbersOf,
   lastRunWords,
+  nextHourSlot,
   nextRunWords,
   repeatWords,
   slotWords,
@@ -12,18 +13,36 @@ const everyDay = [0, 1, 2, 3, 4, 5, 6];
 /** A Wednesday. */
 const now = "2026-10-21T10:15";
 
+function onDays(at: string, days: readonly number[]): { at: string; days: readonly number[]; every: null; from: null } {
+  return { at, days, every: null, from: null };
+}
+
+function every(interval: string, from: string): { at: null; days: null; every: string; from: string } {
+  return { at: null, days: null, every: interval, from };
+}
+
 describe("repeatWords", () => {
   test("says each common repeat in words, never in day codes", () => {
-    expect(repeatWords("08:00", everyDay)).toBe("Every day at 08:00");
-    expect(repeatWords("08:00", [1, 2, 3, 4, 5])).toBe("Weekdays at 08:00");
-    expect(repeatWords("10:00", [0, 6])).toBe("Weekends at 10:00");
-    expect(repeatWords("18:30", [5])).toBe("Fridays at 18:30");
-    expect(repeatWords("09:00", [1, 5])).toBe("Mondays and Fridays at 09:00");
+    expect(repeatWords(onDays("08:00", everyDay))).toBe("Every day at 08:00");
+    expect(repeatWords(onDays("08:00", [1, 2, 3, 4, 5]))).toBe("Weekdays at 08:00");
+    expect(repeatWords(onDays("10:00", [0, 6]))).toBe("Weekends at 10:00");
+    expect(repeatWords(onDays("18:30", [5]))).toBe("Fridays at 18:30");
+    expect(repeatWords(onDays("09:00", [1, 5]))).toBe("Mondays and Fridays at 09:00");
   });
 
   test("lists three or more days short, from Monday to Sunday", () => {
-    expect(repeatWords("09:00", [1, 3, 5])).toBe("Mon, Wed and Fri at 09:00");
-    expect(repeatWords("09:00", [0, 1, 6])).toBe("Mon, Sat and Sun at 09:00");
+    expect(repeatWords(onDays("09:00", [1, 3, 5]))).toBe("Mon, Wed and Fri at 09:00");
+    expect(repeatWords(onDays("09:00", [0, 1, 6]))).toBe("Mon, Sat and Sun at 09:00");
+  });
+
+  test("says an interval, with the time of day for days and the weekday for weeks", () => {
+    // 2026-10-22 is a Thursday.
+    expect(repeatWords(every("1h", "2026-10-22T08:15"))).toBe("Every hour");
+    expect(repeatWords(every("2h", "2026-10-22T08:15"))).toBe("Every 2 hours");
+    expect(repeatWords(every("1d", "2026-10-22T07:30"))).toBe("Every day at 07:30");
+    expect(repeatWords(every("3d", "2026-10-22T07:30"))).toBe("Every 3 days at 07:30");
+    expect(repeatWords(every("1w", "2026-10-22T07:30"))).toBe("Every week on Thursdays at 07:30");
+    expect(repeatWords(every("2w", "2026-10-22T07:30"))).toBe("Every 2 weeks on Thursdays at 07:30");
   });
 });
 
@@ -89,10 +108,9 @@ describe("dayNumbersOf", () => {
 });
 
 describe("dayLine", () => {
-  const schedule = (name: string, at: string, days = everyDay): { name: string; at: string; days: number[] } => ({
+  const schedule = (name: string, ...runsToday: string[]): { name: string; runsToday: string[] } => ({
     name,
-    at,
-    days,
+    runsToday,
   });
 
   test("places the time now and today's runs on the day, in time order", () => {
@@ -118,7 +136,7 @@ describe("dayLine", () => {
   });
 
   test("leaves out a schedule that does not run today", () => {
-    expect(dayLine([schedule("Friday", "08:00", [5])], now).runs).toEqual([]);
+    expect(dayLine([schedule("Friday")], now).runs).toEqual([]);
   });
 
   test("leaves out a schedule that is off (#188)", () => {
@@ -134,5 +152,18 @@ describe("dayLine", () => {
     expect(line.runs[0]?.width).toBeCloseTo(5 / 24);
     // Each run of a shared pill keeps its own mark, so a hover shows when each one runs.
     expect(line.runs[0]?.marks).toEqual([480 / 1440, 570 / 1440]);
+  });
+
+  test("a schedule that runs more than once today shows each run", () => {
+    const line = dayLine([schedule("Water", "06:00", "12:00")], now);
+    expect(line.runs.map((run) => run.label)).toEqual(["06:00 Water", "12:00 Water"]);
+  });
+});
+
+describe("nextHourSlot", () => {
+  test("is the next whole hour, on the next day after 23:00", () => {
+    expect(nextHourSlot("2026-10-21T10:15")).toBe("2026-10-21T11:00");
+    expect(nextHourSlot("2026-10-21T10:00")).toBe("2026-10-21T11:00");
+    expect(nextHourSlot("2026-12-31T23:40")).toBe("2027-01-01T00:00");
   });
 });

@@ -210,13 +210,15 @@ interface SecretFieldProps {
   /** The check that tests the saved secret. Absent: no Test row, as for a secret that needs a second one. */
   readonly check?: string;
   readonly onChanged: (note: Note) => void;
+  /** After a save that worked, as when a login card shows as logged in again. */
+  readonly onSaved?: () => void;
 }
 
 /**
  * A secret goes one way: the page sends it, and never gets it back. The field empties after a
  * save, and the line above it says only whether one is saved.
  */
-export function SecretField({ name, label, saved, help, check, onChanged }: SecretFieldProps): ReactElement {
+export function SecretField({ name, label, saved, help, check, onChanged, onSaved }: SecretFieldProps): ReactElement {
   const [value, setValue] = useState("");
   const [isSaved, setIsSaved] = useState(saved);
   // The page loads the settings again after a save elsewhere on it.
@@ -228,6 +230,7 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
       await api.saveSecret(name, value);
       setValue("");
       setIsSaved(true);
+      onSaved?.();
       onChanged(
         restartNote(
           check === undefined

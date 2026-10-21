@@ -1,9 +1,11 @@
 /** The connections page: GitHub, Telegram and Google. Each one is optional, and each card says why it helps. */
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
-import { Card, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
+import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { stepMark } from "./setup-summary.ts";
+import { Card, CheckRow, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
 export function ConnectionsSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
@@ -21,18 +23,48 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
   const [tokenSteps, setTokenSteps] = useState(false);
   // The step knows whether the agents' gh has the login too (#244); before the setup loads, the token decides.
   const step = context.setup?.progress.find((each) => each.key === "github");
-  return (
+  const [loggingInAgain, setLoggingInAgain] = useState(false);
+  const card = (children: ReactNode): ReactElement => (
     <Card
       item="github"
       title="GitHub"
       description="Eva uses your GitHub login for your private vault and projects."
       aside={<StatusPill state={step?.state ?? (saved ? "done" : "optional")} />}
     >
+      {children}
+    </Card>
+  );
+  // The card keeps its steps for a token that the agents' gh lacks (#244), and for a failed last test,
+  // as of a revoked token: both fixes name Log in with GitHub.
+  const loginWorks = saved && (step === undefined || stepMark(step) === "done");
+  if (loginWorks && !loggingInAgain)
+    return card(
+      <>
+        <LoggedIn
+          service="GitHub"
+          secret="githubToken"
+          warning="Eva removes the GitHub token from this machine. The vault sync and your agents cannot reach GitHub until you log in again."
+          context={context}
+          onLogInAgain={() => setLoggingInAgain(true)}
+        />
+        <CheckRow name="github" label="Test the GitHub token" />
+      </>,
+    );
+  return card(
+    <>
       {/* "missing" means a saved token that the agents' gh lacks (#244): the step page hides that detail. */}
       {step?.state === "missing" && (
         <div className="callout warning">Your agents cannot push their work yet. Press Log in with GitHub.</div>
       )}
-      <GitHubLogin context={context} />
+      {step?.state === "done" && stepMark(step) === "failed" && (
+        <div className="callout warning">The last test of the GitHub token failed. Press Log in with GitHub.</div>
+      )}
+      {loginWorks && (
+        <button className="link-button" onClick={() => setLoggingInAgain(false)}>
+          Keep the current login
+        </button>
+      )}
+      <GitHubLogin context={context} onLoggedIn={() => setLoggingInAgain(false)} />
       {!tokenSteps ? (
         <button className="link-button" onClick={() => setTokenSteps(true)}>
           Paste a token instead
@@ -62,9 +94,10 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
         saved={saved}
         help="The login above saves the token here. You can also paste a token."
         check="github"
-        onChanged={context.noteAndReload}
+        onChanged={(note) => reloadAfterSave(context, note)}
+        onSaved={() => setLoggingInAgain(false)}
       />
-    </Card>
+    </>,
   );
 }
 

@@ -1,8 +1,10 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
-import { useState, type ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
+import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
+import { stepMark } from "./setup-summary.ts";
 import {
   Card,
   CheckRow,
@@ -73,23 +75,53 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
   const saved = context.settings.secretsSet.claudeOauthToken;
   const installed = found(context, "claude-code");
   const [terminalSteps, setTerminalSteps] = useState(false);
+  const [loggingInAgain, setLoggingInAgain] = useState(false);
+  const engineStep = context.setup?.progress.find((step) => step.key === "engine");
   // Without a token, Claude Code is the way to finish a missing engine step, so it needs the person too.
-  const engineMissing =
-    context.setup?.progress.some((step) => step.key === "engine" && step.state === "missing") ?? false;
-  return (
+  const engineMissing = engineStep?.state === "missing";
+  const card = (children: ReactNode): ReactElement => (
     <Card
       item="claude-code"
       title="Claude Code"
       description="Use your Claude subscription. Eva never uses an API key."
       aside={<StatusPill state={!installed || (!saved && engineMissing) ? "missing" : saved ? "done" : "optional"} />}
     >
+      {children}
+    </Card>
+  );
+  // A failed last test, as of an expired token, keeps the steps. The engine step may test pi instead.
+  const failed = engineStep?.check === "claude-code" && stepMark(engineStep) === "failed";
+  const loginWorks = installed && saved && !failed;
+  if (loginWorks && !loggingInAgain)
+    return card(
+      <>
+        <LoggedIn
+          service="Claude Code"
+          secret="claudeOauthToken"
+          warning="Eva removes the Claude Code token from this machine. Chats with Claude Code stop until you log in again."
+          context={context}
+          onLogInAgain={() => setLoggingInAgain(true)}
+        />
+        <CheckRow name="claude-code" label="Test the Claude Code token" />
+      </>,
+    );
+  return card(
+    <>
       {!installed && (
         <div className="callout warning">
           Eva did not find the claude program on this machine. Run <code>eva setup</code> on Eva&apos;s computer to
           install it.
         </div>
       )}
-      {installed && <ClaudeLoginSteps context={context} />}
+      {installed && failed && (
+        <div className="callout warning">The last test of the Claude Code token failed. Log in again.</div>
+      )}
+      {loginWorks && (
+        <button className="link-button" onClick={() => setLoggingInAgain(false)}>
+          Keep the current login
+        </button>
+      )}
+      {installed && <ClaudeLoginSteps context={context} onLoggedIn={() => setLoggingInAgain(false)} />}
       {installed && !terminalSteps ? (
         <button className="link-button" onClick={() => setTerminalSteps(true)}>
           Get a token in a terminal instead
@@ -110,9 +142,10 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
         saved={saved}
         help={`${installed ? "The login above saves it here. You can also paste a token. " : ""}It starts with sk-ant-oat. It stays on this machine, never in your vault.`}
         check="claude-code"
-        onChanged={context.noteAndReload}
+        onChanged={(note) => reloadAfterSave(context, note)}
+        onSaved={() => setLoggingInAgain(false)}
       />
-    </Card>
+    </>,
   );
 }
 
@@ -120,7 +153,13 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
  * The login with no terminal: Eva runs `claude setup-token` on her computer, and the person logs
  * in on Claude's page from any device. The token never reaches the page.
  */
-function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): ReactElement {
+function ClaudeLoginSteps({
+  context,
+  onLoggedIn,
+}: {
+  readonly context: SettingsContext;
+  readonly onLoggedIn: () => void;
+}): ReactElement {
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [code, setCode] = useState("");
   // One request at a time: a double tap would start a second login and end the first one.
@@ -154,6 +193,7 @@ function ClaudeLoginSteps({ context }: { readonly context: SettingsContext }): R
       context.noteAndReload(restartNote("Logged in to Claude. Press Restart Eva so that chats use the new login."));
       // The setup steps reload above; the settings hold the "Saved" state of the token field.
       context.reloadSettings();
+      onLoggedIn();
     } catch (error) {
       // Each failed Finish ends the login on Eva's computer, so the old link leads nowhere.
       setLoginUrl(null);

@@ -1834,6 +1834,22 @@ button.link-button {
   background: var(--warn-bg);
 }
 
+/* A done login has the green of a done step, so the card reads as finished at a glance. */
+.logged-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-input);
+  background: var(--ok-bg);
+}
+
+.logged-in-text {
+  flex: 1;
+  font-weight: 600;
+}
+
 .callout.danger {
   background: var(--bad-bg);
 }

@@ -14,7 +14,14 @@ const retryPauseMs = 3000;
 /** GitHub's code lasts 15 minutes, so a longer wait cannot end well. */
 const lastAskMs = 16 * 60_000;
 
-export function GitHubLogin({ context }: { readonly context: SettingsContext }): ReactElement {
+export function GitHubLogin({
+  context,
+  onLoggedIn,
+}: {
+  readonly context: SettingsContext;
+  /** Absent where no card hides the steps after a login. */
+  readonly onLoggedIn?: () => void;
+}): ReactElement {
   const [shown, setShown] = useState<{ code: string; url: string } | null>(null);
   // Blocks a second press while a request runs. After a reload, Eva gives the same code again.
   const [busy, setBusy] = useState(false);
@@ -25,6 +32,7 @@ export function GitHubLogin({ context }: { readonly context: SettingsContext }):
       setShown(await api.startGitHubLogin());
       await waitForTheEnd();
       context.reloadSettings();
+      onLoggedIn?.();
       context.noteAndReload(restartNote("Logged in to GitHub. Press Restart Eva to use the login in chats and sync."));
     } catch (error) {
       // Eva may have saved the token before the error, as when she restarts: the card shows it.

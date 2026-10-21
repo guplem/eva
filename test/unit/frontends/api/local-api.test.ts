@@ -1284,6 +1284,36 @@ describe("web routes", () => {
     expect((await call("/api/assistant-rules/other", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("template parts: list their states, and keep the person's version of one", async () => {
+    interface Parts {
+      parts: { path: string; name: string; state: string; updatedAt: string | null; newText: string | null }[];
+    }
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, ".eva", "skills", "schedule"), { recursive: true });
+    writeFileSync(join(vaultPath, ".eva", "skills", "schedule", "SKILL.md"), "# My own skill\n");
+    const listed = await json<Parts>(await call("/api/template-parts"));
+    expect(listed.parts.map((part) => [part.path, part.name, part.state, part.updatedAt])).toEqual([
+      [".eva/skills/schedule/SKILL.md", "schedule", "differs", null],
+    ]);
+    expect(listed.parts[0]?.newText).toContain("# Schedule a message");
+    const kept = await json<Parts>(
+      await call("/api/template-parts", {
+        method: "POST",
+        body: { path: ".eva/skills/schedule/SKILL.md", choice: "mine" },
+      }),
+    );
+    expect(kept.parts.map((part) => part.state)).toEqual(["kept"]);
+    const unknown = await call("/api/template-parts", {
+      method: "POST",
+      body: { path: ".eva/assistant.md", choice: "new" },
+    });
+    expect(unknown.status).toBe(404);
+    expect((await call("/api/template-parts", { method: "POST", body: { path: "x", choice: "both" } })).status).toBe(
+      400,
+    );
+    expect((await call("/api/template-parts", { method: "DELETE" })).status).toBe(404);
+  });
+
   test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {
     const root = await json<{ kind: string; entries: { name: string }[] }>(await call("/api/files"));
     expect(root.kind).toBe("folder");

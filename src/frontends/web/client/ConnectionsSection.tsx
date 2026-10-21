@@ -5,21 +5,28 @@ import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { LoggedIn, reloadAfterSave, type LoginWords } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { cardId, parseSettingsHash } from "./settings-routes.ts";
 import { stepMark } from "./setup-summary.ts";
 import { Card, CheckRow, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
 export function ConnectionsSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
-      <GitHubCard context={context} />
-      <CommitIdentityCard context={context} />
+      <GitHubCard context={context} extra={<CommitIdentity context={context} />} />
       <TelegramCard context={context} />
       <GooglePanel context={context} />
     </>
   );
 }
 
-export function GitHubCard({ context }: { readonly context: SettingsContext }): ReactElement {
+/** `extra` adds parts that only the Connections page shows, not the setup step. */
+export function GitHubCard({
+  context,
+  extra,
+}: {
+  readonly context: SettingsContext;
+  readonly extra?: ReactNode;
+}): ReactElement {
   const saved = context.settings.secretsSet.githubToken;
   const [tokenSteps, setTokenSteps] = useState(false);
   // The step knows whether the agents' gh has the login too (#244); before the setup loads, the token decides.
@@ -33,6 +40,7 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
       aside={<StatusPill state={step?.state ?? (saved ? "done" : "optional")} />}
     >
       {children}
+      {extra}
     </Card>
   );
   // The card keeps its steps for a token that the agents' gh lacks (#244), and for a failed last test,
@@ -102,11 +110,20 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
   );
 }
 
-/** Empty fields keep the GitHub account's name and email, so most people never fill them. */
-function CommitIdentityCard({ context }: { readonly context: SettingsContext }): ReactElement {
+const commitIdentityItem = "commit-identity";
+
+/**
+ * Empty fields keep the GitHub account's name and email, so most people never fill them.
+ * It sits in the GitHub card, because that login gives the default, and it hides behind a link until needed.
+ */
+function CommitIdentity({ context }: { readonly context: SettingsContext }): ReactElement {
   const git = context.settings.config.git;
   const [name, setName] = useState(git.name ?? "");
   const [email, setEmail] = useState(git.email ?? "");
+  // A saved name or email, or a search result that names this part, opens the fields.
+  const [open, setOpen] = useState(
+    Boolean(git.name) || Boolean(git.email) || parseSettingsHash(window.location.hash).item === commitIdentityItem,
+  );
   // A save here, in another tab or with `eva settings` reloads the settings; the fields follow them.
   useEffect(() => {
     setName(git.name ?? "");
@@ -116,12 +133,20 @@ function CommitIdentityCard({ context }: { readonly context: SettingsContext }):
     context.saveNow({
       git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
     });
+  if (!open)
+    return (
+      <div id={cardId(commitIdentityItem)}>
+        <button className="link-button" onClick={() => setOpen(true)}>
+          Change the commit name and email
+        </button>
+      </div>
+    );
   return (
-    <Card
-      item="commit-identity"
-      title="Commit name and email"
-      description="Eva and her agents sign each commit with them. Empty: your GitHub account's name and its private GitHub email."
-    >
+    <div id={cardId(commitIdentityItem)} role="group" aria-label="Commit name and email">
+      <p className="field-hint">
+        Eva and her agents sign each commit with this name and email. Empty: your GitHub account&apos;s name and its
+        private GitHub email.
+      </p>
       <label className="field">
         <span className="field-label">Name</span>
         <input value={name} placeholder="Your GitHub name" onChange={(event) => setName(event.target.value)} />
@@ -142,7 +167,7 @@ function CommitIdentityCard({ context }: { readonly context: SettingsContext }):
           Save
         </SaveButton>
       </div>
-    </Card>
+    </div>
   );
 }
 

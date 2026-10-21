@@ -1,5 +1,5 @@
 /**
- * The content of the design reference page: the colour tokens, the shared components and a map
+ * The content of the design reference page: the colour and text tokens, the shared components and a map
  * of the layers. A test checks each token, class and folder here against the code, so the page
  * never names a part that is gone.
  */
@@ -67,6 +67,23 @@ export const colourGroups: readonly ColourGroup[] = [
       { name: "--bad-bg", use: "Background of a problem" },
     ],
   },
+];
+
+export interface TypeStyle {
+  /** A font token, such as `--mono`, or a size token, such as `--text-sm`. */
+  readonly name: string;
+  readonly use: string;
+}
+
+/** The two fonts, then the sizes from the largest. A rule takes its font and size from these. */
+export const typeStyles: readonly TypeStyle[] = [
+  { name: "--font", use: "Every text of the interface, Quicksand" },
+  { name: "--mono", use: "Code, paths, commands and codes, IBM Plex Mono" },
+  { name: "--text-xl", use: "Page titles" },
+  { name: "--text-lg", use: "Card titles" },
+  { name: "--text-md", use: "Section titles in a card, commands and large buttons" },
+  { name: "--text-sm", use: "Notes, notices and progress text" },
+  { name: "--text-xs", use: "Hints and small labels" },
 ];
 
 export type ComponentId =

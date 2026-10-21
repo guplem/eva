@@ -1039,11 +1039,23 @@ test("on a short phone, a long project list scrolls, and no card cuts its text",
 });
 
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
+  // The check waits until the test lets it go, so the test sees the wait.
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/checks/*", async (route) => {
+    await released;
+    await route.continue();
+  });
   await logIn(page);
   await openSettings(page, "Vault and sync");
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
+  await expect(vaultRow.getByRole("progressbar", { name: "Testing the vault repository…" })).toBeVisible();
+  release();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(vaultRow.getByRole("progressbar")).toHaveCount(0);
   // Log out sits on the Devices card, because it ends only this browser's login.
   await openSettings(page, "Access");
   page.once("dialog", (dialog) => void dialog.accept());
@@ -1683,6 +1695,25 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
+test("the nav visor names the approval that waits, and a tap plays a face that ends", async ({ page }) => {
+  // A phone hides the visor: its bottom bar has no room for it.
+  test.skip(test.info().project.name !== "desktop", "Only a computer shows the nav visor.");
+  await page.route("**/api/approvals", (route) =>
+    route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
+  );
+  await logIn(page);
+  const visorButton = page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: "1 approval waits for you" });
+  const visor = visorButton.locator(".mk");
+  await expect(visor).toHaveClass(/e-firm/);
+  await visorButton.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
+  await visorButton.click();
+  await expect(visor).not.toHaveClass(/e-firm/);
+  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
+});
+
 test("the Settings home page shows Eva's status", async ({ page }) => {
   await logIn(page);
   await openSettings(page);
@@ -2258,7 +2289,21 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   // A failed step needs the person, so it keeps the main action, and its page says why.
   await expect(first).toContainText("Set up");
   await first.click();
-  await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
+  const step = page.getByRole("region", { name: "An AI engine" });
+  await expect(step).toContainText("The last test failed.");
+  // The test waits until this test lets it go, so this test sees the progress bar of the wait.
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/checks/*", async (route) => {
+    await released;
+    await route.fulfill({ json: { ok: false, detail: "The token expired." } });
+  });
+  await step.getByRole("button", { name: "Test An AI engine" }).click();
+  await expect(step.getByRole("progressbar", { name: "Testing An AI engine…" })).toBeVisible();
+  release();
+  await expect(step.getByRole("progressbar")).toHaveCount(0);
 });
 
 test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {

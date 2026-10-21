@@ -12,7 +12,7 @@
 - Show each wait with a shared component of `client/Loading.tsx`, never with a sentence alone, such as "Loading…".
   - Inside a card, show `ProgressBar`. Give it the share of the work when Eva knows it, so it fills and shows the percentage. With no share, its lines run.
   - For content that fills a large area, such as a chat or a list, show a skeleton with the shape of that content.
-  - Keep the label of a button for a short action, such as "Testing…".
+  - A button label such as "Testing…" is not enough. While the button waits, also show a `ProgressBar` below it.
 
 ## Settings
 

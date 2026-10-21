@@ -2,6 +2,7 @@
  * The festive eyes of each special day, as SVG markup in a 24 by 24 box. The markup is constant,
  * so the visor and the tab icon draw the same eyes. `currentColor` is the eye colour. The classes
  * `cut` (a fill) and `cut-line` (a stroke) take the dark of the visor, and `tint` takes the glow.
+ * Some art keeps its own colours, such as a red rose or a rainbow: they are the drawing, not a theme colour.
  */
 import type { SpecialDayId } from "./special-days.ts";
 
@@ -235,7 +236,7 @@ export function sceneMarkup(scene: FestiveScene): string {
   }
 }
 
-/** The tab icon of a special day: the visor of `icons/icon.svg`, with the festive eyes. */
+/** The tab icon of a special day: the visor of `icons/icon.svg`, with its colours, and the festive eyes. */
 export function festiveIconSvg(id: SpecialDayId): string {
   const art = festiveArt[id];
   const eyeColour = `oklch(0.87 ${String(Math.min(art.chroma, 0.13))} ${String(art.hue)})`;

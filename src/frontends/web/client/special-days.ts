@@ -101,7 +101,7 @@ function daysFromEaster(today: CalendarDay): number {
 }
 
 // Meeus, "Astronomical Algorithms", table 27.b, for the years 2000 to 3000. The mean instant is
-// within an hour of the true one, which is enough to pick the day.
+// within an hour of the true one. Only an instant that close to local midnight can show a day late or early.
 const seasonTerms: Record<Season, readonly number[]> = {
   march: [2451623.80984, 365242.37404, 0.05169, -0.00411, -0.00057],
   june: [2451716.56767, 365241.62603, 0.00325, 0.00888, -0.0003],
@@ -198,6 +198,7 @@ const rules: readonly Rule[] = [
   fixed("halloween", [10, 31]),
   fixed("allSaints", [11, 1], [11, 2]),
   fixed("christmas", [12, 24], [12, 25], [12, 26]),
+  // The seasons follow the northern hemisphere until Eva knows where the person lives (#370).
   season("springEquinox", "march"),
   season("summerSolstice", "june"),
   season("autumnEquinox", "september"),
@@ -219,14 +220,14 @@ const rules: readonly Rule[] = [
 
 const words: Record<WordedDayId, readonly [string, string]> = {
   birthday: ["Happy birthday!", "It is your day. Shall we celebrate?"],
-  newYear: ["Happy New Year!", "A fresh start. What comes first?"],
-  kings: ["Happy Three Kings Day!", "I hope the kings were kind. How can I help?"],
+  newYear: ["Cheers to the new year!", "A fresh start. What comes first?"],
+  kings: ["Happy Three Kings Day!", "What can I do for you today?"],
   valentine: ["Happy Valentine's Day!", "What can I do for you today?"],
-  carnival: ["Happy Carnival!", "Masks on. How can I help?"],
+  carnival: ["Happy Carnival!", "How can I help today?"],
   easter: ["Happy Easter!", "Any eggs to find today?"],
   santJordi: ["A rose and a book.", "Happy Sant Jordi. What are you reading?"],
   santJoan: ["Happy Midsummer!", "Anything to throw in the fire tonight?"],
-  pride: ["Happy Pride!", "Love is love. How can I help?"],
+  pride: ["Happy Pride!", "Everyone belongs. How can I help?"],
   halloween: ["Happy Halloween!", "Boo. What shall we haunt today?"],
   allSaints: ["A day to remember.", "A calm day. How can I help?"],
   christmas: ["Merry Christmas!", "Warm wishes. How can I help today?"],
@@ -237,15 +238,15 @@ const words: Record<WordedDayId, readonly [string, string]> = {
   perseids: ["Make a wish.", "Shooting stars tonight. Look up!"],
   womensDay: ["Happy Women's Day!", "Equal rights, every day."],
   piDay: ["3.14159…", "Happy Pi Day. What shall we calculate?"],
-  fourTwenty: ["Happy 4/20!", "Take it easy today. How can I help?"],
+  fourTwenty: ["Happy 4/20!", "A calm day. How can I help?"],
   earthDay: ["Happy Earth Day!", "One planet. How can I help today?"],
   beeDay: ["Buzz buzz.", "It is World Bee Day. What shall we build?"],
   catDay: ["Meow.", "It is International Cat Day. How can I help?"],
-  dogDay: ["Woof!", "It is International Dog Day. Who is a good human?"],
+  dogDay: ["Woof!", "It is International Dog Day. How can I help?"],
   programmersDay: ["Hello, world.", "Day 256 of the year. Shall we ship something?"],
   coffeeDay: ["Coffee first.", "It is Coffee Day. What are we working on?"],
-  leapDay: ["A bonus day.", "This day comes once in four years. Let us use it well."],
-  fridayThe13th: ["Friday the 13th.", "I brought horseshoes, just in case."],
+  leapDay: ["A bonus day.", "This day comes once in four years. What shall we do with it?"],
+  fridayThe13th: ["Friday the 13th.", "I brought horseshoes for luck. How can I help?"],
   fullMoon: ["Full moon tonight.", "A bright night. How can I help?"],
 };
 

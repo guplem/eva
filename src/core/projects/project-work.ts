@@ -388,7 +388,11 @@ export class ProjectWork {
       const sessions = this.options.sessions;
       const chats = sessions.list().filter((session) => session.startFolder === clone.path);
       // An engine that runs in the folder would lose its files, and Windows refuses to delete a folder in use.
-      if (this.reservedClones.has(clone.path) || chats.some((chat) => sessions.isActive(chat.id)))
+      if (
+        this.reservedClones.has(clone.path) ||
+        this.syncingClones.has(clone.path) ||
+        chats.some((chat) => sessions.isActive(chat.id))
+      )
         throw new EvaError("session_busy", `Eva is still working in ${clone.name}. Stop her chats there first.`);
       const deletedChats: string[] = [];
       for (const chat of chats) {

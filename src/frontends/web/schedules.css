@@ -378,6 +378,17 @@
   font-weight: 600;
 }
 
+/* A checkbox sits beside its words, as in every other check row. */
+.schedule-form label.check-row {
+  flex-direction: row;
+  font-weight: 400;
+}
+
+/* Why a step is off, on its own line under the step. */
+.schedule-form .step-reason {
+  display: block;
+}
+
 .schedule-form fieldset {
   border: 0;
   margin: 0;

@@ -3,6 +3,7 @@
  * `YYYY-MM-DD-HHmm-name`. An old project known only to the day,
  * month or year has a shorter time part.
  */
+import { EvaError } from "../../shared/errors.ts";
 
 export type ProjectIdPrecision = "minute" | "day" | "month" | "year";
 
@@ -45,26 +46,37 @@ export function parseProjectId(folderName: string): ParsedProjectId | null {
   return { id: folderName, created, precision: precisionOf(created), slug };
 }
 
-/** Builds the id of a new project from its creation time (local clock) and a free-text name. */
-export function formatProjectId(createdAt: Date, name: string): string {
-  const slug = slugify(name);
-  if (slug.length === 0) throw new Error(`A project name needs at least one letter or digit: "${name}"`);
-  const date = [createdAt.getFullYear(), createdAt.getMonth() + 1, createdAt.getDate()].map(twoDigits).join("-");
-  const time = twoDigits(createdAt.getHours()) + twoDigits(createdAt.getMinutes());
-  return `${date}-${time}-${slug}`;
+/**
+ * Builds the id of a new project from its creation time and a free-text name. The time is the
+ * wall clock of the configured time zone, `YYYY-MM-DDTHH:mm`, the form of `created` (lesson 68).
+ */
+export function formatProjectId(wallClock: string, name: string): string {
+  const slug = projectSlug(name);
+  if (slug.length === 0)
+    throw new EvaError(
+      "project_invalid",
+      `A project name needs at least one letter from a to z or one digit: "${name}"`,
+    );
+  return `${wallClock.replace("T", "-").replace(":", "")}-${slug}`;
 }
 
-function slugify(name: string): string {
-  return name
+/**
+ * The name of a new project's folder and repository. A long slug breaks paths on Windows and
+ * GitHub's 100-character limit, so the slug ends at a hyphen before 60 characters.
+ */
+const slugLimit = 60;
+
+/** The name part of a project id: lowercase letters and digits, joined by hyphens. */
+export function projectSlug(name: string): string {
+  const slug = name
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function twoDigits(value: number): string {
-  return String(value).padStart(2, "0");
+  if (slug.length <= slugLimit) return slug;
+  const lastHyphen = slug.slice(0, slugLimit + 1).lastIndexOf("-");
+  return slug.slice(0, lastHyphen > 0 ? lastHyphen : slugLimit);
 }
 
 function isValidCreationTime(time: ProjectCreationTime): boolean {

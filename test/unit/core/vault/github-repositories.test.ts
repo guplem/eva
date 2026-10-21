@@ -130,6 +130,25 @@ describe("createGitHubRepository", () => {
     expect(JSON.parse(api.requests[0]?.body ?? "{}")).toEqual({ name: "vault", private: true, auto_init: false });
   });
 
+  test("a project repository gets a first commit and a description", async () => {
+    const api = fakeApi({ status: 201, body: repository("you/example-app") });
+
+    await createGitHubRepository({
+      token: "secret-token",
+      name: "example-app",
+      description: "An example app.",
+      initialize: true,
+      baseUrl: api.baseUrl,
+    });
+
+    expect(JSON.parse(api.requests[0]?.body ?? "{}")).toEqual({
+      name: "example-app",
+      description: "An example app.",
+      private: true,
+      auto_init: true,
+    });
+  });
+
   test("a name that exists says so", async () => {
     const api = fakeApi({
       status: 422,

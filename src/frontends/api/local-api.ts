@@ -86,12 +86,21 @@ const toolInstallSchema = z.object({ program: z.enum(installableTools) });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
+const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
   status: z.enum(["idea", "active", "paused", "closed"]).nullable(),
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
+});
+const newProjectSchema = z.object({
+  name: z.string().min(1).max(500),
+  description: z.string().max(10_000),
+  status: z.enum(["idea", "active", "paused", "closed"]),
+  tags: z.array(z.string().max(200)).max(100),
+  github: z.boolean(),
+  drive: z.boolean(),
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
@@ -406,6 +415,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       }),
     );
   }
+  if (method === "POST" && url.pathname === "/api/projects")
+    return json(await eva.createProject(newProjectSchema.parse(await request.json())), 201);
   if (method === "POST" && url.pathname === "/api/sessions") {
     const input = newSessionSchema.parse(await request.json());
     const engine = input.engine === undefined ? {} : { engine: input.engine };
@@ -523,6 +534,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
+  if (method === "PUT" && url.pathname === "/api/files") {
+    const { path, version, text } = vaultFileSchema.parse(await request.json());
+    return json(eva.saveFile(path, version, text));
+  }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {

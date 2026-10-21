@@ -280,7 +280,7 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
   if (!done(config().trust.trustedRepositoryOwners.length > 0)) {
     const owners = await ask(
       "trustedOwners",
-      `GitHub accounts whose repositories you trust, comma-separated [${config().trust.trustedRepositoryOwners.join(", ") || "none"}]: `,
+      `Other GitHub accounts or organizations whose repositories you trust (Eva trusts her own GitHub login already), comma-separated [${config().trust.trustedRepositoryOwners.join(", ") || "none"}]: `,
     );
     if (owners !== "") saveSetting({ trust: { trustedRepositoryOwners: splitList(owners) } });
   }

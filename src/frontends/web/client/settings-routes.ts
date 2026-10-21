@@ -5,7 +5,7 @@
 import type { ProgressStep } from "./api.ts";
 
 export type SectionId =
-  "setup" | "engines" | "vault" | "connections" | "access" | "personalize" | "updates" | "developer";
+  "setup" | "engines" | "vault" | "connections" | "trust" | "access" | "personalize" | "updates" | "developer";
 
 export interface SettingsSection {
   readonly id: SectionId;
@@ -35,6 +35,12 @@ export const settingsSections: readonly SettingsSection[] = [
     title: "Connections",
     summary: "GitHub, Telegram and Google.",
     steps: ["github", "telegram", "google"],
+  },
+  {
+    id: "trust",
+    title: "Trusted repositories",
+    summary: "The GitHub accounts and repositories whose hooks may run.",
+    steps: [],
   },
   {
     id: "access",
@@ -146,6 +152,24 @@ export const searchEntries: readonly SearchEntry[] = [
   },
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
   { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
+  {
+    item: "own-account",
+    section: "trust",
+    title: "Your GitHub account",
+    words: "trust hooks login own repositories",
+  },
+  {
+    item: "trusted-owners",
+    section: "trust",
+    title: "Trusted repository owners",
+    words: "trust hooks settings mcp github accounts organizations allowlist",
+  },
+  {
+    item: "trust-answers",
+    section: "trust",
+    title: "Saved trust answers",
+    words: "trust hooks ask again allow deny forget repositories",
+  },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
   { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
@@ -270,7 +294,13 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: ["remoteAccess.allowedTailscaleIdentities"],
     link: { section: "access", item: "accounts" },
   },
-  { title: "Trusted repository owners", home: "machine", keys: ["trust.trustedRepositoryOwners"], link: null },
+  {
+    title: "Trusted repository owners",
+    home: "machine",
+    keys: ["trust.trustedRepositoryOwners"],
+    link: { section: "trust", item: "trusted-owners" },
+  },
+  { title: "Saved trust answers", home: "machine", keys: [], link: { section: "trust", item: "trust-answers" } },
   { title: "Appearance", home: "browser", keys: [], link: { section: "personalize", item: "appearance" } },
 ];
 

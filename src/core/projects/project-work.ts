@@ -101,6 +101,12 @@ const commitMessagePrompt = [
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
 const reportTextLimit = 3_000;
 
+/**
+ * A clean clone stays with its chat for this time after the chat's last activity. An idle chat
+ * keeps no clone, so new work could take it while the person writes again (issue 356).
+ */
+const cloneGraceMs = 10 * 60_000;
+
 export class ProjectWork {
   private readonly options: ProjectWorkOptions;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
@@ -120,21 +126,23 @@ export class ProjectWork {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   async createSession(input: NewProjectChatInput): Promise<SessionRecord> {
     const project = this.project(input.projectId);
-    const clone =
-      input.cloneName === undefined
-        ? await this.oneCloneChoiceAtATime(project, () => this.freeOrNewClone(project))
-        : listClones(project.path).find((candidate) => candidate.name === input.cloneName);
-    if (clone === undefined)
-      throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
-    return this.options.sessions.createSession({
-      mode: "project",
-      engine: input.engine ?? this.options.defaultEngine,
-      model: input.model,
-      startFolder: clone.path,
-      source: input.source,
-      projectId: project.id,
-      clone: clone.name,
-    });
+    const inClone = (clone: Clone | undefined): SessionRecord => {
+      if (clone === undefined)
+        throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
+      return this.options.sessions.createSession({
+        mode: "project",
+        engine: input.engine ?? this.options.defaultEngine,
+        model: input.model,
+        startFolder: clone.path,
+        source: input.source,
+        projectId: project.id,
+        clone: clone.name,
+      });
+    };
+    if (input.cloneName !== undefined)
+      return inClone(listClones(project.path).find((candidate) => candidate.name === input.cloneName));
+    // The chat exists before the next choice starts, so its creation already keeps the clone.
+    return this.oneCloneChoiceAtATime(project, async () => inClone(await this.freeOrNewClone(project)));
   }
 
   /**
@@ -431,7 +439,13 @@ export class ProjectWork {
     for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
       const busy =
         this.reservedClones.has(clone.path) ||
-        sessions.list().some((session) => session.startFolder === clone.path && sessions.isBusy(session.id));
+        sessions
+          .list()
+          .some(
+            (session) =>
+              session.startFolder === clone.path &&
+              (sessions.isBusy(session.id) || sessions.hadActivityWithin(session.id, cloneGraceMs)),
+          );
       if (!busy && (await isCleanFolder(clone.path, this.options.runner, this.options.gitEnvironment))) return clone;
     }
     return this.cloneInto(project);

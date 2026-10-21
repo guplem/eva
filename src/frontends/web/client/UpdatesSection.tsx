@@ -95,6 +95,8 @@ function VersionsCard(): ReactElement {
   // The engine update can wait for a long turn, then download for minutes. The page asks
   // until it ends, also after a reload or a failed read on a weak phone connection.
   const engineBusy = engineUpdate === "loading" || (engineUpdate !== null && engineUpdate.phase !== "idle");
+  /** `claude update` runs or waits, so no other tool installs: Eva would refuse it. */
+  const engineRuns = engineUpdate !== "loading" && engineUpdate !== null && engineUpdate.phase !== "idle";
   useEffect(() => {
     if (!engineBusy) return;
     const timer = setTimeout(() => {
@@ -156,7 +158,7 @@ function VersionsCard(): ReactElement {
             const newest = latest.get(tool.program);
             const action = toolAction(tool, newest);
             const viaEngine = action === "Update" && usesEngineUpdate(tool.program);
-            const working = viaEngine ? engineBusy && engineUpdate !== "loading" : installing === tool.program;
+            const working = viaEngine ? engineRuns : installing === tool.program;
             return (
               <Fragment key={tool.program}>
                 <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
@@ -167,7 +169,7 @@ function VersionsCard(): ReactElement {
                       className={
                         action === "Install" || tool.tooOld || newest !== undefined ? "primary small" : "ghost small"
                       }
-                      disabled={installing !== null || (viaEngine && engineBusy)}
+                      disabled={installing !== null || engineRuns}
                       onClick={() => void (viaEngine ? updateEngine() : install(tool.program as InstallableTool))}
                     >
                       {working ? (action === "Update" ? "Updating…" : "Installing…") : action}

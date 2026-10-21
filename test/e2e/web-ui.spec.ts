@@ -2703,6 +2703,10 @@ test("Settings: a page opened during the engine update follows it, past a failed
     card.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
   ).toBeVisible();
   await expect(card.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  // No other tool installs while claude updates.
+  await expect(card.getByRole("button", { name: "Update", exact: true })).toHaveCount(2);
+  for (const button of await card.getByRole("button", { name: "Update", exact: true }).all())
+    await expect(button).toBeDisabled();
   await expect(card.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
   await expect(card.getByRole("button").first()).toHaveText("Update");
   await expect(card.getByRole("button").first()).toBeEnabled();

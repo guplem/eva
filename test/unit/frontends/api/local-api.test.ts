@@ -1021,7 +1021,11 @@ describe("web routes", () => {
   });
 
   test("trust: the overview, and the removal of a saved answer", async () => {
-    expect(await json<unknown>(await call("/api/trust"))).toEqual({ githubAccount: null, owners: [], answers: [] });
+    expect(await json<unknown>(await call("/api/trust"))).toMatchObject({
+      githubAccount: null,
+      owners: [],
+      answers: [],
+    });
     const removed = await call("/api/trust/answers", { method: "DELETE", body: { url: "https://github.com/x/y" } });
     expect(await json<{ answers: unknown[] }>(removed)).toMatchObject({ answers: [] });
     expect((await call("/api/trust/answers", { method: "DELETE", body: {} })).status).toBe(400);

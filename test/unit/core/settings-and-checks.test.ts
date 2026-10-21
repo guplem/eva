@@ -620,14 +620,14 @@ describe("live settings, the vault fetch and updates", () => {
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toContain('"frequency": "weekly"');
   });
 
-  test("the trusted owners apply at once, and the overview adds the Eva's own GitHub account", () => {
-    expect(eva.trust()).toEqual({ githubAccount: null, owners: [], answers: [] });
+  test("the trusted owners apply at once, and the overview adds Eva's own GitHub account", () => {
+    expect(eva.trust()).toEqual({ githubAccount: null, githubLoggedIn: false, owners: [], answers: [] });
     expect(eva.updateSettings({ trust: { trustedRepositoryOwners: ["example-org"] } })).toEqual({
       saved: true,
       restartNeeded: false,
     });
     saveGitHubAccount(homePaths(home), { id: 1234, login: "example-user", name: null });
-    expect(eva.trust()).toEqual({ githubAccount: "example-user", owners: ["example-org"], answers: [] });
+    expect(eva.trust()).toMatchObject({ githubAccount: "example-user", owners: ["example-org"], answers: [] });
   });
 
   test("a saved trust answer shows without its token, and a removal makes Eva ask again", () => {
@@ -1271,6 +1271,15 @@ describe("the commit identity of an Eva", () => {
       ...(githubApiBaseUrl === undefined ? {} : { githubApiBaseUrl }),
     });
   const agentGitConfig = (): string => readFileSync(join(home, "engines", "git", "gitconfig"), "utf8");
+
+  test("a token from before Eva kept the account shows as a login whose account is not read yet", () => {
+    const instance = instanceWith({ githubToken: "an-old-token" });
+    try {
+      expect(instance.trust()).toMatchObject({ githubAccount: null, githubLoggedIn: true });
+    } finally {
+      instance.stop();
+    }
+  });
 
   test("a start signs the agents' commits with the saved account", () => {
     saveGitHubAccount(homePaths(home), account);

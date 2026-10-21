@@ -227,6 +227,15 @@ describe("trust", () => {
     expect(new TrustStore(path).answers()).toEqual([{ url: "https://github.com/other/tool", decision: "untrusted" }]);
   });
 
+  test("two URLs that show alike give one row, and a denial wins", () => {
+    const store = new TrustStore(join(sandbox.root, "trust.json"));
+    store.remember("https://one@github.com/owner/app", "untrusted");
+    store.remember("https://two@github.com/owner/app", "trusted");
+    expect(store.answers()).toEqual([{ url: "https://github.com/owner/app", decision: "untrusted" }]);
+    store.forget("https://github.com/nobody/app");
+    expect(store.answers()).toHaveLength(1);
+  });
+
   test("a broken trust file means no answers yet", () => {
     const path = join(sandbox.root, "trust.json");
     sandbox.write(sandbox.root, "trust.json", "{broken");

@@ -241,16 +241,21 @@ export class TrustStore {
 
   /** Each answer by its shown URL, so a token in a saved URL never leaves the core. */
   answers(): TrustAnswer[] {
-    return Object.entries(this.decisions)
-      .map(([url, decision]) => ({ url: shownUrl(url), decision }))
-      .sort((a, b) => a.url.localeCompare(b.url));
+    // Two URLs that differ only in their user part show as one row: one Remove forgets both.
+    const byUrl = new Map<string, TrustAnswer>();
+    for (const [url, decision] of Object.entries(this.decisions)) {
+      const shown = shownUrl(url);
+      // A denial wins, so the row never shows trust that one of the URLs lacks.
+      if (byUrl.get(shown)?.decision !== "untrusted") byUrl.set(shown, { url: shown, decision });
+    }
+    return [...byUrl.values()].sort((a, b) => a.url.localeCompare(b.url));
   }
 
   /** Removes every answer shown as this URL, so Eva asks again. */
   forget(shown: string): void {
-    for (const url of Object.keys(this.decisions)) {
-      if (shownUrl(url) === shown) Reflect.deleteProperty(this.decisions, url);
-    }
+    const urls = Object.keys(this.decisions).filter((url) => shownUrl(url) === shown);
+    if (urls.length === 0) return;
+    for (const url of urls) Reflect.deleteProperty(this.decisions, url);
     this.save();
   }
 

@@ -276,8 +276,10 @@ export interface EvaSetupState extends SetupState {
 
 /** Whose repositories Eva trusts, for the Trusted repositories section. */
 export interface TrustOverview {
-  /** The login of this Eva's GitHub account, or null with no GitHub login. */
+  /** The login of this Eva's GitHub account, or null when Eva has no record of it. */
   readonly githubAccount: string | null;
+  /** True when a GitHub token is saved. A token from before Eva kept the account has no record until a Test. */
+  readonly githubLoggedIn: boolean;
   readonly owners: readonly string[];
   readonly answers: readonly TrustAnswer[];
 }
@@ -1153,7 +1155,8 @@ export class Eva {
   trust(): TrustOverview {
     return {
       githubAccount: loadGitHubAccount(this.options.paths)?.login ?? null,
-      owners: this.settings.saved().config.trust.trustedRepositoryOwners,
+      githubLoggedIn: this.settings.secrets.githubToken !== undefined,
+      owners: this.settings.config.trust.trustedRepositoryOwners,
       answers: this.trustStore.answers(),
     };
   }
@@ -1167,7 +1170,8 @@ export class Eva {
   /** The owners in the settings, and the account of this Eva's GitHub login: she trusts her own work. */
   private trustedOwners(): readonly string[] {
     const login = loadGitHubAccount(this.options.paths)?.login;
-    const owners = this.settings.saved().config.trust.trustedRepositoryOwners;
+    // From memory, not the file: only a save through Eva changes whom she trusts while she runs.
+    const owners = this.settings.config.trust.trustedRepositoryOwners;
     return login === undefined ? owners : [...owners, login];
   }
 

@@ -3527,7 +3527,7 @@ test("Files: a save of a file that changed meanwhile asks to load it again (issu
   await expect(file.getByRole("textbox")).toHaveValue('{"theme":"dark","size":2}');
 });
 
-test("Files: a tap on another path asks before it drops an edit, and a double tap saves once (issue 308)", async ({
+test("Files: an edit stays while the person goes to another folder or page, and a save says so (issue 308)", async ({
   page,
 }) => {
   await logIn(page);
@@ -3544,15 +3544,20 @@ test("Files: a tap on another path asks before it drops an edit, and a double ta
   const file = page.getByRole("region", { name: "File text" });
   await file.getByRole("button", { name: "Edit" }).click();
   await file.getByRole("textbox").fill('{"theme":"light"}');
-  // The person stays: the editor keeps the change, and so does the address.
-  page.once("dialog", (dialog) => void dialog.dismiss());
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Notes" }).click();
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await page.getByRole("list", { name: "Contents of Vault" }).getByRole("link", { name: "Notes" }).click();
+  await page
+    .getByRole("list", { name: "Contents of Notes" })
+    .getByRole("link", { name: /settings\.json/ })
+    .click();
   await expect(file.getByRole("textbox")).toHaveValue('{"theme":"light"}');
-  await expect(page).toHaveURL(/#\/files\/Notes\/settings\.json$/);
   await file.getByRole("button", { name: "Save" }).dblclick();
   await expect(file.getByRole("textbox")).toHaveCount(0);
   expect(saves).toBe(1);
   await expect(file.getByRole("alert")).toHaveCount(0);
+  await expect(file.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
 });
 
 test("Files: JSON shows indented, and its plain text shows as on disk (issue 308)", async ({ page }) => {

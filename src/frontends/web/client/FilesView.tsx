@@ -36,25 +36,11 @@ export function FilesView(): ReactElement {
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
-  /** The path on screen, and whether its editor holds a change, for the address check below. */
-  const shownPath = useRef(path);
-  shownPath.current = path;
-  const unsaved = useRef(false);
-  const onUnsaved = useCallback((value: boolean): void => {
-    unsaved.current = value;
-  }, []);
 
   useEffect(() => {
     const onHashChange = (): void => {
       const next = filePathOf(window.location.hash);
-      if (next === null || next === shownPath.current) return;
-      // A tap on another file or folder must not drop an edit without a word.
-      if (unsaved.current && !window.confirm("Your change to this file is not saved. Leave it?")) {
-        window.history.replaceState(null, "", fileAddressOf(shownPath.current));
-        return;
-      }
-      unsaved.current = false;
-      setPath(next);
+      if (next !== null) setPath(next);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -137,7 +123,6 @@ export function FilesView(): ReactElement {
               large={large}
               onLarge={setLarge}
               onSaved={onSaved}
-              onUnsaved={onUnsaved}
               onTryAgain={() => setAttempt((count) => count + 1)}
             />
           ))}
@@ -162,7 +147,6 @@ interface ColumnProps {
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
-  readonly onUnsaved: (unsaved: boolean) => void;
   readonly onTryAgain: () => void;
 }
 
@@ -176,7 +160,6 @@ function Column({
   large,
   onLarge,
   onSaved,
-  onUnsaved,
   onTryAgain,
 }: ColumnProps): ReactElement | null {
   const place = isLast ? "files-pane" : "files-pane files-parent";
@@ -212,9 +195,7 @@ function Column({
       </div>
     );
   // A new file starts outside the editor, with its own view.
-  return (
-    <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} onUnsaved={onUnsaved} />
-  );
+  return <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} />;
 }
 
 function FolderList({
@@ -256,23 +237,53 @@ function FolderList({
   );
 }
 
+interface Draft {
+  readonly text: string;
+  /** The version that the edit started from, so a save after a change on disk answers `file_changed`. */
+  readonly version: string;
+}
+
+/**
+ * The changed drafts by path. They live outside the page, so a tap on another file, another page
+ * or Back keeps the edit, and the file opens in its editor again.
+ */
+const drafts = new Map<string, Draft>();
+let leaveGuard = false;
+
+/** A browser text area gives LF only, so a Windows file must not look changed. */
+const sameText = (first: string, second: string): boolean =>
+  first.replaceAll("\r\n", "\n") === second.replaceAll("\r\n", "\n");
+
+function keepDraft(path: string, draft: Draft | null, onDisk: string): void {
+  if (draft === null || sameText(draft.text, onDisk)) drafts.delete(path);
+  else drafts.set(path, draft);
+  if (leaveGuard) return;
+  leaveGuard = true;
+  // A reload or a closed tab would drop the drafts, so the browser asks first.
+  window.addEventListener("beforeunload", (event) => {
+    if (drafts.size > 0) event.preventDefault();
+  });
+}
+
 interface FilePreviewProps {
   readonly file: ShownFile;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
-  /** Tells the page whether the editor holds a change, so a tap on another path asks first. */
-  readonly onUnsaved: (unsaved: boolean) => void;
 }
 
-function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewProps): ReactElement {
+function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): ReactElement {
   const [plain, setPlain] = useState(false);
-  /** The text in the editor, or null outside it. */
-  const [draft, setDraft] = useState<string | null>(null);
+  /** The edit, or null outside the editor. */
+  const [draft, setDraftState] = useState<Draft | null>(() => drafts.get(file.path) ?? null);
   const [problem, setProblem] = useState<{ readonly text: string; readonly changed: boolean } | null>(null);
-  /** A ref, not state: a double tap comes before the next render, and two saves of one version clash. */
-  const saving = useRef(false);
   const [busy, setBusy] = useState(false);
+  /** The editor closes at a save, so its button cannot show the check: the bar says it. */
+  const [saved, setSaved] = useState(false);
+  const setDraft = (next: Draft | null, onDisk = file.text): void => {
+    keepDraft(file.path, next, onDisk);
+    setDraftState(next);
+  };
   const view = viewOf(file.path);
 
   useEffect(() => {
@@ -284,31 +295,22 @@ function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewPr
     return () => window.removeEventListener("keydown", onKey);
   }, [large, onLarge]);
 
-  // An edit that is not saved must not vanish with a reload or a closed tab.
-  const unsaved = draft !== null && draft !== file.text;
-  useEffect(() => {
-    onUnsaved(unsaved);
-    if (!unsaved) return;
-    const onLeave = (event: BeforeUnloadEvent): void => event.preventDefault();
-    window.addEventListener("beforeunload", onLeave);
-    return () => window.removeEventListener("beforeunload", onLeave);
-  }, [unsaved, onUnsaved]);
+  const unsaved = draft !== null && !sameText(draft.text, file.text);
 
   const save = async (): Promise<boolean> => {
-    if (draft === null || saving.current) return false;
-    saving.current = true;
+    if (draft === null) return false;
     setBusy(true);
     setProblem(null);
     try {
-      onSaved(await api.saveFile(file.path, file.version, draft));
+      onSaved(await api.saveFile(file.path, draft.version, draft.text));
       setDraft(null);
+      setSaved(true);
       return true;
     } catch (caught) {
       const changed = caught instanceof ApiError && caught.code === "file_changed";
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed });
       return false;
     } finally {
-      saving.current = false;
       setBusy(false);
     }
   };
@@ -318,7 +320,7 @@ function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewPr
     try {
       const answer = await api.files(file.path);
       onSaved(answer);
-      if (answer.kind === "file") setDraft(answer.text);
+      if (answer.kind === "file") setDraft({ text: answer.text, version: answer.version }, answer.text);
     } catch (caught) {
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed: true });
     }
@@ -331,13 +333,23 @@ function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewPr
         <div className="files-file-actions">
           {draft === null ? (
             <>
+              {saved && (
+                <span role="status" className="files-size">
+                  <Icon name="check" /> Saved
+                </span>
+              )}
               {(view === "markdown" || view === "json") && (
                 <button className="ghost" onClick={() => setPlain(!plain)}>
                   {plain ? "Show formatted" : "Show plain text"}
                 </button>
               )}
               {file.editable ? (
-                <button onClick={() => setDraft(file.text)}>
+                <button
+                  onClick={() => {
+                    setSaved(false);
+                    setDraft({ text: file.text, version: file.version });
+                  }}
+                >
                   <Icon name="pen" />
                   Edit
                 </button>
@@ -378,10 +390,10 @@ function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewPr
         <textarea
           className="files-editor"
           aria-label={`Text of ${file.path}`}
-          value={draft}
+          value={draft.text}
           spellCheck={false}
           autoFocus
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => setDraft({ ...draft, text: event.target.value })}
         />
       ) : (
         <FileText path={file.path} text={file.text} plain={plain} />

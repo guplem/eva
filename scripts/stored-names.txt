@@ -208,7 +208,9 @@ vault .eva/schedules.json schedules[].days=thu
 vault .eva/schedules.json schedules[].days=tue
 vault .eva/schedules.json schedules[].days=wed
 vault .eva/schedules.json schedules[].enabled
+vault .eva/schedules.json schedules[].every
 vault .eva/schedules.json schedules[].file
+vault .eva/schedules.json schedules[].from
 vault .eva/schedules.json schedules[].id
 vault .eva/schedules.json schedules[].model
 vault .eva/schedules.json schedules[].name

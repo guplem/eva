@@ -20,7 +20,7 @@ import {
 } from "./schedule-definitions.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
 import { ScheduleStateStore } from "./schedule-state.ts";
-import { dueSlot, nextSlot, wallClockOf } from "./schedule-timing.ts";
+import { dueSlot, nextSlot, runsOnDay, wallClockOf } from "./schedule-timing.ts";
 
 export type ScheduleEvent =
   | {
@@ -76,6 +76,8 @@ export interface SchedulerOptions {
 export interface ScheduleView {
   readonly schedule: Schedule;
   readonly nextRun: string | null;
+  /** The `HH:MM` of each run today, for the day line. */
+  readonly runsToday: readonly string[];
   /** The slot of the last firing and whether it failed, or null before the first firing. */
   readonly lastRun: { readonly slot: string; readonly failed: boolean } | null;
 }
@@ -129,6 +131,7 @@ export class Scheduler {
       schedules: definitions.schedules.map((schedule) => ({
         schedule,
         nextRun: schedule.enabled ? nextSlot(schedule, now) : null,
+        runsToday: runsOnDay(schedule, now),
         lastRun: this.state.peek(schedule.id)?.lastResult ?? null,
       })),
       problems: definitions.problems,

@@ -89,6 +89,18 @@ async function newCloneCard(page: Page): Promise<Locator> {
   return page.getByRole("region", { name: `Clone ${name}` });
 }
 
+/**
+ * Right-clicks an element after it scrolls into view. A scroll event comes a frame later, and a scroll
+ * closes an open context menu, so the click waits for that frame.
+ */
+async function rightClickInView(locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+  await locator.click({ button: "right" });
+}
+
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
 async function openSettings(page: Page, section?: string): Promise<void> {
   // Only the main navigation: a chat or a project in the list may also have "Settings" in its name.
@@ -811,7 +823,7 @@ test("a right click on a clone deletes it, after a strong warning about its chat
   const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
   await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
 
-  await sameCard.locator(".clone-head").click({ button: "right" });
+  await rightClickInView(sameCard.locator(".clone-head"));
   await page.getByRole("menuitem", { name: "Delete clone" }).click();
   const dialog = page.getByRole("dialog", { name: `Delete the clone ${cloneName}` });
   await expect(dialog.locator(".callout.danger")).toContainText("1 chat");
@@ -820,7 +832,7 @@ test("a right click on a clone deletes it, after a strong warning about its chat
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(sameCard).toBeVisible();
 
-  await sameCard.locator(".clone-head").click({ button: "right" });
+  await rightClickInView(sameCard.locator(".clone-head"));
   await page.getByRole("menuitem", { name: "Delete clone" }).click();
   await dialog.getByLabel(/I understand/).check();
   await remove.click();

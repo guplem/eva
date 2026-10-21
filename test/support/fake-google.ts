@@ -1,5 +1,5 @@
 /**
- * A fake Google for tests: the token endpoint and one cheap read of each service, at
+ * A fake Google for tests: the token endpoint, one cheap read of each service and a Drive folder, at
  * `baseUrl`. A test sets an error to see how Eva names the step to fix.
  */
 import type { Server } from "bun";
@@ -12,6 +12,10 @@ export interface FakeGoogle {
   readonly revokeRequests: URLSearchParams[];
   /** The path of each API request. */
   readonly apiRequests: string[];
+  /** The name of each Drive folder that Eva created. */
+  readonly driveFolders: string[];
+  /** A broken answer to a new Drive folder: a dropped connection, or a body that is not JSON. */
+  driveFailure: "dropped" | "unreadable" | null;
   /** The account of the ID token. */
   email: string;
   /** The scopes that the person allowed, with spaces between them. */
@@ -40,6 +44,8 @@ export function fakeGoogle(): FakeGoogle {
     tokenRequests: [],
     revokeRequests: [],
     apiRequests: [],
+    driveFolders: [],
+    driveFailure: null,
     email: "person@example.com",
     grantedScope: "openid https://www.googleapis.com/auth/calendar.readonly",
     tokenError: null,
@@ -83,6 +89,16 @@ export function fakeGoogle(): FakeGoogle {
           { error: { code: 403, status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] } },
           { status: 403 },
         );
+      if (request.method === "POST" && url.pathname === "/drive/v3/files") {
+        // A body that fails at once makes the fetch itself fail, as a lost network does.
+        if (fake.driveFailure === "dropped")
+          return new Response(new ReadableStream({ start: (stream) => stream.error(new Error("dropped")) }));
+        if (fake.driveFailure === "unreadable") return new Response("<html>busy</html>");
+        const { name } = (await request.json()) as { name: string };
+        fake.driveFolders.push(name);
+        const id = `folder-${String(fake.driveFolders.length)}`;
+        return Response.json({ id, webViewLink: `https://drive.google.com/drive/folders/${id}` });
+      }
       return Response.json({ items: [] });
     },
   });

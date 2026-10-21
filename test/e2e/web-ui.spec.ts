@@ -822,6 +822,57 @@ test("a failed first read of the projects says so, and Try again reads them", as
   await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
+test("New project: the form creates a project and opens its page", async ({ page }, testInfo) => {
+  const name = `Form app ${testInfo.project.name}`;
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  // The demo has no GitHub login, so the form says what to set up instead of a send that fails.
+  await expect(form.getByLabel(/Create a private GitHub repository/)).toBeDisabled();
+  await expect(form).toContainText("Log in to GitHub");
+  await form.getByLabel("Name").fill(name);
+  await form.getByLabel("Description").fill("Made from the form.");
+  await form.getByLabel("Status").selectOption("idea");
+  await form.getByLabel(/^Tags/).fill("demo form");
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(page.locator("main")).toContainText("Made from the form.");
+});
+
+test("New project: a failed read of the settings turns the steps off and says so", async ({ page }) => {
+  await logIn(page);
+  await openProjects(page);
+  await page.route("**/api/settings", (route) => route.fulfill({ status: 500, json: { error: "Busy." } }));
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await expect(form.getByLabel(/Create a Google Drive folder/)).toBeDisabled();
+  await expect(form).toContainText("Eva could not read the settings.");
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+});
+
+test("New project: a failed step keeps the project and says why", async ({ page }) => {
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    return route.fulfill({
+      status: 201,
+      json: { projectId: "2025-03-02-1015-example-app", github: { problem: "name already exists" }, drive: null },
+    });
+  });
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Name").fill("Example app");
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form.getByRole("status")).toHaveText("Eva could not create the GitHub repository: name already exists");
+  await form.getByRole("button", { name: "Open the project" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { level: 1 })).toHaveText("Example app");
+});
+
 test("the project page says that the clones load, not that there are none", async ({ page }) => {
   await logIn(page);
   let release = (): void => undefined;
@@ -1026,6 +1077,11 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
   const card = page.getByRole("region", { name: "Eva's rules" });
   await expect(card.getByRole("heading", { name: "You are Eva" })).toBeVisible();
   await expect(card).toContainText("A project chat never uses them");
+  // The person's rules and the built-in rules each have their own frame, so the person sees where each ends.
+  const own = card.getByRole("region", { name: "Your rules" });
+  await expect(own.getByRole("heading", { name: "You are Eva" })).toBeVisible();
+  await expect(own).not.toContainText("Eva's built-in rules");
+  await expect(card.locator("details.rules-box")).toContainText("Eva's built-in rules");
   try {
     await card.getByRole("button", { name: "Edit" }).click();
     await card.getByLabel("Rules in Markdown").fill("# Be brief\n\nAnswer in one sentence.\n");
@@ -2741,10 +2797,22 @@ test("Settings: the Versions card shows the shape of its list while it reads", a
   const card = page.getByRole("region", { name: "Versions" });
   await expect(card.getByRole("status")).toHaveText("Reading the versions…");
   await expect(card.locator(".skeleton-fact").first()).toBeVisible();
+  const skeletonRows = card.locator(".skeleton-fact");
+  const skeletonPitch = await rowPitch(skeletonRows.nth(0), skeletonRows.nth(1));
   answer();
   await expect(card.locator("dl.facts")).toBeVisible();
   await expect(card.locator(".skeleton")).toHaveCount(0);
+  // Eva and git have no button, so their rows have the plain height of a fact.
+  const names = card.locator("dl.facts dt");
+  expect(skeletonPitch).toBeCloseTo(await rowPitch(names.nth(0), names.nth(1)), 0);
 });
+
+/** The distance from the top of one row to the top of the next. */
+async function rowPitch(first: Locator, second: Locator): Promise<number> {
+  const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+  if (a === null || b === null) throw new Error("A row has no box.");
+  return b.y - a.y;
+}
 
 test("Settings: the Versions card installs a missing tool and shows the new version", async ({ page }) => {
   let installed = false;

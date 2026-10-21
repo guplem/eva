@@ -4,6 +4,7 @@
  */
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
+import { join } from "node:path";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
 import {
   baseEnvironmentAllowlist,
@@ -88,6 +89,9 @@ import { googleScopes } from "./google/google-scopes.ts";
 import { googleStep } from "./google/google-steps.ts";
 import { createTranscriber, type Transcribe } from "./voice/transcriber.ts";
 import { discoverProjects, searchProjects, type Project, type ProjectQuery } from "./projects/project-catalog.ts";
+import { createProject, type NewProjectInput, type NewProjectResult } from "./projects/new-project.ts";
+import { wallClockOf } from "./schedules/schedule-timing.ts";
+import { createDriveFolder } from "./google/google-drive.ts";
 import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
@@ -107,7 +111,7 @@ import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
-import type { GitHubRepository } from "./vault/github-repositories.ts";
+import { createGitHubRepository, type GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
 import {
@@ -1003,6 +1007,47 @@ export class Eva {
   /** Replaces the whole `AGENTS.md`, with the line endings of the file on disk. */
   saveProjectFile(projectId: string, version: string, edited: string): ProjectFile {
     return this.projectWork.saveProjectFile(projectId, version, edited);
+  }
+
+  /**
+   * Creates a project from the form, with a GitHub repository and a Drive folder when asked.
+   * The idle sweep commits the new files.
+   */
+  createProject(input: NewProjectInput): Promise<NewProjectResult> {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null)
+      throw new EvaError("vault_not_found", "Eva needs your vault. Finish the setup in Settings, on Eva's page.");
+    // The machine's own zone when none is set, as vault setup does: a new project is named in local time.
+    const timeZone = this.options.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return createProject(
+      input,
+      { projectsFolder: join(vaultPath, "Projects"), wallClock: wallClockOf(this.options.now(), timeZone) },
+      {
+        createRepository: async (name, description) => {
+          const token = this.settings.secrets.githubToken;
+          if (token === undefined)
+            throw new EvaError("github_failed", "Log in to GitHub in Settings > Connections > GitHub first.");
+          const repository = await createGitHubRepository({
+            token,
+            name,
+            ...(description === "" ? {} : { description }),
+            initialize: true,
+            ...(this.options.githubApiBaseUrl === undefined ? {} : { baseUrl: this.options.githubApiBaseUrl }),
+          });
+          return repository.cloneUrl.replace(/\.git$/, "");
+        },
+        createDriveFolder: (name) =>
+          createDriveFolder(
+            {
+              config: this.settings.config.google,
+              client: this.googleClient(),
+              credentialsFolder: googleCredentialsFolder(this.options.paths),
+              ...(this.options.googleBaseUrl === undefined ? {} : { baseUrl: this.options.googleBaseUrl }),
+            },
+            name,
+          ),
+      },
+    );
   }
 
   publicSettings(): PublicSettings {

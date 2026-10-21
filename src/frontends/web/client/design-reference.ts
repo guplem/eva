@@ -278,6 +278,8 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   user: "The person, an account",
   home: "Home page",
   mic: "Record a voice note",
+  expand: "Make the file preview large",
+  shrink: "Make the file preview small again",
 };
 
 export interface ArchitectureLayer {

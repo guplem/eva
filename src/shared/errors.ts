@@ -29,7 +29,8 @@ export type EvaErrorCode =
   | "voice_unavailable"
   | "rules_changed"
   | "file_changed"
-  | "file_not_writable";
+  | "file_not_writable"
+  | "file_not_downloadable";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

@@ -9,6 +9,7 @@ import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
+import type { VaultDownload } from "../../core/files/file-download.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type {
@@ -534,6 +535,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
+  if (method === "GET" && url.pathname === "/api/files/download")
+    return downloadResponse(eva.downloadFile(url.searchParams.get("path") ?? ""));
   if (method === "PUT" && url.pathname === "/api/files") {
     const { path, version, text } = vaultFileSchema.parse(await request.json());
     return json(eva.saveFile(path, version, text));
@@ -835,6 +838,29 @@ function safeHost(origin: string): string | null {
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
+}
+
+/**
+ * A saved file, never a shown page: a vault HTML file must not run as Eva's page. The plain name
+ * is for an old browser, so a quote or an accent there turns into `_`.
+ */
+function downloadResponse(download: VaultDownload): Response {
+  const plainName = download.name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  return new Response(download.bytes, {
+    headers: {
+      "content-type": download.zip ? "application/zip" : "application/octet-stream",
+      "content-disposition": `attachment; filename="${plainName}"; filename*=UTF-8''${headerName(download.name)}`,
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+/** The RFC 5987 form of a header value: `encodeURIComponent` leaves `'`, `(`, `)` and `*` as they are. */
+function headerName(name: string): string {
+  return encodeURIComponent(name).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 /** A route value must be a Response: the single executable refuses a `Bun.file` there. */

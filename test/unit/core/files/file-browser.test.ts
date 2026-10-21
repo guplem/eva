@@ -97,7 +97,7 @@ describe("browseVault: files", () => {
 
   test("a binary file shows a reason instead of its content", () => {
     write("photo.png", new Uint8Array([137, 80, 78, 71, 0, 0, 0, 13]));
-    expect(browseVault(vault, "photo.png", keep)).toMatchObject({ kind: "unreadable", size: 8 });
+    expect(browseVault(vault, "photo.png", keep)).toMatchObject({ kind: "unreadable", size: 8, downloadable: true });
   });
 
   test("a file that is not UTF-8 is not text", () => {
@@ -107,14 +107,18 @@ describe("browseVault: files", () => {
 
   test("a file larger than the limit shows a reason", () => {
     write("big.log", "a".repeat(maxShownBytes + 1));
-    expect(browseVault(vault, "big.log", keep)).toMatchObject({ kind: "unreadable", size: maxShownBytes + 1 });
+    expect(browseVault(vault, "big.log", keep)).toMatchObject({
+      kind: "unreadable",
+      size: maxShownBytes + 1,
+      downloadable: true,
+    });
   });
 
   test.each([".env", "Projects/2025-03-02-1015-example-app/repos/example-app-0/.env.local", "id.pem"])(
     "%s looks like a secrets file, so its text never shows",
     (path) => {
       write(path, "TOKEN=abc\n");
-      expect(browseVault(vault, path, keep)).toMatchObject({ kind: "unreadable" });
+      expect(browseVault(vault, path, keep)).toMatchObject({ kind: "unreadable", downloadable: false });
     },
   );
 });
@@ -155,7 +159,7 @@ describe("browseVault: refusals (lesson 72)", () => {
       return; // A system that cannot make the link cannot follow one either.
     }
     expect(refusal(() => browseVault(vault, "g/config", keep))).not.toBeNull();
-    expect(browseVault(vault, "harmless.txt", keep)).toMatchObject({ kind: "unreadable" });
+    expect(browseVault(vault, "harmless.txt", keep)).toMatchObject({ kind: "unreadable", downloadable: false });
   });
 
   test.skipIf(process.platform === "win32")("elsewhere, a listed name with a colon opens", () => {
@@ -182,7 +186,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     mkdirSync(join(vault, "Locked"));
     chmodSync(join(vault, "Locked"), 0o000);
     try {
-      expect(browseVault(vault, "Locked", keep)).toMatchObject({ kind: "unreadable" });
+      expect(browseVault(vault, "Locked", keep)).toMatchObject({ kind: "unreadable", downloadable: false });
     } finally {
       chmodSync(join(vault, "Locked"), 0o755);
     }

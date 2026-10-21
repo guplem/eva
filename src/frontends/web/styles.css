@@ -552,7 +552,9 @@ textarea {
   gap: 8px;
 }
 
-/* A flex child with hidden overflow can shrink to nothing, so a long list would cut each chat. */
+/* A flex child with hidden overflow can shrink to nothing, so a long list would cut each chat.
+   On a phone, the 44 px minimum of a button replaces its content height, so a project card would shrink too. */
+.sidebar > *,
 .sidebar-list > * {
   flex-shrink: 0;
 }

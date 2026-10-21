@@ -6,16 +6,14 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ApiError } from "./api.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import { errorFix, type ErrorFix } from "./error-fixes.ts";
-import { Icon, type IconName } from "./icons.tsx";
+import type { IconName } from "./icons.tsx";
 import { destinationOf } from "./navigation.ts";
-
-/** A toast hides itself after this time; the person can close it sooner. */
-const toastVisibleMs = 8_000;
+import { Toast } from "./Toast.tsx";
 
 /** A failed login shows a key, as the guide does for an expired login. */
 const loginCodes: ReadonlySet<EvaErrorCode> = new Set(["github_failed", "google_failed"]);
 
-interface Toast {
+interface ErrorMessage {
   readonly message: string;
   readonly icon: IconName;
   readonly fix: ErrorFix | null;
@@ -31,7 +29,9 @@ export function useShowError(): ShowError {
 }
 
 export function ErrorToastProvider({ children }: { readonly children: ReactNode }): ReactElement {
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ErrorMessage | null>(null);
+  // A new error restarts the ring, even with the same words as the last one.
+  const [shown, setShown] = useState(0);
   // On the Settings page, a button to it would do nothing.
   const [settingsIsOpen, setSettingsIsOpen] = useState(() => destinationOf(window.location.hash) === "settings");
   useEffect(() => {
@@ -41,43 +41,41 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
   }, []);
   const showError = useCallback((caught: unknown): void => {
     setToast(describeError(caught));
+    setShown((count) => count + 1);
   }, []);
-
-  useEffect(() => {
-    if (toast === null) return undefined;
-    const timer = setTimeout(() => setToast(null), toastVisibleMs);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const fix = toast?.fix ?? null;
   return (
     <ShowErrorContext.Provider value={showError}>
       {children}
       {toast !== null && (
-        <div className="toast" role="alert">
-          <Icon name={toast.icon} />
-          <span>{toast.message}</span>
-          {fix !== null && !settingsIsOpen && (
-            <button
-              className="primary"
-              onClick={() => {
-                setToast(null);
-                window.location.hash = fix.address;
-              }}
-            >
-              {fix.label}
-            </button>
-          )}
-          <button className="toast-close" aria-label="Close the message" onClick={() => setToast(null)}>
-            <Icon name="x" />
-          </button>
-        </div>
+        <Toast
+          key={shown}
+          message={toast.message}
+          tone="bad"
+          icon={toast.icon}
+          role="alert"
+          onClose={() => setToast(null)}
+          actions={
+            fix !== null && !settingsIsOpen ? (
+              <button
+                className="primary"
+                onClick={() => {
+                  setToast(null);
+                  window.location.hash = fix.address;
+                }}
+              >
+                {fix.label}
+              </button>
+            ) : undefined
+          }
+        />
       )}
     </ShowErrorContext.Provider>
   );
 }
 
-function describeError(caught: unknown): Toast {
+function describeError(caught: unknown): ErrorMessage {
   if (caught instanceof ApiError) {
     const code = caught.code;
     return {

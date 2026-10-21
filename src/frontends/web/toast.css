@@ -1,0 +1,207 @@
+/*
+ * The toasts: client/Toast.tsx. They stack at the bottom of the screen. A toast swaps the page
+ * colours, so it stands out from any page under it. A round mark gives its tone a shape and a colour.
+ */
+.toast-stack {
+  position: fixed;
+  left: 50%;
+  bottom: max(var(--space-6), env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
+  width: min(600px, calc(100vw - 2 * var(--space-4)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  /* The empty stack must not catch the taps on the page under it. */
+  pointer-events: none;
+}
+
+/* A toast floats over the page, so the page gets room to scroll its last control above it. */
+:root:has(.toast-stack > .toast) .settings-page {
+  padding-bottom: 160px;
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "mark text actions close";
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--ink);
+  color: var(--bg);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: var(--dialog-shadow);
+  animation: toast-in 180ms ease-out;
+}
+
+.toast-mark {
+  grid-area: mark;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.toast-mark .icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.4;
+}
+
+.toast.ok .toast-mark {
+  background: var(--ok);
+  color: var(--panel);
+}
+
+.toast.warn .toast-mark {
+  background: var(--warn);
+  color: var(--on-warn);
+}
+
+.toast.bad .toast-mark {
+  background: var(--bad);
+  color: var(--panel);
+}
+
+.toast-text {
+  grid-area: text;
+  min-width: 0;
+  padding: var(--space-1) 0;
+  overflow-wrap: anywhere;
+}
+
+/* A wait inside a toast: the bar takes the colours of the toast, not of the card. */
+.toast-text .progress-text {
+  color: inherit;
+}
+
+.toast-text .progress-track {
+  background: color-mix(in oklch, currentColor 20%, transparent);
+}
+
+.toast-actions {
+  grid-area: actions;
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* The buttons of a toast stay small, also on a phone: the toast is a note, not a page. */
+.toast-actions button {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.toast-actions button:not(.primary) {
+  background: transparent;
+  color: inherit;
+  border-color: color-mix(in oklch, currentColor 35%, transparent);
+}
+
+.toast-close {
+  grid-area: close;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.toast-close .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.4;
+}
+
+.toast-timer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* The ring starts at the top, as a clock does. */
+  transform: rotate(-90deg);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+}
+
+.toast-timer-track {
+  opacity: 0.2;
+}
+
+/* The ring empties. When it ends, the toast closes: client/Toast.tsx listens for the end. */
+.toast-timer-left {
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  animation-name: toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.toast:focus-within .toast-timer-left {
+  animation-play-state: paused;
+}
+
+/* Only a real pointer stops the ring: on a phone, a tap leaves a hover that does not end. */
+@media (hover: hover) {
+  .toast:hover .toast-timer-left {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes toast-timer {
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (max-width: 760px) {
+  /* A toast shows above the tab bar, so it never hides a destination. */
+  .toast-stack {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    align-items: stretch;
+  }
+
+  .toast {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mark text close"
+      "actions actions actions";
+  }
+
+  .toast-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

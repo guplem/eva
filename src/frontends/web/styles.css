@@ -1043,23 +1043,6 @@ textarea {
   gap: 10px;
 }
 
-.settings-notice {
-  position: sticky;
-  bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.settings-notice span {
-  flex: 1;
-}
-
 .settings h3 {
   margin: 8px 0 0;
   font-size: 15px;
@@ -1176,50 +1159,6 @@ textarea {
 .light.grey {
   background: var(--muted);
   opacity: 0.5;
-}
-
-/* The toast swaps the page colours, so it stands out from any page under it. */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: max(26px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100vw - 32px);
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  border-radius: 20px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: var(--text-sm);
-  box-shadow: 0 16px 40px -12px oklch(0.1 0.03 var(--h) / 0.5);
-}
-
-.toast > .icon {
-  flex: none;
-}
-
-.toast span {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.toast button {
-  flex: none;
-  font-size: var(--text-sm);
-}
-
-.toast .toast-close {
-  border: none;
-  background: none;
-  color: inherit;
-  opacity: 0.8;
-  padding: var(--space-1);
-  display: grid;
 }
 
 /* A note in a vault sync conflict: both versions side by side, and the three picks. */
@@ -1390,11 +1329,6 @@ textarea {
   /* The tab bar holds the bottom inset, so the composer needs none. */
   .composer {
     padding-bottom: 12px;
-  }
-
-  /* A toast shows above the tab bar, so it never hides a destination. */
-  .toast {
-    bottom: calc(84px + env(safe-area-inset-bottom));
   }
 
   /* The menu button and the title share the first line. The actions wrap to the next one. */
@@ -2108,30 +2042,6 @@ button.link-button {
   gap: var(--space-4);
 }
 
-.settings-notice {
-  position: sticky;
-  bottom: max(var(--space-3), env(safe-area-inset-bottom));
-  margin: auto var(--space-6) var(--space-3);
-  max-width: 832px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-input);
-  background: var(--ink);
-  color: var(--bg);
-  box-shadow: var(--shadow);
-  z-index: 5;
-}
-
-.settings-notice span {
-  flex: 1;
-}
-
-.settings-notice button {
-  color: inherit;
-}
-
 /* ==========================================================================
    Settings: the home page
    ========================================================================== */
@@ -2347,11 +2257,6 @@ button.link-button {
   height: 16px;
 }
 
-.restart-question {
-  flex-wrap: wrap;
-  border: 2px solid var(--warn);
-}
-
 .stepper {
   display: flex;
   align-items: center;
@@ -2466,10 +2371,6 @@ button.link-button {
 
   .settings-page {
     padding: var(--space-2) var(--space-4) var(--space-8);
-  }
-
-  .settings-notice {
-    margin: auto var(--space-3) var(--space-3);
   }
 
   .card {

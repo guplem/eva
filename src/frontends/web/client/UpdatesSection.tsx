@@ -6,6 +6,7 @@ import {
   api,
   type EngineUpdateStatus,
   type EvaVersions,
+  type InstallableTool,
   type PublicSettings,
   type UpdateStatus,
 } from "./api.ts";
@@ -50,15 +51,36 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
   );
 }
 
-/** The versions that `eva doctor` shows in a terminal, so a phone sees them too. */
+/**
+ * The versions that `eva doctor` shows in a terminal, so a phone sees them too. A tool that Eva
+ * installs herself gets a button, so a missing or old tool needs no terminal.
+ */
 function VersionsCard(): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
+  /** The tool that this page installs now. */
+  const [installing, setInstalling] = useState<InstallableTool | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
-  useEffect(() => {
+  const readVersions = (): void => {
     api.versions().then(setVersions, () => {
       setVersions("failed");
     });
-  }, []);
+  };
+  useEffect(readVersions, []);
+
+  const install = async (program: InstallableTool): Promise<void> => {
+    setNote(null);
+    setInstalling(program);
+    try {
+      const result = await api.installTool(program);
+      setNote({ ok: result.ok, text: result.message });
+    } catch (error) {
+      setNote({ ok: false, text: errorText(error) });
+    } finally {
+      setInstalling(null);
+      readVersions();
+    }
+  };
 
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
@@ -74,13 +96,47 @@ function VersionsCard(): ReactElement {
           {versions.tools.map((tool) => (
             <Fragment key={tool.program}>
               <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
-              <dd>{tool.version ?? "Not installed"}</dd>
+              <dd className={toolAction(tool) === null ? undefined : "fact-with-action"}>
+                {tool.version === null ? "Not installed" : tool.tooOld ? `${tool.version}, too old` : tool.version}
+                {toolAction(tool) !== null && (
+                  <>
+                    <button
+                      className={tool.version === null || tool.tooOld ? "primary small" : "ghost small"}
+                      disabled={installing !== null}
+                      onClick={() => void install(tool.program as InstallableTool)}
+                    >
+                      {installing === tool.program
+                        ? toolAction(tool) === "Update"
+                          ? "Updating…"
+                          : "Installing…"
+                        : toolAction(tool)}
+                    </button>
+                  </>
+                )}
+              </dd>
             </Fragment>
           ))}
         </dl>
       )}
+      {/* An install says nothing until it ends, so its share is unknown. */}
+      {installing !== null && <ProgressBar label={`Installing ${installing}. This can take a few minutes.`} />}
+      {note !== null && (
+        <div role="status" className={note.ok ? "callout" : "callout warning"}>
+          {note.text}
+        </div>
+      )}
     </Card>
   );
+}
+
+/**
+ * "Install" for a missing tool, "Update" for one that is there, or null for no button. The
+ * Claude Code card updates claude with its own `claude update`, so claude gets only Install.
+ */
+function toolAction(tool: EvaVersions["tools"][number]): "Install" | "Update" | null {
+  if (!tool.installable) return null;
+  if (tool.version === null) return "Install";
+  return tool.program === "claude" ? null : "Update";
 }
 
 function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): ReactElement {

@@ -467,14 +467,14 @@ describe("runCheck", () => {
       ).toEqual({
         ok: false,
         detail:
-          "The token belongs to @example-owner, but this machine has no gh, so your agents cannot push their work. Install gh from https://cli.github.com, then press Log in with GitHub again.",
+          "The token belongs to @example-owner, but this machine has no gh, so your agents cannot push their work. Press Log in with GitHub again: Eva installs gh first. Or press Install next to gh on the Updates page.",
       });
       expect(
         await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: ghLoggedOut("2.39.2") })),
       ).toEqual({
         ok: false,
         detail:
-          "The token belongs to @example-owner, but gh 2.39.2 on this machine is too old for Eva's login. Install gh 2.40 or newer from https://cli.github.com, then press Log in with GitHub again.",
+          "The token belongs to @example-owner, but gh 2.39.2 on this machine is too old for Eva's login. Press Log in with GitHub again: Eva installs a new gh first. Or press Update next to gh on the Updates page.",
       });
     } finally {
       await github.stop(true);

@@ -2519,6 +2519,46 @@ test("Settings: the Versions card shows the shape of its list while it reads", a
   await expect(card.locator(".skeleton")).toHaveCount(0);
 });
 
+test("Settings: the Versions card installs a missing tool and shows the new version", async ({ page }) => {
+  let installed = false;
+  const posts: unknown[] = [];
+  await page.route("**/api/versions", async (route) => {
+    const tool = (program: string, version: string | null, installable: boolean, tooOld = false): object => ({
+      program,
+      feature: "a test",
+      version,
+      installable,
+      tooOld,
+    });
+    await route.fulfill({
+      json: {
+        eva: "1.0.0",
+        tools: [
+          tool("git", "2.50.0", false),
+          tool("claude", "2.1.300", true),
+          tool("uv", "0.9.0", true),
+          tool("gh", installed ? "2.62.0" : "2.4.0", true, !installed),
+        ],
+      },
+    });
+  });
+  await page.route("**/api/tools/install", async (route) => {
+    posts.push(route.request().postDataJSON());
+    installed = true;
+    await route.fulfill({ json: { ok: true, message: "Installed gh." } });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card.getByText("2.4.0, too old")).toBeVisible();
+  // git has no installer in Eva, and the Claude Code card updates claude.
+  await expect(card.getByRole("button")).toHaveText(["Update", "Update"]);
+  await card.getByRole("button").nth(1).click();
+  await expect(card.getByText("Installed gh.")).toBeVisible();
+  await expect(card.getByText("2.62.0")).toBeVisible();
+  expect(posts).toEqual([{ program: "gh" }]);
+});
+
 test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;

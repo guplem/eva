@@ -1006,6 +1006,12 @@ describe("web routes", () => {
     expect((await finish({})).status).toBe(400);
   });
 
+  test("the Google log out answers, also with no login to end", async () => {
+    const logOut = await call("/api/google/login", { method: "DELETE" });
+    expect(logOut.status).toBe(200);
+    expect(await json<{ restartNeeded: boolean }>(logOut)).toEqual({ restartNeeded: false });
+  });
+
   test("the Claude login says what is missing, and checks the pasted code", async () => {
     const started = await call("/api/engines/claude-code/login", { method: "POST", body: {} });
     expect(started.status).toBe(409);

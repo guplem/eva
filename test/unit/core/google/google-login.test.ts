@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -35,6 +35,39 @@ function returnAddress(url: string, code = "the-code"): string {
   const state = new URL(url).searchParams.get("state") ?? "";
   return `${googleRedirectUri}?state=${state}&code=${code}&scope=openid`;
 }
+
+describe("GoogleLogin.forget", () => {
+  test("revokes the token at Google, deletes the saved login, and a missing one is fine", async () => {
+    const { url } = login.start(client.clientId, scopes);
+    await login.finish(returnAddress(url), client);
+    await login.forget("person@example.com");
+    // A running chat may write the file back, so the token itself must stop working.
+    expect(google.revokeRequests.map((form) => form.get("token"))).toEqual(["the-refresh-token"]);
+    expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+    await login.forget("person@example.com");
+    expect(google.revokeRequests).toHaveLength(1);
+  });
+
+  test("deletes the saved login when Google cannot be reached", async () => {
+    const { url } = login.start(client.clientId, scopes);
+    await login.finish(returnAddress(url), client);
+    google.stop();
+    await login.forget("person@example.com");
+    expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+  });
+
+  test("a login that Eva cannot delete gives a google_failed error", async () => {
+    // A folder in the place of the file stands for a file that another program holds open.
+    mkdirSync(join(folder, "google", credentialFileName("person@example.com"), "inside"), { recursive: true });
+    let caught: unknown;
+    try {
+      await login.forget("person@example.com");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught) && caught.code === "google_failed").toBe(true);
+  });
+});
 
 describe("GoogleLogin", () => {
   test("the consent address asks for offline access with PKCE, for a loopback address", () => {

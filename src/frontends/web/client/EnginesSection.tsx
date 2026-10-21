@@ -97,7 +97,7 @@ export function ClaudeCodeCard({ context }: { readonly context: SettingsContext 
       <>
         <LoggedIn
           service="Claude Code"
-          secret="claudeOauthToken"
+          logOut={() => api.removeSecret("claudeOauthToken")}
           warning="Eva removes the Claude Code token from this machine. Chats with Claude Code stop until you log in again."
           context={context}
           onLogInAgain={() => setLoggingInAgain(true)}

@@ -54,7 +54,7 @@ export async function fetchClone(
       clone,
       runner,
       environment,
-      [...githubCredentialArguments, "fetch", "-q", "--no-tags"],
+      [...githubCredentialArguments, ...noHooks(), "fetch", "-q", "--no-tags"],
       networkTimeoutMs,
     );
     return result.exitCode === 0 ? null : reasonOf(result.stderr);
@@ -77,8 +77,8 @@ export async function pullClone(clone: Clone, runner: ProcessRunner, environment
 }
 
 /**
- * Commits every change with the message, then pushes the branch. With no change, it pushes the
- * commits that are there. A branch with no upstream gets `origin` as its upstream.
+ * Commits every change with the message, then pushes the branch to the branch of the same name on
+ * `origin`, which becomes its upstream. With no change, it pushes the commits that are there.
  */
 export async function commitAndPush(
   clone: Clone,
@@ -86,6 +86,12 @@ export async function commitAndPush(
   runner: ProcessRunner,
   environment: Environment,
 ): Promise<void> {
+  if (usesLfs(clone)) {
+    throw new EvaError(
+      "git_failed",
+      `${clone.name} uses Git LFS, whose upload needs a hook that Eva does not run. Push it from a chat.`,
+    );
+  }
   const files = await changedFiles(clone, runner, environment);
   if (files.length > 0) {
     await mustRun(clone, runner, environment, ["add", "-A"], "stage the changes of");
@@ -95,23 +101,28 @@ export async function commitAndPush(
       environment,
       [...noHooks(), "commit", "-q", "--no-verify", "-F", "-"],
       "commit in",
-      message,
+      message.trim().length > 0 ? message : fallbackCommitMessage(files),
     );
   }
-  const upstream = await git(clone, runner, environment, ["rev-parse", "--abbrev-ref", "@{upstream}"]);
-  const hasUpstream = upstream.exitCode === 0;
-  if (hasUpstream && files.length === 0 && (await readSyncState(clone, runner, environment)).ahead === 0) {
+  const branch = await git(clone, runner, environment, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (branch.exitCode !== 0 || branch.stdout.trim() === "HEAD")
+    throw new EvaError("git_failed", `${clone.name} is on no branch, so Eva cannot push it.`);
+  const remoteBranch = await git(clone, runner, environment, [
+    "rev-parse",
+    "--verify",
+    "-q",
+    `refs/remotes/origin/${branch.stdout.trim()}`,
+  ]);
+  const head = await git(clone, runner, environment, ["rev-parse", "HEAD"]);
+  if (files.length === 0 && remoteBranch.exitCode === 0 && remoteBranch.stdout.trim() === head.stdout.trim()) {
     throw new EvaError("git_failed", `${clone.name} has nothing to push.`);
   }
-  // push.default=upstream: the branch goes to its own upstream, even one with another name.
-  const push = hasUpstream
-    ? ["-c", "push.default=upstream", "push", "-q", "--no-verify"]
-    : ["push", "-q", "--no-verify", "-u", "origin", "HEAD"];
+  // `HEAD` names the branch of the same name, so a branch that tracks main never lands on main.
   const result = await git(
     clone,
     runner,
     environment,
-    [...githubCredentialArguments, ...noHooks(), ...push],
+    [...githubCredentialArguments, ...noHooks(), "push", "-q", "--no-verify", "-u", "origin", "HEAD"],
     networkTimeoutMs,
   );
   if (result.exitCode !== 0) {
@@ -119,6 +130,15 @@ export async function commitAndPush(
       "git_failed",
       `Could not push ${clone.name}. The commit stays in the clone. ${reasonOf(result.stderr)}`,
     );
+  }
+}
+
+/** Git LFS uploads its files in a pre-push hook, and Eva's push runs no hook. */
+function usesLfs(clone: Clone): boolean {
+  try {
+    return /\bfilter=lfs\b/.test(readFileSync(join(clone.path, ".gitattributes"), "utf8"));
+  } catch {
+    return false;
   }
 }
 

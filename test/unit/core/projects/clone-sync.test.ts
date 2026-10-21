@@ -110,6 +110,29 @@ describe("commit and push", () => {
     expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
   });
 
+  test("a branch that tracks main pushes to its own name, never to main", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature", "--track", "origin/main");
+    sandbox.write(clone.path, "new.txt", "new\n");
+    await commitAndPush(clone, "Start the feature", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("seed");
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "feature")).toBe("Start the feature");
+  });
+
+  test("an empty message falls back to a plain one", async () => {
+    sandbox.write(clone.path, "new.txt", "new\n");
+    await commitAndPush(clone, "  ", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Update new.txt");
+  });
+
+  test("a repository with Git LFS files is refused, because its upload hook does not run", async () => {
+    sandbox.write(clone.path, ".gitattributes", "*.png filter=lfs diff=lfs merge=lfs -text\n");
+    const failure = await commitAndPush(clone, "Add LFS", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("seed");
+  });
+
   test("with nothing to push, it says so", async () => {
     const failure = await commitAndPush(clone, "nothing", systemProcessRunner, gitEnvironment).catch(
       (error: unknown) => error,

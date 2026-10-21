@@ -991,6 +991,33 @@ describe("web routes", () => {
     expect((await call(`${path}/clones/missing-0/pull`, { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("a second pull or push of a clone is refused while the first runs", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    sandbox.write(clonePath, "README.md", "# Example\n");
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "Add the readme");
+    };
+    const first = call(`${path}/clones/${name}/push`, { method: "POST", body: {} });
+    while (engine.requests.length === 0) await Bun.sleep(10);
+    const second = await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} });
+    expect(second.status).toBe(409);
+    release();
+    expect(await json<{ message: string }>(await first)).toEqual({ message: "Add the readme" });
+  });
+
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const read = await json<{ text: string; version: string }>(await call(`${path}/file`));

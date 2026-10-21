@@ -105,11 +105,14 @@ export class ProjectWork {
   private readonly options: ProjectWorkOptions;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones: Set<string>;
+  /** Clones with a pull or a push running, so two never share one index. */
+  private readonly syncingClones: Set<string>;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
   private readonly cloneChoices: Map<string, Promise<unknown>>;
 
   constructor(options: ProjectWorkOptions) {
     this.reservedClones = new Set();
+    this.syncingClones = new Set();
     this.cloneChoices = new Map();
     this.options = options;
   }
@@ -266,7 +269,7 @@ export class ProjectWork {
   /** A fast-forward pull of one clone. */
   async pullClone(projectId: string, cloneName: string): Promise<void> {
     const clone = this.idleClone(projectId, cloneName);
-    await pullClone(clone, this.options.runner, this.options.gitEnvironment);
+    await this.oneSyncAtATime(clone, () => pullClone(clone, this.options.runner, this.options.gitEnvironment));
   }
 
   /** Pulls each clone that is behind and has no running chat. One failure does not stop the others. */
@@ -279,7 +282,7 @@ export class ProjectWork {
         .map(async (clone) => {
           try {
             this.idleClone(project.id, clone.name);
-            await pullClone(clone, runner, gitEnvironment);
+            await this.oneSyncAtATime(clone, () => pullClone(clone, runner, gitEnvironment));
             return null;
           } catch (error) {
             if (!isEvaError(error)) throw error;
@@ -297,11 +300,15 @@ export class ProjectWork {
   async pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
     const clone = this.idleClone(projectId, cloneName);
     const { runner, gitEnvironment } = this.options;
-    const trimmed = note.trim();
-    const files = await changedFiles(clone, runner, gitEnvironment);
-    const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(clone);
-    await commitAndPush(clone, message, runner, gitEnvironment);
-    return { message };
+    return this.oneSyncAtATime(clone, async () => {
+      const trimmed = note.trim();
+      const files = await changedFiles(clone, runner, gitEnvironment);
+      const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(clone);
+      // The model call takes seconds, and a chat may start a turn meanwhile.
+      this.idleClone(projectId, cloneName);
+      await commitAndPush(clone, message, runner, gitEnvironment);
+      return { message };
+    });
   }
 
   private async commitMessage(clone: Clone): Promise<string> {
@@ -326,6 +333,17 @@ export class ProjectWork {
       return fallback;
     }
     return cleanCommitMessage(result.text) ?? fallback;
+  }
+
+  private async oneSyncAtATime<Result>(clone: Clone, work: () => Promise<Result>): Promise<Result> {
+    if (this.syncingClones.has(clone.path))
+      throw new EvaError("session_busy", `Eva already pulls or pushes ${clone.name}. Try again when it ends.`);
+    this.syncingClones.add(clone.path);
+    try {
+      return await work();
+    } finally {
+      this.syncingClones.delete(clone.path);
+    }
   }
 
   /** A clone of the project with no running chat: git must not change files under a turn. */

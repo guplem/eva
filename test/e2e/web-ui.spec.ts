@@ -3896,6 +3896,42 @@ test("Files: Try again reads a folder again after a failed read (issue 253)", as
   await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
 });
 
+test("Files: the person stars a note, it shows first on the page, and a tap opens it (issue 349)", async ({
+  page,
+}, testInfo) => {
+  await logIn(page);
+  const name = `${testInfo.project.name}-list.md`;
+  await page.goto(`/#/files/Notes/${name}`);
+  const favorites = page.getByRole("navigation", { name: "Favorites" });
+  await expect(page.getByRole("region", { name: "File text" })).toBeVisible();
+  await page.getByRole("button", { name: "Add to favorites" }).click();
+  await expect(page.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+  await expect(favorites.getByRole("link", { name })).toHaveAttribute("aria-current", "page");
+
+  // The favorites live in the vault, so they stay after a reload, on any folder of the page.
+  await page.goto("/#/files/Projects");
+  await page.reload();
+  await favorites.getByRole("link", { name }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await page.getByRole("button", { name: "Remove from favorites" }).click();
+  await expect(page.getByRole("button", { name: "Add to favorites" })).toBeVisible();
+  await expect(favorites.getByRole("link", { name })).toHaveCount(0);
+});
+
+test("Files: a favorite that is gone shows as missing, and the person removes it (issue 349)", async ({ page }) => {
+  await logIn(page);
+  const stored = [{ path: "Old/gone.md", name: "gone.md", kind: "missing" }];
+  await page.route("**/api/files/favorites", async (route) => {
+    if (route.request().method() === "GET") await route.fulfill({ json: stored });
+    else await route.fulfill({ json: [] });
+  });
+  await page.goto("/#/files");
+  const favorites = page.getByRole("navigation", { name: "Favorites" });
+  await expect(favorites.getByText("Missing")).toBeVisible();
+  await favorites.getByRole("button", { name: "Remove gone.md from favorites" }).click();
+  await expect(favorites).toHaveCount(0);
+});
+
 test("Files: a file and a folder download from their own button, and a failed download says why", async ({ page }) => {
   await logIn(page);
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");

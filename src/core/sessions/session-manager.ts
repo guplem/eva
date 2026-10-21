@@ -687,7 +687,7 @@ ${prompt}`,
     if (session.mode !== "project") return () => undefined;
     const folder = session.startFolder;
     let told = false;
-    // A loop, not a queue: when several turns wait, the first to wake takes the folder, and the others wait again.
+    // Several turns can wait. The first to wake takes the folder, and the others wait again.
     for (let held = this.folderTurns.get(folder); held !== undefined; held = this.folderTurns.get(folder)) {
       if (!told) {
         told = true;
@@ -696,10 +696,17 @@ ${prompt}`,
           text: "Another chat runs a turn in this clone. This turn starts when that turn ends.",
         });
       }
-      await new Promise<void>((resolve) => {
-        signal.addEventListener("abort", () => resolve(), { once: true });
-        void held.then(resolve);
-      });
+      // A front end can stop the turn inside the notice event, before the listener exists.
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          const onAbort = (): void => resolve();
+          signal.addEventListener("abort", onAbort, { once: true });
+          void held.then(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          });
+        });
+      }
       if (signal.aborted) throw new Error("The turn stopped while it waited for another chat in this clone.");
     }
     let release = (): void => undefined;

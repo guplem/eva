@@ -1370,15 +1370,26 @@ describe("one turn per clone (issue 356)", () => {
     }).id;
   }
 
-  /** An engine whose "long" turns wait for `release`. */
-  function heldEngine(): { engine: FakeEngine; release: () => void } {
+  /** An engine whose "long" turns wait for `release`, and that counts the most turns that ran at once. */
+  function heldEngine(): { engine: FakeEngine; release: () => void; mostAtOnce: () => number } {
     let open: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (open = resolve));
+    let running = 0;
+    let most = 0;
     const engine = new FakeEngine(async function* (request, turnNumber) {
-      if (request.prompt === "long") await held;
-      yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+      running += 1;
+      most = Math.max(most, running);
+      try {
+        if (request.prompt === "long") await held;
+        if (request.prompt === "fail") throw new Error("The engine broke.");
+        // A short pause, so a second turn that runs at the same time shows in the count.
+        await Bun.sleep(5);
+        yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+      } finally {
+        running -= 1;
+      }
     });
-    return { engine, release: () => open() };
+    return { engine, release: () => open(), mostAtOnce: () => most };
   }
 
   test("a turn waits while another chat runs a turn in the same clone, says why, and then starts", async () => {
@@ -1430,8 +1441,24 @@ describe("one turn per clone (issue 356)", () => {
     expect(engine.requests.map((request) => request.prompt)).toEqual(["long"]);
   });
 
-  test("several waiting chats run one after the other", async () => {
+  test("a stop sent from the notice event ends the wait at once", async () => {
     const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const first = newProjectSession(manager, "/clones/example-app-0");
+    const second = newProjectSession(manager, "/clones/example-app-0");
+    manager.subscribe((event) => {
+      if (event.sessionId === second && event.kind === "notice") manager.stop(second);
+    });
+    const running = manager.send(first, "long");
+    await waitUntil(() => engine.requests.length === 1);
+    await manager.send(second, "short");
+    expect(manager.get(second).turns[0]?.failure).toContain("stopped");
+    release();
+    await running;
+  });
+
+  test("several waiting chats run one after the other", async () => {
+    const { engine, release, mostAtOnce } = heldEngine();
     const manager = createManager(engine);
     const ids = [0, 1, 2].map(() => newProjectSession(manager, "/clones/example-app-0"));
     const running = manager.send(ids[0] ?? "", "long");
@@ -1441,24 +1468,30 @@ describe("one turn per clone (issue 356)", () => {
     release();
     await Promise.all([running, ...others]);
     expect(engine.requests.map((request) => request.prompt).sort()).toEqual(["long", "three", "two"]);
+    expect(mostAtOnce()).toBe(1);
+  });
+
+  test("a turn that fails frees the clone for the waiting turn", async () => {
+    const { engine } = heldEngine();
+    const manager = createManager(engine);
+    const first = newProjectSession(manager, "/clones/example-app-0");
+    const second = newProjectSession(manager, "/clones/example-app-0");
+    await Promise.all([manager.send(first, "fail"), manager.send(second, "short")]);
+    expect(manager.get(first).turns[0]?.failure).toContain("broke");
+    expect(manager.get(second).turns[0]?.failure).toBeNull();
   });
 
   test("a waiting turn gets its whole time-out after the wait", async () => {
-    let open: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => (open = resolve));
-    const engine = new FakeEngine(async function* (request, turnNumber) {
-      if (request.prompt === "long") await held;
-      if (request.prompt === "short") await Bun.sleep(60);
-      yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
-    });
+    const { engine, release } = heldEngine();
     const manager = createManager(engine, { turnTimeoutMs: 100 });
     const first = newProjectSession(manager, "/clones/example-app-0");
     const second = newProjectSession(manager, "/clones/example-app-0");
     const running = manager.send(first, "long");
     await waitUntil(() => engine.requests.length === 1);
     const waiting = manager.send(second, "short");
-    await Bun.sleep(80);
-    open();
+    // Longer than the time-out: a timer that started before the wait would stop the waiting turn.
+    await Bun.sleep(200);
+    release();
     await Promise.all([running, waiting]);
     expect(manager.get(second).turns[0]?.failure).toBeNull();
   });

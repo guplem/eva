@@ -226,6 +226,22 @@ test("with no chat yet, the page greets the person, and the first message makes 
   await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
 });
 
+test("with no chat yet, the first message shows while Eva works on it", async ({ page }) => {
+  await hideOldChats(page);
+  await logIn(page);
+  const text = `The first message, please approve (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  // The approval holds the turn, so the page shows the chat before it has a stored turn.
+  const dialog = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(dialog).toContainText("gh issue create");
+  await expect(page.locator(".message.user")).toContainText(text);
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Allow once" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered");
+});
+
 test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
   await hideOldChats(page);
   await page.route("**/api/status", async (route) => {

@@ -41,6 +41,14 @@ interface ConversationProps {
   readonly blocker: ChatBlocker | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
+  /** The message that made a chat on the New chat page. It shows until the chat stores its turn. */
+  readonly firstMessage?: SentMessage | null;
+}
+
+/** A message that the person sent and the chat has not stored yet. */
+export interface SentMessage {
+  readonly sessionId: string;
+  readonly text: string;
 }
 
 export function Conversation({
@@ -51,6 +59,7 @@ export function Conversation({
   approvals,
   blocker,
   voiceNotes,
+  firstMessage = null,
 }: ConversationProps): ReactElement {
   const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
@@ -85,6 +94,7 @@ export function Conversation({
           approvals={approvals}
           blocker={blocker}
           voiceNotes={voiceNotes}
+          firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
         />
       ))}
     </div>
@@ -99,6 +109,7 @@ function Branch({
   approvals,
   blocker,
   voiceNotes,
+  firstMessage,
 }: {
   session: SessionRecord;
   parent: SessionRecord | undefined;
@@ -107,9 +118,14 @@ function Branch({
   approvals: ConversationProps["approvals"];
   blocker: ChatBlocker | null;
   voiceNotes: boolean;
+  firstMessage: string | null;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
-  const [sent, setSent] = useState<PendingMessage | null>(null);
+  const turnCount = session.turns.length;
+  // The New chat page sent this message before the chat opened here, so the chat starts with it.
+  const [sent, setSent] = useState<PendingMessage | null>(
+    firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
+  );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
   const closeTasks = useCallback(() => setShownTasks(null), []);
@@ -117,7 +133,6 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
-  const turnCount = session.turns.length;
   const pending = shownPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   /**
@@ -128,7 +143,11 @@ function Branch({
   const working = liveSteps !== undefined || (pending !== null && !sawLiveSteps);
   const startedAt = useStartTime(working);
 
+  // Only a new stored turn clears the message. The first render must keep the message of the New chat page.
+  const storedTurns = useRef(turnCount);
   useEffect(() => {
+    if (storedTurns.current === turnCount) return;
+    storedTurns.current = turnCount;
     setSent(null);
   }, [turnCount]);
   useEffect(() => {

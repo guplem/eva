@@ -153,10 +153,12 @@ function isFullMoonDay(today: CalendarDay): boolean {
   return [nearest - 1, nearest, nearest + 1].some((k) => sameDay(fullMoonInstant(k), today));
 }
 
+/** A date as `YYYY-MM-DD`, or a birthday with no year as `--MM-DD`, which reads as in the leap year 2000. */
 function parseDate(text: string | null): CalendarDay | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text ?? "");
+  const match = /^(\d{4}|-)-(\d{2})-(\d{2})$/.exec(text ?? "");
   if (match === null) return null;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const year = match[1] === "-" ? 2000 : Number(match[1]);
+  const [month, day] = [Number(match[2]), Number(match[3])];
   const date = new Date(year, month - 1, day, 12);
   if (date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return { date, year, month, day };
@@ -211,6 +213,8 @@ function local(rule: Rule, places: readonly string[]): Rule {
 
 const spanishSpeaking = [
   "ES",
+  "GQ",
+  "PH",
   "MX",
   "AR",
   "CO",
@@ -240,7 +244,7 @@ const rules: readonly Rule[] = [
   // From the Saturday to Shrove Tuesday, the day before Ash Wednesday.
   { id: "carnival", on: (today) => daysFromEaster(today) >= -50 && daysFromEaster(today) <= -47 },
   { id: "easter", on: (today) => daysFromEaster(today) === 0 || daysFromEaster(today) === 1 },
-  local(fixed("santJordi", [4, 23]), ["ES-CT", "AD"]),
+  local(fixed("santJordi", [4, 23]), ["ES-CT", "ES-AR", "AD"]),
   local(fixed("santJoan", [6, 23], [6, 24]), ["ES", "PT", "AD", "FI", "SE", "NO", "DK", "EE", "LV", "LT"]),
   fixed("pride", [6, 28]),
   fixed("halloween", [10, 31]),

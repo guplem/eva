@@ -3,12 +3,12 @@
  * suggestions. A tap on a suggestion sends it as the first message. A chat that cannot answer
  * yet shows the missing setup step instead.
  */
-import { useEffect, useId, useState, type ReactElement, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type SyntheticEvent } from "react";
 import { api, type ChatBlocker } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import { factQuestion, greeting, setupBlock, suggestions, type FactQuestion, type Suggestion } from "./new-chat.ts";
-import { useSpecialDay } from "./FestiveDay.tsx";
+import { usePersonalFacts, useSpecialDay } from "./FestiveDay.tsx";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
@@ -17,8 +17,10 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
   const [shown, setShown] = useState<readonly Suggestion[] | null>(null);
   // On a special day, EVE shows that day's eyes and greeting instead.
   const day = useSpecialDay();
-  // A fact that Eva still needs, such as the birthday, shows as one special suggestion.
-  const [question, setQuestion] = useState<FactQuestion | null>(null);
+  // A fact that Eva still needs, such as the birthday, shows as one special suggestion. With no
+  // vault, the facts never load: Eva has nowhere to save a fact, so she asks for none.
+  const facts = usePersonalFacts();
+  const question = facts === null ? null : factQuestion(facts.missing);
 
   useEffect(() => {
     let current = true;
@@ -30,13 +32,6 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
       .then((googleReady) => {
         if (current) setShown(suggestions(googleReady));
       });
-    api
-      .aboutMe()
-      .then((facts) => {
-        if (current) setQuestion(factQuestion(facts.missing));
-      })
-      // With no vault, Eva has nowhere to save a fact, so she asks for none.
-      .catch(() => undefined);
     return () => {
       current = false;
     };
@@ -123,6 +118,13 @@ function FactQuestionCard({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [answer, setAnswer] = useState("");
+  const field = useRef<HTMLInputElement>(null);
+  // A stable function: the dialog focuses its Cancel button each time its onClose changes.
+  const close = useCallback(() => setOpen(false), []);
+  // The dialog focuses Cancel when it opens. This effect runs after it, so the field gets the focus.
+  useEffect(() => {
+    if (open) field.current?.focus();
+  }, [open]);
   const submit = (event: SyntheticEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (answer.trim() === "") return;
@@ -144,14 +146,15 @@ function FactQuestionCard({
         </span>
       </button>
       {open && (
-        <Dialog label={question.detail} closeLabel="Cancel" onClose={() => setOpen(false)}>
+        <Dialog label={question.detail} closeLabel="Cancel" onClose={close}>
           <form className="inline-form" onSubmit={submit}>
             <label className="field grow">
               <span className="field-label">{question.label}</span>
               <input
+                ref={field}
                 type={question.answer}
                 value={answer}
-                autoFocus
+                autoComplete="off"
                 onChange={(event) => setAnswer(event.target.value)}
               />
             </label>

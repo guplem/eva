@@ -178,3 +178,10 @@ describe("the person's place", () => {
     expect(specialDayOn(seasonInstant(2025, "september"), facts("AU", "south"))?.id).toBe("springEquinox");
   });
 });
+
+describe("a birthday with no year", () => {
+  test("shows on its day each year", () => {
+    expect(specialDayOn(on(2026, 5, 14), { birthDate: "--05-14", installedOn: null })?.id).toBe("birthday");
+    expect(specialDayOn(on(2027, 2, 28), { birthDate: "--02-29", installedOn: null })?.id).toBe("birthday");
+  });
+});

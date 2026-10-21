@@ -4116,3 +4116,18 @@ test("on a special day, EVE greets with that day's eyes, and the tab icon wears 
   await expect(greeting.locator(".festive-decoration svg")).toBeVisible();
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
 });
+
+test("a fact that Eva still needs shows as one special suggestion, and the answer goes to Eva", async ({ page }) => {
+  await page.clock.setFixedTime(ordinaryDay);
+  await logIn(page);
+  await newChat(page);
+  // The demo vault has no birthday yet, so Eva asks for it first.
+  await page.getByRole("button", { name: "Hey Eva! I was born on…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Tell Eva your birthday" });
+  const field = dialog.getByLabel("Your birthday");
+  await expect(field).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Tell Eva" })).toBeDisabled();
+  await field.fill("1990-05-14");
+  await dialog.getByRole("button", { name: "Tell Eva" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("I was born on 1990-05-14");
+});

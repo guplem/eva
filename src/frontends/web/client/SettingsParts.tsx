@@ -18,6 +18,7 @@ import { restartNote, type Note } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { cardId, type SettingsRoute } from "./settings-routes.ts";
 import type { StepMark } from "./setup-summary.ts";
+import { syncStateWords, syncStatusLabels } from "./status-overview.ts";
 
 /** What each Settings page gets from the shell around it. */
 export interface SettingsContext {
@@ -284,14 +285,6 @@ export function SecretField({ name, label, saved, help, check, onChanged, onSave
   );
 }
 
-const statusLabels: Readonly<Record<VaultSyncState["status"], string>> = {
-  ok: "Up to date",
-  offline: "Offline",
-  conflict: "Conflict",
-  error: "Error",
-  skipped: "Skipped",
-};
-
 // Offline and a conflict wait for the network or the person, so only an error is red.
 const syncMarks: Readonly<Record<VaultSyncState["status"], StepMark>> = {
   ok: "done",
@@ -316,12 +309,12 @@ export function VaultSyncView({
   onState: (state: VaultSyncState) => void;
   autoSync?: boolean | undefined;
 }): ReactElement {
-  const label = statusLabels[state.status];
+  const label = syncStatusLabels[state.status];
   return (
     <section className="sync-state" aria-label="Vault sync">
       <div className="secret-state">
         <span className={`pill ${syncMarks[state.status]}`}>{label}</span>
-        <span>Vault sync: {state.lastError === null ? label : `${label}: ${state.lastError}`}</span>
+        <span>Vault sync: {syncStateWords(state)}</span>
       </div>
       <div className="field-hint">
         Last commit: {formatTime(state.lastCommitAt)}. Last push: {formatTime(state.lastPushAt)}.

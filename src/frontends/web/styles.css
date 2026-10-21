@@ -548,21 +548,6 @@ textarea {
   flex: 1;
 }
 
-.online-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 4px var(--ok-bg);
-  margin-bottom: 8px;
-}
-
-.online-dot.offline {
-  background: var(--warn);
-  box-shadow: 0 0 0 4px var(--warn-bg);
-}
-
 /* Offline and the open problems, at the top of the main area. Each says what happened and has the fix. */
 /* The notices come under the page title, which each view renders in its own branch. */
 .main > * {
@@ -1414,10 +1399,9 @@ textarea {
     overflow: visible;
   }
 
-  /* The visor and the dot stay on the rail. On a phone, the "Reconnecting…" banner says the same. */
+  /* The visor stays on the rail. On a phone, the "Reconnecting…" banner says when Eva is offline. */
   .main-nav-visor,
-  .nav-spacer,
-  .online-dot {
+  .nav-spacer {
     display: none;
   }
 

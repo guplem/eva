@@ -216,6 +216,8 @@ export const api = {
   createProject: (input: NewProjectInput): Promise<NewProjectResult> => request("POST", "/api/projects", input),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  deleteClone: (projectId: string, clone: string): Promise<{ deletedChats: string[] }> =>
+    request("DELETE", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}`),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
   /** A file that changed since `version` answers 409 with `file_changed`. */

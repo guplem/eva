@@ -1,10 +1,11 @@
 /** The page of one project: its details, its warnings, and one card per clone with its chats. */
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { CloneDetails, Project, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { changesPill, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
+import { changesPill, countOf, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
 import { chatTime } from "./chat-list.ts";
-import { CardsSkeleton } from "./Loading.tsx";
+import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
+import { Dialog } from "./ChatPanel.tsx";
 import { chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 
@@ -16,6 +17,8 @@ interface ProjectPageProps {
   readonly chatsOf: (clone: CloneDetails) => readonly SessionRecord[];
   /** Whether a chat waits for a yes or a no from the person. */
   readonly needsYou: (chat: SessionRecord) => boolean;
+  /** Whether Eva runs a turn now in a chat or one of its forks. */
+  readonly isWorking: (chat: SessionRecord) => boolean;
   readonly error: string | null;
   readonly onBackToList: () => void;
   readonly onDetails: () => void;
@@ -24,6 +27,8 @@ interface ProjectPageProps {
   /** With an action, the chat opens and its header starts it, as the context menu asks. */
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: (clone: CloneDetails) => void;
+  /** Rejects when Eva cannot delete the clone, so the question stays open. */
+  readonly onDeleteClone: (clone: CloneDetails) => Promise<void>;
 }
 
 export function ProjectPage({
@@ -31,6 +36,7 @@ export function ProjectPage({
   clones,
   chatsOf,
   needsYou,
+  isWorking,
   error,
   onBackToList,
   onDetails,
@@ -38,6 +44,7 @@ export function ProjectPage({
   onNewClone,
   onOpenChat,
   onNewChat,
+  onDeleteClone,
 }: ProjectPageProps): ReactElement {
   const now = new Date();
   return (
@@ -97,9 +104,11 @@ export function ProjectPage({
                 clone={clone}
                 chats={chatsOf(clone)}
                 needsYou={needsYou}
+                isWorking={isWorking}
                 now={now}
                 onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
                 onNewChat={() => onNewChat(clone)}
+                onDelete={() => onDeleteClone(clone)}
               />
             ))}
           </div>
@@ -114,14 +123,44 @@ interface CloneCardProps {
   readonly chats: readonly SessionRecord[];
   readonly now: Date;
   readonly needsYou: (chat: SessionRecord) => boolean;
+  readonly isWorking: (chat: SessionRecord) => boolean;
   readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: () => void;
+  readonly onDelete: () => Promise<void>;
 }
 
-function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: CloneCardProps): ReactElement {
+function CloneCard({
+  clone,
+  chats,
+  now,
+  needsYou,
+  isWorking,
+  onOpenChat,
+  onNewChat,
+  onDelete,
+}: CloneCardProps): ReactElement {
+  const [deleting, setDeleting] = useState(false);
+  // On the head only: a chat row has its own menu, and a right click there must not open two.
+  const { props, menu } = useContextMenu(
+    [
+      { label: "New chat here", icon: "plus", onChoose: onNewChat },
+      { label: "Delete clone", icon: "trash", danger: true, onChoose: () => setDeleting(true) },
+    ],
+    `Actions of the clone ${clone.name}`,
+  );
   return (
     <section className="card clone-card" aria-label={`Clone ${clone.name}`}>
-      <div className="clone-head">
+      {menu}
+      {deleting && (
+        <DeleteCloneDialog
+          clone={clone}
+          chats={chats}
+          working={chats.filter(isWorking)}
+          onDelete={onDelete}
+          onClose={() => setDeleting(false)}
+        />
+      )}
+      <div className="clone-head" {...props}>
         <span className="round-icon">
           <Icon name="branch" />
         </span>
@@ -148,6 +187,85 @@ function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: Clone
       </div>
     </section>
   );
+}
+
+/**
+ * Asks before a clone goes. A clone with chats asks louder and wants a tick, because its chats go too.
+ * A clone where Eva works now cannot go: the core refuses it, so the button waits.
+ */
+function DeleteCloneDialog({
+  clone,
+  chats,
+  working,
+  onDelete,
+  onClose,
+}: {
+  readonly clone: CloneDetails;
+  readonly chats: readonly SessionRecord[];
+  readonly working: readonly SessionRecord[];
+  readonly onDelete: () => Promise<void>;
+  readonly onClose: () => void;
+}): ReactElement {
+  const [understood, setUnderstood] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const hasChats = chats.length > 0;
+  const remove = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await onDelete();
+      onClose();
+    } catch {
+      // The page showed the error. The question stays, so the person can try again or cancel.
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog label={`Delete the clone ${clone.name}`} onClose={busy ? ignore : onClose} closeLabel="Cancel">
+      <h2>Delete the clone “{clone.name}”?</h2>
+      <div className="callout warning">
+        Eva deletes this folder from this computer. Work that is only here is lost for good:
+        {clone.changes !== null && clone.changes > 0 && <> {countOf(clone.changes, "changed file")},</>} commits that
+        you did not push, and files that git ignores, such as <span className="mono">.env</span>.
+      </div>
+      {hasChats && (
+        <div className="callout danger" role="alert">
+          <strong>
+            <Icon name="alert" /> This clone has {countOf(chats.length, "chat")}.{" "}
+            {chats.length === 1 ? "Eva deletes it too, with its forks." : "Eva deletes them too, with their forks."}
+          </strong>
+          <ul>
+            {chats.map((chat) => (
+              <li key={chat.id}>
+                {chat.title}
+                {working.includes(chat) && <b> (Eva works in it now)</b>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {working.length > 0 && (
+        <div className="callout danger">Eva works in this clone now. Stop her work in it, then delete the clone.</div>
+      )}
+      {hasChats && (
+        <label className="check-row">
+          <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} />
+          <span>I understand that the clone and its {countOf(chats.length, "chat")} go for good</span>
+        </label>
+      )}
+      <button
+        className="danger"
+        disabled={busy || working.length > 0 || (hasChats && !understood)}
+        onClick={() => void remove()}
+      >
+        <Icon name="trash" /> {hasChats ? "Delete the clone and its chats" : "Delete the clone"}
+      </button>
+      {busy && <ProgressBar label="Deleting the clone…" />}
+    </Dialog>
+  );
+}
+
+function ignore(): void {
+  // Nothing to do: while the delete runs, the dialog closes only when it ends.
 }
 
 /** One chat of a clone. Its context menu has the same actions as a chat in the Assistant list. */

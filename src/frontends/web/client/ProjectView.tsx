@@ -217,6 +217,20 @@ export function ProjectView({
     }
   };
 
+  /** Rethrows, so the question stays open after a refusal. */
+  const deleteClone = async (project: Project, clone: CloneDetails): Promise<void> => {
+    try {
+      await api.deleteClone(project.id, clone.name);
+    } catch (caught) {
+      showError(caught);
+      throw caught;
+    }
+    setCloneVersion((version) => version + 1);
+    setListVersion((version) => version + 1);
+    // The chats of the clone are gone, so the list of chats changes too.
+    await onChanged();
+  };
+
   // The filters may hide the new project, but its page opens all the same.
   const openCreated = async (projectId: string): Promise<void> => {
     setCreating(false);
@@ -267,6 +281,8 @@ export function ProjectView({
       () => false,
       approvalSessionIds,
     ) === "needs-you";
+  const isWorking = (candidate: SessionRecord): boolean =>
+    chatTree(candidate, sessions).some((session) => live.steps[session.id] !== undefined);
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
@@ -431,6 +447,7 @@ export function ProjectView({
             clones={clones}
             chatsOf={chatsOf}
             needsYou={needsYou}
+            isWorking={isWorking}
             error={error}
             onBackToList={() => open(null)}
             onDetails={() => open({ kind: "details", project: page.project })}
@@ -442,6 +459,7 @@ export function ProjectView({
               open({ kind: "chat", project: page.project, clone, chatId: picked.id });
             }}
             onNewChat={(clone) => void startChat(page.project, clone)}
+            onDeleteClone={(clone) => deleteClone(page.project, clone)}
           />
         )}
       </main>

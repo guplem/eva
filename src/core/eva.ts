@@ -110,6 +110,7 @@ import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
+import { defaultLatestVersionSources, readLatestVersion, type LatestVersionSources } from "./tool-latest.ts";
 import {
   findGh,
   ghTooOld,
@@ -164,6 +165,8 @@ export interface EvaOptions {
   readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
   /** The processor and the release downloads of the tool installs; a test points them at a fake. */
   readonly toolInstall?: Partial<Pick<EngineInstallInputs, "arch" | "piReleasesBaseUrl" | "ghReleaseUrl">>;
+  /** Where Eva reads the latest version of each tool; a test points it at a fake server. */
+  readonly toolLatestSources?: LatestVersionSources;
 }
 
 /** The tools that Eva installs and updates from the Updates page, by their program name. */
@@ -175,6 +178,12 @@ export const installableTools: readonly InstallableTool[] = ["claude", "pi", "uv
 export interface ToolInstallResult {
   readonly ok: boolean;
   readonly message: string;
+}
+
+/** The newest published version of a tool that Eva installs. Null: the source did not answer. */
+export interface LatestToolVersion {
+  readonly program: InstallableTool;
+  readonly latest: string | null;
 }
 
 /** Eva's version and each tool's, for the status and the Updates page. */
@@ -238,6 +247,7 @@ const backgroundTickMs = 60_000;
 const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** The front end that asked for a restart answers first, then Eva stops. */
 const restartDelayMs = 500;
+const latestToolKeepMs = 60 * 60_000;
 const maxLogEntries = 100;
 
 export class Eva {
@@ -260,6 +270,8 @@ export class Eva {
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
   private toolInstallRuns: boolean;
+  /** The latest version of each tool that a source gave, and when. A failure is not kept. */
+  private readonly latestToolCache: Map<InstallableTool, { readonly version: string; readonly at: number }>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -364,6 +376,7 @@ export class Eva {
     });
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
+    this.latestToolCache = new Map();
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -787,6 +800,24 @@ export class Eva {
       eva: evaVersion,
       tools: tools.map((tool) => ({ ...tool, version: tool.version === null ? null : this.redact(tool.version) })),
     };
+  }
+
+  /**
+   * The newest published version of each tool that Eva installs. GitHub allows 60 requests an
+   * hour without a login, so a found version stays for an hour.
+   */
+  async latestToolVersions(): Promise<LatestToolVersion[]> {
+    const sources = this.options.toolLatestSources ?? defaultLatestVersionSources;
+    const now = this.options.now().getTime();
+    return Promise.all(
+      installableTools.map(async (program) => {
+        const kept = this.latestToolCache.get(program);
+        if (kept !== undefined && now - kept.at < latestToolKeepMs) return { program, latest: kept.version };
+        const latest = await readLatestVersion(program, sources);
+        if (latest !== null) this.latestToolCache.set(program, { version: latest, at: now });
+        return { program, latest };
+      }),
+    );
   }
 
   /**

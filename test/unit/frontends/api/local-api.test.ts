@@ -87,6 +87,7 @@ beforeEach(() => {
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
     // No test reaches the real gh release.
     toolInstall: { ghReleaseUrl: "http://127.0.0.1:1/latest" },
+    toolLatestSources: { npmBaseUrl: "http://127.0.0.1:1", githubApiBaseUrl: "http://127.0.0.1:1" },
     // GitHub gives the token at once: no test waits for a person.
     githubBrowserLogin: (show) => {
       show("ABCD-1234", "https://github.com/login/device");
@@ -1283,6 +1284,15 @@ describe("updates and the vault sync", () => {
     const versions = await json<{ eva: string; tools: { program: string }[] }>(await call("/api/versions"));
     expect(versions.eva).toMatch(/^\d+\.\d+\.\d+/);
     expect(versions.tools.map((tool) => tool.program)).toContain("claude");
+  });
+
+  test("the latest versions name each tool that Eva installs, and null when no source answers", async () => {
+    expect(await json<unknown>(await call("/api/versions/latest"))).toEqual([
+      { program: "claude", latest: null },
+      { program: "pi", latest: null },
+      { program: "uv", latest: null },
+      { program: "gh", latest: null },
+    ]);
   });
 
   test("a tool install answers with what happened, and refuses a tool that Eva does not install", async () => {

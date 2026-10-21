@@ -6,6 +6,7 @@
 import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
+import { Dialog } from "./ChatPanel.tsx";
 import { ConnectionsSection } from "./ConnectionsSection.tsx";
 import { DesignReference } from "./DesignReference.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
@@ -20,7 +21,9 @@ import {
   searchSettings,
   settingsHash,
   settingsHome,
+  settingPlaces,
   settingsSections,
+  type SettingHome,
   type SectionId,
   type SettingsRoute,
   type SettingsSection,
@@ -374,6 +377,9 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
   const steps = context.setup?.progress ?? [];
   const missing = setupSummary(steps).left;
   const next = nextToDo(steps);
+  const [showingHomes, setShowingHomes] = useState(false);
+  // A new function at each render would make the dialog move the focus back to its Close button.
+  const closeHomes = useCallback((): void => setShowingHomes(false), []);
   return (
     <>
       {context.setup !== null && (
@@ -435,20 +441,96 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
             </button>
           ))}
       </div>
-      <section className="card" aria-label="About these settings">
+      <section className="card" aria-label="Where settings live">
         <p className="card-description">
-          These settings live in your vault, so every machine uses them: the time zone, updates, vault fetch, engines,
-          Google account and voice language. These stay on each machine: the tokens, the allowed Tailscale accounts, the
-          trusted repository owners and Google access.
+          Some settings live in your vault, so every machine uses them. The others stay on this machine or in this
+          browser.
         </p>
         <div className="button-row">
-          <button onClick={() => void api.logout().then(context.onLoggedOut)}>
-            <Icon name="key" />
-            Log out
-          </button>
+          <button onClick={() => setShowingHomes(true)}>See where each setting lives</button>
         </div>
       </section>
+      {showingHomes && <SettingHomesDialog navigate={context.navigate} onClose={closeHomes} />}
     </>
+  );
+}
+
+const homeHeadings: Readonly<Record<SettingHome, string>> = {
+  vault: "In your vault: every machine uses these",
+  machine: "On this machine only",
+  browser: "In this browser only",
+};
+
+function SettingHomesDialog({
+  navigate,
+  onClose,
+}: {
+  readonly navigate: (route: SettingsRoute) => void;
+  readonly onClose: () => void;
+}): ReactElement {
+  return (
+    <Dialog label="Where each setting lives" onClose={onClose}>
+      <h2>Where each setting lives</h2>
+      <div className="setting-homes">
+        {(Object.keys(homeHeadings) as SettingHome[]).map((home) => (
+          <Fragment key={home}>
+            <h3>{homeHeadings[home]}</h3>
+            <ul className="search-results">
+              {settingPlaces
+                .filter((place) => place.home === home)
+                .map(({ title, keys, link }) => (
+                  <li key={title}>
+                    {link === null ? (
+                      <SettingLink
+                        section={null}
+                        title={title}
+                        hint={`No page yet. In a terminal: eva settings set ${keys.join(", ")}`}
+                      />
+                    ) : (
+                      <SettingLink section={link.section} title={title} onOpen={() => navigate(link)} />
+                    )}
+                  </li>
+                ))}
+            </ul>
+          </Fragment>
+        ))}
+      </div>
+    </Dialog>
+  );
+}
+
+/** One row that opens a setting's card: a search result, or a row of the setting homes. Without `onOpen`, the row only names it. */
+function SettingLink({
+  section,
+  title,
+  hint,
+  onOpen,
+}: {
+  readonly section: SectionId | null;
+  readonly title: string;
+  /** Absent: the section's title. */
+  readonly hint?: string;
+  readonly onOpen?: () => void;
+}): ReactElement {
+  const known = settingsSections.find((each) => each.id === section);
+  const parts = (
+    <>
+      <span className="section-icon">
+        <Icon name={section === null ? "info" : sectionIcons[section]} />
+      </span>
+      <span className="section-card-text">
+        <span className="section-card-title">{title}</span>
+        <span className="field-hint">{hint ?? known?.title}</span>
+      </span>
+    </>
+  );
+  // A row that opens nothing is text, not a disabled button, so a keyboard user still reads it.
+  if (onOpen === undefined) return <div className="section-card">{parts}</div>;
+  return (
+    <button className="section-card" onClick={onOpen}>
+      {parts}
+      <Icon name="back" className="chevron flip" />
+    </button>
   );
 }
 
@@ -492,23 +574,15 @@ function SearchResults({
   if (results.length === 0) return <div className="empty">No setting matches “{query.trim()}”.</div>;
   return (
     <ul className="search-results" aria-label="Search results">
-      {results.map((result) => {
-        const section = settingsSections.find((each) => each.id === result.section);
-        return (
-          <li key={`${result.section}/${result.item}`}>
-            <button className="section-card" onClick={() => navigate({ section: result.section, item: result.item })}>
-              <span className="section-icon">
-                <Icon name={sectionIcons[result.section]} />
-              </span>
-              <span className="section-card-text">
-                <span className="section-card-title">{result.title}</span>
-                <span className="field-hint">{section?.title}</span>
-              </span>
-              <Icon name="back" className="chevron flip" />
-            </button>
-          </li>
-        );
-      })}
+      {results.map((result) => (
+        <li key={`${result.section}/${result.item}`}>
+          <SettingLink
+            section={result.section}
+            title={result.title}
+            onOpen={() => navigate({ section: result.section, item: result.item })}
+          />
+        </li>
+      ))}
     </ul>
   );
 }

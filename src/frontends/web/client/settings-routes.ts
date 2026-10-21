@@ -147,7 +147,7 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
   { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
-  { item: "devices", section: "access", title: "Devices", words: "browsers log out remove lost phone" },
+  { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {
@@ -179,6 +179,97 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "Design reference",
     words: "colours colors palette components theme architecture",
   },
+];
+
+/** Where a setting lives: the vault goes to every machine, and the browser keeps its own. */
+export type SettingHome = "vault" | "machine" | "browser";
+
+export interface SettingPlace {
+  readonly title: string;
+  readonly home: SettingHome;
+  /** The dotted config keys. A secret, such as a token, has none: it lives in `secrets.json`. */
+  readonly keys: readonly string[];
+  /** The card that changes it, or null when no page does yet. */
+  readonly link: { readonly section: SectionId; readonly item: string } | null;
+}
+
+/** A card with parts in two homes, such as Claude Code's model and token, has a row for each part. */
+export const settingPlaces: readonly SettingPlace[] = [
+  { title: "Time zone", home: "vault", keys: ["timeZone"], link: { section: "personalize", item: "time-zone" } },
+  {
+    title: "Vault sync timing",
+    home: "vault",
+    keys: ["sync.sweepSeconds", "sync.pullIntervalMinutes"],
+    link: { section: "vault", item: "vault-sync" },
+  },
+  { title: "Eva updates", home: "vault", keys: ["updates"], link: { section: "updates", item: "eva-updates" } },
+  {
+    title: "Engine for new chats",
+    home: "vault",
+    keys: ["engines.default"],
+    link: { section: "engines", item: "default-engine" },
+  },
+  {
+    title: "Claude Code model",
+    home: "vault",
+    keys: ["engines.claudeCode.defaultModel"],
+    link: { section: "engines", item: "claude-code" },
+  },
+  { title: "pi models", home: "vault", keys: ["engines.pi.models"], link: { section: "engines", item: "pi" } },
+  { title: "Google account", home: "vault", keys: ["google.email"], link: { section: "connections", item: "google" } },
+  { title: "Eva's rules", home: "vault", keys: [], link: { section: "personalize", item: "assistant-rules" } },
+  { title: "Chat names", home: "vault", keys: [], link: { section: "personalize", item: "chat-names" } },
+  { title: "The hub machine", home: "vault", keys: [], link: { section: "access", item: "machine" } },
+  { title: "Voice note language", home: "vault", keys: ["voice.language"], link: null },
+  { title: "Claude Code login", home: "machine", keys: [], link: { section: "engines", item: "claude-code" } },
+  { title: "pi login", home: "machine", keys: [], link: { section: "engines", item: "pi" } },
+  { title: "GitHub login", home: "machine", keys: [], link: { section: "connections", item: "github" } },
+  {
+    title: "Commit name and email",
+    home: "machine",
+    keys: ["git.name", "git.email"],
+    link: { section: "connections", item: "commit-identity" },
+  },
+  {
+    title: "Telegram bot",
+    home: "machine",
+    keys: ["telegram.allowedChatId", "telegram.allowedUserId"],
+    link: { section: "connections", item: "telegram" },
+  },
+  {
+    title: "Google access",
+    home: "machine",
+    keys: ["google.access", "google.services"],
+    link: { section: "connections", item: "google" },
+  },
+  { title: "Vault folder", home: "machine", keys: ["vaultPath"], link: { section: "vault", item: "vault-folder" } },
+  {
+    title: "Project folders",
+    home: "machine",
+    keys: ["projectRoots"],
+    link: { section: "vault", item: "project-folders" },
+  },
+  {
+    title: "Phone access",
+    home: "machine",
+    keys: ["remoteAccess.hostNames", "remoteAccess.tailscaleServe"],
+    link: { section: "access", item: "remote-access" },
+  },
+  {
+    title: "This machine's name",
+    home: "machine",
+    keys: ["machineName"],
+    link: { section: "access", item: "machine" },
+  },
+  { title: "Devices", home: "machine", keys: [], link: { section: "access", item: "devices" } },
+  {
+    title: "Allowed Tailscale accounts",
+    home: "machine",
+    keys: ["remoteAccess.allowedTailscaleIdentities"],
+    link: { section: "access", item: "accounts" },
+  },
+  { title: "Trusted repository owners", home: "machine", keys: ["trust.trustedRepositoryOwners"], link: null },
+  { title: "Appearance", home: "browser", keys: [], link: { section: "personalize", item: "appearance" } },
 ];
 
 /** Every typed word must appear in the entry's title, its words or its section's title. */

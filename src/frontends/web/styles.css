@@ -2260,6 +2260,46 @@ button.link-button {
   color: var(--muted);
 }
 
+/* The list of setting homes is long, so it scrolls and the Close button stays on the screen. */
+.setting-homes {
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.setting-homes .search-results {
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+/* In the dialog, the rows are flat and compact: cards on a card would make the list four screens long. */
+.setting-homes .section-card {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-card:hover:not(:disabled) {
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.setting-homes .section-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.setting-homes h3:first-child {
+  margin-top: 0;
+}
+
 /* ==========================================================================
    Settings: the setup list and a step's page
    ========================================================================== */

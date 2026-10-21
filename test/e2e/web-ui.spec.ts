@@ -426,8 +426,9 @@ test("a link opened before the login opens its chat after the login", async ({ p
   const linked = await newAnsweredChat(page, "Linked before login");
   await newAnsweredChat(page, "Newer chat");
   const chatId = await chatIdNamed(page, linked);
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await openSettings(page, "Access");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
 
   await page.goto(`/#/chat/${chatId}`);
   await page.getByLabel(/Token/).fill(token);
@@ -976,9 +977,10 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
-  // Log out sits on the Settings home page.
-  await openSettings(page);
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  // Log out sits on the Devices card, because it ends only this browser's login.
+  await openSettings(page, "Access");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
@@ -1616,6 +1618,25 @@ test("the Settings home page shows Eva's status", async ({ page }) => {
   for (const label of ["Version", "This machine", "Chats", "Vault sync", "Phone access", "Problems"]) {
     await expect(card.getByRole("term").filter({ hasText: label })).toBeVisible();
   }
+});
+
+test("the Settings home page lists where each setting lives, and a row opens its card (issue 310)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page);
+  await page.getByRole("button", { name: "See where each setting lives" }).click();
+  const dialog = page.getByRole("dialog", { name: "Where each setting lives" });
+  for (const heading of ["In your vault", "On this machine only", "In this browser only"]) {
+    await expect(dialog.getByRole("heading", { name: new RegExp(heading) })).toBeVisible();
+  }
+  // A setting with no page is a row of text that says how to change it, not a button.
+  await expect(dialog.getByText("eva settings set voice.language")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Voice note language/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /Appearance/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
+  expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
 });
 
 test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {

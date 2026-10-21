@@ -8,7 +8,7 @@ import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
-import { Composer } from "./Composer.tsx";
+import { Composer, storedChoices } from "./Composer.tsx";
 import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -252,6 +252,7 @@ function Branch({
         ))}
       <Composer
         session={session}
+        choices={storedChoices(session.id)}
         running={working}
         onSend={send}
         onStop={() => runAction(() => api.stop(session.id))}

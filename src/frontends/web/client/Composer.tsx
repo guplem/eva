@@ -16,8 +16,26 @@ import { recordingTime, recordingType } from "./voice-notes.ts";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
+/** What the composer shows of a chat. A new chat has no record until its first message. */
+type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "mode" | "parentId" | "turns">;
+
+/** How the chip changes the engine and the model of a chat that has no turn yet. */
+export interface ChatChoices {
+  readonly setEngine: (engine: EngineName) => Promise<unknown>;
+  readonly setModel: (model: ModelAlias) => Promise<unknown>;
+}
+
+/** The choices of a chat that has a record: the server keeps them. */
+export function storedChoices(sessionId: string): ChatChoices {
+  return {
+    setEngine: (engine) => api.setEngine(sessionId, engine),
+    setModel: (model) => api.setModel(sessionId, model),
+  };
+}
+
 interface ComposerProps {
-  readonly session: SessionRecord;
+  readonly session: ComposerChat;
+  readonly choices: ChatChoices;
   readonly running: boolean;
   /**
    * Resolves false when the send failed, so the box gets its text back. A voice note also
@@ -34,6 +52,7 @@ interface ComposerProps {
 
 export function Composer({
   session,
+  choices,
   running,
   onSend,
   onStop,
@@ -113,7 +132,7 @@ export function Composer({
           }}
         />
         <div className="composer-row">
-          <EngineChip session={session} running={running} onChanged={onChanged} />
+          <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
           <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />
           {showMic && (
@@ -161,10 +180,12 @@ export function Composer({
  */
 function EngineChip({
   session,
+  choices,
   running,
   onChanged,
 }: {
-  readonly session: SessionRecord;
+  readonly session: ComposerChat;
+  readonly choices: ChatChoices;
   readonly running: boolean;
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
@@ -247,7 +268,7 @@ function EngineChip({
                     className={`chip${engine === session.engine ? " on" : ""}`}
                     aria-pressed={engine === session.engine}
                     disabled={saving}
-                    onClick={() => void choose(() => api.setEngine(session.id, engine))}
+                    onClick={() => void choose(() => choices.setEngine(engine))}
                   >
                     {engineLabel(engine)}
                   </button>
@@ -261,7 +282,7 @@ function EngineChip({
                     className={`chip${model === session.modelAlias ? " on" : ""}`}
                     aria-pressed={model === session.modelAlias}
                     disabled={saving}
-                    onClick={() => void choose(() => api.setModel(session.id, model))}
+                    onClick={() => void choose(() => choices.setModel(model))}
                   >
                     {modelLabel(model)}
                   </button>

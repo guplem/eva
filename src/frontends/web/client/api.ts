@@ -18,6 +18,7 @@ import type {
 } from "../../../core/remote-access/device-logins.ts";
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
+import type { Favorite } from "../../../core/files/vault-favorites.ts";
 import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
@@ -55,6 +56,7 @@ export type {
   DeviceSummary,
   EngineUpdateStatus,
   EvaStatus,
+  Favorite,
   FileEntry,
   InstallableTool,
   EvaVersions,
@@ -223,6 +225,10 @@ export const api = {
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
   downloadFile: download,
+  favorites: (): Promise<Favorite[]> => request("GET", "/api/files/favorites"),
+  /** A missing path answers 404 with `file_not_found`. */
+  setFavorite: (path: string, favorite: boolean): Promise<Favorite[]> =>
+    request("PUT", "/api/files/favorites", { path, favorite }),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),

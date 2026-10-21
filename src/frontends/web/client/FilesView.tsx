@@ -6,7 +6,8 @@
  * and save it in the vault, and rename a file or a folder (issue 343).
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
-import { api, ApiError, type BrowsedPath, type FileEntry } from "./api.ts";
+import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry } from "./api.ts";
+import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
   childPath,
@@ -38,6 +39,8 @@ export function FilesView(): ReactElement {
   /** A tap on the same link changes no address, so a failed read needs its own way to run again. */
   const [attempt, setAttempt] = useState(0);
   const columns = useRef<HTMLDivElement>(null);
+  /** Null until the first read. A failed read shows no bar: the folders still work without it. */
+  const [favorites, setFavorites] = useState<readonly Favorite[] | null>(null);
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
@@ -50,6 +53,11 @@ export function FilesView(): ReactElement {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  // An agent or another device can change the favorites, so each new path reads them again.
+  useEffect(() => {
+    api.favorites().then(setFavorites, () => setFavorites((current) => current ?? []));
+  }, [path]);
 
   // Each answer goes in by the path that asked for it, so a slow answer never shows under another path.
   const read = useCallback((asked: string): void => {
@@ -104,6 +112,8 @@ export function FilesView(): ReactElement {
   const parent = parentOf(path);
   const last = answers.get(path);
   const fileIsOpen = last?.state === "shown" && last.answer.kind !== "folder";
+  // The answer's path is the tidy one that the core stores, so the star matches the favorite.
+  const shownPath = last?.state === "shown" ? last.answer.path : null;
   return (
     <div className="main">
       <div className={large ? "files-page large" : "files-page"}>
@@ -147,10 +157,14 @@ export function FilesView(): ReactElement {
               <Icon name="pen" />
             </button>
           )}
+          {naming === null && shownPath !== null && shownPath !== "" && (
+            <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
+          )}
           {naming === null && last?.state === "shown" && last.answer.kind === "folder" && (
             <DownloadButton key={path} path={path} folder={true} />
           )}
         </div>
+        <FavoriteBar favorites={favorites} openPath={shownPath} onChange={setFavorites} />
         <div className="files-columns" ref={columns}>
           {crumbs.map((crumb, index) => (
             <Column
@@ -296,6 +310,103 @@ function DownloadButton({
         </div>
       )}
     </div>
+  );
+}
+
+/** Adds the open file or folder to the favorites, or removes it. A filled star marks a favorite. */
+function StarButton({
+  path,
+  favorites,
+  onChange,
+}: {
+  readonly path: string;
+  readonly favorites: readonly Favorite[] | null;
+  readonly onChange: (favorites: readonly Favorite[]) => void;
+}): ReactElement | null {
+  const showError = useShowError();
+  const [busy, setBusy] = useState(false);
+  if (favorites === null) return null;
+  const isFavorite = favorites.some((favorite) => favorite.path === path);
+  const toggle = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      onChange(await api.setFavorite(path, !isFavorite));
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const label = isFavorite ? "Remove from favorites" : "Add to favorites";
+  return (
+    <button
+      className={isFavorite ? "files-star icon-button favorite" : "files-star icon-button"}
+      aria-label={label}
+      aria-pressed={isFavorite}
+      data-tooltip={label}
+      disabled={busy}
+      onClick={() => void toggle()}
+    >
+      <Icon name="star" />
+    </button>
+  );
+}
+
+/**
+ * The favorites, first on the page, so a note that the person opens often is one tap away. A
+ * favorite that was moved or deleted stays, with a button to remove it.
+ */
+function FavoriteBar({
+  favorites,
+  openPath,
+  onChange,
+}: {
+  readonly favorites: readonly Favorite[] | null;
+  readonly openPath: string | null;
+  readonly onChange: (favorites: readonly Favorite[]) => void;
+}): ReactElement | null {
+  const showError = useShowError();
+  if (favorites === null || favorites.length === 0) return null;
+  const remove = async (path: string): Promise<void> => {
+    try {
+      onChange(await api.setFavorite(path, false));
+    } catch (caught) {
+      showError(caught);
+    }
+  };
+  return (
+    <nav className="files-favorites" aria-label="Favorites">
+      <ul>
+        {favorites.map((favorite) => (
+          <li key={favorite.path}>
+            {favorite.kind === "missing" ? (
+              <span className="files-favorite missing" data-tooltip={favorite.path}>
+                <Icon name="alert" />
+                <span className="files-name">{favorite.name}</span>
+                <span className="files-size">Missing</span>
+                <button
+                  className="icon-button"
+                  aria-label={`Remove ${favorite.name} from favorites`}
+                  onClick={() => void remove(favorite.path)}
+                >
+                  <Icon name="x" />
+                </button>
+              </span>
+            ) : (
+              <a
+                className="files-favorite"
+                href={fileAddressOf(favorite.path)}
+                data-tooltip={favorite.path}
+                aria-current={favorite.path === openPath ? "page" : undefined}
+              >
+                <Icon name={favorite.kind === "folder" ? "folder" : "file"} />
+                <span className="files-name">{favorite.name}</span>
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 

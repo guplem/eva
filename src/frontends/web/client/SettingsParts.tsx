@@ -385,15 +385,15 @@ export function SelectField<T extends string>({
 /** A choice of few values as a row of chips that saves at once. The pressed chip is the current value. */
 export function ChoiceChips<T extends string>({
   label,
-  hint,
   value,
   choices,
+  hint,
   onChange,
 }: {
   readonly label: string;
-  readonly hint?: string;
   readonly value: T;
   readonly choices: readonly { readonly value: T; readonly label: string; readonly icon?: IconName }[];
+  readonly hint?: string;
   readonly onChange: (value: T) => void;
 }): ReactElement {
   return (

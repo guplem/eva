@@ -33,6 +33,11 @@ const fileNameCutChoices: readonly { value: Appearance["fileNameCut"]; label: st
   { value: "end", label: "End" },
 ];
 
+const filesViewChoices: readonly { value: Appearance["filesView"]; label: string }[] = [
+  { value: "columns", label: "Columns" },
+  { value: "single", label: "One folder" },
+];
+
 export function PersonalizeSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
@@ -55,7 +60,7 @@ export function AppearanceCard(): ReactElement {
     <Card
       item="appearance"
       title="Appearance"
-      description="This browser keeps its own colour, theme, density and long file names."
+      description="This browser keeps its own colour, theme, density, files view and long file names."
     >
       <div className="field">
         <span className="field-label">Colour</span>
@@ -73,6 +78,13 @@ export function AppearanceCard(): ReactElement {
         value={appearance.density}
         choices={densityChoices}
         onChange={(density) => change({ density })}
+      />
+      <ChoiceChips
+        label="Files view"
+        value={appearance.filesView}
+        choices={filesViewChoices}
+        hint="Columns show each folder of the path side by side. One folder shows only the open folder or file. A phone always shows one."
+        onChange={(filesView) => change({ filesView })}
       />
       <ChoiceChips
         label="Long file names"

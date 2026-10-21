@@ -3826,6 +3826,35 @@ test("Files: a file shows its type in colour, and a long name loses the part tha
   await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "end");
 });
 
+test("Files: a wide column takes at least a quarter of the row", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects");
+  const row = page.locator(".files-columns");
+  const column = page.locator(".files-pane").filter({ has: page.getByRole("list", { name: "Contents of Vault" }) });
+  await expect(column).toBeVisible();
+  const rowWidth = (await row.boundingBox())?.width ?? 0;
+  const columnWidth = (await column.boundingBox())?.width ?? 0;
+  expect(columnWidth).toBeGreaterThanOrEqual(rowWidth / 4 - 16);
+});
+
+test("Files: the one folder view shows only the open folder, and the path leads back", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone always shows one folder.");
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  await page.getByRole("group", { name: "Files view" }).getByRole("button", { name: "One folder" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-files-view", "single");
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Make the file large" })).toBeHidden();
+  await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Projects" }).click();
+  await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
+  await expect(page.getByText("Open a file to see it here.")).toBeHidden();
+});
+
 test("Files: a phone shows only the open folder (issue 308)", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "A wide screen shows every column.");
   await logIn(page);

@@ -95,6 +95,16 @@ describe("VaultSync.save", () => {
     );
   });
 
+  test("saves a folder that an agent renamed with git mv, so the rename is staged already", async () => {
+    sandbox.write(vault, "Projects/2026-10-21-1924-jobseaker/AGENTS.md", "A project.\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    sandbox.git(vault, "mv", "Projects/2026-10-21-1924-jobseaker", "Projects/2026-10-21-1924-jobseeker");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Projects/2026-10-21-1924-jobseeker/AGENTS.md");
+    expect(remoteFiles()).not.toContain("jobseaker");
+  });
+
   test("a failing pre-commit hook in the vault never blocks an autosave (lesson 27)", async () => {
     sandbox.write(vault, ".git/hooks/pre-commit", "#!/bin/sh\nexit 1\n");
     chmodSync(join(vault, ".git", "hooks", "pre-commit"), 0o755);

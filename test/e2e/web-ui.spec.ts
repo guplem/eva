@@ -1993,6 +1993,25 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await expect(page.getByRole("button", { name: "More actions" })).toBeFocused();
 });
 
+test("a computer hides the chat details for more room, and the browser keeps the choice", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "A phone shows the details in a sheet, never in a column.");
+  await logIn(page);
+  const chatId = await newChat(page);
+  const panel = page.getByRole("complementary", { name: "This chat" });
+  await expect(panel).toBeVisible();
+  await page.getByRole("button", { name: "Hide the chat details" }).click();
+  await expect(panel).toHaveCount(0);
+  await page.goto(`/#/chat/${chatId}`);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(panel).toHaveCount(0);
+  const show = page.getByRole("button", { name: "Show the chat details" });
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await show.click();
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide the chat details" })).toBeFocused();
+});
+
 test("a new message of a running turn replaces the shown one, and the older one becomes a step", async ({ page }) => {
   const sockets = await routeEvents(page);
   await logIn(page);

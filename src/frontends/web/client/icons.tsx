@@ -198,6 +198,13 @@ const drawings = {
   expand: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   /** The corners point in: give the page back to the folders. */
   shrink: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
+  /** A frame with a column at its right side: hide or show the chat details. */
+  panel: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M14.5 4.5v15" />
+    </>
+  ),
   mic: (
     <>
       <rect x="9" y="3" width="6" height="11" rx="3" />

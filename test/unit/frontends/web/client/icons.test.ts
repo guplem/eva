@@ -54,6 +54,7 @@ const designIcons: readonly IconName[] = [
   "mic",
   "expand",
   "shrink",
+  "panel",
 ];
 
 function render(name: IconName, label?: string): string {

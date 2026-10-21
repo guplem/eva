@@ -10,7 +10,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ChatHeader, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
-import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
 
 interface AssistantViewProps {
@@ -58,6 +58,7 @@ export function AssistantView({
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
+  const [panelShown, togglePanel] = useChatPanelShown();
   const chat = {
     tree,
     onChanged,
@@ -169,6 +170,8 @@ export function AssistantView({
                 tree.some((session) => isRunning(session.id)),
               )}
               onShowList={onShowList}
+              panelShown={panelShown}
+              onTogglePanel={togglePanel}
               onChanged={onChanged}
             />
             <Conversation
@@ -183,7 +186,8 @@ export function AssistantView({
           </>
         )}
       </main>
-      <ChatPanel {...chat} />
+      {/* The inspector is about one chat, so a new chat draft has none. */}
+      {selected !== undefined && panelShown && <ChatPanel {...chat} />}
     </div>
   );
 }

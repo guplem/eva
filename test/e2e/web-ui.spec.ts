@@ -367,6 +367,16 @@ test("a long press on a chat in the list shows its actions, and the press opens 
   await expect(menu).toHaveCount(0);
 });
 
+test("a right click on a project opens its pages from the menu", async ({ page }) => {
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: /Example app/ }).click({ button: "right" });
+  const menu = page.getByRole("menu", { name: /^Actions of / });
+  await menu.getByRole("menuitem", { name: "Details" }).click();
+  await expect(page.getByRole("heading", { name: /· Details$/ })).toBeVisible();
+  await expect(menu).toHaveCount(0);
+});
+
 /** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
 async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
   await expect

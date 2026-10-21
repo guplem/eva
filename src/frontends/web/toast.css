@@ -26,8 +26,9 @@
   pointer-events: auto;
   max-width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "text actions close";
+  /* Only the parts that show get a column: an empty column would still add its gap at the right. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   align-items: center;
   column-gap: var(--space-3);
   row-gap: var(--space-2);
@@ -42,8 +43,18 @@
   animation: toast-in 180ms ease-out;
 }
 
+/* With no close button at the right edge, both sides get the same room. */
+.toast:not(:has(> .toast-close)) {
+  padding-right: var(--space-4);
+}
+
+/* A short sentence would make a short, thin bar, so a wait gets a fixed width. */
+.toast:has(> .toast-text .progress) {
+  width: 360px;
+  padding-block: var(--space-3);
+}
+
 .toast-text {
-  grid-area: text;
   min-width: 0;
   padding: var(--space-1) 0;
   overflow-wrap: anywhere;
@@ -59,7 +70,6 @@
 }
 
 .toast-actions {
-  grid-area: actions;
   display: flex;
   gap: var(--space-2);
 }
@@ -80,7 +90,6 @@
 }
 
 .toast-close {
-  grid-area: close;
   position: relative;
   width: 36px;
   height: 36px;
@@ -157,13 +166,27 @@
   }
 
   .toast {
+    grid-auto-flow: row;
+  }
+
+  .toast:has(> .toast-close) {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "text close"
-      "actions actions";
+  }
+
+  .toast:has(> .toast-text .progress) {
+    width: auto;
+  }
+
+  .toast-text {
+    grid-area: 1 / 1;
+  }
+
+  .toast-close {
+    grid-area: 1 / 2;
   }
 
   .toast-actions {
+    grid-column: 1 / -1;
     justify-content: flex-end;
   }
 }

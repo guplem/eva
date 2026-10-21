@@ -819,6 +819,19 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
+test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  // A screen shorter than the list makes the flex column squeeze each card to the 44 px of a button.
+  await page.setViewportSize({ width: 375, height: 360 });
+  await logIn(page);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
+  const cut = await page
+    .locator(".project-card")
+    .evaluateAll((cards) => cards.filter((card) => card.scrollHeight > card.clientHeight + 1).length);
+  expect(cut).toBe(0);
+});
+
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Vault and sync");

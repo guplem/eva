@@ -80,6 +80,9 @@ const lineWidths = ["72%", "54%", "64%", "46%", "80%", "58%"];
 /** The names of a facts list are short words, such as "Eva" or "git". */
 const nameWidths = ["40px", "64px", "52px", "72px", "48px"];
 
+/** The values of a facts list are short too: a version, "Not installed", or a version with a button. */
+const valueWidths = ["44px", "52px", "140px", "76px", "48px", "120px"];
+
 function widthAt(index: number): string {
   return lineWidths[index % lineWidths.length] ?? "60%";
 }
@@ -91,7 +94,7 @@ export function FactsSkeleton({ label, rows }: { readonly label: string; readonl
       {Array.from({ length: rows }, (_, index) => (
         <span key={index} className="skeleton-fact">
           <Line width={nameWidths[index % nameWidths.length] ?? "64px"} />
-          <Line width={widthAt(index)} />
+          <Line width={valueWidths[index % valueWidths.length] ?? "64px"} />
         </span>
       ))}
     </Skeleton>

@@ -19,6 +19,7 @@ import {
   describeStatus,
   describeEngineUpdate,
   describeStatusLines,
+  statusText,
   describeToolVersions,
   describeSync,
   describeRelease,
@@ -1978,6 +1979,22 @@ describe("describeStatusLines", () => {
     voiceNotes: false,
   };
 
+  test("eva status ends with a QR code of the phone address, as setup shows (Telegram does not)", () => {
+    const url = "https://server.example-tailnet.ts.net:7421";
+    const ready = statusText({ ...status, remoteAccess: { url, problem: null } }, [], null);
+    const lines = ready.split("\n");
+    // The plain address stays, for terminals that cannot draw the code.
+    expect(lines).toContain(`Phone access: ${url}`);
+    expect(lines.indexOf("Scan this code on a phone that has Tailscale:")).toBeGreaterThan(
+      lines.indexOf("Tools: none found"),
+    );
+    expect(ready).toContain("▀");
+    expect(describeStatusLines({ ...status, remoteAccess: { url, problem: null } }).join("\n")).not.toContain("▀");
+    expect(statusText(status, [], null)).not.toContain("▀");
+    expect(statusText({ ...status, remoteAccess: { url: null, problem: "Turn on HTTPS" } }, [], null)).not.toContain(
+      "▀",
+    );
+  });
   test("starts with All good when nothing is wrong", () => {
     expect(describeStatusLines(status).slice(0, 2)).toEqual(["All good", "Eva 1.2.3, hub: this machine (server)"]);
   });

@@ -14,7 +14,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { browseVault, maxShownBytes, saveVaultFile } from "../../../../src/core/files/file-browser.ts";
+import {
+  browseVault,
+  maxShownBytes,
+  renameVaultEntry,
+  saveVaultFile,
+} from "../../../../src/core/files/file-browser.ts";
 import { fileVersion } from "../../../../src/core/projects/project-file.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
@@ -310,3 +315,82 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     }
   },
 );
+
+describe("renameVaultEntry (issue 343)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a file and a folder get the new name and answer their new path", () => {
+    expect(renameVaultEntry(vault, "notes.txt", "shopping.txt")).toBe("shopping.txt");
+    expect(readFileSync(join(vault, "shopping.txt"), "utf-8")).toBe("Buy milk.\n");
+    expect(existsSync(join(vault, "notes.txt"))).toBe(false);
+    expect(renameVaultEntry(vault, "Methods", "Ways")).toBe("Ways");
+    expect(readFileSync(join(vault, "Ways/Plan.md"), "utf-8")).toBe("# Plan\n");
+    expect(renameVaultEntry(vault, "Ways/Plan.md", "Plan B.md")).toBe("Ways/Plan B.md");
+  });
+
+  test("the same name changes nothing, and a change of case renames the entry", () => {
+    expect(renameVaultEntry(vault, "notes.txt", "notes.txt")).toBe("notes.txt");
+    expect(renameVaultEntry(vault, "notes.txt", "Notes.txt")).toBe("Notes.txt");
+    expect(readdirSync(vault)).toContain("Notes.txt");
+    expect(readdirSync(vault)).not.toContain("notes.txt");
+  });
+
+  test("a name that is there already is refused, so no entry is lost", () => {
+    write("other.txt", "Keep me.\n");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", "other.txt"))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", "Methods"))).toBe("file_not_writable");
+    expect(readFileSync(join(vault, "other.txt"), "utf-8")).toBe("Keep me.\n");
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test("a name that another machine could not hold is refused", () => {
+    for (const name of ["", ".", "..", "a/b", "a\\b", "a:b", "what?", "end.", "end ", "CON", "nul.txt", "a\u0001b"])
+      expect(codeOf(() => renameVaultEntry(vault, "notes.txt", name))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", "x".repeat(256)))).toBe("file_not_writable");
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test("git data and secrets files stay out of reach", () => {
+    write(".env", "TOKEN=abc\n");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", ".git"))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", ".GIT"))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, ".git", "data"))).toBe("file_not_found");
+    expect(codeOf(() => renameVaultEntry(vault, ".git/config", "other"))).toBe("file_not_found");
+    expect(codeOf(() => renameVaultEntry(vault, ".env", "env.txt"))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", ".env"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, ".env"))).toBe(true);
+  });
+
+  test("the vault layout keeps its names: .eva, Projects, each project, its repos and each clone", () => {
+    const project = "Projects/2025-03-02-1015-example-app";
+    for (const path of [".eva", "Projects", project, `${project}/repos`, `${project}/repos/example-app-0`])
+      expect(codeOf(() => renameVaultEntry(vault, path, "renamed"))).toBe("file_not_writable");
+    write("Library/book.md", "# Book\n");
+    expect(codeOf(() => renameVaultEntry(vault, "Library", "Projects"))).toBe("file_not_writable");
+    // A file inside a clone or a project is the person's own work.
+    expect(renameVaultEntry(vault, `${project}/repos/example-app-0/main.py`, "app.py")).toBe(
+      `${project}/repos/example-app-0/app.py`,
+    );
+  });
+
+  test("the vault root, a missing entry and a path out of the vault are refused", () => {
+    expect(codeOf(() => renameVaultEntry(vault, "", "Vault"))).toBe("file_not_writable");
+    expect(codeOf(() => renameVaultEntry(vault, "missing.md", "found.md"))).toBe("file_not_found");
+    expect(codeOf(() => renameVaultEntry(vault, "../vault", "other"))).toBe("file_not_found");
+    expect(codeOf(() => renameVaultEntry(vault, "Methods/..", "other"))).toBe("file_not_found");
+  });
+
+  test.skipIf(process.platform === "win32")("a link gets the new name, and its target keeps its own", () => {
+    symlinkSync(join(vault, "notes.txt"), join(vault, "link.txt"));
+    expect(renameVaultEntry(vault, "link.txt", "shortcut.txt")).toBe("shortcut.txt");
+    expect(lstatSync(join(vault, "shortcut.txt")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+});

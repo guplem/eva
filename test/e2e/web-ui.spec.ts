@@ -3792,6 +3792,40 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   await expect(vaultList).toBeVisible();
 });
 
+test("Files: a file shows its type in colour, and a long name loses the part that the person picks", async ({
+  page,
+}) => {
+  const name = "Quarterly report for the board meeting of the year, final version.pdf";
+  await page.route("**/api/files?path=Docs", (route) =>
+    route.fulfill({
+      json: {
+        kind: "folder",
+        path: "Docs",
+        entries: [
+          { name, kind: "file", size: 1234 },
+          { name: "Makefile", kind: "file", size: 10 },
+        ],
+      },
+    }),
+  );
+  await logIn(page);
+  await page.goto("/#/files/Docs");
+  const row = page.getByRole("list", { name: "Contents of Docs" }).getByRole("link", { name });
+  await expect(row.locator(".files-badge.type-red")).toHaveText("PDF");
+  // The middle gives way by default, so the start and the extension stay.
+  await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "middle");
+  await expect(row.locator(".files-name-tail")).toHaveText(/version\.pdf$/);
+  const headIsCut = await row
+    .locator(".files-name-head")
+    .evaluate((element) => element.scrollWidth > element.clientWidth);
+  expect(headIsCut).toBe(true);
+  await openSettings(page, "Personalize");
+  await page.getByRole("group", { name: "Long file names" }).getByRole("button", { name: "End" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "end");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "end");
+});
+
 test("Files: a wide column takes at least a quarter of the row", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
   await logIn(page);

@@ -86,7 +86,7 @@ Change a setting on the web Settings page, or with `eva settings set`. The updat
 - **Tokens:** log in to GitHub and Claude Code on the Settings page, or paste their tokens there. Paste the Telegram token there too. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too. A card with a done login shows a green panel. Its **Log out** button removes the login, after a warning. Its **Log in again** button shows the steps again. A paired Telegram bot shows **Disconnect** and **Set up again** instead.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
 - **A device that you allowed** has the same control as the terminal of Eva's computer: it can change every setting and token. If you lose a phone, tap "Log out every device" on the Settings page.
-- **Theme and density** stay in each browser, so a phone and a computer can differ.
+- **Theme, density and long file names** stay in each browser, so a phone and a computer can differ. A file name that does not fit on one line loses its middle, unless you pick its start or its end in Settings, Personalize.
 
 ## Several computers
 

@@ -1,9 +1,11 @@
 /**
- * Each browser keeps its own theme, density, seed colour and files view in `localStorage`. A phone and a desktop
- * need different density, so the vault keeps none of them.
+ * Each browser keeps its own theme, density, seed colour, files view and cut of long file names in
+ * `localStorage`. A phone and a desktop need different density, so the vault keeps none of them.
  */
 export type Theme = "system" | "light" | "dark";
 export type Density = "comfortable" | "compact";
+/** The part of a long file name that gives way to "…" when the name does not fit on one line. */
+export type FileNameCut = "start" | "middle" | "end";
 /** "columns" shows each folder of the path, as a Finder does. "single" shows one folder at a time, as Windows does. */
 export type FilesView = "columns" | "single";
 
@@ -12,6 +14,7 @@ export interface Appearance {
   readonly density: Density;
   /** The colour that every other colour of the page comes from, as `#rrggbb`. */
   readonly seed: string;
+  readonly fileNameCut: FileNameCut;
   readonly filesView: FilesView;
 }
 
@@ -48,6 +51,7 @@ const defaultAppearance: Appearance = {
   theme: "system",
   density: "comfortable",
   seed: defaultSeed,
+  fileNameCut: "middle",
   filesView: "columns",
 };
 
@@ -56,10 +60,12 @@ export function readAppearance(): Appearance {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Partial<Record<string, unknown>>;
     const seed = stored["seed"];
+    const cut = stored["fileNameCut"];
     return {
       theme: stored["theme"] === "light" || stored["theme"] === "dark" ? stored["theme"] : defaultAppearance.theme,
       density: stored["density"] === "compact" ? "compact" : defaultAppearance.density,
       seed: typeof seed === "string" && /^#[0-9a-f]{6}$/i.test(seed) ? seed.toLowerCase() : defaultAppearance.seed,
+      fileNameCut: cut === "start" || cut === "end" ? cut : defaultAppearance.fileNameCut,
       filesView: stored["filesView"] === "single" ? "single" : defaultAppearance.filesView,
     };
   } catch {
@@ -82,6 +88,7 @@ export function applyAppearance(appearance: Appearance): void {
   if (appearance.theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", appearance.theme);
   root.setAttribute("data-density", appearance.density);
+  root.setAttribute("data-file-name-cut", appearance.fileNameCut);
   root.setAttribute("data-files-view", appearance.filesView);
   for (const [name, value] of Object.entries(seedVariables(appearance.seed))) root.style.setProperty(name, value);
   // The phone's browser bar takes its colour from these tags, so they follow the theme and the seed too.

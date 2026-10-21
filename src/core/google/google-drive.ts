@@ -23,7 +23,7 @@ export async function createDriveFolder(inputs: GoogleDriveInputs, name: string)
 
   let response: Response;
   try {
-    response = await fetch(`${googleUrls(inputs.baseUrl).api}/drive/v3/files?fields=id,webViewLink`, {
+    response = await fetch(`${googleUrls(inputs.baseUrl).api}/drive/v3/files?fields=webViewLink`, {
       method: "POST",
       headers: { authorization: `Bearer ${access.accessToken}`, "content-type": "application/json" },
       body: JSON.stringify({ name, mimeType: folderType }),
@@ -34,10 +34,9 @@ export async function createDriveFolder(inputs: GoogleDriveInputs, name: string)
       cause: error,
     });
   }
-  const body = (await response.json().catch(() => null)) as { id?: unknown; webViewLink?: unknown } | null;
+  const body = (await response.json().catch(() => null)) as { webViewLink?: unknown } | null;
   if (!response.ok)
     throw new EvaError("google_failed", `Google refused to create the Drive folder (HTTP ${String(response.status)}).`);
   if (typeof body?.webViewLink === "string") return body.webViewLink;
-  if (typeof body?.id === "string") return `https://drive.google.com/drive/folders/${body.id}`;
   throw new EvaError("google_failed", "Google sent an answer that Eva cannot read.");
 }

@@ -84,6 +84,13 @@ describe("createDriveFolder", () => {
     expect(message).toContain("step 3");
   });
 
+  test("a lost network and an unreadable answer each say so", async () => {
+    google.driveFailure = "dropped";
+    expect(await failure(createDriveFolder(inputs, "Example app"))).toContain("could not reach Google");
+    google.driveFailure = "unreadable";
+    expect(await failure(createDriveFolder(inputs, "Example app"))).toContain("cannot read");
+  });
+
   test("a refusal from Google says so", async () => {
     google.apiStatus = 403;
 

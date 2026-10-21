@@ -14,6 +14,8 @@ export interface FakeGoogle {
   readonly apiRequests: string[];
   /** The name of each Drive folder that Eva created. */
   readonly driveFolders: string[];
+  /** A broken answer to a new Drive folder: a dropped connection, or a body that is not JSON. */
+  driveFailure: "dropped" | "unreadable" | null;
   /** The account of the ID token. */
   email: string;
   /** The scopes that the person allowed, with spaces between them. */
@@ -43,6 +45,7 @@ export function fakeGoogle(): FakeGoogle {
     revokeRequests: [],
     apiRequests: [],
     driveFolders: [],
+    driveFailure: null,
     email: "person@example.com",
     grantedScope: "openid https://www.googleapis.com/auth/calendar.readonly",
     tokenError: null,
@@ -87,6 +90,10 @@ export function fakeGoogle(): FakeGoogle {
           { status: 403 },
         );
       if (request.method === "POST" && url.pathname === "/drive/v3/files") {
+        // A body that fails at once makes the fetch itself fail, as a lost network does.
+        if (fake.driveFailure === "dropped")
+          return new Response(new ReadableStream({ start: (stream) => stream.error(new Error("dropped")) }));
+        if (fake.driveFailure === "unreadable") return new Response("<html>busy</html>");
         const { name } = (await request.json()) as { name: string };
         fake.driveFolders.push(name);
         const id = `folder-${String(fake.driveFolders.length)}`;

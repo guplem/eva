@@ -9,7 +9,7 @@ import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
-import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
+import { elapsedText, foldSteps, liveFace, shownPending, type PendingMessage } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
@@ -109,7 +109,7 @@ function Branch({
   voiceNotes: boolean;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
-  const [pending, setPending] = useState<string | null>(null);
+  const [sent, setSent] = useState<PendingMessage | null>(null);
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
   const closeTasks = useCallback(() => setShownTasks(null), []);
@@ -118,6 +118,7 @@ function Branch({
   const running = runningCount(tasks);
   const showError = useShowError();
   const turnCount = session.turns.length;
+  const pending = shownPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   /**
    * True once this send's turn sent a step. Its end removes the live steps before the list
@@ -128,7 +129,7 @@ function Branch({
   const startedAt = useStartTime(working);
 
   useEffect(() => {
-    setPending(null);
+    setSent(null);
   }, [turnCount]);
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
@@ -139,13 +140,13 @@ function Branch({
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    setPending(message);
+    setSent({ text: message, turnCount });
     setSawLiveSteps(false);
     try {
       await api.send(session.id, message);
       return true;
     } catch (caught) {
-      setPending(null);
+      setSent(null);
       showError(caught);
       return false;
     }

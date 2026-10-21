@@ -26,6 +26,8 @@ export function googleCredentialsFolder(paths: HomePaths): string {
 export interface GoogleUrls {
   readonly consent: string;
   readonly token: string;
+  /** Ends a refresh token at Google. */
+  readonly revoke: string;
   /** Calendar, Drive, Tasks and Gmail. */
   readonly api: string;
   /** Contacts. */
@@ -34,10 +36,17 @@ export interface GoogleUrls {
 
 export function googleUrls(baseUrl?: string): GoogleUrls {
   if (baseUrl !== undefined)
-    return { consent: `${baseUrl}/o/oauth2/v2/auth`, token: `${baseUrl}/token`, api: baseUrl, people: baseUrl };
+    return {
+      consent: `${baseUrl}/o/oauth2/v2/auth`,
+      token: `${baseUrl}/token`,
+      revoke: `${baseUrl}/revoke`,
+      api: baseUrl,
+      people: baseUrl,
+    };
   return {
     consent: "https://accounts.google.com/o/oauth2/v2/auth",
     token: "https://oauth2.googleapis.com/token",
+    revoke: "https://oauth2.googleapis.com/revoke",
     api: "https://www.googleapis.com",
     people: "https://people.googleapis.com",
   };
@@ -168,9 +177,15 @@ export class GoogleLogin {
     return { email };
   }
 
-  /** Deletes the saved login of an account. A missing file is fine: the login is gone either way. */
-  forget(email: string): void {
+  /**
+   * Ends the token at Google, then deletes the saved login of an account. A running chat may
+   * write the file back at its next refresh, so the revoke makes such a copy useless. Without a
+   * network, the delete still runs. A missing file is fine: the login is gone either way.
+   */
+  async forget(email: string): Promise<void> {
     this.pending = null;
+    const credential = readGoogleCredential(this.options.credentialsFolder, email);
+    if (credential !== null) await this.revoke(credential.refresh_token);
     try {
       rmSync(join(this.options.credentialsFolder, credentialFileName(email)), { force: true });
     } catch (error) {
@@ -178,6 +193,20 @@ export class GoogleLogin {
       throw new EvaError("google_failed", "Eva could not delete the Google login. Press Log out again.", {
         cause: error,
       });
+    }
+  }
+
+  /** Best effort: Google may be out of reach, and an ended token answers 400. */
+  private async revoke(token: string): Promise<void> {
+    try {
+      await fetch(this.urls.revoke, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token }).toString(),
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch {
+      // The delete below still ends the login on this machine.
     }
   }
 

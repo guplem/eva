@@ -50,7 +50,7 @@ export function LoggedIn({
   /** What stops working after the log out. */
   readonly warning: string;
   /** Ends the login on Eva's computer, such as by removing its saved token. */
-  readonly logOut: () => Promise<unknown>;
+  readonly logOut: () => Promise<{ readonly restartNeeded: boolean }>;
   readonly context: SettingsContext;
   readonly onLogInAgain: () => void;
 }): ReactElement {
@@ -61,9 +61,12 @@ export function LoggedIn({
   const end = async (): Promise<void> => {
     setBusy(true);
     try {
-      await logOut();
+      const { restartNeeded } = await logOut();
       setAsking(false);
-      reloadAfterSave(context, restartNote(`${words.ended} Press Restart Eva to finish.`));
+      reloadAfterSave(
+        context,
+        restartNeeded ? restartNote(`${words.ended} Press Restart Eva to finish.`) : words.ended,
+      );
     } catch (error) {
       context.notify(errorText(error));
     } finally {

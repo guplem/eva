@@ -37,20 +37,31 @@ function returnAddress(url: string, code = "the-code"): string {
 }
 
 describe("GoogleLogin.forget", () => {
-  test("deletes the saved login, and a missing one is fine", async () => {
+  test("revokes the token at Google, deletes the saved login, and a missing one is fine", async () => {
     const { url } = login.start(client.clientId, scopes);
     await login.finish(returnAddress(url), client);
-    login.forget("person@example.com");
+    await login.forget("person@example.com");
+    // A running chat may write the file back, so the token itself must stop working.
+    expect(google.revokeRequests.map((form) => form.get("token"))).toEqual(["the-refresh-token"]);
     expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
-    expect(() => login.forget("person@example.com")).not.toThrow();
+    await login.forget("person@example.com");
+    expect(google.revokeRequests).toHaveLength(1);
   });
 
-  test("a login that Eva cannot delete gives a google_failed error", () => {
+  test("deletes the saved login when Google cannot be reached", async () => {
+    const { url } = login.start(client.clientId, scopes);
+    await login.finish(returnAddress(url), client);
+    google.stop();
+    await login.forget("person@example.com");
+    expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+  });
+
+  test("a login that Eva cannot delete gives a google_failed error", async () => {
     // A folder in the place of the file stands for a file that another program holds open.
     mkdirSync(join(folder, "google", credentialFileName("person@example.com"), "inside"), { recursive: true });
     let caught: unknown;
     try {
-      login.forget("person@example.com");
+      await login.forget("person@example.com");
     } catch (error) {
       caught = error;
     }

@@ -812,11 +812,11 @@ describe("the Google setup", () => {
       const folder = googleCredentialsFolder(homePaths(home));
       expect(readGoogleCredential(folder, "person@example.com")).not.toBeNull();
       // Chats got the account at start, so they keep it until a restart.
-      expect(withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
+      expect(await withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
       expect(readGoogleCredential(folder, "person@example.com")).toBeNull();
       expect(loadSettings(homePaths(home)).config.google.email).toBeNull();
       // A second log out finds nothing to delete, and still works.
-      expect(withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
+      expect(await withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
     } finally {
       withGoogle.stop();
       google.stop();

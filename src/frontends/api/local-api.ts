@@ -534,7 +534,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     if (method === "PUT") return json(await eva.saveSecret(name, secretSchema.parse(await request.json()).value));
     if (method === "DELETE") return json(await eva.saveSecret(name, null));
   }
-  if (method === "DELETE" && url.pathname === "/api/google/login") return json(eva.logOutOfGoogle());
+  if (method === "DELETE" && url.pathname === "/api/google/login") return json(await eva.logOutOfGoogle());
   if (method === "POST" && url.pathname.startsWith("/api/google/")) {
     if (url.pathname === "/api/google/login") return json(eva.startGoogleLogin());
     if (url.pathname === "/api/google/login/finish")

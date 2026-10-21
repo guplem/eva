@@ -1246,10 +1246,10 @@ export class Eva {
    * Deletes the saved Google login and clears the account. The OAuth client stays, so a new
    * login needs no new setup. Chats got the account at start, so they keep it until a restart.
    */
-  logOutOfGoogle(): { restartNeeded: boolean } {
+  async logOutOfGoogle(): Promise<{ restartNeeded: boolean }> {
     const email = this.settings.config.google.email;
     if (email !== null) {
-      this.googleLogin.forget(email);
+      await this.googleLogin.forget(email);
       this.settings.update({ google: { email: null } });
     }
     return { restartNeeded: this.googleRestartNeeded() };

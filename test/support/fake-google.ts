@@ -8,6 +8,8 @@ export interface FakeGoogle {
   readonly url: string;
   /** The form of each token request. */
   readonly tokenRequests: URLSearchParams[];
+  /** The form of each token revoke. */
+  readonly revokeRequests: URLSearchParams[];
   /** The path of each API request. */
   readonly apiRequests: string[];
   /** The account of the ID token. */
@@ -36,6 +38,7 @@ const servicePaths: readonly [string, string][] = [
 export function fakeGoogle(): FakeGoogle {
   const fake: Omit<FakeGoogle, "url" | "stop"> = {
     tokenRequests: [],
+    revokeRequests: [],
     apiRequests: [],
     email: "person@example.com",
     grantedScope: "openid https://www.googleapis.com/auth/calendar.readonly",
@@ -49,6 +52,10 @@ export function fakeGoogle(): FakeGoogle {
     hostname: "127.0.0.1",
     fetch: async (request) => {
       const url = new URL(request.url);
+      if (url.pathname === "/revoke") {
+        fake.revokeRequests.push(new URLSearchParams(await request.text()));
+        return Response.json({});
+      }
       if (url.pathname === "/token") {
         const form = new URLSearchParams(await request.text());
         fake.tokenRequests.push(form);

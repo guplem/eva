@@ -1,13 +1,14 @@
 /**
- * The file explorer of the web page (issue 253): it lists a vault folder, shows a text file, and
- * saves the person's edit of one (issue 308). Each path is resolved before the check, so neither
- * `..` nor a symbolic link can point out of the vault (lesson 72).
+ * The file explorer of the web page (issue 253): it lists a vault folder, shows a text file, saves
+ * the person's edit of one (issue 308), and renames a file or a folder (issue 343). Each path is
+ * resolved before the check, so neither `..` nor a symbolic link can point out of the vault (lesson 72).
  */
 import {
   chmodSync,
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readSync,
   readdirSync,
@@ -112,6 +113,90 @@ export function saveVaultFile(
 }
 
 const readOnlyReason = "Eva hid a secret in this file, so she does not save it from the page.";
+
+/**
+ * Gives the file or folder at `requested` the new `name` in the same folder, and answers its new
+ * path. A link gets the new name, never its target. Throws `file_not_writable` for a name that is
+ * taken or not allowed, and for an entry of the vault layout. The idle sweep commits the change.
+ */
+export function renameVaultEntry(vaultPath: string, requested: string, name: string): string {
+  const { root, path, notFound } = resolveInVault(vaultPath, requested);
+  if (path === "") throw notWritable("The vault folder keeps its name.");
+  const parts = path.split("/");
+  const oldName = parts.pop() ?? "";
+  if (oldName === "..") throw notFound;
+  const nameProblem = problemOfName(name);
+  if (nameProblem !== null) throw notWritable(nameProblem);
+  const folder = resolveInVault(vaultPath, parts.join("/")).resolved;
+  const folderParts = relative(root, folder)
+    .split(sep)
+    .filter((part) => part !== "");
+  if (isLayoutEntry([...folderParts, oldName]) || isLayoutEntry([...folderParts, name]))
+    throw notWritable("Eva finds her settings and projects by this name, so it stays.");
+  if (looksLikeSecretsFile(oldName) || looksLikeSecretsFile(name))
+    throw notWritable("A secrets file stays out of reach of the page, so Eva does not rename it.");
+  const newPath = [...parts, name].join("/");
+  if (name === oldName) return newPath;
+  const source = join(folder, oldName);
+  const target = join(folder, name);
+  try {
+    // A file system that ignores case finds the entry itself at a name that changes only the case.
+    if (existsAt(target) && !sameEntry(source, target))
+      throw notWritable(`${name} is in this folder already. Pick another name.`);
+    renameSync(source, target);
+  } catch (error) {
+    if (error instanceof EvaError) throw error;
+    if (errorCode(error) === "ENOENT") throw notFound;
+    throw notWritable("Eva has no permission to rename this.");
+  }
+  return newPath;
+}
+
+/** Windows cannot hold these characters or these device names, and the vault goes to every machine. */
+const forbiddenCharacters = /[<>:"/\\|?*]/;
+const deviceName = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
+/** Most file systems hold at most 255 bytes in a name. */
+const maxNameBytes = 255;
+
+function problemOfName(name: string): string | null {
+  if (name === "" || name === "." || name === "..") return "Give the file or folder a name.";
+  if (forbiddenCharacters.test(name) || hasControlCharacter(name))
+    return 'A name cannot hold these characters: < > : " / \\ | ? * or a control character.';
+  if (name.endsWith(".") || name.endsWith(" ")) return "A name cannot end with a dot or a space.";
+  if (deviceName.test(name)) return `Windows keeps the name ${name} for a device. Pick another name.`;
+  if (name.toLowerCase() === hiddenName) return "Git keeps this name for its own data.";
+  if (Buffer.byteLength(name) > maxNameBytes) return "The name is too long.";
+  return null;
+}
+
+function hasControlCharacter(name: string): boolean {
+  for (let index = 0; index < name.length; index += 1) if (name.charCodeAt(index) < 32) return true;
+  return false;
+}
+
+/** `.eva`, `Projects`, each project folder, its `repos` folder and each clone: the layout contract. */
+function isLayoutEntry(parts: readonly string[]): boolean {
+  const lower = parts.map((part) => part.toLowerCase());
+  if (lower.length === 1) return lower[0] === ".eva" || lower[0] === "projects";
+  if (lower[0] !== "projects") return false;
+  return lower.length === 2 || (lower[2] === "repos" && lower.length <= 4);
+}
+
+/** True for any entry at `path`, a broken link too. */
+function existsAt(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sameEntry(first: string, second: string): boolean {
+  const one = lstatSync(first);
+  const other = lstatSync(second);
+  return one.dev === other.dev && one.ino === other.ino;
+}
 
 function notWritable(reason: string): EvaError {
   return new EvaError("file_not_writable", reason);

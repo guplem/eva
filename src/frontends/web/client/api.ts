@@ -221,6 +221,9 @@ export const api = {
   /** A file that changed since `version` answers 409 with `file_changed`. */
   saveFile: (path: string, version: string, text: string): Promise<BrowsedPath> =>
     request("PUT", "/api/files", { path, version, text }),
+  /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
+  renameFile: (path: string, name: string): Promise<{ path: string }> =>
+    request("POST", "/api/files/rename", { path, name }),
   downloadFile: download,
   favorites: (): Promise<Favorite[]> => request("GET", "/api/files/favorites"),
   /** A missing path answers 404 with `file_not_found`. */

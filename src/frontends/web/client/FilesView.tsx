@@ -2,7 +2,8 @@
  * The Files page (issues 253 and 308): the vault's folders and the text of its files. Each folder
  * and file is a link, so the back button and a reload work as they do on any page. A wide screen
  * shows each folder of the path as a column and the open file at the right, as a Finder does. A
- * phone shows the last one alone. The person can edit a text file and save it in the vault.
+ * phone shows the last one alone. The person can edit a text file and save it in the vault, and
+ * rename a file or a folder (issue 343).
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry } from "./api.ts";
@@ -12,6 +13,7 @@ import {
   childPath,
   fileAddressOf,
   filePathOf,
+  isUnder,
   parentOf,
   pathCrumbs,
   sizeWords,
@@ -19,6 +21,7 @@ import {
 } from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
+import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { toWebHtml } from "./web-format.ts";
 
@@ -31,6 +34,8 @@ export function FilesView(): ReactElement {
   /** The answer for each path that the page read, so a column stays while the person goes deeper. */
   const [answers, setAnswers] = useState<ReadonlyMap<string, Answer>>(new Map());
   const [large, setLarge] = useState(false);
+  /** The new name in the rename field, or null when the field is closed. */
+  const [naming, setNaming] = useState<string | null>(null);
   /** A tap on the same link changes no address, so a failed read needs its own way to run again. */
   const [attempt, setAttempt] = useState(0);
   const columns = useRef<HTMLDivElement>(null);
@@ -71,6 +76,7 @@ export function FilesView(): ReactElement {
   const crumbs = pathCrumbs(path);
   useEffect(() => {
     setLarge(false);
+    setNaming(null);
     // The open path reads again each time, so a file shows its newest text. A parent column reads once.
     for (const crumb of pathCrumbs(path).slice(0, -1))
       if (known.current.get(crumb.path)?.state !== "shown") read(crumb.path);
@@ -91,6 +97,18 @@ export function FilesView(): ReactElement {
     if (parent !== null) read(parent);
   };
 
+  const rename = async (name: string): Promise<void> => {
+    const renamed = (await api.renameFile(path, name)).path;
+    if (renamed === path) return;
+    moveDrafts(path, renamed);
+    // The old answers name a path that is gone, so the new path and its folder read again.
+    setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, path))));
+    const folder = parentOf(renamed);
+    if (folder !== null) read(folder);
+    // The old address names nothing now, so Back must not go there.
+    window.location.replace(fileAddressOf(renamed));
+  };
+
   const parent = parentOf(path);
   const last = answers.get(path);
   const fileIsOpen = last?.state === "shown" && last.answer.kind !== "folder";
@@ -105,24 +123,44 @@ export function FilesView(): ReactElement {
               <Icon name="back" />
             </a>
           )}
-          <nav className="files-crumbs" aria-label="Folder path">
-            {crumbs.map((crumb, index) =>
-              index === crumbs.length - 1 ? (
-                <h1 key={crumb.path} aria-current="page">
-                  {crumb.name}
-                </h1>
-              ) : (
-                <span key={crumb.path} className="files-crumb">
-                  <a href={fileAddressOf(crumb.path)}>{crumb.name}</a>
-                  <span aria-hidden="true">/</span>
-                </span>
-              ),
-            )}
-          </nav>
-          {shownPath !== null && shownPath !== "" && (
+          {naming !== null ? (
+            <RenameForm
+              label={`New name of ${crumbs[crumbs.length - 1]?.name ?? ""}`}
+              draft={naming}
+              onDraft={setNaming}
+              onSave={rename}
+              onEnd={() => setNaming(null)}
+            />
+          ) : (
+            <nav className="files-crumbs" aria-label="Folder path">
+              {crumbs.map((crumb, index) =>
+                index === crumbs.length - 1 ? (
+                  <h1 key={crumb.path} aria-current="page">
+                    {crumb.name}
+                  </h1>
+                ) : (
+                  <span key={crumb.path} className="files-crumb">
+                    <a href={fileAddressOf(crumb.path)}>{crumb.name}</a>
+                    <span aria-hidden="true">/</span>
+                  </span>
+                ),
+              )}
+            </nav>
+          )}
+          {naming === null && path !== "" && last?.state === "shown" && (
+            <button
+              className="files-rename icon-button"
+              aria-label={`Rename ${crumbs[crumbs.length - 1]?.name ?? ""}`}
+              data-tooltip="Rename"
+              onClick={() => setNaming(crumbs[crumbs.length - 1]?.name ?? "")}
+            >
+              <Icon name="pen" />
+            </button>
+          )}
+          {naming === null && shownPath !== null && shownPath !== "" && (
             <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
           )}
-          {last?.state === "shown" && last.answer.kind === "folder" && (
+          {naming === null && last?.state === "shown" && last.answer.kind === "folder" && (
             <DownloadButton key={path} path={path} folder={true} />
           )}
         </div>
@@ -437,6 +475,15 @@ function keepDraft(path: string, draft: Draft | null, onDisk: string): void {
   window.addEventListener("beforeunload", (event) => {
     if (drafts.size > 0) event.preventDefault();
   });
+}
+
+/** A renamed file or folder takes its drafts, and the drafts of the files inside it, to the new path. */
+function moveDrafts(from: string, to: string): void {
+  for (const [path, draft] of [...drafts]) {
+    if (!isUnder(path, from)) continue;
+    drafts.delete(path);
+    drafts.set(to + path.slice(from.length), draft);
+  }
 }
 
 interface FilePreviewProps {

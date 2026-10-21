@@ -3,6 +3,7 @@ import {
   childPath,
   fileAddressOf,
   filePathOf,
+  isUnder,
   parentOf,
   pathCrumbs,
   sizeWords,
@@ -43,6 +44,13 @@ describe("path parts", () => {
       { name: "Methods", path: "Methods" },
       { name: "Plan.md", path: "Methods/Plan.md" },
     ]);
+  });
+
+  test("a path is under itself and under each folder that holds it, never under a name that only starts the same", () => {
+    expect(isUnder("Methods", "Methods")).toBe(true);
+    expect(isUnder("Methods/Plan.md", "Methods")).toBe(true);
+    expect(isUnder("Methods 2/Plan.md", "Methods")).toBe(false);
+    expect(isUnder("Library", "Methods")).toBe(false);
   });
 
   test("the parent of a path, and of the root", () => {

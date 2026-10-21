@@ -132,6 +132,18 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   await expect(dialog).toHaveCount(0);
 }
 
+test("a Tailscale account that this Eva does not let in sees why, instead of a page that waits (#322)", async ({
+  page,
+}) => {
+  const reason = "This Eva does not let in the Tailscale account partner@example.com. Run `eva setup`.";
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 403, json: { error: reason, code: "tailscale_account_refused" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "This account cannot open this Eva" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(reason);
+});
+
 test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("wrong");
@@ -3807,6 +3819,27 @@ test("Files: the person edits a note, saves it in the vault, and sees it formatt
   // The core wrote the file: a reload reads it from the vault.
   await page.reload();
   await expect(file.getByRole("listitem").filter({ hasText: "Bread" })).toBeVisible();
+});
+
+test("Files: the person renames a note, and its new address opens it (issue 343)", async ({ page }, testInfo) => {
+  await logIn(page);
+  const run = testInfo.project.name;
+  await page.goto(`/#/files/Notes/${run}-draft.md`);
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
+  await page.getByRole("button", { name: `Rename ${run}-draft.md` }).click();
+  const field = page.getByRole("textbox", { name: `New name of ${run}-draft.md` });
+  await field.fill("bad:name.md");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("A name cannot hold these characters")).toBeVisible();
+  await field.fill(`${run}-plan.md`);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/files/Notes/${run}-plan\\.md$`));
+  await expect(page.getByRole("heading", { name: `${run}-plan.md`, level: 1 })).toBeVisible();
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
+  // The core renamed the file: a reload reads it from the vault.
+  await page.reload();
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
 });
 
 test("Files: a save of a file that changed meanwhile asks to load it again (issue 308)", async ({ page }) => {

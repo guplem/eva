@@ -412,3 +412,9 @@ a.files-entry[aria-current="true"] {
     min-height: 44px;
   }
 }
+
+/* The rename button keeps its size, so a long path wraps instead. */
+.files-rename {
+  flex-shrink: 0;
+  color: var(--ink);
+}

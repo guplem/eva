@@ -50,6 +50,11 @@ export function parentOf(path: string): string | null {
   return path.split("/").slice(0, -1).join("/");
 }
 
+/** True for `folder` itself and for each path inside it. */
+export function isUnder(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(`${folder}/`);
+}
+
 export function childPath(folder: string, name: string): string {
   return folder === "" ? name : `${folder}/${name}`;
 }

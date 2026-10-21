@@ -52,8 +52,11 @@ for (const run of ["desktop", "phone"]) {
     `---\ncreated: 2025-05-01T08:00\nstatus: idea # idea, active, paused or closed\n---\n# Draft ${run}\n\nFirst thoughts.\n`,
   );
 }
-// The Files test edits a note, so each browser run gets its own.
-for (const run of ["desktop", "phone"]) sandbox.write(vault, `Notes/${run}-list.md`, "# Shopping\n\n- Milk\n");
+// The Files tests edit and rename notes, so each browser run gets its own.
+for (const run of ["desktop", "phone"]) {
+  sandbox.write(vault, `Notes/${run}-list.md`, "# Shopping\n\n- Milk\n");
+  sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
+}
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");

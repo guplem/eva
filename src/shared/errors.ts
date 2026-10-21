@@ -19,6 +19,7 @@ export type EvaErrorCode =
   | "google_failed"
   | "claude_login_failed"
   | "tailscale_install_failed"
+  | "tailscale_account_refused"
   | "engine_install_failed"
   | "project_invalid"
   | "project_changed"

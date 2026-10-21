@@ -111,6 +111,21 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
   );
 }
 
+/**
+ * The page for a Tailscale account that this Eva does not let in. The page loads before any
+ * check, so without this its first read failed and it waited for ever (#322).
+ */
+export function AccountRefusedView({ reason }: { readonly reason: string }): ReactElement {
+  return (
+    <LoginPage>
+      <div className="login-title">
+        <h1>This account cannot open this Eva</h1>
+        <p role="alert">{reason}</p>
+      </div>
+    </LoginPage>
+  );
+}
+
 function LoginPage({ children }: { readonly children: ReactNode }): ReactElement {
   return (
     <main className="login-page">

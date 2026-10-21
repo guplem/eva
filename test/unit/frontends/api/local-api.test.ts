@@ -1230,7 +1230,16 @@ describe("web routes", () => {
     expect(outside.status).toBe(404);
   });
 
-  test("files: a download name keeps its accents, and a quote in it cannot break the header", async () => {
+  test("files: a download name keeps its accents, an apostrophe and its brackets", async () => {
+    writeFileSync(join(eva.status().vaultPath ?? "", "Café 'plan' (1).md"), "# Plan\n");
+    const file = await call(`/api/files/download?path=${encodeURIComponent("Café 'plan' (1).md")}`);
+    expect(file.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"Caf_ 'plan' (1).md\"; filename*=UTF-8''Caf%C3%A9%20%27plan%27%20%281%29.md",
+    );
+  });
+
+  // Windows allows no quote in a file name.
+  test.skipIf(process.platform === "win32")("files: a quote in a download name cannot break the header", async () => {
     writeFileSync(join(eva.status().vaultPath ?? "", 'Café "plan".md'), "# Plan\n");
     const file = await call(`/api/files/download?path=${encodeURIComponent('Café "plan".md')}`);
     expect(file.headers.get("content-disposition")).toBe(

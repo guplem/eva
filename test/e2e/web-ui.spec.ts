@@ -3864,6 +3864,23 @@ test("Files: a phone shows only the open folder (issue 308)", async ({ page }, t
   await expect(page.getByRole("button", { name: "Make the file large" })).toHaveCount(0);
 });
 
+test("Files: on a phone, the buttons leave the folder name room for whole words", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A wide screen has room for the path and the buttons.");
+  await logIn(page);
+  await page.goto("/#/files/Projects");
+  const path = page.getByRole("navigation", { name: "Folder path" });
+  const name = path.getByRole("heading", { name: "Projects" });
+  await expect(name).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download this folder as a zip file" })).toBeVisible();
+  // A squeezed name breaks after each letter, so its box gets tall and narrow.
+  const box = await name.boundingBox();
+  const lineHeight = await name.evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+  expect(box?.height ?? 0).toBeLessThan(lineHeight * 1.5);
+  const parent = path.getByRole("link", { name: "Vault" });
+  const parentBox = await parent.boundingBox();
+  expect(parentBox?.height ?? 0).toBeLessThan(lineHeight * 1.5);
+});
+
 test("Files: the person edits a note, saves it in the vault, and sees it formatted again (issue 308)", async ({
   page,
 }, testInfo) => {

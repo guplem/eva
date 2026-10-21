@@ -302,7 +302,7 @@ function DownloadButton({
         data-tooltip={iconOnly ? label : undefined}
       >
         <Icon name="download" />
-        {!iconOnly && label}
+        {!iconOnly && <span className="files-download-label">{label}</span>}
       </button>
       {busy && <ProgressBar label={folder ? "Packing the folder…" : "Downloading…"} share={share} />}
       {problem !== null && (

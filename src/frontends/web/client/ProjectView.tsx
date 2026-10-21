@@ -419,6 +419,7 @@ export function ProjectView({
               approvals={approvals}
               blocker={blocker}
               voiceNotes={voiceNotes}
+              projectTitle={page.project.title}
             />
           </>
         ) : (

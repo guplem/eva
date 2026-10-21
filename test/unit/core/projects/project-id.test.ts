@@ -56,3 +56,13 @@ describe("projectSlug", () => {
     expect(projectSlug("Wall-I Rewrite")).toBe("wall-i-rewrite");
   });
 });
+
+describe("formatProjectId for a long name", () => {
+  test("cuts the slug at a hyphen, so the folder and the repository name stay short", () => {
+    const id = formatProjectId("2026-01-05T09:07", "word ".repeat(40));
+    const slug = id.slice("2026-01-05-0907-".length);
+    expect(slug.length).toBeLessThanOrEqual(60);
+    expect(slug).toMatch(/^word(-word)*$/);
+    expect(formatProjectId("2026-01-05T09:07", "a".repeat(80))).toBe(`2026-01-05-0907-${"a".repeat(60)}`);
+  });
+});

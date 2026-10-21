@@ -57,14 +57,23 @@ export function formatProjectId(wallClock: string, name: string): string {
   return `${wallClock.replace("T", "-").replace(":", "")}-${slug}`;
 }
 
+/**
+ * The name of a new project's folder and repository. A long slug breaks paths on Windows and
+ * GitHub's 100-character limit, so the slug ends at a hyphen before 60 characters.
+ */
+const slugLimit = 60;
+
 /** The name part of a project id: lowercase letters and digits, joined by hyphens. */
 export function projectSlug(name: string): string {
-  return name
+  const slug = name
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+  if (slug.length <= slugLimit) return slug;
+  const lastHyphen = slug.slice(0, slugLimit + 1).lastIndexOf("-");
+  return slug.slice(0, lastHyphen > 0 ? lastHyphen : slugLimit);
 }
 
 function isValidCreationTime(time: ProjectCreationTime): boolean {

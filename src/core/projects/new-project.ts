@@ -3,7 +3,7 @@
  * repository and a Google Drive folder. The local folder comes first, so a failed step loses
  * nothing: the project stays, and the result says which step failed and why.
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -75,7 +75,13 @@ export async function createProject(
     throw error;
   }
   const file = join(folder, "AGENTS.md");
-  writeFileAtomic(file, first);
+  try {
+    writeFileAtomic(file, first);
+  } catch (error) {
+    // The list skips a folder with no AGENTS.md, so an empty one would only block the next send.
+    rmSync(folder, { recursive: true, force: true });
+    throw error;
+  }
 
   const oneLine = description.replace(/\s+/g, " ").slice(0, repositoryDescriptionLimit);
   const [github, drive] = await Promise.all([
@@ -111,7 +117,8 @@ function projectText(
   const parts = [
     `# ${title}`,
     description,
-    results.driveFolder === null ? "" : `Google Drive folder: ${results.driveFolder}`,
+    // A list item, so the catalog never reads the link as the description.
+    results.driveFolder === null ? "" : `- Google Drive folder: ${results.driveFolder}`,
   ];
   const body = parts.filter((part) => part !== "").join("\n\n");
   return applyProjectDetails(`---\ncreated: ${wallClock}\n---\n\n${body}\n`, {

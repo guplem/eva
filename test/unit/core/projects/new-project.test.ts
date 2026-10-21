@@ -109,11 +109,41 @@ describe("createProject", () => {
     const text = fileOf(result.projectId);
     expect(text).toContain("repos:\n  - https://github.com/example/example-app\n");
     expect(text).toEndWith(
-      "A small app to try Eva.\n\nGoogle Drive folder: https://drive.google.com/drive/folders/folder-1\n",
+      "A small app to try Eva.\n\n- Google Drive folder: https://drive.google.com/drive/folders/folder-1\n",
     );
     const [project] = discoverProjects({ vaultPath: vault, extraRoots: [] });
     expect(project?.frontMatter.repos).toEqual(["https://github.com/example/example-app"]);
     expect(project?.description).toBe("A small app to try Eva.");
+  });
+
+  test("without a description, the Drive link never reads as the description", async () => {
+    await createProject(
+      { ...input, description: "", drive: true },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      { ...noSteps, createDriveFolder: () => Promise.resolve("https://drive.google.com/drive/folders/folder-1") },
+    );
+
+    const [project] = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    expect(project?.description).toBeNull();
+  });
+
+  test("a long name gives a repository name that GitHub takes", async () => {
+    const names: string[] = [];
+    await createProject(
+      { ...input, name: "A very long project name ".repeat(8), github: true },
+      { projectsFolder: projectsFolder(), wallClock: "2026-10-21T15:42" },
+      {
+        ...noSteps,
+        createRepository: (name) => {
+          names.push(name);
+          return Promise.resolve("https://github.com/example/x");
+        },
+      },
+    );
+
+    expect(names[0]?.length).toBeLessThanOrEqual(60);
+    const [project] = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    expect(project?.id).toBe(`2026-10-21-1542-${names[0] ?? ""}`);
   });
 
   test("a failed step keeps the project and says why", async () => {

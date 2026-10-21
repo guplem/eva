@@ -9,6 +9,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { MenuList, useDismissOutside, type MenuItem } from "./Menu.tsx";
+import { RenameForm } from "./RenameForm.tsx";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
 export type ChatAction = "rename" | "delete";
@@ -132,14 +133,17 @@ export function ChatHeader({
         </div>
       ) : (
         <RenameForm
-          chat={chat}
+          label="Chat title"
           draft={draft}
           onDraft={setDraft}
+          onSave={async (title) => {
+            await api.rename(chat.id, title);
+            await onChanged();
+          }}
           onEnd={() => {
             setDraft(null);
             moreButton.current?.focus();
           }}
-          onChanged={onChanged}
         />
       )}
       {extra}
@@ -156,67 +160,6 @@ export function ChatHeader({
       )}
       {infoOpen && <ChatInfoSheet {...details} onClose={closeInfo} />}
     </div>
-  );
-}
-
-/** The title as a field. Enter saves; Escape keeps the old title. */
-function RenameForm({
-  chat,
-  draft,
-  onDraft,
-  onEnd,
-  onChanged,
-}: {
-  readonly chat: SessionRecord;
-  readonly draft: string;
-  readonly onDraft: (draft: string) => void;
-  /** Closes the field, with the new title saved or not. */
-  readonly onEnd: () => void;
-  readonly onChanged: () => Promise<void>;
-}): ReactElement {
-  // A second Enter while the request runs must not send it again.
-  const [saving, setSaving] = useState(false);
-  const showError = useShowError();
-
-  const save = async (title: string): Promise<void> => {
-    setSaving(true);
-    try {
-      await api.rename(chat.id, title);
-      await onChanged();
-      onEnd();
-    } catch (caught) {
-      showError(caught);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <form
-      className="rename-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!saving) void save(draft);
-      }}
-    >
-      <input
-        aria-label="Chat title"
-        value={draft}
-        autoFocus
-        // Selected, so the person can type a new title at once.
-        onFocus={(event) => event.target.select()}
-        onChange={(event) => onDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onEnd();
-        }}
-      />
-      <button className="primary" type="submit" disabled={saving || draft.trim() === ""}>
-        Save
-      </button>
-      <button type="button" onClick={onEnd}>
-        Cancel
-      </button>
-    </form>
   );
 }
 

@@ -929,6 +929,69 @@ describe("Eva", () => {
     expect(versions.tools.some((tool) => tool.program === "bun")).toBe(false);
   });
 
+  test("the latest tool versions come from the sources; a found one waits an hour, and a failure 10 minutes", async () => {
+    const asked: string[] = [];
+    let piAnswers = false;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request): Response {
+        const path = new URL(request.url).pathname;
+        asked.push(path);
+        if (path === "/@anthropic-ai/claude-code/latest") return Response.json({ version: "2.1.310" });
+        if (path === "/repos/earendil-works/pi/releases/latest" && piAnswers)
+          return Response.json({ tag_name: "v1.4.0" });
+        return new Response("down", { status: 503 });
+      },
+    });
+    const base = `http://127.0.0.1:${String(server.port)}`;
+    try {
+      const instance = new Eva({
+        paths: homePaths(home),
+        config: config(),
+        secrets: {},
+        engines: [new FakeEngine()],
+        runner: systemProcessRunner,
+        processEnvironment: gitEnvironment,
+        now: () => clock,
+        basePrompt: "Base.",
+        toolLatestSources: { npmBaseUrl: base, githubApiBaseUrl: base },
+      });
+      eva = instance;
+      // Two reads at once share one lookup of each tool.
+      const [first] = await Promise.all([instance.latestToolVersions(), instance.latestToolVersions()]);
+      expect(first).toEqual([
+        { program: "claude", latest: "2.1.310" },
+        { program: "pi", latest: null },
+        { program: "uv", latest: null },
+        { program: "gh", latest: null },
+      ]);
+      expect(asked).toHaveLength(4);
+      // A failure waits 10 minutes; a found version waits an hour.
+      asked.length = 0;
+      piAnswers = true;
+      expect((await instance.latestToolVersions()).find((tool) => tool.program === "pi")?.latest).toBeNull();
+      expect(asked).toHaveLength(0);
+      clock = new Date(clock.getTime() + 11 * 60_000);
+      const second = await instance.latestToolVersions();
+      expect(second.find((tool) => tool.program === "pi")?.latest).toBe("1.4.0");
+      expect(asked).not.toContain("/@anthropic-ai/claude-code/latest");
+      asked.length = 0;
+      clock = new Date(clock.getTime() + 61 * 60_000);
+      await instance.latestToolVersions();
+      expect(asked).toContain("/@anthropic-ai/claude-code/latest");
+      expect(asked).toContain("/repos/earendil-works/pi/releases/latest");
+      // Claude Code on the stable channel reads the stable tag.
+      mkdirSync(join(home, "engines", "claude"), { recursive: true });
+      writeFileSync(join(home, "engines", "claude", "settings.json"), JSON.stringify({ autoUpdatesChannel: "stable" }));
+      asked.length = 0;
+      await instance.latestToolVersions();
+      expect(asked).toContain("/@anthropic-ai/claude-code/stable");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   test("the Updates page installs a tool, one at a time, and a failure gives the steps", async () => {
     const release = serveGhRelease();
     const runner = ghInstallRunner(systemProcessRunner, { version: null });

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, ApiError, type ProjectDetails, type ProjectFile } from "./api.ts";
 import { BackButton } from "./ProjectPage.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 
 const statusChoices = [
   { value: "", label: "None" },
@@ -87,7 +88,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
     file.details !== null && (!sameDetails(details, file.details) || tagDraft.trim() !== "" || repoDraft.trim() !== "");
   const textChanged = text !== file.text;
 
-  const save = async (write: (version: string) => Promise<ProjectFile>): Promise<void> => {
+  const save = async (write: (version: string) => Promise<ProjectFile>): Promise<boolean> => {
     setProblem(null);
     setSaved("");
     setBusy(true);
@@ -95,6 +96,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
       show(await write(file.version));
       setSaved("Saved.");
       onSaved();
+      return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "project_changed") {
         setProblem({
@@ -104,13 +106,14 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
       } else {
         setProblem({ kind: "failed", text: caught instanceof Error ? caught.message : String(caught) });
       }
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
   // A value typed in an Add field but not added yet still counts.
-  const saveDetails = (): Promise<void> =>
+  const saveDetails = (): Promise<boolean> =>
     save((version) =>
       api.saveProjectDetails(projectId, version, {
         ...details,
@@ -194,9 +197,9 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
 
             {textChanged && <div className="muted">The details wait until you save or load again the whole file.</div>}
             <div>
-              <button className="primary" onClick={() => void saveDetails()}>
+              <SaveButton className="primary" onSave={saveDetails}>
                 Save details
-              </button>
+              </SaveButton>
             </div>
           </fieldset>
         )}
@@ -214,9 +217,9 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
           </label>
           {formChanged && <div className="muted">The file waits until you save or load again the details.</div>}
           <div>
-            <button onClick={() => void save((version) => api.saveProjectFile(projectId, version, text))}>
+            <SaveButton onSave={() => save((version) => api.saveProjectFile(projectId, version, text))}>
               Save the file
-            </button>
+            </SaveButton>
           </div>
         </fieldset>
       </div>

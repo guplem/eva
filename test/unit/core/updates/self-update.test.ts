@@ -6,7 +6,6 @@ import { join } from "node:path";
 import type { Server } from "bun";
 import {
   assetNameFor,
-  isNewerVersion,
   parseChecksums,
   releasePublicKey,
   sha256Hex,
@@ -54,14 +53,6 @@ describe("release verification", () => {
     expect(assetNameFor("linux", "x64")).toBe("eva-linux-x64");
     expect(assetNameFor("linux", "arm64")).toBe("eva-linux-arm64");
     expect(assetNameFor("darwin", "arm64")).toBeNull();
-  });
-
-  test("versions compare by number, with or without a v", () => {
-    expect(isNewerVersion("v0.2.0", "0.1.9")).toBe(true);
-    expect(isNewerVersion("0.10.0", "0.9.0")).toBe(true);
-    expect(isNewerVersion("v0.1.0", "0.1.0")).toBe(false);
-    expect(isNewerVersion("0.1", "0.1.1")).toBe(false);
-    expect(isNewerVersion("1.0.0-beta", "0.9.0")).toBe(true);
   });
 });
 

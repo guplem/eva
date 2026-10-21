@@ -1,6 +1,13 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaSetupState, EvaStatus, EvaVersions, InstallableTool, ToolInstallResult } from "../../../core/eva.ts";
+import type {
+  EvaSetupState,
+  EvaStatus,
+  EvaVersions,
+  InstallableTool,
+  LatestToolVersion,
+  ToolInstallResult,
+} from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
 import type {
@@ -129,8 +136,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
-  newAssistantChat: (model: ModelAlias): Promise<SessionRecord> =>
-    request("POST", "/api/sessions", { mode: "assistant", model }),
+  /** With no engine, Eva starts the chat on her default engine. */
+  newAssistantChat: (model: ModelAlias, engine?: EngineName): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", { mode: "assistant", model, ...(engine === undefined ? {} : { engine }) }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
   /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
@@ -204,6 +212,7 @@ export const api = {
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),
+  latestVersions: (): Promise<LatestToolVersion[]> => request("GET", "/api/versions/latest"),
   /** Waits for the whole install, which downloads the tool. */
   installTool: (program: InstallableTool): Promise<ToolInstallResult> =>
     request("POST", "/api/tools/install", { program }),

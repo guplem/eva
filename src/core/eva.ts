@@ -82,6 +82,7 @@ import {
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
 import { browseVault, saveVaultFile, type BrowsedPath } from "./files/file-browser.ts";
+import { readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
 import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
@@ -1053,6 +1054,16 @@ export class Eva {
   /** Replaces the text of a vault file from the file explorer. The idle sweep commits the change. */
   saveFile(path: string, version: string, text: string): BrowsedPath {
     return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
+  }
+
+  /** The favorite files and folders, which the file explorer shows first. */
+  favoriteFiles(): Favorite[] {
+    return readFavorites(this.browsedVault());
+  }
+
+  /** Adds a vault path to the favorites, or removes it. The idle sweep commits the change. */
+  setFavoriteFile(path: string, favorite: boolean): Favorite[] {
+    return setFavorite(this.browsedVault(), path, favorite);
   }
 
   private browsedVault(): string {

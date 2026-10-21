@@ -88,6 +88,7 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
 const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
+const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
@@ -541,6 +542,11 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "PUT" && url.pathname === "/api/files") {
     const { path, version, text } = vaultFileSchema.parse(await request.json());
     return json(eva.saveFile(path, version, text));
+  }
+  if (method === "GET" && url.pathname === "/api/files/favorites") return json(eva.favoriteFiles());
+  if (method === "PUT" && url.pathname === "/api/files/favorites") {
+    const { path, favorite } = favoriteSchema.parse(await request.json());
+    return json(eva.setFavoriteFile(path, favorite));
   }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());

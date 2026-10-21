@@ -1260,6 +1260,23 @@ describe("web routes", () => {
     expect((await call("/api/files", { method: "PUT", body: { path, text: "# No version\n" } })).status).toBe(400);
   });
 
+  test("files: a favorite is added, listed and removed, and a missing path is not found (issue 349)", async () => {
+    expect(await json(await call("/api/files/favorites"))).toEqual([]);
+    const added = await call("/api/files/favorites", { method: "PUT", body: { path: "Projects", favorite: true } });
+    expect(await json(added)).toEqual([{ path: "Projects", name: "Projects", kind: "folder" }]);
+    expect(await json(await call("/api/files/favorites"))).toEqual([
+      { path: "Projects", name: "Projects", kind: "folder" },
+    ]);
+    const stored = readFileSync(join(eva.status().vaultPath ?? "", ".eva/favorites.json"), "utf-8");
+    expect(JSON.parse(stored)).toEqual({ version: 1, paths: ["Projects"] });
+
+    const removed = await call("/api/files/favorites", { method: "PUT", body: { path: "Projects", favorite: false } });
+    expect(await json(removed)).toEqual([]);
+    const missing = await call("/api/files/favorites", { method: "PUT", body: { path: "Nothing", favorite: true } });
+    expect(missing.status).toBe(404);
+    expect((await call("/api/files/favorites", { method: "PUT", body: { path: "Projects" } })).status).toBe(400);
+  });
+
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     await call("/api/schedules", { method: "POST", body: entry });

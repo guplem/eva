@@ -353,7 +353,7 @@ export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A choice list that saves at once. */
+/** A choice list. */
 export function SelectField<T extends string>({
   label,
   value,

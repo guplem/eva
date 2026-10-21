@@ -80,6 +80,13 @@ describe("settings search", () => {
     expect(searchSettings("pi").map((entry) => entry.item)).toContain("versions");
   });
 
+  test("the project folders sit with the vault, because they are paths on this machine", () => {
+    const found = searchSettings("project folders").map((entry) => `${entry.section}/${entry.item}`);
+    expect(found).toEqual(["vault/project-folders"]);
+    const personalize = settingsSections.find((section) => section.id === "personalize");
+    expect(personalize?.summary).not.toContain("project");
+  });
+
   test("each entry names a known section, and no two entries share a place", () => {
     const sections = new Set(settingsSections.map((section) => section.id));
     const places = searchEntries.map((entry) => `${entry.section}/${entry.item}`);

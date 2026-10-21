@@ -610,7 +610,7 @@ describe("Eva", () => {
       config: config({ google: { ...defaultConfig.google, email: "person@example.com", services: ["calendar"] } }),
       secrets: {
         githubToken: "github-token-for-tests",
-        googleOauthClientId: "google-client-id-for-tests",
+        googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
         googleOauthClientSecret: "google-client-secret-for-tests",
       },
       engines: [engine],
@@ -623,7 +623,7 @@ describe("Eva", () => {
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
     const google = engine.requests[0]?.mcpServers["google"];
-    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("google-client-id-for-tests");
+    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("123456789012-clientid.apps.googleusercontent.com");
     expect(google?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
     expect(Object.values(google?.environment ?? {})).not.toContain("github-token-for-tests");
   });

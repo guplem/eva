@@ -65,3 +65,17 @@ export function chipLock(
     return "The engine and model are fixed after the first message. Start a new chat to change them.";
   return null;
 }
+
+/** A sent message whose stored turn has not come yet, and the turn count when it was sent. */
+export interface PendingMessage {
+  readonly text: string;
+  readonly turnCount: number;
+}
+
+/**
+ * The text of the sent message to show, or null. The stored turn arrives one render before an
+ * effect can clear the pending message, so the turn count hides it in that render.
+ */
+export function shownPending(pending: PendingMessage | null, turnCount: number): string | null {
+  return pending !== null && pending.turnCount === turnCount ? pending.text : null;
+}

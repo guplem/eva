@@ -9,7 +9,7 @@ import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
-import { elapsedText, foldSteps, liveFace } from "./conversation-parts.ts";
+import { elapsedText, foldSteps, liveFace, shownPending, type PendingMessage } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
@@ -123,7 +123,9 @@ function Branch({
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
   // The New chat page sent this message before the chat opened here, so the chat starts with it.
-  const [pending, setPending] = useState<string | null>(turnCount === 0 ? firstMessage : null);
+  const [sent, setSent] = useState<PendingMessage | null>(
+    firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
+  );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
   const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
   const closeTasks = useCallback(() => setShownTasks(null), []);
@@ -131,6 +133,7 @@ function Branch({
   // The side panel hides on a phone, so a running task also shows here.
   const running = runningCount(tasks);
   const showError = useShowError();
+  const pending = shownPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
   /**
    * True once this send's turn sent a step. Its end removes the live steps before the list
@@ -145,7 +148,7 @@ function Branch({
   useEffect(() => {
     if (storedTurns.current === turnCount) return;
     storedTurns.current = turnCount;
-    setPending(null);
+    setSent(null);
   }, [turnCount]);
   useEffect(() => {
     if (liveSteps !== undefined) setSawLiveSteps(true);
@@ -156,13 +159,13 @@ function Branch({
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    setPending(message);
+    setSent({ text: message, turnCount });
     setSawLiveSteps(false);
     try {
       await api.send(session.id, message);
       return true;
     } catch (caught) {
-      setPending(null);
+      setSent(null);
       showError(caught);
       return false;
     }

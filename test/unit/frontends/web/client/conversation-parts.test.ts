@@ -6,6 +6,7 @@ import {
   foldSteps,
   liveFace,
   modelLabel,
+  shownPending,
   stepIcon,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
@@ -72,5 +73,19 @@ describe("chipLock", () => {
     expect(chipLock({ parentId: null, turns: [] }, true)).toContain("first message");
     expect(chipLock({ parentId: null, turns: [{}] }, false)).toContain("first message");
     expect(chipLock({ parentId: "chat-1", turns: [] }, false)).toContain("fork");
+  });
+});
+
+describe("shownPending", () => {
+  test("shows the sent text while the stored turns are the ones from before the send", () => {
+    expect(shownPending({ text: "Hello", turnCount: 2 }, 2)).toBe("Hello");
+  });
+
+  test("hides the sent text once its stored turn arrives, before any effect clears it", () => {
+    expect(shownPending({ text: "Hello", turnCount: 2 }, 3)).toBeNull();
+  });
+
+  test("shows nothing when nothing waits", () => {
+    expect(shownPending(null, 0)).toBeNull();
   });
 });

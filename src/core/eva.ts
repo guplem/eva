@@ -2,6 +2,7 @@
  * One Eva instance: the core that every front end talks to. It joins the vault sync, the
  * projects, the sessions, the settings and the two modes, and runs the background work.
  */
+import { googleClientIdProblem } from "./google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
@@ -1277,6 +1278,9 @@ export class Eva {
         "google_failed",
         `Save the OAuth client id and secret first (step ${String(googleStep.client)}).`,
       );
+    // Google refuses a wrong client id on its own page, where Eva never sees why (#323).
+    const idProblem = googleClientIdProblem(client.clientId);
+    if (idProblem !== null) throw new EvaError("google_failed", idProblem);
     return this.googleLogin.start(client.clientId, googleScopes(this.settings.config.google));
   }
 

@@ -8,7 +8,10 @@ import { defaultConfig } from "../../../../src/core/settings/home.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { fakeGoogle, type FakeGoogle } from "../../../support/fake-google.ts";
 
-const client = { clientId: "client-id.apps.googleusercontent.com", clientSecret: "GOCSPX-client-secret-value" };
+const client = {
+  clientId: "123456789012-clientid.apps.googleusercontent.com",
+  clientSecret: "GOCSPX-client-secret-value",
+};
 const driveFull = {
   ...defaultConfig.google,
   email: "person@example.com",

@@ -2833,9 +2833,39 @@ button.small {
   overflow-wrap: anywhere;
 }
 
-/* The title takes the room that the buttons leave, so the header keeps one row. */
+/* The title takes the room that the buttons leave, so the header keeps one row.
+   The subtitle sits beside the title, so the chat keeps the height of a second line. */
+.chat-header {
+  padding-block: var(--space-2);
+}
+
 .chat-header .header-text {
   flex: 1 1 0;
+}
+
+/* A phone keeps the subtitle under the title, in the centre. */
+@media (min-width: 761px) {
+  .chat-header .header-text {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .chat-header .header-text h1 {
+    flex: 0 1 auto;
+  }
+
+  .chat-header .sub {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-header .crumbs {
+    flex-wrap: nowrap;
+  }
 }
 
 .chat-header h1 {

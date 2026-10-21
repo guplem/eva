@@ -1946,6 +1946,9 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   if (test.info().project.name === "desktop") {
+    // The title and its subtitle share one row, so the header stays low.
+    const header = await page.locator(".main-header").first().boundingBox();
+    expect(header?.height ?? 0).toBeLessThan(56);
     const panel = page.getByRole("complementary", { name: "This chat" });
     await expect(panel).toContainText("Claude Code");
     // The engine names its window, so the ring shows a share.

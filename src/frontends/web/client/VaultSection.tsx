@@ -2,6 +2,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
 
 const pullChoices: readonly { value: string; label: string }[] = [
@@ -79,13 +80,13 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
     }
   };
 
-  const saveInterval = async (): Promise<void> => {
+  const saveInterval = async (): Promise<boolean> => {
     const seconds = Number(sweepSeconds);
     if (!Number.isInteger(seconds) || seconds < 10) {
       context.notify("The sync interval must be a whole number of seconds, 10 or more.");
-      return;
+      return false;
     }
-    await context.saveNow({ sync: { sweepSeconds: seconds } });
+    return context.saveNow({ sync: { sweepSeconds: seconds } });
   };
 
   return (
@@ -128,9 +129,9 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
           <span className="field-label">Vault save interval (seconds)</span>
           <input inputMode="numeric" value={sweepSeconds} onChange={(event) => setSweepSeconds(event.target.value)} />
         </label>
-        <button className="primary" disabled={sweepSeconds === savedSeconds} onClick={() => void saveInterval()}>
+        <SaveButton className="primary" disabled={sweepSeconds === savedSeconds} onSave={saveInterval}>
           Save the interval
-        </button>
+        </SaveButton>
       </div>
     </Card>
   );

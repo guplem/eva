@@ -2759,8 +2759,13 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByLabel("Add a tag").fill("ideas");
   await page.getByRole("button", { name: "Add the tag" }).click();
   await page.getByLabel("Add a repository").fill("https://github.com/example-owner/draft");
-  await page.getByRole("button", { name: "Save details" }).click();
+  const saveDetails = page.getByRole("button", { name: "Save details" });
+  await saveDetails.click();
   await expect(page.getByRole("status")).toHaveText("Saved.");
+  // The button itself confirms the save with a check, then goes back to its label.
+  await expect(saveDetails).toHaveClass(/\bdone\b/);
+  await expect(saveDetails.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(saveDetails).not.toHaveClass(/\bdone\b/, { timeout: 5000 });
   const file = page.getByLabel("AGENTS.md");
   await expect(file).toHaveValue(/status: active # idea, active, paused or closed/);
   await expect(file).toHaveValue(/# Renamed/);

@@ -15,6 +15,7 @@ import {
 import { Icon, type IconName } from "./icons.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
+import { SaveButton } from "./SaveButton.tsx";
 import { cardId, type SettingsRoute } from "./settings-routes.ts";
 import type { StepMark } from "./setup-summary.ts";
 
@@ -222,7 +223,7 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
   useEffect(() => {
     setIsSaved(saved);
   }, [saved]);
-  const save = async (): Promise<void> => {
+  const save = async (): Promise<boolean> => {
     try {
       await api.saveSecret(name, value);
       setValue("");
@@ -234,8 +235,10 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
             : `Saved the ${label}. Test uses it now. Press Restart Eva to use it in chats and sync.`,
         ),
       );
+      return true;
     } catch (error) {
       onChanged(error instanceof Error ? error.message : String(error));
+      return false;
     }
   };
   const remove = async (): Promise<void> => {
@@ -264,14 +267,9 @@ export function SecretField({ name, label, saved, help, check, onChanged }: Secr
           value={value}
           onChange={(event) => setValue(event.target.value)}
         />
-        <button
-          className="primary"
-          aria-label={`Save the ${label}`}
-          disabled={value.trim() === ""}
-          onClick={() => void save()}
-        >
+        <SaveButton className="primary" aria-label={`Save the ${label}`} disabled={value.trim() === ""} onSave={save}>
           Save
-        </button>
+        </SaveButton>
         {isSaved && (
           <button className="ghost danger" aria-label={`Remove the ${label}`} onClick={() => void remove()}>
             Remove

@@ -301,6 +301,80 @@ button:disabled {
   cursor: default;
 }
 
+/* A save button (SaveButton.tsx). Both faces share one grid cell, so the width never jumps. */
+button.save-button {
+  display: inline-grid;
+  place-items: center;
+  transition:
+    transform 80ms ease-out,
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.save-button-label,
+.save-button-done {
+  grid-area: 1 / 1;
+}
+
+.save-button-done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  visibility: hidden;
+}
+
+button.save-button.done {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+/* A save often disables its button, as nothing is left to save: the check stays clear. */
+button.save-button.done:disabled {
+  opacity: 1;
+}
+
+/* Opacity, not visibility: a hidden label would take the name of the button from a screen reader. */
+.save-button.done .save-button-label {
+  opacity: 0;
+}
+
+.save-button.done .save-button-done {
+  visibility: visible;
+  animation: save-done-in 220ms ease-out;
+}
+
+/* The check draws itself, as a pen would. */
+.save-button.done .save-button-done path {
+  stroke-dasharray: 24;
+  animation: save-check-draw 320ms ease-out 80ms backwards;
+}
+
+@keyframes save-done-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes save-check-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.save-button {
+    transition: none;
+  }
+
+  .save-button.done .save-button-done,
+  .save-button.done .save-button-done path {
+    animation: none;
+  }
+}
+
 input,
 select,
 textarea {

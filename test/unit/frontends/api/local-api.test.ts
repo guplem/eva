@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -1218,6 +1218,21 @@ describe("web routes", () => {
     expect(stale.status).toBe(409);
     expect(await json(stale)).toMatchObject({ code: "file_changed" });
     expect((await call("/api/files", { method: "PUT", body: { path, text: "# No version\n" } })).status).toBe(400);
+  });
+
+  test("files: a rename answers the new path, and a taken name answers file_not_writable (issue 343)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const renamed = await call("/api/files/rename", { method: "POST", body: { path: "AGENTS.md", name: "README.md" } });
+    expect(await json(renamed)).toEqual({ path: "README.md" });
+    expect(existsSync(join(vaultPath, "README.md"))).toBe(true);
+    expect(existsSync(join(vaultPath, "AGENTS.md"))).toBe(false);
+
+    const taken = await call("/api/files/rename", { method: "POST", body: { path: "README.md", name: ".eva" } });
+    expect(taken.status).toBe(409);
+    expect(await json(taken)).toMatchObject({ code: "file_not_writable" });
+    const missing = await call("/api/files/rename", { method: "POST", body: { path: "gone.md", name: "here.md" } });
+    expect(missing.status).toBe(404);
+    expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

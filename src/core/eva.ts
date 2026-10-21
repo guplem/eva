@@ -81,7 +81,7 @@ import {
   type ProjectWorkInput,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
-import { browseVault, saveVaultFile, type BrowsedPath } from "./files/file-browser.ts";
+import { browseVault, renameVaultEntry, saveVaultFile, type BrowsedPath } from "./files/file-browser.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
@@ -1047,6 +1047,11 @@ export class Eva {
   /** Replaces the text of a vault file from the file explorer. The idle sweep commits the change. */
   saveFile(path: string, version: string, text: string): BrowsedPath {
     return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
+  }
+
+  /** Renames a vault file or folder from the file explorer, and answers its new path. The idle sweep commits it. */
+  renameFile(path: string, name: string): { path: string } {
+    return { path: renameVaultEntry(this.browsedVault(), path, name) };
   }
 
   private browsedVault(): string {

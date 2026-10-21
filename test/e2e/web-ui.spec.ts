@@ -745,6 +745,8 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
 });
 
 test("the day line shows the time of a run and of now on hover", async ({ page }, info) => {
+  // Noon keeps the now mark in the middle of the line: near midnight it sits at the edge of a phone screen.
+  await page.clock.setFixedTime(ordinaryDay);
   await logIn(page);
   const id = `hover-${info.project.name}`;
   await page.request.post("/api/schedules", {

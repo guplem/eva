@@ -3,7 +3,6 @@ import {
   childPath,
   fileAddressOf,
   filePathOf,
-  isMarkdown,
   parentOf,
   pathCrumbs,
   sizeWords,
@@ -59,15 +58,6 @@ describe("path parts", () => {
 });
 
 describe("file words", () => {
-  test.each([
-    ["Plan.md", true],
-    ["README.MARKDOWN", true],
-    ["main.py", false],
-    ["md", false],
-  ])("%s is Markdown: %p", (path, expected) => {
-    expect(isMarkdown(path)).toBe(expected);
-  });
-
   test.each([
     [0, "0 B"],
     [999, "999 B"],

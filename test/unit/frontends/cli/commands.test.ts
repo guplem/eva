@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -138,6 +138,32 @@ describe("doctor and setup", () => {
     expect(await run(host, "setup", "--non-interactive")).toBe(exitCodes.clean);
     expect(loadSettings(paths).config.port).toBe(7421);
     expect(loadSecrets(paths).localApiToken).toBeString();
+  });
+
+  test("setup of a second Eva asks which Tailscale account uses her, and saves it (#322)", async () => {
+    mkdirSync(instanceHome(root, "ana"));
+    writeFileSync(join(instanceHome(root, "ana"), "config.json"), "{}\n");
+    const status = JSON.stringify({
+      BackendState: "Running",
+      Self: { DNSName: "server.example-tailnet.ts.net.", UserID: 1 },
+      User: { "1": { LoginName: "owner@example.com" }, "2": { LoginName: "partner@example.com" } },
+    });
+    const commands: string[][] = [];
+    const host = fakeHost({
+      userHome: join(root, "user"),
+      runner: scriptedRunner(commands, (command) =>
+        command.includes("status") && command.includes("--json") ? { stdout: status } : undefined,
+      ),
+      withPrompt: (work) =>
+        work((question) =>
+          Promise.resolve(
+            question.includes("GitHub login") ? "skip" : question.includes("number or an account") ? "2" : "",
+          ),
+        ),
+    });
+    expect(await run(host, "setup")).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("2. partner@example.com");
+    expect(loadSettings(paths).config.remoteAccess.allowedTailscaleIdentities).toEqual(["partner@example.com"]);
   });
 
   test("an interactive setup asks at the console, and starts Eva as a service", async () => {

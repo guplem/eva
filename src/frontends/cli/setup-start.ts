@@ -9,7 +9,10 @@ import { doneLine, noteLine, stepLines } from "./setup-output.ts";
 
 export interface StartOptions {
   readonly interactive: boolean;
-  readonly ask: (key: "startService" | "deviceCode" | "finishOn", question: string) => Promise<string>;
+  readonly ask: (
+    key: "startService" | "deviceCode" | "finishOn" | "tailscaleAccount",
+    question: string,
+  ) => Promise<string>;
   readonly write: (line: string) => void;
   /** The Tailscale steps. Returns the address that opens Eva on other devices, or null. */
   readonly network: () => Promise<string | null>;
@@ -22,6 +25,23 @@ export interface StartOptions {
   /** Lets in the browser that waits with this code. Returns its label, or null. */
   readonly allow: (code: string) => Promise<string | null>;
   readonly sleep: (ms: number) => Promise<void>;
+  /**
+   * Who may log in to an Eva that is not the first one on this computer, or null for the first
+   * one, whose page lets in the computer's own Tailscale account (#322).
+   */
+  readonly account: AccountChoice | null;
+}
+
+/** The Tailscale account that uses a second Eva. */
+export interface AccountChoice {
+  /** The people's accounts on the tailnet, the computer's owner first. */
+  readonly accounts: () => Promise<readonly string[]>;
+  /** The accounts that this Eva lets in now; empty means the computer's owner. */
+  readonly allowed: () => readonly string[];
+  /** Saves the one account that this Eva lets in. */
+  readonly allow: (account: string) => void;
+  /** Restarts this Eva, so a new account applies at once. True when she runs again. */
+  readonly restart: () => Promise<boolean>;
 }
 
 const startPollMs = 1_000;
@@ -37,9 +57,14 @@ const setupPagePath = "/#/settings/setup";
 /** Returns where the person finishes the setup. Without a running Eva, there is no page to open. */
 export async function startAndLetIn(options: StartOptions): Promise<FinishPlace> {
   const address = (await options.network()) ?? options.localUrl;
+  // Before the start, so a new Eva starts with the account; a running one restarts below.
+  const accountChanged = options.account === null ? false : await chooseAccount(options, options.account);
   for (const line of stepLines("Start Eva")) options.write(line);
-  if (await options.isRunning()) options.write(doneLine("Eva runs."));
-  else {
+  if (await options.isRunning()) {
+    if (accountChanged && options.account !== null && !(await options.account.restart()))
+      options.write(noteLine("Eva did not restart. Restart her from Settings, so the account can log in."));
+    options.write(doneLine("Eva runs."));
+  } else {
     const answer = await options.ask("startService", "Start Eva now, and each time this computer starts? [Y/n]: ");
     if (!options.interactive && answer !== "" && !/^(y(es)?|no?)$/i.test(answer))
       throw new EvaError("config_invalid", "The answer to start Eva must be yes or no.");
@@ -122,6 +147,43 @@ function pageSteps(address: string, localUrl: string): string[] {
       "To answer the questions here instead, run `eva setup` again: it asks only for the steps that are not done.",
     ),
   ];
+}
+
+/**
+ * Asks which Tailscale account uses this Eva, when the tailnet has more than one. Returns true
+ * when the choice changed who may log in. Enter keeps the computer's owner, as for the first Eva.
+ */
+async function chooseAccount(options: StartOptions, choice: AccountChoice): Promise<boolean> {
+  const allowed = choice.allowed();
+  if (allowed.length > 0) {
+    options.write(doneLine(`This Eva lets in the devices of ${allowed.join(", ")}.`));
+    return false;
+  }
+  const accounts = await choice.accounts();
+  const [owner] = accounts;
+  if (owner === undefined || accounts.length < 2) return false;
+  options.write("");
+  options.write(noteLine("This is not the first Eva here. Her page lets in the devices of one Tailscale account."));
+  options.write(noteLine("Which account uses this Eva?"));
+  accounts.forEach((account, index) => {
+    options.write(noteLine(`  ${String(index + 1)}. ${account}${index === 0 ? " (this computer's owner)" : ""}`));
+  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const answer = (await options.ask("tailscaleAccount", "Type a number or an account [1]: ")).trim();
+    if (answer === "" || answer === "1") return false;
+    const chosen = /^\d+$/.test(answer) ? accounts[Number(answer) - 1] : accounts.find((account) => account === answer);
+    if (chosen === undefined) {
+      const problem = `${answer} is not in the list. Type a number from 1 to ${String(accounts.length)}.`;
+      if (!options.interactive) throw new EvaError("config_invalid", problem);
+      options.write(noteLine(problem));
+      continue;
+    }
+    if (chosen === owner) return false;
+    choice.allow(chosen);
+    options.write(doneLine(`This Eva lets in the devices of ${chosen}.`));
+    return true;
+  }
+  return false;
 }
 
 async function waitUntilRunning(options: StartOptions): Promise<boolean> {

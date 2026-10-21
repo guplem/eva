@@ -3,11 +3,19 @@
  * The `run` command starts the whole Eva, which only `src/main.ts` may wire, so it comes in.
  */
 import { randomBytes } from "node:crypto";
-import { createHomeFolders, loadSecrets, type EvaConfig, type HomePaths } from "../../core/settings/home.ts";
+import {
+  createHomeFolders,
+  instanceNameOf,
+  instancesFolder,
+  listInstances,
+  loadSecrets,
+  type EvaConfig,
+  type HomePaths,
+} from "../../core/settings/home.ts";
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
-import { loadSettings } from "../../core/settings/settings.ts";
+import { changeSettings, loadSettings } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
 import { isEvaError } from "../../shared/errors.ts";
@@ -30,13 +38,20 @@ import {
 import { allowDevice } from "./devices.ts";
 import { chooseInstance } from "./instance-choice.ts";
 import { runDoctor } from "./doctor.ts";
-import { childEnvironment, installEnvironment, remoteAccessWatcher, writeLine, type CliHost } from "./host.ts";
+import {
+  childEnvironment,
+  installEnvironment,
+  remoteAccessWatcher,
+  tailnetAccounts,
+  writeLine,
+  type CliHost,
+} from "./host.ts";
 import { hub, link, runningClient, settings, sync, update } from "./local-commands.ts";
 import { runNetworkSetup } from "./network-setup.ts";
 import { installService, supervise } from "./service.ts";
 import { runSetup, setupEnvironmentNames, type SetupOptions, type SetupQuestion } from "./setup.ts";
 import { doneLine, questionText, stepLines } from "./setup-output.ts";
-import { startAndLetIn, type FinishPlace } from "./setup-start.ts";
+import { startAndLetIn, type AccountChoice, type FinishPlace } from "./setup-start.ts";
 
 export interface CliWiring {
   /** `eva` and `eva run`: starts Eva and resolves with her exit code when she stops. */
@@ -181,6 +196,8 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     installEnvironment: installEnvironment(host),
     arch: host.arch,
   };
+  // The first Eva on a computer lets in the computer's own Tailscale account; another asks whose (#322).
+  const otherEvas = listInstances(instancesFolder(host)).filter((name) => name !== instanceNameOf(paths));
   const start =
     (interactive: boolean, ask: (question: string) => Promise<string>, script: (key: SetupQuestion) => string) =>
     (): Promise<FinishPlace> =>
@@ -211,6 +228,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
           return client === null ? null : requestDeviceAllow(client, code);
         },
         sleep: host.sleep,
+        account: otherEvas.length === 0 ? null : accountChoice(host, paths),
       });
   let result = { changedAfterStart: false, finishOnPage: false };
   if (nonInteractive) {
@@ -316,3 +334,28 @@ function githubBrowserLogin(host: CliHost, clientId: string | null): SetupOption
   if (clientId === null) return null;
   return (show) => githubDeviceLogin({ clientId, show, sleep: host.sleep, clock: systemClock });
 }
+
+/** The Tailscale account that uses an Eva that is not the first one on this computer (#322). */
+function accountChoice(host: CliHost, paths: HomePaths): AccountChoice {
+  return {
+    accounts: () => tailnetAccounts(host),
+    allowed: () => loadSettings(paths).config.remoteAccess.allowedTailscaleIdentities,
+    allow: (account) => {
+      changeSettings(paths, { remoteAccess: { allowedTailscaleIdentities: [account] } });
+    },
+    restart: async () => {
+      const client = runningClient(host, paths);
+      if (client === null) return false;
+      await requestRestart(client);
+      // The old Eva still answers for a moment, so the wait starts after a pause.
+      for (let waited = 0; waited < restartWaitMs; waited += restartPollMs) {
+        await host.sleep(restartPollMs);
+        if (await isAnswering(client)) return true;
+      }
+      return false;
+    },
+  };
+}
+
+const restartPollMs = 2_000;
+const restartWaitMs = 30_000;

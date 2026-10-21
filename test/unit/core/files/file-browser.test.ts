@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { browseVault, maxShownBytes } from "../../../../src/core/files/file-browser.ts";
+import { browseVault, maxShownBytes, saveVaultFile } from "../../../../src/core/files/file-browser.ts";
+import { fileVersion } from "../../../../src/core/projects/project-file.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let folder: string;
@@ -71,12 +83,15 @@ describe("browseVault: files", () => {
       path: "Methods/Plan.md",
       size: 7,
       text: "# Plan\n",
+      version: fileVersion("# Plan\n"),
+      editable: true,
     });
   });
 
   test("the text passes through the redactor before it leaves the core", () => {
     const shown = browseVault(vault, "notes.txt", (text) => text.replace("milk", "[redacted]"));
-    expect(shown).toMatchObject({ text: "Buy [redacted].\n" });
+    // A save would write the mark over the secret, so the file is read only.
+    expect(shown).toMatchObject({ text: "Buy [redacted].\n", editable: false });
   });
 
   test("a binary file shows a reason instead of its content", () => {
@@ -172,3 +187,81 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     }
   },
 );
+
+describe("saveVaultFile (issue 308)", () => {
+  const versionOf = (relativePath: string): string => {
+    const shown = browseVault(vault, relativePath, keep);
+    if (shown.kind !== "file") throw new Error(`${relativePath} is not a text file.`);
+    return shown.version;
+  };
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a save writes the text and answers the file with its new version", () => {
+    const saved = saveVaultFile(vault, "notes.txt", versionOf("notes.txt"), "Buy bread.\n", keep);
+    expect(saved).toMatchObject({ kind: "file", path: "notes.txt", text: "Buy bread.\n", size: 11, editable: true });
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy bread.\n");
+    expect(saved.kind === "file" && saved.version).toBe(versionOf("notes.txt"));
+  });
+
+  test("a save keeps the line endings and the byte order mark of the file on disk", () => {
+    write("windows.md", "﻿one\r\ntwo\r\n");
+    saveVaultFile(vault, "windows.md", versionOf("windows.md"), "one\nthree\n", keep);
+    expect(readFileSync(join(vault, "windows.md"), "utf-8")).toBe("﻿one\r\nthree\r\n");
+  });
+
+  test.skipIf(process.platform === "win32")("a save keeps the mode of the file, so git sees no mode change", () => {
+    write("run.sh", "echo hi\n");
+    chmodSync(join(vault, "run.sh"), 0o755);
+    saveVaultFile(vault, "run.sh", versionOf("run.sh"), "echo bye\n", keep);
+    expect(statSync(join(vault, "run.sh")).mode & 0o777).toBe(0o755);
+  });
+
+  test("a save that names an old version is refused, so a newer change is never lost", () => {
+    const version = versionOf("notes.txt");
+    write("notes.txt", "Buy eggs.\n");
+    expect(codeOf(() => saveVaultFile(vault, "notes.txt", version, "Buy bread.\n", keep))).toBe("file_changed");
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy eggs.\n");
+  });
+
+  test("a file with a redacted secret is refused, so the mark never replaces the secret", () => {
+    const redact = (text: string): string => text.replace("milk", "[redacted]");
+    const version = versionOf("notes.txt");
+    expect(codeOf(() => saveVaultFile(vault, "notes.txt", version, "Buy [redacted].\n", redact))).toBe(
+      "file_not_writable",
+    );
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test("a folder, a binary file, a secrets file and a text over the limit are refused", () => {
+    write("photo.png", new Uint8Array([137, 80, 0, 71]));
+    write(".env", "TOKEN=abc\n");
+    expect(codeOf(() => saveVaultFile(vault, "Methods", "any", "text", keep))).toBe("file_not_writable");
+    expect(codeOf(() => saveVaultFile(vault, "photo.png", "any", "text", keep))).toBe("file_not_writable");
+    expect(codeOf(() => saveVaultFile(vault, ".env", "any", "TOKEN=\n", keep))).toBe("file_not_writable");
+    const tooLarge = "a".repeat(maxShownBytes + 1);
+    expect(codeOf(() => saveVaultFile(vault, "notes.txt", versionOf("notes.txt"), tooLarge, keep))).toBe(
+      "file_not_writable",
+    );
+  });
+
+  test("a save never creates a file, and never leaves the vault or writes git data", () => {
+    expect(codeOf(() => saveVaultFile(vault, "new.md", "any", "text", keep))).toBe("file_not_found");
+    expect(codeOf(() => saveVaultFile(vault, "../outside.md", "any", "text", keep))).toBe("file_not_found");
+    expect(codeOf(() => saveVaultFile(vault, ".git/config", "any", "text", keep))).toBe("file_not_found");
+    expect(existsSync(join(vault, "new.md"))).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")("a save through a link changes the target and keeps the link", () => {
+    symlinkSync(join(vault, "notes.txt"), join(vault, "link.txt"));
+    saveVaultFile(vault, "link.txt", versionOf("link.txt"), "Buy tea.\n", keep);
+    expect(lstatSync(join(vault, "link.txt")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy tea.\n");
+  });
+});

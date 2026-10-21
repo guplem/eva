@@ -40,7 +40,7 @@ import { migrations, vaultAhead, type StartMigrations } from "./migrations/migra
 import { runCheck, type CheckName, type CheckResult } from "./checks.ts";
 import { DeviceLogins } from "./remote-access/device-logins.ts";
 import { engineFolders, loadConfig, type EvaConfig, type EvaSecrets, type HomePaths } from "./settings/home.ts";
-import { withMachineDefaults } from "./settings/machine-defaults.ts";
+import { defaultVoiceModelPath, withMachineDefaults } from "./settings/machine-defaults.ts";
 import {
   LiveSettings,
   pageSecretNames,
@@ -122,14 +122,14 @@ import {
   readLatestVersion,
   type LatestVersionSources,
 } from "./tool-latest.ts";
+import { findGh, ghTooOld, installEngine, installGh, installUv } from "./engine-install/engine-install.ts";
 import {
-  findGh,
-  ghTooOld,
-  installEngine,
-  installGh,
-  installUv,
-  type EngineInstallInputs,
-} from "./engine-install/engine-install.ts";
+  installFfmpeg,
+  installVoiceModel,
+  installWhisper,
+  type VoiceInstallInputs,
+  type VoicePart,
+} from "./engine-install/voice-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
@@ -175,7 +175,18 @@ export interface EvaOptions {
   /** Where the tools live, for their versions. Default: this machine, not the single executable. */
   readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
   /** The processor and the release downloads of the tool installs; a test points them at a fake. */
-  readonly toolInstall?: Partial<Pick<EngineInstallInputs, "arch" | "piReleasesBaseUrl" | "ghReleaseUrl">>;
+  readonly toolInstall?: Partial<
+    Pick<
+      VoiceInstallInputs,
+      | "arch"
+      | "piReleasesBaseUrl"
+      | "ghReleaseUrl"
+      | "ffmpegReleaseUrl"
+      | "whisperReleaseUrl"
+      | "voiceModelUrl"
+      | "voiceModelSha256"
+    >
+  >;
   /** Where Eva reads the latest version of each tool; a test points it at a fake server. */
   readonly toolLatestSources?: LatestVersionSources;
 }
@@ -201,6 +212,14 @@ export interface LatestToolVersion {
 export interface EvaVersions {
   readonly eva: string;
   readonly tools: readonly ToolVersion[];
+  readonly voiceNotes: VoiceNotesState;
+}
+
+/** What voice notes still need on this machine, and whether they run now. */
+export interface VoiceNotesState {
+  readonly missing: readonly VoicePart[];
+  /** False until a restart after the install, as Eva finds the programs when she starts. */
+  readonly on: boolean;
 }
 
 /** The last finished turn's token counts, so a broken prompt cache shows (lesson 120). */
@@ -809,10 +828,52 @@ export class Eva {
       environment: engineToolEnvironment(this.facts),
       executables: { ...(claude === null ? {} : { "claude-code": claude }), ...(pi === null ? {} : { pi }) },
     });
+    const found = (program: string): boolean => tools.some((tool) => tool.program === program && tool.version !== null);
     return {
       eva: evaVersion,
       tools: tools.map((tool) => ({ ...tool, version: tool.version === null ? null : this.redact(tool.version) })),
+      voiceNotes: {
+        missing: [
+          ...(found("ffmpeg") ? [] : (["ffmpeg"] as const)),
+          ...(found("whisper-cli") ? [] : (["whisper-cli"] as const)),
+          ...(existsSync(this.voiceModelPath()) ? [] : (["speech model"] as const)),
+        ],
+        on: this.transcribe !== null,
+      },
     };
+  }
+
+  /** The configured model, or where the machine default looks for it. */
+  private voiceModelPath(): string {
+    return this.options.config.voice.modelPath ?? defaultVoiceModelPath(this.options.paths.root);
+  }
+
+  /**
+   * Installs each part of voice notes that the machine lacks, so voice notes need no terminal.
+   * Never while work runs, as for the other tools. A failure gives the steps by hand.
+   */
+  async installVoiceNotes(): Promise<ToolInstallResult> {
+    if (this.toolInstallRuns)
+      return { ok: false, message: "Eva is installing another tool. Try again when it is done." };
+    if (this.workRuns())
+      return {
+        ok: false,
+        message: "Eva installs voice notes when no chat runs a turn. Try again when your chats are done.",
+      };
+    this.toolInstallRuns = true;
+    try {
+      const { missing } = (await this.versions()).voiceNotes;
+      const inputs = this.toolInstallInputs();
+      if (missing.includes("ffmpeg")) await installFfmpeg(inputs);
+      if (missing.includes("whisper-cli")) await installWhisper(inputs);
+      if (missing.includes("speech model")) await installVoiceModel(this.voiceModelPath(), inputs);
+      return { ok: true, message: "Installed voice notes. Press Restart Eva to turn them on." };
+    } catch (error) {
+      if (!isEvaError(error, "engine_install_failed")) throw error;
+      return { ok: false, message: this.redact(error.message) };
+    } finally {
+      this.toolInstallRuns = false;
+    }
   }
 
   /**
@@ -873,7 +934,7 @@ export class Eva {
   }
 
   /** The installers download through the person's proxy, as setup's do. */
-  private toolInstallInputs(): EngineInstallInputs {
+  private toolInstallInputs(): VoiceInstallInputs {
     return {
       runner: this.options.runner,
       environment: buildChildEnvironment(this.options.processEnvironment, [
@@ -925,7 +986,7 @@ export class Eva {
     if (this.transcribe === null)
       throw new EvaError(
         "voice_unavailable",
-        "Voice notes are not set up on this machine. Run `eva doctor` to see why.",
+        "Voice notes are not set up on this machine. Open Settings, then Updates, and press Install voice notes.",
       );
     return (await this.transcribe(audio)).trim();
   }

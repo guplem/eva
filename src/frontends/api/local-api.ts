@@ -209,6 +209,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (
         url.pathname === "/api/update" ||
         url.pathname === "/api/tools/install" ||
+        url.pathname === "/api/voice-notes/install" ||
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
         url.pathname.startsWith("/api/google/") ||
@@ -613,6 +614,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "POST" && url.pathname === "/api/tools/install")
     return json(await eva.installTool(toolInstallSchema.parse(await request.json()).program));
+  if (method === "POST" && url.pathname === "/api/voice-notes/install") return json(await eva.installVoiceNotes());
   if (method === "GET" && url.pathname === "/api/logs") {
     const query = logsQuerySchema.parse({
       level: url.searchParams.get("level") ?? undefined,

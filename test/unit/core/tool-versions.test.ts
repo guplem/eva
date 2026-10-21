@@ -43,6 +43,19 @@ describe("readToolVersions", () => {
   });
 
   // The Updates page offers a button only for a tool that Eva installs herself.
+  test("finds the voice programs that the Updates page installs, which a service may not have on its PATH", async () => {
+    const runner: ProcessRunner = {
+      run: (command) =>
+        command[0] === "/srv/person/.local/lib/ffmpeg/bin/ffmpeg" ||
+        command[0] === "/srv/person/.local/lib/whisper.cpp/whisper-cli"
+          ? Promise.resolve({ exitCode: 0, stdout: "ffmpeg version 7.1\n", stderr: "" })
+          : Promise.reject(new Error("not found")),
+    };
+    const versions = await readToolVersions({ ...places, runner });
+    expect(versions.find((tool) => tool.program === "ffmpeg")?.version).toBe("7.1");
+    expect(versions.find((tool) => tool.program === "whisper-cli")?.version).toBe("7.1");
+  });
+
   test("says which tools Eva installs, and when gh is too old for her login", async () => {
     const runner: ProcessRunner = {
       run: (command) =>

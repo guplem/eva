@@ -416,7 +416,11 @@ export class TelegramBot {
   private async forwardVoice(chatId: number, topicId: number | null, voice: TelegramFile): Promise<void> {
     const transcribe = this.options.transcribe;
     if (transcribe === undefined) {
-      await this.send(chatId, topicId, "Voice notes are not set up on this machine. Run `eva doctor` to see why.");
+      await this.send(
+        chatId,
+        topicId,
+        "Voice notes are not set up on this machine. On Eva's page, open Settings, then Updates, and press Install voice notes.",
+      );
       return;
     }
     const audio = await this.files.download(chatId, topicId, voice);

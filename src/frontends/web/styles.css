@@ -1286,60 +1286,48 @@ textarea {
   font-size: 13px;
 }
 
-.copy-all {
-  align-self: flex-start;
+/* The repository setup: each section of a report, with its items as the step rows of Remote access. */
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
+.copy-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The text shows under the row when the clipboard is off, so the person selects it by hand. */
 .copy-text {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   width: 100%;
   min-height: 120px;
 }
 
-.setup-section h2 {
+@media (max-width: 760px) {
+  /* On a phone, "Copy all fixes" goes under the repository name, so the name keeps the width. */
+  .card-header:has(> .copy-button) {
+    flex-wrap: wrap;
+  }
+
+  .card-header > .copy-button {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+
+.setup-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.setup-section h3 {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  margin: 8px 0 4px;
-}
-
-.setup-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-}
-
-.setup-text {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.light {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.light.green {
-  background: var(--ok);
-}
-
-.light.yellow {
-  background: var(--warn);
-}
-
-.light.red {
-  background: var(--bad);
-}
-
-.light.grey {
-  background: var(--muted);
-  opacity: 0.5;
+  gap: var(--space-2);
 }
 
 /* A note in a vault sync conflict: both versions side by side, and the three picks. */

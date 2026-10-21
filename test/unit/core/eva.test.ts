@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -610,7 +611,7 @@ describe("Eva", () => {
       config: config({ google: { ...defaultConfig.google, email: "person@example.com", services: ["calendar"] } }),
       secrets: {
         githubToken: "github-token-for-tests",
-        googleOauthClientId: "google-client-id-for-tests",
+        googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
         googleOauthClientSecret: "google-client-secret-for-tests",
       },
       engines: [engine],
@@ -623,7 +624,7 @@ describe("Eva", () => {
     const session = eva.createAssistantSession({ source: "cli", model: "default" });
     await eva.sessions.send(session.id, "hi");
     const google = engine.requests[0]?.mcpServers["google"];
-    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("google-client-id-for-tests");
+    expect(google?.environment["GOOGLE_OAUTH_CLIENT_ID"]).toBe("123456789012-clientid.apps.googleusercontent.com");
     expect(google?.environment["EVA_GITHUB_TOKEN"]).toBeUndefined();
     expect(Object.values(google?.environment ?? {})).not.toContain("github-token-for-tests");
   });
@@ -1082,6 +1083,87 @@ describe("Eva", () => {
       expect(failed.message).toContain("https://cli.github.com");
     } finally {
       await release.stop();
+    }
+  });
+
+  test("the Updates page lists what voice notes lack, and one install adds each part", async () => {
+    const archive = new TextEncoder().encode("a pretend archive");
+    const archiveHash = createHash("sha256").update(archive).digest("hex");
+    const model = new TextEncoder().encode("a pretend whisper model");
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request): Response {
+        const base = `http://127.0.0.1:${String(server.port)}`;
+        const path = new URL(request.url).pathname;
+        const asset = (name: string): Response =>
+          Response.json({
+            assets: [{ name, browser_download_url: `${base}/files/${name}`, digest: `sha256:${archiveHash}` }],
+          });
+        if (path === "/ffmpeg") return asset("ffmpeg-master-latest-linux64-gpl.tar.xz");
+        if (path === "/whisper") return asset("whisper-bin-ubuntu-x64.tar.gz");
+        if (path === "/model") return new Response(model);
+        return new Response(archive);
+      },
+    });
+    let installs = 0;
+    const runner: ProcessRunner = {
+      run: (command, options) => {
+        const program = command[0] ?? "";
+        if (program === "tar") {
+          installs += 1;
+          const target = command[command.indexOf("-C") + 1] ?? "";
+          const file = (command[2] ?? "").includes("ffmpeg") ? join("build", "bin", "ffmpeg") : "whisper-cli";
+          mkdirSync(join(target, file, ".."), { recursive: true });
+          writeFileSync(join(target, file), "pretend program");
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        }
+        // Only Eva's own copies answer, so the answer does not depend on this machine.
+        if (command.length === 2 && ["--version", "-version", "--help", "version"].includes(command[1] ?? ""))
+          return existsSync(program)
+            ? Promise.resolve({ exitCode: 0, stdout: "version 7.1\n", stderr: "" })
+            : Promise.reject(new Error("not found"));
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const base = `http://127.0.0.1:${String(server.port)}`;
+    try {
+      const instance = new Eva({
+        paths: homePaths(home),
+        config: config(),
+        secrets: {},
+        engines: [new FakeEngine()],
+        runner,
+        processEnvironment: gitEnvironment,
+        now: () => clock,
+        basePrompt: "Base.",
+        toolPlaces: { platform: "linux", userHome: home, standalone: false },
+        toolInstall: {
+          arch: "x64",
+          ffmpegReleaseUrl: `${base}/ffmpeg`,
+          whisperReleaseUrl: `${base}/whisper`,
+          voiceModelUrl: `${base}/model`,
+          voiceModelSha256: createHash("sha256").update(model).digest("hex"),
+        },
+      });
+      eva = instance;
+      expect((await instance.versions()).voiceNotes).toEqual({
+        missing: ["ffmpeg", "whisper-cli", "speech model"],
+        on: false,
+      });
+      expect(await instance.installVoiceNotes()).toEqual({
+        ok: true,
+        message: "Installed voice notes. Press Restart Eva to turn them on.",
+      });
+      expect(readFileSync(join(home, "voice", "ggml-base.bin"), "utf8")).toBe("a pretend whisper model");
+      const after = await instance.versions();
+      expect(after.voiceNotes).toEqual({ missing: [], on: false });
+      expect(after.tools.find((tool) => tool.program === "ffmpeg")?.version).toBe("7.1");
+      // Nothing is missing, so a second press downloads nothing.
+      expect((await instance.installVoiceNotes()).ok).toBe(true);
+      expect(installs).toBe(2);
+    } finally {
+      await server.stop(true);
     }
   });
 

@@ -226,6 +226,22 @@ test("with no chat yet, the page greets the person, and the first message makes 
   await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
 });
 
+test("with no chat yet, the first message shows while Eva works on it", async ({ page }) => {
+  await hideOldChats(page);
+  await logIn(page);
+  const text = `The first message, please approve (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  // The approval holds the turn, so the page shows the chat before it has a stored turn.
+  const dialog = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(dialog).toContainText("gh issue create");
+  await expect(page.locator(".message.user")).toContainText(text);
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Allow once" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered");
+});
+
 test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
   await hideOldChats(page);
   await page.route("**/api/status", async (route) => {
@@ -584,7 +600,9 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  // The demo machine has no voice notes, so the empty box offers to set them up in place of Send.
+  await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
 test("a request of another chat gets a notice that opens it, and an answer from elsewhere closes the card", async ({
@@ -2123,6 +2141,23 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await expect(message).toContainText("Hello from my voice");
 });
 
+test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {
+  let installs = 0;
+  await page.route("**/api/voice-notes/install", async (route) => {
+    installs += 1;
+    await route.fulfill({ json: { ok: true, message: "Installed voice notes. Press Restart Eva to turn them on." } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page.getByRole("button", { name: "Set up voice notes" }).first().click();
+  await expect(page).toHaveURL(/#\/settings\/updates\/versions$/);
+  const row = page.locator("dd", { hasText: "Off, needs" });
+  await expect(row).toContainText("speech model");
+  await row.getByRole("button", { name: "Install" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Installed voice notes" })).toBeVisible();
+  expect(installs).toBe(1);
+});
+
 /** Plays the status with these open problems, and with the sync state changed as given. */
 async function routeProblems(
   page: Page,
@@ -2880,6 +2915,7 @@ test("Settings: the Versions card installs a missing tool and shows the new vers
           tool("uv", "0.9.0", true),
           tool("gh", installed ? "2.62.0" : "2.4.0", true, !installed),
         ],
+        voiceNotes: { missing: [], on: true },
       },
     });
   });
@@ -2911,7 +2947,11 @@ async function routeToolVersions(page: Page, claude: () => string): Promise<void
       tooOld: false,
     });
     await route.fulfill({
-      json: { eva: "1.0.0", tools: [tool("claude", claude()), tool("pi", "1.3.0"), tool("gh", "2.62.0")] },
+      json: {
+        eva: "1.0.0",
+        tools: [tool("claude", claude()), tool("pi", "1.3.0"), tool("gh", "2.62.0")],
+        voiceNotes: { missing: [], on: true },
+      },
     });
   });
 }
@@ -3231,7 +3271,7 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await openGoogleSteps(page);
   await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
   for (const [label, value] of [
-    ["Google client id", "client-id.apps.googleusercontent.com"],
+    ["Google client id", "123456789012-clientid.apps.googleusercontent.com"],
     ["Google client secret", "GOCSPX-e2e-client-secret-value"],
   ] as const) {
     await page.getByLabel(label, { exact: true }).fill(value);

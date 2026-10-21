@@ -83,6 +83,12 @@ describe("Icon", () => {
     expect(gear).toMatch(/<path d="M[^"]+z"/);
   });
 
+  test("send is a solid delta that points to the top right, as in a messaging app", () => {
+    const send = render("send");
+    expect(send).toContain('fill="currentColor"');
+    expect(send).toContain('transform="rotate(45 12 12)"');
+  });
+
   test("an icon without a name is hidden from a screen reader", () => {
     const svg = render("menu");
     expect(svg).toContain('aria-hidden="true"');

@@ -58,6 +58,11 @@ const setupPagePath = "/#/settings/setup";
 export async function startAndLetIn(options: StartOptions): Promise<FinishPlace> {
   const address = (await options.network()) ?? options.localUrl;
   // Before the start, so a new Eva starts with the account; a running one restarts below.
+  if (options.account === null)
+    await refuseScriptedAccount(
+      options,
+      "the account question is only for a new Eva beside another one, or for an Eva that lets in a chosen account.",
+    );
   const accountChanged = options.account === null ? false : await chooseAccount(options, options.account);
   for (const line of stepLines("Start Eva")) options.write(line);
   if (await options.isRunning()) {
@@ -154,23 +159,34 @@ function pageSteps(address: string, localUrl: string): string[] {
  * when the choice changed who may log in. Enter keeps the computer's owner, as for the first Eva.
  */
 async function chooseAccount(options: StartOptions, choice: AccountChoice): Promise<boolean> {
-  const allowed = choice.allowed();
-  if (allowed.length > 0) {
-    options.write(doneLine(`This Eva lets in the devices of ${allowed.join(", ")}.`));
-    return false;
-  }
+  const current = choice.allowed();
   const accounts = await choice.accounts();
   const [owner] = accounts;
-  if (owner === undefined || accounts.length < 2) return false;
+  // With no account to choose from, a script's answer must not pass in silence.
+  if (owner === undefined || (accounts.length < 2 && current.length === 0)) {
+    await refuseScriptedAccount(options, "Tailscale lists no other account on this network.");
+    return false;
+  }
+  // Enter keeps the account that this Eva lets in now: a chosen one, or else the owner.
+  const kept = current[0] ?? owner;
+  const keptNumber = Math.max(accounts.indexOf(kept), 0) + 1;
   options.write("");
-  options.write(noteLine("This is not the first Eva here. Her page lets in the devices of one Tailscale account."));
+  options.write(
+    noteLine(
+      current.length > 0
+        ? `This Eva lets in the devices of ${current.join(", ")}. To change it, pick another account.`
+        : "This is not the first Eva here. Her page lets in the devices of one Tailscale account.",
+    ),
+  );
   options.write(noteLine("Which account uses this Eva?"));
   accounts.forEach((account, index) => {
     options.write(noteLine(`  ${String(index + 1)}. ${account}${index === 0 ? " (this computer's owner)" : ""}`));
   });
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const answer = (await options.ask("tailscaleAccount", "Type a number or an account [1]: ")).trim();
-    if (answer === "" || answer === "1") return false;
+    const answer = (
+      await options.ask("tailscaleAccount", `Type a number or an account [${String(keptNumber)}]: `)
+    ).trim();
+    if (answer === "") return false;
     const chosen = /^\d+$/.test(answer) ? accounts[Number(answer) - 1] : accounts.find((account) => account === answer);
     if (chosen === undefined) {
       const problem = `${answer} is not in the list. Type a number from 1 to ${String(accounts.length)}.`;
@@ -178,12 +194,21 @@ async function chooseAccount(options: StartOptions, choice: AccountChoice): Prom
       options.write(noteLine(problem));
       continue;
     }
-    if (chosen === owner) return false;
+    const unchanged = current.length === 0 ? chosen === owner : current.length === 1 && current[0] === chosen;
+    if (unchanged) return false;
     choice.allow(chosen);
     options.write(doneLine(`This Eva lets in the devices of ${chosen}.`));
     return true;
   }
   return false;
+}
+
+/** A script that names an account where setup asks for none learns why, instead of nothing happening. */
+async function refuseScriptedAccount(options: StartOptions, reason: string): Promise<void> {
+  if (options.interactive) return;
+  const scripted = (await options.ask("tailscaleAccount", "")).trim();
+  if (scripted !== "")
+    throw new EvaError("config_invalid", `EVA_TAILSCALE_ACCOUNT is ${scripted}, but setup did not use it: ${reason}`);
 }
 
 async function waitUntilRunning(options: StartOptions): Promise<boolean> {

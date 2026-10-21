@@ -136,7 +136,7 @@ An Eva's page lets in the devices of one Tailscale account. For another person's
 2. In setup, at "Which account uses this Eva?", pick their account from the list. Enter keeps your own.
 3. They open their Eva's address, which ends with her own port, such as `:7421`.
 
-If their phone shows "This account cannot open this Eva", run `eva setup` for their Eva, and pick their account.
+If their phone shows "This account cannot open this Eva", the page names the account and the command that lets it in: `eva --instance <name> settings set remoteAccess.allowedTailscaleIdentities '["<account>"]'`. Then restart that Eva.
 
 With more than one Eva, each command asks which Eva. To skip the question, name her: `eva --instance ana status`, or set `EVA_INSTANCE=ana` in the terminal.
 

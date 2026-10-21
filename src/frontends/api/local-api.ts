@@ -293,7 +293,7 @@ function guardSite(request: Request, options: LocalApiOptions): Response | null 
     const account = identity ?? "with no account name";
     return json(
       {
-        error: `This Eva does not let in the Tailscale account ${account}. On Eva's computer, run \`eva setup\` for this Eva, and choose this account at the Tailscale account question. Then reload this page.`,
+        error: `This Eva does not let in the Tailscale account ${account}. On Eva's computer, run \`eva setup\` for this Eva, and choose this account at the Tailscale account question. Or run \`eva settings set remoteAccess.allowedTailscaleIdentities '["${account}"]'\` for this Eva, and restart her. Then reload this page.`,
         code: "tailscale_account_refused",
       },
       403,

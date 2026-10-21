@@ -2,6 +2,7 @@
  * The `eva` command line: it reads the arguments, runs the command, and gives the exit code.
  * The `run` command starts the whole Eva, which only `src/main.ts` may wire, so it comes in.
  */
+import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import {
   createHomeFolders,
@@ -196,6 +197,8 @@ async function googleState(paths: HomePaths, google: EvaConfig["google"]): Promi
 }
 
 async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): Promise<void> {
+  // Setup writes the config, so an Eva with none is the one that this setup makes.
+  const isNewEva = !existsSync(paths.config);
   const write = (text: string): void => {
     writeLine(host, text);
   };
@@ -219,7 +222,11 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
     arch: host.arch,
   };
   // The first Eva on a computer lets in the computer's own Tailscale account; another asks whose (#322).
+  // The question is for a new Eva beside another one, and for an Eva that lets in a chosen account,
+  // so that it can change. The owner's own Eva keeps her account with no new question.
   const otherEvas = listInstances(instancesFolder(host)).filter((name) => name !== instanceNameOf(paths));
+  const asksAccount =
+    (isNewEva && otherEvas.length > 0) || loadSettings(paths).config.remoteAccess.allowedTailscaleIdentities.length > 0;
   const start =
     (interactive: boolean, ask: (question: string) => Promise<string>, script: (key: SetupQuestion) => string) =>
     (): Promise<FinishPlace> =>
@@ -250,7 +257,7 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
           return client === null ? null : requestDeviceAllow(client, code);
         },
         sleep: host.sleep,
-        account: otherEvas.length === 0 ? null : accountChoice(host, paths),
+        account: asksAccount ? accountChoice(host, paths) : null,
       });
   let result = { changedAfterStart: false, finishOnPage: false };
   if (nonInteractive) {
@@ -368,7 +375,15 @@ function accountChoice(host: CliHost, paths: HomePaths): AccountChoice {
     restart: async () => {
       const client = runningClient(host, paths);
       if (client === null) return false;
-      await requestRestart(client);
+      // A failed or stuck restart only gets a line: the account is saved, and setup goes on.
+      const asked = await Promise.race([
+        requestRestart(client).then(
+          () => true,
+          () => false,
+        ),
+        host.sleep(restartWaitMs).then(() => false),
+      ]);
+      if (!asked) return false;
       // The old Eva still answers for a moment, so the wait starts after a pause.
       for (let waited = 0; waited < restartWaitMs; waited += restartPollMs) {
         await host.sleep(restartPollMs);

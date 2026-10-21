@@ -50,7 +50,7 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in. Then setup asks where to go on:
    - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
    - Type `2` to finish on Eva's web page. Setup shows the link to the Setup page, and the steps to follow there. Then you can close the terminal.
-5. **Notebook and GitHub.** Your time zone, the GitHub login, your notebook, and the GitHub accounts that you trust (your own user name, so that Eva opens your projects without a question).
+5. **Notebook and GitHub.** Your time zone, the GitHub login, your notebook, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
 6. **AI login.** The Claude token, or the pi login.
 7. **Telegram** (optional). Your bot.
 8. **Google and voice notes** (optional).

@@ -8,7 +8,7 @@
  * answer holds for that folder only.
  */
 import { basename } from "node:path";
-import { isTrustedByDefault, type CloneOriginStore, type TrustStore } from "../projects/clones.ts";
+import { isTrustedByDefault, shownUrl, type CloneOriginStore, type TrustStore } from "../projects/clones.ts";
 import type { PrepareContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
@@ -16,7 +16,8 @@ export interface ProjectPreparerOptions {
   readonly trustStore: TrustStore;
   /** The URL that Eva cloned each clone from. Trust follows it, not the live `origin` (issue #15). */
   readonly cloneOrigins: CloneOriginStore;
-  readonly trustedOwners: readonly string[];
+  /** Read on each turn, so a changed list or a new GitHub login applies with no restart. */
+  readonly trustedOwners: () => readonly string[];
   readonly environment: Readonly<Record<string, string>>;
   /** The `origin` URL of a clone, or null when it has none. Only a folder that Eva did not clone uses it. */
   readonly readRemote: (cloneFolder: string) => Promise<string | null>;
@@ -62,7 +63,7 @@ export class ProjectPreparer implements TurnPreparer {
     const remote = origin.url;
     const decision = this.options.trustStore.decision(remote);
     if (decision !== "unknown") return decision === "trusted";
-    if (isTrustedByDefault(remote, this.options.trustedOwners)) return true;
+    if (isTrustedByDefault(remote, this.options.trustedOwners())) return true;
     const answer = await askTrust(
       context,
       "Trust this repository",
@@ -121,20 +122,4 @@ async function askTrust(
   // Only the person's own answer is kept. An expired question leaves this turn untrusted and asks again next time.
   if (answer === "expired") return null;
   return answer === "allow" ? "trusted" : "untrusted";
-}
-
-const shownUrlLimit = 200;
-
-/**
- * A URL as the phone shows it. The clone writes its own `origin`, so the text can hold a token in
- * its user part, line breaks that fake a second line, or a tail long enough to hide the question.
- */
-function shownUrl(url: string): string {
-  const clean = url
-    .replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, "$1")
-    // A short git address (`user:token@host:path`) has no scheme. A plain `git@` user carries no secret, so it stays.
-    .replace(/^[^@/:\s]+:[^@/\s]*@/, "")
-    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
-    .trim();
-  return clean.length <= shownUrlLimit ? clean : `${clean.slice(0, shownUrlLimit)}…`;
 }

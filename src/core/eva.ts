@@ -127,7 +127,7 @@ import {
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
-import { installedOn, readAboutMe, type AboutMe } from "./vault/about-me.ts";
+import { firstCommitDay, installedOn, readAboutMe, type AboutMe } from "./vault/about-me.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -348,6 +348,10 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
+  /** The day of the vault's first commit, read once. */
+  private vaultFirstCommit: Promise<string | null> | null;
+  /** The git environment of this instance, for reads of the vault's history. */
+  private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
   private readonly vaultSetup: VaultSetup;
@@ -383,6 +387,8 @@ export class Eva {
       commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
+    this.gitEnvironmentForReads = ownGitEnvironment;
+    this.vaultFirstCommit = null;
 
     const redactor = new Redactor();
     for (const secret of Object.values(options.secrets)) redactor.addSecret(secret);
@@ -819,16 +825,15 @@ export class Eva {
   }
 
   /**
-   * The state of each template part of the vault, with no change, and whether this machine takes
-   * the person's choice. Null when no vault is configured.
-   */
-  /**
    * The person's facts that the web page uses, from `Life/About me.md`, and the facts that Eva
    * still needs. Null when no vault is configured.
    */
-  personalFacts(): PersonalFactsView | null {
+  async personalFacts(): Promise<PersonalFactsView | null> {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null) return null;
+    // The first commit never changes, so one git call serves every read.
+    this.vaultFirstCommit ??= firstCommitDay(vaultPath, this.options.runner, this.gitEnvironmentForReads);
+    const firstCommit = await this.vaultFirstCommit;
     const about = readAboutMe(vaultPath);
     // The most useful fact first: the new chat page asks for one at a time.
     const missing = (["birthDate", "region"] as const).filter((key) => about[key] === null);
@@ -837,11 +842,15 @@ export class Eva {
       birthDate: about.birthDate,
       region: about.region,
       hemisphere: about.hemisphere,
-      installedOn: installedOn(vaultPath),
+      installedOn: installedOn(vaultPath, firstCommit),
       missing,
     };
   }
 
+  /**
+   * The state of each template part of the vault, with no change, and whether this machine takes
+   * the person's choice. Null when no vault is configured.
+   */
   templateParts(): { readonly parts: TemplatePart[]; readonly canChoose: boolean } | null {
     const parts = this.templateAlignment?.list();
     return parts === undefined ? null : { parts, canChoose: this.role() === "hub" };

@@ -5,11 +5,12 @@ description: Save or fix a basic fact about the person in the header of Life/Abo
 
 # Save a fact about the person
 
-`Life/About me.md` starts with a YAML header between two `---` lines. Eva's code and scripts read it: the festive eyes on the person's birthday, a greeting by name, and later the weather. Code skips a field that has the wrong form, so keep each form exactly.
+`Life/About me.md` starts with a YAML header between two `---` lines. Eva's code and scripts read it: the festive eyes on the person's birthday, a greeting by name, and later the weather. Code skips a field that has the wrong form. Keep each form exactly.
 
 ## 1. Decide if the fact belongs here
 
 - **Save only what the person says.** Never save a guess. "I turn 30 tomorrow" gives the birth date. "I go to the gym" gives no gym name.
+- **Leave out what the person does not know.** A birthday with no year is `--MM-DD`. A person with no known birthday has no `birthDate`.
 - **Ask before you save a health fact**, such as an allergy.
 - **Keep other facts in the notes.** A long story about a relative goes in a note under `Life/`. The header keeps only the fields below.
 - **Do not save the time zone or the language here.** They are Eva's settings.
@@ -18,23 +19,23 @@ description: Save or fix a basic fact about the person in the header of Life/Abo
 
 Read the note first. Change only the field that the person gave. Keep every other line, and keep the text under the header as it is. When the note has no header, add the header of the example at the top.
 
-| Field                                 | Form                                                                    | Example                  |
-| ------------------------------------- | ----------------------------------------------------------------------- | ------------------------ |
-| `name`                                | What Eva calls the person                                               | `Alex`                   |
-| `givenName`, `familyName`, `nickname` | Text                                                                    | `Alex`, `Example`, `Lex` |
-| `pronouns`                            | Text                                                                    | `they/them`              |
-| `birthDate`                           | `YYYY-MM-DD`                                                            | `1990-05-14`             |
-| `region`                              | ISO 3166 code: a country, or a country and a region                     | `ES`, `ES-CT`, `US-CA`   |
-| `hemisphere`                          | `north` or `south`, from where the person lives                         | `north`                  |
-| `units`                               | `metric` or `imperial`                                                  | `metric`                 |
-| `clock`                               | `24h` or `12h`                                                          | `24h`                    |
-| `weekStart`                           | A day in English, in lower case                                         | `monday`                 |
-| `sleep`                               | `from` and `to`, as `HH:mm`                                             | see the example          |
-| `work`                                | `from` and `to` as `HH:mm`, and `days` as a list of `mon` to `sun`      | see the example          |
-| `places`                              | A name for each place, each with `city`, and `lat` and `lon` when known | see the example          |
-| `people`                              | A list. Each has `name`, `relation`, and `birthDate` when known         | see the example          |
-| `dates`                               | A list. Each has `name` and `date` as `YYYY-MM-DD`                      | see the example          |
-| `diet`, `allergies`                   | Lists of text                                                           | `[vegetarian]`           |
+| Field                                 | Form                                                                         | Example                  |
+| ------------------------------------- | ---------------------------------------------------------------------------- | ------------------------ |
+| `name`                                | What Eva calls the person                                                    | `Alex`                   |
+| `givenName`, `familyName`, `nickname` | Text                                                                         | `Alex`, `Example`, `Lex` |
+| `pronouns`                            | Text                                                                         | `they/them`              |
+| `birthDate`                           | `YYYY-MM-DD`, or `--MM-DD` when the person gives no year                     | `1990-05-14`, `--05-14`  |
+| `region`                              | ISO 3166 code: a country, or a country and a region                          | `ES`, `ES-CT`, `US-CA`   |
+| `hemisphere`                          | `north` or `south`, from where the person lives                              | `north`                  |
+| `units`                               | `metric` or `imperial`                                                       | `metric`                 |
+| `clock`                               | `24h` or `12h`                                                               | `24h`                    |
+| `weekStart`                           | A day in English, in lower case                                              | `monday`                 |
+| `sleep`                               | `from` and `to`, as `HH:mm`                                                  | see the example          |
+| `work`                                | `from` and `to` as `HH:mm`, and `days` as a list of `mon` to `sun`           | see the example          |
+| `places`                              | A name for each place. Each place has `city`. Add `lat` and `lon` when known | see the example          |
+| `people`                              | A list. Each has `name` and `relation`. Add `birthDate` when known           | see the example          |
+| `dates`                               | A list. Each has `name` and `date` as `YYYY-MM-DD`                           | see the example          |
+| `diet`, `allergies`                   | Lists of text                                                                | `[vegetarian]`           |
 
 When the person says where they live, fill `region`, `hemisphere` and `places.home` together.
 

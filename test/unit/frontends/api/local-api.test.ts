@@ -1291,15 +1291,16 @@ describe("web routes", () => {
       join(vaultPath, "Life", "About me.md"),
       "---\nname: Alex\nbirthDate: 1990-05-14\n---\n\n# About Alex\n",
     );
-    expect(await json(await call("/api/about-me"))).toEqual({
+    const facts = await json<{ installedOn: string | null }>(await call("/api/about-me"));
+    expect(facts).toMatchObject({
       name: "Alex",
       birthDate: "1990-05-14",
       region: null,
       hemisphere: null,
-      // The test vault has no migration record.
-      installedOn: null,
       missing: ["region"],
     });
+    // The day of the test vault's first commit.
+    expect(facts.installedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   test("template parts: list their states, and keep the person's version of one", async () => {

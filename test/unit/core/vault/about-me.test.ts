@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aboutMeProblemNote, installedOn, readAboutMe } from "../../../../src/core/vault/about-me.ts";
+import { aboutMeProblemNote, firstCommitDay, installedOn, readAboutMe } from "../../../../src/core/vault/about-me.ts";
+import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
 
 let vault: string;
@@ -77,7 +78,7 @@ describe("readAboutMe", () => {
     expect(read.region).toBeNull();
     expect(read.hemisphere).toBeNull();
     expect(read.problems).toEqual([
-      "birthDate must be a date as YYYY-MM-DD.",
+      "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
       "region must be a country code, such as ES, or a region code, such as ES-CT.",
       "hemisphere must be north or south.",
       "clock must be 12h or 24h.",
@@ -85,7 +86,7 @@ describe("readAboutMe", () => {
       "weekStart must be a day, such as monday.",
       "sleep.from must be a time as HH:mm.",
       "places must be a set of named places.",
-      "people[0].birthDate must be a date as YYYY-MM-DD.",
+      "people[0].birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
       "dates[0].date must be a date as YYYY-MM-DD.",
       "diet must be a list.",
     ]);
@@ -98,7 +99,9 @@ describe("readAboutMe", () => {
 
   test("rejects a date that does not exist", () => {
     note("birthDate: 1990-02-30");
-    expect(readAboutMe(vault).problems).toEqual(["birthDate must be a date as YYYY-MM-DD."]);
+    expect(readAboutMe(vault).problems).toEqual([
+      "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
+    ]);
   });
 });
 
@@ -123,14 +126,17 @@ describe("installedOn", () => {
         ],
       }),
     );
-    expect(installedOn(vault)).toBe("2025-03-02");
+    expect(installedOn(vault, null)).toBe("2025-03-02");
+    // The first commit of an older vault comes before the record.
+    expect(installedOn(vault, "2024-01-09")).toBe("2024-01-09");
   });
 
   test("is null without a record, or with a damaged one", () => {
-    expect(installedOn(vault)).toBeNull();
+    expect(installedOn(vault, null)).toBeNull();
+    expect(installedOn(vault, "2024-01-09")).toBe("2024-01-09");
     mkdirSync(join(vault, ".eva"), { recursive: true });
     writeFileSync(join(vault, ".eva", "migrations.json"), "{ broken");
-    expect(installedOn(vault)).toBeNull();
+    expect(installedOn(vault, null)).toBeNull();
   });
 });
 
@@ -145,5 +151,49 @@ describe("a new vault's note", () => {
       hemisphere: null,
       problems: [],
     });
+  });
+});
+
+describe("forms that people write", () => {
+  test("a person with no known birthday, empty lists and a birthday with no year are fine", () => {
+    note(
+      [
+        "birthDate: --05-14",
+        "people:",
+        "  - { name: Sam, relation: partner }",
+        "  - { name: Luna, relation: dog, birthDate: --08-01 }",
+        "places: []",
+        "diet: []",
+        "sleep: {}",
+      ].join("\n"),
+    );
+    expect(readAboutMe(vault)).toMatchObject({ birthDate: "--05-14", problems: [] });
+  });
+
+  test("a day with no year must still be a real day", () => {
+    note("birthDate: --02-30");
+    expect(readAboutMe(vault).problems).toEqual([
+      "birthDate must be a date as YYYY-MM-DD, or --MM-DD without the year.",
+    ]);
+  });
+
+  test("a byte order mark before the header does not hide it", () => {
+    writeFileSync(join(vault, "Life", "About me.md"), "﻿---\nname: Alex\n---\n");
+    expect(readAboutMe(vault).name).toBe("Alex");
+  });
+});
+
+describe("firstCommitDay", () => {
+  function runner(exitCode: number, stdout: string): ProcessRunner {
+    return { run: () => Promise.resolve({ exitCode, stdout, stderr: "" }) };
+  }
+
+  test("is the earliest root commit", async () => {
+    expect(await firstCommitDay(vault, runner(0, "2024-05-02\n2023-11-30\n"), {})).toBe("2023-11-30");
+  });
+
+  test("is null when git fails or gives nothing", async () => {
+    expect(await firstCommitDay(vault, runner(128, ""), {})).toBeNull();
+    expect(await firstCommitDay(vault, runner(0, ""), {})).toBeNull();
   });
 });

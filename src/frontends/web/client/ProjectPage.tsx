@@ -210,7 +210,7 @@ function CloneCard({
           </button>
         )}
         {canPush(clone) && (
-          <button className="soft small" disabled={pulling} onClick={onPush}>
+          <button className="soft small" disabled={pulling || syncBusy} onClick={onPush}>
             <Icon name="send" /> Push
           </button>
         )}

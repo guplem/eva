@@ -3,7 +3,7 @@
  * clone, the chat of a clone with a header that says where it runs, the project details, and the
  * repository setup.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type ChatBlocker, type CloneDetails, type CloneFetch, type Project, type SessionRecord } from "./api.ts";
 import { PushCloneDialog } from "./PushCloneDialog.tsx";
 import { Toast } from "./Toast.tsx";
@@ -127,7 +127,10 @@ export function ProjectView({
   // and never shows the cards of the project that was open before.
   const clones = loaded !== null && loaded.projectId === openProjectId ? loaded.clones : null;
   const [cloneVersion, setCloneVersion] = useState(0);
-  const [syncWork, setSyncWork] = useState<string | null>(null);
+  /** A fetch or a pull of all clones, with its project: a page shows only the work of its own project. */
+  const [syncWork, setSyncWork] = useState<{ readonly projectId: string; readonly label: string } | null>(null);
+  const openProjectRef = useRef<string | null>(null);
+  openProjectRef.current = page?.project.id ?? null;
   const [pulling, setPulling] = useState<string | null>(null);
   /** The clone whose Push sheet is open. */
   const [pushing, setPushing] = useState<CloneDetails | null>(null);
@@ -217,17 +220,18 @@ export function ProjectView({
   /** Runs a fetch or a pull of all clones, and shows the fresh cards and each clone that failed. */
   const syncAll = useCallback(
     async (projectId: string, work: string, run: () => Promise<CloneFetch>): Promise<void> => {
-      setSyncWork(work);
+      setSyncWork({ projectId, label: work });
       try {
         const result = await run();
         setLoaded((current) =>
           current === null || current.projectId === projectId ? { projectId, clones: result.clones } : current,
         );
-        setError(result.problems.length === 0 ? null : result.problems.join(" "));
+        if (openProjectRef.current === projectId)
+          setError(result.problems.length === 0 ? null : result.problems.join(" "));
       } catch (caught) {
         showError(caught);
       } finally {
-        setSyncWork(null);
+        setSyncWork((current) => (current?.projectId === projectId ? null : current));
       }
     },
     [showError],
@@ -255,7 +259,8 @@ export function ProjectView({
   const pushOne = async (project: Project, clone: CloneDetails, note: string): Promise<void> => {
     const { message } = await api.pushClone(project.id, clone.name, note);
     setPushing(null);
-    setPushed(`Pushed ${clone.name}: ${message.split("\n")[0] ?? message}`);
+    const subject = message.split("\n")[0] ?? "";
+    setPushed(subject === "" ? `Pushed ${clone.name}.` : `Pushed ${clone.name}: ${subject}`);
     setCloneVersion((version) => version + 1);
   };
 
@@ -495,7 +500,7 @@ export function ProjectView({
               open({ kind: "chat", project: page.project, clone, chatId: picked.id });
             }}
             onNewChat={(clone) => void startChat(page.project, clone)}
-            syncWork={syncWork}
+            syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
             pulling={pulling}
             onCheckRemotes={() =>
               void syncAll(page.project.id, "Eva checks the remote of each clone.", () =>

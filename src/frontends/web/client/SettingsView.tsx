@@ -481,7 +481,11 @@ function SettingHomesDialog({
                 .map(({ title, keys, link }) => (
                   <li key={title}>
                     {link === null ? (
-                      <SettingLink section={null} title={title} hint={`No page yet: ${keys.join(", ")}`} />
+                      <SettingLink
+                        section={null}
+                        title={title}
+                        hint={`No page yet. In a terminal: eva settings set ${keys.join(", ")}`}
+                      />
                     ) : (
                       <SettingLink section={link.section} title={title} onOpen={() => navigate(link)} />
                     )}
@@ -509,8 +513,8 @@ function SettingLink({
   readonly onOpen?: () => void;
 }): ReactElement {
   const known = settingsSections.find((each) => each.id === section);
-  return (
-    <button className="section-card" disabled={onOpen === undefined} onClick={onOpen}>
+  const parts = (
+    <>
       <span className="section-icon">
         <Icon name={section === null ? "info" : sectionIcons[section]} />
       </span>
@@ -518,7 +522,14 @@ function SettingLink({
         <span className="section-card-title">{title}</span>
         <span className="field-hint">{hint ?? known?.title}</span>
       </span>
-      {onOpen !== undefined && <Icon name="back" className="chevron flip" />}
+    </>
+  );
+  // A row that opens nothing is text, not a disabled button, so a keyboard user still reads it.
+  if (onOpen === undefined) return <div className="section-card">{parts}</div>;
+  return (
+    <button className="section-card" onClick={onOpen}>
+      {parts}
+      <Icon name="back" className="chevron flip" />
     </button>
   );
 }

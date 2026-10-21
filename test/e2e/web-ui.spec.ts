@@ -1544,8 +1544,9 @@ test("the Settings home page lists where each setting lives, and a row opens its
   for (const heading of ["In your vault", "On this machine only", "In this browser only"]) {
     await expect(dialog.getByRole("heading", { name: new RegExp(heading) })).toBeVisible();
   }
-  // A setting with no page names its key, and its row opens nothing.
-  await expect(dialog.getByRole("button", { name: /Voice note language/ })).toBeDisabled();
+  // A setting with no page is a row of text that says how to change it, not a button.
+  await expect(dialog.getByText("eva settings set voice.language")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Voice note language/ })).toHaveCount(0);
   await dialog.getByRole("button", { name: /Appearance/ }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");

@@ -3780,6 +3780,18 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   await expect(vaultList).toBeVisible();
 });
 
+test("Files: a wide column takes at least a quarter of the row", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects");
+  const row = page.locator(".files-columns");
+  const column = page.locator(".files-pane").filter({ has: page.getByRole("list", { name: "Contents of Vault" }) });
+  await expect(column).toBeVisible();
+  const rowWidth = (await row.boundingBox())?.width ?? 0;
+  const columnWidth = (await column.boundingBox())?.width ?? 0;
+  expect(columnWidth).toBeGreaterThanOrEqual(rowWidth / 4 - 16);
+});
+
 test("Files: a phone shows only the open folder (issue 308)", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "A wide screen shows every column.");
   await logIn(page);

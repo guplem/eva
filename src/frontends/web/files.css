@@ -66,20 +66,21 @@
 
 /*
  * Each column scrolls on its own, and the row of columns scrolls sideways, as in a Finder.
- * The padding keeps room for the shadow of the cards.
+ * The padding keeps room for the shadow of the cards. A column takes at least a quarter of the
+ * row, so four columns fit a wide screen and a deeper path scrolls.
  */
 .files-columns {
   flex: 1;
   min-height: 0;
   display: flex;
   gap: var(--space-3);
+  --files-quarter: calc((100% - 3 * var(--space-3)) / 4);
   overflow-x: auto;
   padding: var(--space-1) var(--space-1) var(--space-5);
 }
 
-/* A folder column gives up width before the row scrolls, so a short path fits the screen. */
 .files-pane {
-  flex: 0 1 260px;
+  flex: 0 0 var(--files-quarter);
   min-width: 180px;
   min-height: 0;
   display: flex;
@@ -93,11 +94,11 @@
 }
 
 .files-preview {
-  flex: 1 0 360px;
+  flex: 1 0 max(360px, var(--files-quarter));
 }
 
 .files-placeholder {
-  flex: 1 0 260px;
+  flex: 1 0 var(--files-quarter);
   align-items: center;
   justify-content: center;
   color: var(--muted);

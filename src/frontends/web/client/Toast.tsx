@@ -5,23 +5,11 @@
  */
 import type { ReactElement, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Icon, type IconName } from "./icons.tsx";
+import { Icon } from "./icons.tsx";
 import { toastVisibleMs } from "./toast-timing.ts";
-
-export type ToastTone = "info" | "ok" | "warn" | "bad";
-
-const toneIcons: Readonly<Record<ToastTone, IconName>> = {
-  info: "info",
-  ok: "check",
-  warn: "alert",
-  bad: "alert",
-};
 
 interface ToastProps {
   readonly message: string;
-  readonly tone?: ToastTone;
-  /** An icon in place of the tone's own, such as a key for a failed login. */
-  readonly icon?: IconName;
   /** No role for a part that has its own, such as a progress bar. */
   readonly role?: "status" | "alert" | "alertdialog" | null;
   readonly label?: string;
@@ -35,8 +23,6 @@ interface ToastProps {
 
 export function Toast({
   message,
-  tone = "info",
-  icon,
   role = "status",
   label,
   actions,
@@ -46,10 +32,7 @@ export function Toast({
 }: ToastProps): ReactElement {
   const visibleMs = toastVisibleMs(message, actions !== undefined);
   return createPortal(
-    <div className={`toast ${tone}`} role={role ?? undefined} aria-label={label}>
-      <span className="toast-mark">
-        <Icon name={icon ?? toneIcons[tone]} />
-      </span>
+    <div className="toast" role={role ?? undefined} aria-label={label}>
       <div className="toast-text">{children ?? message}</div>
       {actions !== undefined && <div className="toast-actions">{actions}</div>}
       {onClose !== undefined && (

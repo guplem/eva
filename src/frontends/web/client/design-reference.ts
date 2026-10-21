@@ -188,7 +188,7 @@ export const componentSamples: readonly ComponentSample[] = [
   {
     id: "toasts",
     title: "Toasts",
-    classes: ["toast", "toast-mark", "toast-actions", "toast-close", "toast-timer", "ok", "warn", "bad"],
+    classes: ["toast", "toast-actions", "toast-close", "toast-timer"],
     part: "Toast",
     use: "A short message at the bottom of the screen, such as the result of an action. The ring around the close button empties, and then the toast closes. A pointer on the toast stops the ring. Press a button to show one.",
   },

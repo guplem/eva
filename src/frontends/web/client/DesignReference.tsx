@@ -305,7 +305,7 @@ function ToastSamples(): ReactElement {
           {toastSampleLabels[id]}
         </button>
       ))}
-      {shown === "note" && <Toast key={presses} message="Saved." tone="ok" onClose={close} />}
+      {shown === "note" && <Toast key={presses} message="Saved." onClose={close} />}
       {shown === "long" && (
         <Toast
           key={presses}
@@ -317,8 +317,6 @@ function ToastSamples(): ReactElement {
         <Toast
           key={presses}
           message="The GitHub login expired. Log in again to push your changes."
-          tone="bad"
-          icon="key"
           role="alert"
           onClose={close}
           actions={
@@ -332,8 +330,6 @@ function ToastSamples(): ReactElement {
         <Toast
           key={presses}
           message='"Plan the trip" is running. A restart stops it. Restart Eva now?'
-          tone="warn"
-          icon="restart"
           role="alertdialog"
           label="Restart Eva"
           closeLabel="Close the question"
@@ -349,7 +345,7 @@ function ToastSamples(): ReactElement {
         />
       )}
       {shown === "wait" && (
-        <Toast key={presses} message="Eva restarts…" icon="restart" role={null}>
+        <Toast key={presses} message="Eva restarts…" role={null}>
           <ProgressBar label="Eva restarts…" />
         </Toast>
       )}

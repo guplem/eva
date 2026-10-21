@@ -77,6 +77,7 @@ const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
+const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
   version: z
     .string()
@@ -107,6 +108,7 @@ const newProjectSchema = z.object({
 });
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
+const trustAnswerSchema = z.object({ url: z.string().min(1).max(2_000) });
 const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
 /** The account of a browser on Eva's own computer, which has no Tailscale account. */
 const localAccount = "this computer";
@@ -530,6 +532,28 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     const { version, ...details } = projectDetailsSchema.parse(await request.json());
     return json(eva.saveProjectDetails(decodeURIComponent(parts[2]), version, details));
   }
+  if (
+    method === "POST" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "clones" &&
+    parts[4] !== undefined
+  ) {
+    const projectId = decodeURIComponent(parts[2]);
+    // A clone name always ends in `-<n>`, so it never equals "fetch" or "pull".
+    if (parts.length === 5 && parts[4] === "fetch") return json(await eva.fetchClones(projectId));
+    if (parts.length === 5 && parts[4] === "pull") return json(await eva.pullClones(projectId));
+    const cloneName = decodeURIComponent(parts[4]);
+    if (parts.length === 6 && parts[5] === "pull") {
+      await eva.pullClone(projectId, cloneName);
+      return json({ ok: true });
+    }
+    if (parts.length === 6 && parts[5] === "push") {
+      const { note } = pushSchema.parse(await request.json());
+      return json(await eva.pushClone(projectId, cloneName, note ?? ""));
+    }
+  }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);
     if (method === "GET") return json(await eva.clones(projectId));
@@ -565,6 +589,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
+  }
+  if (method === "GET" && url.pathname === "/api/trust") return json(eva.trust());
+  if (method === "DELETE" && url.pathname === "/api/trust/answers") {
+    return json(eva.forgetTrustAnswer(trustAnswerSchema.parse(await request.json()).url));
   }
   if (parts[0] === "api" && parts[1] === "secrets" && parts.length === 3) {
     const name = pageSecretNames.find((candidate) => candidate === parts[2]);

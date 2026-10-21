@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
+import { cheapestModel, type ModelCalls } from "../model-calls/model-calls.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 import { evaRepository } from "../../shared/version.ts";
 import type { SessionManager } from "../sessions/session-manager.ts";
@@ -23,6 +24,15 @@ import {
   type CloneDetails,
   type CloneOriginStore,
 } from "./clones.ts";
+import {
+  changedFiles,
+  commitAndPush,
+  describeChanges,
+  fallbackCommitMessage,
+  fetchClone,
+  pullClone,
+  readSyncState,
+} from "./clone-sync.ts";
 import type { Project } from "./project-catalog.ts";
 import {
   applyProjectDetails,
@@ -70,21 +80,45 @@ export interface ProjectWorkOptions {
   readonly inBackground: (what: string, task: () => Promise<unknown>) => void;
   /** One GET of the GitHub API, for the setup report. Default: `gh api`. */
   readonly githubRequest?: GithubRequest;
+  /** Writes a commit message when the person leaves the note empty. Without it, a plain message. */
+  readonly modelCalls?: Pick<ModelCalls, "ask">;
   readonly logger?: Logger;
 }
 
+/** The clones after a fetch or a pull, and a reason for each clone that failed. */
+export interface CloneFetch {
+  readonly clones: CloneDetails[];
+  readonly problems: string[];
+}
+
+const commitMessagePrompt = [
+  "You write git commit messages. Answer with the message only, with no quotes and no code fence.",
+  "Write one subject line of at most 72 characters, in the imperative mood, such as: Add the login page.",
+  "Add a short body after a blank line only when the subject cannot say why.",
+  "Follow the style and the language of the recent commits of the repository.",
+].join("\n");
+
 /** The number of characters of a project answer that the report to the Assistant chat keeps. */
 const reportTextLimit = 3_000;
+
+/**
+ * A clean clone stays with its chat for this time after the chat's last activity. An idle chat
+ * keeps no clone, so new work could take it while the person writes again (issue 356).
+ */
+const cloneGraceMs = 10 * 60_000;
 
 export class ProjectWork {
   private readonly options: ProjectWorkOptions;
   /** Clones that project work has taken, so two chats never get the same working tree (lesson 49). */
   private readonly reservedClones: Set<string>;
+  /** Clones with a pull or a push running, so two never share one index. */
+  private readonly syncingClones: Set<string>;
   /** The last clone choice of each project, so the next choice waits for it (lesson 49). */
   private readonly cloneChoices: Map<string, Promise<unknown>>;
 
   constructor(options: ProjectWorkOptions) {
     this.reservedClones = new Set();
+    this.syncingClones = new Set();
     this.cloneChoices = new Map();
     this.options = options;
   }
@@ -92,21 +126,23 @@ export class ProjectWork {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   async createSession(input: NewProjectChatInput): Promise<SessionRecord> {
     const project = this.project(input.projectId);
-    const clone =
-      input.cloneName === undefined
-        ? await this.oneCloneChoiceAtATime(project, () => this.freeOrNewClone(project))
-        : listClones(project.path).find((candidate) => candidate.name === input.cloneName);
-    if (clone === undefined)
-      throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
-    return this.options.sessions.createSession({
-      mode: "project",
-      engine: input.engine ?? this.options.defaultEngine,
-      model: input.model,
-      startFolder: clone.path,
-      source: input.source,
-      projectId: project.id,
-      clone: clone.name,
-    });
+    const inClone = (clone: Clone | undefined): SessionRecord => {
+      if (clone === undefined)
+        throw new EvaError("project_not_found", `Project ${project.id} has no clone ${input.cloneName ?? ""}.`);
+      return this.options.sessions.createSession({
+        mode: "project",
+        engine: input.engine ?? this.options.defaultEngine,
+        model: input.model,
+        startFolder: clone.path,
+        source: input.source,
+        projectId: project.id,
+        clone: clone.name,
+      });
+    };
+    if (input.cloneName !== undefined)
+      return inClone(listClones(project.path).find((candidate) => candidate.name === input.cloneName));
+    // The chat exists before the next choice starts, so its creation already keeps the clone.
+    return this.oneCloneChoiceAtATime(project, async () => inClone(await this.freeOrNewClone(project)));
   }
 
   /**
@@ -215,13 +251,119 @@ export class ProjectWork {
     const { runner, gitEnvironment } = this.options;
     return Promise.all(
       listClones(project.path).map(async (clone) => {
-        const [details, changes] = await Promise.all([
+        const [details, changes, sync] = await Promise.all([
           describeClone(clone, runner, gitEnvironment),
           countChanges(clone, runner, gitEnvironment),
+          readSyncState(clone, runner, gitEnvironment),
         ]);
-        return { ...details, changes };
+        return { ...details, ...sync, changes };
       }),
     );
+  }
+
+  /** Fetches each clone, then gives the clones with fresh counts and the fetches that failed. */
+  async fetchClones(projectId: string): Promise<CloneFetch> {
+    const project = this.project(projectId);
+    const { runner, gitEnvironment } = this.options;
+    const reasons = await Promise.all(
+      listClones(project.path).map(async (clone) => {
+        const reason = await fetchClone(clone, runner, gitEnvironment);
+        return reason === null ? null : `${clone.name}: ${reason}`;
+      }),
+    );
+    return { clones: await this.clones(projectId), problems: reasons.filter((reason) => reason !== null) };
+  }
+
+  /** A fast-forward pull of one clone. */
+  async pullClone(projectId: string, cloneName: string): Promise<void> {
+    const clone = this.idleClone(projectId, cloneName);
+    await this.oneSyncAtATime(clone, () => pullClone(clone, this.options.runner, this.options.gitEnvironment));
+  }
+
+  /** Pulls each clone that is behind and has no running chat. One failure does not stop the others. */
+  async pullClones(projectId: string): Promise<CloneFetch> {
+    const project = this.project(projectId);
+    const { runner, gitEnvironment } = this.options;
+    const reasons = await Promise.all(
+      (await this.clones(projectId))
+        .filter((clone) => (clone.behind ?? 0) > 0)
+        .map(async (clone) => {
+          try {
+            this.idleClone(project.id, clone.name);
+            await this.oneSyncAtATime(clone, () => pullClone(clone, runner, gitEnvironment));
+            return null;
+          } catch (error) {
+            if (!isEvaError(error)) throw error;
+            return error.message;
+          }
+        }),
+    );
+    return { clones: await this.clones(projectId), problems: reasons.filter((reason) => reason !== null) };
+  }
+
+  /**
+   * Commits every change of a clone and pushes its branch. With an empty note, a model writes the
+   * message from the diff, and a plain message stands in when no model answers.
+   */
+  async pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
+    const clone = this.idleClone(projectId, cloneName);
+    const { runner, gitEnvironment } = this.options;
+    return this.oneSyncAtATime(clone, async () => {
+      const trimmed = note.trim();
+      const files = await changedFiles(clone, runner, gitEnvironment);
+      const message = trimmed.length > 0 || files.length === 0 ? trimmed : await this.commitMessage(clone);
+      // The model call takes seconds, and a chat may start a turn meanwhile.
+      this.idleClone(projectId, cloneName);
+      await commitAndPush(clone, message, runner, gitEnvironment);
+      return { message };
+    });
+  }
+
+  private async commitMessage(clone: Clone): Promise<string> {
+    const changes = await describeChanges(clone, this.options.runner, this.options.gitEnvironment);
+    const fallback = fallbackCommitMessage(changes.files);
+    const modelCalls = this.options.modelCalls;
+    if (modelCalls === undefined) return fallback;
+    const engine = this.options.defaultEngine;
+    const result = await modelCalls.ask({
+      engine,
+      model: cheapestModel(engine, "default"),
+      systemPrompt: commitMessagePrompt,
+      prompt: "Write the commit message for these changes.",
+      context: {
+        files: changes.files.join("\n"),
+        diff: changes.diff,
+        "recent-commits": changes.recentSubjects.join("\n"),
+      },
+    });
+    if (!result.ok) {
+      this.options.logger?.log("warn", `A commit message failed: ${result.reason}`);
+      return fallback;
+    }
+    return cleanCommitMessage(result.text) ?? fallback;
+  }
+
+  private async oneSyncAtATime<Result>(clone: Clone, work: () => Promise<Result>): Promise<Result> {
+    if (this.syncingClones.has(clone.path))
+      throw new EvaError("session_busy", `Eva already pulls or pushes ${clone.name}. Try again when it ends.`);
+    this.syncingClones.add(clone.path);
+    try {
+      return await work();
+    } finally {
+      this.syncingClones.delete(clone.path);
+    }
+  }
+
+  /** A clone of the project with no running chat: git must not change files under a turn. */
+  private idleClone(projectId: string, cloneName: string): Clone {
+    const project = this.project(projectId);
+    const clone = listClones(project.path).find((candidate) => candidate.name === cloneName);
+    if (clone === undefined)
+      throw new EvaError("project_not_found", `Project ${project.id} has no clone ${cloneName}.`);
+    const sessions = this.options.sessions;
+    if (sessions.list().some((session) => session.startFolder === clone.path && sessions.isBusy(session.id)))
+      throw new EvaError("session_busy", `A chat is working in ${clone.name}. Try again when its turn ends.`);
+    return clone;
   }
 
   /** Clones a project's repository into its next free folder (the "New clone" button). */
@@ -297,7 +439,13 @@ export class ProjectWork {
     for (const clone of [...recorded, ...clones.filter((clone) => !recorded.includes(clone))]) {
       const busy =
         this.reservedClones.has(clone.path) ||
-        sessions.list().some((session) => session.startFolder === clone.path && sessions.isBusy(session.id));
+        sessions
+          .list()
+          .some(
+            (session) =>
+              session.startFolder === clone.path &&
+              (sessions.isBusy(session.id) || sessions.hadActivityWithin(session.id, cloneGraceMs)),
+          );
       if (!busy && (await isCleanFolder(clone.path, this.options.runner, this.options.gitEnvironment))) return clone;
     }
     return this.cloneInto(project);
@@ -316,6 +464,30 @@ export class ProjectWork {
     );
     return choice;
   }
+}
+
+/**
+ * A model can wrap the message in a code fence or quotes, or add a label. The first line is the
+ * subject, and a body may follow it.
+ */
+function cleanCommitMessage(text: string): string | null {
+  const lines = text
+    .trim()
+    .replace(/^```[\w-]*\s*\n?|\n?```$/g, "")
+    .split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().length > 0);
+  if (start === -1) return null;
+  const subject = (lines[start] ?? "")
+    .trim()
+    .replace(/^(commit\s+)?(message|subject)\s*:\s*/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+  if (subject.length === 0) return null;
+  const body = lines
+    .slice(start + 1)
+    .join("\n")
+    .trim();
+  return body.length === 0 ? subject : `${subject}\n\n${body}`;
 }
 
 /** Keeps the end of a long project answer: the end usually holds the result, and a phone chat stays short. */

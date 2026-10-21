@@ -276,3 +276,8 @@ button.device-log-out {
     flex: none;
   }
 }
+
+/* A saved trust answer: a long repository address wraps on a phone, instead of pushing Remove out. */
+.trust-answers .device-text b {
+  overflow-wrap: anywhere;
+}

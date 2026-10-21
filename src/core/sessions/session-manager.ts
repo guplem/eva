@@ -192,6 +192,10 @@ export class SessionManager {
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
+  /** The last message or turn start of each chat, in ms. The record keeps only the turn ends. */
+  private readonly lastActivity = new Map<string, number>();
+  /** The running turn of each Project folder, so two chats never edit one clone at once (issue 356). */
+  private readonly folderTurns = new Map<string, Promise<void>>();
 
   constructor(options: SessionManagerOptions) {
     this.options = options;
@@ -311,6 +315,16 @@ export class SessionManager {
     return runtime !== undefined && (runtime.busy || runtime.pending !== null);
   }
 
+  /** True when the chat was created, got a message, or started or ended a turn in the last `ms`. */
+  hadActivityWithin(sessionId: string, ms: number): boolean {
+    const record = this.options.store.get(sessionId);
+    if (record === undefined) return false;
+    const times = [Date.parse(record.createdAt), this.lastActivity.get(sessionId) ?? Number.NaN];
+    if (record.lastTurnAt !== null) times.push(Date.parse(record.lastTurnAt));
+    const last = Math.max(...times.filter((time) => !Number.isNaN(time)));
+    return this.options.now().getTime() - last < ms;
+  }
+
   /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;
@@ -327,6 +341,7 @@ export class SessionManager {
     runtime.pending = batch;
     batch.texts.push(text);
     batch.messages.push({ text, origin });
+    this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy && runtime.timer === null) {
       runtime.timer = setTimeout(() => {
         runtime.timer = null;
@@ -354,6 +369,7 @@ export class SessionManager {
       this.options.store.delete(id);
       this.runtimes.delete(id);
       this.lastFailure.delete(id);
+      this.lastActivity.delete(id);
     }
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
@@ -536,11 +552,16 @@ export class SessionManager {
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
     });
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, this.options.turnTimeoutMs);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let releaseFolder = (): void => undefined;
     let historyLost = false;
     try {
+      releaseFolder = await this.takeFolder(session, controller.signal);
+      this.lastActivity.set(sessionId, this.options.now().getTime());
+      // After the wait: the other turn may itself run up to the time-out.
+      timeout = setTimeout(() => {
+        controller.abort();
+      }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
         ask: (question, detail) => this.requestApproval(sessionId, question, detail),
@@ -646,6 +667,7 @@ ${prompt}`,
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     } finally {
       clearTimeout(timeout);
+      releaseFolder();
       runtime.controller = null;
       runtime.turnRunning = false;
       this.forgetRunningTurn(sessionId);
@@ -654,6 +676,50 @@ ${prompt}`,
       this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
+  }
+
+  /**
+   * Waits until no other chat runs a turn in the folder of a Project chat, then holds the folder.
+   * Two agents in one clone would pull, commit and push against each other (issue 356). Every
+   * Assistant chat runs at the vault root, and Eva's vault sync handles them, so they never wait.
+   */
+  private async takeFolder(session: SessionRecord, signal: AbortSignal): Promise<() => void> {
+    if (session.mode !== "project") return () => undefined;
+    const folder = session.startFolder;
+    let told = false;
+    // Several turns can wait. The first to wake takes the folder, and the others wait again.
+    for (let held = this.folderTurns.get(folder); held !== undefined; held = this.folderTurns.get(folder)) {
+      if (!told) {
+        told = true;
+        this.emit(session.id, {
+          kind: "notice",
+          text: "Another chat runs a turn in this clone. This turn starts when that turn ends.",
+        });
+      }
+      // A front end can stop the turn inside the notice event, before the listener exists.
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          const onAbort = (): void => resolve();
+          signal.addEventListener("abort", onAbort, { once: true });
+          void held.then(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          });
+        });
+      }
+      if (signal.aborted) throw new Error("The turn stopped while it waited for another chat in this clone.");
+    }
+    let release = (): void => undefined;
+    this.folderTurns.set(
+      folder,
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    return () => {
+      this.folderTurns.delete(folder);
+      release();
+    };
   }
 
   private historyOf(session: SessionRecord): TurnHistory {

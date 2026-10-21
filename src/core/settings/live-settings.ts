@@ -1,6 +1,7 @@
 /**
  * The settings and secrets of a running Eva: what the settings page reads and changes. A change
- * is saved at once; the update frequency and the vault fetch apply at once, the rest at a restart.
+ * is saved at once. The update frequency, the vault fetch and the trusted owners apply at once,
+ * the rest at a restart.
  */
 import { cleanGoogleClientId, cleanGoogleClientSecret, googleClientIdProblem } from "../google/google-client.ts";
 import { existsSync } from "node:fs";
@@ -48,7 +49,7 @@ export interface LiveSettingsOptions {
 }
 
 /** Settings that apply at once; any other change waits for a restart. */
-const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes"];
+const liveSettingKeys: readonly string[] = ["updates", "sync.pullIntervalMinutes", "trust.trustedRepositoryOwners"];
 
 export class LiveSettings {
   private readonly options: LiveSettingsOptions;

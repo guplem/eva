@@ -87,3 +87,19 @@ export function shownTags(
   if (chosen !== "" && tags.includes(chosen) && !shown.includes(chosen)) shown.push(chosen);
   return { shown, hidden: tags.length - shown.length };
 }
+
+/**
+ * "2 to pull" and "1 to push", against the last fetch. A clone level with its remote, or with no
+ * upstream, shows none: the changes pill already says Clean.
+ */
+export function syncPills(ahead: number | null, behind: number | null): Pill[] {
+  return [
+    ...(behind !== null && behind > 0 ? [{ text: `${String(behind)} to pull`, tone: "warn" as const }] : []),
+    ...(ahead !== null && ahead > 0 ? [{ text: `${String(ahead)} to push`, tone: "warn" as const }] : []),
+  ];
+}
+
+/** Whether a clone has something for its Push button: a change to commit, or a commit to push. */
+export function canPush(clone: { readonly changes: number | null; readonly ahead: number | null }): boolean {
+  return (clone.changes ?? 0) > 0 || (clone.ahead ?? 0) > 0;
+}

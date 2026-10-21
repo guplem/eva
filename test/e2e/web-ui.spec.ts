@@ -934,8 +934,11 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
   await field.fill("ghp_e2e-example-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
-  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
-  await expect(field).toHaveValue("");
+  // A saved token is a done login: the card says so, and hides the steps and the field.
+  const loggedIn = page.getByRole("group", { name: "GitHub login" });
+  await expect(loggedIn).toContainText("You are logged in to GitHub.");
+  await expect(field).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toHaveCount(0);
   const notice = page.getByRole("status").filter({ hasText: "Restart Eva" });
   await expect(notice).toBeVisible();
   // The note asks for a restart, so one tap on it opens the restart question.
@@ -944,13 +947,24 @@ test("Settings: a token saves write-only, shows as saved, and can be removed", a
   await expect(question).toBeVisible();
   await question.getByRole("button", { name: "Cancel" }).click();
   await page.reload();
-  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  await expect(loggedIn).toContainText("You are logged in to GitHub.");
   expect(await page.content()).not.toContain("e2e-example-token");
-  page.once("dialog", (dialog) => {
-    void dialog.accept();
-  });
-  await page.getByRole("button", { name: "Remove the GitHub token" }).click();
+  // Log in again shows the steps and the field, and Keep the current login hides them again.
+  await loggedIn.getByRole("button", { name: "Log in again" }).click();
+  await expect(page.getByText("A GitHub token is saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Keep the current login" }).click();
+  // Log out asks first, with a warning, and Cancel keeps the login.
+  await loggedIn.getByRole("button", { name: "Log out of GitHub" }).click();
+  const logOut = page.getByRole("dialog", { name: "Log out of GitHub" });
+  await expect(logOut).toContainText("Eva removes the GitHub token from this machine.");
+  await logOut.getByRole("button", { name: "Cancel" }).click();
+  await expect(logOut).toHaveCount(0);
+  await expect(loggedIn).toBeVisible();
+  await loggedIn.getByRole("button", { name: "Log out of GitHub" }).click();
+  await logOut.getByRole("button", { name: "Log out", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged out of GitHub." })).toBeVisible();
   await expect(page.getByText("No GitHub token is saved.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log in with GitHub" })).toBeVisible();
 });
 
 test("Settings: each engine has a Test that runs a tiny real prompt", async ({ page }) => {
@@ -3117,6 +3131,40 @@ test("Settings: Claude Code logs in from the page, with a pasted code", async ({
   await page.getByRole("button", { name: "Get a token in a terminal instead" }).click();
   await expect(page.getByText("claude setup-token").first()).toBeVisible();
   await expect(page.getByText("The pi login needs a terminal on Eva's computer")).toBeVisible();
+});
+
+test("Settings: a done Claude Code login shows as logged in, and logs out after a warning", async ({ page }) => {
+  let saved = true;
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({
+      response,
+      json: { ...settings, secretsSet: { ...settings.secretsSet, claudeOauthToken: saved } },
+    });
+  });
+  const removed: string[] = [];
+  await page.route("**/api/secrets/claudeOauthToken", async (route) => {
+    removed.push(route.request().method());
+    saved = false;
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "AI engines");
+  const loggedIn = page.getByRole("group", { name: "Claude Code login" });
+  await expect(loggedIn).toContainText("You are logged in to Claude Code.");
+  await expect(page.getByRole("button", { name: "Start the login" })).toHaveCount(0);
+  await expect(page.locator(".check-row", { hasText: "Test the Claude Code token" })).toBeVisible();
+  await loggedIn.getByRole("button", { name: "Log in again" }).click();
+  await expect(page.getByRole("button", { name: "Start the login" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep the current login" }).click();
+  await loggedIn.getByRole("button", { name: "Log out of Claude Code" }).click();
+  const question = page.getByRole("dialog", { name: "Log out of Claude Code" });
+  await expect(question).toContainText("Chats with Claude Code stop until you log in again.");
+  await question.getByRole("button", { name: "Log out", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged out of Claude Code." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start the login" })).toBeVisible();
+  expect(removed).toEqual(["DELETE"]);
 });
 
 test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({

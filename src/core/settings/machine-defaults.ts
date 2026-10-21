@@ -10,10 +10,15 @@ export interface MachineFacts {
   readonly exists: (path: string) => boolean;
 }
 
+/** Where the README and the Install voice notes button put the whisper model. */
+export function defaultVoiceModelPath(homeRoot: string): string {
+  return join(homeRoot, "voice", "ggml-base.bin");
+}
+
 /** The vault folder and the voice model, from where `eva setup` and the README put them. */
 export function withMachineDefaults(config: EvaConfig, facts: MachineFacts): EvaConfig {
   const vaultFolder = join(facts.homeRoot, "vault");
-  const voiceModel = join(facts.homeRoot, "voice", "ggml-base.bin");
+  const voiceModel = defaultVoiceModelPath(facts.homeRoot);
   return {
     ...config,
     vaultPath: config.vaultPath ?? (facts.exists(join(vaultFolder, ".git")) ? vaultFolder : null),

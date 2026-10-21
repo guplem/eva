@@ -85,8 +85,13 @@ beforeEach(() => {
     basePrompt: "Base.",
     gatherMs: 5,
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
-    // No test reaches the real gh release.
-    toolInstall: { ghReleaseUrl: "http://127.0.0.1:1/latest" },
+    // No test reaches the real releases.
+    toolInstall: {
+      ghReleaseUrl: "http://127.0.0.1:1/latest",
+      ffmpegReleaseUrl: "http://127.0.0.1:1/ffmpeg",
+      whisperReleaseUrl: "http://127.0.0.1:1/whisper",
+      voiceModelUrl: "http://127.0.0.1:1/model",
+    },
     toolLatestSources: { npmBaseUrl: "http://127.0.0.1:1", githubApiBaseUrl: "http://127.0.0.1:1" },
     // GitHub gives the token at once: no test waits for a person.
     githubBrowserLogin: (show) => {
@@ -1343,6 +1348,16 @@ describe("updates and the vault sync", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("Eva could not install gh");
     expect((await call("/api/tools/install", { method: "POST", body: { program: "git" } })).status).toBe(400);
+  });
+
+  test("the voice notes install answers with what happened", async () => {
+    const result = await json<{ ok: boolean; message: string }>(
+      await call("/api/voice-notes/install", { method: "POST", body: {} }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("Eva could not install");
+    const versions = await json<{ voiceNotes: { missing: string[] } }>(await call("/api/versions"));
+    expect(versions.voiceNotes.missing).toContain("speech model");
   });
 
   test("Make this machine the hub answers with the new status", async () => {

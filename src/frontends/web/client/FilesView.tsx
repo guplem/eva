@@ -36,11 +36,25 @@ export function FilesView(): ReactElement {
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
+  /** The path on screen, and whether its editor holds a change, for the address check below. */
+  const shownPath = useRef(path);
+  shownPath.current = path;
+  const unsaved = useRef(false);
+  const onUnsaved = useCallback((value: boolean): void => {
+    unsaved.current = value;
+  }, []);
 
   useEffect(() => {
     const onHashChange = (): void => {
       const next = filePathOf(window.location.hash);
-      if (next !== null) setPath(next);
+      if (next === null || next === shownPath.current) return;
+      // A tap on another file or folder must not drop an edit without a word.
+      if (unsaved.current && !window.confirm("Your change to this file is not saved. Leave it?")) {
+        window.history.replaceState(null, "", fileAddressOf(shownPath.current));
+        return;
+      }
+      unsaved.current = false;
+      setPath(next);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -123,6 +137,7 @@ export function FilesView(): ReactElement {
               large={large}
               onLarge={setLarge}
               onSaved={onSaved}
+              onUnsaved={onUnsaved}
               onTryAgain={() => setAttempt((count) => count + 1)}
             />
           ))}
@@ -147,6 +162,7 @@ interface ColumnProps {
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
+  readonly onUnsaved: (unsaved: boolean) => void;
   readonly onTryAgain: () => void;
 }
 
@@ -160,6 +176,7 @@ function Column({
   large,
   onLarge,
   onSaved,
+  onUnsaved,
   onTryAgain,
 }: ColumnProps): ReactElement | null {
   const place = isLast ? "files-pane" : "files-pane files-parent";
@@ -195,7 +212,9 @@ function Column({
       </div>
     );
   // A new file starts outside the editor, with its own view.
-  return <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} />;
+  return (
+    <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} onUnsaved={onUnsaved} />
+  );
 }
 
 function FolderList({
@@ -242,13 +261,18 @@ interface FilePreviewProps {
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
+  /** Tells the page whether the editor holds a change, so a tap on another path asks first. */
+  readonly onUnsaved: (unsaved: boolean) => void;
 }
 
-function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): ReactElement {
+function FilePreview({ file, large, onLarge, onSaved, onUnsaved }: FilePreviewProps): ReactElement {
   const [plain, setPlain] = useState(false);
   /** The text in the editor, or null outside it. */
   const [draft, setDraft] = useState<string | null>(null);
   const [problem, setProblem] = useState<{ readonly text: string; readonly changed: boolean } | null>(null);
+  /** A ref, not state: a double tap comes before the next render, and two saves of one version clash. */
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
   const view = viewOf(file.path);
 
   useEffect(() => {
@@ -263,14 +287,17 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
   // An edit that is not saved must not vanish with a reload or a closed tab.
   const unsaved = draft !== null && draft !== file.text;
   useEffect(() => {
+    onUnsaved(unsaved);
     if (!unsaved) return;
     const onLeave = (event: BeforeUnloadEvent): void => event.preventDefault();
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [unsaved]);
+  }, [unsaved, onUnsaved]);
 
   const save = async (): Promise<boolean> => {
-    if (draft === null) return false;
+    if (draft === null || saving.current) return false;
+    saving.current = true;
+    setBusy(true);
     setProblem(null);
     try {
       onSaved(await api.saveFile(file.path, file.version, draft));
@@ -280,6 +307,9 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
       const changed = caught instanceof ApiError && caught.code === "file_changed";
       setProblem({ text: caught instanceof Error ? caught.message : String(caught), changed });
       return false;
+    } finally {
+      saving.current = false;
+      setBusy(false);
     }
   };
 
@@ -322,7 +352,7 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
               <button className="ghost" onClick={() => setDraft(null)}>
                 Cancel
               </button>
-              <SaveButton className="primary" onSave={save} disabled={!unsaved}>
+              <SaveButton className="primary" onSave={save} disabled={!unsaved || busy}>
                 Save
               </SaveButton>
             </>

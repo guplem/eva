@@ -406,6 +406,7 @@ export function ChoiceChips<T extends string>({
             aria-pressed={choice.value === value}
             onClick={() => onChange(choice.value)}
           >
+            {choice.value === value && <Icon name="check" className="choice-tick" />}
             {choice.icon !== undefined && <Icon name={choice.icon} />}
             {choice.label}
           </button>

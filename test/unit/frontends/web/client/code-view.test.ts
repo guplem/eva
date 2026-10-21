@@ -26,6 +26,18 @@ describe("prettyJson", () => {
     );
   });
 
+  test("the indent keeps each value and key as written, so the view never changes the data", () => {
+    expect(prettyJson('{"2":12345678901234567890,"1":1.50,"1":"a, b: [c]"}')).toBe(
+      '{\n  "2": 12345678901234567890,\n  "1": 1.50,\n  "1": "a, b: [c]"\n}',
+    );
+  });
+
+  test("an empty object or list stays on one line, and an escaped quote stays in its string", () => {
+    expect(prettyJson('{ "a" : { }, "b": [ ], "c": "say \\"hi\\"" }')).toBe(
+      '{\n  "a": {},\n  "b": [],\n  "c": "say \\"hi\\""\n}',
+    );
+  });
+
   test("a broken file stays as it is, so the person sees the real text", () => {
     expect(prettyJson('{"a":')).toBeNull();
   });
@@ -88,6 +100,11 @@ describe("codeTokens", () => {
   test("a large file stays plain, so the page stays fast", () => {
     const text = "x".repeat(maxColouredLength + 1);
     expect(codeTokens("main.ts", text)).toEqual([{ kind: "plain", text }]);
+  });
+
+  test("a Rust lifetime and an apostrophe in HTML text start no string", () => {
+    expect(kinds("main.rs", "fn f<'a>(x: &'a str) {}")).toEqual(["keyword:fn"]);
+    expect(kinds("page.html", "<p>don't</p>")).toEqual(["tag:<p", "tag:>", "tag:</p", "tag:>"]);
   });
 
   test("an unclosed string ends at its line, so one quote does not colour the whole file", () => {

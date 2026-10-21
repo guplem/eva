@@ -53,6 +53,8 @@ const scripting: Grammar = {
 
 const grammars: Readonly<Record<string, Grammar>> = {
   cLike,
+  // A Rust lifetime, such as `'a`, is no string.
+  rust: { ...cLike, strings: [doubleQuoted] },
   scripting,
   config: {
     comments: [hashComment],
@@ -74,7 +76,8 @@ const grammars: Readonly<Record<string, Grammar>> = {
   },
   markup: {
     comments: [String.raw`<!--[\s\S]*?(?:-->|$)`],
-    strings: [doubleQuoted, singleQuoted],
+    // An apostrophe in text, such as "don't", is no string.
+    strings: [doubleQuoted],
     keywords: new Set(),
     tags: true,
   },
@@ -83,7 +86,7 @@ const grammars: Readonly<Record<string, Grammar>> = {
 
 const grammarOfExtension: Readonly<Record<string, string>> = {
   ...Object.fromEntries(
-    "js jsx mjs cjs ts tsx mts cts java c h cc cpp hpp cs go rs swift kt kts dart php scala groovy"
+    "js jsx mjs cjs ts tsx mts cts java c h cc cpp hpp cs go swift kt kts dart php scala groovy"
       .split(" ")
       .map((extension) => [extension, "cLike"]),
   ),
@@ -93,6 +96,7 @@ const grammarOfExtension: Readonly<Record<string, string>> = {
   ),
   ...Object.fromEntries("css scss less".split(" ").map((extension) => [extension, "css"])),
   ...Object.fromEntries("html htm xml svg vue".split(" ").map((extension) => [extension, "markup"])),
+  rs: "rust",
   sql: "sql",
   json: "json",
   jsonc: "json",
@@ -111,13 +115,35 @@ export function viewOf(path: string): FileView {
   return extension in grammarOfExtension ? "code" : "plain";
 }
 
-/** The JSON with two spaces of indent, or null when it does not parse. */
+/**
+ * The JSON with two spaces of indent, or null when it does not parse. It moves only the spaces:
+ * a parse and a new print would round a large number, sort number keys and drop a twice-named key.
+ */
 export function prettyJson(text: string): string | null {
   try {
-    return JSON.stringify(JSON.parse(text) as unknown, null, 2);
+    JSON.parse(text);
   } catch {
     return null;
   }
+  let out = "";
+  let depth = 0;
+  let previous = "";
+  const newLine = (): string => `\n${"  ".repeat(depth)}`;
+  for (const part of text.matchAll(/"(?:[^"\\]|\\.)*"|[{}[\],:]|[^\s{}[\],:"]+/g)) {
+    const token = part[0];
+    if (token === "{" || token === "[") {
+      depth += 1;
+      out += token + newLine();
+    } else if (token === "}" || token === "]") {
+      depth -= 1;
+      // An empty object or list stays on one line.
+      out = previous === "{" || previous === "[" ? out.trimEnd() + token : out + newLine() + token;
+    } else if (token === ",") out += token + newLine();
+    else if (token === ":") out += ": ";
+    else out += token;
+    previous = token;
+  }
+  return out;
 }
 
 /** A browser draws a span for each token: past this size, the page slows for seconds. */

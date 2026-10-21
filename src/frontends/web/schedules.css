@@ -526,3 +526,13 @@
     padding: 0 4px;
   }
 }
+
+/* The count and its unit share one row: they read as one phrase, such as "every 3 days". */
+.schedule-every {
+  display: flex;
+  gap: 12px;
+}
+
+.schedule-every label {
+  flex: 1;
+}

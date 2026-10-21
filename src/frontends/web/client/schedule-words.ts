@@ -14,8 +14,41 @@ const dayMinutes = 1440;
 /** Runs closer than this share one pill: a pill holds about this much of the day on a phone. */
 const sharedPillMinutes = 180;
 
-/** When a schedule repeats, such as "Fridays at 18:30". `days` counts 0 as Sunday. */
-export function repeatWords(at: string, days: readonly number[]): string {
+/** The interval units of `every`, with their names for one and for more. */
+export const intervalUnits = [
+  ["h", "hour", "hours"],
+  ["d", "day", "days"],
+  ["w", "week", "weeks"],
+] as const;
+
+/** When a schedule repeats, such as "Fridays at 18:30" or "Every 3 days at 07:30". `days` counts 0 as Sunday. */
+export function repeatWords(repeat: {
+  readonly at: string | null;
+  readonly days: readonly number[] | null;
+  readonly every: string | null;
+  readonly from: string | null;
+}): string {
+  if (repeat.every !== null && repeat.from !== null) return intervalWords(repeat.every, repeat.from);
+  return dayWords(repeat.at ?? "", repeat.days ?? []);
+}
+
+/** The next whole hour after now: the first run that the form offers. */
+export function nextHourSlot(now: string): string {
+  const next = Date.parse(`${now.slice(0, 13)}:00:00Z`) + 3_600_000;
+  return new Date(next).toISOString().slice(0, 16);
+}
+
+function intervalWords(every: string, from: string): string {
+  const count = Number(every.slice(0, -1));
+  const unit = intervalUnits.find(([code]) => code === every.slice(-1)) ?? intervalUnits[1];
+  const head = count === 1 ? `Every ${unit[1]}` : `Every ${String(count)} ${unit[2]}`;
+  const time = from.slice(11, 16);
+  if (unit[0] === "h") return head;
+  if (unit[0] === "d") return `${head} at ${time}`;
+  return `${head} on ${pluralDays[weekdayOf(from)] ?? ""} at ${time}`;
+}
+
+function dayWords(at: string, days: readonly number[]): string {
   const ordered = weekOrder.filter((day) => days.includes(day));
   const key = ordered.join(",");
   if (ordered.length === 7) return `Every day at ${at}`;
@@ -80,16 +113,15 @@ export interface DayLineRun {
 export function dayLine(
   schedules: readonly {
     readonly name: string;
-    readonly at: string;
-    readonly days: readonly number[];
+    /** The `HH:MM` of each run today. */
+    readonly runsToday: readonly string[];
     readonly enabled?: boolean;
   }[],
   now: string,
 ): { now: number; nowLabel: string; runs: DayLineRun[] } {
-  const today = weekdayOf(now);
   const runs = schedules
-    .filter((schedule) => schedule.enabled !== false && schedule.days.includes(today))
-    .map((schedule) => ({ minutes: minutesOf(schedule.at), text: `${schedule.at} ${schedule.name}` }))
+    .filter((schedule) => schedule.enabled !== false)
+    .flatMap((schedule) => schedule.runsToday.map((at) => ({ minutes: minutesOf(at), text: `${at} ${schedule.name}` })))
     .sort((first, second) => first.minutes - second.minutes);
   const groups: { minutes: number; texts: string[]; marks: number[] }[] = [];
   for (const run of runs) {

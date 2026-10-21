@@ -401,6 +401,8 @@ export function ChoiceChips<T extends string>({
         {choices.map((choice) => (
           <button
             key={choice.value}
+            // A chip in a form must never send the form.
+            type="button"
             className="choice-chip"
             aria-pressed={choice.value === value}
             onClick={() => onChange(choice.value)}

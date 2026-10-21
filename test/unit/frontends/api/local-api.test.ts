@@ -956,6 +956,22 @@ describe("web routes", () => {
     expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: idea\n---\n# Whole\n" });
   });
 
+  test("the form creates a project, and the list shows it", async () => {
+    const form = { name: "New app", description: "Made from the form.", status: "idea", tags: ["web"] };
+    const created = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
+    expect(created.status).toBe(201);
+    const result = await json<{ projectId: string; github: unknown; drive: unknown }>(created);
+    expect(result).toMatchObject({ github: null, drive: null });
+    expect(result.projectId).toEndWith("-new-app");
+
+    const listed = await json<{ id: string; description: string }[]>(await call("/api/projects?text=new&status=idea"));
+    expect(listed).toMatchObject([{ id: result.projectId, description: "Made from the form." }]);
+
+    const again = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
+    expect(again.status).toBe(400);
+    expect((await call("/api/projects", { method: "POST", body: { ...form, status: "dreaming" } })).status).toBe(400);
+  });
+
   test("a project save: a stale version is a 409, a bad file or value a 400, an unknown project a 404", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const stale = await call(`${path}/file`, { method: "PUT", body: { version: "old", text: "---\n---\n" } });

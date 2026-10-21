@@ -93,6 +93,14 @@ const projectDetailsSchema = z.object({
   tags: z.array(z.string().max(200)).max(100),
   repos: z.array(z.string().max(2_000)).max(100),
 });
+const newProjectSchema = z.object({
+  name: z.string().min(1).max(500),
+  description: z.string().max(10_000),
+  status: z.enum(["idea", "active", "paused", "closed"]),
+  tags: z.array(z.string().max(200)).max(100),
+  github: z.boolean(),
+  drive: z.boolean(),
+});
 const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
 const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
@@ -406,6 +414,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       }),
     );
   }
+  if (method === "POST" && url.pathname === "/api/projects")
+    return json(await eva.createProject(newProjectSchema.parse(await request.json())), 201);
   if (method === "POST" && url.pathname === "/api/sessions") {
     const input = newSessionSchema.parse(await request.json());
     const engine = input.engine === undefined ? {} : { engine: input.engine };

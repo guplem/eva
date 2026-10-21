@@ -4,18 +4,12 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
-import type { EvaErrorCode } from "../../../shared/errors.ts";
 import { errorFix, type ErrorFix } from "./error-fixes.ts";
-import type { IconName } from "./icons.tsx";
 import { destinationOf } from "./navigation.ts";
 import { Toast } from "./Toast.tsx";
 
-/** A failed login shows a key, as the guide does for an expired login. */
-const loginCodes: ReadonlySet<EvaErrorCode> = new Set(["github_failed", "google_failed"]);
-
 interface ErrorMessage {
   readonly message: string;
-  readonly icon: IconName;
   readonly fix: ErrorFix | null;
 }
 
@@ -52,8 +46,6 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
         <Toast
           key={shown}
           message={toast.message}
-          tone="bad"
-          icon={toast.icon}
           role="alert"
           onClose={() => setToast(null)}
           actions={
@@ -77,20 +69,17 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
 
 function describeError(caught: unknown): ErrorMessage {
   if (caught instanceof ApiError) {
-    const code = caught.code;
     return {
       message: caught.message,
-      icon: code !== null && loginCodes.has(code) ? "key" : "alert",
-      fix: errorFix(code),
+      fix: errorFix(caught.code),
     };
   }
   // fetch rejects with a TypeError when the request never reaches Eva.
   if (caught instanceof TypeError) {
     return {
       message: "Eva cannot be reached. Check the connection and try again.",
-      icon: "wifi-off",
       fix: null,
     };
   }
-  return { message: caught instanceof Error ? caught.message : String(caught), icon: "alert", fix: null };
+  return { message: caught instanceof Error ? caught.message : String(caught), fix: null };
 }

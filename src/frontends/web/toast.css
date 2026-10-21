@@ -1,6 +1,6 @@
 /*
  * The toasts: client/Toast.tsx. They stack at the bottom of the screen. A toast swaps the page
- * colours, so it stands out from any page under it. A round mark gives its tone a shape and a colour.
+ * colours, so it stands out from any page under it.
  */
 .toast-stack {
   position: fixed;
@@ -26,12 +26,12 @@
   pointer-events: auto;
   max-width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "mark text actions close";
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "text actions close";
   align-items: center;
   column-gap: var(--space-3);
   row-gap: var(--space-2);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-radius: var(--radius-card);
   background: var(--ink);
   color: var(--bg);
@@ -40,38 +40,6 @@
   line-height: 1.4;
   box-shadow: var(--dialog-shadow);
   animation: toast-in 180ms ease-out;
-}
-
-.toast-mark {
-  grid-area: mark;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.toast-mark .icon {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2.4;
-}
-
-.toast.ok .toast-mark {
-  background: var(--ok);
-  color: var(--panel);
-}
-
-.toast.warn .toast-mark {
-  background: var(--warn);
-  color: var(--on-warn);
-}
-
-.toast.bad .toast-mark {
-  background: var(--bad);
-  color: var(--panel);
 }
 
 .toast-text {
@@ -189,10 +157,10 @@
   }
 
   .toast {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "mark text close"
-      "actions actions actions";
+      "text close"
+      "actions actions";
   }
 
   .toast-actions {

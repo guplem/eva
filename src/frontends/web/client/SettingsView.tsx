@@ -276,8 +276,6 @@ export function SettingsView({
           {restartAsk !== null && (
             <Toast
               message={restartAsk}
-              tone="warn"
-              icon="restart"
               role="alertdialog"
               label="Restart Eva"
               closeLabel="Close the question"
@@ -293,7 +291,7 @@ export function SettingsView({
             />
           )}
           {restarting && notice === null && restartAsk === null && (
-            <Toast message="Eva restarts…" icon="restart" role={null}>
+            <Toast message="Eva restarts…" role={null}>
               <ProgressBar label="Eva restarts…" />
             </Toast>
           )}

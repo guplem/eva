@@ -192,6 +192,13 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Delete a conversation:** send `/delete` in its topic, or pick **Delete chat** in the "More actions" menu (•••) of the chat on the web page. It goes from Telegram, the web page and the terminal, with its forks. The engine keeps its own transcript.
 - **Open one conversation on the web page:** add `#/chat/<id>` to the address. Telegram sends such links.
 
+## Projects
+
+- **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the notebook, with its `AGENTS.md`.
+  - Tick **Create a private GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
+  - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
+  - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
+
 ## Optional features
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.

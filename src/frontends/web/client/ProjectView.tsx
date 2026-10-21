@@ -14,6 +14,7 @@ import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
+import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
 import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
@@ -89,6 +90,7 @@ export function ProjectView({
   const [page, setPage] = useState<Page | null>(null);
   const [loaded, setLoaded] = useState<{ readonly projectId: string; readonly clones: CloneDetails[] } | null>(null);
   const [listVersion, setListVersion] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showError = useShowError();
 
@@ -215,6 +217,18 @@ export function ProjectView({
     }
   };
 
+  // The filters may hide the new project, but its page opens all the same.
+  const openCreated = async (projectId: string): Promise<void> => {
+    setCreating(false);
+    setListVersion((version) => version + 1);
+    try {
+      const created = (await api.projects("", "")).find((candidate) => candidate.id === projectId);
+      if (created !== undefined) open({ kind: "project", project: created });
+    } catch (caught) {
+      showError(caught);
+    }
+  };
+
   // A saved title or status shows at once in the open page, even when the filters hide the project.
   const reloadProject = async (projectId: string): Promise<void> => {
     setListVersion((version) => version + 1);
@@ -265,7 +279,12 @@ export function ProjectView({
   return (
     <div className={`layout${page === null ? " list-home" : ""}`}>
       <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Projects">
-        <h2 className="list-title">Projects</h2>
+        <div className="list-title-row">
+          <h2 className="list-title">Projects</h2>
+          <button className="primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" /> New project
+          </button>
+        </div>
         <input
           className="project-search"
           aria-label="Search projects"
@@ -334,6 +353,9 @@ export function ProjectView({
             />
           ))}
       </nav>
+      {creating && (
+        <NewProjectDialog onClose={() => setCreating(false)} onCreated={(projectId) => void openCreated(projectId)} />
+      )}
       {sidebarOpen && page !== null && (
         <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
       )}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -86,6 +86,39 @@ describe("runCli without a home", () => {
     };
     expect(await runCli([], inRoot(fakeHost()), wiring)).toBe(exitCodes.update);
     expect(served).toEqual([paths.root]);
+  });
+});
+
+describe("eva, when this Eva already runs (#321)", () => {
+  const lockedWiring: CliWiring = {
+    ...noWiring,
+    serve: () =>
+      Promise.reject(new EvaError("instance_locked", "Another Eva (pid 5) already runs with this home folder.")),
+  };
+
+  async function refusalOf(argv: string[]): Promise<string> {
+    try {
+      await runCli(argv, inRoot(fakeHost()), lockedWiring);
+    } catch (error) {
+      if (error instanceof EvaError && error.code === "instance_locked") return error.message;
+      throw error;
+    }
+    throw new Error("no refusal");
+  }
+
+  test("says that she runs, and names the commands that show her state", async () => {
+    const text = await refusalOf(["--instance", "test"]);
+    expect(text).toContain("This Eva (test) already runs");
+    expect(text).toContain("`eva status`");
+    expect(text).toContain("`eva link`");
+    expect(text).toContain("`eva help`");
+    expect(text).not.toContain("pid");
+  });
+
+  test("with several Evas, the commands name her", async () => {
+    mkdirSync(instanceHome(root, "ana"));
+    writeFileSync(join(instanceHome(root, "ana"), "config.json"), "{}\n");
+    expect(await refusalOf(["--instance", "test"])).toContain("`eva --instance test status`");
   });
 });
 

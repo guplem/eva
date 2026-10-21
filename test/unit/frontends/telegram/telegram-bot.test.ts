@@ -237,8 +237,19 @@ describe("device login", () => {
   });
 });
 
+/** The last word of each version read in `tool-versions.ts`. */
+const versionReads = new Set(["--version", "-version", "--help", "version"]);
+
 describe("a group chat (security review)", () => {
   test("pairing keeps the person who paired, and only that person may act or press a button", async () => {
+    // The reply to /status waits for the version of each tool. The real tools can take more than
+    // 12 seconds on the Windows runner, and this test is about access, not versions.
+    createEva(undefined, {
+      run: (command, options) =>
+        versionReads.has(command.at(-1) ?? "")
+          ? Promise.resolve({ exitCode: 0, stdout: "1.0.0\n", stderr: "" })
+          : systemProcessRunner.run(command, options),
+    });
     const group = -1001;
     const bot = createBot(null);
     telegram.sendText(group, "PAIR-1234", undefined, owner);
@@ -246,8 +257,7 @@ describe("a group chat (security review)", () => {
     telegram.sendText(group, "do something", undefined, 777);
     telegram.pressButton(group, "s:morning", undefined, 777);
     telegram.sendText(group, "/status", undefined, owner);
-    // The reply waits for the version of each real tool, which can take more than 5 seconds on Windows.
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Vault sync")), 1200);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Vault sync")));
     expect(engine.requests).toEqual([]);
     expect(telegram.sentTexts().filter((text) => text.includes("No schedule"))).toEqual([]);
   });

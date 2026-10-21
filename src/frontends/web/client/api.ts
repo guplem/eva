@@ -23,6 +23,7 @@ import type { GitHubRepository } from "../../../core/vault/github-repositories.t
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
+import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
 import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
@@ -59,6 +60,8 @@ export type {
   EvaVersions,
   PageSecretName,
   PendingApproval,
+  NewProjectInput,
+  NewProjectResult,
   Project,
   ProjectDetails,
   ProjectFile,
@@ -183,10 +186,15 @@ export const api = {
     request("PUT", `/api/projects/${encodeURIComponent(projectId)}/details`, { version, ...details }),
   saveProjectFile: (projectId: string, version: string, text: string): Promise<ProjectFile> =>
     request("PUT", `/api/projects/${encodeURIComponent(projectId)}/file`, { version, text }),
+  /** A failed optional step is in the answer, not an error: the project exists all the same. */
+  createProject: (input: NewProjectInput): Promise<NewProjectResult> => request("POST", "/api/projects", input),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
+  /** A file that changed since `version` answers 409 with `file_changed`. */
+  saveFile: (path: string, version: string, text: string): Promise<BrowsedPath> =>
+    request("PUT", "/api/files", { path, version, text }),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),

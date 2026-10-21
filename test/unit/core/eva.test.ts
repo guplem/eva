@@ -30,7 +30,7 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: 
     ...options,
     paths: homePaths(home),
     config: config(overrides),
-    secrets: { claudeOauthToken: "oauth-token-value-for-tests" },
+    secrets: options.secrets ?? { claudeOauthToken: "oauth-token-value-for-tests" },
     engines: [engine],
     runner: systemProcessRunner,
     processEnvironment: gitEnvironment,
@@ -412,6 +412,65 @@ describe("Eva", () => {
 
     await instance.sweep();
     expect(sandbox.git(sandbox.remote, "show", `main:Projects/${projectId}/AGENTS.md`)).toContain("More notes.");
+  });
+
+  test("the person creates a project, named after the time of the configured time zone", async () => {
+    const created: unknown[] = [];
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        created.push(await request.json());
+        return Response.json({ full_name: "you/example-app", clone_url: "https://github.com/you/example-app.git" });
+      },
+    });
+    try {
+      const instance = start(
+        new FakeEngine(),
+        {},
+        {
+          secrets: { claudeOauthToken: "oauth-token-value-for-tests", githubToken: "github-token-value" },
+          githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+        },
+      );
+
+      const result = await instance.createProject({
+        name: "Example App",
+        description: "A small app.",
+        status: "idea",
+        tags: [],
+        github: true,
+        drive: true,
+      });
+
+      // 10:30 UTC is 12:30 in Madrid.
+      expect(result.projectId).toBe("2026-10-14-1230-example-app");
+      expect(result.github).toEqual({ url: "https://github.com/you/example-app" });
+      expect(result.drive).toEqual({ problem: expect.stringContaining("Read and change") as string });
+      expect(created).toEqual([{ name: "example-app", description: "A small app.", private: true, auto_init: true }]);
+      expect(instance.projects()[0]).toMatchObject({
+        id: "2026-10-14-1230-example-app",
+        frontMatter: { created: "2026-10-14T12:30", status: "idea", repos: ["https://github.com/you/example-app"] },
+      });
+    } finally {
+      await github.stop(true);
+    }
+  });
+
+  test("a new project's GitHub step without a GitHub login says how to fix it", async () => {
+    const instance = start(new FakeEngine());
+
+    const result = await instance.createProject({
+      name: "Example App",
+      description: "",
+      status: "active",
+      tags: [],
+      github: true,
+      drive: false,
+    });
+
+    expect(result.github).toEqual({ problem: expect.stringContaining("Log in to GitHub") as string });
+    expect(result.drive).toBeNull();
   });
 
   test("a project save refuses a stale version, a bad file and an unknown project", () => {

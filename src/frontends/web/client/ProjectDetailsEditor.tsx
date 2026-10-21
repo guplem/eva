@@ -9,7 +9,7 @@ import { BackButton } from "./ProjectPage.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 
-const statusChoices = [
+export const statusChoices = [
   { value: "", label: "None" },
   { value: "idea", label: "Idea" },
   { value: "active", label: "Active" },
@@ -279,11 +279,11 @@ function ListField({ name, heading, values, draft, onDraft, onChange }: ListFiel
 }
 
 /** A tag or repository has no space, so a space or a comma separates two of them. */
-function splitWords(text: string): string[] {
+export function splitWords(text: string): string[] {
   return text.split(/[\s,]+/).filter((word) => word.length > 0);
 }
 
-function statusOf(value: string): ProjectDetails["status"] {
+export function statusOf(value: string): ProjectDetails["status"] {
   return value === "idea" || value === "active" || value === "paused" || value === "closed" ? value : null;
 }
 

@@ -1216,6 +1216,31 @@ textarea {
   line-height: 1.55;
 }
 
+/* A frame for one set of rules: the person's own, or Eva's built-in rules. */
+.rules-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* The built-in rules are read only, so their frame has the page ground. */
+.rules-box.built-in {
+  background: var(--bg);
+}
+
+/* The frame's title is muted, so it does not read as the first heading of the rules. */
+.rules-box > .field-label {
+  color: var(--muted);
+}
+
+.rules-box > summary {
+  cursor: pointer;
+}
+
+.rules-box > .rules-text > :first-child {
+  margin-top: var(--space-2);
+}
+
 .check-row .ok {
   color: var(--ok);
 }
@@ -1900,6 +1925,10 @@ button.link-button {
   flex: 1;
   min-width: 0;
   font-size: var(--text-sm);
+}
+
+.check-wait {
+  flex-basis: 100%;
 }
 
 .check-result {
@@ -2689,6 +2718,18 @@ button.small {
   background: var(--chip);
   border-radius: 8px;
   padding: 2px 7px;
+}
+
+/* The title and the "New project" button share one row. */
+.list-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.list-title-row button {
+  flex-shrink: 0;
 }
 
 .sidebar .list-title {

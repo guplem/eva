@@ -34,12 +34,12 @@ export function accessLines(input: {
   const url = input.remoteAccess?.url ?? null;
   if (url === null || input.remoteAccess === null || remoteAccessStep(input.remoteAccess) !== "ready") return lines;
   // Some terminals cannot draw the blocks, so the plain address stays in the first line.
-  return [
-    ...lines.slice(0, 1),
-    "Scan this code on a phone that has Tailscale:",
-    renderUnicodeCompact(url, { border: 2 }),
-    ...lines.slice(1),
-  ];
+  return [...lines.slice(0, 1), ...scanCodeLines(url), ...lines.slice(1)];
+}
+
+/** A QR code of the address, for `eva setup` and `eva status`. */
+export function scanCodeLines(url: string): string[] {
+  return ["Scan this code on a phone that has Tailscale:", renderUnicodeCompact(url, { border: 2 })];
 }
 
 /** Walks the person through Tailscale. Returns the address that opens Eva, or null. */

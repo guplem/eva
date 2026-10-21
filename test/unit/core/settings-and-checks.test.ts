@@ -331,6 +331,17 @@ describe("runCheck", () => {
   const failingRunner: ProcessRunner = {
     run: () => Promise.resolve({ exitCode: 1, stdout: "", stderr: "not logged in" }),
   };
+  /** A gh of this version that has no login. */
+  function ghLoggedOut(version: string): ProcessRunner {
+    return {
+      run: (command) =>
+        Promise.resolve(
+          command[1] === "--version"
+            ? { exitCode: 0, stdout: `gh version ${version} (2024-01-01)\n`, stderr: "" }
+            : { exitCode: 1, stdout: "", stderr: "not logged in" },
+        ),
+    };
+  }
 
   function inputs(overrides: Partial<CheckInputs> = {}): CheckInputs {
     return {
@@ -424,7 +435,7 @@ describe("runCheck", () => {
       });
       // The agents push with the instance's gh, so a good token is not enough (#244).
       expect(
-        await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: failingRunner })),
+        await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: ghLoggedOut("2.62.0") })),
       ).toEqual({
         ok: false,
         detail:
@@ -439,6 +450,34 @@ describe("runCheck", () => {
     }
     const offline = await runCheck("github", inputs({ githubToken: "bad-token", githubBaseUrl: "http://127.0.0.1:1" }));
     expect(offline).toEqual({ ok: false, detail: "GitHub could not be reached." });
+  });
+
+  // A new login cannot fix a missing or old gh, so the check names gh instead of the login.
+  test("with a saved GitHub token, the GitHub check says when gh is missing or too old", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ login: "example-owner" }),
+    });
+    const githubBaseUrl = `http://127.0.0.1:${String(github.port)}`;
+    try {
+      expect(
+        await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: failingRunner })),
+      ).toEqual({
+        ok: false,
+        detail:
+          "The token belongs to @example-owner, but this machine has no gh, so your agents cannot push their work. Install gh from https://cli.github.com, then press Log in with GitHub again.",
+      });
+      expect(
+        await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: ghLoggedOut("2.39.2") })),
+      ).toEqual({
+        ok: false,
+        detail:
+          "The token belongs to @example-owner, but gh 2.39.2 on this machine is too old for Eva's login. Install gh 2.40 or newer from https://cli.github.com, then press Log in with GitHub again.",
+      });
+    } finally {
+      await github.stop(true);
+    }
   });
 
   test("an engine check runs one tiny model call in an empty folder, with no tools", async () => {

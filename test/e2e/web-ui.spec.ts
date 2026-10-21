@@ -359,8 +359,8 @@ test("a link opened before the login opens its chat after the login", async ({ p
   const linked = await newAnsweredChat(page, "Linked before login");
   await newAnsweredChat(page, "Newer chat");
   const chatId = await chatIdNamed(page, linked);
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await openSettings(page, "Access");
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
 
   await page.goto(`/#/chat/${chatId}`);
   await page.getByLabel(/Token/).fill(token);
@@ -892,9 +892,9 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
-  // Log out sits on the Settings home page.
-  await openSettings(page);
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  // Log out sits on the Devices card, because it ends only this browser's login.
+  await openSettings(page, "Access");
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 

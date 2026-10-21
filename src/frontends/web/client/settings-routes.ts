@@ -147,7 +147,7 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
   { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
-  { item: "devices", section: "access", title: "Devices", words: "browsers log out remove lost phone" },
+  { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {

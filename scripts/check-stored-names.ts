@@ -150,6 +150,7 @@ export function currentNames(): string[] {
     ...[
       "version",
       `version=${String(templateRecordFormatVersion)}`,
+      "eva",
       "parts",
       ...templatePartFields.map((field) => `parts{}.${field}`),
     ].map((name) => `vault .eva/template.json ${name}`),

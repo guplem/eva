@@ -34,6 +34,7 @@ function alignment(
     vaultPath: vault,
     parts,
     history,
+    evaVersion: "1.0.0",
     now: () => new Date("2026-10-22T08:00:00.000Z"),
   });
 }
@@ -57,6 +58,7 @@ describe("align", () => {
     expect(read(skill)).toBe(newText);
     expect(stateOf(parts)).toEqual({
       path: skill,
+      kind: "skill",
       name: "demo",
       state: "current",
       updatedAt: "2026-10-22T08:00:00.000Z",
@@ -151,6 +153,17 @@ describe("list", () => {
     expect(read(skill)).toBe(oldText);
     expect(existsSync(templateRecordPath(vault))).toBe(false);
   });
+
+  test("shows a step that the hub takes by itself as pending", () => {
+    expect(stateOf(alignment().list())?.state).toBe("pending");
+    write(skill, oldText);
+    expect(stateOf(alignment(undefined, { [skill]: [contentHash(oldText)] }).list())?.state).toBe("pending");
+  });
+
+  test("names a part after its folder, also for a file deeper inside", () => {
+    const deep = ".eva/skills/demo/scripts/run.py";
+    expect(stateOf(alignment({ [deep]: "print(1)\n" }).list(), deep)?.name).toBe("demo");
+  });
 });
 
 describe("choices", () => {
@@ -190,8 +203,8 @@ describe("choices", () => {
 describe("alignmentProblem", () => {
   test("names each part that differs", () => {
     const problem = alignmentProblem([
-      { path: skill, name: "demo", state: "differs", updatedAt: null, newText: newText },
-      { path: ".eva/skills/b/SKILL.md", name: "b", state: "current", updatedAt: null, newText: null },
+      { path: skill, kind: "skill", name: "demo", state: "differs", updatedAt: null, newText: newText },
+      { path: ".eva/skills/b/SKILL.md", kind: "skill", name: "b", state: "current", updatedAt: null, newText: null },
     ]);
     expect(problem?.level).toBe("warn");
     expect(problem?.message).toContain("demo");
@@ -199,7 +212,9 @@ describe("alignmentProblem", () => {
   });
 
   test("is null when nothing differs", () => {
-    expect(alignmentProblem([{ path: skill, name: "demo", state: "kept", updatedAt: null, newText: null }])).toBeNull();
+    expect(
+      alignmentProblem([{ path: skill, kind: "skill", name: "demo", state: "kept", updatedAt: null, newText: null }]),
+    ).toBeNull();
   });
 });
 
@@ -223,5 +238,32 @@ describe("newText", () => {
     expect(stateOf(alignment().list())?.newText).toBe(newText);
     alignment().keepMine(skill);
     expect(stateOf(alignment().list())?.newText).toBeNull();
+  });
+});
+
+describe("a newer Eva", () => {
+  test("keeps an older Eva from writing the parts that it wrote", () => {
+    alignment().align();
+    const older = new TemplateAlignment({
+      vaultPath: vault,
+      parts: { [skill]: oldText },
+      history: {},
+      evaVersion: "0.9.0",
+      now: () => new Date("2026-10-22T08:00:00.000Z"),
+    });
+    for (const step of [() => older.align(), () => older.useNew(skill), () => older.keepMine(skill)]) {
+      try {
+        step();
+        throw new Error("no error");
+      } catch (caught) {
+        expect(isEvaError(caught, "vault_ahead")).toBe(true);
+      }
+    }
+    expect(read(skill)).toBe(newText);
+  });
+
+  test("keeps an older Eva from writing a record of a newer format", () => {
+    write(".eva/template.json", JSON.stringify({ version: 2, parts: {} }));
+    expect(() => alignment().align()).toThrow("newer Eva");
   });
 });

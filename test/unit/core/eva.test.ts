@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
+import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -1731,7 +1732,8 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
-    expect(instance.templateParts()?.map((part) => [part.name, part.state])).toEqual([["schedule", "current"]]);
+    expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([["schedule", "current"]]);
+    expect(instance.templateParts()?.canChoose).toBe(true);
     expect(alerts).toEqual([]);
   });
 
@@ -1756,6 +1758,28 @@ describe("migrations (#119)", () => {
     const instance = start(new FakeEngine());
     instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
     expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(false);
+  });
+
+  test("a satellite shows the template parts but leaves the choice to the hub", () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    expect(instance.templateParts()?.canChoose).toBe(false);
+    expect(() => instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "new")).toThrow("hub");
+  });
+
+  test("the alert of a part clears after a sync that brings the person's fix", async () => {
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", templateParts[".eva/skills/schedule/SKILL.md"] ?? "");
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
   });
 
   test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {
@@ -1800,6 +1824,7 @@ describe("migrations (#119)", () => {
     expect(instance.role()).toBe("hub");
     expect(JSON.parse(readFileSync(join(vault, ".eva", "settings.json"), "utf-8"))).toEqual({});
     expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(true);
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
   });
 
   test("a machine that is behind the vault cannot become the hub", async () => {

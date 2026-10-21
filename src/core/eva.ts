@@ -403,6 +403,7 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        this.noticeTemplateParts();
         // A full disk or a reserved file name must not stop the sync step.
         try {
           this.exchangeMachineReports();
@@ -476,7 +477,13 @@ export class Eva {
     this.templateAlignment =
       vaultPath === null
         ? null
-        : new TemplateAlignment({ vaultPath, parts: templateParts, history: templateHistory, now: options.now });
+        : new TemplateAlignment({
+            vaultPath,
+            parts: templateParts,
+            history: templateHistory,
+            evaVersion,
+            now: options.now,
+          });
 
     this.sessions = new SessionManager({
       ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
@@ -802,15 +809,26 @@ export class Eva {
     this.noticeVaultAhead();
   }
 
-  /** The state of each template part of the vault, with no change. Null when no vault is configured. */
-  templateParts(): TemplatePart[] | null {
-    return this.templateAlignment?.list() ?? null;
+  /**
+   * The state of each template part of the vault, with no change, and whether this machine takes
+   * the person's choice. Null when no vault is configured.
+   */
+  templateParts(): { readonly parts: TemplatePart[]; readonly canChoose: boolean } | null {
+    const parts = this.templateAlignment?.list();
+    return parts === undefined ? null : { parts, canChoose: this.role() === "hub" };
   }
 
   /** The person's choice for a part that differs: this Eva's version, or their own. */
   chooseTemplateVersion(path: string, choice: "new" | "mine"): TemplatePart[] {
     const alignment = this.templateAlignment;
     if (alignment === null) throw new EvaError("vault_not_found", "No vault is configured.");
+    // Only the hub writes the template parts, so two machines never race on one file.
+    if (this.role() !== "hub") {
+      throw new EvaError(
+        "setting_forbidden",
+        "Only the hub computer changes the template parts. Open its page to choose.",
+      );
+    }
     const parts = choice === "new" ? alignment.useNew(path) : alignment.keepMine(path);
     this.alerts.report("template_alignment", alignmentProblem(parts));
     return parts;
@@ -830,6 +848,17 @@ export class Eva {
       // A vault from a newer Eva refuses the write, and its own alert already says so.
       this.options.logger?.log("warn", "The template alignment did not run.", { error: String(caught) });
     }
+  }
+
+  /**
+   * Checks the template parts again after a sync: a pull can bring a choice or a fix that the
+   * person made by hand. Only the hub raises the alert, so it never shows twice.
+   */
+  private noticeTemplateParts(): void {
+    const alignment = this.templateAlignment;
+    const vaultPath = this.options.config.vaultPath;
+    if (alignment === null || vaultPath === null || !existsSync(vaultPath)) return;
+    this.alerts.report("template_alignment", this.role() === "hub" ? alignmentProblem(alignment.list()) : null);
   }
 
   /** The start found the marker of a run that never stopped cleanly. */
@@ -1575,16 +1604,17 @@ export class Eva {
     );
     // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
     if (role === "hub") {
-      this.runVaultMigrations();
-      this.alignTemplate();
+      if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+    } else {
+      this.alerts.report("template_alignment", null);
     }
     for (const listener of this.roleListeners) listener(role);
   }
 
-  private runVaultMigrations(): void {
+  private runVaultMigrations(): MigrationRun | null {
     const vaultPath = this.options.config.vaultPath;
     // A vault folder that is not cloned yet has no hub file, so this machine reads as the hub.
-    if (vaultPath === null || !existsSync(vaultPath)) return;
+    if (vaultPath === null || !existsSync(vaultPath)) return null;
     const run = runMigrations({
       store: "vault",
       migrations,
@@ -1594,6 +1624,7 @@ export class Eva {
       now: this.options.now,
     });
     this.reportMigrationRun("vault", run);
+    return run;
   }
 
   private reportMigrationRun(store: MigrationStore, run: MigrationRun): void {

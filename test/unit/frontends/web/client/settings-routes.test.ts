@@ -11,7 +11,9 @@ import {
   settingsHash,
   settingsHome,
   settingsSections,
+  settingPlaces,
 } from "../../../../../src/frontends/web/client/settings-routes.ts";
+import { isSettingKey, sharedSettingKeys } from "../../../../../src/core/settings/settings.ts";
 
 describe("settings addresses", () => {
   test("the home, a section and a step go to an address and back", () => {
@@ -106,4 +108,38 @@ describe("the development section", () => {
     expect(searchSettings("bug").map((entry) => entry.item)).toEqual(["report-problem"]);
     expect(searchSettings("colours components").map((entry) => entry.item)).toEqual([designReferenceItem]);
   });
+});
+
+describe("where each setting lives", () => {
+  test("every setting that the vault holds shows in the vault list", () => {
+    const covered = settingPlaces.filter((place) => place.home === "vault").flatMap((place) => place.keys);
+    for (const key of sharedSettingKeys) expect(covered).toContain(key);
+  });
+
+  test("a row of another list names no vault setting", () => {
+    const others = settingPlaces.filter((place) => place.home !== "vault").flatMap((place) => place.keys);
+    expect(others.filter((key) => sharedSettingKeys.includes(key))).toEqual([]);
+  });
+
+  test("each link opens a card that the search also finds", () => {
+    const places = new Set(searchEntries.map((entry) => `${entry.section}/${entry.item}`));
+    for (const place of settingPlaces) {
+      if (place.link !== null) expect(places.has(`${place.link.section}/${place.link.item}`)).toBe(true);
+    }
+  });
+
+  test("a row with no page names its key, so the person can still find it", () => {
+    for (const place of settingPlaces.filter((each) => each.link === null))
+      expect(place.keys.length).toBeGreaterThan(0);
+  });
+
+  test("the browser keeps the appearance", () => {
+    const appearance = settingPlaces.find((place) => place.link?.item === "appearance");
+    expect(appearance?.home).toBe("browser");
+  });
+});
+
+test("each key of a setting home is a real setting key", () => {
+  const unknown = settingPlaces.flatMap((place) => place.keys).filter((key) => !isSettingKey(key));
+  expect(unknown).toEqual([]);
 });

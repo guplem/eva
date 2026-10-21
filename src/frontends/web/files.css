@@ -1,9 +1,11 @@
 /*
- * The Files page: the folder path, the folder list and the text of a file. A long file name
- * or a long line has no break points, so each wraps or scrolls inside its own box.
+ * The Files page: the folder path, a column for each folder and the text of a file. A long file
+ * name or a long line has no break points, so each wraps or scrolls inside its own box.
  */
 
 .files-page {
+  flex: 1;
+  min-height: 0;
   overflow-wrap: anywhere;
   padding: var(--space-5) var(--space-6) var(--space-6);
   display: flex;
@@ -11,11 +13,7 @@
   gap: var(--space-3);
 }
 
-/* The header shares the width of the column, so the path starts above the card. */
 .files-header {
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -66,13 +64,54 @@
   color: var(--ink);
 }
 
-.files-column {
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
+/*
+ * Each column scrolls on its own, and the row of columns scrolls sideways, as in a Finder.
+ * The padding keeps room for the shadow of the cards.
+ */
+.files-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding: var(--space-1) var(--space-1) var(--space-5);
+}
+
+/* A folder column gives up width before the row scrolls, so a short path fits the screen. */
+.files-pane {
+  flex: 0 1 260px;
+  min-width: 180px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.files-pane > .files-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.files-preview {
+  flex: 1 0 360px;
+}
+
+.files-placeholder {
+  flex: 1 0 260px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.files-placeholder .icon {
+  width: 32px;
+  height: 32px;
+}
+
+/* Large: the file takes the place of the folders. */
+.files-page.large .files-parent,
+.files-page.large .files-placeholder {
+  display: none;
 }
 
 .files-list {
@@ -99,6 +138,13 @@ a.files-entry:focus-visible {
   background: var(--soft);
 }
 
+/* The folder or file that the next column shows. The weight marks it too, not the colour alone. */
+a.files-entry[aria-current="true"] {
+  background: var(--soft);
+  color: var(--soft-ink);
+  font-weight: 700;
+}
+
 .files-entry .icon {
   flex: none;
   width: 18px;
@@ -121,20 +167,90 @@ a.files-entry:focus-visible {
   color: var(--muted);
 }
 
+/* The bar stays at the top while the text scrolls under it. */
 .files-file {
+  gap: 0;
   border-radius: var(--radius-card);
   background: var(--panel);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .files-file-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
+  background: var(--panel);
   box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.files-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.files-file-actions .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.files-problem {
+  margin: var(--space-3) var(--space-4) 0;
+}
+
+/* The editor shows plain text, in the font and the space of the shown text. */
+.files-editor {
+  flex: 1;
+  min-height: 50vh;
+  margin: 0;
+  padding: var(--space-4);
+  border: 0;
+  border-radius: 0;
+  resize: none;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+/* The card clips a plain outline at its round corners, so an inner ring marks the focus. */
+.files-editor:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* The colours of code come from the seed, and a style or a weight marks each kind too. */
+.code-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.code-keyword,
+.code-tag {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.code-number {
+  color: var(--accent-ink);
+}
+
+.code-string {
+  color: var(--soft-ink);
+}
+
+.code-key {
+  font-weight: 600;
 }
 
 /* Code keeps its lines, so a long line scrolls inside the box and the page never scrolls sideways. */
@@ -157,6 +273,26 @@ a.files-entry:focus-visible {
 @media (max-width: 760px) {
   .files-page {
     padding: var(--space-3) var(--space-3) var(--space-4);
+  }
+
+  /* A phone has no room for columns: it shows the last one, and the page scrolls. */
+  .files-parent,
+  .files-placeholder,
+  .files-large-button {
+    display: none;
+  }
+
+  .files-columns {
+    display: block;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .files-pane,
+  .files-pane > .files-list,
+  .files-file {
+    min-width: 0;
+    overflow: visible;
   }
 
   /* A deep path wraps on a phone, so the button stays by its first line. */

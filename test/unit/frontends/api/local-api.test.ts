@@ -956,6 +956,22 @@ describe("web routes", () => {
     expect(await json<{ text: string }>(whole)).toMatchObject({ text: "---\nstatus: idea\n---\n# Whole\n" });
   });
 
+  test("the form creates a project, and the list shows it", async () => {
+    const form = { name: "New app", description: "Made from the form.", status: "idea", tags: ["web"] };
+    const created = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
+    expect(created.status).toBe(201);
+    const result = await json<{ projectId: string; github: unknown; drive: unknown }>(created);
+    expect(result).toMatchObject({ github: null, drive: null });
+    expect(result.projectId).toEndWith("-new-app");
+
+    const listed = await json<{ id: string; description: string }[]>(await call("/api/projects?text=new&status=idea"));
+    expect(listed).toMatchObject([{ id: result.projectId, description: "Made from the form." }]);
+
+    const again = await call("/api/projects", { method: "POST", body: { ...form, github: false, drive: false } });
+    expect(again.status).toBe(400);
+    expect((await call("/api/projects", { method: "POST", body: { ...form, status: "dreaming" } })).status).toBe(400);
+  });
+
   test("a project save: a stale version is a 409, a bad file or value a 400, an unknown project a 404", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const stale = await call(`${path}/file`, { method: "PUT", body: { version: "old", text: "---\n---\n" } });
@@ -1173,11 +1189,30 @@ describe("web routes", () => {
     expect(root.kind).toBe("folder");
     expect(root.entries.map((entry) => entry.name)).toEqual([".eva", "Projects", "AGENTS.md"]);
     const file = await call(`/api/files?path=${encodeURIComponent(".eva/assistant.md")}`);
-    expect(await json(file)).toEqual({ kind: "file", path: ".eva/assistant.md", size: 14, text: "# You are Eva\n" });
+    expect(await json(file)).toMatchObject({
+      kind: "file",
+      path: ".eva/assistant.md",
+      size: 14,
+      text: "# You are Eva\n",
+      editable: true,
+    });
     const outside = await call(`/api/files?path=${encodeURIComponent("../")}`);
     expect(outside.status).toBe(404);
     expect(await json<{ code: string }>(outside)).toMatchObject({ code: "file_not_found" });
     expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
+  });
+
+  test("files: a save writes the text, and a save of an old version answers file_changed (issue 308)", async () => {
+    const path = ".eva/assistant.md";
+    const { version } = await json<{ version: string }>(await call(`/api/files?path=${encodeURIComponent(path)}`));
+    const saved = await call("/api/files", { method: "PUT", body: { path, version, text: "# You are Eva too\n" } });
+    expect(await json(saved)).toMatchObject({ kind: "file", text: "# You are Eva too\n" });
+    expect(readFileSync(join(eva.status().vaultPath ?? "", path), "utf-8")).toBe("# You are Eva too\n");
+
+    const stale = await call("/api/files", { method: "PUT", body: { path, version, text: "# Lost\n" } });
+    expect(stale.status).toBe(409);
+    expect(await json(stale)).toMatchObject({ code: "file_changed" });
+    expect((await call("/api/files", { method: "PUT", body: { path, text: "# No version\n" } })).status).toBe(400);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

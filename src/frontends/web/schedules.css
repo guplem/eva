@@ -155,6 +155,25 @@
   width: 2px;
   background: var(--accent);
   box-shadow: 0 0 8px var(--glow);
+  pointer-events: none;
+}
+
+.day-line-now-hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  transform: translateX(-50%);
+}
+
+/* The exact time of each run of the pill under the pointer. */
+.day-line-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dashed var(--soft-ink);
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .schedule-list {
@@ -357,6 +376,17 @@
   gap: 4px;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* A checkbox sits beside its words, as in every other check row. */
+.schedule-form label.check-row {
+  flex-direction: row;
+  font-weight: 400;
+}
+
+/* Why a step is off, on its own line under the step. */
+.schedule-form .step-reason {
+  display: block;
 }
 
 .schedule-form fieldset {

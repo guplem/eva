@@ -156,8 +156,8 @@ function VersionsCard(): ReactElement {
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
       {versions === "loading" ? (
-        // About as many rows as Eva and her tools in `tool-versions.ts`, so the card keeps its height.
-        <FactsSkeleton label="Reading the versions…" rows={11} />
+        // Eva and the tools of `usedTools` in an installed Eva, which carries its own Bun.
+        <FactsSkeleton label="Reading the versions…" rows={10} />
       ) : versions === "failed" ? (
         <div role="status">Eva could not read the versions. Open this page again to retry.</div>
       ) : (

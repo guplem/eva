@@ -54,10 +54,6 @@ export function childPath(folder: string, name: string): string {
   return folder === "" ? name : `${folder}/${name}`;
 }
 
-export function isMarkdown(path: string): boolean {
-  return /\.(md|markdown)$/i.test(path);
-}
-
 export function sizeWords(bytes: number): string {
   if (bytes < 1_000) return `${String(bytes)} B`;
   if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;

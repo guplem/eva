@@ -11,7 +11,7 @@ import { ProgressBar } from "./Loading.tsx";
 
 interface DevicesPanelProps {
   readonly onChanged: (note: string) => void;
-  /** "Log out every device" ended this browser's login too. */
+  /** This browser's login ended, by "Log out of this browser" or by "Log out every device". */
   readonly onLoggedOut: () => void;
 }
 
@@ -54,6 +54,18 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
     }
   };
 
+  /** Eva has no account: a log out ends only this browser's login, and the others stay. */
+  const logOutHere = async (): Promise<void> => {
+    // A phone then needs a new code, so a mistaken tap costs a round trip to the owner.
+    if (!window.confirm("Log out of this browser? To open Eva here again, you need the token or a new code.")) return;
+    try {
+      await api.logout();
+      onLoggedOut();
+    } catch (error) {
+      onChanged(errorText(error));
+    }
+  };
+
   const now = new Date();
   return (
     <Card
@@ -86,7 +98,7 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
                   <b>{words.name}</b>
                   <span className="device-detail">{detail}</span>
                 </span>
-                {/* "This one" replaces Remove, so nobody logs out this browser by mistake. Log out does that. */}
+                {/* "This one" replaces Remove, so nobody logs out this browser by mistake. "Log out of this browser" does that. */}
                 {device.current ? (
                   <span className="pill live">This one</span>
                 ) : (
@@ -103,6 +115,12 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
           })}
         </ul>
       )}
+      <div className="button-row">
+        <button onClick={() => void logOutHere()}>
+          <Icon name="key" />
+          Log out of this browser
+        </button>
+      </div>
     </Card>
   );
 }

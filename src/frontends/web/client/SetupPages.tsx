@@ -13,7 +13,7 @@ import { Icon } from "./icons.tsx";
 import { RichText, StatusIcon, StatusPill, TestMark, type SettingsContext } from "./SettingsParts.tsx";
 import { needsYou, nextToDo, setupSummary, stepMark, type StepMark } from "./setup-summary.ts";
 import { VaultFolderCard } from "./VaultSection.tsx";
-import { CardsSkeleton } from "./Loading.tsx";
+import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 
 // A step that is left is work for the person, not an error: only a failed test is red.
 const calloutTone: Readonly<Record<StepMark, string>> = {
@@ -273,6 +273,7 @@ function StepHeader({
             <TestMark ok={last.ok} detail={`Last test: ${last.detail}`} />
           </div>
         )}
+        {testing && <ProgressBar label={`Testing ${step.title}…`} />}
         {check !== null && (
           <div className="button-row">
             <button aria-label={`Test ${step.title}`} disabled={testing} onClick={() => void test()}>

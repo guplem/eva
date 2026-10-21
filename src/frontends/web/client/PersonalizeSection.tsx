@@ -8,9 +8,10 @@ import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
 import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
-import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { restartNote } from "./notes.ts";
+import { knownTimeZones, timeZoneChoices } from "./time-zones.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
 const chatNameRulesLength = 4_000;
@@ -104,7 +105,7 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
     }
     try {
       const result = await api.saveSettings({
-        timeZone: timeZone.trim() === "" ? null : timeZone.trim(),
+        timeZone: timeZone === "" ? null : timeZone,
       });
       notify(
         result.restartNeeded
@@ -121,11 +122,13 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
 
   return (
     <>
-      <Card item="time-zone" title="Time zone" description="Schedules and dates use it. Empty: this machine's own.">
-        <label className="field">
-          <span className="field-label">Time zone</span>
-          <input value={timeZone} placeholder="Europe/Madrid" onChange={(event) => setTimeZone(event.target.value)} />
-        </label>
+      <Card item="time-zone" title="Time zone" description="Schedules and dates use it.">
+        <SelectField
+          label="Time zone"
+          value={timeZone}
+          choices={timeZoneChoices(timeZone, knownTimeZones())}
+          onChange={setTimeZone}
+        />
       </Card>
       {chatNameRules !== null && (
         <Card

@@ -5,6 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
 
@@ -128,6 +129,7 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
           {syncing ? "Syncing…" : "Sync now"}
         </button>
       </div>
+      {syncing && <ProgressBar label="Eva syncs the vault…" />}
       <div className="inline-form">
         <label className="field grow">
           <span className="field-label">Vault save interval (seconds)</span>

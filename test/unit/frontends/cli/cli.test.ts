@@ -19,6 +19,7 @@ import {
   describeStatus,
   describeEngineUpdate,
   describeStatusLines,
+  statusText,
   describeToolVersions,
   describeSync,
   describeRelease,
@@ -58,6 +59,9 @@ import { FakeEngine } from "../../../support/fake-engine.ts";
 import { fakeGh } from "../../../support/fake-gh.ts";
 import { scriptedRunner } from "../../../support/fake-host.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+
+/** A Google OAuth client id in its real form. */
+const googleId = "123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com";
 
 describe("parseArguments", () => {
   test("no command runs the core", () => {
@@ -480,7 +484,7 @@ describe("runSetup", () => {
   test("Google and voice answers reach the config and the secrets", async () => {
     await setup({
       googleEmail: "person@example.com",
-      googleClientId: "client-id",
+      googleClientId: googleId,
       googleClientSecret: "client-secret",
       voiceModel: "/models/ggml-base.bin",
     });
@@ -491,14 +495,28 @@ describe("runSetup", () => {
     await setup({}, { lines: again });
     expect(again.join("\n")).not.toContain("each Google step");
     expect(loadSecrets(homePaths(home))).toMatchObject({
-      googleOauthClientId: "client-id",
+      googleOauthClientId: googleId,
       googleOauthClientSecret: "client-secret",
     });
   });
 
+  test("a Google client id pasted as a link is saved bare; one that is no client id is not saved (#323)", async () => {
+    await setup({
+      googleEmail: "person@example.com",
+      googleClientId: `https://${googleId}/`,
+      googleClientSecret: " x ",
+    });
+    expect(loadSecrets(homePaths(home))).toMatchObject({ googleOauthClientId: googleId, googleOauthClientSecret: "x" });
+    const lines: string[] = [];
+    rmSync(homePaths(home).secrets, { force: true });
+    await setup({ googleEmail: "person@example.com", googleClientId: "GOCSPX-not-an-id" }, { lines });
+    expect(lines.join("\n")).toContain("not a Google client id");
+    expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
+  });
+
   test("without a Google account, the OAuth client is not asked", async () => {
     const lines: string[] = [];
-    await setup({ googleClientId: "client-id" }, { lines });
+    await setup({ googleClientId: googleId }, { lines });
     expect(lines.join("\n")).toContain("Settings on Eva's page show each Google step");
     expect(loadSecrets(homePaths(home)).googleOauthClientId).toBeUndefined();
   });
@@ -1224,7 +1242,7 @@ describe("runSetup", () => {
     });
 
     test("a ready vault still lets a rerun give the GitHub token, and a half Google client is asked again", async () => {
-      await setup({ vault: existingVault, googleEmail: "person@example.com", googleClientId: "client-id" });
+      await setup({ vault: existingVault, googleEmail: "person@example.com", googleClientId: googleId });
       const asked: SetupQuestion[] = [];
       await setup({ githubToken: "ghp_a-token-for-projects" }, { asked });
       expect(asked).not.toContain("vaultRepository");
@@ -1978,6 +1996,22 @@ describe("describeStatusLines", () => {
     voiceNotes: false,
   };
 
+  test("eva status ends with a QR code of the phone address, as setup shows (Telegram does not)", () => {
+    const url = "https://server.example-tailnet.ts.net:7421";
+    const ready = statusText({ ...status, remoteAccess: { url, problem: null } }, [], null);
+    const lines = ready.split("\n");
+    // The plain address stays, for terminals that cannot draw the code.
+    expect(lines).toContain(`Phone access: ${url}`);
+    expect(lines.indexOf("Scan this code on a phone that has Tailscale:")).toBeGreaterThan(
+      lines.indexOf("Tools: none found"),
+    );
+    expect(ready).toContain("▀");
+    expect(describeStatusLines({ ...status, remoteAccess: { url, problem: null } }).join("\n")).not.toContain("▀");
+    expect(statusText(status, [], null)).not.toContain("▀");
+    expect(statusText({ ...status, remoteAccess: { url: null, problem: "Turn on HTTPS" } }, [], null)).not.toContain(
+      "▀",
+    );
+  });
   test("starts with All good when nothing is wrong", () => {
     expect(describeStatusLines(status).slice(0, 2)).toEqual(["All good", "Eva 1.2.3, hub: this machine (server)"]);
   });

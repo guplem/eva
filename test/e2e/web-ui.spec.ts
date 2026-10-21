@@ -596,7 +596,9 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  // The demo machine has no voice notes, so the empty box offers to set them up in place of Send.
+  await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
 test("a request of another chat gets a notice that opens it, and an answer from elsewhere closes the card", async ({
@@ -1035,11 +1037,23 @@ test("on a short phone, a long project list scrolls, and no card cuts its text",
 });
 
 test("Settings: the vault Test button checks the remote, and Log out ends the session", async ({ page }) => {
+  // The check waits until the test lets it go, so the test sees the wait.
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/checks/*", async (route) => {
+    await released;
+    await route.continue();
+  });
   await logIn(page);
   await openSettings(page, "Vault and sync");
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
+  await expect(vaultRow.getByRole("progressbar", { name: "Testing the vault repository…" })).toBeVisible();
+  release();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
+  await expect(vaultRow.getByRole("progressbar")).toHaveCount(0);
   // Log out sits on the Devices card, because it ends only this browser's login.
   await openSettings(page, "Access");
   page.once("dialog", (dialog) => void dialog.accept());
@@ -1679,6 +1693,25 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
+test("the nav visor names the approval that waits, and a tap plays a face that ends", async ({ page }) => {
+  // A phone hides the visor: its bottom bar has no room for it.
+  test.skip(test.info().project.name !== "desktop", "Only a computer shows the nav visor.");
+  await page.route("**/api/approvals", (route) =>
+    route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
+  );
+  await logIn(page);
+  const visorButton = page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: "1 approval waits for you" });
+  const visor = visorButton.locator(".mk");
+  await expect(visor).toHaveClass(/e-firm/);
+  await visorButton.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
+  await visorButton.click();
+  await expect(visor).not.toHaveClass(/e-firm/);
+  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
+});
+
 test("the Settings home page shows Eva's status", async ({ page }) => {
   await logIn(page);
   await openSettings(page);
@@ -2080,6 +2113,23 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await expect(message).toContainText("Hello from my voice");
 });
 
+test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {
+  let installs = 0;
+  await page.route("**/api/voice-notes/install", async (route) => {
+    installs += 1;
+    await route.fulfill({ json: { ok: true, message: "Installed voice notes. Press Restart Eva to turn them on." } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page.getByRole("button", { name: "Set up voice notes" }).first().click();
+  await expect(page).toHaveURL(/#\/settings\/updates\/versions$/);
+  const row = page.locator("dd", { hasText: "Off, needs" });
+  await expect(row).toContainText("speech model");
+  await row.getByRole("button", { name: "Install" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Installed voice notes" })).toBeVisible();
+  expect(installs).toBe(1);
+});
+
 /** Plays the status with these open problems, and with the sync state changed as given. */
 async function routeProblems(
   page: Page,
@@ -2254,7 +2304,21 @@ test("Settings: the setup ring counts the done steps, and a failed test has its 
   // A failed step needs the person, so it keeps the main action, and its page says why.
   await expect(first).toContainText("Set up");
   await first.click();
-  await expect(page.getByRole("region", { name: "An AI engine" })).toContainText("The last test failed.");
+  const step = page.getByRole("region", { name: "An AI engine" });
+  await expect(step).toContainText("The last test failed.");
+  // The test waits until this test lets it go, so this test sees the progress bar of the wait.
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/checks/*", async (route) => {
+    await released;
+    await route.fulfill({ json: { ok: false, detail: "The token expired." } });
+  });
+  await step.getByRole("button", { name: "Test An AI engine" }).click();
+  await expect(step.getByRole("progressbar", { name: "Testing An AI engine…" })).toBeVisible();
+  release();
+  await expect(step.getByRole("progressbar")).toHaveCount(0);
 });
 
 test("Settings: a step left is amber, and only a failed step is red (issue #208)", async ({ page }) => {
@@ -2823,6 +2887,7 @@ test("Settings: the Versions card installs a missing tool and shows the new vers
           tool("uv", "0.9.0", true),
           tool("gh", installed ? "2.62.0" : "2.4.0", true, !installed),
         ],
+        voiceNotes: { missing: [], on: true },
       },
     });
   });
@@ -2854,7 +2919,11 @@ async function routeToolVersions(page: Page, claude: () => string): Promise<void
       tooOld: false,
     });
     await route.fulfill({
-      json: { eva: "1.0.0", tools: [tool("claude", claude()), tool("pi", "1.3.0"), tool("gh", "2.62.0")] },
+      json: {
+        eva: "1.0.0",
+        tools: [tool("claude", claude()), tool("pi", "1.3.0"), tool("gh", "2.62.0")],
+        voiceNotes: { missing: [], on: true },
+      },
     });
   });
 }
@@ -3174,7 +3243,7 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await openGoogleSteps(page);
   await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
   for (const [label, value] of [
-    ["Google client id", "client-id.apps.googleusercontent.com"],
+    ["Google client id", "123456789012-clientid.apps.googleusercontent.com"],
     ["Google client secret", "GOCSPX-e2e-client-secret-value"],
   ] as const) {
     await page.getByLabel(label, { exact: true }).fill(value);

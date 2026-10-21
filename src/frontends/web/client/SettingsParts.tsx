@@ -13,6 +13,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
@@ -187,11 +188,15 @@ export function CheckRow({ name, label }: { name: string; label: string }): Reac
       <button aria-label={label} disabled={result === "running"} onClick={() => void run()}>
         {result === "running" ? "Testing…" : "Test"}
       </button>
+      {result === "running" && (
+        <div className="check-wait">
+          <ProgressBar label={`${label.replace(/^Test /, "Testing ")}…`} />
+        </div>
+      )}
       <span
         role="status"
-        className={result === null ? "" : result === "running" ? "check-result" : `check-result ${resultClass(result)}`}
+        className={result === null || result === "running" ? "" : `check-result ${resultClass(result)}`}
       >
-        {result === "running" && "Testing…"}
         {result !== null && result !== "running" && <TestMark ok={result.ok} detail={result.detail} />}
       </span>
     </div>
@@ -348,7 +353,7 @@ export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A choice list that saves at once. */
+/** A choice list. */
 export function SelectField<T extends string>({
   label,
   value,

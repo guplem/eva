@@ -3,6 +3,11 @@
  * An empty answer keeps the current value. With `--non-interactive`, each answer comes from
  * an environment variable instead (`setupEnvironmentNames`), and a bad answer stops setup.
  */
+import {
+  cleanGoogleClientId,
+  cleanGoogleClientSecret,
+  googleClientIdProblem,
+} from "../../core/google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
@@ -349,9 +354,16 @@ export async function runSetup(given: SetupOptions): Promise<{ changedAfterStart
   const googleClient = (): boolean =>
     secrets().googleOauthClientId !== undefined && secrets().googleOauthClientSecret !== undefined;
   if (config().google.email !== null && !done(googleClient())) {
-    const clientId = await ask("googleClientId", "Google OAuth client id (Enter to keep): ");
-    if (clientId !== "") saveSecret("googleOauthClientId", clientId);
-    const clientSecret = await ask("googleClientSecret", "Google OAuth client secret (Enter to keep): ");
+    // A copied client id can come as a link; one that is still no client id fails only on Google's page (#323).
+    const clientId = cleanGoogleClientId(await ask("googleClientId", "Google OAuth client id (Enter to keep): "));
+    const idProblem = clientId === "" ? null : googleClientIdProblem(clientId);
+    if (idProblem !== null) {
+      if (!options.interactive) throw new EvaError("config_invalid", idProblem);
+      options.write(`${idProblem} Paste it in Settings on Eva's page, or run \`eva setup\` again.`);
+    } else if (clientId !== "") saveSecret("googleOauthClientId", clientId);
+    const clientSecret = cleanGoogleClientSecret(
+      await ask("googleClientSecret", "Google OAuth client secret (Enter to keep): "),
+    );
     if (clientSecret !== "") saveSecret("googleOauthClientSecret", clientSecret);
   }
 

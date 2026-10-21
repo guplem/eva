@@ -3,6 +3,7 @@
  * network call, then gets a fresh access token, then reads each enabled service once. Each
  * failure names the step of the setup guide that fixes it.
  */
+import { googleClientIdProblem } from "./google-client.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { googleUrls, postToken, readGoogleCredential, type GoogleClient, type GoogleUrls } from "./google-login.ts";
@@ -56,6 +57,9 @@ function serviceAddress(service: GoogleService, urls: GoogleUrls): string {
 const requestTimeoutMs = 30_000;
 
 export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleCheckResult> {
+  // A client id saved before Eva cleaned pasted values can still be a link (#323).
+  const idProblem = inputs.client === null ? null : googleClientIdProblem(inputs.client.clientId);
+  if (idProblem !== null) return failed(idProblem);
   const access = await googleAccessToken(inputs);
   if ("problem" in access) return failed(access.problem);
   const { config } = inputs;

@@ -11,6 +11,7 @@ import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh } from "./core/engine-install/engine-install.ts";
+import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
@@ -116,6 +117,20 @@ function createEngines(
   return { engines, claudeExecutable };
 }
 
+/** The voice programs that the settings name, or Eva's own copies, which a service may not have on its PATH. */
+function withVoicePrograms(config: EvaConfig): EvaConfig {
+  const own = ownVoicePrograms(host.platform, host.userHome, host.environment);
+  const places = { which: (name: string) => Bun.which(name), exists: existsSync };
+  return {
+    ...config,
+    voice: {
+      ...config.voice,
+      ffmpegExecutable: locateVoiceProgram(config.voice.ffmpegExecutable, own.ffmpeg, places),
+      whisperExecutable: locateVoiceProgram(config.voice.whisperExecutable, own.whisper, places),
+    },
+  };
+}
+
 /** After an update without a supervisor, the new copy starts first and waits for this one. */
 function startNewCopy(paths: HomePaths): void {
   const launch = newCopyLaunch({
@@ -168,7 +183,7 @@ async function serve(paths: HomePaths): Promise<number> {
   const { engines, claudeExecutable } = createEngines(config, paths, logger);
   const eva = new Eva({
     paths,
-    config,
+    config: withVoicePrograms(config),
     secrets,
     engines,
     runner: systemProcessRunner,

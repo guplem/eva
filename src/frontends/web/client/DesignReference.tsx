@@ -1,5 +1,5 @@
 /**
- * The design reference: every colour token, each shared component with its class names, and a
+ * The design reference: every colour and text token, each shared component with its class names, and a
  * map of Eva's layers. It draws the real parts with the real stylesheet, so it shows what the page
  * shows. The Appearance card on top changes the seed and the theme, and every sample follows.
  */
@@ -10,6 +10,7 @@ import {
   componentSamples,
   iconUses,
   messageFlow,
+  typeStyles,
   visorSizes,
   type ComponentId,
 } from "./design-reference.ts";
@@ -46,6 +47,39 @@ export function DesignReference(): ReactElement {
             </ul>
           </section>
         ))}
+      </Card>
+      <Card
+        title="Typography"
+        description="Body text is 14 px. Take each other font and size from these tokens, never a raw value."
+      >
+        <ul className="design-type">
+          {typeStyles.map((style) => (
+            <li key={style.name}>
+              <span
+                className="design-type-sample"
+                style={
+                  style.name.startsWith("--text-")
+                    ? { fontSize: `var(${style.name})` }
+                    : { fontFamily: `var(${style.name})` }
+                }
+              >
+                Eva syncs the vault
+              </span>
+              <code>{style.name}</code>
+              <span className="field-hint">{style.use}</span>
+            </li>
+          ))}
+          <li>
+            <span className="design-type-sample">
+              Install Tailscale.{" "}
+              <a href="https://tailscale.com/download" target="_blank" rel="noreferrer">
+                https://tailscale.com/download
+              </a>
+            </span>
+            <code>a</code>
+            <span className="field-hint">A link, with no class: every link has the same look.</span>
+          </li>
+        </ul>
       </Card>
       <Card title="Components" description="The shared parts of the page. Use one of these before you add a new class.">
         {componentSamples.map((sample) => (

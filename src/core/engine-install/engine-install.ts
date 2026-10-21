@@ -410,7 +410,7 @@ async function installPi(inputs: EngineInstallInputs): Promise<void> {
 }
 
 /** A link in ~/.local/bin lets the person's own terminal find the program. The build finds its files through the link. */
-function linkForTerminal(program: string, homeFolder: string, name: string): void {
+export function linkForTerminal(program: string, homeFolder: string, name: string): void {
   const link = posix.join(homeFolder, ".local", "bin", name);
   if (existsSync(link)) return;
   try {
@@ -427,7 +427,7 @@ function linkForTerminal(program: string, homeFolder: string, name: string): voi
  * Puts the new folder in place of the old one. The old one moves aside first, and comes back when
  * the move fails, such as when a virus scanner on Windows still holds the new program.
  */
-function replaceFolder(folder: string, replacement: string, aside: string): void {
+export function replaceFolder(folder: string, replacement: string, aside: string): void {
   const hadOld = existsSync(folder);
   if (hadOld) renameSync(folder, aside);
   try {
@@ -439,12 +439,12 @@ function replaceFolder(folder: string, replacement: string, aside: string): void
 }
 
 /** The tar of Windows itself, in System32. */
-function windowsTar(environment: Readonly<Record<string, string>>): string {
+export function windowsTar(environment: Readonly<Record<string, string>>): string {
   const systemRoot = environment["SystemRoot"] ?? environment["SYSTEMROOT"] ?? "C:\\Windows";
   return win32.join(systemRoot, "System32", "tar.exe");
 }
 
-async function download(url: string): Promise<Response> {
+export async function download(url: string): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(installTimeoutMs) });
@@ -483,7 +483,7 @@ async function answers(command: readonly string[], inputs: EngineInstallInputs):
   }
 }
 
-async function run(command: readonly string[], inputs: EngineInstallInputs, timeoutMs: number): Promise<void> {
+export async function run(command: readonly string[], inputs: EngineInstallInputs, timeoutMs: number): Promise<void> {
   let result: { exitCode: number; stdout: string; stderr: string };
   try {
     result = await inputs.runner.run(command, { cwd: inputs.homeFolder, environment: inputs.environment, timeoutMs });
@@ -493,7 +493,7 @@ async function run(command: readonly string[], inputs: EngineInstallInputs, time
   if (result.exitCode !== 0) throw new Error(`${command[0] ?? "A command"} failed: ${lastLine(result)}.`);
 }
 
-function messageOf(error: unknown): string {
+export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 

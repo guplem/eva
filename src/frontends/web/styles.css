@@ -116,8 +116,9 @@
   --main-gradient: radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%);
   --button-glow: 0 6px 18px -6px var(--glow);
   --dialog-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
-  --send-fill: radial-gradient(circle at 38% 30%, oklch(0.9 calc(var(--c) * 0.6) var(--h)), var(--accent) 70%);
-  --send-glow: 0 0 16px -2px var(--glow);
+  /* A ready Send is a small visor with a shell ring, and its arrow glows as EVE's eyes. */
+  --send-fill: var(--visor-fill);
+  --send-glow: 0 0 0 2px var(--shell), 0 0 18px -2px var(--glow);
   /* The knob of a toggle stays white in both themes, as in the EVE design. */
   --knob: oklch(1 0 0);
   --knob-shadow: 0 1px 3px oklch(0 0 0 / 0.25);
@@ -252,6 +253,12 @@ button {
   padding: 6px 12px;
   cursor: pointer;
   transition: transform 80ms ease-out;
+}
+
+/* One look for every link. The browser's default blue is hard to read in dark mode, and it ignores the seed. */
+a {
+  color: var(--accent-ink);
+  text-underline-offset: 2px;
 }
 
 button:active:not(:disabled),
@@ -490,6 +497,10 @@ textarea {
 .main-nav-visor {
   display: grid;
   margin-bottom: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
 }
 
 .nav-button {
@@ -970,11 +981,6 @@ textarea {
 /* A paragraph in a loose item keeps its full margin, so a blank line between items still shows. */
 .answer-body li > :is(ul, ol, pre) {
   margin: 4px 0;
-}
-
-/* The browser's default link blue is hard to read in dark mode. */
-.answer-body a {
-  color: var(--accent);
 }
 
 .answer-body pre {
@@ -1925,6 +1931,10 @@ button.link-button {
   flex: 1;
   min-width: 0;
   font-size: var(--text-sm);
+}
+
+.check-wait {
+  flex-basis: 100%;
 }
 
 .check-result {

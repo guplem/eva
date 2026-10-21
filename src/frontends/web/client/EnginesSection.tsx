@@ -2,6 +2,7 @@
 import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { stepMark } from "./setup-summary.ts";
@@ -217,6 +218,7 @@ function ClaudeLoginSteps({
           </button>
           {loginUrl !== null && <span className="field-hint">The link is ready. Go to step 2.</span>}
         </div>
+        {starting && <ProgressBar label="Eva makes the login link…" />}
       </li>
       <li>
         Open Claude&apos;s page. Log in with your own Claude account, and allow the access.
@@ -250,9 +252,7 @@ function ClaudeLoginSteps({
           </button>
         </div>
         {finishing && (
-          <div className="field-hint" role="status">
-            Eva gives the code to Claude and waits for the token. This takes a few seconds.
-          </div>
+          <ProgressBar label="Eva gives the code to Claude and waits for the token. This takes a few seconds." />
         )}
       </li>
     </Steps>

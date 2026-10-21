@@ -122,7 +122,7 @@ You can also set up Tailscale later, from your phone: send `/link` to your bot, 
 
 ## Add the optional tools
 
-Some features need one more program on Eva's computer. For example, voice notes need ffmpeg and whisper.cpp, and PDFs need typst. Run `eva doctor`: it lists each missing tool, the feature that needs it, and how to install it. [Optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
+Some features need one more program on Eva's computer. For example, voice notes need ffmpeg and whisper.cpp, and PDFs need typst. **Settings → Updates** installs everything that voice notes need with one button. Run `eva doctor`: it lists each missing tool, the feature that needs it, and how to install it. [Optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
 
 ## More than one Eva on a computer
 
@@ -142,7 +142,7 @@ With more than one Eva, each command asks which Eva. To skip the question, name 
 
 Each Eva lives in her own folder, `eva-<name>`, in `~/.config` on Linux or `%APPDATA%` on Windows. Her logins stay there, so two people never share a login or a subscription. Setup prints one command for each login that is missing: run it in another terminal while setup goes on.
 
-The commits of each Eva carry the name of her GitHub account and its private GitHub email. Eva reads the account when you log in to GitHub. To use another name or email, set it in **Settings → Connections → Commit name and email**. An Eva with no GitHub login uses the name and email of your global git settings. For hosts other than GitHub, git uses your own login.
+The commits of each Eva carry the name of her GitHub account and its private GitHub email. Eva reads the account when you log in to GitHub. To use another name or email, open **Settings → Connections**, and press **Change the commit name and email** in the GitHub card. An Eva with no GitHub login uses the name and email of your global git settings. For hosts other than GitHub, git uses your own login.
 
 **Share a computer user only with people that you trust fully.** All Evas of one computer user can read each other's files, such as notes and tokens. Eva never does this by herself, but nothing on the computer stops it. For people who need privacy from each other, give each person their own computer user, or their own computer.
 

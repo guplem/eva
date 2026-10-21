@@ -3,6 +3,7 @@
  * Send button. While a turn runs and the box is empty, Send becomes Stop at the same place.
  * Eva queues a message sent during a turn, so typed text brings Send back.
  * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
+ * Without voice notes on her machine, the microphone leads to the button that installs them.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
@@ -12,6 +13,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
+import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
@@ -81,7 +83,7 @@ export function Composer({
   const showStop = running && (text.trim() === "" || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
-  const canRecord = voiceNotes && block === null && voice.isSupported;
+  const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && text.trim() === "";
   if (voice.state.phase !== "idle") {
     return (
@@ -139,9 +141,13 @@ export function Composer({
             <button
               // Beside Stop it stays quiet; alone it takes the place of Send.
               className={showStop ? "send voice" : "send"}
-              aria-label="Record a voice note"
-              data-tooltip="Record a voice note"
-              onClick={() => void voice.start()}
+              aria-label={voiceNotes ? "Record a voice note" : "Set up voice notes"}
+              data-tooltip={voiceNotes ? "Record a voice note" : "Set up voice notes"}
+              onClick={() => {
+                // A missing button tells nothing; this one leads to the button that installs voice notes.
+                if (voiceNotes) void voice.start();
+                else window.location.hash = settingsHash({ section: "updates", item: "versions" });
+              }}
             >
               <Icon name="mic" />
             </button>

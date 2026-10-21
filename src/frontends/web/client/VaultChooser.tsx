@@ -149,6 +149,7 @@ function PickRepository({
           {busy === "clone" ? "Cloning…" : "Clone this vault"}
         </button>
       </div>
+      {busy === "clone" && <ProgressBar label="Eva clones your vault…" />}
     </div>
   );
 }
@@ -211,6 +212,7 @@ function NewVault({
           {busy === "create" ? "Creating…" : "Create a new vault"}
         </button>
       </div>
+      {busy === "create" && <ProgressBar label="Eva creates your vault…" />}
     </div>
   );
 }
@@ -256,6 +258,7 @@ export function VaultPush({ context }: { readonly context: SettingsContext }): R
           {pushing ? "Pushing…" : "Push the vault"}
         </button>
       </div>
+      {pushing && <ProgressBar label="Eva pushes your vault to GitHub…" />}
     </div>
   );
 }

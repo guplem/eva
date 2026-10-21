@@ -5,6 +5,7 @@
 import type { EngineName } from "../shared/engine-port.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { engineProgramCandidates, ghTooOld, runnableCommand } from "./engine-install/engine-install.ts";
+import { ownVoicePrograms, type VoicePrograms } from "./engine-install/voice-install.ts";
 
 export interface ToolCheck {
   readonly program: string;
@@ -19,6 +20,8 @@ export interface ToolCheck {
   readonly update: string;
   /** Eva can install and update the tool herself, from setup and from the Updates page. */
   readonly evaInstalls?: true;
+  /** Eva's own copy of a voice program, which a running service may not have on its PATH. */
+  readonly voiceProgram?: keyof VoicePrograms;
   /** True for a version that Eva cannot use. */
   readonly tooOld?: (version: string) => boolean;
 }
@@ -89,7 +92,8 @@ export const tools: readonly ToolCheck[] = [
     versionArguments: ["-version"],
     feature: "voice notes",
     required: false,
-    install: "https://ffmpeg.org/download.html",
+    voiceProgram: "ffmpeg",
+    install: "https://ffmpeg.org/download.html, or Install voice notes on the Updates page",
     update: "with the installer or package manager that installed ffmpeg",
   },
   {
@@ -97,7 +101,8 @@ export const tools: readonly ToolCheck[] = [
     versionArguments: ["--help"],
     feature: "voice notes",
     required: false,
-    install: "https://github.com/ggml-org/whisper.cpp",
+    voiceProgram: "whisper",
+    install: "https://github.com/ggml-org/whisper.cpp, or Install voice notes on the Updates page",
     update: "download a newer release, or build it again",
   },
   {
@@ -168,12 +173,14 @@ export function readToolVersions(places: ToolPlaces): Promise<ToolVersion[]> {
 export async function readToolLine(tool: ToolCheck, places: ToolPlaces): Promise<string | null> {
   const named = tool.engine === undefined ? undefined : places.executables?.[tool.engine];
   const programs =
-    tool.engine === undefined
-      ? [tool.program]
-      : [
-          ...(named === undefined ? [] : [named]),
-          ...engineProgramCandidates(tool.engine, places.platform, places.userHome, places.environment),
-        ];
+    tool.voiceProgram !== undefined
+      ? [tool.program, ownVoicePrograms(places.platform, places.userHome, places.environment)[tool.voiceProgram]]
+      : tool.engine === undefined
+        ? [tool.program]
+        : [
+            ...(named === undefined ? [] : [named]),
+            ...engineProgramCandidates(tool.engine, places.platform, places.userHome, places.environment),
+          ];
   for (const program of programs) {
     const line = await firstOutputLine(runnableCommand([program, ...tool.versionArguments], places.platform), places);
     if (line !== null) return line;

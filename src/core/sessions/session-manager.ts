@@ -192,6 +192,8 @@ export class SessionManager {
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
+  /** The last message or turn start of each chat, in ms. The record keeps only the turn ends. */
+  private readonly lastActivity = new Map<string, number>();
   /** The running turn of each Project folder, so two chats never edit one clone at once (issue 356). */
   private readonly folderTurns = new Map<string, Promise<void>>();
 
@@ -313,6 +315,16 @@ export class SessionManager {
     return runtime !== undefined && (runtime.busy || runtime.pending !== null);
   }
 
+  /** True when the chat was created, got a message, or started or ended a turn in the last `ms`. */
+  hadActivityWithin(sessionId: string, ms: number): boolean {
+    const record = this.options.store.get(sessionId);
+    if (record === undefined) return false;
+    const times = [Date.parse(record.createdAt), this.lastActivity.get(sessionId) ?? Number.NaN];
+    if (record.lastTurnAt !== null) times.push(Date.parse(record.lastTurnAt));
+    const last = Math.max(...times.filter((time) => !Number.isNaN(time)));
+    return this.options.now().getTime() - last < ms;
+  }
+
   /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;
@@ -329,6 +341,7 @@ export class SessionManager {
     runtime.pending = batch;
     batch.texts.push(text);
     batch.messages.push({ text, origin });
+    this.lastActivity.set(sessionId, this.options.now().getTime());
     if (!runtime.busy && runtime.timer === null) {
       runtime.timer = setTimeout(() => {
         runtime.timer = null;
@@ -356,6 +369,7 @@ export class SessionManager {
       this.options.store.delete(id);
       this.runtimes.delete(id);
       this.lastFailure.delete(id);
+      this.lastActivity.delete(id);
     }
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
@@ -543,6 +557,7 @@ export class SessionManager {
     let historyLost = false;
     try {
       releaseFolder = await this.takeFolder(session, controller.signal);
+      this.lastActivity.set(sessionId, this.options.now().getTime());
       // After the wait: the other turn may itself run up to the time-out.
       timeout = setTimeout(() => {
         controller.abort();

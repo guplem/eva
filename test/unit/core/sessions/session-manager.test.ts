@@ -1463,3 +1463,32 @@ describe("one turn per clone (issue 356)", () => {
     expect(manager.get(second).turns[0]?.failure).toBeNull();
   });
 });
+
+describe("recent activity (issue 356)", () => {
+  test("a chat counts as active after its creation, a message and a turn, until the time passes", async () => {
+    let clock = new Date("2026-10-14T12:00:00Z");
+    let nextId = 0;
+    const manager = new SessionManager({
+      engines: [new FakeEngine()],
+      store: new SessionStore(join(folder, "sessions.json"), { now: () => clock }),
+      preparers: { assistant: preparer, project: preparer },
+      now: () => clock,
+      newId: () => `id-${String((nextId += 1))}`,
+      redactor: new Redactor(),
+      gatherMs: 5,
+      approvalTimeoutMs: 1_000,
+      turnTimeoutMs: 30_000,
+    });
+    const tenMinutes = 10 * 60_000;
+    const sessionId = newAssistantSession(manager);
+    expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(true);
+    clock = new Date("2026-10-14T12:10:01Z");
+    expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(false);
+    await manager.send(sessionId, "hello");
+    clock = new Date("2026-10-14T12:19:00Z");
+    expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(true);
+    clock = new Date("2026-10-14T12:20:02Z");
+    expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(false);
+    expect(manager.hadActivityWithin("missing", tenMinutes)).toBe(false);
+  });
+});

@@ -35,9 +35,24 @@ describe("readToolVersions", () => {
       program: "git",
       feature: "the vault and clones",
       version: "2.50.0",
+      installable: false,
+      tooOld: false,
     });
     expect(versions.find((tool) => tool.program === "claude")?.version).toBe("2.1.286");
     expect(versions.find((tool) => tool.program === "pi")?.version).toBeNull();
+  });
+
+  // The Updates page offers a button only for a tool that Eva installs herself.
+  test("says which tools Eva installs, and when gh is too old for her login", async () => {
+    const runner: ProcessRunner = {
+      run: (command) =>
+        Promise.resolve({ exitCode: 0, stdout: command[0] === "gh" ? "gh version 2.4.0\n" : "1.0.0\n", stderr: "" }),
+    };
+    const versions = await readToolVersions({ ...places, runner });
+    const installable = versions.filter((tool) => tool.installable).map((tool) => tool.program);
+    expect(installable).toEqual(["claude", "pi", "gh", "uv"]);
+    expect(versions.find((tool) => tool.program === "gh")).toMatchObject({ version: "2.4.0", tooOld: true });
+    expect(versions.filter((tool) => tool.tooOld).map((tool) => tool.program)).toEqual(["gh"]);
   });
 
   test("asks the engine program that the settings name first, and skips bun in the single executable", async () => {

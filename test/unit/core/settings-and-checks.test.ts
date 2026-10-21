@@ -14,6 +14,7 @@ import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
+import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { fakeGithub } from "../../support/fake-github.ts";
 import type { GithubRequest } from "../../../src/core/projects/repository-facts.ts";
 import type { SetupReport } from "../../../src/core/projects/repository-setup.ts";
@@ -466,14 +467,14 @@ describe("runCheck", () => {
       ).toEqual({
         ok: false,
         detail:
-          "The token belongs to @example-owner, but this machine has no gh, so your agents cannot push their work. Install gh from https://cli.github.com, then press Log in with GitHub again.",
+          "The token belongs to @example-owner, but this machine has no gh, so your agents cannot push their work. Press Log in with GitHub again: Eva installs gh first. Or press Install next to gh on the Updates page.",
       });
       expect(
         await runCheck("github", inputs({ githubToken: "good-token", githubBaseUrl, runner: ghLoggedOut("2.39.2") })),
       ).toEqual({
         ok: false,
         detail:
-          "The token belongs to @example-owner, but gh 2.39.2 on this machine is too old for Eva's login. Install gh 2.40 or newer from https://cli.github.com, then press Log in with GitHub again.",
+          "The token belongs to @example-owner, but gh 2.39.2 on this machine is too old for Eva's login. Press Log in with GitHub again: Eva installs a new gh first. Or press Update next to gh on the Updates page.",
       });
     } finally {
       await github.stop(true);
@@ -882,15 +883,94 @@ describe("the GitHub login from the page", () => {
       expect(await instance.startGitHubLogin()).toEqual({ code: "ABCD-1234", url: "https://github.com/login/device" });
       expect(await instance.finishGitHubLogin()).toEqual({ restartNeeded: true });
       expect(loadSecrets(homePaths(home)).githubToken).toBe("gho_page_login");
-      // One login: the agents' gh gets the same token, on stdin (#244).
-      expect(gh.calls.map((call) => call.command.slice(0, 3))).toEqual([["gh", "auth", "login"]]);
-      expect(gh.calls[0]?.stdin).toBe("gho_page_login\n");
+      // One login: the agents' gh gets the same token, on stdin (#244). The version read comes first.
+      expect(gh.calls.map((call) => call.command.slice(0, 3))).toEqual([
+        ["gh", "--version"],
+        ["gh", "auth", "login"],
+      ]);
+      expect(gh.calls[1]?.stdin).toBe("gho_page_login\n");
       expect(await githubStep()).toBe("done");
       // Removing the token logs the agents out too, with no gh process: gh's logout reaches the keyring.
       await instance.saveSecret("githubToken", null);
-      expect(gh.calls).toHaveLength(1);
+      expect(gh.calls).toHaveLength(2);
       expect(readFileSync(join(home, "engines", "gh", "hosts.yml"), "utf8")).not.toContain("github.com");
       expect(await githubStep()).toBe("optional");
+    } finally {
+      instance.stop();
+      await github.stop(true);
+    }
+  });
+
+  // A phone cannot install gh: Log in must fix a missing or old gh on its own.
+  test("a machine with no gh, or an old one, gets the latest gh before the login", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ login: "example-user", id: 7 }),
+    });
+    const release = serveGhRelease();
+    try {
+      for (const version of [null, "2.4.0"]) {
+        const gh = fakeGh(systemProcessRunner);
+        const runner = ghInstallRunner(gh, { version });
+        const instance = new Eva({
+          paths: homePaths(home),
+          config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+          secrets: {},
+          engines: [engine],
+          runner,
+          processEnvironment: gitEnvironment,
+          now: () => new Date(),
+          basePrompt: "Base.",
+          githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+          toolPlaces: { platform: "linux", userHome: home, standalone: false },
+          toolInstall: { arch: "x64", ghReleaseUrl: release.url },
+        });
+        try {
+          await instance.saveSecret("githubToken", "gho_fresh_machine");
+          expect(runner.installs).toBe(1);
+          expect(gh.calls.map((call) => call.command.slice(0, 3))).toContainEqual(["gh", "auth", "login"]);
+          expect(await instance.runCheck("github")).toMatchObject({ ok: true });
+        } finally {
+          instance.stop();
+        }
+      }
+    } finally {
+      await release.stop();
+      await github.stop(true);
+    }
+  });
+
+  test("a failed gh install skips the login, and the log says why", async () => {
+    const github = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => Response.json({ login: "example-user", id: 7 }),
+    });
+    const gh = fakeGh(systemProcessRunner);
+    const warnings: string[] = [];
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: ghInstallRunner(gh, { version: null }),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      githubApiBaseUrl: `http://127.0.0.1:${String(github.port)}`,
+      toolPlaces: { platform: "linux", userHome: home, standalone: false },
+      toolInstall: { arch: "x64", ghReleaseUrl: "http://127.0.0.1:1/latest" },
+      logger: {
+        log: (level, message) => {
+          if (level === "warn") warnings.push(message);
+        },
+      },
+    });
+    try {
+      await instance.saveSecret("githubToken", "gho_offline_machine");
+      expect(gh.calls.filter((call) => call.command[1] === "auth")).toEqual([]);
+      expect(warnings.join("\n")).toContain("Eva could not install gh");
     } finally {
       instance.stop();
       await github.stop(true);

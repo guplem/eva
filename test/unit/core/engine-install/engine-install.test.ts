@@ -17,10 +17,15 @@ import {
   engineInstallSteps,
   engineProgramCandidates,
   findEngineProgram,
+  findGh,
   findUv,
+  ghInstallSteps,
+  ghTooOld,
   installEngine,
+  installGh,
   installUv,
   locateEngineProgram,
+  pathWithOwnGh,
   piInstallFolder,
   uvInstallSteps,
   type EngineInstallInputs,
@@ -367,5 +372,153 @@ describe("uv", () => {
     expect((error as Error).message).toContain(uvInstallSteps("linux"));
     expect(uvInstallSteps("linux")).toContain("curl -LsSf https://astral.sh/uv/install.sh | sh");
     expect(uvInstallSteps("win32")).toContain("irm https://astral.sh/uv/install.ps1 | iex");
+  });
+});
+
+describe("gh", () => {
+  const archive = new TextEncoder().encode("a pretend gh archive");
+  const archiveHash = createHash("sha256").update(archive).digest("hex");
+  let home: string;
+  let server: ReturnType<typeof Bun.serve> | null;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "eva-gh-install-"));
+    server = null;
+  });
+  afterEach(() => {
+    void server?.stop(true);
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  /** The release as GitHub's API describes it, with each file on the same fake server. */
+  function serveRelease(hash = archiveHash): string {
+    void server?.stop(true);
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        const base = `http://127.0.0.1:${String(server?.port)}`;
+        const path = new URL(request.url).pathname;
+        const names = ["gh_2.62.0_linux_amd64.tar.gz", "gh_2.62.0_windows_amd64.zip"];
+        if (path === "/latest")
+          return Response.json({
+            tag_name: "v2.62.0",
+            assets: [...names, "gh_2.62.0_checksums.txt"].map((name) => ({
+              name,
+              browser_download_url: `${base}/${name}`,
+            })),
+          });
+        if (path === "/gh_2.62.0_checksums.txt")
+          return new Response(`${hash}  ${names[0] ?? ""}\n${archiveHash}  ${names[1] ?? ""}\n`);
+        if (names.some((name) => path === `/${name}`)) return new Response(archive);
+        return new Response("not found", { status: 404 });
+      },
+    });
+    return `http://127.0.0.1:${String(server.port)}/latest`;
+  }
+
+  /** `tar` writes gh where the release keeps it; gh answers once it exists, with `version`. */
+  function ghRunner(commands: string[][], inner: string, version = "2.62.0"): ProcessRunner {
+    return fakeRunner(commands, (command) => {
+      if (/tar(\.exe)?$/.test(command[0] ?? "")) {
+        const program = join(command[command.indexOf("-C") + 1] ?? "", inner);
+        mkdirSync(join(program, ".."), { recursive: true });
+        writeFileSync(program, "pretend gh");
+        return {};
+      }
+      if (command[0] === "gh") return "missing";
+      return existsSync(command[0] ?? "") ? { stdout: `gh version ${version} (2024-01-01)\n` } : "missing";
+    });
+  }
+
+  function ghInputs(runner: ProcessRunner, platform: NodeJS.Platform = "linux"): EngineInstallInputs {
+    return { ...inputs(runner, platform), homeFolder: home, environment: {}, ghReleaseUrl: serveRelease() };
+  }
+
+  test("is found on the PATH first, then in Eva's own folder, with its version", async () => {
+    const onPath = fakeRunner([], (command) =>
+      command[0] === "gh" ? { stdout: "gh version 2.62.0 (2024-01-01)\n" } : "missing",
+    );
+    expect(await findGh(inputs(onPath))).toEqual({ program: "gh", version: "2.62.0" });
+    const own = fakeRunner([], (command) =>
+      command[0] === `${posixHome}/.local/lib/gh/bin/gh` ? { stdout: "gh version 2.62.0\n" } : "missing",
+    );
+    expect(await findGh(inputs(own))).toEqual({ program: `${posixHome}/.local/lib/gh/bin/gh`, version: "2.62.0" });
+    expect(await findGh(inputs(fakeRunner([], () => "missing")))).toBeNull();
+  });
+
+  // An old gh on the PATH must not hide the new one that Eva installed.
+  test("a gh new enough wins over an old one on the PATH", async () => {
+    const runner = fakeRunner([], (command) =>
+      command[0] === "gh" ? { stdout: "gh version 2.4.0+dfsg1\n" } : { stdout: "gh version 2.62.0\n" },
+    );
+    expect(await findGh(inputs(runner))).toEqual({ program: `${posixHome}/.local/lib/gh/bin/gh`, version: "2.62.0" });
+    const onlyOld = fakeRunner([], (command) => (command[0] === "gh" ? { stdout: "gh version 2.4.0\n" } : "missing"));
+    expect(await findGh(inputs(onlyOld))).toEqual({ program: "gh", version: "2.4.0" });
+  });
+
+  test("a version before 2.40 is too old for Eva's login", () => {
+    expect(ghTooOld("2.39.2")).toBe(true);
+    expect(ghTooOld("2.4.0")).toBe(true);
+    expect(ghTooOld("1.99.0")).toBe(true);
+    expect(ghTooOld("2.40.0")).toBe(false);
+    expect(ghTooOld("2.62.0")).toBe(false);
+    expect(ghTooOld("3.0.0")).toBe(false);
+    // Eva cannot tell, so she does not blame gh.
+    expect(ghTooOld("installed")).toBe(false);
+  });
+
+  test("downloads the release, checks it, and puts it in ~/.local/lib/gh with a link", async () => {
+    const commands: string[][] = [];
+    const program = await installGh(ghInputs(ghRunner(commands, "gh_2.62.0_linux_amd64/bin/gh")));
+    expect(program).toBe(`${home}/.local/lib/gh/bin/gh`);
+    expect(readFileSync(program, "utf8")).toBe("pretend gh");
+    expect(commands[0]?.slice(0, 2)).toEqual(["tar", "-xzf"]);
+    if (process.platform !== "win32") expect(lstatSync(join(home, ".local", "bin", "gh")).isSymbolicLink()).toBe(true);
+    expect(readdirSync(join(home, ".local", "lib"))).toEqual(["gh"]);
+  });
+
+  test("an archive with bin/gh at its top works too", async () => {
+    const program = await installGh(ghInputs(ghRunner([], "bin/gh")));
+    expect(readFileSync(program, "utf8")).toBe("pretend gh");
+  });
+
+  test("a download that does not match its checksum installs nothing", async () => {
+    const settings = { ...ghInputs(ghRunner([], "bin/gh")), ghReleaseUrl: serveRelease("0".repeat(64)) };
+    const error = await caught(installGh(settings));
+    expect(isEvaError(error, "engine_install_failed")).toBe(true);
+    expect(String(error)).toContain("checksum");
+    expect(String(error)).toContain(ghInstallSteps());
+    expect(existsSync(join(home, ".local", "lib", "gh"))).toBe(false);
+  });
+
+  test("an archive without gh, a system with no build, or a failed download gives the steps", async () => {
+    expect(String(await caught(installGh(ghInputs(ghRunner([], "README.md")))))).toContain("holds no gh");
+    const unknown = await caught(installGh({ ...ghInputs(ghRunner([], "bin/gh")), arch: "ia32" }));
+    expect(String(unknown)).toContain("no build for linux on ia32");
+    const offline = await caught(
+      installGh({ ...ghInputs(ghRunner([], "bin/gh")), ghReleaseUrl: `${serveRelease()}/missing` }),
+    );
+    expect(String(offline)).toContain("The download failed (404)");
+    expect(String(offline)).toContain("https://cli.github.com");
+  });
+
+  test("an install that leaves a gh too old to find fails with the steps", async () => {
+    const error = await caught(installGh(ghInputs(ghRunner([], "bin/gh", "2.30.0"))));
+    expect(String(error)).toContain("cannot find a gh 2.40 or newer");
+  });
+});
+
+describe("pathWithOwnGh", () => {
+  test("puts Eva's gh folder first, once", () => {
+    const path = pathWithOwnGh({ PATH: "/usr/bin:/bin" }, "linux", posixHome);
+    expect(path).toBe(`${posixHome}/.local/lib/gh/bin:/usr/bin:/bin`);
+    expect(pathWithOwnGh({ PATH: path }, "linux", posixHome)).toBe(path);
+    expect(pathWithOwnGh({}, "linux", posixHome)).toBe(`${posixHome}/.local/lib/gh/bin`);
+  });
+
+  test("on Windows, reads Path and puts the gh folder of LOCALAPPDATA first", () => {
+    const environment = { Path: "C:\\Windows\\System32", LOCALAPPDATA: "D:\\Local" };
+    expect(pathWithOwnGh(environment, "win32", windowsHome)).toBe("D:\\Local\\Programs\\gh\\bin;C:\\Windows\\System32");
   });
 });

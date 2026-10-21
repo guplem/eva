@@ -6,6 +6,7 @@ import type { EngineName, EnginePort } from "../shared/engine-port.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
 import { checkGoogle, type GoogleCheckInputs } from "./google/google-check.ts";
 import { engineLabels, ModelCalls } from "./model-calls/model-calls.ts";
+import { ghTooOld } from "./engine-install/engine-install.ts";
 import { firstOutputLine, shortVersion } from "./tool-versions.ts";
 
 export type CheckName = "vault" | EngineName | "github" | "telegram" | "google";
@@ -128,38 +129,24 @@ async function checkGithub(inputs: CheckInputs): Promise<CheckResult> {
   }
   const gh = await runProgram(ghStatus, process.cwd(), inputs.environment, inputs, "");
   if (gh.ok) return { ok: true, detail: `The token belongs to ${account}. Your agents use the same login.` };
-  // Eva logs gh in at the login and only writes a failure to the log, so a new login cannot fix a
-  // missing or old gh. The check names it, or the person presses Log in again and again.
+  // The login installs a missing or old gh first, so Log in fixes each case. The check names the
+  // case, so a failed install sends the person to the Updates page, where its error shows.
   const line = await firstOutputLine(["gh", "--version"], { runner: inputs.runner, environment: inputs.environment });
   if (line === null)
     return {
       ok: false,
-      detail: `The token belongs to ${account}, but this machine has no gh, so your agents cannot push their work. Install gh from https://cli.github.com, then press Log in with GitHub again.`,
+      detail: `The token belongs to ${account}, but this machine has no gh, so your agents cannot push their work. Press Log in with GitHub again: Eva installs gh first. Or press Install next to gh on the Updates page.`,
     };
   const version = shortVersion(line);
-  if (olderThan(version, minimumGhVersion))
+  if (ghTooOld(version))
     return {
       ok: false,
-      detail: `The token belongs to ${account}, but gh ${version} on this machine is too old for Eva's login. Install gh ${minimumGhVersion.join(".")} or newer from https://cli.github.com, then press Log in with GitHub again.`,
+      detail: `The token belongs to ${account}, but gh ${version} on this machine is too old for Eva's login. Press Log in with GitHub again: Eva installs a new gh first. Or press Update next to gh on the Updates page.`,
     };
   return {
     ok: false,
     detail: `The token belongs to ${account}, but your agents cannot push their work yet. Press Log in with GitHub again.`,
   };
-}
-
-/** The first gh with `auth login --insecure-storage`, which Eva's login uses. */
-const minimumGhVersion: readonly number[] = [2, 40];
-
-/** False when the version has no number: Eva cannot tell, so the login gets the blame as before. */
-function olderThan(version: string, minimum: readonly number[]): boolean {
-  const parts = version.split(".").map((part) => Number.parseInt(part, 10));
-  if (parts.some(Number.isNaN)) return false;
-  for (const [index, wanted] of minimum.entries()) {
-    const part = parts[index] ?? 0;
-    if (part !== wanted) return part < wanted;
-  }
-  return false;
 }
 
 async function checkTelegram(inputs: CheckInputs): Promise<CheckResult> {

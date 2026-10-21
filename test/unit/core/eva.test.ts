@@ -8,6 +8,7 @@ import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/sett
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
+import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -926,6 +927,40 @@ describe("Eva", () => {
     expect(versions.tools.find((tool) => tool.program === "claude")?.version).toBe("2.1.300");
     expect(versions.tools.find((tool) => tool.program === "git")?.version).toBeNull();
     expect(versions.tools.some((tool) => tool.program === "bun")).toBe(false);
+  });
+
+  test("the Updates page installs a tool, one at a time, and a failure gives the steps", async () => {
+    const release = serveGhRelease();
+    const runner = ghInstallRunner(systemProcessRunner, { version: null });
+    const options = (ghReleaseUrl: string): EvaOptions => ({
+      paths: homePaths(home),
+      config: config(),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      toolPlaces: { platform: "linux", userHome: home, standalone: false },
+      toolInstall: { arch: "x64", ghReleaseUrl },
+    });
+    try {
+      const instance = new Eva(options(release.url));
+      eva = instance;
+      const [first, second] = await Promise.all([instance.installTool("gh"), instance.installTool("gh")]);
+      expect(first).toEqual({ ok: true, message: "Installed gh." });
+      expect(second).toEqual({ ok: false, message: "Eva is installing another tool. Try again when it is done." });
+      expect(runner.installs).toBe(1);
+      instance.stop();
+      const offline = new Eva(options("http://127.0.0.1:1/latest"));
+      eva = offline;
+      const failed = await offline.installTool("gh");
+      expect(failed.ok).toBe(false);
+      expect(failed.message).toContain("Eva could not install gh");
+      expect(failed.message).toContain("https://cli.github.com");
+    } finally {
+      await release.stop();
+    }
   });
 
   test("an engine update pressed during Eva's own install runs before her restart", async () => {

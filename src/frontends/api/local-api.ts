@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { checkNames } from "../../core/checks.ts";
-import type { Eva } from "../../core/eva.ts";
+import { installableTools, type Eva } from "../../core/eva.ts";
 import { pageSecretNames } from "../../core/settings/live-settings.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type {
@@ -82,6 +82,7 @@ const updateSchema = z.object({
     .regex(/^\d+\.\d+\.\d+$/)
     .optional(),
 });
+const toolInstallSchema = z.object({ program: z.enum(installableTools) });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
@@ -194,9 +195,10 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
       // a vault sync or pick waits for git's network steps, the Google login waits for Google, the
       // GitHub login waits until the person confirms the code, and an update waits for the download
-      // of the new version. Each ends at its own timeout.
+      // of the new version, as a tool install waits for its download. Each ends at its own timeout.
       if (
         url.pathname === "/api/update" ||
+        url.pathname === "/api/tools/install" ||
         url.pathname.startsWith("/api/checks/") ||
         url.pathname.startsWith("/api/vault/") ||
         url.pathname.startsWith("/api/google/") ||
@@ -589,6 +591,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
   }
+  if (method === "POST" && url.pathname === "/api/tools/install")
+    return json(await eva.installTool(toolInstallSchema.parse(await request.json()).program));
   if (method === "GET" && url.pathname === "/api/logs") {
     const query = logsQuerySchema.parse({
       level: url.searchParams.get("level") ?? undefined,

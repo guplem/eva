@@ -4,7 +4,7 @@
  */
 import type { EngineName } from "../shared/engine-port.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
-import { engineProgramCandidates, runnableCommand } from "./engine-install/engine-install.ts";
+import { engineProgramCandidates, ghTooOld, runnableCommand } from "./engine-install/engine-install.ts";
 
 export interface ToolCheck {
   readonly program: string;
@@ -17,6 +17,10 @@ export interface ToolCheck {
   readonly installOnLinux?: string;
   /** How to update the tool (lesson 94). */
   readonly update: string;
+  /** Eva can install and update the tool herself, from setup and from the Updates page. */
+  readonly evaInstalls?: true;
+  /** True for a version that Eva cannot use. */
+  readonly tooOld?: (version: string) => boolean;
 }
 
 export const tools: readonly ToolCheck[] = [
@@ -45,6 +49,7 @@ export const tools: readonly ToolCheck[] = [
     install: "https://code.claude.com, or run `eva setup`",
     installOnLinux: "eva setup",
     update: "claude update",
+    evaInstalls: true,
   },
   {
     program: "pi",
@@ -55,15 +60,19 @@ export const tools: readonly ToolCheck[] = [
     install: "https://pi.dev, or run `eva setup`",
     installOnLinux: "eva setup",
     // Setup installs only a missing pi, so a new copy needs the old one gone.
-    update: "delete ~/.local/lib/pi (on Windows, %LOCALAPPDATA%\\Programs\\pi), then run `eva setup`",
+    update: "the Update button on the Updates page",
+    evaInstalls: true,
   },
   {
     program: "gh",
     versionArguments: ["--version"],
-    feature: "pull request numbers",
+    feature: "your agents' pushes and pull requests",
     required: false,
-    install: "https://cli.github.com",
-    update: "with the installer or package manager that installed gh",
+    install: "https://cli.github.com, or run `eva setup`",
+    installOnLinux: "eva setup",
+    update: "the Update button on the Updates page",
+    evaInstalls: true,
+    tooOld: ghTooOld,
   },
   {
     program: "uv",
@@ -73,6 +82,7 @@ export const tools: readonly ToolCheck[] = [
     install: "https://docs.astral.sh/uv/, or run `eva setup`",
     installOnLinux: "eva setup",
     update: "uv self update",
+    evaInstalls: true,
   },
   {
     program: "ffmpeg",
@@ -126,6 +136,10 @@ export interface ToolVersion {
   readonly feature: string;
   /** The version number, "installed" when the tool prints none, or null when the tool is missing. */
   readonly version: string | null;
+  /** Eva can install or update it from the Updates page. */
+  readonly installable: boolean;
+  /** Installed, but too old for Eva. */
+  readonly tooOld: boolean;
 }
 
 /** The tools that this Eva uses: the single executable carries its own Bun. */
@@ -138,7 +152,14 @@ export function readToolVersions(places: ToolPlaces): Promise<ToolVersion[]> {
   return Promise.all(
     usedTools(places.standalone).map(async (tool) => {
       const line = await readToolLine(tool, places);
-      return { program: tool.program, feature: tool.feature, version: line === null ? null : shortVersion(line) };
+      const version = line === null ? null : shortVersion(line);
+      return {
+        program: tool.program,
+        feature: tool.feature,
+        version,
+        installable: tool.evaInstalls === true,
+        tooOld: version !== null && (tool.tooOld?.(version) ?? false),
+      };
     }),
   );
 }

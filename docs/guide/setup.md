@@ -44,7 +44,7 @@ Setup first asks for a name for this Eva. Enter keeps the name of your computer 
 
 In the terminal, a line that starts with `>` is a question: type the answer, or press Enter to keep the value in `[brackets]` or to skip it. `[ok]` marks what is done. `>> Your turn:` means that setup waits for you to do something in a browser, and goes on by itself when you are done.
 
-1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), and uv (for the Google tools).
+1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
 2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
 3. **Start Eva.** Press Enter. Eva starts now, and each time the computer starts.
 4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in. Then setup asks where to go on:
@@ -126,7 +126,7 @@ Some features need one more program on Eva's computer. For example, voice notes 
 
 ## More than one Eva on a computer
 
-Each Eva has a name, such as `ana` or `ana-1`, and her own notebook, bot, settings, logins and port. Two people can share a computer, each with their own Eva. All Evas on a computer share the same programs: git, Claude Code, pi, uv and Tailscale.
+Each Eva has a name, such as `ana` or `ana-1`, and her own notebook, bot, settings, logins and port. Two people can share a computer, each with their own Eva. All Evas on a computer share the same programs: git, Claude Code, pi, uv, gh and Tailscale.
 
 To make another Eva, run `eva setup` (the computer has Eva already, so skip the install command). Setup lists the Evas on this computer. Type a new name, and answer setup as for the first Eva. Setup suggests a free name, such as `ana-1` when `ana` exists.
 
@@ -169,7 +169,7 @@ Then run [the install command](#1-run-the-install-command) over SSH.
 3. Add that folder to your `PATH`. On Linux, run `export PATH="$HOME/.local/bin:$PATH"`. On Windows, add it in the user environment variables, and open PowerShell again.
 4. Run `eva setup` in that terminal. The service keeps the `PATH` of setup, and finds uv and the harnesses through it.
 
-**From a script.** Give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup still installs Claude Code, pi and uv; add `EVA_INSTALL_ENGINES="no"` to skip them. With pi, leave out `EVA_CLAUDE_TOKEN`, and add `EVA_ENGINE="pi"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and never waits for a device code.
+**From a script.** Give each answer in an `EVA_*` variable, and add `--non-interactive`. `src/frontends/cli/setup.ts` lists every name. Setup still installs Claude Code, pi, uv and gh; add `EVA_INSTALL_ENGINES="no"` to skip them. With pi, leave out `EVA_CLAUDE_TOKEN`, and add `EVA_ENGINE="pi"`. A script starts Eva only with `EVA_START_SERVICE="yes"`, and never waits for a device code.
 
 ```bash
 EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault" EVA_GITHUB_TOKEN="..." EVA_CLAUDE_TOKEN="..." EVA_TELEGRAM_BOT_TOKEN="..." eva setup --non-interactive

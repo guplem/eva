@@ -5,8 +5,13 @@
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
-import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../shared/environment.ts";
-import { EvaError } from "../shared/errors.ts";
+import {
+  baseEnvironmentAllowlist,
+  buildChildEnvironment,
+  proxyEnvironmentAllowlist,
+  type EnvironmentMap,
+} from "../shared/environment.ts";
+import { EvaError, isEvaError } from "../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../shared/files.ts";
 import { readRecentLogEntries, type LogEntry, type Logger, type RecentLogQuery } from "../shared/logger.ts";
 import type { ProcessRunner } from "../shared/process-runner.ts";
@@ -105,6 +110,14 @@ import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
+import {
+  findGh,
+  ghTooOld,
+  installEngine,
+  installGh,
+  installUv,
+  type EngineInstallInputs,
+} from "./engine-install/engine-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/release-verification.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
@@ -149,6 +162,19 @@ export interface EvaOptions {
   readonly startTerminal?: TerminalProcessStarter;
   /** Where the tools live, for their versions. Default: this machine, not the single executable. */
   readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
+  /** The processor and the release downloads of the tool installs; a test points them at a fake. */
+  readonly toolInstall?: Partial<Pick<EngineInstallInputs, "arch" | "piReleasesBaseUrl" | "ghReleaseUrl">>;
+}
+
+/** The tools that Eva installs and updates from the Updates page, by their program name. */
+export type InstallableTool = "claude" | "pi" | "uv" | "gh";
+
+export const installableTools: readonly InstallableTool[] = ["claude", "pi", "uv", "gh"];
+
+/** What an install from the Updates page did, in words for the person. */
+export interface ToolInstallResult {
+  readonly ok: boolean;
+  readonly message: string;
 }
 
 /** Eva's version and each tool's, for the status and the Updates page. */
@@ -233,6 +259,7 @@ export class Eva {
   private readonly githubLogin: GitHubBrowserLogin;
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
+  private toolInstallRuns: boolean;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -336,6 +363,7 @@ export class Eva {
       environment: () => engineToolEnvironment(this.facts),
     });
     this.githubCliChanges = Promise.resolve();
+    this.toolInstallRuns = false;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -761,6 +789,53 @@ export class Eva {
     };
   }
 
+  /**
+   * Installs the tool, or its latest version over the one there. Never while work runs: an
+   * agent may run the tool, and the install replaces it. A failure gives the steps by hand.
+   */
+  async installTool(program: InstallableTool): Promise<ToolInstallResult> {
+    if (this.toolInstallRuns)
+      return { ok: false, message: "Eva is installing another tool. Try again when it is done." };
+    if (this.workRuns())
+      return {
+        ok: false,
+        message: `Eva installs ${program} when no chat runs a turn. Try again when your chats are done.`,
+      };
+    this.toolInstallRuns = true;
+    try {
+      const inputs = this.toolInstallInputs();
+      await (program === "claude"
+        ? installEngine("claude-code", { ...inputs, configured: this.options.claudeExecutable ?? null })
+        : program === "pi"
+          ? installEngine("pi", { ...inputs, configured: this.options.config.engines.pi.executable })
+          : program === "uv"
+            ? installUv(inputs)
+            : installGh(inputs));
+      const restart = program === "claude" || program === "pi" ? " Press Restart Eva so that chats use it." : "";
+      return { ok: true, message: `Installed ${program}.${restart}` };
+    } catch (error) {
+      if (!isEvaError(error, "engine_install_failed")) throw error;
+      return { ok: false, message: this.redact(error.message) };
+    } finally {
+      this.toolInstallRuns = false;
+    }
+  }
+
+  /** The installers download through the person's proxy, as setup's do. */
+  private toolInstallInputs(): EngineInstallInputs {
+    return {
+      runner: this.options.runner,
+      environment: buildChildEnvironment(this.options.processEnvironment, [
+        ...baseEnvironmentAllowlist,
+        ...proxyEnvironmentAllowlist,
+      ]),
+      platform: this.options.toolPlaces?.platform ?? process.platform,
+      arch: process.arch,
+      homeFolder: this.options.toolPlaces?.userHome ?? homedir(),
+      ...this.options.toolInstall,
+    };
+  }
+
   /** Removes secrets from a text that leaves the core, such as an error message (lesson 95). */
   redact(text: string): string {
     return this.redactor.redact(text);
@@ -1019,7 +1094,10 @@ export class Eva {
         runner: this.options.runner,
         environment: this.options.processEnvironment,
       };
-      const problem = token === undefined ? logOutGitHubCli(gh.ghFolder) : await logInGitHubCli({ ...gh, token });
+      const problem =
+        token === undefined
+          ? logOutGitHubCli(gh.ghFolder)
+          : ((await this.ghReadyForLogin()) ?? (await logInGitHubCli({ ...gh, token })));
       if (problem !== null)
         this.options.logger?.log(
           "warn",
@@ -1030,6 +1108,22 @@ export class Eva {
     const next = this.githubCliChanges.then(run, run);
     this.githubCliChanges = next.catch(() => undefined);
     return next;
+  }
+
+  /**
+   * A machine with no gh, or one too old for the login, gets the latest one first. So the person
+   * fixes a missing gh from the phone with one press of Log in. Returns why it failed, or null.
+   */
+  private async ghReadyForLogin(): Promise<string | null> {
+    const inputs = this.toolInstallInputs();
+    const found = await findGh(inputs);
+    if (found !== null && !ghTooOld(found.version)) return null;
+    try {
+      await installGh(inputs);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
   }
 
   /** The account gives the commit name and email from the next start on. */

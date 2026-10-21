@@ -1,11 +1,20 @@
 /**
- * Finds and installs the program of an engine, and uv for the Google tools, for `eva setup`. No
- * install needs an administrator. Claude Code uses its official installer. pi uses the standalone build of its
- * GitHub release, which needs no Node.js or npm. The Eva executable holds neither of them. When
- * Eva cannot install, the error gives the exact steps instead.
+ * Finds and installs the program of an engine, uv for the Google tools, and gh for the agents'
+ * pushes. No install needs an administrator. Claude Code and uv use their official installers.
+ * pi and gh use the build of their GitHub release, checked against its checksums. The Eva
+ * executable holds none of them. When Eva cannot install, the error gives the exact steps instead.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { posix, win32 } from "node:path";
 import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
@@ -21,6 +30,8 @@ export interface EngineInstallInputs {
   readonly configured?: string | null;
   /** The pi release downloads; a test points it at a fake server. */
   readonly piReleasesBaseUrl?: string;
+  /** GitHub's API answer for the latest gh release; a test points it at a fake server. */
+  readonly ghReleaseUrl?: string;
 }
 
 /** The name that a person knows each engine's program by. */
@@ -176,6 +187,168 @@ export function engineInstallSteps(engine: EngineName, platform: NodeJS.Platform
     : `Run \`${installers[engine].posix}\`. See ${pages[engine]}.`;
 }
 
+/** The first gh with `auth login --insecure-storage`, which Eva's GitHub login uses (#244). */
+export const minimumGhVersion = "2.40";
+const defaultGhReleaseUrl = "https://api.github.com/repos/cli/cli/releases/latest";
+/** The release names each system and processor in its own words. */
+const ghSystems: Readonly<Partial<Record<NodeJS.Platform, string>>> = {
+  linux: "linux",
+  darwin: "macOS",
+  win32: "windows",
+};
+const ghProcessors: Readonly<Record<string, string>> = { x64: "amd64", arm64: "arm64" };
+
+/** The folder of Eva's own gh install. Its program is in `bin/`. */
+export function ghInstallFolder(
+  platform: NodeJS.Platform,
+  homeFolder: string,
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
+  if (platform !== "win32") return posix.join(homeFolder, ".local", "lib", "gh");
+  return win32.join(environment["LOCALAPPDATA"] ?? win32.join(homeFolder, "AppData", "Local"), "Programs", "gh");
+}
+
+/** The folder that holds Eva's own gh program. */
+export function ghProgramFolder(
+  platform: NodeJS.Platform,
+  homeFolder: string,
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
+  return (platform === "win32" ? win32 : posix).join(ghInstallFolder(platform, homeFolder, environment), "bin");
+}
+
+/**
+ * The PATH with Eva's own gh folder first, so Eva and her agents find the gh that she installs.
+ * A service keeps the PATH of its install, which may lack that folder; on Windows it always does.
+ * The folder may not exist yet: setup or the page can install gh while Eva runs.
+ */
+export function pathWithOwnGh(
+  environment: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+  homeFolder: string,
+): string {
+  const separator = platform === "win32" ? ";" : ":";
+  const path = environment["PATH"] ?? environment["Path"] ?? "";
+  const folder = ghProgramFolder(platform, homeFolder, environment);
+  // A new copy after an update gets this PATH already.
+  if (path.split(separator).includes(folder)) return path;
+  return path === "" ? folder : `${folder}${separator}${path}`;
+}
+
+/** False when the version has no number: Eva cannot tell, so she does not blame gh. */
+export function ghTooOld(version: string): boolean {
+  const parts = version.split(".").map((part) => Number.parseInt(part, 10));
+  if (parts.some(Number.isNaN)) return false;
+  for (const [index, wanted] of minimumGhVersion.split(".").map(Number).entries()) {
+    const part = parts[index] ?? 0;
+    if (part !== wanted) return part < wanted;
+  }
+  return false;
+}
+
+export interface FoundGh {
+  readonly program: string;
+  readonly version: string;
+}
+
+/**
+ * gh on the PATH, then Eva's own. A gh new enough wins: an old one from a package manager
+ * must not hide the one that Eva installed. With only old ones, the first one answers.
+ */
+export async function findGh(inputs: EngineInstallInputs): Promise<FoundGh | null> {
+  const own = (inputs.platform === "win32" ? win32 : posix).join(
+    ghProgramFolder(inputs.platform, inputs.homeFolder, inputs.environment),
+    inputs.platform === "win32" ? "gh.exe" : "gh",
+  );
+  let oldest: FoundGh | null = null;
+  for (const program of ["gh", own]) {
+    const line = await firstLine([program, "--version"], inputs);
+    if (line === null) continue;
+    const version = /\d+(?:\.\d+)+/.exec(line)?.[0] ?? "installed";
+    if (!ghTooOld(version)) return { program, version };
+    oldest ??= { program, version };
+  }
+  return oldest;
+}
+
+/** What a person does to install gh by hand. */
+export function ghInstallSteps(): string {
+  return `Install gh ${minimumGhVersion} or newer from https://cli.github.com.`;
+}
+
+/** Installs the latest gh release and returns it. Throws EvaError `engine_install_failed` with the steps. */
+export async function installGh(inputs: EngineInstallInputs): Promise<string> {
+  try {
+    await installGhRelease(inputs);
+  } catch (error) {
+    throw new EvaError("engine_install_failed", `Eva could not install gh: ${messageOf(error)} ${ghInstallSteps()}`, {
+      cause: error,
+    });
+  }
+  const found = await findGh(inputs);
+  if (found === null || ghTooOld(found.version))
+    throw failure(
+      `The gh install finished, but Eva cannot find a gh ${minimumGhVersion} or newer. ${ghInstallSteps()}`,
+    );
+  return found.program;
+}
+
+async function installGhRelease(inputs: EngineInstallInputs): Promise<void> {
+  const system = ghSystems[inputs.platform];
+  const processor = ghProcessors[inputs.arch];
+  if (system === undefined || processor === undefined)
+    throw new Error(`gh has no build for ${inputs.platform} on ${inputs.arch}.`);
+  const release = (await (await download(inputs.ghReleaseUrl ?? defaultGhReleaseUrl)).json()) as {
+    tag_name?: unknown;
+    assets?: { name?: unknown; browser_download_url?: unknown }[];
+  };
+  const version = typeof release.tag_name === "string" ? release.tag_name.replace(/^v/, "") : "";
+  const archive = `gh_${version}_${system}_${processor}.${inputs.platform === "linux" ? "tar.gz" : "zip"}`;
+  const link = (name: string): string => {
+    const url = release.assets?.find((asset) => asset.name === name)?.browser_download_url;
+    if (typeof url !== "string") throw new Error(`The gh release lists no ${name}.`);
+    return url;
+  };
+  const sums = await (await download(link(`gh_${version}_checksums.txt`))).text();
+  const expected = sums
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .find((parts) => parts[1] === archive)?.[0];
+  if (expected === undefined) throw new Error(`The gh release lists no checksum for ${archive}.`);
+  const bytes = new Uint8Array(await (await download(link(archive))).arrayBuffer());
+  if (createHash("sha256").update(bytes).digest("hex") !== expected.toLowerCase())
+    throw new Error("The gh download does not match its checksum, so Eva installed nothing.");
+
+  const path = inputs.platform === "win32" ? win32 : posix;
+  const folder = ghInstallFolder(inputs.platform, inputs.homeFolder, inputs.environment);
+  const programName = inputs.platform === "win32" ? "gh.exe" : "gh";
+  mkdirSync(path.dirname(folder), { recursive: true });
+  const staging = mkdtempSync(path.join(path.dirname(folder), "gh-download-"));
+  try {
+    const archivePath = path.join(staging, archive);
+    const extracted = path.join(staging, "gh");
+    writeFileSync(archivePath, bytes);
+    mkdirSync(extracted);
+    await run(
+      inputs.platform === "win32"
+        ? [windowsTar(inputs.environment), "-xf", archivePath, "-C", extracted]
+        : // The tar of macOS reads a zip too.
+          ["tar", inputs.platform === "linux" ? "-xzf" : "-xf", archivePath, "-C", extracted],
+      inputs,
+      commandTimeoutMs,
+    );
+    // The Windows zip holds bin/ at its top; the others hold it in a folder named after the archive.
+    const top = [extracted, ...readdirSync(extracted).map((name) => path.join(extracted, name))].find((candidate) =>
+      existsSync(path.join(candidate, "bin", programName)),
+    );
+    if (top === undefined) throw new Error(`The gh archive holds no ${programName}.`);
+    replaceFolder(folder, top, path.join(staging, "old"));
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+  if (inputs.platform !== "win32") linkForTerminal(posix.join(folder, "bin", "gh"), inputs.homeFolder, "gh");
+}
+
 /** The command as a spawn can start it: a .cmd file on Windows runs only through cmd. */
 export function runnableCommand(command: readonly string[], platform: NodeJS.Platform): readonly string[] {
   const program = command[0] ?? "";
@@ -233,12 +406,12 @@ async function installPi(inputs: EngineInstallInputs): Promise<void> {
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
-  if (inputs.platform !== "win32") linkForTerminal(posix.join(folder, "pi"), inputs.homeFolder);
+  if (inputs.platform !== "win32") linkForTerminal(posix.join(folder, "pi"), inputs.homeFolder, "pi");
 }
 
-/** A link in ~/.local/bin lets the person's own terminal find pi. The build finds its files through the link. */
-function linkForTerminal(program: string, homeFolder: string): void {
-  const link = posix.join(homeFolder, ".local", "bin", "pi");
+/** A link in ~/.local/bin lets the person's own terminal find the program. The build finds its files through the link. */
+function linkForTerminal(program: string, homeFolder: string, name: string): void {
+  const link = posix.join(homeFolder, ".local", "bin", name);
   if (existsSync(link)) return;
   try {
     // existsSync follows a link, so a link whose target is gone reads as missing: replace it.
@@ -280,6 +453,21 @@ async function download(url: string): Promise<Response> {
   }
   if (!response.ok) throw new Error(`The download failed (${String(response.status)}).`);
   return response;
+}
+
+/** The first line that the command prints, or null when it fails or does not exist. */
+async function firstLine(command: readonly string[], inputs: EngineInstallInputs): Promise<string | null> {
+  try {
+    const result = await inputs.runner.run(runnableCommand(command, inputs.platform), {
+      cwd: inputs.homeFolder,
+      environment: inputs.environment,
+      timeoutMs: versionTimeoutMs,
+    });
+    if (result.exitCode !== 0) return null;
+    return (result.stdout.trim() || result.stderr.trim()).split(/\r?\n/)[0] ?? "";
+  } catch {
+    return null;
+  }
 }
 
 async function answers(command: readonly string[], inputs: EngineInstallInputs): Promise<boolean> {

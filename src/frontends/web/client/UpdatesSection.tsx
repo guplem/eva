@@ -60,11 +60,15 @@ function VersionsCard(): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
   /** The newest published version of each tool, by program. A tool that is missing here is unknown. */
   const [latest, setLatest] = useState<ReadonlyMap<string, string>>(new Map());
+  /** False until the latest versions answer or fail, so no Update button flickers on and off. */
+  const [latestRead, setLatestRead] = useState(false);
   /** The tool that this page installs now. */
   const [installing, setInstalling] = useState<InstallableTool | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   /** Null when no claude program was found when Eva started. */
   const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
+  /** True while the request that starts `claude update` runs, so a second tap sends nothing. */
+  const [engineStarting, setEngineStarting] = useState(false);
   /** Counts the failed engine status reads, so a failed read asks again. */
   const [engineReadFailures, setEngineReadFailures] = useState(0);
 
@@ -80,9 +84,12 @@ function VersionsCard(): ReactElement {
     api.latestVersions().then(
       (found) => {
         setLatest(new Map(found.flatMap((tool) => (tool.latest === null ? [] : [[tool.program, tool.latest]]))));
+        setLatestRead(true);
       },
       // Without the latest versions, each tool keeps its Update button.
-      () => undefined,
+      () => {
+        setLatestRead(true);
+      },
     );
   }, []);
 
@@ -95,7 +102,7 @@ function VersionsCard(): ReactElement {
   // The engine update can wait for a long turn, then download for minutes. The page asks
   // until it ends, also after a reload or a failed read on a weak phone connection.
   const engineBusy = engineUpdate === "loading" || (engineUpdate !== null && engineUpdate.phase !== "idle");
-  /** `claude update` runs or waits, so no other tool installs: Eva would refuse it. */
+  /** `claude update` runs or waits. The page holds the other installs until it ends, so two installs never overlap. */
   const engineRuns = engineUpdate !== "loading" && engineUpdate !== null && engineUpdate.phase !== "idle";
   useEffect(() => {
     if (!engineBusy) return;
@@ -133,10 +140,13 @@ function VersionsCard(): ReactElement {
   /** Starts `claude update`; the effect above asks for its status until it ends. */
   const updateEngine = async (): Promise<void> => {
     setNote(null);
+    setEngineStarting(true);
     try {
       setEngineUpdate(await api.updateEngine());
     } catch (error) {
       setNote({ ok: false, text: errorText(error) });
+    } finally {
+      setEngineStarting(false);
     }
   };
 
@@ -158,7 +168,8 @@ function VersionsCard(): ReactElement {
             const newest = latest.get(tool.program);
             const action = toolAction(tool, newest);
             const viaEngine = action === "Update" && usesEngineUpdate(tool.program);
-            const working = viaEngine ? engineRuns : installing === tool.program;
+            const working = viaEngine ? engineRuns || engineStarting : installing === tool.program;
+            const waitsForLatest = action === "Update" && !tool.tooOld && !latestRead;
             return (
               <Fragment key={tool.program}>
                 <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
@@ -167,9 +178,11 @@ function VersionsCard(): ReactElement {
                   {action !== null && (
                     <button
                       className={
-                        action === "Install" || tool.tooOld || newest !== undefined ? "primary small" : "ghost small"
+                        action === "Install" || tool.tooOld || freshness(tool, newest) === "old"
+                          ? "primary small"
+                          : "ghost small"
                       }
-                      disabled={installing !== null || engineRuns}
+                      disabled={installing !== null || engineRuns || engineStarting || waitsForLatest}
                       onClick={() => void (viaEngine ? updateEngine() : install(tool.program as InstallableTool))}
                     >
                       {working ? (action === "Update" ? "Updating…" : "Installing…") : action}
@@ -201,12 +214,20 @@ function VersionsCard(): ReactElement {
   );
 }
 
+/**
+ * Whether an installed tool is older than the newest version. A tool that prints no version
+ * number, or a newest version that Eva could not read, gives "unknown".
+ */
+function freshness(tool: EvaVersions["tools"][number], newest: string | undefined): "old" | "latest" | "unknown" {
+  if (tool.version === null || newest === undefined || !/\d/.test(tool.version)) return "unknown";
+  return isNewerVersion(newest, tool.version) ? "old" : "latest";
+}
+
 /** The version, and the newest one when it is newer. */
 function versionText(tool: EvaVersions["tools"][number], newest: string | undefined): string {
   if (tool.version === null) return "Not installed";
   if (tool.tooOld) return `${tool.version}, too old`;
-  if (newest !== undefined && isNewerVersion(newest, tool.version)) return `${tool.version} (${newest} available)`;
-  return tool.version;
+  return freshness(tool, newest) === "old" ? `${tool.version} (${newest ?? ""} available)` : tool.version;
 }
 
 /**
@@ -216,8 +237,7 @@ function versionText(tool: EvaVersions["tools"][number], newest: string | undefi
 function toolAction(tool: EvaVersions["tools"][number], newest: string | undefined): "Install" | "Update" | null {
   if (!tool.installable) return null;
   if (tool.version === null) return "Install";
-  if (!tool.tooOld && newest !== undefined && !isNewerVersion(newest, tool.version)) return null;
-  return "Update";
+  return !tool.tooOld && freshness(tool, newest) === "latest" ? null : "Update";
 }
 
 function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): ReactElement {

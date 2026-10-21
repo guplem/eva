@@ -2633,8 +2633,13 @@ async function routeToolVersions(page: Page, claude: () => string): Promise<void
 }
 
 test("Settings: the Versions card shows Update only for a tool with a newer version", async ({ page }) => {
+  let answer = (): void => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
   await routeToolVersions(page, () => "2.1.300");
   await page.route("**/api/versions/latest", async (route) => {
+    await answered;
     await route.fulfill({
       json: [
         { program: "claude", latest: "2.1.300" },
@@ -2646,6 +2651,10 @@ test("Settings: the Versions card shows Update only for a tool with a newer vers
   await logIn(page);
   await openSettings(page, "Updates");
   const card = page.getByRole("region", { name: "Versions" });
+  // Until the latest versions answer, no Update button can start an install of a tool that is up to date.
+  await expect(card.getByRole("button", { name: "Update" })).toHaveCount(3);
+  for (const button of await card.getByRole("button", { name: "Update" }).all()) await expect(button).toBeDisabled();
+  answer();
   await expect(card.getByText("1.3.0 (1.4.0 available)")).toBeVisible();
   // claude is the latest; Eva cannot tell for gh, so its button stays.
   await expect(card.getByRole("button")).toHaveText(["Update", "Update"]);

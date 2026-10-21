@@ -1,8 +1,8 @@
 /**
  * The latest published version of each tool that Eva installs, so the Updates page shows an
  * Update button only for a tool that has a newer version. Each source is the one that the tool's
- * own update uses: `claude update` follows the npm tag of the person's update channel, and Eva's installs of pi, gh
- * and uv take the latest GitHub release.
+ * own update uses: `claude update` follows the npm tag of the person's update channel, and Eva's
+ * installs of pi, gh and uv take the latest GitHub release.
  */
 import { join } from "node:path";
 import { readJsonTolerant } from "../shared/files.ts";

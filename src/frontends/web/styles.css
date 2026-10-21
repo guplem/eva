@@ -1132,7 +1132,8 @@ textarea {
   box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.1);
 }
 
-.seed-swatch[aria-pressed="true"] {
+.seed-swatch[aria-pressed="true"],
+.seed-custom[data-selected="true"] {
   box-shadow:
     0 0 0 2px var(--panel),
     0 0 0 4px var(--ink);
@@ -1140,31 +1141,38 @@ textarea {
 
 .seed-custom {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.seed-custom label {
+  position: relative;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.seed-custom input[type="color"] {
-  width: 44px;
-  height: 32px;
-  padding: 2px;
-  border-radius: var(--radius-pill);
+  justify-content: center;
   background: var(--chip);
+  color: var(--ink);
   cursor: pointer;
 }
 
-.seed-name {
-  color: var(--muted);
-  font-size: 13px;
+.seed-custom[data-selected="true"] {
+  color: var(--on-accent);
+}
+
+.seed-custom .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.seed-custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.seed-custom:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .check-row {

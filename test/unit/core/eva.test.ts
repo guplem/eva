@@ -1723,6 +1723,41 @@ describe("migrations (#119)", () => {
     expect(alerts[0]?.message).toContain("disk is full");
   });
 
+  test("after the vault migrations, the hub brings the template parts up to date", () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
+    expect(instance.templateParts()?.map((part) => [part.name, part.state])).toEqual([["schedule", "current"]]);
+    expect(alerts).toEqual([]);
+  });
+
+  test("a template part that the person changed waits for their choice, with an alert", () => {
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["template_alignment", "warn"]]);
+    expect(readFileSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"), "utf-8")).toBe(
+      "# My own schedule skill\n",
+    );
+    const parts = instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "mine");
+    expect(parts.map((part) => part.state)).toEqual(["kept"]);
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("a satellite leaves the template parts alone", () => {
+    const instance = start(new FakeEngine());
+    instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(false);
+  });
+
   test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);

@@ -21,6 +21,14 @@ import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKI
  */
 export const defaultAssistantRules: string = assistantFile;
 
+/**
+ * The parts of the template that Eva keeps aligned in each vault after an update, by path from the
+ * vault root (`template-alignment.ts`). Add each new skill here.
+ */
+export const templateParts: Readonly<Record<string, string>> = {
+  ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
+};
+
 export interface VaultTemplateAnswers {
   readonly name: string;
   readonly language: string;
@@ -65,7 +73,7 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
         null,
         2,
       ) + "\n",
-    ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
+    ...templateParts,
     // The empty top-level folders that AGENTS.md describes, so a new vault shows its shape.
     ...Object.fromEntries(
       ["Principles", "Methods", "Toolbox", "Library", "Projects"].map((folder) => [`${folder}/.gitkeep`, ""]),

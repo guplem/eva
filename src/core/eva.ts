@@ -125,6 +125,8 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
+import { templateParts } from "./vault/vault-template.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -315,6 +317,8 @@ export class Eva {
   readonly chatNames: ChatNamer | null;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
   readonly assistantRules: AssistantRules | null;
+  /** The vault's template parts, such as the skills. Null when no vault is configured. */
+  readonly templateAlignment: TemplateAlignment | null;
   /** One question to a model with one answer, for any feature that needs a short text. */
   readonly modelCalls: ModelCalls;
   /** Null until a whisper model is configured. */
@@ -469,6 +473,10 @@ export class Eva {
             now: options.now,
             timeZone: options.config.timeZone ?? "UTC",
           });
+    this.templateAlignment =
+      vaultPath === null
+        ? null
+        : new TemplateAlignment({ vaultPath, parts: templateParts, history: templateHistory, now: options.now });
 
     this.sessions = new SessionManager({
       ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
@@ -790,7 +798,38 @@ export class Eva {
   reportStartMigrations(result: StartMigrations): void {
     this.reportMigrationRun("machine", result.machine);
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
+    if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+  }
+
+  /** The state of each template part of the vault, with no change. Null when no vault is configured. */
+  templateParts(): TemplatePart[] | null {
+    return this.templateAlignment?.list() ?? null;
+  }
+
+  /** The person's choice for a part that differs: this Eva's version, or their own. */
+  chooseTemplateVersion(path: string, choice: "new" | "mine"): TemplatePart[] {
+    const alignment = this.templateAlignment;
+    if (alignment === null) throw new EvaError("vault_not_found", "No vault is configured.");
+    const parts = choice === "new" ? alignment.useNew(path) : alignment.keepMine(path);
+    this.alerts.report("template_alignment", alignmentProblem(parts));
+    return parts;
+  }
+
+  /**
+   * Brings the vault's template parts up to date on the hub, after the vault migrations. Only the
+   * hub writes them, so two machines never race on one file. A part that the person changed raises an alert.
+   */
+  private alignTemplate(): void {
+    const alignment = this.templateAlignment;
+    const vaultPath = this.options.config.vaultPath;
+    if (alignment === null || vaultPath === null || !existsSync(vaultPath) || this.role() !== "hub") return;
+    try {
+      this.alerts.report("template_alignment", alignmentProblem(alignment.align()));
+    } catch (caught) {
+      // A vault from a newer Eva refuses the write, and its own alert already says so.
+      this.options.logger?.log("warn", "The template alignment did not run.", { error: String(caught) });
+    }
   }
 
   /** The start found the marker of a run that never stopped cleanly. */
@@ -1535,7 +1574,10 @@ export class Eva {
       role === "hub" ? "This machine became the hub." : "Another machine is now the hub.",
     );
     // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
-    if (role === "hub") this.runVaultMigrations();
+    if (role === "hub") {
+      this.runVaultMigrations();
+      this.alignTemplate();
+    }
     for (const listener of this.roleListeners) listener(role);
   }
 

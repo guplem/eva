@@ -249,3 +249,9 @@ vault .eva/settings.json updates.install=major
 vault .eva/settings.json updates.install=minor
 vault .eva/settings.json updates.install=patch
 vault .eva/settings.json voice.language
+vault .eva/template.json parts
+vault .eva/template.json parts{}.installed
+vault .eva/template.json parts{}.kept
+vault .eva/template.json parts{}.updatedAt
+vault .eva/template.json version
+vault .eva/template.json version=1

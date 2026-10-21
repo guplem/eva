@@ -192,6 +192,8 @@ export class SessionManager {
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
+  /** The running turn of each Project folder, so two chats never edit one clone at once (issue 356). */
+  private readonly folderTurns = new Map<string, Promise<void>>();
 
   constructor(options: SessionManagerOptions) {
     this.options = options;
@@ -536,11 +538,15 @@ export class SessionManager {
     controller.signal.addEventListener("abort", () => {
       this.expireApprovals(sessionId);
     });
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, this.options.turnTimeoutMs);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let releaseFolder = (): void => undefined;
     let historyLost = false;
     try {
+      releaseFolder = await this.takeFolder(session, controller.signal);
+      // After the wait: the other turn may itself run up to the time-out.
+      timeout = setTimeout(() => {
+        controller.abort();
+      }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
         ask: (question, detail) => this.requestApproval(sessionId, question, detail),
@@ -646,6 +652,7 @@ ${prompt}`,
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     } finally {
       clearTimeout(timeout);
+      releaseFolder();
       runtime.controller = null;
       runtime.turnRunning = false;
       this.forgetRunningTurn(sessionId);
@@ -654,6 +661,43 @@ ${prompt}`,
       this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
+  }
+
+  /**
+   * Waits until no other chat runs a turn in the folder of a Project chat, then holds the folder.
+   * Two agents in one clone would pull, commit and push against each other (issue 356). Every
+   * Assistant chat runs at the vault root, and Eva's vault sync handles them, so they never wait.
+   */
+  private async takeFolder(session: SessionRecord, signal: AbortSignal): Promise<() => void> {
+    if (session.mode !== "project") return () => undefined;
+    const folder = session.startFolder;
+    let told = false;
+    // A loop, not a queue: when several turns wait, the first to wake takes the folder, and the others wait again.
+    for (let held = this.folderTurns.get(folder); held !== undefined; held = this.folderTurns.get(folder)) {
+      if (!told) {
+        told = true;
+        this.emit(session.id, {
+          kind: "notice",
+          text: "Another chat runs a turn in this clone. This turn starts when that turn ends.",
+        });
+      }
+      await new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+        void held.then(resolve);
+      });
+      if (signal.aborted) throw new Error("The turn stopped while it waited for another chat in this clone.");
+    }
+    let release = (): void => undefined;
+    this.folderTurns.set(
+      folder,
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    return () => {
+      this.folderTurns.delete(folder);
+      release();
+    };
   }
 
   private historyOf(session: SessionRecord): TurnHistory {

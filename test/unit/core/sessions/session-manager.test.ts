@@ -1356,3 +1356,110 @@ describe("a final text during the next block", () => {
     expect(sent.join("")).not.toContain("aaaa");
   });
 });
+
+describe("one turn per clone (issue 356)", () => {
+  function newProjectSession(manager: SessionManager, folder: string): string {
+    return manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "default",
+      startFolder: folder,
+      source: "cli",
+      projectId: "2025-03-02-1015-example-app",
+      clone: "example-app-0",
+    }).id;
+  }
+
+  /** An engine whose "long" turns wait for `release`. */
+  function heldEngine(): { engine: FakeEngine; release: () => void } {
+    let open: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (open = resolve));
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (request.prompt === "long") await held;
+      yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+    });
+    return { engine, release: () => open() };
+  }
+
+  test("a turn waits while another chat runs a turn in the same clone, says why, and then starts", async () => {
+    const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const first = newProjectSession(manager, "/clones/example-app-0");
+    const second = newProjectSession(manager, "/clones/example-app-0");
+    const running = manager.send(first, "long");
+    await waitUntil(() => engine.requests.length === 1);
+    const waiting = manager.send(second, "short");
+    await waitUntil(() => events.some((event) => event.sessionId === second && event.kind === "notice"));
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["long"]);
+    expect(manager.isTurnRunning(second)).toBe(true);
+    release();
+    await Promise.all([running, waiting]);
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["long", "short"]);
+    expect(manager.get(second).turns[0]?.failure).toBeNull();
+  });
+
+  test("a wait never blocks another clone or an Assistant chat", async () => {
+    const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const running = manager.send(newProjectSession(manager, "/clones/example-app-0"), "long");
+    await waitUntil(() => engine.requests.length === 1);
+    await manager.send(newProjectSession(manager, "/clones/example-app-1"), "other clone");
+    // Every Assistant chat runs at the vault root. Eva's vault sync handles them, so they never wait.
+    const assistantRunning = manager.send(newAssistantSession(manager), "long");
+    await waitUntil(() => engine.requests.length === 3);
+    await manager.send(newAssistantSession(manager), "second assistant");
+    release();
+    await Promise.all([running, assistantRunning]);
+    expect(events.some((event) => event.kind === "notice")).toBe(false);
+  });
+
+  test("a stop of the waiting chat ends the wait, and its turn never reaches the engine", async () => {
+    const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const first = newProjectSession(manager, "/clones/example-app-0");
+    const second = newProjectSession(manager, "/clones/example-app-0");
+    const running = manager.send(first, "long");
+    await waitUntil(() => engine.requests.length === 1);
+    const waiting = manager.send(second, "short");
+    await waitUntil(() => events.some((event) => event.sessionId === second && event.kind === "notice"));
+    expect(manager.stop(second)).toBe(true);
+    await waiting;
+    expect(manager.get(second).turns[0]?.failure).toContain("stopped");
+    release();
+    await running;
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["long"]);
+  });
+
+  test("several waiting chats run one after the other", async () => {
+    const { engine, release } = heldEngine();
+    const manager = createManager(engine);
+    const ids = [0, 1, 2].map(() => newProjectSession(manager, "/clones/example-app-0"));
+    const running = manager.send(ids[0] ?? "", "long");
+    await waitUntil(() => engine.requests.length === 1);
+    const others = [manager.send(ids[1] ?? "", "two"), manager.send(ids[2] ?? "", "three")];
+    await waitUntil(() => events.filter((event) => event.kind === "notice").length === 2);
+    release();
+    await Promise.all([running, ...others]);
+    expect(engine.requests.map((request) => request.prompt).sort()).toEqual(["long", "three", "two"]);
+  });
+
+  test("a waiting turn gets its whole time-out after the wait", async () => {
+    let open: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (open = resolve));
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (request.prompt === "long") await held;
+      if (request.prompt === "short") await Bun.sleep(60);
+      yield* FakeEngine.answer(request, `answer ${String(turnNumber)}`);
+    });
+    const manager = createManager(engine, { turnTimeoutMs: 100 });
+    const first = newProjectSession(manager, "/clones/example-app-0");
+    const second = newProjectSession(manager, "/clones/example-app-0");
+    const running = manager.send(first, "long");
+    await waitUntil(() => engine.requests.length === 1);
+    const waiting = manager.send(second, "short");
+    await Bun.sleep(80);
+    open();
+    await Promise.all([running, waiting]);
+    expect(manager.get(second).turns[0]?.failure).toBeNull();
+  });
+});

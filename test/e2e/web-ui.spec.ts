@@ -3821,6 +3821,27 @@ test("Files: the person edits a note, saves it in the vault, and sees it formatt
   await expect(file.getByRole("listitem").filter({ hasText: "Bread" })).toBeVisible();
 });
 
+test("Files: the person renames a note, and its new address opens it (issue 343)", async ({ page }, testInfo) => {
+  await logIn(page);
+  const run = testInfo.project.name;
+  await page.goto(`/#/files/Notes/${run}-draft.md`);
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
+  await page.getByRole("button", { name: `Rename ${run}-draft.md` }).click();
+  const field = page.getByRole("textbox", { name: `New name of ${run}-draft.md` });
+  await field.fill("bad:name.md");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("A name cannot hold these characters")).toBeVisible();
+  await field.fill(`${run}-plan.md`);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/files/Notes/${run}-plan\\.md$`));
+  await expect(page.getByRole("heading", { name: `${run}-plan.md`, level: 1 })).toBeVisible();
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
+  // The core renamed the file: a reload reads it from the vault.
+  await page.reload();
+  await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
+});
+
 test("Files: a save of a file that changed meanwhile asks to load it again (issue 308)", async ({ page }) => {
   await logIn(page);
   await page.route("**/api/files", async (route) => {

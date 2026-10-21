@@ -3,7 +3,7 @@
  * list on a wide screen, a search, and a page per section and per setup step. The address names
  * the page (`#/settings/<section>/<item>`), so Back works and a reload stays on the page.
  */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactElement } from "react";
 import { AccessSection } from "./AccessSection.tsx";
 import { api, type EvaSetupState, type EvaStatus, type ProgressStep, type PublicSettings } from "./api.ts";
 import { ConnectionsSection } from "./ConnectionsSection.tsx";
@@ -28,6 +28,7 @@ import {
 import { errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./setup-summary.ts";
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
+import { statusFacts } from "./status-overview.ts";
 import { Toast } from "./Toast.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
@@ -396,6 +397,19 @@ function SettingsHome({ context }: { readonly context: SettingsContext }): React
             ) : null}
             <button onClick={() => context.navigate({ section: "setup", item: null })}>See every step</button>
           </div>
+        </section>
+      )}
+      {context.status !== null && (
+        <section className="card" aria-label="Status">
+          <h2>Status</h2>
+          <dl className="facts">
+            {statusFacts(context.status).map((fact) => (
+              <Fragment key={fact.label}>
+                <dt>{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </Fragment>
+            ))}
+          </dl>
         </section>
       )}
       <div className="section-grid">

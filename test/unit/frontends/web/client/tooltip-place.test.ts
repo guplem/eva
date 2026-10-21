@@ -16,7 +16,7 @@ describe("placeTooltip", () => {
   });
 
   test("a tooltip stays inside the screen at the left and the right edges", () => {
-    // The online dot sits in the corner of the nav rail, as in the bug report.
+    // A small mark sits in the corner of the screen, as in the bug report.
     const corner = { left: 2, top: 760, width: 12, height: 12 };
     expect(placeTooltip(corner, tip, viewport).left).toBe(tooltipMargin);
     const right = { left: 990, top: 400, width: 10, height: 10 };

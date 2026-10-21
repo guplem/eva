@@ -4,6 +4,7 @@
  */
 import { useState, type ReactElement, type ReactNode } from "react";
 import { Dialog } from "./ChatPanel.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { errorText, StatusIcon, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -90,6 +91,7 @@ export function LoggedIn({
         <Dialog label={words.endTitle} onClose={busy ? ignore : () => setAsking(false)} closeLabel="Cancel">
           <h2>{words.endTitle}?</h2>
           <div className="callout warning">{warning}</div>
+          {busy && <ProgressBar label={`${words.endTitle}…`} />}
           <button className="danger" disabled={busy} onClick={() => void end()}>
             {busy ? "Working…" : words.end}
           </button>

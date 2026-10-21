@@ -1902,6 +1902,10 @@ button.link-button {
   font-size: var(--text-sm);
 }
 
+.check-wait {
+  flex-basis: 100%;
+}
+
 .check-result {
   flex-basis: 100%;
   padding: var(--space-2) var(--space-3);

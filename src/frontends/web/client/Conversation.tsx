@@ -9,7 +9,14 @@ import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
-import { elapsedText, foldSteps, liveFace, shownPending, type PendingMessage } from "./conversation-parts.ts";
+import {
+  composerPlaceholder,
+  elapsedText,
+  foldSteps,
+  liveFace,
+  shownPending,
+  type PendingMessage,
+} from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { stepsWithDraft, type LiveState } from "./live-state.ts";
@@ -39,6 +46,8 @@ interface ConversationProps {
   readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
+  /** The title of the project of a project chat. The message box addresses it, not Eva. */
+  readonly projectTitle?: string | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
   /** The message that made a chat on the New chat page. It shows until the chat stores its turn. */
@@ -60,6 +69,7 @@ export function Conversation({
   blocker,
   voiceNotes,
   firstMessage = null,
+  projectTitle = null,
 }: ConversationProps): ReactElement {
   const branches = chatTree(root, sessions);
   const scroller = useRef<HTMLDivElement>(null);
@@ -95,6 +105,7 @@ export function Conversation({
           blocker={blocker}
           voiceNotes={voiceNotes}
           firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
+          projectTitle={projectTitle}
         />
       ))}
     </div>
@@ -110,6 +121,7 @@ function Branch({
   blocker,
   voiceNotes,
   firstMessage,
+  projectTitle,
 }: {
   session: SessionRecord;
   parent: SessionRecord | undefined;
@@ -119,6 +131,7 @@ function Branch({
   blocker: ChatBlocker | null;
   voiceNotes: boolean;
   firstMessage: string | null;
+  projectTitle: string | null;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
@@ -279,6 +292,7 @@ function Branch({
         onChanged={onChanged}
         blocker={blocker}
         voiceNotes={voiceNotes}
+        placeholder={composerPlaceholder(projectTitle)}
       />
     </section>
   );

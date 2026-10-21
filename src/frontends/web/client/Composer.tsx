@@ -8,7 +8,7 @@
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
-import { chipLock, engineLabel, modelLabel } from "./conversation-parts.ts";
+import { chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
@@ -50,6 +50,8 @@ interface ComposerProps {
   readonly blocker: ChatBlocker | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
+  /** The text of the empty box. It names who answers. */
+  readonly placeholder?: string;
 }
 
 export function Composer({
@@ -61,6 +63,7 @@ export function Composer({
   onChanged,
   blocker,
   voiceNotes,
+  placeholder = composerPlaceholder(null),
 }: ComposerProps): ReactElement {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -120,7 +123,7 @@ export function Composer({
         <textarea
           aria-label="Message"
           aria-describedby={block === null ? undefined : lineId}
-          placeholder={block === null ? "Message Eva" : "Eva cannot answer yet"}
+          placeholder={block === null ? placeholder : "Eva cannot answer yet"}
           rows={1}
           disabled={block !== null}
           value={text}

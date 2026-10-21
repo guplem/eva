@@ -154,7 +154,7 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "appearance",
     section: "personalize",
     title: "Appearance",
-    words: "theme dark light density compact colour color seed",
+    words: "theme dark light density compact colour color seed long file names cut ellipsis truncate",
   },
   {
     item: "assistant-rules",

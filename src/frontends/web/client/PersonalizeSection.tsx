@@ -27,6 +27,12 @@ const densityChoices: readonly { value: Appearance["density"]; label: string }[]
   { value: "compact", label: "Compact" },
 ];
 
+const fileNameCutChoices: readonly { value: Appearance["fileNameCut"]; label: string }[] = [
+  { value: "start", label: "Start" },
+  { value: "middle", label: "Middle" },
+  { value: "end", label: "End" },
+];
+
 export function PersonalizeSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
@@ -46,7 +52,11 @@ export function AppearanceCard(): ReactElement {
     saveAppearance(merged);
   };
   return (
-    <Card item="appearance" title="Appearance" description="This browser keeps its own colour, theme and density.">
+    <Card
+      item="appearance"
+      title="Appearance"
+      description="This browser keeps its own colour, theme, density and long file names."
+    >
       <div className="field">
         <span className="field-label">Colour</span>
         <span className="field-hint">Pick a colour. Eva builds the whole palette from it.</span>
@@ -63,6 +73,13 @@ export function AppearanceCard(): ReactElement {
         value={appearance.density}
         choices={densityChoices}
         onChange={(density) => change({ density })}
+      />
+      <ChoiceChips
+        label="Long file names"
+        hint="The Files page shows each name on one line. A name that is too long loses this part: “…board.pdf”, “Annual rep…board.pdf” or “Annual report fo…”."
+        value={appearance.fileNameCut}
+        choices={fileNameCutChoices}
+        onChange={(fileNameCut) => change({ fileNameCut })}
       />
     </Card>
   );

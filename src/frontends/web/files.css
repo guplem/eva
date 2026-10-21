@@ -149,6 +149,8 @@ a.files-entry[aria-current="true"] {
   flex: none;
   width: 18px;
   height: 18px;
+  /* The margin gives the icon the width of a type badge, so the names line up. */
+  margin-inline: 6px;
   color: var(--muted);
 }
 
@@ -156,9 +158,94 @@ a.files-entry[aria-current="true"] {
   color: var(--muted);
 }
 
+/*
+ * A name takes one line. When it does not fit, the Appearance setting (data-file-name-cut) picks
+ * the part that gives way to "…". The head and the tail split the name, so a cut in the middle
+ * shortens the head and keeps the extension.
+ */
 .files-name {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+
+.files-name-text {
+  unicode-bidi: isolate;
+}
+
+:root[data-file-name-cut="middle"] .files-name-text,
+:root:not([data-file-name-cut]) .files-name-text {
+  display: flex;
+}
+
+:root[data-file-name-cut="middle"] .files-name-head,
+:root:not([data-file-name-cut]) .files-name-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-file-name-cut="middle"] .files-name-tail,
+:root:not([data-file-name-cut]) .files-name-tail {
+  flex: none;
+}
+
+/* A right-to-left box ends at its left side, so the "…" replaces the start of the name. */
+:root[data-file-name-cut="start"] .files-name {
+  direction: rtl;
+  text-align: left;
+}
+
+/* A small page with the extension, in the colour of the file type. The words say the type too. */
+.files-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 20px;
+  border: 1.5px solid currentColor;
+  border-radius: 5px;
+  background: color-mix(in oklch, currentColor 12%, transparent);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.files-badge.type-red {
+  color: var(--type-red);
+}
+
+.files-badge.type-orange {
+  color: var(--type-orange);
+}
+
+.files-badge.type-yellow {
+  color: var(--type-yellow);
+}
+
+.files-badge.type-green {
+  color: var(--type-green);
+}
+
+.files-badge.type-teal {
+  color: var(--type-teal);
+}
+
+.files-badge.type-blue {
+  color: var(--type-blue);
+}
+
+.files-badge.type-violet {
+  color: var(--type-violet);
+}
+
+.files-badge.type-pink {
+  color: var(--type-pink);
 }
 
 .files-size {

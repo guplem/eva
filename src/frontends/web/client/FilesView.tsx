@@ -16,6 +16,7 @@ import {
   sizeWords,
   splitFrontMatter,
 } from "./file-paths.ts";
+import { fileBadgeOf, nameEnds } from "./file-kinds.ts";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
@@ -280,7 +281,7 @@ function FolderList({
           {entry.kind === "other" ? (
             <span className="files-entry other">
               <Icon name="info" />
-              <span className="files-name">{entry.name}</span>
+              <FileName name={entry.name} />
               <span className="files-size">Does not open</span>
             </span>
           ) : (
@@ -289,14 +290,44 @@ function FolderList({
               href={fileAddressOf(childPath(path, entry.name))}
               aria-current={entry.name === openChild ? "true" : undefined}
             >
-              <Icon name={entry.kind === "folder" ? "folder" : "file"} />
-              <span className="files-name">{entry.name}</span>
+              {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
+              <FileName name={entry.name} />
               {entry.size !== null && <span className="files-size">{sizeWords(entry.size)}</span>}
             </a>
           )}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A file with a known short extension shows it on a small page, in the colour of its type. */
+function FileIcon({ name }: { readonly name: string }): ReactElement {
+  const badge = fileBadgeOf(name);
+  if (badge === null) return <Icon name="file" />;
+  return (
+    <span className={`files-badge type-${badge.tone}`} aria-hidden="true">
+      {badge.label}
+    </span>
+  );
+}
+
+/**
+ * A name on one line. When it does not fit, the start, the middle or the end gives way to "…", as
+ * the Appearance setting says. The open file shows its whole name in the path above.
+ */
+function FileName({ name }: { readonly name: string }): ReactElement {
+  const { head, tail } = nameEnds(name);
+  return (
+    <span className="files-name">
+      {/* A flex box splits the name in two words for a screen reader, so it reads the whole name instead. */}
+      <span className="visually-hidden">{name}</span>
+      {/* The isolate keeps the letters in order when a cut at the start turns the box right to left. */}
+      <span className="files-name-text" dir="ltr" aria-hidden="true">
+        <span className="files-name-head">{head}</span>
+        <span className="files-name-tail">{tail}</span>
+      </span>
+    </span>
   );
 }
 

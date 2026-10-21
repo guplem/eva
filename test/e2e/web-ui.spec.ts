@@ -1534,6 +1534,24 @@ test("the Settings home page shows Eva's status", async ({ page }) => {
   }
 });
 
+test("the Settings home page lists where each setting lives, and a row opens its card (issue 310)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page);
+  await page.getByRole("button", { name: "See where each setting lives" }).click();
+  const dialog = page.getByRole("dialog", { name: "Where each setting lives" });
+  for (const heading of ["In your vault", "On this machine only", "In this browser only"]) {
+    await expect(dialog.getByRole("heading", { name: new RegExp(heading) })).toBeVisible();
+  }
+  // A setting with no page names its key, and its row opens nothing.
+  await expect(dialog.getByRole("button", { name: /Voice note language/ })).toBeDisabled();
+  await dialog.getByRole("button", { name: /Appearance/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
+  expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
+});
+
 test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
   await logIn(page);
   await newChat(page);

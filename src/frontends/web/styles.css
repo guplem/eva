@@ -2256,6 +2256,17 @@ button.link-button {
   color: var(--muted);
 }
 
+/* The list of setting homes is long, so it scrolls and the Close button stays on the screen. */
+.setting-homes {
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.setting-homes .search-results {
+  grid-template-columns: 1fr;
+}
+
 /* ==========================================================================
    Settings: the setup list and a step's page
    ========================================================================== */

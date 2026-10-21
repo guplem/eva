@@ -1133,6 +1133,9 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await page.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
   await expect(page.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "System" })).toHaveAttribute("aria-pressed", "false");
+  // A tick marks the choice, so a chosen chip does not look like a button.
+  await expect(page.getByRole("button", { name: "Dark" }).locator(".choice-tick")).toBeVisible();
+  await expect(page.getByRole("button", { name: "System" }).locator(".choice-tick")).toHaveCount(0);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
   await page.reload();

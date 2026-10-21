@@ -2371,10 +2371,17 @@ button.link-button {
   height: 16px;
 }
 
+/* A solid accent fill is the look of a main button. A chosen chip uses a soft tint, an outline and a tick instead. */
 .choice-chip[aria-pressed="true"] {
-  background: var(--accent);
+  background: var(--soft);
   border-color: var(--accent);
-  color: var(--on-accent);
+  color: var(--soft-ink);
+  font-weight: 600;
+}
+
+.choice-chip .choice-tick {
+  color: var(--accent-ink);
+  stroke-width: 2.5;
 }
 
 .restart-button {

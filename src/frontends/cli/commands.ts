@@ -3,14 +3,22 @@
  * The `run` command starts the whole Eva, which only `src/main.ts` may wire, so it comes in.
  */
 import { randomBytes } from "node:crypto";
-import { createHomeFolders, loadSecrets, type EvaConfig, type HomePaths } from "../../core/settings/home.ts";
+import {
+  createHomeFolders,
+  instanceNameOf,
+  instancesFolder,
+  listInstances,
+  loadSecrets,
+  type EvaConfig,
+  type HomePaths,
+} from "../../core/settings/home.ts";
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
 import { loadSettings } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
-import { isEvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { readTextTolerant } from "../../shared/files.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
@@ -104,7 +112,29 @@ export async function runCli(argv: readonly string[], host: CliHost, wiring: Cli
     case "work":
       return runClientCommand(host, paths, command);
     case "run":
-      return wiring.serve(paths);
+      return serveOrExplain(host, paths, wiring);
+  }
+}
+
+/**
+ * `eva` runs Eva in the terminal. A person who types it to look at Eva, while she already runs as a
+ * service, gets the commands that show her state instead of a lock error (#321).
+ */
+async function serveOrExplain(host: CliHost, paths: HomePaths, wiring: CliWiring): Promise<number> {
+  try {
+    return await wiring.serve(paths);
+  } catch (error) {
+    if (!isEvaError(error, "instance_locked")) throw error;
+    const name = instanceNameOf(paths);
+    const eva = listInstances(instancesFolder(host)).length > 1 ? `eva --instance ${name}` : "eva";
+    throw new EvaError(
+      "instance_locked",
+      [
+        `This Eva (${name}) already runs, for example as a service. There is nothing more to start.`,
+        `To see her state, run \`${eva} status\`. Her address: \`${eva} link\`. Every command: \`eva help\`.`,
+      ].join("\n"),
+      { cause: error },
+    );
   }
 }
 

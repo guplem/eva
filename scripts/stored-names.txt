@@ -155,6 +155,7 @@ migration machine 2026-10-20-google-access-per-service
 migration vault 2026-10-18-drop-security-settings-from-vault
 migration vault 2026-10-18-start-vault-settings
 migration vault 2026-10-20-move-assistant-personality
+migration vault 2026-10-22-about-me-header
 typed cli --check
 typed cli --clone
 typed cli --engine

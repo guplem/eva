@@ -86,6 +86,7 @@ const toolInstallSchema = z.object({ program: z.enum(installableTools) });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
+const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
@@ -533,6 +534,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));
+  if (method === "PUT" && url.pathname === "/api/files") {
+    const { path, version, text } = vaultFileSchema.parse(await request.json());
+    return json(eva.saveFile(path, version, text));
+  }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {

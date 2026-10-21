@@ -1189,11 +1189,30 @@ describe("web routes", () => {
     expect(root.kind).toBe("folder");
     expect(root.entries.map((entry) => entry.name)).toEqual([".eva", "Projects", "AGENTS.md"]);
     const file = await call(`/api/files?path=${encodeURIComponent(".eva/assistant.md")}`);
-    expect(await json(file)).toEqual({ kind: "file", path: ".eva/assistant.md", size: 14, text: "# You are Eva\n" });
+    expect(await json(file)).toMatchObject({
+      kind: "file",
+      path: ".eva/assistant.md",
+      size: 14,
+      text: "# You are Eva\n",
+      editable: true,
+    });
     const outside = await call(`/api/files?path=${encodeURIComponent("../")}`);
     expect(outside.status).toBe(404);
     expect(await json<{ code: string }>(outside)).toMatchObject({ code: "file_not_found" });
     expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
+  });
+
+  test("files: a save writes the text, and a save of an old version answers file_changed (issue 308)", async () => {
+    const path = ".eva/assistant.md";
+    const { version } = await json<{ version: string }>(await call(`/api/files?path=${encodeURIComponent(path)}`));
+    const saved = await call("/api/files", { method: "PUT", body: { path, version, text: "# You are Eva too\n" } });
+    expect(await json(saved)).toMatchObject({ kind: "file", text: "# You are Eva too\n" });
+    expect(readFileSync(join(eva.status().vaultPath ?? "", path), "utf-8")).toBe("# You are Eva too\n");
+
+    const stale = await call("/api/files", { method: "PUT", body: { path, version, text: "# Lost\n" } });
+    expect(stale.status).toBe(409);
+    expect(await json(stale)).toMatchObject({ code: "file_changed" });
+    expect((await call("/api/files", { method: "PUT", body: { path, text: "# No version\n" } })).status).toBe(400);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

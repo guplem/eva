@@ -10,9 +10,11 @@ export function unavailableSteps(settings: PublicSettings): { github: string | n
   const google = settings.config.google;
   let drive: string | null = null;
   if (google.email === null) drive = "Log in to Google in Settings > Connections > Google first.";
-  else if (!google.services.includes("drive")) drive = "Turn on Google Drive in Settings > Connections > Google first.";
+  else if (!google.services.includes("drive"))
+    drive = "Google Drive is off. Add drive to google.services on the machine.";
   else if (google.access.drive !== "full")
-    drive = "Give Google Drive full access in Settings > Connections > Google first.";
+    drive =
+      "In Settings > Connections > Google, set Google access for Drive to Read and change. Then log in to Google again.";
   return {
     github: settings.secretsSet.githubToken ? null : "Log in to GitHub in Settings > Connections > GitHub first.",
     drive,

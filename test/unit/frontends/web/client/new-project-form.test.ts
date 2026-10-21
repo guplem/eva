@@ -36,8 +36,8 @@ describe("unavailableSteps", () => {
     const withGoogle = (changes: Partial<typeof google>): string | null =>
       unavailableSteps({ ...ready, config: { ...ready.config, google: { ...google, ...changes } } }).drive;
     expect(withGoogle({ email: null })).toContain("Log in to Google");
-    expect(withGoogle({ services: ["calendar"] })).toContain("Turn on Google Drive");
-    expect(withGoogle({ access: defaultConfig.google.access })).toContain("full access");
+    expect(withGoogle({ services: ["calendar"] })).toContain("google.services");
+    expect(withGoogle({ access: defaultConfig.google.access })).toContain("Read and change");
   });
 });
 

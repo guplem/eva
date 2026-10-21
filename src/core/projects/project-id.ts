@@ -53,7 +53,10 @@ export function parseProjectId(folderName: string): ParsedProjectId | null {
 export function formatProjectId(wallClock: string, name: string): string {
   const slug = projectSlug(name);
   if (slug.length === 0)
-    throw new EvaError("project_invalid", `A project name needs at least one letter or digit: "${name}"`);
+    throw new EvaError(
+      "project_invalid",
+      `A project name needs at least one letter from a to z or one digit: "${name}"`,
+    );
   return `${wallClock.replace("T", "-").replace(":", "")}-${slug}`;
 }
 

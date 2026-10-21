@@ -65,7 +65,7 @@ describe("createDriveFolder", () => {
       createDriveFolder({ ...inputs, config: { ...driveFull, access: defaultConfig.google.access } }, "Example app"),
     );
 
-    expect(message).toContain("full access");
+    expect(message).toContain("Read and change");
     expect(google.tokenRequests).toHaveLength(0);
   });
 
@@ -74,7 +74,7 @@ describe("createDriveFolder", () => {
       createDriveFolder({ ...inputs, config: { ...driveFull, services: ["calendar"] } }, "Example app"),
     );
 
-    expect(message).toContain("Turn on Google Drive");
+    expect(message).toContain("google.services");
     expect(google.tokenRequests).toHaveLength(0);
   });
 

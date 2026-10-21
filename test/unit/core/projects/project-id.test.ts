@@ -46,7 +46,7 @@ describe("formatProjectId", () => {
   });
 
   test("refuses a name with no letters or digits", () => {
-    expect(() => formatProjectId("2026-01-05T09:07", "!!!")).toThrow("letter or digit");
+    expect(() => formatProjectId("2026-01-05T09:07", "!!!")).toThrow("a to z");
     expect(() => formatProjectId("2026-01-05T09:07", "!!!")).toThrow(EvaError);
   });
 });

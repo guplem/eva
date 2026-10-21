@@ -14,10 +14,13 @@ const folderType = "application/vnd.google-apps.folder";
 /** Creates a folder at the top of the person's Drive and gives its link. Throws `google_failed`. */
 export async function createDriveFolder(inputs: GoogleDriveInputs, name: string): Promise<string> {
   if (!inputs.config.services.includes("drive"))
-    throw new EvaError("google_failed", "Turn on Google Drive in Settings > Connections > Google first.");
+    throw new EvaError("google_failed", "Google Drive is off. Add drive to google.services on the machine.");
   // A lower level gives no scope that can write to Drive.
   if (inputs.config.access.drive !== "full")
-    throw new EvaError("google_failed", "Give Google Drive full access in Settings > Connections > Google first.");
+    throw new EvaError(
+      "google_failed",
+      "In Settings > Connections > Google, set Google access for Drive to Read and change. Then log in to Google again.",
+    );
   const access = await googleAccessToken(inputs);
   if ("problem" in access) throw new EvaError("google_failed", access.problem);
 

@@ -446,7 +446,7 @@ describe("Eva", () => {
       // 10:30 UTC is 12:30 in Madrid.
       expect(result.projectId).toBe("2026-10-14-1230-example-app");
       expect(result.github).toEqual({ url: "https://github.com/you/example-app" });
-      expect(result.drive).toEqual({ problem: expect.stringContaining("full access") as string });
+      expect(result.drive).toEqual({ problem: expect.stringContaining("Read and change") as string });
       expect(created).toEqual([{ name: "example-app", description: "A small app.", private: true, auto_init: true }]);
       expect(instance.projects()[0]).toMatchObject({
         id: "2026-10-14-1230-example-app",

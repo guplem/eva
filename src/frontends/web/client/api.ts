@@ -24,6 +24,7 @@ import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { CloneFetch } from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
@@ -50,6 +51,7 @@ export type {
   ChatBlocker,
   CheckResult,
   CloneDetails,
+  CloneFetch,
   ConflictChoice,
   ConflictResolution,
   DeviceLoginEvent,
@@ -218,6 +220,19 @@ export const api = {
   createProject: (input: NewProjectInput): Promise<NewProjectResult> => request("POST", "/api/projects", input),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  /** Fetches each clone, so the cards count the commits to pull. A failed fetch is in `problems`. */
+  fetchClones: (projectId: string): Promise<CloneFetch> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/fetch`, {}),
+  /** Pulls each clone that is behind. A failed pull is in `problems`. */
+  pullClones: (projectId: string): Promise<CloneFetch> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/pull`, {}),
+  pullClone: (projectId: string, clone: string): Promise<unknown> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/pull`, {}),
+  /** Commits every change and pushes. An empty note lets a model write the message. */
+  pushClone: (projectId: string, clone: string, note: string): Promise<{ readonly message: string }> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/push`, {
+      note,
+    }),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
   /** A file that changed since `version` answers 409 with `file_changed`. */

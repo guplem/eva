@@ -9,6 +9,7 @@ import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts
 import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 import { restartNote } from "./notes.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
@@ -89,7 +90,8 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
       });
   }, [notify]);
 
-  const save = async (): Promise<void> => {
+  /** True only when all of it saved: a half save shows no check. */
+  const save = async (): Promise<boolean> => {
     // The rules save on their own, so a vault that Eva cannot write still lets the other settings save.
     let rulesProblem = "";
     if (chatNameRules !== null && chatNameRules !== savedChatNameRules) {
@@ -115,8 +117,10 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           : `Saved.${rulesProblem}`,
       );
       context.reloadSettings();
+      return rulesProblem === "";
     } catch (error) {
       notify(errorText(error) + rulesProblem);
+      return false;
     }
   };
 
@@ -153,9 +157,9 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
         </label>
       </Card>
       <div className="save-bar">
-        <button className="primary" onClick={() => void save()}>
+        <SaveButton className="primary" onSave={save}>
           Save
-        </button>
+        </SaveButton>
       </div>
     </>
   );

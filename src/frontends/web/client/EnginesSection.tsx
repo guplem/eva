@@ -2,6 +2,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type PublicSettings } from "./api.ts";
 import { restartNote } from "./notes.ts";
+import { SaveButton } from "./SaveButton.tsx";
 import {
   Card,
   CheckRow,
@@ -222,9 +223,9 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
   const initial = context.settings.config.engines.pi.models.default ?? "";
   const [model, setModel] = useState(initial);
   const installed = found(context, "pi");
-  const save = async (): Promise<void> => {
+  const save = (): Promise<boolean> => {
     const trimmed = model.trim();
-    await context.saveNow({ engines: { pi: { models: { default: trimmed === "" ? null : trimmed } } } });
+    return context.saveNow({ engines: { pi: { models: { default: trimmed === "" ? null : trimmed } } } });
   };
   return (
     <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
@@ -251,9 +252,9 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
           <span className="field-label">pi model, such as openai/gpt-5 (empty: pi&apos;s own default)</span>
           <input value={model} onChange={(event) => setModel(event.target.value)} />
         </label>
-        <button className="primary" disabled={model === initial} onClick={() => void save()}>
+        <SaveButton className="primary" disabled={model === initial} onSave={save}>
           Save the model
-        </button>
+        </SaveButton>
       </div>
       <CheckRow name="pi" label="Test pi" />
     </Card>

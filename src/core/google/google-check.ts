@@ -83,7 +83,8 @@ export async function googleAccessToken(
 ): Promise<{ readonly accessToken: string } | { readonly problem: string }> {
   const failed = (problem: string): { readonly problem: string } => ({ problem });
   const { config, client } = inputs;
-  if (config.services.length === 0) return failed("No Google service is on. Set google.services on the machine.");
+  if (config.services.length === 0)
+    return failed("No Google service is on. Turn one on in Settings > Connections > Google.");
   if (client === null)
     return failed(`No OAuth client is saved. Paste its client id and secret (step ${String(googleStep.client)}).`);
   if (config.email === null)

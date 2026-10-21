@@ -81,3 +81,13 @@ export function matchingGoogleAccessPreset(
     null
   );
 }
+
+/** The services with one turned on or off, in the order of `googleAccessLevels`. */
+export function withGoogleService(
+  services: readonly GoogleService[],
+  service: GoogleService,
+  on: boolean,
+): GoogleService[] {
+  const order = Object.keys(googleAccessLevels) as GoogleService[];
+  return order.filter((each) => (each === service ? on : services.includes(each)));
+}

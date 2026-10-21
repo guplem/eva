@@ -157,6 +157,8 @@ function DayLine({ list }: { list: ScheduleList }): ReactElement {
     list.schedules.map((view) => view.schedule),
     list.now,
   );
+  /** The pill under the pointer: its runs show as lines across the bar. */
+  const [hovered, setHovered] = useState<number | null>(null);
   return (
     <section className="schedule-panel" aria-label="Today">
       <div className="schedule-panel-heading">
@@ -164,11 +166,18 @@ function DayLine({ list }: { list: ScheduleList }): ReactElement {
         <span className="schedule-small">{list.timeZone}</span>
       </div>
       <div className="day-line">
-        {line.runs.map((run) => (
+        {/* A thin line is hard to hit, so a wider area under it names it. Pills come later and stay on top. */}
+        <span className="day-line-now-hit" style={{ left: percent(line.now) }} data-tooltip={line.nowLabel} />
+        {line.runs[hovered ?? -1]?.marks.map((mark) => (
+          <span key={mark} className="day-line-mark" style={{ left: percent(mark) }} aria-hidden="true" />
+        ))}
+        {line.runs.map((run, index) => (
           <span
             key={run.title}
             className="day-line-run"
             data-tooltip={run.title}
+            onPointerEnter={() => setHovered(index)}
+            onPointerLeave={() => setHovered(null)}
             // A pill near midnight would leave the bar, so it keeps the room of about one time.
             style={{
               left: `min(${percent(run.position)}, calc(100% - 4.5em))`,

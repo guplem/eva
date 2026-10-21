@@ -67,7 +67,7 @@ export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | 
   if (result.outcome !== "failed") return null;
   return {
     level: "warn",
-    message: `The Claude Code update failed: ${result.detail ?? "unknown reason."} Chats keep the old version; press Update Claude Code in the settings to try again.`,
+    message: `The Claude Code update failed: ${result.detail ?? "unknown reason."} Chats keep the old version; press Update next to claude in Settings, Updates, to try again.`,
     resolvedMessage: "The Claude Code update works again.",
   };
 }

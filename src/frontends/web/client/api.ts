@@ -1,6 +1,13 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
 import type { CheckResult } from "../../../core/checks.ts";
-import type { EvaSetupState, EvaStatus, EvaVersions, InstallableTool, ToolInstallResult } from "../../../core/eva.ts";
+import type {
+  EvaSetupState,
+  EvaStatus,
+  EvaVersions,
+  InstallableTool,
+  LatestToolVersion,
+  ToolInstallResult,
+} from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
 import type {
@@ -205,6 +212,7 @@ export const api = {
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),
+  latestVersions: (): Promise<LatestToolVersion[]> => request("GET", "/api/versions/latest"),
   /** Waits for the whole install, which downloads the tool. */
   installTool: (program: InstallableTool): Promise<ToolInstallResult> =>
     request("POST", "/api/tools/install", { program }),

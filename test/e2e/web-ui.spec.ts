@@ -2576,6 +2576,9 @@ test("Settings: the Versions card shows the shape of its list while it reads", a
 test("Settings: the Versions card installs a missing tool and shows the new version", async ({ page }) => {
   let installed = false;
   const posts: unknown[] = [];
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "uv", latest: "0.9.0" }] });
+  });
   await page.route("**/api/versions", async (route) => {
     const tool = (program: string, version: string | null, installable: boolean, tooOld = false): object => ({
       program,
@@ -2605,7 +2608,7 @@ test("Settings: the Versions card installs a missing tool and shows the new vers
   await openSettings(page, "Updates");
   const card = page.getByRole("region", { name: "Versions" });
   await expect(card.getByText("2.4.0, too old")).toBeVisible();
-  // git has no installer in Eva, and the Claude Code card updates claude.
+  // git has no installer in Eva, uv is the latest, and Eva cannot tell for claude.
   await expect(card.getByRole("button")).toHaveText(["Update", "Update"]);
   await card.getByRole("button").nth(1).click();
   await expect(card.getByText("Installed gh.")).toBeVisible();
@@ -2613,9 +2616,51 @@ test("Settings: the Versions card installs a missing tool and shows the new vers
   expect(posts).toEqual([{ program: "gh" }]);
 });
 
-test("Settings: Update Claude Code starts the update and shows its result", async ({ page }) => {
+/** Versions with claude, pi and gh installed, for the tests of the latest versions. */
+async function routeToolVersions(page: Page, claude: () => string): Promise<void> {
+  await page.route("**/api/versions", async (route) => {
+    const tool = (program: string, version: string): object => ({
+      program,
+      feature: "a test",
+      version,
+      installable: true,
+      tooOld: false,
+    });
+    await route.fulfill({
+      json: { eva: "1.0.0", tools: [tool("claude", claude()), tool("pi", "1.3.0"), tool("gh", "2.62.0")] },
+    });
+  });
+}
+
+test("Settings: the Versions card shows Update only for a tool with a newer version", async ({ page }) => {
+  await routeToolVersions(page, () => "2.1.300");
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({
+      json: [
+        { program: "claude", latest: "2.1.300" },
+        { program: "pi", latest: "1.4.0" },
+        { program: "gh", latest: null },
+      ],
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card.getByText("1.3.0 (1.4.0 available)")).toBeVisible();
+  // claude is the latest; Eva cannot tell for gh, so its button stays.
+  await expect(card.getByRole("button")).toHaveText(["Update", "Update"]);
+  await expect(card.getByRole("button").first()).toHaveClass(/primary/);
+  await expect(card.getByRole("button").nth(1)).toHaveClass(/ghost/);
+  await expect(page.getByRole("region", { name: "Claude Code update" })).toHaveCount(0);
+});
+
+test("Settings: the claude Update button runs claude update and shows its result", async ({ page }) => {
   const posts: string[] = [];
   let finished = false;
+  await routeToolVersions(page, () => (finished ? "2.2.0" : "2.1.0"));
+  await page.route("**/api/versions/latest", async (route) => {
+    await route.fulfill({ json: [{ program: "claude", latest: "2.2.0" }] });
+  });
   await page.route("**/api/update/engine", async (route) => {
     if (route.request().method() === "POST") {
       posts.push("POST");
@@ -2627,17 +2672,21 @@ test("Settings: Update Claude Code starts the update and shows its result", asyn
   });
   await logIn(page);
   await openSettings(page, "Updates");
-  await expect(page.getByText("Claude Code: no update has run yet")).toBeVisible();
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card.getByText("2.1.0 (2.2.0 available)")).toBeVisible();
   finished = true;
-  await page.getByRole("button", { name: "Update Claude Code" }).click();
-  await expect(page.getByText("Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it")).toBeVisible({
+  await card.getByRole("button", { name: "Update" }).first().click();
+  await expect(card.getByText("Claude Code: updated from 2.1.0 to 2.2.0; the next turn uses it")).toBeVisible({
     timeout: 10_000,
   });
+  // The row reads the new version, which is the latest, so its button goes.
+  await expect(card.getByText("2.2.0", { exact: true })).toBeVisible();
   expect(posts).toEqual(["POST"]);
 });
 
 test("Settings: a page opened during the engine update follows it, past a failed read", async ({ page }) => {
   let reads = 0;
+  await routeToolVersions(page, () => "2.1.0");
   await page.route("**/api/update/engine", async (route) => {
     reads += 1;
     if (reads === 2) {
@@ -2649,12 +2698,14 @@ test("Settings: a page opened during the engine update follows it, past a failed
   });
   await logIn(page);
   await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
   await expect(
-    page.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
+    card.getByText("Claude Code: the update starts when the running chats and Eva's own update end"),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeDisabled();
-  await expect(page.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: "Update Claude Code" })).toBeEnabled();
+  await expect(card.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  await expect(card.getByText("Claude Code: 2.1.0 is the latest")).toBeVisible({ timeout: 15_000 });
+  await expect(card.getByRole("button").first()).toHaveText("Update");
+  await expect(card.getByRole("button").first()).toBeEnabled();
 });
 
 test("a new chat that cannot reach Eva says so, and the message closes", async ({ page }) => {

@@ -822,6 +822,57 @@ test("a failed first read of the projects says so, and Try again reads them", as
   await expect(list.getByRole("button", { name: /Example app/ })).toBeVisible();
 });
 
+test("New project: the form creates a project and opens its page", async ({ page }, testInfo) => {
+  const name = `Form app ${testInfo.project.name}`;
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  // The demo has no GitHub login, so the form says what to set up instead of a send that fails.
+  await expect(form.getByLabel(/Create a private GitHub repository/)).toBeDisabled();
+  await expect(form).toContainText("Log in to GitHub");
+  await form.getByLabel("Name").fill(name);
+  await form.getByLabel("Description").fill("Made from the form.");
+  await form.getByLabel("Status").selectOption("idea");
+  await form.getByLabel(/^Tags/).fill("demo form");
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(page.locator("main")).toContainText("Made from the form.");
+});
+
+test("New project: a failed read of the settings turns the steps off and says so", async ({ page }) => {
+  await logIn(page);
+  await openProjects(page);
+  await page.route("**/api/settings", (route) => route.fulfill({ status: 500, json: { error: "Busy." } }));
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await expect(form.getByLabel(/Create a Google Drive folder/)).toBeDisabled();
+  await expect(form).toContainText("Eva could not read the settings.");
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+});
+
+test("New project: a failed step keeps the project and says why", async ({ page }) => {
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    return route.fulfill({
+      status: 201,
+      json: { projectId: "2025-03-02-1015-example-app", github: { problem: "name already exists" }, drive: null },
+    });
+  });
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Name").fill("Example app");
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form.getByRole("status")).toHaveText("Eva could not create the GitHub repository: name already exists");
+  await form.getByRole("button", { name: "Open the project" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { level: 1 })).toHaveText("Example app");
+});
+
 test("the project page says that the clones load, not that there are none", async ({ page }) => {
   await logIn(page);
   let release = (): void => undefined;

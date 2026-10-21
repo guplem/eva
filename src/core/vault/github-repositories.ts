@@ -1,6 +1,6 @@
 /**
  * The person's GitHub repositories, through the GitHub API with the setup login token: setup lists
- * them to pick the vault, and creates a private one for a new vault, with no GitHub CLI. Eva also
+ * them to pick the vault, and creates a private one for a new vault or a new project, with no GitHub CLI. Eva also
  * reads the account, for the name and email of her commits.
  */
 import { EvaError } from "../../shared/errors.ts";
@@ -37,9 +37,19 @@ export async function listGitHubRepositories(options: GitHubApiOptions): Promise
   });
 }
 
-/** Creates an empty private repository for a new vault. */
+export interface NewGitHubRepository {
+  readonly name: string;
+  readonly description?: string;
+  /**
+   * True gives the repository a first commit, for a new project: a clone of an empty repository
+   * has no branch. A new vault stays empty, so the push of its local main is a fast-forward.
+   */
+  readonly initialize?: boolean;
+}
+
+/** Creates a private repository: an empty one for a new vault, or one with a first commit for a project. */
 export async function createGitHubRepository(
-  options: GitHubApiOptions & { readonly name: string },
+  options: GitHubApiOptions & NewGitHubRepository,
 ): Promise<GitHubRepository> {
   if (!repositoryName.test(options.name)) {
     throw new EvaError(
@@ -47,8 +57,12 @@ export async function createGitHubRepository(
       `GitHub cannot name a repository "${options.name}". Use only letters, digits, dots, dashes and underscores.`,
     );
   }
-  // No first commit on GitHub, so the push of the local vault's main is a fast-forward.
-  const body = await request(options, "POST", "/user/repos", { name: options.name, private: true, auto_init: false });
+  const body = await request(options, "POST", "/user/repos", {
+    name: options.name,
+    ...(options.description === undefined ? {} : { description: options.description }),
+    private: true,
+    auto_init: options.initialize === true,
+  });
   const repository = repositoryOf(body);
   if (repository === null) throw new EvaError("github_failed", "GitHub sent an answer that Eva cannot read.");
   return repository;

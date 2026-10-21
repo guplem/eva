@@ -83,7 +83,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
       />
       <span>
         {label}
-        {reason !== null && <span className="field-hint"> {reason}</span>}
+        {reason !== null && <span className="field-hint step-reason">{reason}</span>}
       </span>
     </label>
   );

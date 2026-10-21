@@ -627,6 +627,23 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
   expect(listed.schedules.map((view) => view.schedule.id)).not.toContain(id);
 });
 
+test("the day line shows the time of a run and of now on hover", async ({ page }, info) => {
+  await logIn(page);
+  const id = `hover-${info.project.name}`;
+  await page.request.post("/api/schedules", {
+    data: { id, name: `Hover ${info.project.name}`, at: "00:00", text: "Hi." },
+  });
+  await page.getByRole("dialog", { name: "Setup card" }).getByRole("button", { name: "Got it" }).click();
+  await page.goto("/#/schedules");
+  const line = page.locator(".day-line");
+  await expect(line.locator(".day-line-mark")).toHaveCount(0);
+  await line.locator(".day-line-run").first().hover();
+  await expect(line.locator(".day-line-mark").first()).toBeAttached();
+  await line.locator(".day-line-now-hit").hover();
+  await expect(page.getByRole("tooltip")).toHaveText(/^Now \(\d\d:\d\d\)$/);
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("Project mode: search, a new clone with its branch, and a chat in it", async ({ page }) => {
   await logIn(page);
   await openExampleApp(page);

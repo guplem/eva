@@ -98,9 +98,22 @@ describe("dayLine", () => {
   test("places the time now and today's runs on the day, in time order", () => {
     const line = dayLine([schedule("Review", "18:30"), schedule("Summary", "06:00")], "2026-10-21T12:00");
     expect(line.now).toBe(0.5);
+    expect(line.nowLabel).toBe("Now (12:00)");
     expect(line.runs).toEqual([
-      { position: 360 / 1440, label: "06:00 Summary", title: "06:00 Summary", width: 1110 / 1440 - 360 / 1440 },
-      { position: 1110 / 1440, label: "18:30 Review", title: "18:30 Review", width: 1 - 1110 / 1440 },
+      {
+        position: 360 / 1440,
+        label: "06:00 Summary",
+        title: "06:00 Summary",
+        width: 1110 / 1440 - 360 / 1440,
+        marks: [360 / 1440],
+      },
+      {
+        position: 1110 / 1440,
+        label: "18:30 Review",
+        title: "18:30 Review",
+        width: 1 - 1110 / 1440,
+        marks: [1110 / 1440],
+      },
     ]);
   });
 
@@ -119,5 +132,7 @@ describe("dayLine", () => {
       ["13:00 Lunch", "13:00 Lunch"],
     ]);
     expect(line.runs[0]?.width).toBeCloseTo(5 / 24);
+    // Each run of a shared pill keeps its own mark, so a hover shows when each one runs.
+    expect(line.runs[0]?.marks).toEqual([480 / 1440, 570 / 1440]);
   });
 });

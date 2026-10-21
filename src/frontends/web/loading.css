@@ -118,22 +118,21 @@
   }
 }
 
-/* The facts list of a card, such as the Versions card */
+/* The facts list of a card, such as the Versions card. The grid, gaps and text size copy `.facts`. */
 .facts-skeleton .skeleton-shapes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
 }
 
+/* Each row is one line of text high, as a fact is, so the card keeps its height when the list comes. */
 .skeleton-fact {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--space-4);
-}
-
-.skeleton-fact .skeleton-line:last-child {
-  max-width: 160px;
+  min-height: 1lh;
 }
 
 /* The side list, as the chat items */

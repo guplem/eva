@@ -56,6 +56,28 @@ function serviceAddress(service: GoogleService, urls: GoogleUrls): string {
 const requestTimeoutMs = 30_000;
 
 export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleCheckResult> {
+  const access = await googleAccessToken(inputs);
+  if ("problem" in access) return failed(access.problem);
+  const { config } = inputs;
+  if (!inputs.readServices) return { ok: true, detail: `The Google login of ${config.email ?? ""} works.` };
+
+  const urls = googleUrls(inputs.baseUrl);
+  // At once, so that the Test takes one request time, not one for each service.
+  const problems = await Promise.all(config.services.map((service) => readService(service, urls, access.accessToken)));
+  const problem = problems.find((found) => found !== null);
+  if (problem !== undefined) return failed(problem);
+  const labels = config.services.map((service) => googleServiceLabels[service]);
+  return { ok: true, detail: `Eva can read ${listText(labels)} of ${config.email ?? ""}.` };
+}
+
+/**
+ * A fresh access token from the saved login, or the problem with the step that fixes it. The
+ * saved parts are checked first, with no network call.
+ */
+export async function googleAccessToken(
+  inputs: Omit<GoogleCheckInputs, "readServices">,
+): Promise<{ readonly accessToken: string } | { readonly problem: string }> {
+  const failed = (problem: string): { readonly problem: string } => ({ problem });
   const { config, client } = inputs;
   if (config.services.length === 0) return failed("No Google service is on. Set google.services on the machine.");
   if (client === null)
@@ -85,10 +107,8 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
       `The login gives more access than you chose. This happens after a change to a lower access. Log in to Google again, so that it gives only the new access (step ${String(googleStep.login)}).`,
     );
 
-  const urls = googleUrls(inputs.baseUrl);
-  let accessToken: string;
   try {
-    const answer = await postToken(urls.token, "refresh", {
+    const answer = await postToken(googleUrls(inputs.baseUrl).token, "refresh", {
       grant_type: "refresh_token",
       refresh_token: credential.refresh_token,
       client_id: credential.client_id,
@@ -96,19 +116,11 @@ export async function checkGoogle(inputs: GoogleCheckInputs): Promise<GoogleChec
     });
     if (typeof answer.access_token !== "string")
       return failed(`Google sent no access token. Log in again (step ${String(googleStep.login)}).`);
-    accessToken = answer.access_token;
+    return { accessToken: answer.access_token };
   } catch (error) {
     if (isEvaError(error, "google_failed")) return failed(error.message);
     throw error;
   }
-  if (!inputs.readServices) return { ok: true, detail: `The Google login of ${config.email} works.` };
-
-  // At once, so that the Test takes one request time, not one for each service.
-  const problems = await Promise.all(config.services.map((service) => readService(service, urls, accessToken)));
-  const problem = problems.find((found) => found !== null);
-  if (problem !== undefined) return failed(problem);
-  const labels = config.services.map((service) => googleServiceLabels[service]);
-  return { ok: true, detail: `Eva can read ${listText(labels)} of ${config.email}.` };
 }
 
 /** Null when the read works, or the step that fixes it. */

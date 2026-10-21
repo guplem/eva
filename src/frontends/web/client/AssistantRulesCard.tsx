@@ -92,15 +92,21 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
     <Card item="assistant-rules" title="Eva's rules" description={scope}>
       {draft === null ? (
         <>
-          {rules.text.trim() === "" ? (
-            <p className="muted">You have no rules yet. Eva uses only her built-in rules.</p>
-          ) : (
-            // nestedWebHtml escapes all text and adds only its own tags, so the HTML is safe.
-            <div
-              className="answer-body rules-text"
-              dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.text, cardHeadingLevel) }}
-            />
-          )}
+          {/* Each set of rules has its own frame and title, so the person sees where theirs end. */}
+          <section className="rules-box" aria-labelledby="own-rules-title">
+            <span className="field-label" id="own-rules-title">
+              Your rules
+            </span>
+            {rules.text.trim() === "" ? (
+              <p className="muted">You have no rules yet. Eva uses only her built-in rules.</p>
+            ) : (
+              // nestedWebHtml escapes all text and adds only its own tags, so the HTML is safe.
+              <div
+                className="answer-body rules-text"
+                dangerouslySetInnerHTML={{ __html: nestedWebHtml(rules.text, cardHeadingLevel) }}
+              />
+            )}
+          </section>
           <div className="button-row">
             <button className="primary" disabled={busy} onClick={() => setDraft(rules.text)}>
               Edit
@@ -133,8 +139,8 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
           </button>
         </div>
       )}
-      <details>
-        <summary>Eva's built-in rules (read only)</summary>
+      <details className="rules-box built-in">
+        <summary className="field-label">Eva's built-in rules (read only)</summary>
         <p className="field-hint">
           Each chat with Eva starts with these rules, then yours. Your rules win where the two disagree. An update of
           Eva can change these.

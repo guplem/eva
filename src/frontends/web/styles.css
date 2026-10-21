@@ -552,21 +552,6 @@ textarea {
   flex: 1;
 }
 
-.online-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 4px var(--ok-bg);
-  margin-bottom: 8px;
-}
-
-.online-dot.offline {
-  background: var(--warn);
-  box-shadow: 0 0 0 4px var(--warn-bg);
-}
-
 /* Offline and the open problems, at the top of the main area. Each says what happened and has the fix. */
 /* The notices come under the page title, which each view renders in its own branch. */
 .main > * {
@@ -1235,6 +1220,31 @@ textarea {
   line-height: 1.55;
 }
 
+/* A frame for one set of rules: the person's own, or Eva's built-in rules. */
+.rules-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* The built-in rules are read only, so their frame has the page ground. */
+.rules-box.built-in {
+  background: var(--bg);
+}
+
+/* The frame's title is muted, so it does not read as the first heading of the rules. */
+.rules-box > .field-label {
+  color: var(--muted);
+}
+
+.rules-box > summary {
+  cursor: pointer;
+}
+
+.rules-box > .rules-text > :first-child {
+  margin-top: var(--space-2);
+}
+
 .check-row .ok {
   color: var(--ok);
 }
@@ -1418,10 +1428,9 @@ textarea {
     overflow: visible;
   }
 
-  /* The visor and the dot stay on the rail. On a phone, the "Reconnecting…" banner says the same. */
+  /* The visor stays on the rail. On a phone, the "Reconnecting…" banner says when Eva is offline. */
   .main-nav-visor,
-  .nav-spacer,
-  .online-dot {
+  .nav-spacer {
     display: none;
   }
 
@@ -2148,6 +2157,7 @@ button.link-button {
   gap: var(--space-3);
   padding: var(--space-5) var(--space-6) var(--space-2);
   max-width: 880px;
+  margin-inline: auto;
   width: 100%;
 }
 
@@ -2176,8 +2186,8 @@ button.link-button {
 }
 
 .search-field:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--soft);
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 5px var(--soft);
 }
 
 .search-field input {
@@ -2188,13 +2198,16 @@ button.link-button {
   padding: 9px 0;
 }
 
-.search-field input:focus-visible {
+/* The pill around the field shows the focus. */
+.search-field input:focus {
+  outline: none;
   box-shadow: none;
 }
 
 .settings-page {
   padding: var(--space-3) var(--space-6) var(--space-8);
   max-width: 880px;
+  margin-inline: auto;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -2274,6 +2287,46 @@ button.link-button {
 .chevron {
   align-self: center;
   color: var(--muted);
+}
+
+/* The list of setting homes is long, so it scrolls and the Close button stays on the screen. */
+.setting-homes {
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.setting-homes .search-results {
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+/* In the dialog, the rows are flat and compact: cards on a card would make the list four screens long. */
+.setting-homes .section-card {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-card:hover:not(:disabled) {
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.setting-homes .section-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.setting-homes h3:first-child {
+  margin-top: 0;
 }
 
 /* ==========================================================================
@@ -2667,6 +2720,18 @@ button.small {
   padding: 2px 7px;
 }
 
+/* The title and the "New project" button share one row. */
+.list-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.list-title-row button {
+  flex-shrink: 0;
+}
+
 .sidebar .list-title {
   font-size: 20px;
   font-weight: 700;
@@ -2794,11 +2859,8 @@ button.small {
   flex: none;
 }
 
-.more-menu {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  z-index: 5;
+/* The look of every menu. .more-menu and .context-menu give only its place. */
+.menu {
   min-width: 180px;
   display: flex;
   flex-direction: column;
@@ -2808,7 +2870,7 @@ button.small {
   box-shadow: var(--shadow);
 }
 
-.more-menu button {
+.menu button {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2818,13 +2880,35 @@ button.small {
   text-align: left;
 }
 
-.more-menu button:hover,
-.more-menu button:focus-visible {
+.menu button:hover,
+.menu button:focus-visible {
   background: var(--chip);
 }
 
-.more-menu button.danger {
+.menu button.danger {
   color: var(--bad);
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+}
+
+/* At the pointer, over the sidebar and the dialogs. The tooltip stays on top. */
+.context-menu {
+  position: fixed;
+  z-index: 35;
+  /* Two of menuMargin in menu-place.ts. */
+  max-width: calc(100vw - 2 * var(--space-2));
+}
+
+/* A long press opens Eva's menu, so a phone shows no callout and selects no text. */
+[data-context-menu] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The delete question takes a row of its own under the title, as a schedule row asks. */

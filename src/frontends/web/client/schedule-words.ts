@@ -72,6 +72,8 @@ export interface DayLineRun {
   readonly label: string;
   /** Every run that the pill holds, one per line. */
   readonly title: string;
+  /** The share of the day of each run in the pill: a hover draws a line at each one. */
+  readonly marks: number[];
 }
 
 /** Today's runs as pills on a 24-hour line, and where now is on it. */
@@ -83,20 +85,24 @@ export function dayLine(
     readonly enabled?: boolean;
   }[],
   now: string,
-): { now: number; runs: DayLineRun[] } {
+): { now: number; nowLabel: string; runs: DayLineRun[] } {
   const today = weekdayOf(now);
   const runs = schedules
     .filter((schedule) => schedule.enabled !== false && schedule.days.includes(today))
     .map((schedule) => ({ minutes: minutesOf(schedule.at), text: `${schedule.at} ${schedule.name}` }))
     .sort((first, second) => first.minutes - second.minutes);
-  const groups: { minutes: number; texts: string[] }[] = [];
+  const groups: { minutes: number; texts: string[]; marks: number[] }[] = [];
   for (const run of runs) {
     const last = groups.at(-1);
-    if (last !== undefined && run.minutes - last.minutes < sharedPillMinutes) last.texts.push(run.text);
-    else groups.push({ minutes: run.minutes, texts: [run.text] });
+    const mark = run.minutes / dayMinutes;
+    if (last !== undefined && run.minutes - last.minutes < sharedPillMinutes) {
+      last.texts.push(run.text);
+      last.marks.push(mark);
+    } else groups.push({ minutes: run.minutes, texts: [run.text], marks: [mark] });
   }
   return {
     now: minutesOf(now.slice(11, 16)) / dayMinutes,
+    nowLabel: `Now (${now.slice(11, 16)})`,
     runs: groups.map((group, index) => {
       const position = group.minutes / dayMinutes;
       const next = groups[index + 1];
@@ -106,6 +112,7 @@ export function dayLine(
         width: (next === undefined ? 1 : next.minutes / dayMinutes) - position,
         label: (group.texts[0] ?? "") + (more > 0 ? ` +${String(more)}` : ""),
         title: group.texts.join("\n"),
+        marks: group.marks,
       };
     }),
   };

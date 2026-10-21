@@ -21,6 +21,7 @@ import type { SetupReport } from "../../../src/core/projects/repository-setup.ts
 import { FakeTelegram } from "../../support/fake-telegram.ts";
 import { fakeGoogle } from "../../support/fake-google.ts";
 import { googleScopes } from "../../../src/core/google/google-scopes.ts";
+import { googleCredentialsFolder, readGoogleCredential } from "../../../src/core/google/google-login.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
 let sandbox: GitSandbox;
@@ -787,6 +788,37 @@ describe("the Google setup", () => {
       expect(await started.finishGoogleLogin("the-code")).toEqual({ email: "person@example.com", restartNeeded: true });
     } finally {
       started.stop();
+      google.stop();
+    }
+  });
+
+  test("a log out deletes the saved login and clears the account", async () => {
+    const google = fakeGoogle();
+    google.grantedScope = googleScopes(defaultConfig.google).join(" ");
+    const withGoogle = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, google: { ...defaultConfig.google, email: "person@example.com" } },
+      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      engines: [engine],
+      runner: uvRunner,
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+      googleBaseUrl: google.url,
+    });
+    try {
+      withGoogle.startGoogleLogin();
+      await withGoogle.finishGoogleLogin("the-code");
+      const folder = googleCredentialsFolder(homePaths(home));
+      expect(readGoogleCredential(folder, "person@example.com")).not.toBeNull();
+      // Chats got the account at start, so they keep it until a restart.
+      expect(withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
+      expect(readGoogleCredential(folder, "person@example.com")).toBeNull();
+      expect(loadSettings(homePaths(home)).config.google.email).toBeNull();
+      // A second log out finds nothing to delete, and still works.
+      expect(withGoogle.logOutOfGoogle()).toEqual({ restartNeeded: true });
+    } finally {
+      withGoogle.stop();
       google.stop();
     }
   });

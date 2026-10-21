@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -35,6 +35,28 @@ function returnAddress(url: string, code = "the-code"): string {
   const state = new URL(url).searchParams.get("state") ?? "";
   return `${googleRedirectUri}?state=${state}&code=${code}&scope=openid`;
 }
+
+describe("GoogleLogin.forget", () => {
+  test("deletes the saved login, and a missing one is fine", async () => {
+    const { url } = login.start(client.clientId, scopes);
+    await login.finish(returnAddress(url), client);
+    login.forget("person@example.com");
+    expect(readGoogleCredential(join(folder, "google"), "person@example.com")).toBeNull();
+    expect(() => login.forget("person@example.com")).not.toThrow();
+  });
+
+  test("a login that Eva cannot delete gives a google_failed error", () => {
+    // A folder in the place of the file stands for a file that another program holds open.
+    mkdirSync(join(folder, "google", credentialFileName("person@example.com"), "inside"), { recursive: true });
+    let caught: unknown;
+    try {
+      login.forget("person@example.com");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught) && caught.code === "google_failed").toBe(true);
+  });
+});
 
 describe("GoogleLogin", () => {
   test("the consent address asks for offline access with PKCE, for a loopback address", () => {

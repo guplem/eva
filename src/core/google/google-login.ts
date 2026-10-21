@@ -6,7 +6,7 @@
  * Eva writes the login where `workspace-mcp` reads it, in its own file format.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -166,6 +166,19 @@ export class GoogleLogin {
     if (this.pending === pending) this.pending = null;
     this.save(email, credential);
     return { email };
+  }
+
+  /** Deletes the saved login of an account. A missing file is fine: the login is gone either way. */
+  forget(email: string): void {
+    this.pending = null;
+    try {
+      rmSync(join(this.options.credentialsFolder, credentialFileName(email)), { force: true });
+    } catch (error) {
+      // On Windows, `workspace-mcp` can hold the file open while it saves a fresh token.
+      throw new EvaError("google_failed", "Eva could not delete the Google login. Press Log out again.", {
+        cause: error,
+      });
+    }
   }
 
   private save(email: string, credential: GoogleCredential): void {

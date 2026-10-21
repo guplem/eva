@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   findTailscale,
   publishWithTailscale,
+  readTailnetAccounts,
   readTailscaleState,
   signInToTailscale,
   tailnetAddress,
@@ -258,5 +259,26 @@ describe("signInToTailscale", () => {
     expect((await signInToTailscale(context(answering(1, "", "no daemon")))).problem).toContain("no daemon");
     const throwing: ProcessRunner = { run: () => Promise.reject(new Error("timed out")) };
     expect((await signInToTailscale(context(throwing))).problem).toContain("timed out");
+  });
+});
+
+describe("readTailnetAccounts (#322)", () => {
+  test("lists the accounts on the tailnet, the machine's owner first", async () => {
+    const users = {
+      User: {
+        "3": { LoginName: "partner@example.com" },
+        "7": { LoginName: "owner@example.com" },
+        "9": { LoginName: "tagged-devices" },
+      },
+    };
+    expect(await readTailnetAccounts(context(answering(0, status(users))))).toEqual([
+      "owner@example.com",
+      "partner@example.com",
+    ]);
+  });
+
+  test("gives no account when Tailscale does not answer", async () => {
+    expect(await readTailnetAccounts(context(answering(1, "", "not running")))).toEqual([]);
+    expect(await readTailnetAccounts(context(answering(0, "not json")))).toEqual([]);
   });
 });

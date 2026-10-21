@@ -8,6 +8,8 @@ interface Fake {
   readonly asked: string[];
   readonly allowed: string[];
   readonly started: { count: number };
+  /** The Tailscale accounts that setup let in, and the restarts that it asked for. */
+  readonly accounts: { allowed: string[]; restarts: number };
 }
 
 /** `running` says whether Eva answers before setup starts her; `codes` maps a code to its device label. */
@@ -17,11 +19,14 @@ function fake(input: {
   running?: boolean;
   startWorks?: boolean;
   codes?: Record<string, string>;
+  /** For an Eva that is not the first one: the tailnet's accounts, owner first, and the ones let in. */
+  tailnet?: { accounts: string[]; allowed?: string[] };
 }): Fake {
   const lines: string[] = [];
   const asked: string[] = [];
   const allowed: string[] = [];
   const started = { count: 0 };
+  const accounts = { allowed: [...(input.tailnet?.allowed ?? [])], restarts: 0 };
   let running = input.running ?? false;
   const queues = Object.fromEntries(Object.entries(input.answers ?? {}).map(([key, value]) => [key, [...value]]));
   const options: StartOptions = {
@@ -45,8 +50,22 @@ function fake(input: {
       return Promise.resolve(label);
     },
     sleep: () => Promise.resolve(),
+    account:
+      input.tailnet === undefined
+        ? null
+        : {
+            accounts: () => Promise.resolve(input.tailnet?.accounts ?? []),
+            allowed: () => accounts.allowed,
+            allow: (account) => {
+              accounts.allowed = [account];
+            },
+            restart: () => {
+              accounts.restarts += 1;
+              return Promise.resolve(true);
+            },
+          },
   };
-  return { options, lines, asked, allowed, started };
+  return { options, lines, asked, allowed, started, accounts };
 }
 
 describe("startAndLetIn", () => {
@@ -153,5 +172,85 @@ describe("where the person finishes the setup", () => {
     const setup = fake({ interactive: false, answers: { startService: ["yes"] } });
     expect(await startAndLetIn(setup.options)).toBe("terminal");
     expect(setup.asked).not.toContain("finishOn");
+  });
+});
+
+describe("the Tailscale account of a second Eva (#322)", () => {
+  const tailnet = { accounts: ["owner@example.com", "partner@example.com"] };
+
+  test("a person picks the account from the list, and Eva starts with it", async () => {
+    const setup = fake({ tailnet, answers: { tailscaleAccount: ["2"] } });
+    await startAndLetIn(setup.options);
+    expect(setup.accounts.allowed).toEqual(["partner@example.com"]);
+    expect(setup.accounts.restarts).toBe(0);
+    expect(setup.started.count).toBe(1);
+    const text = setup.lines.join("\n");
+    expect(text).toContain("2. partner@example.com");
+    expect(text).toContain("lets in the devices of partner@example.com");
+    // The choice comes before the start, so Eva starts with it.
+    expect(setup.asked.indexOf("tailscaleAccount")).toBeLessThan(setup.asked.indexOf("startService"));
+  });
+
+  test("Enter keeps the computer owner's account", async () => {
+    const setup = fake({ tailnet, answers: { tailscaleAccount: [""] } });
+    await startAndLetIn(setup.options);
+    expect(setup.accounts.allowed).toEqual([]);
+  });
+
+  test("an Eva that already runs restarts, so the account can log in at once", async () => {
+    const setup = fake({ tailnet, running: true, answers: { tailscaleAccount: ["partner@example.com"] } });
+    await startAndLetIn(setup.options);
+    expect(setup.accounts.allowed).toEqual(["partner@example.com"]);
+    expect(setup.accounts.restarts).toBe(1);
+  });
+
+  test("an account chosen before shows, Enter keeps it, and another pick changes it", async () => {
+    const kept = fake({ tailnet: { ...tailnet, allowed: ["partner@example.com"] }, running: true });
+    await startAndLetIn(kept.options);
+    expect(kept.lines.join("\n")).toContain("This Eva lets in the devices of partner@example.com");
+    expect(kept.accounts).toEqual({ allowed: ["partner@example.com"], restarts: 0 });
+    const changed = fake({
+      tailnet: { ...tailnet, allowed: ["partner@example.com"] },
+      running: true,
+      answers: { tailscaleAccount: ["1"] },
+    });
+    await startAndLetIn(changed.options);
+    expect(changed.accounts).toEqual({ allowed: ["owner@example.com"], restarts: 1 });
+  });
+
+  test("a script's account that setup cannot use stops setup with the reason", async () => {
+    for (const setup of [
+      fake({ interactive: false, answers: { tailscaleAccount: ["partner@example.com"] } }),
+      fake({
+        tailnet: { accounts: ["owner@example.com"] },
+        interactive: false,
+        answers: { tailscaleAccount: ["partner@example.com"] },
+      }),
+    ]) {
+      const refused = await startAndLetIn(setup.options).then(
+        () => "went on",
+        (error: unknown) => (isEvaError(error, "config_invalid") ? error.message : String(error)),
+      );
+      expect(refused).toContain("EVA_TAILSCALE_ACCOUNT");
+    }
+  });
+
+  test("the first Eva on a computer, or a tailnet of one account, gets no question", async () => {
+    const first = fake({});
+    await startAndLetIn(first.options);
+    expect(first.asked).not.toContain("tailscaleAccount");
+    const alone = fake({ tailnet: { accounts: ["owner@example.com"] } });
+    await startAndLetIn(alone.options);
+    expect(alone.asked).not.toContain("tailscaleAccount");
+  });
+
+  test("a script names the account", async () => {
+    const setup = fake({
+      tailnet,
+      interactive: false,
+      answers: { tailscaleAccount: ["partner@example.com"], startService: ["yes"] },
+    });
+    await startAndLetIn(setup.options);
+    expect(setup.accounts.allowed).toEqual(["partner@example.com"]);
   });
 });

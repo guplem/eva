@@ -176,6 +176,45 @@ describe("doctor and setup", () => {
     expect(loadSecrets(paths).localApiToken).toBeString();
   });
 
+  test("setup of a second Eva asks which Tailscale account uses her, and saves it (#322)", async () => {
+    mkdirSync(instanceHome(root, "ana"));
+    writeFileSync(join(instanceHome(root, "ana"), "config.json"), "{}\n");
+    // This setup makes the Eva: she has no config yet.
+    rmSync(paths.config);
+    const status = JSON.stringify({
+      BackendState: "Running",
+      Self: { DNSName: "server.example-tailnet.ts.net.", UserID: 1 },
+      User: { "1": { LoginName: "owner@example.com" }, "2": { LoginName: "partner@example.com" } },
+    });
+    const commands: string[][] = [];
+    const host = fakeHost({
+      userHome: join(root, "user"),
+      runner: scriptedRunner(commands, (command) =>
+        command.includes("status") && command.includes("--json") ? { stdout: status } : undefined,
+      ),
+      withPrompt: (work) =>
+        work((question) =>
+          Promise.resolve(
+            question.includes("GitHub login") ? "skip" : question.includes("number or an account") ? "2" : "",
+          ),
+        ),
+    });
+    expect(await run(host, "setup")).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("2. partner@example.com");
+    expect(loadSettings(paths).config.remoteAccess.allowedTailscaleIdentities).toEqual(["partner@example.com"]);
+
+    // The owner's own Eva, set up again beside the new one, keeps her account with no question.
+    const owner = fakeHost({
+      userHome: join(root, "user"),
+      runner: scriptedRunner([], (command) =>
+        command.includes("status") && command.includes("--json") ? { stdout: status } : undefined,
+      ),
+      withPrompt: (work) => work((question) => Promise.resolve(question.includes("GitHub login") ? "skip" : "")),
+    });
+    await runCli(["--instance", "ana", "setup"], inRoot(owner), noWiring);
+    expect(printed(owner)).not.toContain("Which account uses this Eva?");
+  });
+
   test("an interactive setup asks at the console, and starts Eva as a service", async () => {
     // Enter at the GitHub question would start a real browser login, so this person skips it.
     const host = fakeHost({

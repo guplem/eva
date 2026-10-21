@@ -174,6 +174,17 @@ describe("guards", () => {
     expect((await call("/api/status", { headers: { host: "eva.example-tailnet.ts.net" } })).status).toBe(403);
   });
 
+  test("a refused Tailscale account learns which account it is, and how to let it in (#322)", async () => {
+    // The page itself loads before any login; its first read gets the reason, and shows it.
+    const stranger = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "stranger@example.com" };
+    const refused = await call("/api/sessions", { headers: stranger });
+    expect(refused.status).toBe(403);
+    const body = (await refused.json()) as { error: string; code: string };
+    expect(body.code).toBe("tailscale_account_refused");
+    expect(body.error).toContain("stranger@example.com");
+    expect(body.error).toContain("eva setup");
+  });
+
   test("refuses a Tailscale identity that is not on the allowlist", async () => {
     expect(
       (await call("/api/status", { headers: headers({ "tailscale-user-login": "stranger@example.com" }) })).status,

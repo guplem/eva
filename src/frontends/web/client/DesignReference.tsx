@@ -3,7 +3,7 @@
  * map of Eva's layers. It draws the real parts with the real stylesheet, so it shows what the page
  * shows. The Appearance card on top changes the seed and the theme, and every sample follows.
  */
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import {
   architectureLayers,
   colourGroups,
@@ -17,6 +17,7 @@ import { Icon, iconNames } from "./icons.tsx";
 import { FactsSkeleton, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { AppearanceCard } from "./PersonalizeSection.tsx";
 import { Card, ChoiceChips, CommandLine, StatusIcon, StatusPill, Steps } from "./SettingsParts.tsx";
+import { Toast } from "./Toast.tsx";
 import { faces } from "./visor-faces.ts";
 import { Visor } from "./Visor.tsx";
 
@@ -208,6 +209,8 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
           <span data-tooltip="A hint can also sit on plain text.">Rest the pointer here</span>
         </div>
       );
+    case "toasts":
+      return <ToastSamples />;
     case "skeletons":
       return (
         <div className="design-stack">
@@ -265,4 +268,91 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
         </ul>
       );
   }
+}
+
+type ToastSampleId = "note" | "long" | "error" | "question" | "wait";
+
+const toastSampleLabels: Readonly<Record<ToastSampleId, string>> = {
+  note: "A note",
+  long: "A long note",
+  error: "An error with a fix",
+  question: "A question",
+  wait: "A wait",
+};
+
+/** The real toasts, shown one at a time, so a person tests them on a phone too. */
+function ToastSamples(): ReactElement {
+  const [shown, setShown] = useState<ToastSampleId | null>(null);
+  // Each press restarts the ring, also for the toast that shows now.
+  const [presses, setPresses] = useState(0);
+  const close = (): void => setShown(null);
+  useEffect(() => {
+    if (shown !== "wait") return undefined;
+    // A wait has no close button: its owner removes it when the work ends.
+    const timer = setTimeout(close, 4_000);
+    return () => clearTimeout(timer);
+  }, [shown, presses]);
+  return (
+    <div className="button-row">
+      {(Object.keys(toastSampleLabels) as ToastSampleId[]).map((id) => (
+        <button
+          key={id}
+          onClick={() => {
+            setShown(id);
+            setPresses((count) => count + 1);
+          }}
+        >
+          {toastSampleLabels[id]}
+        </button>
+      ))}
+      {shown === "note" && <Toast key={presses} message="Saved." tone="ok" onClose={close} />}
+      {shown === "long" && (
+        <Toast
+          key={presses}
+          message="Saved. Eva uses the new engine for the chats that start from now on. The chats that run keep their engine."
+          onClose={close}
+        />
+      )}
+      {shown === "error" && (
+        <Toast
+          key={presses}
+          message="The GitHub login expired. Log in again to push your changes."
+          tone="bad"
+          icon="key"
+          role="alert"
+          onClose={close}
+          actions={
+            <button className="primary" onClick={close}>
+              Open Settings
+            </button>
+          }
+        />
+      )}
+      {shown === "question" && (
+        <Toast
+          key={presses}
+          message='"Plan the trip" is running. A restart stops it. Restart Eva now?'
+          tone="warn"
+          icon="restart"
+          role="alertdialog"
+          label="Restart Eva"
+          closeLabel="Close the question"
+          onClose={close}
+          actions={
+            <>
+              <button onClick={close}>Cancel</button>
+              <button className="primary" onClick={close}>
+                Yes, restart
+              </button>
+            </>
+          }
+        />
+      )}
+      {shown === "wait" && (
+        <Toast key={presses} message="Eva restarts…" icon="restart" role={null}>
+          <ProgressBar label="Eva restarts…" />
+        </Toast>
+      )}
+    </div>
+  );
 }

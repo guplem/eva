@@ -28,6 +28,7 @@ import {
 import { errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { needsYou, nextToDo, restartQuestion, setupSummary, stepMark } from "./setup-summary.ts";
 import { SetupOverview, SetupRing, SetupStepPage } from "./SetupPages.tsx";
+import { Toast } from "./Toast.tsx";
 import { UpdatesSection } from "./UpdatesSection.tsx";
 import { VaultSection } from "./VaultSection.tsx";
 import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
@@ -273,37 +274,44 @@ export function SettingsView({
             )}
           </div>
           {restartAsk !== null && (
-            <div className="settings-notice restart-question" role="alertdialog" aria-label="Restart Eva">
-              <span>{restartAsk}</span>
-              <div className="button-row">
-                <button className="ghost" onClick={() => setRestartAsk(null)}>
-                  Cancel
-                </button>
-                <button className="primary" onClick={() => void restartNow()}>
-                  Yes, restart
-                </button>
-              </div>
-            </div>
+            <Toast
+              message={restartAsk}
+              tone="warn"
+              icon="restart"
+              role="alertdialog"
+              label="Restart Eva"
+              closeLabel="Close the question"
+              onClose={() => setRestartAsk(null)}
+              actions={
+                <>
+                  <button onClick={() => setRestartAsk(null)}>Cancel</button>
+                  <button className="primary" onClick={() => void restartNow()}>
+                    Yes, restart
+                  </button>
+                </>
+              }
+            />
           )}
           {restarting && notice === null && restartAsk === null && (
-            <div className="settings-notice">
+            <Toast message="Eva restarts…" icon="restart" role={null}>
               <ProgressBar label="Eva restarts…" />
-            </div>
+            </Toast>
           )}
           {notice !== null && restartAsk === null && (
-            // Sticky, so a phone shows the result of a control near the bottom of the screen.
-            // The restart question takes its place, so the notice never covers its buttons.
-            <div className="settings-notice" role="status">
-              <span>{noteParts(notice).text}</span>
-              {noteParts(notice).action === "restart" && (
-                <button className="primary" disabled={restarting} onClick={askRestart}>
-                  {noteActionLabels.restart}
-                </button>
-              )}
-              <button className="ghost" aria-label="Close the notice" onClick={() => setNotice(null)}>
-                <Icon name="x" />
-              </button>
-            </div>
+            // The toast shows the result of a control near the bottom of a phone screen.
+            // The restart question takes its place, so the note never covers its buttons.
+            <Toast
+              message={noteParts(notice).text}
+              closeLabel="Close the notice"
+              onClose={() => setNotice(null)}
+              actions={
+                noteParts(notice).action === "restart" ? (
+                  <button className="primary" disabled={restarting} onClick={askRestart}>
+                    {noteActionLabels.restart}
+                  </button>
+                ) : undefined
+              }
+            />
           )}
         </div>
       </div>

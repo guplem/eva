@@ -25,6 +25,11 @@ describe("the design reference", () => {
     expect(new Set(tokens).size).toBe(tokens.length);
   });
 
+  test("every link has one look: the stylesheet colours links once, with a token", () => {
+    expect(styles).toMatch(/^a \{[^}]*color: var\(--accent-ink\);/m);
+    expect(styles).not.toMatch(/\.access-address|\.answer-body a \{/);
+  });
+
   test("every class that it names is a rule of the stylesheet", () => {
     const classes = componentSamples.flatMap((sample) => sample.classes);
     expect(classes.length).toBeGreaterThan(10);

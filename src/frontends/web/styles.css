@@ -254,6 +254,12 @@ button {
   transition: transform 80ms ease-out;
 }
 
+/* One look for every link. The browser's default blue is hard to read in dark mode, and it ignores the seed. */
+a {
+  color: var(--accent-ink);
+  text-underline-offset: 2px;
+}
+
 button:active:not(:disabled),
 a.button-link:active {
   transform: scale(0.96);
@@ -970,11 +976,6 @@ textarea {
 /* A paragraph in a loose item keeps its full margin, so a blank line between items still shows. */
 .answer-body li > :is(ul, ol, pre) {
   margin: 4px 0;
-}
-
-/* The browser's default link blue is hard to read in dark mode. */
-.answer-body a {
-  color: var(--accent);
 }
 
 .answer-body pre {

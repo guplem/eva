@@ -118,10 +118,6 @@ button.device-log-out {
   font-size: var(--text-xs);
 }
 
-.access-address {
-  font-family: var(--mono);
-}
-
 .access-step button,
 .access-share button {
   display: inline-flex;

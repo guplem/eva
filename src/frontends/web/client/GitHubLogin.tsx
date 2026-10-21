@@ -7,6 +7,7 @@ import { useState, type ReactElement } from "react";
 import { githubLoginAccess } from "../../../core/vault/github-login.ts";
 import { api, ApiError } from "./api.ts";
 import { CommandLine, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { restartNote } from "./notes.ts";
 
 /** The pause before the page asks again after a lost answer. */
@@ -54,6 +55,7 @@ export function GitHubLogin({
             {busy && shown === null ? "Getting the code…" : "Log in with GitHub"}
           </button>
         </div>
+        {busy && shown === null && <ProgressBar label="Eva gets a code from GitHub…" />}
         <div className="field-hint">{githubLoginAccess}</div>
       </li>
       <li>

@@ -8,7 +8,8 @@ import { chatSubtitle } from "./chat-details.ts";
 import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ChatHeader } from "./ChatHeader.tsx";
+import { ChatHeader, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
+import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
 
@@ -71,16 +72,28 @@ export function AssistantView({
     tree.map((session) => session.id),
   );
   const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
+  const actionRequest = useChatActionRequest();
+  const clearAction = actionRequest.clear;
+
+  /** Opens a chat, and starts a header action when the chat's context menu asks for one. */
+  const select = (chatId: string, action?: ChatAction): void => {
+    setSelectedId(chatId);
+    if (action === undefined) clearAction();
+    else actionRequest.ask(chatId, action);
+    onNavigate();
+  };
 
   useEffect(() => {
     if (linkedId === null) return;
     setSelectedId(linkedId);
+    clearAction();
     onLinkedChatOpened();
-  }, [linkedId, onLinkedChatOpened]);
+  }, [linkedId, onLinkedChatOpened, clearAction]);
 
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
     setSelectedId(chat.id);
+    clearAction();
     // A new chat goes first in the list. Show it, because the list can be scrolled down.
     listRef.current?.scrollTo({ top: 0 });
     onNavigate();
@@ -131,10 +144,8 @@ export function AssistantView({
                     approvalSessionIds,
                   )}
                   isSelected={chat.id === selected?.id}
-                  onSelect={() => {
-                    setSelectedId(chat.id);
-                    onNavigate();
-                  }}
+                  onSelect={() => select(chat.id)}
+                  onAction={(action) => select(chat.id, action)}
                 />
               ))}
             </section>
@@ -149,7 +160,8 @@ export function AssistantView({
         ) : (
           <>
             <ChatHeader
-              key={selected.id}
+              key={actionRequest.headerProps(selected.id).key}
+              startWith={actionRequest.headerProps(selected.id).startWith}
               chat={selected}
               details={chat}
               subtitle={chatSubtitle(
@@ -190,22 +202,28 @@ function ChatItem({
   state,
   isSelected,
   onSelect,
+  onAction,
 }: {
   readonly chat: SessionRecord;
   readonly time: string;
   readonly state: ChatState;
   readonly isSelected: boolean;
   readonly onSelect: () => void;
+  readonly onAction: (action: ChatAction) => void;
 }): ReactElement {
+  const { props, menu } = useContextMenu(chatListItems(onSelect, onAction), `Actions of “${chat.title}”`);
   return (
-    <button className="list-item chat-item" aria-current={isSelected} onClick={onSelect}>
-      <span className="chat-item-title">
-        {chat.source === "schedule" && <Icon name="clock" label="Schedule" />}
-        {chat.title}
-      </span>
-      <span className="chat-item-time">{time}</span>
-      <span className="chat-item-preview">{chatPreview(chat, state)}</span>
-      {state !== null && <span className={`status-pill ${state}`}>{stateLabels[state]}</span>}
-    </button>
+    <>
+      <button className="list-item chat-item" aria-current={isSelected} onClick={onSelect} {...props}>
+        <span className="chat-item-title">
+          {chat.source === "schedule" && <Icon name="clock" label="Schedule" />}
+          {chat.title}
+        </span>
+        <span className="chat-item-time">{time}</span>
+        <span className="chat-item-preview">{chatPreview(chat, state)}</span>
+        {state !== null && <span className={`status-pill ${state}`}>{stateLabels[state]}</span>}
+      </button>
+      {menu}
+    </>
   );
 }

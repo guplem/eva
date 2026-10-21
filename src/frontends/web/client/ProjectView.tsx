@@ -10,7 +10,8 @@ import { chatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
-import { ChatHeader } from "./ChatHeader.tsx";
+import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
+import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
@@ -141,6 +142,9 @@ export function ProjectView({
     };
   }, [openProjectId, cloneVersion, showError]);
 
+  const actionRequest = useChatActionRequest();
+  const clearAction = actionRequest.clear;
+
   // A linked Project chat opens in its clone, whatever the search and the filters show. A fork opens
   // as a branch of its first chat, because the page shows a chat with all its forks.
   const linkedId = linkedChat?.mode === "project" ? rootIdOf(linkedChat, sessions) : null;
@@ -161,6 +165,7 @@ export function ProjectView({
         if (project === undefined || clone === undefined) {
           showError(new Error("The linked chat's project or clone is not on this computer any more."));
         } else {
+          clearAction();
           setPage({ kind: "chat", project, clone, chatId: linkedId });
         }
       } catch (caught) {
@@ -168,7 +173,7 @@ export function ProjectView({
       }
       onLinkedChatOpened();
     })();
-  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened]);
+  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened, clearAction]);
 
   const roots = useMemo(() => rootChats(sessions), [sessions]);
   const chatsOf = useCallback(
@@ -316,32 +321,17 @@ export function ProjectView({
         {Array.isArray(projects) && projects.length === 0 && <span className="muted">No project matches.</span>}
         {Array.isArray(projects) &&
           projects.map((project) => (
-            <button
+            <ProjectCard
               key={project.id}
-              className="project-card"
-              aria-current={page?.project.id === project.id}
-              onClick={() => open({ kind: "project", project })}
-            >
-              <span className="card-row">
-                <b>{project.title}</b>
-                <StatusPill pill={statusPill(project.frontMatter.status)} />
-              </span>
-              <span className="card-row muted">
-                <span>{projectSummary(project.clones.length, chatCount(project))}</span>
-                {project.warnings.length > 0 && (
-                  <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>
-                )}
-              </span>
-              {project.frontMatter.tags.length > 0 && (
-                <span className="tags">
-                  {project.frontMatter.tags.map((candidate) => (
-                    <span key={candidate} className="tag">
-                      #{candidate}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </button>
+              project={project}
+              chatCount={chatCount(project)}
+              isOpen={page?.project.id === project.id}
+              onOpen={(kind) => open({ kind, project })}
+              onNewClone={() => {
+                open({ kind: "project", project });
+                void newClone(project);
+              }}
+            />
           ))}
       </nav>
       {sidebarOpen && page !== null && (
@@ -368,7 +358,8 @@ export function ProjectView({
         ) : page.kind === "chat" && chat !== undefined ? (
           <>
             <ChatHeader
-              key={chat.id}
+              key={actionRequest.headerProps(chat.id).key}
+              startWith={actionRequest.headerProps(chat.id).startWith}
               chat={chat}
               details={chatDetails}
               subtitle={
@@ -419,7 +410,11 @@ export function ProjectView({
             onDetails={() => open({ kind: "details", project: page.project })}
             onSetup={() => open({ kind: "setup", project: page.project })}
             onNewClone={() => void newClone(page.project)}
-            onOpenChat={(clone, picked) => open({ kind: "chat", project: page.project, clone, chatId: picked.id })}
+            onOpenChat={(clone, picked, action) => {
+              if (action === undefined) clearAction();
+              else actionRequest.ask(picked.id, action);
+              open({ kind: "chat", project: page.project, clone, chatId: picked.id });
+            }}
             onNewChat={(clone) => void startChat(page.project, clone)}
           />
         )}
@@ -441,4 +436,55 @@ function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]): stri
     current = parent;
   }
   return current.id;
+}
+
+/** A project in the list. Its context menu opens the project's pages at once. */
+function ProjectCard({
+  project,
+  chatCount,
+  isOpen,
+  onOpen,
+  onNewClone,
+}: {
+  readonly project: Project;
+  readonly chatCount: number;
+  readonly isOpen: boolean;
+  readonly onOpen: (kind: "project" | "details" | "setup") => void;
+  readonly onNewClone: () => void;
+}): ReactElement {
+  const { props, menu } = useContextMenu(
+    [
+      { label: "Open", icon: "briefcase", onChoose: () => onOpen("project") },
+      { label: "Details", icon: "pen", onChoose: () => onOpen("details") },
+      { label: "Repository setup", icon: "gear", onChoose: () => onOpen("setup") },
+      { label: "New clone", icon: "plus", onChoose: onNewClone },
+    ],
+    `Actions of “${project.title}”`,
+  );
+  return (
+    <>
+      <button className="project-card" aria-current={isOpen} onClick={() => onOpen("project")} {...props}>
+        <span className="card-row">
+          <b>{project.title}</b>
+          <StatusPill pill={statusPill(project.frontMatter.status)} />
+        </span>
+        <span className="card-row muted">
+          <span>{projectSummary(project.clones.length, chatCount)}</span>
+          {project.warnings.length > 0 && (
+            <span className="pill warn">{countOf(project.warnings.length, "warning")}</span>
+          )}
+        </span>
+        {project.frontMatter.tags.length > 0 && (
+          <span className="tags">
+            {project.frontMatter.tags.map((candidate) => (
+              <span key={candidate} className="tag">
+                #{candidate}
+              </span>
+            ))}
+          </span>
+        )}
+      </button>
+      {menu}
+    </>
+  );
 }

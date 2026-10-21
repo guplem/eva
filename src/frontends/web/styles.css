@@ -2128,6 +2128,7 @@ button.link-button {
   gap: var(--space-3);
   padding: var(--space-5) var(--space-6) var(--space-2);
   max-width: 880px;
+  margin-inline: auto;
   width: 100%;
 }
 
@@ -2156,8 +2157,8 @@ button.link-button {
 }
 
 .search-field:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--soft);
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 5px var(--soft);
 }
 
 .search-field input {
@@ -2168,13 +2169,16 @@ button.link-button {
   padding: 9px 0;
 }
 
-.search-field input:focus-visible {
+/* The pill around the field shows the focus. */
+.search-field input:focus {
+  outline: none;
   box-shadow: none;
 }
 
 .settings-page {
   padding: var(--space-3) var(--space-6) var(--space-8);
   max-width: 880px;
+  margin-inline: auto;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -2774,11 +2778,8 @@ button.small {
   flex: none;
 }
 
-.more-menu {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  z-index: 5;
+/* The look of every menu. .more-menu and .context-menu give only its place. */
+.menu {
   min-width: 180px;
   display: flex;
   flex-direction: column;
@@ -2788,7 +2789,7 @@ button.small {
   box-shadow: var(--shadow);
 }
 
-.more-menu button {
+.menu button {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2798,13 +2799,35 @@ button.small {
   text-align: left;
 }
 
-.more-menu button:hover,
-.more-menu button:focus-visible {
+.menu button:hover,
+.menu button:focus-visible {
   background: var(--chip);
 }
 
-.more-menu button.danger {
+.menu button.danger {
   color: var(--bad);
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+}
+
+/* At the pointer, over the sidebar and the dialogs. The tooltip stays on top. */
+.context-menu {
+  position: fixed;
+  z-index: 35;
+  /* Two of menuMargin in menu-place.ts. */
+  max-width: calc(100vw - 2 * var(--space-2));
+}
+
+/* A long press opens Eva's menu, so a phone shows no callout and selects no text. */
+[data-context-menu] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The delete question takes a row of its own under the title, as a schedule row asks. */

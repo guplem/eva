@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
+import { ProgressBar } from "./Loading.tsx";
 import { stepProblems, unavailableSteps } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
 
@@ -20,7 +21,8 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
   const [tags, setTags] = useState("");
   const [github, setGithub] = useState(false);
   const [drive, setDrive] = useState(false);
-  const [settings, setSettings] = useState<PublicSettings | null>(null);
+  /** Null while the read runs. */
+  const [settings, setSettings] = useState<PublicSettings | "failed" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A failed step leaves the project in place: the sheet says why before it opens the project.
@@ -28,20 +30,22 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape" || busy) return;
+      // The project exists already, so the list must show it.
+      if (created === null) onClose();
+      else onCreated(created.projectId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onCreated, busy, created]);
 
   // Without the settings, both steps stay off, so a send never asks for a step that cannot run.
   useEffect(() => {
-    api.settings().then(setSettings, () => undefined);
+    api.settings().then(setSettings, () => setSettings("failed"));
   }, []);
+  const unreadable = "Eva could not read the settings. Close the form and try again.";
   const unavailable =
-    settings === null
-      ? { github: "Eva is reading the settings.", drive: "Eva is reading the settings." }
-      : unavailableSteps(settings);
+    settings === null || settings === "failed" ? { github: unreadable, drive: unreadable } : unavailableSteps(settings);
 
   const create = async (): Promise<void> => {
     setBusy(true);
@@ -156,8 +160,14 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
                 onChange={(event) => setTags(event.target.value)}
               />
             </label>
-            {step("Create a private GitHub repository", github, setGithub, unavailable.github)}
-            {step("Create a Google Drive folder", drive, setDrive, unavailable.drive)}
+            {settings === null ? (
+              <ProgressBar label="Eva reads which steps she can do." />
+            ) : (
+              <>
+                {step("Create a private GitHub repository", github, setGithub, unavailable.github)}
+                {step("Create a Google Drive folder", drive, setDrive, unavailable.drive)}
+              </>
+            )}
             {error !== null && (
               <div role="status" className="schedule-form-error">
                 {error}

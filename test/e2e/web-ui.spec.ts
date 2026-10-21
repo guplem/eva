@@ -756,6 +756,18 @@ test("New project: the form creates a project and opens its page", async ({ page
   await expect(page.locator("main")).toContainText("Made from the form.");
 });
 
+test("New project: a failed read of the settings turns the steps off and says so", async ({ page }) => {
+  await logIn(page);
+  await openProjects(page);
+  await page.route("**/api/settings", (route) => route.fulfill({ status: 500, json: { error: "Busy." } }));
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await expect(form.getByLabel(/Create a Google Drive folder/)).toBeDisabled();
+  await expect(form).toContainText("Eva could not read the settings.");
+  await page.keyboard.press("Escape");
+  await expect(form).toHaveCount(0);
+});
+
 test("New project: a failed step keeps the project and says why", async ({ page }) => {
   await page.route("**/api/projects", async (route) => {
     if (route.request().method() !== "POST") return route.continue();

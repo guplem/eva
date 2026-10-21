@@ -359,6 +359,13 @@
   font-weight: 600;
 }
 
+/* A checkbox sits beside its words, as in every other check row. */
+.schedule-form label.check-row {
+  flex-direction: row;
+  align-items: baseline;
+  font-weight: 400;
+}
+
 .schedule-form fieldset {
   border: 0;
   margin: 0;

@@ -1009,7 +1009,7 @@ describe("web routes", () => {
     expect(early.status).toBe(409);
     expect(await json<{ code: string }>(early)).toMatchObject({ code: "google_failed" });
     for (const [name, value] of [
-      ["googleOauthClientId", "client-id.apps.googleusercontent.com"],
+      ["googleOauthClientId", "123456789012-clientid.apps.googleusercontent.com"],
       ["googleOauthClientSecret", "GOCSPX-client-secret-value"],
     ] as const)
       expect((await call(`/api/secrets/${name}`, { method: "PUT", body: { value } })).status).toBe(200);
@@ -1063,7 +1063,7 @@ describe("web routes", () => {
     const deviceHeaders = { ...device, "content-type": "application/json" };
     const put = await call("/api/secrets/googleOauthClientId", {
       method: "PUT",
-      body: { value: "other-client" },
+      body: { value: "123456789012-otherclient.apps.googleusercontent.com" },
       headers: deviceHeaders,
     });
     expect(put.status).toBe(200);

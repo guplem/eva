@@ -7,7 +7,10 @@ import { googleScopes } from "../../../../src/core/google/google-scopes.ts";
 import { defaultConfig } from "../../../../src/core/settings/home.ts";
 import { fakeGoogle, type FakeGoogle } from "../../../support/fake-google.ts";
 
-const client = { clientId: "client-id.apps.googleusercontent.com", clientSecret: "GOCSPX-client-secret-value" };
+const client = {
+  clientId: "123456789012-clientid.apps.googleusercontent.com",
+  clientSecret: "GOCSPX-client-secret-value",
+};
 
 let folder: string;
 let google: FakeGoogle;
@@ -67,6 +70,14 @@ describe("checkGoogle", () => {
     const result = await checkGoogle({ ...inputs, readServices: false });
     expect(result).toEqual({ ok: true, detail: "The Google login of person@example.com works." });
     expect(google.apiRequests).toEqual([]);
+  });
+
+  test("a saved client id that is no client id says so, before any call to Google (#323)", async () => {
+    const pasted = { ...client, clientId: `https://${client.clientId}/` };
+    const result = await checkGoogle({ ...inputs, client: pasted });
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("not a Google client id");
+    expect(google.tokenRequests).toEqual([]);
   });
 
   test("each missing part names its step, before any call to Google", async () => {

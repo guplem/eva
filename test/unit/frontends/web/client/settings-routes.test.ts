@@ -13,7 +13,7 @@ import {
   settingsSections,
   settingPlaces,
 } from "../../../../../src/frontends/web/client/settings-routes.ts";
-import { sharedSettingKeys } from "../../../../../src/core/settings/settings.ts";
+import { isSettingKey, sharedSettingKeys } from "../../../../../src/core/settings/settings.ts";
 
 describe("settings addresses", () => {
   test("the home, a section and a step go to an address and back", () => {
@@ -137,4 +137,9 @@ describe("where each setting lives", () => {
     const appearance = settingPlaces.find((place) => place.link?.item === "appearance");
     expect(appearance?.home).toBe("browser");
   });
+});
+
+test("each key of a setting home is a real setting key", () => {
+  const unknown = settingPlaces.flatMap((place) => place.keys).filter((key) => !isSettingKey(key));
+  expect(unknown).toEqual([]);
 });

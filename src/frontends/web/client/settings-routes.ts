@@ -230,11 +230,16 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: ["git.name", "git.email"],
     link: { section: "connections", item: "commit-identity" },
   },
-  { title: "Telegram bot", home: "machine", keys: [], link: { section: "connections", item: "telegram" } },
+  {
+    title: "Telegram bot",
+    home: "machine",
+    keys: ["telegram.allowedChatId", "telegram.allowedUserId"],
+    link: { section: "connections", item: "telegram" },
+  },
   {
     title: "Google access",
     home: "machine",
-    keys: ["google.access"],
+    keys: ["google.access", "google.services"],
     link: { section: "connections", item: "google" },
   },
   { title: "Vault folder", home: "machine", keys: ["vaultPath"], link: { section: "vault", item: "vault-folder" } },
@@ -244,7 +249,18 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: ["projectRoots"],
     link: { section: "vault", item: "project-folders" },
   },
-  { title: "Phone access", home: "machine", keys: [], link: { section: "access", item: "remote-access" } },
+  {
+    title: "Phone access",
+    home: "machine",
+    keys: ["remoteAccess.hostNames", "remoteAccess.tailscaleServe"],
+    link: { section: "access", item: "remote-access" },
+  },
+  {
+    title: "This machine's name",
+    home: "machine",
+    keys: ["machineName"],
+    link: { section: "access", item: "machine" },
+  },
   { title: "Devices", home: "machine", keys: [], link: { section: "access", item: "devices" } },
   {
     title: "Allowed Tailscale accounts",

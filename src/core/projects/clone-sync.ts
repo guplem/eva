@@ -95,11 +95,17 @@ export async function commitAndPush(
   const files = await changedFiles(clone, runner, environment);
   if (files.length > 0) {
     await mustRun(clone, runner, environment, ["add", "-A"], "stage the changes of");
+    // A machine with no git identity yet still commits, as the vault's first commit does.
+    const email = await git(clone, runner, environment, ["config", "user.email"]);
+    const fallback =
+      environment["GIT_AUTHOR_EMAIL"] === undefined && email.stdout.trim() === ""
+        ? ["-c", "user.name=Eva", "-c", "user.email=eva@localhost"]
+        : [];
     await mustRun(
       clone,
       runner,
       environment,
-      [...noHooks(), "commit", "-q", "--no-verify", "-F", "-"],
+      [...noHooks(), ...fallback, "commit", "-q", "--no-verify", "-F", "-"],
       "commit in",
       message.trim().length > 0 ? message : fallbackCommitMessage(files),
     );

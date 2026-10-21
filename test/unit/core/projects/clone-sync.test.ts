@@ -118,6 +118,19 @@ describe("commit and push", () => {
     expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "feature")).toBe("Start the feature");
   });
 
+  test("a machine with no git identity still commits, as Eva", async () => {
+    const home = join(sandbox.root, "empty-home");
+    mkdirSync(home);
+    const noIdentity = Object.fromEntries(
+      Object.entries({ ...gitEnvironment, HOME: home, USERPROFILE: home, GIT_CONFIG_NOSYSTEM: "1" }).filter(
+        ([name]) => !/^GIT_(AUTHOR|COMMITTER)_/.test(name),
+      ),
+    );
+    sandbox.write(clone.path, "new.txt", "new\n");
+    await commitAndPush(clone, "Add the file", systemProcessRunner, noIdentity);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%an <%ae>", "main")).toBe("Eva <eva@localhost>");
+  });
+
   test("an empty message falls back to a plain one", async () => {
     sandbox.write(clone.path, "new.txt", "new\n");
     await commitAndPush(clone, "  ", systemProcessRunner, gitEnvironment);

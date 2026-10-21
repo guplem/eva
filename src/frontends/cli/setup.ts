@@ -24,8 +24,11 @@ import {
 import {
   engineProgramNames,
   findEngineProgram,
+  findGh,
   findUv,
+  ghTooOld,
   installEngine,
+  installGh,
   installUv,
   type EngineInstallInputs,
 } from "../../core/engine-install/engine-install.ts";
@@ -133,6 +136,8 @@ export interface SetupOptions {
   readonly githubApiBaseUrl?: string;
   /** The pi release downloads; a test points it at a fake server. */
   readonly piReleasesBaseUrl?: string;
+  /** GitHub's API answer for the latest gh release; a test points it at a fake server. */
+  readonly ghReleaseUrl?: string;
   /**
    * Runs once the engines, the port and the local token are in place, before the other questions.
    * Returns where the person finishes the setup: "page" asks nothing more here.
@@ -641,6 +646,37 @@ async function installEngines(options: SetupOptions, config: EvaConfig, engineFo
     );
   }
   await installMissingUv(options);
+  await installMissingGh(options);
+}
+
+/** The agents push and open pull requests with gh, and Eva's GitHub login needs a new one (#244). */
+async function installMissingGh(options: SetupOptions): Promise<void> {
+  const inputs: EngineInstallInputs = {
+    runner: options.runner,
+    environment: options.installEnvironment,
+    platform: options.platform,
+    arch: options.arch,
+    homeFolder: options.userHome,
+    ...(options.ghReleaseUrl === undefined ? {} : { ghReleaseUrl: options.ghReleaseUrl }),
+  };
+  const found = await findGh(inputs);
+  if (found !== null && !ghTooOld(found.version)) {
+    options.write(doneLine("gh is installed."));
+    return;
+  }
+  options.write(
+    noteLine(
+      found === null
+        ? "Installing gh, for your agents' pushes."
+        : `Installing a new gh: gh ${found.version} is too old for Eva's GitHub login.`,
+    ),
+  );
+  try {
+    options.write(doneLine(`Installed gh: ${await installGh(inputs)}.`));
+  } catch (error) {
+    if (!isEvaError(error, "engine_install_failed")) throw error;
+    options.write(noteLine(`${error.message} Setup goes on without it.`));
+  }
 }
 
 /** The Google tools and pskill run with uv. Its installer needs no administrator, as the harnesses do. */

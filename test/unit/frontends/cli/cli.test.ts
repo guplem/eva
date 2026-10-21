@@ -404,6 +404,7 @@ describe("runSetup", () => {
       asked?: SetupQuestion[];
       githubLogin?: SetupOptions["githubLogin"];
       piReleasesBaseUrl?: string;
+      ghReleaseUrl?: string;
     } = {},
   ): Promise<void> {
     const queues = Object.fromEntries(
@@ -427,6 +428,8 @@ describe("runSetup", () => {
       installEnvironment: gitEnvironment,
       arch: "x64",
       ...(extra.piReleasesBaseUrl === undefined ? {} : { piReleasesBaseUrl: extra.piReleasesBaseUrl }),
+      // No test reaches the real GitHub: a missing gh fails fast here unless a test serves a release.
+      ghReleaseUrl: extra.ghReleaseUrl ?? "http://127.0.0.1:1/latest",
     });
   }
 
@@ -560,7 +563,18 @@ describe("runSetup", () => {
           const path = new URL(request.url).pathname;
           if (broken) return new Response("not found", { status: 404 });
           if (path === "/SHA256SUMS") return new Response(`${hash}  pi-linux-x64.tar.gz\n`);
-          return path === "/pi-linux-x64.tar.gz" ? new Response(archive) : new Response("", { status: 404 });
+          if (path === "/gh-latest")
+            return Response.json({
+              tag_name: "v2.62.0",
+              assets: ["gh_2.62.0_checksums.txt", "gh_2.62.0_linux_amd64.tar.gz"].map((name) => ({
+                name,
+                browser_download_url: `http://127.0.0.1:${String(server?.port)}/${name}`,
+              })),
+            });
+          if (path === "/gh_2.62.0_checksums.txt") return new Response(`${hash}  gh_2.62.0_linux_amd64.tar.gz\n`);
+          return path === "/pi-linux-x64.tar.gz" || path === "/gh_2.62.0_linux_amd64.tar.gz"
+            ? new Response(archive)
+            : new Response("", { status: 404 });
         },
       });
       return `http://127.0.0.1:${String(server.port)}`;
@@ -577,7 +591,11 @@ describe("runSetup", () => {
             if (failClaude) return Promise.resolve({ exitCode: 1, stdout: "", stderr: "the installer broke\n" });
             claude = true;
           } else if (program === "tar") {
-            writeFileSync(join(command[command.indexOf("-C") + 1] ?? "", "pi"), "pretend program");
+            const target = command[command.indexOf("-C") + 1] ?? "";
+            if (command.some((part) => part.includes("gh_"))) {
+              mkdirSync(join(target, "bin"), { recursive: true });
+              writeFileSync(join(target, "bin", "gh"), "pretend gh");
+            } else writeFileSync(join(target, "pi"), "pretend program");
           } else if (command.at(-1) === "--version") {
             const found = program.endsWith("claude") ? claude && program === "claude" : existsSync(program);
             if (!found) return Promise.reject(new EvaError("process_failed", "Could not start it."));
@@ -610,6 +628,36 @@ describe("runSetup", () => {
       await setup({}, { runner: installRunner(commands), lines, piReleasesBaseUrl: serveRelease() });
       expect(commands).toContainEqual(["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"]);
       expect(lines.join("\n")).toContain("Installing uv");
+    });
+
+    test("with no gh, setup installs it after uv, for the agents' pushes", async () => {
+      const commands: string[][] = [];
+      const lines: string[] = [];
+      const base = serveRelease();
+      await setup(
+        {},
+        { runner: installRunner(commands), lines, piReleasesBaseUrl: base, ghReleaseUrl: `${base}/gh-latest` },
+      );
+      expect(existsSync(join(home, ".local", "lib", "gh", "bin", "gh"))).toBe(true);
+      const text = lines.join("\n");
+      expect(text).toContain("Installing gh, for your agents' pushes.");
+      expect(text).toContain(`Installed gh: ${posix.join(home, ".local", "lib", "gh", "bin", "gh")}.`);
+    });
+
+    test("a gh too old for Eva's login gets a new one; a failed install lets setup go on", async () => {
+      const lines: string[] = [];
+      const installing = installRunner([]);
+      const runner: ProcessRunner = {
+        run: (command, runOptions) =>
+          command[0] === "gh"
+            ? Promise.resolve({ exitCode: 0, stdout: "gh version 2.4.0\n", stderr: "" })
+            : installing.run(command, runOptions),
+      };
+      await setup({}, { runner, lines, piReleasesBaseUrl: serveRelease() });
+      const text = lines.join("\n");
+      expect(text).toContain("Installing a new gh: gh 2.4.0 is too old for Eva's GitHub login.");
+      expect(text).toContain("Eva could not install gh");
+      expect(text).toContain("Setup goes on without it.");
     });
 
     test("a script can skip the installs; a person is never asked", async () => {
@@ -1334,8 +1382,12 @@ describe("runSetup", () => {
     expect(asked).not.toContain("createVault");
     expect(asked).not.toContain("vault");
     expect(githubApi.created).toEqual(["my-vault"]);
-    // gh only checks the instance's own login; the vault needs none of it.
-    expect(commands.filter((command) => command[0] === "gh").every((command) => command[1] === "auth")).toBe(true);
+    // gh only checks the instance's own login, after the install check; the vault needs none of it.
+    expect(
+      commands
+        .filter((command) => command[0] === "gh" && command[1] !== "--version")
+        .every((command) => command[1] === "auth"),
+    ).toBe(true);
     expect(lines.join("\n")).toContain("Created the private repository you/my-vault.");
     const pushed = Bun.spawnSync(["git", "log", "--format=%s", "main"], { cwd: bare, env: gitEnvironment });
     expect(pushed.stdout.toString()).toContain("Start the vault");
@@ -1441,7 +1493,7 @@ describe("runSetup", () => {
     const ghEnvironments: Readonly<Record<string, string>>[] = [];
     const runner: ProcessRunner = {
       run: (command, options) => {
-        if (command[0] === "gh") ghEnvironments.push(options.environment);
+        if (command[0] === "gh" && command[1] !== "--version") ghEnvironments.push(options.environment);
         return Promise.resolve({ exitCode: command[0] === "gh" ? 1 : 0, stdout: "", stderr: "not logged in" });
       },
     };

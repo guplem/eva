@@ -11,7 +11,11 @@
   gap: var(--space-3);
 }
 
+/* The header shares the width of the column, so the path starts above the card. */
 .files-header {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -28,24 +32,36 @@
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-1);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--muted);
 }
 
 .files-crumb {
   display: inline-flex;
+  align-items: center;
   gap: var(--space-1);
 }
 
+/* A parent folder looks like the rows of the list: quiet text that lights up under the pointer. */
 .files-crumbs a {
-  color: var(--accent-ink);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-input);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.files-crumbs a:hover,
+.files-crumbs a:focus-visible {
+  background: var(--soft);
+  color: var(--soft-ink);
 }
 
 .files-crumbs h1 {
   margin: 0;
-  font-size: var(--text-lg);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--ink);
 }
@@ -141,6 +157,19 @@ a.files-entry:focus-visible {
 @media (max-width: 760px) {
   .files-page {
     padding: var(--space-3) var(--space-3) var(--space-4);
+  }
+
+  /* A deep path wraps on a phone, so the button stays by its first line. */
+  .files-header {
+    align-items: flex-start;
+  }
+
+  .files-crumbs {
+    font-size: var(--text-sm);
+  }
+
+  .files-crumbs h1 {
+    font-size: var(--text-lg);
   }
 }
 

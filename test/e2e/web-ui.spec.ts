@@ -310,6 +310,63 @@ test("the More actions menu works from the keyboard, and the focus never gets lo
   await expect(more).toBeFocused();
 });
 
+test("a right click on a chat in the list shows its actions instead of the browser's menu", async ({ page }) => {
+  const title = `A chat renamed from its menu (${test.info().project.name})`;
+  await logIn(page);
+  await newChat(page);
+  await openList(page);
+  // A new chat goes first in the list.
+  const item = page.locator(".sidebar .chat-item").first();
+  const menu = page.getByRole("menu", { name: /^Actions of / });
+
+  const blocked = await item.evaluate((element) => {
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(blocked).toBe(true);
+  await expect(menu.getByRole("menuitem", { name: "Open" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(menu.getByRole("menuitem", { name: "Delete chat" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(item).toBeFocused();
+
+  await item.click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Rename" }).click();
+  const field = page.getByLabel("Chat title");
+  await expect(field).toBeFocused();
+  await field.fill(title);
+  await field.press("Enter");
+  await expect(page.locator(".sidebar .chat-item", { hasText: title })).toHaveCount(1);
+});
+
+test("a long press on a chat in the list shows its actions, and the press opens nothing", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  await newChat(page);
+  await openList(page);
+  // The second chat, so a click that gets through would choose it.
+  const item = page.locator(".sidebar .chat-item").nth(1);
+  const box = await item.boundingBox();
+  const at = { clientX: (box?.x ?? 0) + 20, clientY: (box?.y ?? 0) + 10, pointerType: "touch", bubbles: true };
+  await item.dispatchEvent("pointerdown", at);
+  const menu = page.getByRole("menu", { name: /^Actions of / });
+  await expect(menu).toBeVisible();
+  // The press ends in a click. That click must not choose the chat under the finger.
+  await item.dispatchEvent("pointerup", at);
+  await item.dispatchEvent("click", at);
+  await expect(item).toHaveAttribute("aria-current", "false");
+  await expect(menu).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await item.dispatchEvent("pointerdown", at);
+  // A finger that moves scrolls the list, so no menu opens.
+  await item.dispatchEvent("pointermove", { ...at, clientY: at.clientY + 40 });
+  await page.waitForTimeout(800);
+  await expect(menu).toHaveCount(0);
+});
+
 /** Waits until the chat's turn and its vault sync are over, so a delete is not refused. */
 async function waitUntilIdle(page: Page, chatId: string): Promise<void> {
   await expect

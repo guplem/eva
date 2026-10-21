@@ -122,7 +122,7 @@ You can also set up Tailscale later, from your phone: send `/link` to your bot, 
 
 ## Add the optional tools
 
-Some features need one more program on Eva's computer. For example, voice notes need ffmpeg and whisper.cpp, and PDFs need typst. Run `eva doctor`: it lists each missing tool, the feature that needs it, and how to install it. [Optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
+Some features need one more program on Eva's computer. For example, voice notes need ffmpeg and whisper.cpp, and PDFs need typst. **Settings → Updates** installs everything that voice notes need with one button. Run `eva doctor`: it lists each missing tool, the feature that needs it, and how to install it. [Optional features](reference.md#optional-features) tells how to turn on each feature. For Google, you can do most of [Set up Google](reference.md#set-up-google) before you install Eva.
 
 ## More than one Eva on a computer
 

@@ -224,6 +224,8 @@ export const api = {
   /** Waits for the whole install, which downloads the tool. */
   installTool: (program: InstallableTool): Promise<ToolInstallResult> =>
     request("POST", "/api/tools/install", { program }),
+  /** Waits for the whole install, which downloads ffmpeg, whisper.cpp and the speech model. */
+  installVoiceNotes: (): Promise<ToolInstallResult> => request("POST", "/api/voice-notes/install", {}),
   updateEngine: (): Promise<EngineUpdateStatus> => request("POST", "/api/update/engine", {}),
   installTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/install", {}),
   signInToTailscale: (): Promise<RemoteAccess> => request("POST", "/api/remote-access/sign-in", {}),

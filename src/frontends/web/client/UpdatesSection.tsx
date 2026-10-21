@@ -54,7 +54,8 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
 /**
  * The versions that `eva doctor` shows in a terminal, so a phone sees them too. A tool that Eva
  * installs herself gets a button, so a missing or old tool needs no terminal. claude updates with
- * its own `claude update`, which waits until no chat runs a turn.
+ * its own `claude update`, which waits until no chat runs a turn. Voice notes get one row and one
+ * button for all their parts, as the person wants the feature, not each program.
  */
 function VersionsCard(): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
@@ -63,7 +64,7 @@ function VersionsCard(): ReactElement {
   /** False until the latest versions answer or fail, so no Update button flickers on and off. */
   const [latestRead, setLatestRead] = useState(false);
   /** The tool that this page installs now. */
-  const [installing, setInstalling] = useState<InstallableTool | null>(null);
+  const [installing, setInstalling] = useState<InstallableTool | "voice notes" | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   /** Null when no claude program was found when Eva started. */
   const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
@@ -123,11 +124,11 @@ function VersionsCard(): ReactElement {
     };
   }, [engineUpdate, engineReadFailures]);
 
-  const install = async (program: InstallableTool): Promise<void> => {
+  const install = async (program: InstallableTool | "voice notes"): Promise<void> => {
     setNote(null);
     setInstalling(program);
     try {
-      const result = await api.installTool(program);
+      const result = await (program === "voice notes" ? api.installVoiceNotes() : api.installTool(program));
       setNote({ ok: result.ok, text: result.message });
     } catch (error) {
       setNote({ ok: false, text: errorText(error) });
@@ -156,8 +157,8 @@ function VersionsCard(): ReactElement {
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
       {versions === "loading" ? (
-        // Eva and the tools of `usedTools` in an installed Eva, which carries its own Bun.
-        <FactsSkeleton label="Reading the versions…" rows={10} />
+        // Eva, the tools of `usedTools` in an installed Eva, which carries its own Bun, and voice notes.
+        <FactsSkeleton label="Reading the versions…" rows={11} />
       ) : versions === "failed" ? (
         <div role="status">Eva could not read the versions. Open this page again to retry.</div>
       ) : (
@@ -192,6 +193,19 @@ function VersionsCard(): ReactElement {
               </Fragment>
             );
           })}
+          <dt data-tooltip="For voice notes in chats">voice notes</dt>
+          <dd className={versions.voiceNotes.missing.length === 0 ? undefined : "fact-with-action"}>
+            {voiceNotesText(versions.voiceNotes)}
+            {versions.voiceNotes.missing.length > 0 && (
+              <button
+                className="primary small"
+                disabled={installing !== null || engineRuns || engineStarting}
+                onClick={() => void install("voice notes")}
+              >
+                {installing === "voice notes" ? "Installing…" : "Install"}
+              </button>
+            )}
+          </dd>
         </dl>
       )}
       {/* An install says nothing until it ends, so its share is unknown. */}
@@ -212,6 +226,12 @@ function VersionsCard(): ReactElement {
       )}
     </Card>
   );
+}
+
+/** Whether voice notes run, and what they still need. */
+function voiceNotesText(state: EvaVersions["voiceNotes"]): string {
+  if (state.missing.length > 0) return `Off, needs ${state.missing.join(", ")}`;
+  return state.on ? "On" : "Installed, restart Eva to turn them on";
 }
 
 /**

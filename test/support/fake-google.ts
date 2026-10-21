@@ -1,5 +1,5 @@
 /**
- * A fake Google for tests: the token endpoint and one cheap read of each service, at
+ * A fake Google for tests: the token endpoint, one cheap read of each service and a Drive folder, at
  * `baseUrl`. A test sets an error to see how Eva names the step to fix.
  */
 import type { Server } from "bun";
@@ -12,6 +12,8 @@ export interface FakeGoogle {
   readonly revokeRequests: URLSearchParams[];
   /** The path of each API request. */
   readonly apiRequests: string[];
+  /** The name of each Drive folder that Eva created. */
+  readonly driveFolders: string[];
   /** The account of the ID token. */
   email: string;
   /** The scopes that the person allowed, with spaces between them. */
@@ -40,6 +42,7 @@ export function fakeGoogle(): FakeGoogle {
     tokenRequests: [],
     revokeRequests: [],
     apiRequests: [],
+    driveFolders: [],
     email: "person@example.com",
     grantedScope: "openid https://www.googleapis.com/auth/calendar.readonly",
     tokenError: null,
@@ -83,6 +86,12 @@ export function fakeGoogle(): FakeGoogle {
           { error: { code: 403, status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] } },
           { status: 403 },
         );
+      if (request.method === "POST" && url.pathname === "/drive/v3/files") {
+        const { name } = (await request.json()) as { name: string };
+        fake.driveFolders.push(name);
+        const id = `folder-${String(fake.driveFolders.length)}`;
+        return Response.json({ id, webViewLink: `https://drive.google.com/drive/folders/${id}` });
+      }
       return Response.json({ items: [] });
     },
   });

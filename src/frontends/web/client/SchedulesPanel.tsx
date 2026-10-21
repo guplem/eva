@@ -132,6 +132,7 @@ export function SchedulesPanel(): ReactElement {
       </div>
       {adding && (
         <AddScheduleDialog
+          now={list?.now ?? null}
           onClose={() => setAdding(false)}
           onSaved={() => {
             setAdding(false);
@@ -154,7 +155,7 @@ const hours = [0, 6, 12, 18, 24];
 
 function DayLine({ list }: { list: ScheduleList }): ReactElement {
   const line = dayLine(
-    list.schedules.map((view) => view.schedule),
+    list.schedules.map((view) => ({ ...view.schedule, runsToday: view.runsToday })),
     list.now,
   );
   /** The pill under the pointer: its runs show as lines across the bar. */
@@ -232,8 +233,7 @@ function ScheduleRow(props: {
       <div>
         <div className="schedule-row-name">{schedule.name}</div>
         <div className="schedule-small">
-          {repeatWords(schedule.at, schedule.days)} ·{" "}
-          {schedule.enabled ? `next ${nextRunWords(nextRun, props.now)}` : "off"}
+          {repeatWords(schedule)} · {schedule.enabled ? `next ${nextRunWords(nextRun, props.now)}` : "off"}
         </div>
       </div>
       <div className="schedule-row-actions">

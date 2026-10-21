@@ -5,12 +5,12 @@ import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ChatHeader, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
-import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
 
 interface AssistantViewProps {
@@ -50,6 +50,8 @@ export function AssistantView({
   const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The turn start lists the new chat, and the chat then opens before its turn is stored.
+  const [firstMessage, setFirstMessage] = useState<SentMessage | null>(null);
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));
   const now = new Date();
   // The list knows the turns that ran before this page loaded. The events know the newer ones.
@@ -58,6 +60,7 @@ export function AssistantView({
   const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
+  const [panelShown, togglePanel] = useChatPanelShown();
   const chat = {
     tree,
     onChanged,
@@ -156,7 +159,13 @@ export function AssistantView({
       <main className="main">
         {notices}
         {selected === undefined ? (
-          <NewChatDraft blocker={blocker} voiceNotes={voiceNotes} onShowList={onShowList} onStarted={openNewChat} />
+          <NewChatDraft
+            blocker={blocker}
+            voiceNotes={voiceNotes}
+            onShowList={onShowList}
+            onSending={setFirstMessage}
+            onStarted={openNewChat}
+          />
         ) : (
           <>
             <ChatHeader
@@ -169,6 +178,8 @@ export function AssistantView({
                 tree.some((session) => isRunning(session.id)),
               )}
               onShowList={onShowList}
+              panelShown={panelShown}
+              onTogglePanel={togglePanel}
               onChanged={onChanged}
             />
             <Conversation
@@ -179,11 +190,13 @@ export function AssistantView({
               approvals={approvals}
               blocker={blocker}
               voiceNotes={voiceNotes}
+              firstMessage={firstMessage}
             />
           </>
         )}
       </main>
-      <ChatPanel {...chat} />
+      {/* The inspector is about one chat, so a new chat draft has none. */}
+      {selected !== undefined && panelShown && <ChatPanel {...chat} />}
     </div>
   );
 }

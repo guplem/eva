@@ -33,7 +33,8 @@ const drawings = {
       <path d="M20 20l-4.2-4.2" />
     </>
   ),
-  send: <path d="M12 19V5M6 11l6-6 6 6" />,
+  /** A small ship that flies to the top right, as the send arrow of a messaging app. */
+  send: <path d="M12 3.5L18.5 19L12 15.6L5.5 19z" fill="currentColor" transform="rotate(45 12 12)" />,
   clip: <path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6" />,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
@@ -198,6 +199,13 @@ const drawings = {
   expand: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   /** The corners point in: give the page back to the folders. */
   shrink: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
+  /** A frame with a column at its right side: hide or show the chat details. */
+  panel: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M14.5 4.5v15" />
+    </>
+  ),
   mic: (
     <>
       <rect x="9" y="3" width="6" height="11" rx="3" />

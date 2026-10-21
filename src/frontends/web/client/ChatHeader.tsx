@@ -1,10 +1,11 @@
 /**
- * The header of an open chat: the title, one subtitle line, and a "More actions" menu with Rename,
- * Chat info and Delete chat. On a phone it is one row, and a tap on the title opens the chat details.
+ * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
+ * Chat info and Delete chat. One row leaves the chat its height. A computer also has a button that
+ * hides or shows the chat details column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { api, type SessionRecord } from "./api.ts";
-import { ChatInfoSheet, type ChatProps } from "./ChatPanel.tsx";
+import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ShowListButton } from "./MainNav.tsx";
@@ -75,6 +76,9 @@ interface ChatHeaderProps {
   /** Parts between the title and the menu, such as the pull request of a clone. */
   readonly extra?: ReactNode;
   readonly onShowList: () => void;
+  /** Whether a computer shows the chat details column. */
+  readonly panelShown: boolean;
+  readonly onTogglePanel: () => void;
   readonly onChanged: () => Promise<void>;
   /** An action that the header starts with, asked from the chat's context menu in a list. */
   readonly startWith?: ChatAction | null;
@@ -86,6 +90,8 @@ export function ChatHeader({
   subtitle,
   extra,
   onShowList,
+  panelShown,
+  onTogglePanel,
   onChanged,
   startWith = null,
 }: ChatHeaderProps): ReactElement {
@@ -147,6 +153,18 @@ export function ChatHeader({
         />
       )}
       {extra}
+      {!isPhone && (
+        <button
+          className="icon-button"
+          aria-label={panelShown ? "Hide the chat details" : "Show the chat details"}
+          data-tooltip={panelShown ? "Hide the chat details" : "Show the chat details"}
+          aria-controls={panelShown ? chatPanelId : undefined}
+          aria-expanded={panelShown}
+          onClick={onTogglePanel}
+        >
+          <Icon name="panel" />
+        </button>
+      )}
       <MoreMenu items={items} toggle={moreButton} />
       {asking && (
         <DeleteQuestion

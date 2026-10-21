@@ -54,6 +54,7 @@ const designIcons: readonly IconName[] = [
   "mic",
   "expand",
   "shrink",
+  "panel",
 ];
 
 function render(name: IconName, label?: string): string {
@@ -81,6 +82,12 @@ describe("Icon", () => {
     const gear = render("gear");
     expect(gear).not.toEqual(render("sun"));
     expect(gear).toMatch(/<path d="M[^"]+z"/);
+  });
+
+  test("send is a solid delta that points to the top right, as in a messaging app", () => {
+    const send = render("send");
+    expect(send).toContain('fill="currentColor"');
+    expect(send).toContain('transform="rotate(45 12 12)"');
   });
 
   test("an icon without a name is hidden from a screen reader", () => {

@@ -79,3 +79,8 @@ export interface PendingMessage {
 export function shownPending(pending: PendingMessage | null, turnCount: number): string | null {
   return pending !== null && pending.turnCount === turnCount ? pending.text : null;
 }
+
+/** The empty message box names who answers: Eva in an Assistant chat, the project's harness in a project chat. */
+export function composerPlaceholder(projectTitle: string | null): string {
+  return `Message ${projectTitle ?? "Eva"}`;
+}

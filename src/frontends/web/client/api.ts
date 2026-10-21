@@ -106,20 +106,44 @@ async function request<Body>(method: string, path: string, body?: unknown): Prom
         ? { headers: { "content-type": body.type }, body }
         : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
   const response = await fetch(path, { method, credentials: "same-origin", headers: {}, ...sent });
-  if (!response.ok) {
-    const text = await response.text();
-    let message = text;
-    let code: EvaErrorCode | null = null;
-    try {
-      const parsed = JSON.parse(text) as { error?: string; code?: EvaErrorCode };
-      message = parsed.error ?? text;
-      code = parsed.code ?? null;
-    } catch {
-      // Not JSON: keep the text.
-    }
-    throw new ApiError(response.status, message, code);
-  }
+  if (!response.ok) throw await failureOf(response);
   return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
+}
+
+async function failureOf(response: Response): Promise<ApiError> {
+  const text = await response.text();
+  let message = text;
+  let code: EvaErrorCode | null = null;
+  try {
+    const parsed = JSON.parse(text) as { error?: string; code?: EvaErrorCode };
+    message = parsed.error ?? text;
+    code = parsed.code ?? null;
+  } catch {
+    // Not JSON: keep the text.
+  }
+  return new ApiError(response.status, message, code);
+}
+
+/**
+ * A vault file, or a folder as a zip, with the name that the core gives it. The page reads it
+ * before the save, so a failure shows on the page instead of as a broken file. `onShare` gets
+ * the part that arrived, from 0 to 1.
+ */
+async function download(path: string, onShare: (share: number) => void): Promise<{ name: string; blob: Blob }> {
+  const response = await fetch(`/api/files/download?path=${encodeURIComponent(path)}`, { credentials: "same-origin" });
+  if (!response.ok) throw await failureOf(response);
+  const total = Number(response.headers.get("content-length") ?? "0");
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let received = 0;
+  const reader = response.body?.getReader();
+  for (let chunk = await reader?.read(); chunk !== undefined && !chunk.done; chunk = await reader?.read()) {
+    chunks.push(chunk.value);
+    received += chunk.value.byteLength;
+    if (total > 0) onShare(received / total);
+  }
+  const named = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get("content-disposition") ?? "")?.[1];
+  const name = named === undefined ? (path.split("/").pop() ?? "download") : decodeURIComponent(named);
+  return { name, blob: new Blob(chunks, { type: response.headers.get("content-type") ?? "" }) };
 }
 
 export const api = {
@@ -198,6 +222,7 @@ export const api = {
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
+  downloadFile: download,
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),

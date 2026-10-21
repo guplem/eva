@@ -4,7 +4,7 @@
  * with the same text are the same slot, so the hour that repeats when the clocks go back
  * fires once.
  */
-import type { Schedule } from "./schedule-definitions.ts";
+import { intervalMinutes, type Schedule } from "./schedule-definitions.ts";
 
 /** A restart within this time still fires a missed slot; an older miss is skipped. */
 const graceMinutes = 60;
@@ -33,7 +33,7 @@ export function dueSlot(
   now: string,
 ): string | null {
   const nowMinutes = minutesOf(now);
-  const latest = slotsAround(schedule, nowMinutes, -1).find((minutes) => minutes <= nowMinutes);
+  const latest = latestRun(schedule, nowMinutes);
   if (latest === undefined || nowMinutes - latest >= graceMinutes) return null;
   const slot = slotText(latest);
   if (slot === state.lastFired) return null;
@@ -46,18 +46,54 @@ export function dueSlot(
 /** The first slot after now, for the setup card. */
 export function nextSlot(schedule: Schedule, now: string): string | null {
   const nowMinutes = minutesOf(now);
-  const next = slotsAround(schedule, nowMinutes, 1).find((minutes) => minutes > nowMinutes);
+  const next = nextRun(schedule, nowMinutes);
   return next === undefined ? null : slotText(next);
+}
+
+/** The `HH:MM` of each run on the date of now, in time order, for the day line. */
+export function runsOnDay(schedule: Schedule, now: string): string[] {
+  const today = Math.floor(minutesOf(now) / dayMinutes) * dayMinutes;
+  const runs: string[] = [];
+  for (let run = nextRun(schedule, today - 1); run !== undefined && run < today + dayMinutes;) {
+    runs.push(slotText(run).slice(11, 16));
+    run = nextRun(schedule, run);
+  }
+  return runs;
+}
+
+/** The last run at or before now, in minutes. */
+function latestRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  const interval = intervalOf(schedule);
+  if (interval === null) return slotsAround(schedule, nowMinutes, -1).find((minutes) => minutes <= nowMinutes);
+  if (nowMinutes < interval.from) return undefined;
+  return interval.from + Math.floor((nowMinutes - interval.from) / interval.step) * interval.step;
+}
+
+/** The first run after now, in minutes. */
+function nextRun(schedule: Schedule, nowMinutes: number): number | undefined {
+  const interval = intervalOf(schedule);
+  if (interval === null) return slotsAround(schedule, nowMinutes, 1).find((minutes) => minutes > nowMinutes);
+  if (nowMinutes < interval.from) return interval.from;
+  return interval.from + (Math.floor((nowMinutes - interval.from) / interval.step) + 1) * interval.step;
+}
+
+/**
+ * The first run and the step of an interval schedule, in wall-clock minutes. So a daily run
+ * keeps its time when the clocks change, and an hourly run moves by one hour once.
+ */
+function intervalOf(schedule: Schedule): { from: number; step: number } | null {
+  if (schedule.every === null || schedule.from === null) return null;
+  return { from: minutesOf(schedule.from), step: intervalMinutes(schedule.every) };
 }
 
 /** The schedule's slots on the eight days from today, going back (-1) or forward (1). */
 function slotsAround(schedule: Schedule, nowMinutes: number, direction: 1 | -1): number[] {
-  const [hours, minutes] = schedule.at.split(":").map(Number);
+  const [hours, minutes] = (schedule.at ?? "00:00").split(":").map(Number);
   const today = Math.floor(nowMinutes / dayMinutes) * dayMinutes;
   const slots: number[] = [];
   for (let offset = 0; offset < 8; offset += 1) {
     const day = today + direction * offset * dayMinutes;
-    if (!schedule.days.includes(new Date(day * minuteMs).getUTCDay())) continue;
+    if (!(schedule.days ?? []).includes(new Date(day * minuteMs).getUTCDay())) continue;
     slots.push(day + (hours ?? 0) * 60 + (minutes ?? 0));
   }
   return slots;

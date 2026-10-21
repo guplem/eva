@@ -7,6 +7,7 @@ import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { Composer, type ChatChoices } from "./Composer.tsx";
+import type { SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
@@ -18,11 +19,19 @@ interface NewChatDraftProps {
   readonly blocker: ChatBlocker | null;
   readonly voiceNotes: boolean;
   readonly onShowList: () => void;
+  /** Gets the first message before it goes, or null when it failed to go. */
+  readonly onSending: (message: SentMessage | null) => void;
   /** Opens the chat that the first message made. */
   readonly onStarted: (chat: SessionRecord) => Promise<void>;
 }
 
-export function NewChatDraft({ blocker, voiceNotes, onShowList, onStarted }: NewChatDraftProps): ReactElement {
+export function NewChatDraft({
+  blocker,
+  voiceNotes,
+  onShowList,
+  onSending,
+  onStarted,
+}: NewChatDraftProps): ReactElement {
   // Null until the settings answer: the chip must not name an engine that Eva does not use.
   const [defaultEngine, setDefaultEngine] = useState<EngineName | null>(null);
   const [engine, setEngine] = useState<EngineName | null>(null);
@@ -68,10 +77,12 @@ export function NewChatDraft({ blocker, voiceNotes, onShowList, onStarted }: New
     try {
       // The chat runs on the engine that the chip shows, even when Eva read another default at start.
       made.current ??= await api.newAssistantChat(model, shownEngine ?? undefined);
+      onSending({ sessionId: made.current.id, text: message });
       await api.send(made.current.id, message);
       await onStarted(made.current);
       return true;
     } catch (caught) {
+      onSending(null);
       showError(caught);
       return false;
     } finally {

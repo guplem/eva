@@ -12,7 +12,7 @@ import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
-import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
+import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { ProjectDetailsEditor } from "./ProjectDetailsEditor.tsx";
@@ -267,6 +267,7 @@ export function ProjectView({
       () => false,
       approvalSessionIds,
     ) === "needs-you";
+  const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
     onChanged,
@@ -409,6 +410,8 @@ export function ProjectView({
                 </>
               }
               onShowList={onShowList}
+              panelShown={panelShown}
+              onTogglePanel={togglePanel}
               onChanged={onChanged}
             />
             <Conversation
@@ -419,6 +422,7 @@ export function ProjectView({
               approvals={approvals}
               blocker={blocker}
               voiceNotes={voiceNotes}
+              projectTitle={page.project.title}
             />
           </>
         ) : (
@@ -442,7 +446,7 @@ export function ProjectView({
         )}
       </main>
       {/* The inspector is about one chat, so a project page has none. */}
-      {chat !== undefined && <ChatPanel {...chatDetails} />}
+      {chat !== undefined && panelShown && <ChatPanel {...chatDetails} />}
     </div>
   );
 }

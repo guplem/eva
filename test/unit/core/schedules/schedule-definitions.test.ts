@@ -25,6 +25,7 @@ afterEach(() => {
 });
 
 const morning = { id: "morning", name: "Morning", at: "07:30", prompt: "Summarise my day." };
+const interval = { id: "water", name: "Water", every: "2h", from: "2026-10-22T08:00", text: "Drink water." };
 
 function writeFile(value: unknown): void {
   writeFileSync(path, typeof value === "string" ? value : JSON.stringify(value));
@@ -75,7 +76,19 @@ describe("parseScheduleEntry", () => {
       prompt: "Summarise my day.",
       model: "haiku",
       enabled: true,
+      every: null,
+      from: null,
     });
+  });
+
+  test("an interval schedule repeats every few hours, days or weeks from its first run", () => {
+    const parsed = parseScheduleEntry(
+      { id: "water", name: "Water", every: "3d", from: "2026-10-22T07:30", text: "Drink water." },
+      1,
+    ) as Schedule;
+    expect([parsed.every, parsed.from, parsed.at, parsed.days]).toEqual(["3d", "2026-10-22T07:30", null, null]);
+    for (const every of ["1h", "12h", "2w", "999d"])
+      expect(typeof parseScheduleEntry({ ...interval, every }, 1)).toBe("object");
   });
 
   test("days are read in any case, without repeats, in week order", () => {
@@ -97,6 +110,16 @@ describe("parseScheduleEntry", () => {
     [{ ...morning, enabled: "false" }, "invalid enabled"],
     [{ ...morning, enabled: null }, "invalid enabled"],
     [{ ...morning, enabled: 0 }, "invalid enabled"],
+    [{ ...interval, every: "0d" }, "invalid every"],
+    [{ ...interval, every: "3 days" }, "invalid every"],
+    [{ ...interval, every: "30m" }, "invalid every"],
+    [{ ...interval, every: 3 }, "invalid every"],
+    [{ ...interval, from: undefined }, "no valid from"],
+    [{ ...interval, from: "2026-10-22 07:30" }, "no valid from"],
+    [{ ...interval, from: "2026-02-30T07:30" }, "no valid from"],
+    [{ ...interval, at: "07:30" }, "both every and at or days"],
+    [{ ...interval, days: ["mon"] }, "both every and at or days"],
+    [{ ...morning, from: "2026-10-22T07:30" }, "from without every"],
   ])("entry %j is skipped: %s", (entry, reason) => {
     expect(parseScheduleEntry(entry, 4)).toContain(reason);
   });
@@ -117,6 +140,12 @@ describe("announced fields and changes (lesson 66)", () => {
     const fields = announcedFields(schedule);
     expect(Object.keys(fields)).toEqual(["id", "name", "at", "days", "prompt"]);
     expect(fields.days).toBe("mon, tue");
+  });
+
+  test("an interval schedule shows every and from, and no days", () => {
+    const fields = announcedFields(parseScheduleEntry(interval, 1) as Schedule);
+    expect(Object.keys(fields)).toEqual(["id", "name", "every", "from", "text"]);
+    expect([fields.every, fields.from]).toEqual(["2h", "2026-10-22T08:00"]);
   });
 
   test("the on/off state is no announced field, so a pause never changes a card", () => {

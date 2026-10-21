@@ -14,10 +14,17 @@ export interface Schedule {
   /** State is keyed by the id, so an id never changes and is never reused (lesson 65). */
   readonly id: string;
   readonly name: string;
-  /** `HH:MM` on the wall clock of the configured time zone (lesson 68). */
-  readonly at: string;
-  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. */
-  readonly days: readonly number[];
+  /**
+   * `HH:MM` on the wall clock of the configured time zone (lesson 68). Null for an interval
+   * schedule, which repeats `every` from `from` instead.
+   */
+  readonly at: string | null;
+  /** Day numbers as `Date.getUTCDay` counts them: 0 is Sunday. Null for an interval schedule. */
+  readonly days: readonly number[] | null;
+  /** The interval, such as `2h`, `3d` or `1w`, or null for a schedule on days. */
+  readonly every: string | null;
+  /** The first run of an interval schedule, as a wall-clock slot `YYYY-MM-DDTHH:MM`. */
+  readonly from: string | null;
   readonly text: string | null;
   /** A path from the vault root. */
   readonly file: string | null;
@@ -34,7 +41,18 @@ export interface ScheduleDefinitions {
 }
 
 /** The order of the fields in a setup card. */
-export const scheduleFieldOrder = ["id", "name", "at", "days", "text", "file", "prompt", "model"] as const;
+export const scheduleFieldOrder = [
+  "id",
+  "name",
+  "at",
+  "days",
+  "every",
+  "from",
+  "text",
+  "file",
+  "prompt",
+  "model",
+] as const;
 export type ScheduleFieldName = (typeof scheduleFieldOrder)[number];
 /**
  * What a card names as changed. A card shows no `enabled` field, so a pause never changes
@@ -46,6 +64,10 @@ export const formatVersion = 1;
 /** The id travels in Telegram button data, which Telegram caps at 64 bytes. */
 const idPattern = /^[a-z0-9-]{1,32}$/;
 const timePattern = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+/** Hours, days or weeks. Minutes are left out: a run each few minutes floods the chat. */
+const everyPattern = /^([1-9][0-9]{0,2})([hdw])$/;
+const slotPattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]$/;
+const unitMinutes = { h: 60, d: 24 * 60, w: 7 * 24 * 60 } as const;
 /** Telegram refuses a topic name over 128 characters. */
 const nameLimit = 128;
 
@@ -83,12 +105,9 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
     return `Schedule ${String(position)} has no valid id: use 1 to 32 lowercase letters, digits or dashes.`;
   const name = optionalText(fields["name"]);
   if (name === null) return `Schedule ${id} has no name, so it was skipped.`;
-  const at = fields["at"];
-  if (typeof at !== "string" || !timePattern.test(at))
-    return `Schedule ${id} has no valid time: write it as HH:MM, such as 07:30.`;
-  const days = parseDays(fields["days"]);
-  if (days === null)
-    return `Schedule ${id} has invalid days: list some of ${dayNames.join(", ")}, or leave days out for every day.`;
+  const repeat = parseRepeat(id, fields);
+  if (typeof repeat === "string") return repeat;
+  const { at, days, every, from } = repeat;
   const text = optionalText(fields["text"]);
   const file = optionalText(fields["file"]);
   const prompt = optionalText(fields["prompt"]);
@@ -101,7 +120,46 @@ export function parseScheduleEntry(entry: unknown, position: number): Schedule |
   // A typo such as "false" in quotes must never run a schedule that the person paused.
   if (typeof enabled !== "boolean") return `Schedule ${id} has an invalid enabled: write true or false.`;
   const model = optionalText(fields["model"]);
-  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled };
+  return { id, name: name.slice(0, nameLimit), at, days, text, file, prompt, model, enabled, every, from };
+}
+
+/** The minutes between two runs of an interval such as `3d`. */
+export function intervalMinutes(every: string): number {
+  const match = everyPattern.exec(every);
+  return Number(match?.[1] ?? 1) * unitMinutes[(match?.[2] ?? "d") as keyof typeof unitMinutes];
+}
+
+type Repeat = Pick<Schedule, "at" | "days" | "every" | "from">;
+
+/** When a schedule runs: `at` on some `days`, or `every` interval from `from`. */
+function parseRepeat(id: string, fields: Record<string, unknown>): Repeat | string {
+  const has = (name: string): boolean => fields[name] !== undefined && fields[name] !== null;
+  if (has("every")) {
+    // Both ways at once would leave the person to guess which one runs.
+    if (has("at") || has("days")) return `Schedule ${id} has both every and at or days: use one of the two.`;
+    const every = fields["every"];
+    if (typeof every !== "string" || !everyPattern.test(every))
+      return `Schedule ${id} has an invalid every: write a number and h, d or w, such as 2h, 3d or 1w.`;
+    const from = fields["from"];
+    if (typeof from !== "string" || !isSlot(from))
+      return `Schedule ${id} has no valid from: write the first run as YYYY-MM-DDTHH:MM, such as 2026-10-22T07:30.`;
+    return { at: null, days: null, every, from };
+  }
+  if (has("from")) return `Schedule ${id} has from without every: add every, or remove from.`;
+  const at = fields["at"];
+  if (typeof at !== "string" || !timePattern.test(at))
+    return `Schedule ${id} has no valid time: write it as HH:MM, such as 07:30.`;
+  const days = parseDays(fields["days"]);
+  if (days === null)
+    return `Schedule ${id} has invalid days: list some of ${dayNames.join(", ")}, or leave days out for every day.`;
+  return { at, days, every: null, from: null };
+}
+
+/** A real date and time: a day such as 30 February fails. */
+function isSlot(text: string): boolean {
+  if (!slotPattern.test(text)) return false;
+  const moment = new Date(`${text}:00Z`);
+  return !Number.isNaN(moment.getTime()) && moment.toISOString().slice(0, 16) === text;
 }
 
 /** Every field of a schedule as text, for a setup card and for change detection (lesson 66). */
@@ -110,7 +168,9 @@ export function announcedFields(schedule: Schedule): Partial<Record<ScheduleFiel
     id: schedule.id,
     name: schedule.name,
     at: schedule.at,
-    days: schedule.days.map((day) => dayNames[day]).join(", "),
+    days: schedule.days?.map((day) => dayNames[day]).join(", ") ?? null,
+    every: schedule.every,
+    from: schedule.from,
     text: schedule.text,
     file: schedule.file,
     prompt: schedule.prompt,

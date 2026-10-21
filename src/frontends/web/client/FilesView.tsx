@@ -19,7 +19,7 @@ import {
   splitFrontMatter,
 } from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
-import { ListSkeleton } from "./Loading.tsx";
+import { ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { toWebHtml } from "./web-format.ts";
@@ -147,6 +147,9 @@ export function FilesView(): ReactElement {
               <Icon name="pen" />
             </button>
           )}
+          {naming === null && last?.state === "shown" && last.answer.kind === "folder" && (
+            <DownloadButton key={path} path={path} folder={true} />
+          )}
         </div>
         <div className="files-columns" ref={columns}>
           {crumbs.map((crumb, index) => (
@@ -230,10 +233,70 @@ function Column({
         <div role="status" className="callout warning">
           {shown.reason} <span className="files-size">({sizeWords(shown.size)})</span>
         </div>
+        {shown.downloadable && <DownloadButton key={path} path={path} folder={false} />}
       </div>
     );
   // A new file starts outside the editor, with its own view.
   return <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} />;
+}
+
+/**
+ * Saves a file, or a folder as one zip, on the person's device. A browser saves one file per
+ * link, so a folder needs the zip. The zip has no compression, so Eva builds it fast.
+ */
+function DownloadButton({
+  path,
+  folder,
+  iconOnly = false,
+}: {
+  readonly path: string;
+  readonly folder: boolean;
+  /** A full file bar has room for an icon only, as the size button beside it. */
+  readonly iconOnly?: boolean;
+}): ReactElement {
+  const [share, setShare] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const start = async (): Promise<void> => {
+    setBusy(true);
+    setShare(null);
+    setProblem(null);
+    try {
+      const { name, blob } = await api.downloadFile(path, setShare);
+      const address = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = address;
+      link.download = name;
+      link.click();
+      // Safari starts the save after the click returns, so the address must live a while.
+      setTimeout(() => URL.revokeObjectURL(address), 60_000);
+    } catch (caught) {
+      setProblem(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const label = folder ? "Download as zip" : "Download";
+  return (
+    <div className="files-download">
+      <button
+        className={iconOnly ? "icon-button" : "ghost"}
+        onClick={() => void start()}
+        disabled={busy}
+        aria-label={folder ? "Download this folder as a zip file" : "Download this file"}
+        data-tooltip={iconOnly ? label : undefined}
+      >
+        <Icon name="download" />
+        {!iconOnly && label}
+      </button>
+      {busy && <ProgressBar label={folder ? "Packing the folder…" : "Downloading…"} share={share} />}
+      {problem !== null && (
+        <div role="alert" className="callout danger">
+          {problem}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FolderList({
@@ -416,6 +479,7 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
               </SaveButton>
             </>
           )}
+          <DownloadButton path={file.path} folder={false} iconOnly={true} />
           <button
             className="files-large-button icon-button"
             aria-label={large ? "Make the file small" : "Make the file large"}

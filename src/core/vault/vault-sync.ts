@@ -103,6 +103,8 @@ interface GitResult {
 interface StatusEntry {
   readonly code: string;
   readonly path: string;
+  /** The old path of a rename or copy that is staged already, such as after `git mv`. */
+  readonly isStagedSource?: boolean;
 }
 
 interface Version {
@@ -530,8 +532,12 @@ export class VaultSync {
     this.update({ withheldFiles: withheld });
     if (kept.length === 0) return true;
 
-    const add = await this.git(["add", "-A", "--", ...kept], localTimeoutMs);
-    if (add.exitCode !== 0) {
+    // The old path of a staged rename is in neither the folder nor the index, so `git add` refuses
+    // it ("did not match any files"). Its removal is staged already; the commit still takes it.
+    const stagedSources = new Set(entries.filter((entry) => entry.isStagedSource === true).map((entry) => entry.path));
+    const toAdd = kept.filter((path) => !stagedSources.has(path));
+    const add = toAdd.length === 0 ? null : await this.git(["add", "-A", "--", ...toAdd], localTimeoutMs);
+    if (add !== null && add.exitCode !== 0) {
       this.update({ status: "error", lastError: `git add failed: ${add.stderr.trim()}` });
       return false;
     }
@@ -680,11 +686,11 @@ export class VaultSync {
       const field = fields[index] ?? "";
       const code = field.slice(0, 2);
       entries.push({ code, path: field.slice(3) });
-      // A rename or copy entry is followed by its source path, which must be staged too.
+      // A rename or copy entry is followed by its source path, which the commit needs too.
       if (code.startsWith("R") || code.startsWith("C")) {
         index += 1;
         const source = fields[index];
-        if (source !== undefined) entries.push({ code, path: source });
+        if (source !== undefined) entries.push({ code, path: source, isStagedSource: true });
       }
     }
     return entries;

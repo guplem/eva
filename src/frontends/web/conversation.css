@@ -513,8 +513,21 @@ button.ghost .icon {
   border: 0;
   border-radius: 50%;
   background: var(--send-fill);
-  color: var(--on-accent);
+  color: var(--eye);
   box-shadow: var(--send-glow);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.send .icon {
+  filter: var(--eye-glow);
+  transition: transform 0.25s ease;
+}
+
+.send:not(:disabled):hover .icon {
+  transform: translate(1px, -1px);
 }
 
 .send.stop {
@@ -523,8 +536,11 @@ button.ghost .icon {
   box-shadow: none;
 }
 
+/* An empty box turns the visor off: a flat chip, so the change shows in shape and not only in light. */
 .send:disabled {
-  opacity: 0.55;
+  background: var(--chip);
+  color: var(--muted);
+  box-shadow: none;
 }
 
 /* The microphone sits next to Send, quieter, so Send stays the main action. */
@@ -532,6 +548,17 @@ button.ghost .icon {
   background: var(--chip);
   color: var(--ink);
   box-shadow: none;
+}
+
+.send:is(.stop, .voice, :disabled) .icon {
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send,
+  .send .icon {
+    transition: none;
+  }
 }
 
 .recording-dot {

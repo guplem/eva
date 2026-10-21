@@ -226,6 +226,22 @@ test("with no chat yet, the page greets the person, and the first message makes 
   await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
 });
 
+test("with no chat yet, the first message shows while Eva works on it", async ({ page }) => {
+  await hideOldChats(page);
+  await logIn(page);
+  const text = `The first message, please approve (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Enter");
+  // The approval holds the turn, so the page shows the chat before it has a stored turn.
+  const dialog = page.getByRole("region", { name: "Eva asks for permission" });
+  await expect(dialog).toContainText("gh issue create");
+  await expect(page.locator(".message.user")).toContainText(text);
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Allow once" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("The person answered");
+});
+
 test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
   await hideOldChats(page);
   await page.route("**/api/status", async (route) => {
@@ -1633,6 +1649,30 @@ test("Schedules page: open it from the main navigation, add a schedule, see its 
   await expect(row).toHaveCount(0);
 });
 
+test("Schedules page: add a schedule that repeats every few days", async ({ page }, testInfo) => {
+  const id = `water-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  await logIn(page);
+  await page.getByRole("button", { name: "Schedules" }).click();
+  await page.getByRole("button", { name: "Add schedule" }).click();
+  const form = page.getByRole("dialog", { name: "Add schedule" });
+  await form.getByLabel(/^Id/).fill(id);
+  await form.getByLabel("Name").fill(`Water ${id}`);
+  await form.getByRole("button", { name: "At an interval" }).click();
+  await expect(form.getByLabel("Time (HH:MM)")).toHaveCount(0);
+  await form.getByLabel("Every").fill("3");
+  await form.getByLabel("Unit").selectOption("d");
+  await form.getByLabel("First run").fill("2030-01-02T07:30");
+  await form.getByLabel("Fixed text").fill("Water the plants.");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  const card = page.getByRole("dialog", { name: "Setup card" });
+  await expect(card).toContainText("Every 3 days at 07:30, from Wed 2 Jan, 07:30");
+  await card.getByRole("button", { name: "Got it" }).click();
+  const row = page.getByRole("listitem", { name: `Water ${id}` });
+  await expect(row).toContainText("Every 3 days at 07:30 · next 2 Jan 07:30");
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("the main navigation opens each destination at its own address, and the back button returns", async ({ page }) => {
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });
@@ -1948,6 +1988,9 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   if (test.info().project.name === "desktop") {
+    // The title and its subtitle share one row, so the header stays low.
+    const header = await page.locator(".main-header").first().boundingBox();
+    expect(header?.height ?? 0).toBeLessThan(56);
     const panel = page.getByRole("complementary", { name: "This chat" });
     await expect(panel).toContainText("Claude Code");
     // The engine names its window, so the ring shows a share.
@@ -1990,6 +2033,25 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await page.mouse.click(20, 20);
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole("button", { name: "More actions" })).toBeFocused();
+});
+
+test("a computer hides the chat details for more room, and the browser keeps the choice", async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "A phone shows the details in a sheet, never in a column.");
+  await logIn(page);
+  const chatId = await newChat(page);
+  const panel = page.getByRole("complementary", { name: "This chat" });
+  await expect(panel).toBeVisible();
+  await page.getByRole("button", { name: "Hide the chat details" }).click();
+  await expect(panel).toHaveCount(0);
+  await page.goto(`/#/chat/${chatId}`);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(panel).toHaveCount(0);
+  const show = page.getByRole("button", { name: "Show the chat details" });
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await show.click();
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide the chat details" })).toBeFocused();
 });
 
 test("a new message of a running turn replaces the shown one, and the older one becomes a step", async ({ page }) => {
@@ -3853,4 +3915,25 @@ test("Files: Try again reads a folder again after a failed read (issue 253)", as
   await expect(page.getByRole("alert").filter({ hasText: "Eva failed to handle the request." })).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+});
+
+test("Files: a file and a folder download from their own button, and a failed download says why", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  const fileDownload = page.waitForEvent("download");
+  await file.getByRole("button", { name: "Download this file" }).click();
+  expect((await fileDownload).suggestedFilename()).toBe("AGENTS.md");
+
+  await page.goto("/#/files/Projects");
+  const folderDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  expect((await folderDownload).suggestedFilename()).toBe("Projects.zip");
+
+  await page.route("**/api/files/download?path=Projects", (route) =>
+    route.fulfill({ status: 409, json: { error: "This is larger than 200 MB, so Eva does not download it." } }),
+  );
+  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
 });

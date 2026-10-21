@@ -2,7 +2,7 @@
  * The release workflow publishes a release after each change to `main`. The conventional-commit
  * types since the last release decide its version, so no person picks a number.
  */
-import { isNewerVersion } from "./release-verification.ts";
+import { isNewerVersion } from "./version-order.ts";
 
 export interface ReleaseCommit {
   readonly subject: string;

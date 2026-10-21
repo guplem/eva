@@ -3,7 +3,7 @@
  * its version numbers only, as the release workflow raises the major number for every break.
  */
 import type { EvaConfig } from "../settings/home.ts";
-import { isNewerVersion } from "./release-verification.ts";
+import { isNewerVersion } from "./version-order.ts";
 import {
   detailsEnd,
   detailsStart,

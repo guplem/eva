@@ -119,7 +119,7 @@ import {
   type EngineInstallInputs,
 } from "./engine-install/engine-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
-import { isNewerVersion } from "./updates/release-verification.ts";
+import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {

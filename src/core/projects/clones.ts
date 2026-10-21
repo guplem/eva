@@ -236,8 +236,48 @@ export class TrustStore {
 
   remember(repositoryUrl: string, decision: "trusted" | "untrusted"): void {
     this.decisions[repositoryUrl] = decision;
+    this.save();
+  }
+
+  /** Each answer by its shown URL, so a token in a saved URL never leaves the core. */
+  answers(): TrustAnswer[] {
+    return Object.entries(this.decisions)
+      .map(([url, decision]) => ({ url: shownUrl(url), decision }))
+      .sort((a, b) => a.url.localeCompare(b.url));
+  }
+
+  /** Removes every answer shown as this URL, so Eva asks again. */
+  forget(shown: string): void {
+    for (const url of Object.keys(this.decisions)) {
+      if (shownUrl(url) === shown) Reflect.deleteProperty(this.decisions, url);
+    }
+    this.save();
+  }
+
+  private save(): void {
     writeFileAtomic(this.path, JSON.stringify(this.decisions, null, 2) + "\n");
   }
+}
+
+export interface TrustAnswer {
+  readonly url: string;
+  readonly decision: "trusted" | "untrusted";
+}
+
+const shownUrlLimit = 200;
+
+/**
+ * A URL as the phone shows it. The clone writes its own `origin`, so the text can hold a token in
+ * its user part, line breaks that fake a second line, or a tail long enough to hide the question.
+ */
+export function shownUrl(url: string): string {
+  const clean = url
+    .replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, "$1")
+    // A short git address (`user:token@host:path`) has no scheme. A plain `git@` user carries no secret, so it stays.
+    .replace(/^[^@/:\s]+:[^@/\s]*@/, "")
+    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+    .trim();
+  return clean.length <= shownUrlLimit ? clean : `${clean.slice(0, shownUrlLimit)}…`;
 }
 
 function isDecisionMap(value: unknown): value is Record<string, "trusted" | "untrusted"> {

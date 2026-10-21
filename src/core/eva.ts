@@ -73,7 +73,14 @@ import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instanc
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
-import { CloneOriginStore, readOriginUrl, TrustStore, type Clone, type CloneDetails } from "./projects/clones.ts";
+import {
+  CloneOriginStore,
+  readOriginUrl,
+  TrustStore,
+  type Clone,
+  type CloneDetails,
+  type TrustAnswer,
+} from "./projects/clones.ts";
 import {
   ProjectWork,
   type NewChatInput,
@@ -267,6 +274,14 @@ export interface EvaSetupState extends SetupState {
   readonly vaultNeedsPush: boolean;
 }
 
+/** Whose repositories Eva trusts, for the Trusted repositories section. */
+export interface TrustOverview {
+  /** The login of this Eva's GitHub account, or null with no GitHub login. */
+  readonly githubAccount: string | null;
+  readonly owners: readonly string[];
+  readonly answers: readonly TrustAnswer[];
+}
+
 const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
@@ -313,6 +328,7 @@ export class Eva {
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
   private readonly vaultSetup: VaultSetup;
+  private readonly trustStore: TrustStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -418,6 +434,7 @@ export class Eva {
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
+    this.trustStore = new TrustStore(options.paths.trust);
     this.modelCalls = new ModelCalls({
       engines: options.engines,
       environment: agentEnvironment,
@@ -463,9 +480,9 @@ export class Eva {
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({
-          trustStore: new TrustStore(options.paths.trust),
+          trustStore: this.trustStore,
           cloneOrigins,
-          trustedOwners: options.config.trust.trustedRepositoryOwners,
+          trustedOwners: () => this.trustedOwners(),
           environment: agentEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, ownGitEnvironment),
         }),
@@ -1130,6 +1147,28 @@ export class Eva {
   /** Checks and saves a settings change; see `LiveSettings.update`. */
   updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
     return this.settings.update(patch);
+  }
+
+  /** Whose repositories Eva trusts, and the person's saved answers, for Settings. */
+  trust(): TrustOverview {
+    return {
+      githubAccount: loadGitHubAccount(this.options.paths)?.login ?? null,
+      owners: this.settings.saved().config.trust.trustedRepositoryOwners,
+      answers: this.trustStore.answers(),
+    };
+  }
+
+  /** Removes a saved answer, so the next project chat on that repository asks again. */
+  forgetTrustAnswer(url: string): TrustOverview {
+    this.trustStore.forget(url);
+    return this.trust();
+  }
+
+  /** The owners in the settings, and the account of this Eva's GitHub login: she trusts her own work. */
+  private trustedOwners(): readonly string[] {
+    const login = loadGitHubAccount(this.options.paths)?.login;
+    const owners = this.settings.saved().config.trust.trustedRepositoryOwners;
+    return login === undefined ? owners : [...owners, login];
   }
 
   async setupState(): Promise<EvaSetupState> {

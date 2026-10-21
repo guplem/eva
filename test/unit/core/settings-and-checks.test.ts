@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
@@ -618,6 +618,41 @@ describe("live settings, the vault fetch and updates", () => {
     });
     expect(eva.publicSettings().config.updates.frequency).toBe("weekly");
     expect(readFileSync(vaultSettingsPath(vault), "utf-8")).toContain('"frequency": "weekly"');
+  });
+
+  test("the trusted owners apply at once, and the overview adds the Eva's own GitHub account", () => {
+    expect(eva.trust()).toEqual({ githubAccount: null, owners: [], answers: [] });
+    expect(eva.updateSettings({ trust: { trustedRepositoryOwners: ["example-org"] } })).toEqual({
+      saved: true,
+      restartNeeded: false,
+    });
+    saveGitHubAccount(homePaths(home), { id: 1234, login: "example-user", name: null });
+    expect(eva.trust()).toEqual({ githubAccount: "example-user", owners: ["example-org"], answers: [] });
+  });
+
+  test("a saved trust answer shows without its token, and a removal makes Eva ask again", () => {
+    mkdirSync(dirname(homePaths(home).trust), { recursive: true });
+    writeFileSync(
+      homePaths(home).trust,
+      JSON.stringify({ "https://user:secret@github.com/stranger/app.git": "untrusted" }),
+    );
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, timeZone: "UTC" },
+      secrets: {},
+      engines: [engine],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      expect(instance.trust().answers).toEqual([{ url: "https://github.com/stranger/app.git", decision: "untrusted" }]);
+      expect(instance.forgetTrustAnswer("https://github.com/stranger/app.git").answers).toEqual([]);
+      expect(readFileSync(homePaths(home).trust, "utf8")).not.toContain("stranger");
+    } finally {
+      instance.stop();
+    }
   });
 
   test("the background tick fetches the vault at the interval in the settings", async () => {

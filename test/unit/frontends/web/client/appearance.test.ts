@@ -51,12 +51,13 @@ describe("seedVariables", () => {
 describe("seed colours", () => {
   test("offers the 15 seeds of the design, with EVE blue first", () => {
     expect(seedColours).toHaveLength(15);
-    expect(seedColours[0]).toEqual({ name: "EVE", hex: defaultSeed });
+    expect(seedColours[0]).toEqual({ name: "EVE blue", hex: defaultSeed });
     expect(defaultSeed).toBe("#2aa8ff");
   });
 
   test("names a known seed, and shows any other seed as its code", () => {
     expect(seedName("#8B5CF6")).toBe("Violet");
+    expect(seedName(defaultSeed)).toBe("EVE blue");
     expect(seedName("#123abc")).toBe("#123ABC");
   });
 });

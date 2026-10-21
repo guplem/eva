@@ -23,7 +23,7 @@ export const defaultSeed = "#2aa8ff";
 
 /** The seeds of the design guide, in the order of its palette picker. */
 export const seedColours: readonly { readonly name: string; readonly hex: string }[] = [
-  { name: "EVE", hex: defaultSeed },
+  { name: "EVE blue", hex: defaultSeed },
   { name: "Cyan", hex: "#11c5d9" },
   { name: "Teal", hex: "#14b8a6" },
   { name: "Mint", hex: "#34d399" },

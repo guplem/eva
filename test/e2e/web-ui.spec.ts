@@ -1094,13 +1094,16 @@ test("Settings: a seed colour changes the whole palette and stays in this browse
   await openSettings(page, "Personalize");
   const colours = page.getByRole("group", { name: "Colour" });
   await expect(colours.getByRole("button")).toHaveCount(15);
-  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "true");
+  await expect(colours.getByRole("button", { name: "EVE blue" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Selected: EVE blue")).toBeVisible();
   await colours.getByRole("button", { name: "Violet" }).click();
   await expect(colours.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "true");
-  await expect(colours.getByRole("button", { name: "EVE" })).toHaveAttribute("aria-pressed", "false");
+  await expect(colours.getByRole("button", { name: "EVE blue" })).toHaveAttribute("aria-pressed", "false");
   expect(await accent()).not.toBe(before);
-  await page.getByLabel("Any colour").fill("#123abc");
-  await expect(page.getByText("#123ABC")).toBeVisible();
+  // The free colour is the last swatch of the row, so it sits inside the same group.
+  await colours.getByLabel("Any colour").fill("#123abc");
+  await expect(page.getByText("Selected: #123ABC")).toBeVisible();
+  await expect(colours.getByRole("button", { name: "Violet" })).toHaveAttribute("aria-pressed", "false");
   // The address keeps the page, so the reload opens Personalize again.
   await page.reload();
   await expect(page.getByLabel("Any colour")).toHaveValue("#123abc");

@@ -37,6 +37,7 @@ import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
+import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
@@ -226,8 +227,11 @@ function EvaApp(): ReactElement {
    * waits, with no event here. Read the state again, with the steps and drafts of the running turns, so
    * the answer that the person already read stays (#118).
    * A note goes: a lost event can hide the turn start that clears it.
+   * A reconnect also follows a restart, such as after an update: a page with old code reloads.
    */
   const recover = useCallback(async (): Promise<void> => {
+    // Not awaited: a slow answer must not hold the recovery.
+    void reloadIfStale(browserPage());
     lastRecovery.current += 1;
     const id = lastRecovery.current;
     setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));

@@ -49,9 +49,10 @@ export function FilesView(): ReactElement {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  // An agent or another device can change the favorites, so each new path reads them again.
   useEffect(() => {
-    api.favorites().then(setFavorites, () => setFavorites([]));
-  }, []);
+    api.favorites().then(setFavorites, () => setFavorites((current) => current ?? []));
+  }, [path]);
 
   // Each answer goes in by the path that asked for it, so a slow answer never shows under another path.
   const read = useCallback((asked: string): void => {
@@ -119,7 +120,7 @@ export function FilesView(): ReactElement {
             )}
           </nav>
           {shownPath !== null && shownPath !== "" && (
-            <StarButton path={shownPath} favorites={favorites} onChange={setFavorites} />
+            <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
           )}
           {last?.state === "shown" && last.answer.kind === "folder" && (
             <DownloadButton key={path} path={path} folder={true} />

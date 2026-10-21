@@ -733,14 +733,12 @@ async function assistantRulesRoute(
 
 /** The vault's template parts, such as the skills: their states, and the person's choice for one that differs. */
 async function templatePartsRoute(request: Request, method: string, eva: Eva): Promise<Response> {
-  const parts = eva.templateParts();
-  if (parts === null) return json({ error: "No vault is configured." }, 409);
-  if (method === "GET") return json({ parts });
-  if (method === "POST") {
-    const { path, choice } = templateChoiceSchema.parse(await request.json());
-    return json({ parts: eva.chooseTemplateVersion(path, choice) });
-  }
-  return json({ error: "Not found." }, 404);
+  if (method !== "GET" && method !== "POST") return json({ error: "Not found." }, 404);
+  const listed = eva.templateParts();
+  if (listed === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET") return json(listed);
+  const { path, choice } = templateChoiceSchema.parse(await request.json());
+  return json({ parts: eva.chooseTemplateVersion(path, choice), canChoose: true });
 }
 
 /** The schedules of `.eva/schedules.json`: list, add or replace, turn off or on, remove. */

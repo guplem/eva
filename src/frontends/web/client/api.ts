@@ -270,8 +270,12 @@ export const api = {
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
   /** Answers 409 when no vault is configured. */
-  templateParts: (): Promise<{ parts: TemplatePartView[] }> => request("GET", "/api/template-parts"),
-  chooseTemplateVersion: (path: string, choice: "new" | "mine"): Promise<{ parts: TemplatePartView[] }> =>
+  templateParts: (): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
+    request("GET", "/api/template-parts"),
+  chooseTemplateVersion: (
+    path: string,
+    choice: "new" | "mine",
+  ): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
     request("POST", "/api/template-parts", { path, choice }),
   /** The value goes one way: the answer never holds it. */
   saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>

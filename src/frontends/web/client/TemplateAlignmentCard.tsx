@@ -2,57 +2,60 @@
  * The Template alignment card: each part of Eva's template in the vault, such as a skill, and its
  * state. A part that the person changed, and that has a new version, offers three choices.
  */
-import { useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type TemplatePartView } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
-import { mergeMessage, partStateWords } from "./template-words.ts";
+import { mergeMessage, partStateWords, updatedWords } from "./template-words.ts";
+
+interface Listed {
+  readonly parts: readonly TemplatePartView[];
+  /** False on a computer that is not the hub: only the hub changes the parts. */
+  readonly canChoose: boolean;
+}
 
 export function TemplateAlignmentCard({ context }: { readonly context: SettingsContext }): ReactElement {
-  const [parts, setParts] = useState<readonly TemplatePartView[] | null>(null);
+  const [listed, setListed] = useState<Listed | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const { notify, reloadSetup } = context;
 
-  useEffect(() => {
-    let current = true;
+  const load = useCallback((): void => {
     api
       .templateParts()
-      .then((answer) => {
-        if (current) setParts(answer.parts);
-      })
-      .catch((error: unknown) => {
-        if (current) context.notify(errorText(error));
-      });
-    return () => {
-      current = false;
-    };
-  }, [context]);
+      .then(setListed)
+      .catch((error: unknown) => notify(errorText(error)));
+  }, [notify]);
+  useEffect(load, [load]);
 
   const choose = async (part: TemplatePartView, choice: "new" | "mine"): Promise<void> => {
     setBusy(part.path);
     try {
-      setParts((await api.chooseTemplateVersion(part.path, choice)).parts);
+      setListed(await api.chooseTemplateVersion(part.path, choice));
       // The choice can end the alert, and the notice at the top must follow.
-      context.reloadSetup();
+      reloadSetup();
     } catch (error) {
-      context.notify(errorText(error));
+      notify(errorText(error));
     } finally {
       setBusy(null);
     }
   };
 
-  // Eva merges in a chat, so the person sees the result and can correct it. Keeping their version
-  // first ends the question: the merged file is theirs.
+  // Eva merges in a chat, so the person sees the result and can correct it. The chat starts first:
+  // a failed start changes nothing. Then keeping the person's version ends the question, because
+  // the merged file is theirs.
   const merge = async (part: TemplatePartView): Promise<void> => {
     setBusy(part.path);
     try {
-      const message = mergeMessage(part);
-      await api.chooseTemplateVersion(part.path, "mine");
       const chat = await api.newAssistantChat("default");
-      await api.send(chat.id, message);
+      await api.send(chat.id, mergeMessage(part));
+      await api.chooseTemplateVersion(part.path, "mine");
+      reloadSetup();
       window.location.hash = `#/chat/${encodeURIComponent(chat.id)}`;
     } catch (error) {
-      context.notify(errorText(error));
+      notify(errorText(error));
+      load();
+    } finally {
       setBusy(null);
     }
   };
@@ -61,46 +64,54 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
     <Card
       item="template-alignment"
       title="Template alignment"
-      description="Eva brings some files of your vault, such as her skills. After an update, she updates each file that you did not change. When you changed one, you choose."
+      description="Eva puts some files in your vault, such as her skills. After an update, she replaces each file that you did not change. If you changed a file, you choose."
     >
-      {parts === null ? (
+      {listed === null ? (
         <ProgressBar label="Eva compares the files…" />
       ) : (
-        <ul className="device-list" aria-label="Template parts">
-          {parts.map((part) => {
-            const words = partStateWords(part.state);
-            return (
-              <li key={part.path}>
-                <span className="device-icon">
-                  <Icon name="file" />
-                </span>
-                <span className="device-text">
-                  <b>{part.name}</b>
-                  <span className="device-detail mono">{part.path}</span>
-                </span>
-                <span className={`pill ${words.tone}`}>{words.label}</span>
-                {part.state === "differs" && (
-                  <div className="button-row">
-                    <button className="primary" disabled={busy !== null} onClick={() => void choose(part, "new")}>
-                      Use the new one
+        <>
+          {!listed.canChoose && (
+            <div className="field-hint">Only the hub computer changes these files. Open its page to choose.</div>
+          )}
+          <ul className="device-list" aria-label="Template parts">
+            {listed.parts.map((part) => {
+              const words = partStateWords(part.state);
+              const updated = part.state === "current" ? updatedWords(part.updatedAt) : null;
+              const canAct = listed.canChoose && busy === null;
+              return (
+                <li key={part.path}>
+                  <span className="device-icon">
+                    <Icon name="file" />
+                  </span>
+                  <span className="device-text">
+                    <b>{part.name}</b>
+                    <span className="device-detail mono">{part.path}</span>
+                    {updated !== null && <span className="device-detail">{updated}</span>}
+                  </span>
+                  <span className={`pill ${words.tone}`}>{words.label}</span>
+                  {part.state === "differs" && listed.canChoose && (
+                    <div className="button-row">
+                      <button className="primary" disabled={!canAct} onClick={() => void choose(part, "new")}>
+                        Use the new one
+                      </button>
+                      <button disabled={!canAct} onClick={() => void choose(part, "mine")}>
+                        Keep mine
+                      </button>
+                      <button className="ghost" disabled={!canAct} onClick={() => void merge(part)}>
+                        Merge with Eva
+                      </button>
+                    </div>
+                  )}
+                  {part.state === "missing" && listed.canChoose && (
+                    <button className="ghost" disabled={!canAct} onClick={() => void choose(part, "new")}>
+                      Add it again
                     </button>
-                    <button disabled={busy !== null} onClick={() => void choose(part, "mine")}>
-                      Keep mine
-                    </button>
-                    <button className="ghost" disabled={busy !== null} onClick={() => void merge(part)}>
-                      Merge with Eva
-                    </button>
-                  </div>
-                )}
-                {part.state === "missing" && (
-                  <button className="ghost" disabled={busy !== null} onClick={() => void choose(part, "new")}>
-                    Add it again
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       {busy !== null && <ProgressBar label="Eva updates the file…" />}
     </Card>

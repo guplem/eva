@@ -1,11 +1,14 @@
 /**
- * The setup report of each repository of a project: one light per item, and a Copy button
+ * The setup report of each repository of a project: one mark per item, and a Copy button
  * that copies the fix request for a coding agent that runs on that repository.
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { api, type SetupItem, type SetupReport } from "./api.ts";
-import { BackButton } from "./ProjectPage.tsx";
+import { api, type SetupItem, type SetupReport, type SetupSection } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { BackButton } from "./ProjectPage.tsx";
+import { Card, StatusIcon } from "./SettingsParts.tsx";
+import { lightMark, reportSummary, scoreMark } from "./setup-report.ts";
 
 const lightNames: Readonly<Record<SetupItem["light"], string>> = {
   green: "Done",
@@ -47,22 +50,25 @@ export function RepositorySetup({
       <div className="main-header">
         <BackButton label="Back" onClick={onBack} />
         <h1>{title} · Repository setup</h1>
-        <button onClick={() => void load()} disabled={loading}>
+        <button className="outline" onClick={() => void load()} disabled={loading}>
+          <Icon name="restart" />
           Refresh
         </button>
       </div>
-      <div className="settings">
+      <div className="settings-page">
         {Array.isArray(reports) ? (
           <>
-            {reports.length === 0 && <div className="muted">This project lists no repository.</div>}
+            {reports.length === 0 && <div className="callout">This project lists no repository.</div>}
             {reports.map((report, index) => (
-              <ReportView key={`${String(index)}-${report.repositoryUrl}`} report={report} />
+              <ReportCard key={`${String(index)}-${report.repositoryUrl}`} report={report} />
             ))}
           </>
         ) : reports.state === "loading" ? (
-          <ProgressBar label="Reading GitHub…" />
+          <section className="card">
+            <ProgressBar label="Reading GitHub…" />
+          </section>
         ) : (
-          <div className="muted" role="status">
+          <div className="callout danger" role="status">
             Eva could not read the setup: {reports.reason} Press Refresh to try again.
           </div>
         )}
@@ -71,40 +77,62 @@ export function RepositorySetup({
   );
 }
 
-function ReportView({ report }: { report: SetupReport }): ReactElement {
+function ReportCard({ report }: { report: SetupReport }): ReactElement {
+  const summary = reportSummary(report);
   return (
-    <fieldset>
-      <legend>{report.slug ?? report.repositoryUrl}</legend>
-      {report.problem !== null && <div className="muted">{report.problem}</div>}
-      {report.allFixes !== null && (
-        <CopyButton
-          text={report.allFixes}
-          label="Copy all fixes"
-          name={`Copy all fixes for ${report.slug ?? ""}`}
-          className="copy-all"
-        />
-      )}
+    <Card
+      icon="branch"
+      title={report.slug ?? report.repositoryUrl}
+      description={summary === "" ? undefined : summary}
+      aside={
+        report.allFixes !== null && (
+          <CopyButton
+            text={report.allFixes}
+            label="Copy all fixes"
+            name={`Copy all fixes for ${report.slug ?? ""}`}
+            className="primary"
+          />
+        )
+      }
+    >
+      {report.problem !== null && <div className="callout warning">{report.problem}</div>}
       {report.sections.map((section) => (
-        <section key={section.title} className="setup-section">
-          <h2>
-            {section.title}
-            {section.score !== null && <span className="badge">{section.score}%</span>}
-          </h2>
-          {section.items.map((item) => (
-            <div key={item.label} className="setup-item">
-              <span className={`light ${item.light}`} role="img" aria-label={lightNames[item.light]} />
-              <div className="setup-text">
-                <div>{item.label}</div>
-                <div className="muted">{item.detail}</div>
-              </div>
-              {item.fixRequest !== null && (
-                <CopyButton text={item.fixRequest} label="Copy" name={`Copy the fix for ${item.label}`} />
-              )}
-            </div>
-          ))}
-        </section>
+        <SectionView key={section.title} section={section} />
       ))}
-    </fieldset>
+    </Card>
+  );
+}
+
+function SectionView({ section }: { section: SetupSection }): ReactElement {
+  return (
+    <section className="setup-section" aria-label={section.title}>
+      <h3>
+        {section.title}
+        {section.score !== null && <span className={`pill ${scoreMark(section.score)}`}>{section.score}%</span>}
+      </h3>
+      {section.items.map((item) => (
+        <div key={item.label} className="access-step setup-item">
+          <ItemMark light={item.light} />
+          <div className="access-step-text">
+            <b>{item.label}</b>
+            <small>{item.detail}</small>
+          </div>
+          {item.fixRequest !== null && (
+            <CopyButton text={item.fixRequest} label="Copy" name={`Copy the fix for ${item.label}`} />
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ItemMark({ light }: { light: SetupItem["light"] }): ReactElement {
+  const mark = lightMark(light);
+  if (mark !== null) return <StatusIcon state={mark} label={lightNames[light]} />;
+  return (
+    <span className="access-mark" role="img" aria-label={lightNames[light]}>
+      <Icon name="info" />
+    </span>
   );
 }
 
@@ -130,7 +158,12 @@ function CopyButton({ text, label, name, className }: CopyButtonProps): ReactEle
   };
   return (
     <>
-      <button className={className} aria-label={copied ? "Copied" : name} onClick={() => void copy()}>
+      <button
+        className={`copy-button ${className ?? ""}`}
+        aria-label={copied ? "Copied" : name}
+        onClick={() => void copy()}
+      >
+        <Icon name={copied ? "check" : "copy"} />
         {copied ? "Copied" : label}
       </button>
       {showText && (

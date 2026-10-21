@@ -28,7 +28,7 @@ import type { CloneFetch } from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
-import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
+import type { SetupItem, SetupReport, SetupSection } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
@@ -84,6 +84,7 @@ export type {
   SessionRecord,
   SetupItem,
   SetupReport,
+  SetupSection,
   UpdateStatus,
   VaultConflict,
   VaultConflictReport,

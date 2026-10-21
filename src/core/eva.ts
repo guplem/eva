@@ -127,6 +127,7 @@ import {
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
+import { installedOn, readAboutMe, type AboutMe } from "./vault/about-me.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -150,6 +151,14 @@ import {
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
+
+/** The person's facts as the web page reads them. */
+export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
+  /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
+  readonly installedOn: string | null;
+  /** The facts that Eva still needs, the most useful first. */
+  readonly missing: readonly ("birthDate" | "region")[];
+}
 
 export interface EvaOptions {
   readonly paths: HomePaths;
@@ -813,6 +822,26 @@ export class Eva {
    * The state of each template part of the vault, with no change, and whether this machine takes
    * the person's choice. Null when no vault is configured.
    */
+  /**
+   * The person's facts that the web page uses, from `Life/About me.md`, and the facts that Eva
+   * still needs. Null when no vault is configured.
+   */
+  personalFacts(): PersonalFactsView | null {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return null;
+    const about = readAboutMe(vaultPath);
+    // The most useful fact first: the new chat page asks for one at a time.
+    const missing = (["birthDate", "region"] as const).filter((key) => about[key] === null);
+    return {
+      name: about.name,
+      birthDate: about.birthDate,
+      region: about.region,
+      hemisphere: about.hemisphere,
+      installedOn: installedOn(vaultPath),
+      missing,
+    };
+  }
+
   templateParts(): { readonly parts: TemplatePart[]; readonly canChoose: boolean } | null {
     const parts = this.templateAlignment?.list();
     return parts === undefined ? null : { parts, canChoose: this.role() === "hub" };

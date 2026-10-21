@@ -1284,6 +1284,24 @@ describe("web routes", () => {
     expect((await call("/api/assistant-rules/other", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("about me: the person's facts, and the facts that Eva still needs", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Life"), { recursive: true });
+    writeFileSync(
+      join(vaultPath, "Life", "About me.md"),
+      "---\nname: Alex\nbirthDate: 1990-05-14\n---\n\n# About Alex\n",
+    );
+    expect(await json(await call("/api/about-me"))).toEqual({
+      name: "Alex",
+      birthDate: "1990-05-14",
+      region: null,
+      hemisphere: null,
+      // The test vault has no migration record.
+      installedOn: null,
+      missing: ["region"],
+    });
+  });
+
   test("template parts: list their states, and keep the person's version of one", async () => {
     interface Parts {
       parts: { path: string; name: string; state: string; updatedAt: string | null; newText: string | null }[];

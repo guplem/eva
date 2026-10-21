@@ -14,6 +14,7 @@ import type { SessionRecord } from "../sessions/session-store.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
 import { moveAssistantPersonality, withMovedSections } from "../migrations/assistant-rules-move.ts";
 import { migrationApplied, vaultMigrationRecordPath } from "../migrations/migration-runner.ts";
+import { aboutMeProblemNote, readAboutMe } from "../vault/about-me.ts";
 
 export interface VaultSyncPort {
   pull(): Promise<VaultSyncState>;
@@ -65,13 +66,20 @@ export class AssistantPreparer implements TurnPreparer {
       startFolder: session.startFolder,
       // The time goes in the message, never in the prompt (lesson 40).
       appendSystemPrompt,
-      messagePrefix: `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone)}, ${this.options.timeZone}]`,
+      messagePrefix: this.messagePrefix(),
       pluginFolders: existsSync(join(pluginFolder, ".claude-plugin")) ? [pluginFolder] : [],
       mcpServers: this.options.mcpServers,
       trusted: true,
       // `eva work` reads it, so a project's result comes back to this chat.
       environment: { ...this.options.environment, EVA_SESSION_ID: session.id },
     };
+  }
+
+  /** The local time, and a note when `Life/About me.md` has a field that Eva must fix. */
+  private messagePrefix(): string {
+    const time = `[Local time: ${formatLocalTime(this.options.now(), this.options.timeZone)}, ${this.options.timeZone}]`;
+    const note = aboutMeProblemNote(readAboutMe(this.options.vaultPath).problems);
+    return note === null ? time : `${time}\n${note}`;
   }
 
   /**

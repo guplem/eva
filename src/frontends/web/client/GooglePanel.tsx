@@ -2,7 +2,7 @@
  * The Google card: the setup steps with their links, the OAuth client, the access, the login and
  * its Test, in one numbered list. Every step works from a phone.
  */
-import { useState, type ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import {
   googleAccessLevels,
   googleAccessPresets,
@@ -14,7 +14,9 @@ import {
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
 import type { EvaConfig } from "../../../core/settings/home.ts";
 import { api } from "./api.ts";
+import { LoggedIn } from "./LoggedIn.tsx";
 import { restartNote } from "./notes.ts";
+import { stepMark } from "./setup-summary.ts";
 import {
   Card,
   CheckRow,
@@ -35,6 +37,10 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
   // One request at a time: a double tap would start a second login and end the first one.
   const [busy, setBusy] = useState(false);
   const steps = googleSetupSteps(google.services);
+  const [loggingInAgain, setLoggingInAgain] = useState(false);
+  const step = context.setup?.progress.find((each) => each.key === "google");
+  // A failed last test, as of a login that Google ended after 7 days in Testing, keeps the steps.
+  const loginWorks = google.email !== null && (step === undefined || stepMark(step) === "done");
 
   const startLogin = async (): Promise<void> => {
     setBusy(true);
@@ -57,6 +63,7 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       const loggedIn = `Logged in to Google as ${result.email}.`;
       onChanged(result.restartNeeded ? restartNote(`${loggedIn} Press Restart Eva to use Google in chats.`) : loggedIn);
       reload();
+      setLoggingInAgain(false);
     } catch (error) {
       onChanged(errorText(error));
     } finally {
@@ -71,13 +78,37 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       onChanged("Saved. Log in to Google again below, then press Restart Eva.");
   };
 
-  return (
+  const card = (children: ReactNode): ReactElement => (
     <Card
       item="google"
       title="Google"
       description="Eva can use your Google Calendar, Drive, Contacts and Tasks. Google needs an OAuth client: a key that lets an app ask for access to your account. Each person makes their own, for free."
       aside={<StatusPill state={google.email === null ? "optional" : "done"} />}
     >
+      {children}
+    </Card>
+  );
+  if (loginWorks && !loggingInAgain)
+    return card(
+      <>
+        <LoggedIn
+          service="Google"
+          text={`You are logged in to Google as ${google.email ?? ""}.`}
+          warning="Eva deletes the Google login from this machine. Chats cannot reach your Google account until you log in again. The OAuth client stays, so a new login needs no new setup."
+          logOut={api.logOutOfGoogle}
+          context={context}
+          onLogInAgain={() => setLoggingInAgain(true)}
+        />
+        <CheckRow name="google" label="Test Google" />
+      </>,
+    );
+  return card(
+    <>
+      {loginWorks && (
+        <button className="link-button" onClick={() => setLoggingInAgain(false)}>
+          Keep the current login
+        </button>
+      )}
       <ol className="guide-steps">
         {steps.slice(0, 3).map((step, index) => (
           <li key={step.title}>
@@ -143,7 +174,7 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
         )}
       </ol>
       <CheckRow name="google" label="Test Google" />
-    </Card>
+    </>,
   );
 }
 

@@ -1,8 +1,9 @@
 /** The connections page: GitHub, Telegram and Google. Each one is optional, and each card says why it helps. */
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { api } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
-import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
+import { LoggedIn, reloadAfterSave, type LoginWords } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { stepMark } from "./setup-summary.ts";
 import { Card, CheckRow, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
@@ -42,7 +43,7 @@ export function GitHubCard({ context }: { readonly context: SettingsContext }): 
       <>
         <LoggedIn
           service="GitHub"
-          secret="githubToken"
+          logOut={() => api.removeSecret("githubToken")}
           warning="Eva removes the GitHub token from this machine. The vault sync and your agents cannot reach GitHub until you log in again."
           context={context}
           onLogInAgain={() => setLoggingInAgain(true)}
@@ -156,13 +157,42 @@ export function TelegramCard({ context }: { readonly context: SettingsContext })
         : telegram.pairingCode !== null
           ? `Telegram is not paired yet. Send ${telegram.pairingCode} to your bot.`
           : "Telegram is not set up: save a bot token, then restart Eva.";
-  return (
+  const step = context.setup?.progress.find((each) => each.key === "telegram");
+  const [settingUpAgain, setSettingUpAgain] = useState(false);
+  const card = (children: ReactNode): ReactElement => (
     <Card
       item="telegram"
       title="Telegram"
       description="A Telegram bot of your own lets you talk to Eva from the Telegram app."
       aside={<StatusPill state={telegram?.paired === true ? "done" : "optional"} />}
     >
+      {children}
+    </Card>
+  );
+  // A failed last test, as of a token that BotFather revoked, keeps the steps.
+  const botWorks = saved && telegram?.paired === true && (step === undefined || stepMark(step) === "done");
+  if (botWorks && !settingUpAgain)
+    return card(
+      <>
+        <LoggedIn
+          service="Telegram"
+          text="Your Telegram bot is paired with your chat."
+          words={telegramWords}
+          warning="Eva removes the bot token from this machine. Your bot stops answering until you set it up again."
+          logOut={() => api.removeSecret("telegramBotToken")}
+          context={context}
+          onLogInAgain={() => setSettingUpAgain(true)}
+        />
+        <CheckRow name="telegram" label="Test the Telegram bot token" />
+      </>,
+    );
+  return card(
+    <>
+      {botWorks && (
+        <button className="link-button" onClick={() => setSettingUpAgain(false)}>
+          Keep the current bot
+        </button>
+      )}
       <Steps>
         <li>
           In Telegram, open{" "}
@@ -188,9 +218,18 @@ export function TelegramCard({ context }: { readonly context: SettingsContext })
         saved={saved}
         help="Make a bot with @BotFather in Telegram, then paste its token."
         check="telegram"
-        onChanged={context.noteAndReload}
+        onChanged={(note) => reloadAfterSave(context, note)}
+        onSaved={() => setSettingUpAgain(false)}
       />
       {pairing !== "" && <div className={telegram?.paired === true ? "callout success" : "callout"}>{pairing}</div>}
-    </Card>
+    </>,
   );
 }
+
+/** A bot connects rather than logs in. */
+const telegramWords: LoginWords = {
+  end: "Disconnect",
+  endTitle: "Disconnect Telegram",
+  ended: "Disconnected Telegram.",
+  again: "Set up again",
+};

@@ -237,6 +237,8 @@ export const api = {
   /** Takes the address that Google sent the browser to, or its code alone. */
   finishGoogleLogin: (address: string): Promise<{ email: string; restartNeeded: boolean }> =>
     request("POST", "/api/google/login/finish", { address }),
+  /** Deletes the saved Google login. The OAuth client stays. */
+  logOutOfGoogle: (): Promise<{ restartNeeded: boolean }> => request("DELETE", "/api/google/login"),
   /** Gives the code to type on GitHub's page; while a login waits, the same one. */
   startGitHubLogin: (): Promise<{ code: string; url: string }> => request("POST", "/api/github/login", {}),
   /** Waits until the person allows the access on GitHub, and Eva saves the token. */

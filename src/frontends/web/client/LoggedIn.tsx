@@ -2,8 +2,7 @@
  * The state of a done login: a green panel that says so, with Log out and Log in again. The login
  * steps wait behind Log in again, so a person who is logged in does not see them as a task.
  */
-import { useState, type ReactElement } from "react";
-import { api, type PageSecretName } from "./api.ts";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { Dialog } from "./ChatPanel.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { errorText, StatusIcon, type SettingsContext } from "./SettingsParts.tsx";
@@ -14,19 +13,44 @@ export function reloadAfterSave(context: SettingsContext, note: Note): void {
   context.reloadSettings();
 }
 
+/** The words of the panel. A bot, such as Telegram's, connects rather than logs in. */
+export interface LoginWords {
+  /** Such as "Log out"; the button of the panel and of the dialog. */
+  readonly end: string;
+  /** Such as "Log out of Google"; it names the button and the dialog. */
+  readonly endTitle: string;
+  /** Such as "Logged out of Google."; the note after the end. */
+  readonly ended: string;
+  readonly again: string;
+}
+
+export function logInWords(service: string): LoginWords {
+  return {
+    end: "Log out",
+    endTitle: `Log out of ${service}`,
+    ended: `Logged out of ${service}.`,
+    again: "Log in again",
+  };
+}
+
 export function LoggedIn({
   service,
-  secret,
+  text,
+  words = logInWords(service),
   warning,
+  logOut,
   context,
   onLogInAgain,
 }: {
-  /** Such as "Claude Code"; it names the panel, its buttons and its dialog. */
+  /** Such as "Claude Code"; it names the panel. */
   readonly service: string;
-  /** The saved token that Log out removes. */
-  readonly secret: PageSecretName;
+  /** Absent: "You are logged in to <service>." */
+  readonly text?: ReactNode;
+  readonly words?: LoginWords;
   /** What stops working after the log out. */
   readonly warning: string;
+  /** Ends the login on Eva's computer, such as by removing its saved token. */
+  readonly logOut: () => Promise<unknown>;
   readonly context: SettingsContext;
   readonly onLogInAgain: () => void;
 }): ReactElement {
@@ -34,12 +58,12 @@ export function LoggedIn({
   // One request at a time: while it runs, the dialog stays and its buttons do nothing.
   const [busy, setBusy] = useState(false);
 
-  const logOut = async (): Promise<void> => {
+  const end = async (): Promise<void> => {
     setBusy(true);
     try {
-      await api.removeSecret(secret);
+      await logOut();
       setAsking(false);
-      reloadAfterSave(context, restartNote(`Logged out of ${service}. Press Restart Eva to stop using the login.`));
+      reloadAfterSave(context, restartNote(`${words.ended} Press Restart Eva to finish.`));
     } catch (error) {
       context.notify(errorText(error));
     } finally {
@@ -50,21 +74,21 @@ export function LoggedIn({
   return (
     <div className="logged-in" role="group" aria-label={`${service} login`}>
       <StatusIcon state="done" />
-      <span className="logged-in-text">You are logged in to {service}.</span>
+      <span className="logged-in-text">{text ?? `You are logged in to ${service}.`}</span>
       <div className="button-row">
         <button className="ghost" onClick={onLogInAgain}>
-          Log in again
+          {words.again}
         </button>
-        <button className="ghost danger" aria-label={`Log out of ${service}`} onClick={() => setAsking(true)}>
-          Log out
+        <button className="ghost danger" aria-label={words.endTitle} onClick={() => setAsking(true)}>
+          {words.end}
         </button>
       </div>
       {asking && (
-        <Dialog label={`Log out of ${service}`} onClose={busy ? ignore : () => setAsking(false)} closeLabel="Cancel">
-          <h2>Log out of {service}?</h2>
+        <Dialog label={words.endTitle} onClose={busy ? ignore : () => setAsking(false)} closeLabel="Cancel">
+          <h2>{words.endTitle}?</h2>
           <div className="callout warning">{warning}</div>
-          <button className="danger" disabled={busy} onClick={() => void logOut()}>
-            {busy ? "Logging out…" : "Log out"}
+          <button className="danger" disabled={busy} onClick={() => void end()}>
+            {busy ? "Working…" : words.end}
           </button>
         </Dialog>
       )}

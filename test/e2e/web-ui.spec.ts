@@ -2969,6 +2969,7 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
 test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Connections");
+  await openGoogleSteps(page);
   await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
   for (const [label, value] of [
     ["Google client id", "client-id.apps.googleusercontent.com"],
@@ -2989,16 +2990,25 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await expect(
     page.getByRole("status").filter({ hasText: "Logged in to Google as person@example.com." }),
   ).toBeVisible();
-  await expect(page.getByText("Account: person@example.com")).toBeVisible();
+  // A done login hides its steps: the card shows the account instead.
+  await expect(page.getByRole("group", { name: "Google login" })).toContainText("person@example.com");
   const googleRow = page.locator(".check-row", { hasText: "Test Google" });
   await googleRow.getByRole("button", { name: "Test" }).click();
   await expect(googleRow.getByRole("img", { name: "Passed" })).toBeVisible();
   await expect(googleRow).toContainText("Eva can read Calendar, Drive, Contacts and Tasks of person@example.com.");
 });
 
+/** An earlier test may leave a Google login, which hides the setup steps behind Log in again. */
+async function openGoogleSteps(page: Page): Promise<void> {
+  await expect(page.locator(".check-row", { hasText: "Test Google" })).toBeVisible();
+  const again = page.getByRole("group", { name: "Google login" }).getByRole("button", { name: "Log in again" });
+  if (await again.isVisible()) await again.click();
+}
+
 test("Settings: Google access takes a preset, or a level for each service", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Connections");
+  await openGoogleSteps(page);
   const access = page.getByRole("combobox", { name: /^Google access/ });
   await expect(access).toHaveValue("read");
   await expect(page.getByRole("combobox", { name: /^Contacts/ })).toHaveCount(0);
@@ -3010,6 +3020,7 @@ test("Settings: Google access takes a preset, or a level for each service", asyn
   await contacts.selectOption("full");
   await expect(page.getByRole("status").filter({ hasText: "Log in to Google again" })).toBeVisible();
   await page.reload();
+  await openGoogleSteps(page);
   // The levels match no preset, so the page shows "Custom" after a reload too.
   await expect(access).toHaveValue("custom");
   await expect(contacts).toHaveValue("full");
@@ -3324,6 +3335,80 @@ test("Settings: a saved GitHub token whose last test failed keeps the login step
   await expect(card).toContainText("The last test of the GitHub token failed.");
   await expect(card.getByRole("button", { name: "Log in with GitHub" })).toBeVisible();
   await expect(card.getByRole("group", { name: "GitHub login" })).toHaveCount(0);
+});
+
+test("Settings: a Google login shows its account, and logs out after a warning", async ({ page }) => {
+  let email: string | null = "person@example.com";
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { config: { google: Record<string, unknown> } };
+    await route.fulfill({
+      response,
+      json: { ...settings, config: { ...settings.config, google: { ...settings.config.google, email } } },
+    });
+  });
+  const logOuts: string[] = [];
+  await page.route("**/api/google/login", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    logOuts.push("DELETE");
+    email = null;
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "Google", exact: true });
+  const loggedIn = card.getByRole("group", { name: "Google login" });
+  await expect(loggedIn).toContainText("You are logged in to Google as person@example.com.");
+  // The setup steps wait behind Log in again, which also holds the access choice.
+  await expect(card.getByRole("button", { name: "Start the Google login" })).toHaveCount(0);
+  await loggedIn.getByRole("button", { name: "Log in again" }).click();
+  await expect(card.getByRole("button", { name: "Start the Google login" })).toBeVisible();
+  await expect(card.getByLabel("Google access")).toBeVisible();
+  await card.getByRole("button", { name: "Keep the current login" }).click();
+  await loggedIn.getByRole("button", { name: "Log out of Google" }).click();
+  const question = page.getByRole("dialog", { name: "Log out of Google" });
+  await expect(question).toContainText("The OAuth client stays");
+  await question.getByRole("button", { name: "Log out", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged out of Google." })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Start the Google login" })).toBeVisible();
+  expect(logOuts).toEqual(["DELETE"]);
+});
+
+test("Settings: a paired Telegram bot shows as connected, and disconnects after a warning", async ({ page }) => {
+  let saved = true;
+  await page.route("**/api/settings", async (route) => {
+    const response = await route.fetch();
+    const settings = (await response.json()) as { secretsSet: Record<string, boolean> };
+    await route.fulfill({
+      response,
+      json: { ...settings, secretsSet: { ...settings.secretsSet, telegramBotToken: saved } },
+    });
+  });
+  await page.route("**/api/settings/setup", async (route) => {
+    const response = await route.fetch();
+    const setup = (await response.json()) as { progress: { key: string }[] };
+    const progress = setup.progress.map((step) => (step.key === "telegram" ? { ...step, state: "done" } : step));
+    await route.fulfill({ response, json: { ...setup, progress, telegram: { paired: true, pairingCode: null } } });
+  });
+  await page.route("**/api/secrets/telegramBotToken", async (route) => {
+    saved = false;
+    await route.fulfill({ json: { restartNeeded: true } });
+  });
+  await logIn(page);
+  await openSettings(page, "Connections");
+  const card = page.getByRole("region", { name: "Telegram", exact: true });
+  const connected = card.getByRole("group", { name: "Telegram login" });
+  await expect(connected).toContainText("Your Telegram bot is paired with your chat.");
+  await expect(card.getByLabel("Telegram bot token", { exact: true })).toHaveCount(0);
+  await connected.getByRole("button", { name: "Set up again" }).click();
+  await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Keep the current bot" }).click();
+  await connected.getByRole("button", { name: "Disconnect Telegram" }).click();
+  const question = page.getByRole("dialog", { name: "Disconnect Telegram" });
+  await expect(question).toContainText("Your bot stops answering");
+  await question.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Disconnected Telegram." })).toBeVisible();
+  await expect(card.getByLabel("Telegram bot token", { exact: true })).toBeVisible();
 });
 
 test("Files: folders open, a Markdown file shows formatted or plain, and Back returns to the last folder (issue 253)", async ({

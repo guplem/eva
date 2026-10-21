@@ -950,6 +950,13 @@ describe("web routes", () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
     expect(missing.status).toBe(404);
+    const clonePath = join(eva.status().vaultPath ?? "", "Projects", "2025-03-02-1015-example-app", "repos", "app-0");
+    mkdirSync(clonePath, { recursive: true });
+    const deleted = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    expect(await json(deleted)).toEqual({ deletedChats: [] });
+    expect(existsSync(clonePath)).toBe(false);
+    const gone = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    expect(gone.status).toBe(404);
   });
 
   test("a clone fetches, pulls and pushes, and a model writes the message of an empty note", async () => {

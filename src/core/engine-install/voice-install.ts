@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { posix, win32 } from "node:path";
+import { dirname, posix, win32 } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import {
   download,
@@ -141,8 +141,8 @@ export async function installVoiceModel(modelPath: string, inputs: VoiceInstallI
     const bytes = new Uint8Array(await (await download(inputs.voiceModelUrl ?? defaultModelUrl)).arrayBuffer());
     if (sha256(bytes) !== (inputs.voiceModelSha256 ?? defaultModelSha256))
       throw new Error("The download does not match its checksum, so Eva saved nothing.");
-    const path = pathOf(inputs);
-    mkdirSync(path.dirname(modelPath), { recursive: true });
+    // The model path comes from this machine's settings, so it takes this machine's separators.
+    mkdirSync(dirname(modelPath), { recursive: true });
     // A half-written model must never look ready.
     const partial = `${modelPath}.download`;
     writeFileSync(partial, bytes);

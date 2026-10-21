@@ -4,6 +4,7 @@
  * its `AGENTS.md`.
  */
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readTextTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -228,6 +229,34 @@ export class ProjectWork {
   async newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     const project = this.project(projectId);
     return this.oneCloneChoiceAtATime(project, () => this.cloneInto(project, repositoryUrl));
+  }
+
+  /**
+   * Deletes a clone folder and its chats with their forks, and returns the ids of the deleted chats.
+   * A chat whose folder is gone could not run again. The engine keeps its own transcripts.
+   */
+  async deleteClone(projectId: string, cloneName: string): Promise<{ deletedChats: string[] }> {
+    const project = this.project(projectId);
+    // Inside the clone choice, so a new chat cannot take the clone while it goes.
+    return this.oneCloneChoiceAtATime(project, () => {
+      // The path comes from the clone list, never from the name, so a name cannot point outside it.
+      const clone = listClones(project.path).find((candidate) => candidate.name === cloneName);
+      if (clone === undefined)
+        throw new EvaError("project_not_found", `Project ${project.id} has no clone ${cloneName}.`);
+      const sessions = this.options.sessions;
+      const chats = sessions.list().filter((session) => session.startFolder === clone.path);
+      // An engine that runs in the folder would lose its files, and Windows refuses to delete a folder in use.
+      if (this.reservedClones.has(clone.path) || chats.some((chat) => sessions.isActive(chat.id)))
+        throw new EvaError("session_busy", `Eva is still working in ${clone.name}. Stop her chats there first.`);
+      const deletedChats: string[] = [];
+      for (const chat of chats) {
+        // A fork goes with its parent, so it can be gone already.
+        if (!deletedChats.includes(chat.id)) deletedChats.push(...sessions.delete(chat.id));
+      }
+      // Retries, because a virus scanner or an indexer on Windows can hold a file for a moment.
+      rmSync(clone.path, { recursive: true, force: true, maxRetries: 5 });
+      return Promise.resolve({ deletedChats });
+    });
   }
 
   /** A project's `AGENTS.md` with its version, for the details editor. */

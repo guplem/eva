@@ -1047,6 +1047,11 @@ export class Eva {
     return this.projectWork.newClone(projectId, repositoryUrl);
   }
 
+  /** Deletes a clone folder and its chats, unless Eva works there now. */
+  deleteClone(projectId: string, cloneName: string): Promise<{ deletedChats: string[] }> {
+    return this.projectWork.deleteClone(projectId, cloneName);
+  }
+
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));

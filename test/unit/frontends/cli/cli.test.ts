@@ -2009,9 +2009,9 @@ describe("describeStatusLines", () => {
 describe("describeToolVersions", () => {
   test("names each tool that is there, with its version, on one line", () => {
     const tools = [
-      { program: "git", feature: "the vault and clones", version: "2.50.0" },
-      { program: "claude", feature: "the Claude Code engine", version: "2.1.300" },
-      { program: "pi", feature: "the pi engine", version: null },
+      { program: "git", feature: "the vault and clones", version: "2.50.0", installable: false, tooOld: false },
+      { program: "claude", feature: "the Claude Code engine", version: "2.1.300", installable: true, tooOld: false },
+      { program: "pi", feature: "the pi engine", version: null, installable: true, tooOld: false },
     ];
     expect(describeToolVersions(tools)).toBe("Tools: git 2.50.0, claude 2.1.300");
     expect(describeToolVersions([])).toBe("Tools: none found");

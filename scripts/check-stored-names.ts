@@ -12,6 +12,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { z } from "zod";
 import type { HubClaim } from "../src/core/instance/hub.ts";
+import { favoritesFormatVersion, type StoredFavorites } from "../src/core/files/vault-favorites.ts";
 import { migrations } from "../src/core/migrations/migrations.ts";
 import type { StoredDevice } from "../src/core/remote-access/device-logins.ts";
 import {
@@ -102,6 +103,7 @@ const leafTypes = new Set([
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
+const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
 const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } satisfies Record<
   keyof StoredDevice,
   true
@@ -137,6 +139,9 @@ export function currentNames(): string[] {
       ...dayNames.map((day) => `schedules[].days=${day}`),
     ].map((name) => `vault .eva/schedules.json ${name}`),
     ...hubFields.map((field) => `vault .eva/hub.json ${field}`),
+    ...[...favoritesFields, `version=${String(favoritesFormatVersion)}`].map(
+      (name) => `vault .eva/favorites.json ${name}`,
+    ),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),
     ...migrations.map((migration) => `migration ${migration.store} ${migration.id}`),

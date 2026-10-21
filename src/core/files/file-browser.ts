@@ -291,7 +291,7 @@ function readFile(path: string, resolved: string, notFound: EvaError): ReadFile 
 }
 
 /** The forward-slash path without empty or `.` parts. A `..` part stays, so the resolve check sees it. */
-function normalizedPath(requested: string): string {
+export function normalizedPath(requested: string): string {
   return requested
     .split(/[/\\]/)
     .filter((part) => part !== "" && part !== ".")

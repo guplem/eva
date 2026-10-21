@@ -111,6 +111,16 @@
   --bad: oklch(0.56 0.19 25);
   --bad-bg: oklch(0.95 0.03 25);
 
+  /* The colours of file types, as people know them from their apps. They do not follow the seed. */
+  --type-red: oklch(0.55 0.2 27);
+  --type-orange: oklch(0.6 0.16 50);
+  --type-yellow: oklch(0.56 0.12 85);
+  --type-green: oklch(0.54 0.14 150);
+  --type-teal: oklch(0.55 0.1 195);
+  --type-blue: oklch(0.54 0.17 255);
+  --type-violet: oklch(0.54 0.2 300);
+  --type-pink: oklch(0.58 0.2 350);
+
   --shadow: 0 10px 30px oklch(0.4 0.05 var(--h) / 0.11), 0 1px 2px oklch(0.4 0.05 var(--h) / 0.06);
   --scrim: oklch(0.25 0.03 var(--h) / 0.32);
   --main-gradient: radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%);
@@ -168,6 +178,14 @@
     --warn-ink: var(--warn);
     --bad: oklch(0.74 0.16 25);
     --bad-bg: oklch(0.32 0.07 25);
+    --type-red: oklch(0.74 0.16 27);
+    --type-orange: oklch(0.78 0.14 55);
+    --type-yellow: oklch(0.85 0.13 90);
+    --type-green: oklch(0.78 0.14 150);
+    --type-teal: oklch(0.78 0.1 195);
+    --type-blue: oklch(0.76 0.13 255);
+    --type-violet: oklch(0.76 0.15 300);
+    --type-pink: oklch(0.78 0.15 350);
     /* A shadow does not show on a dark ground, so dark surfaces get a ring too. */
     --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
     --scrim: oklch(0.05 0.01 var(--h) / 0.55);
@@ -197,6 +215,14 @@
   --warn-ink: var(--warn);
   --bad: oklch(0.74 0.16 25);
   --bad-bg: oklch(0.32 0.07 25);
+  --type-red: oklch(0.74 0.16 27);
+  --type-orange: oklch(0.78 0.14 55);
+  --type-yellow: oklch(0.85 0.13 90);
+  --type-green: oklch(0.78 0.14 150);
+  --type-teal: oklch(0.78 0.1 195);
+  --type-blue: oklch(0.76 0.13 255);
+  --type-violet: oklch(0.76 0.15 300);
+  --type-pink: oklch(0.78 0.15 350);
   --shadow: 0 0 0 1px var(--line), 0 12px 30px oklch(0 0 0 / 0.4);
   --scrim: oklch(0.05 0.01 var(--h) / 0.55);
   color-scheme: dark;

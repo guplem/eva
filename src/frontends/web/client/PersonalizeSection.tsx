@@ -27,6 +27,12 @@ const densityChoices: readonly { value: Appearance["density"]; label: string }[]
   { value: "compact", label: "Compact" },
 ];
 
+const fileNameCutChoices: readonly { value: Appearance["fileNameCut"]; label: string }[] = [
+  { value: "start", label: "Start" },
+  { value: "middle", label: "Middle" },
+  { value: "end", label: "End" },
+];
+
 const filesViewChoices: readonly { value: Appearance["filesView"]; label: string }[] = [
   { value: "columns", label: "Columns" },
   { value: "single", label: "One folder" },
@@ -54,7 +60,7 @@ export function AppearanceCard(): ReactElement {
     <Card
       item="appearance"
       title="Appearance"
-      description="This browser keeps its own colour, theme, density and files view."
+      description="This browser keeps its own colour, theme, density, files view and long file names."
     >
       <div className="field">
         <span className="field-label">Colour</span>
@@ -79,6 +85,13 @@ export function AppearanceCard(): ReactElement {
         choices={filesViewChoices}
         hint="Columns show each folder of the path side by side. One folder shows only the open folder or file. A phone always shows one."
         onChange={(filesView) => change({ filesView })}
+      />
+      <ChoiceChips
+        label="Long file names"
+        hint="The Files page shows each name on one line. A name that is too long loses this part: “…board.pdf”, “Annual rep…board.pdf” or “Annual report fo…”."
+        value={appearance.fileNameCut}
+        choices={fileNameCutChoices}
+        onChange={(fileNameCut) => change({ fileNameCut })}
       />
     </Card>
   );

@@ -86,7 +86,7 @@ Change a setting on the web Settings page, or with `eva settings set`. The updat
 - **Tokens:** log in to GitHub and Claude Code on the Settings page, or paste their tokens there. Paste the Telegram token there too. The page never shows a saved token again. Press **Test** to check it. Then press **Restart Eva**, so that conversations and the notebook sync use it too. A card with a done login shows a green panel. Its **Log out** button removes the login, after a warning. Its **Log in again** button shows the steps again. A paired Telegram bot shows **Disconnect** and **Set up again** instead.
 - **Test buttons:** each one makes a small, real check. The engine Test sends one tiny prompt, so it uses a little of your subscription.
 - **A device that you allowed** has the same control as the terminal of Eva's computer: it can change every setting and token. If you lose a phone, tap "Log out every device" on the Settings page.
-- **Theme and density** stay in each browser, so a phone and a computer can differ.
+- **Theme, density and long file names** stay in each browser, so a phone and a computer can differ. A file name that does not fit on one line loses its middle, unless you pick its start or its end in Settings, Personalize.
 
 ## Several computers
 
@@ -214,6 +214,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - **Restore the default** replaces your rules with Eva's default rules. It first offers to save your old rules in a backup file in `.eva/`.
 - **Chat names.** A chat takes the first line of its first message as its name. To name chats your way, write rules in **Settings** > **Chat names**, or ask Eva to, such as "Lead every name with an emoji". After the first answer, a small AI call with your engine login names the chat by your rules. Your own rename always wins.
 - **Files.** Open **Files** on the web page to browse the notebook and read its text files. Eva shows text files up to 1 MB. She hides the `.git` folder and does not show a secrets file, such as `.env`. Eva can also send a notebook file in Telegram. She saves each file, photo or audio file that you send her in `Scratch/received/` in the notebook. Git never saves `Scratch/`, and Eva deletes its files after a week.
+- **Favorites.** Tap the star on a file or a folder in **Files** to make it a favorite. Your favorites show first on the Files page, so one tap opens them. Eva keeps them in `.eva/favorites.json` in the notebook, so each computer shows the same ones.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Open **Settings → Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.

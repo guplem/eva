@@ -128,6 +128,7 @@ describe("stored appearance", () => {
       theme: "system",
       density: "comfortable",
       seed: defaultSeed,
+      fileNameCut: "middle",
       filesView: "columns",
     });
   });
@@ -138,10 +139,18 @@ describe("stored appearance", () => {
       theme: "dark",
       density: "comfortable",
       seed: "#8b5cf6",
+      fileNameCut: "middle",
       filesView: "columns",
     });
     useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ seed: "red" }) }));
     expect(readAppearance().seed).toBe(defaultSeed);
+  });
+
+  test("reads a stored cut of long file names, and drops an unknown one", () => {
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ fileNameCut: "start" }) }));
+    expect(readAppearance().fileNameCut).toBe("start");
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ fileNameCut: "sideways" }) }));
+    expect(readAppearance().fileNameCut).toBe("middle");
   });
 
   test("reads a stored files view, and drops an unknown one", () => {
@@ -164,10 +173,11 @@ describe("stored appearance", () => {
     const storage = new FakeStorage();
     useStorage(storage);
     const page = fakeDocument();
-    saveAppearance({ theme: "dark", density: "compact", seed: "#ff0000", filesView: "single" });
+    saveAppearance({ theme: "dark", density: "compact", seed: "#ff0000", filesView: "single", fileNameCut: "end" });
     expect(page.attributes.get("data-theme")).toBe("dark");
     expect(page.attributes.get("data-density")).toBe("compact");
     expect(page.attributes.get("data-files-view")).toBe("single");
+    expect(page.attributes.get("data-file-name-cut")).toBe("end");
     expect(page.properties.get("--h")).toBe("29.2");
     expect(page.properties.get("--c")).toBe("0.200");
     expect(page.metas.map((meta) => meta.media)).toEqual(["not all", "all"]);
@@ -177,6 +187,7 @@ describe("stored appearance", () => {
       theme: "dark",
       density: "compact",
       seed: "#ff0000",
+      fileNameCut: "end",
       filesView: "single",
     });
   });
@@ -189,7 +200,13 @@ describe("stored appearance", () => {
     });
     const page = fakeDocument();
     page.attributes.set("data-theme", "dark");
-    saveAppearance({ theme: "system", density: "comfortable", seed: defaultSeed, filesView: "columns" });
+    saveAppearance({
+      theme: "system",
+      density: "comfortable",
+      seed: defaultSeed,
+      filesView: "columns",
+      fileNameCut: "middle",
+    });
     expect(page.attributes.has("data-theme")).toBe(false);
     expect(page.metas.map((meta) => meta.media)).toEqual([
       "(prefers-color-scheme: light)",
@@ -199,7 +216,13 @@ describe("stored appearance", () => {
 
   test("applyAppearance needs no storage", () => {
     const page = fakeDocument();
-    applyAppearance({ theme: "light", density: "comfortable", seed: defaultSeed, filesView: "columns" });
+    applyAppearance({
+      theme: "light",
+      density: "comfortable",
+      seed: defaultSeed,
+      filesView: "columns",
+      fileNameCut: "middle",
+    });
     expect(page.metas.map((meta) => meta.media)).toEqual(["all", "not all"]);
   });
 });

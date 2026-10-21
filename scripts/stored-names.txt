@@ -195,6 +195,9 @@ typed telegram /status
 typed telegram /stop
 typed telegram /sync
 typed telegram /update
+vault .eva/favorites.json paths
+vault .eva/favorites.json version
+vault .eva/favorites.json version=1
 vault .eva/hub.json machine
 vault .eva/hub.json since
 vault .eva/schedules.json schedules

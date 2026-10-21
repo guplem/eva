@@ -7,7 +7,7 @@ import { EvaError } from "../../shared/errors.ts";
 import type { Logger } from "../../shared/logger.ts";
 import type { EvaConfig } from "../settings/home.ts";
 import { pickUpdate, type NewerRelease, type ReleaseInfo, type UpdatePolicy } from "./release-policy.ts";
-import { isNewerVersion } from "./release-verification.ts";
+import { isNewerVersion } from "./version-order.ts";
 
 export type UpdateFrequency = EvaConfig["updates"]["frequency"];
 

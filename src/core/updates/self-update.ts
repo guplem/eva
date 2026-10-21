@@ -11,7 +11,6 @@ import { evaRepository } from "../../shared/version.ts";
 import {
   assetNameFor,
   checksumsFileName,
-  isNewerVersion,
   parseChecksums,
   releasePublicKey,
   sha256Hex,
@@ -20,6 +19,7 @@ import {
   verifyChecksumsSignature,
 } from "./release-verification.ts";
 import type { UpdateChannel, UpdateDownload } from "./updater.ts";
+import { isNewerVersion } from "./version-order.ts";
 
 export interface UpdateInputs {
   readonly currentVersion: string;

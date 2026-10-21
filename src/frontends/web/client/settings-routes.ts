@@ -168,10 +168,9 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "versions",
     section: "updates",
     title: "Versions",
-    words: "version eva claude code pi git bun tools installed",
+    words: "version eva claude code pi git bun tools installed update engine latest",
   },
   { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
-  { item: "engine-update", section: "updates", title: "Claude Code update", words: "version engine" },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },
   { item: "report-problem", section: "developer", title: "Report a problem", words: "bug issue github idea feedback" },
   {

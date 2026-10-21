@@ -111,6 +111,12 @@ import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
 import {
+  claudeUpdateChannel,
+  defaultLatestVersionSources,
+  readLatestVersion,
+  type LatestVersionSources,
+} from "./tool-latest.ts";
+import {
   findGh,
   ghTooOld,
   installEngine,
@@ -119,7 +125,7 @@ import {
   type EngineInstallInputs,
 } from "./engine-install/engine-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
-import { isNewerVersion } from "./updates/release-verification.ts";
+import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
 export interface EvaOptions {
@@ -164,6 +170,8 @@ export interface EvaOptions {
   readonly toolPlaces?: Pick<ToolPlaces, "platform" | "userHome" | "standalone">;
   /** The processor and the release downloads of the tool installs; a test points them at a fake. */
   readonly toolInstall?: Partial<Pick<EngineInstallInputs, "arch" | "piReleasesBaseUrl" | "ghReleaseUrl">>;
+  /** Where Eva reads the latest version of each tool; a test points it at a fake server. */
+  readonly toolLatestSources?: LatestVersionSources;
 }
 
 /** The tools that Eva installs and updates from the Updates page, by their program name. */
@@ -175,6 +183,12 @@ export const installableTools: readonly InstallableTool[] = ["claude", "pi", "uv
 export interface ToolInstallResult {
   readonly ok: boolean;
   readonly message: string;
+}
+
+/** The newest published version of a tool that Eva installs. Null: the source did not answer. */
+export interface LatestToolVersion {
+  readonly program: InstallableTool;
+  readonly latest: string | null;
 }
 
 /** Eva's version and each tool's, for the status and the Updates page. */
@@ -238,6 +252,9 @@ const backgroundTickMs = 60_000;
 const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** The front end that asked for a restart answers first, then Eva stops. */
 const restartDelayMs = 500;
+const latestToolKeepMs = 60 * 60_000;
+/** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
+const latestToolFailureKeepMs = 10 * 60_000;
 const maxLogEntries = 100;
 
 export class Eva {
@@ -260,6 +277,8 @@ export class Eva {
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
   private toolInstallRuns: boolean;
+  /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
+  private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -364,6 +383,7 @@ export class Eva {
     });
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
+    this.latestToolCache = new Map();
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -787,6 +807,31 @@ export class Eva {
       eva: evaVersion,
       tools: tools.map((tool) => ({ ...tool, version: tool.version === null ? null : this.redact(tool.version) })),
     };
+  }
+
+  /**
+   * The newest published version of each tool that Eva installs. GitHub allows 60 requests an
+   * hour without a login, so a found version stays for an hour, and a failure for 10 minutes.
+   */
+  async latestToolVersions(): Promise<LatestToolVersion[]> {
+    const sources = this.options.toolLatestSources ?? defaultLatestVersionSources;
+    const now = this.options.now().getTime();
+    const channel = claudeUpdateChannel(engineFolders(this.options.paths).claude);
+    return Promise.all(
+      installableTools.map(async (program) => {
+        // A change of the channel gives another version, so each channel keeps its own.
+        const key = program === "claude" ? `claude:${channel}` : program;
+        const kept = this.latestToolCache.get(key);
+        if (kept !== undefined) {
+          const latest = await kept.lookup;
+          if (now - kept.at < (latest === null ? latestToolFailureKeepMs : latestToolKeepMs))
+            return { program, latest };
+        }
+        const lookup = readLatestVersion(program, sources, channel);
+        this.latestToolCache.set(key, { lookup, at: now });
+        return { program, latest: await lookup };
+      }),
+    );
   }
 
   /**

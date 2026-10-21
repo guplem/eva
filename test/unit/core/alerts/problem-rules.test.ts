@@ -102,7 +102,7 @@ describe("engineUpdateProblem", () => {
     const problem = engineUpdateProblem({ ...result, outcome: "failed", detail: "No network." });
     expect(problem?.level).toBe("warn");
     expect(problem?.message).toBe(
-      "The Claude Code update failed: No network. Chats keep the old version; press Update Claude Code in the settings to try again.",
+      "The Claude Code update failed: No network. Chats keep the old version; press Update next to claude in Settings, Updates, to try again.",
     );
   });
 });

@@ -72,7 +72,7 @@ describe("settings search", () => {
 
   test("a section's title finds its entries", () => {
     const found = searchSettings("updates");
-    expect(found.map((entry) => entry.item)).toEqual(["versions", "eva-updates", "engine-update", "restart"]);
+    expect(found.map((entry) => entry.item)).toEqual(["versions", "eva-updates", "restart"]);
   });
 
   test("a search for a tool's version finds the Versions card", () => {

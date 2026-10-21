@@ -1012,6 +1012,11 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
   const card = page.getByRole("region", { name: "Eva's rules" });
   await expect(card.getByRole("heading", { name: "You are Eva" })).toBeVisible();
   await expect(card).toContainText("A project chat never uses them");
+  // The person's rules and the built-in rules each have their own frame, so the person sees where each ends.
+  const own = card.getByRole("region", { name: "Your rules" });
+  await expect(own.getByRole("heading", { name: "You are Eva" })).toBeVisible();
+  await expect(own).not.toContainText("Eva's built-in rules");
+  await expect(card.locator("details.rules-box")).toContainText("Eva's built-in rules");
   try {
     await card.getByRole("button", { name: "Edit" }).click();
     await card.getByLabel("Rules in Markdown").fill("# Be brief\n\nAnswer in one sentence.\n");

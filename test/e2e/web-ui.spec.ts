@@ -1002,7 +1002,7 @@ test("Project mode: the repository setup shows each item's light and copies its 
   await expect(page.getByRole("heading", { name: "Example app · Repository setup" })).toBeVisible();
   // The local remote is not on GitHub, so its report only says why.
   await expect(page.getByText("Only a repository on GitHub has a setup report.")).toBeVisible();
-  const report = page.getByRole("group", { name: "example-owner/example-app" });
+  const report = page.getByRole("region", { name: "example-owner/example-app" });
   const skill = report.locator(".setup-item", { hasText: "Skill write-commit" });
   await expect(skill.getByRole("img", { name: "Missing" })).toBeVisible();
   await skill.getByRole("button", { name: "Copy the fix for Skill write-commit" }).click();

@@ -3,8 +3,10 @@
  * clone, the chat of a clone with a header that says where it runs, the project details, and the
  * repository setup.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { api, type ChatBlocker, type CloneDetails, type Project, type SessionRecord } from "./api.ts";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { api, type ChatBlocker, type CloneDetails, type CloneFetch, type Project, type SessionRecord } from "./api.ts";
+import { PushCloneDialog } from "./PushCloneDialog.tsx";
+import { Toast } from "./Toast.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState } from "./chat-list.ts";
 import type { LiveState } from "./live-state.ts";
@@ -125,6 +127,15 @@ export function ProjectView({
   // and never shows the cards of the project that was open before.
   const clones = loaded !== null && loaded.projectId === openProjectId ? loaded.clones : null;
   const [cloneVersion, setCloneVersion] = useState(0);
+  /** A fetch or a pull of all clones, with its project: a page shows only the work of its own project. */
+  const [syncWork, setSyncWork] = useState<{ readonly projectId: string; readonly label: string } | null>(null);
+  const openProjectRef = useRef<string | null>(null);
+  openProjectRef.current = page?.project.id ?? null;
+  const [pulling, setPulling] = useState<string | null>(null);
+  /** The clone whose Push sheet is open. */
+  const [pushing, setPushing] = useState<CloneDetails | null>(null);
+  /** The message of the last push, for a toast. */
+  const [pushed, setPushed] = useState<string | null>(null);
   useEffect(() => {
     if (openProjectId === null) return;
     // A slow answer for another project must not land on this page.
@@ -204,6 +215,53 @@ export function ProjectView({
     } catch (caught) {
       showError(caught);
     }
+  };
+
+  /** Runs a fetch or a pull of all clones, and shows the fresh cards and each clone that failed. */
+  const syncAll = useCallback(
+    async (projectId: string, work: string, run: () => Promise<CloneFetch>): Promise<void> => {
+      setSyncWork({ projectId, label: work });
+      try {
+        const result = await run();
+        setLoaded((current) =>
+          current === null || current.projectId === projectId ? { projectId, clones: result.clones } : current,
+        );
+        if (openProjectRef.current === projectId)
+          setError(result.problems.length === 0 ? null : result.problems.join(" "));
+      } catch (caught) {
+        showError(caught);
+      } finally {
+        setSyncWork((current) => (current?.projectId === projectId ? null : current));
+      }
+    },
+    [showError],
+  );
+
+  // A fetch on each open of a project, so the cards count the commits to pull. It needs the network,
+  // so the cards show first, with the counts of the last fetch.
+  useEffect(() => {
+    if (openProjectId === null) return;
+    void syncAll(openProjectId, "Eva checks the remote of each clone.", () => api.fetchClones(openProjectId));
+  }, [openProjectId, syncAll]);
+
+  const pullOne = async (project: Project, clone: CloneDetails): Promise<void> => {
+    setPulling(clone.name);
+    try {
+      await api.pullClone(project.id, clone.name);
+      setCloneVersion((version) => version + 1);
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setPulling(null);
+    }
+  };
+
+  const pushOne = async (project: Project, clone: CloneDetails, note: string): Promise<void> => {
+    const { message } = await api.pushClone(project.id, clone.name, note);
+    setPushing(null);
+    const subject = message.split("\n")[0] ?? "";
+    setPushed(subject === "" ? `Pushed ${clone.name}.` : `Pushed ${clone.name}: ${subject}`);
+    setCloneVersion((version) => version + 1);
   };
 
   const newClone = async (project: Project): Promise<void> => {
@@ -460,8 +518,30 @@ export function ProjectView({
             }}
             onNewChat={(clone) => void startChat(page.project, clone)}
             onDeleteClone={(clone) => deleteClone(page.project, clone)}
+            syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
+            pulling={pulling}
+            onCheckRemotes={() =>
+              void syncAll(page.project.id, "Eva checks the remote of each clone.", () =>
+                api.fetchClones(page.project.id),
+              )
+            }
+            onPullAll={() =>
+              void syncAll(page.project.id, "Eva pulls each clone that is behind.", () =>
+                api.pullClones(page.project.id),
+              )
+            }
+            onPull={(clone) => void pullOne(page.project, clone)}
+            onPush={setPushing}
           />
         )}
+        {pushing !== null && page?.kind === "project" && (
+          <PushCloneDialog
+            clone={pushing}
+            onClose={() => setPushing(null)}
+            onPush={(note) => pushOne(page.project, pushing, note)}
+          />
+        )}
+        {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}
       </main>
       {/* The inspector is about one chat, so a project page has none. */}
       {chat !== undefined && panelShown && <ChatPanel {...chatDetails} />}

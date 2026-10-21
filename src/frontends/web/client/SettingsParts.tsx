@@ -108,13 +108,16 @@ export function TestMark({ ok, detail }: { readonly ok: boolean; readonly detail
 export function StatusIcon({
   state,
   size = "medium",
+  label = stateLabels[state],
 }: {
   readonly state: StepMark;
   readonly size?: "medium" | "large";
+  /** A word that fits the page better, such as "Partly done". */
+  readonly label?: string;
 }): ReactElement {
   const name = iconOfMark[state];
   return (
-    <span className={`status-icon ${state} ${size}`} role="img" aria-label={stateLabels[state]}>
+    <span className={`status-icon ${state} ${size}`} role="img" aria-label={label}>
       <Icon name={name} />
     </span>
   );

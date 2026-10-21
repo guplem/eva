@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Project } from "../../../../../src/frontends/web/client/api.ts";
 import {
   changesPill,
+  canPush,
   countOf,
   projectFolder,
   projectSummary,
@@ -9,6 +10,7 @@ import {
   tagsByUse,
   repositoryLabel,
   statusPill,
+  syncPills,
 } from "../../../../../src/frontends/web/client/project-format.ts";
 
 describe("countOf", () => {
@@ -46,6 +48,26 @@ describe("changesPill", () => {
     expect(changesPill(1)).toEqual({ text: "1 change", tone: "warn" });
     expect(changesPill(3)).toEqual({ text: "3 changes", tone: "warn" });
     expect(changesPill(null)).toBeNull();
+  });
+});
+
+describe("syncPills", () => {
+  test("counts the commits to pull and to push, and says nothing for a level or unknown clone", () => {
+    expect(syncPills(0, 0)).toEqual([]);
+    expect(syncPills(null, null)).toEqual([]);
+    expect(syncPills(1, 2)).toEqual([
+      { text: "2 to pull", tone: "warn" },
+      { text: "1 to push", tone: "warn" },
+    ]);
+  });
+});
+
+describe("canPush", () => {
+  test("a clone with changes or local commits can push, and a clean level one cannot", () => {
+    expect(canPush({ changes: 2, ahead: 0 })).toBe(true);
+    expect(canPush({ changes: 0, ahead: 1 })).toBe(true);
+    expect(canPush({ changes: 0, ahead: 0 })).toBe(false);
+    expect(canPush({ changes: null, ahead: null })).toBe(false);
   });
 });
 

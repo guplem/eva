@@ -2,9 +2,17 @@
 import type { ReactElement } from "react";
 import type { CloneDetails, Project, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { changesPill, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
+import {
+  canPush,
+  changesPill,
+  projectFolder,
+  repositoryLabel,
+  statusPill,
+  syncPills,
+  type Pill,
+} from "./project-format.ts";
 import { chatTime } from "./chat-list.ts";
-import { CardsSkeleton } from "./Loading.tsx";
+import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 
@@ -24,6 +32,14 @@ interface ProjectPageProps {
   /** With an action, the chat opens and its header starts it, as the context menu asks. */
   readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: (clone: CloneDetails) => void;
+  /** What Eva does with the remotes now, such as "Eva checks the remotes.", or null. */
+  readonly syncWork: string | null;
+  /** The clone whose pull runs now, or null. */
+  readonly pulling: string | null;
+  readonly onCheckRemotes: () => void;
+  readonly onPullAll: () => void;
+  readonly onPull: (clone: CloneDetails) => void;
+  readonly onPush: (clone: CloneDetails) => void;
 }
 
 export function ProjectPage({
@@ -38,8 +54,15 @@ export function ProjectPage({
   onNewClone,
   onOpenChat,
   onNewChat,
+  syncWork,
+  pulling,
+  onCheckRemotes,
+  onPullAll,
+  onPull,
+  onPush,
 }: ProjectPageProps): ReactElement {
   const now = new Date();
+  const behind = clones?.filter((clone) => (clone.behind ?? 0) > 0).length ?? 0;
   return (
     <>
       <div className="main-header">
@@ -90,19 +113,36 @@ export function ProjectPage({
         ) : clones.length === 0 ? (
           <p className="muted">No clones yet. "New clone" copies the repository into this project.</p>
         ) : (
-          <div className="clone-grid">
-            {clones.map((clone) => (
-              <CloneCard
-                key={clone.path}
-                clone={clone}
-                chats={chatsOf(clone)}
-                needsYou={needsYou}
-                now={now}
-                onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
-                onNewChat={() => onNewChat(clone)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="button-row">
+              <button className="soft small" disabled={syncWork !== null} onClick={onCheckRemotes}>
+                <Icon name="sync" /> Check remotes
+              </button>
+              {behind > 0 && (
+                <button className="soft small" disabled={syncWork !== null} onClick={onPullAll}>
+                  <Icon name="download" /> Pull all ({behind})
+                </button>
+              )}
+            </div>
+            {syncWork !== null && <ProgressBar label={syncWork} />}
+            <div className="clone-grid">
+              {clones.map((clone) => (
+                <CloneCard
+                  key={clone.path}
+                  clone={clone}
+                  chats={chatsOf(clone)}
+                  needsYou={needsYou}
+                  now={now}
+                  onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
+                  onNewChat={() => onNewChat(clone)}
+                  pulling={pulling === clone.name}
+                  syncBusy={syncWork !== null}
+                  onPull={() => onPull(clone)}
+                  onPush={() => onPush(clone)}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </>
@@ -116,9 +156,25 @@ interface CloneCardProps {
   readonly needsYou: (chat: SessionRecord) => boolean;
   readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: () => void;
+  readonly pulling: boolean;
+  /** A check or a pull of all clones runs, so a pull of one waits. */
+  readonly syncBusy: boolean;
+  readonly onPull: () => void;
+  readonly onPush: () => void;
 }
 
-function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: CloneCardProps): ReactElement {
+function CloneCard({
+  clone,
+  chats,
+  now,
+  needsYou,
+  onOpenChat,
+  onNewChat,
+  pulling,
+  syncBusy,
+  onPull,
+  onPush,
+}: CloneCardProps): ReactElement {
   return (
     <section className="card clone-card" aria-label={`Clone ${clone.name}`}>
       <div className="clone-head">
@@ -131,6 +187,9 @@ function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: Clone
         </div>
         {clone.pullRequest !== null && <span className="pill idle">PR #{clone.pullRequest}</span>}
         <StatusPill pill={changesPill(clone.changes)} />
+        {syncPills(clone.ahead, clone.behind).map((pill) => (
+          <StatusPill key={pill.text} pill={pill} />
+        ))}
       </div>
       {chats.map((chat) => (
         <CloneChat
@@ -141,11 +200,22 @@ function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: Clone
           onOpen={(action) => onOpenChat(chat, action)}
         />
       ))}
-      <div>
+      <div className="button-row">
         <button className="soft small" onClick={onNewChat}>
           <Icon name="plus" /> New chat here
         </button>
+        {(clone.behind ?? 0) > 0 && (
+          <button className="soft small" disabled={pulling || syncBusy} onClick={onPull}>
+            <Icon name="download" /> Pull
+          </button>
+        )}
+        {canPush(clone) && (
+          <button className="soft small" disabled={pulling} onClick={onPush}>
+            <Icon name="send" /> Push
+          </button>
+        )}
       </div>
+      {pulling && <ProgressBar label={`Eva pulls ${clone.name}.`} />}
     </section>
   );
 }

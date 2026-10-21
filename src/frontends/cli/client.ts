@@ -7,6 +7,7 @@ import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
 import type { LogEntry } from "../../shared/logger.ts";
+import { scanCodeLines } from "./network-setup.ts";
 
 export interface ClientOptions {
   readonly baseUrl: string;
@@ -23,10 +24,18 @@ interface ProjectBody {
 export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
   const versions = await getJson<EvaVersions>(options, "/api/versions");
+  return statusText(status, versions.tools, pairingCode);
+}
+
+/** The text of `eva status`. */
+export function statusText(status: EvaStatus, tools: readonly ToolVersion[], pairingCode: string | null): string {
+  const url = status.remoteAccess?.url ?? null;
   return [
     ...describeStatusLines(status),
-    describeToolVersions(versions.tools),
+    describeToolVersions(tools),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
+    // Only the terminal gets the code: Telegram does not keep the shape of the blocks.
+    ...(url === null ? [] : scanCodeLines(url)),
   ].join("\n");
 }
 

@@ -93,7 +93,7 @@ export function RemoteAccessPanel({ initial }: { readonly initial: RemoteAccess 
           {url !== null ? (
             <small>
               Tailscale is on. Address:{" "}
-              <a className="access-address" href={url} target="_blank" rel="noreferrer">
+              <a href={url} target="_blank" rel="noreferrer">
                 {url}
               </a>
             </small>

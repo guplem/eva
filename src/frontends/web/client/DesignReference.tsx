@@ -283,7 +283,6 @@ const toastSampleLabels: Readonly<Record<ToastSampleId, string>> = {
   wait: "A wait",
 };
 
-/** The real toasts, shown one at a time, so a person tests them on a phone too. */
 /** A list item with a context menu. A choice only shows its name, so the sample changes nothing. */
 function ContextMenuSample(): ReactElement {
   const [chosen, setChosen] = useState<string | null>(null);
@@ -310,6 +309,7 @@ function ContextMenuSample(): ReactElement {
   );
 }
 
+/** The real toasts, shown one at a time, so a person tests them on a phone too. */
 function ToastSamples(): ReactElement {
   const [shown, setShown] = useState<ToastSampleId | null>(null);
   // Each press restarts the ring, also for the toast that shows now.

@@ -27,7 +27,9 @@ export interface MenuItem {
 }
 
 /** A touch that rests this long opens the menu, as a long press does in a phone's own apps. */
-export const longPressMs = 500;
+const longPressMs = 500;
+/** A click this soon after the finger of a long press lifts is that press. */
+const clickAfterLiftMs = 400;
 /** A finger that moves further than this scrolls, so the long press stops. */
 const longPressSlop = 10;
 
@@ -48,7 +50,8 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
   const menu = listRef ?? own;
 
   useEffect(() => {
-    menu.current?.querySelector("button")?.focus();
+    // No scroll: a fixed menu takes the focus before it is at its place.
+    menu.current?.querySelector("button")?.focus({ preventScroll: true });
   }, [menu]);
 
   /** Moves the focus by `step` items, or to the first or the last item. */
@@ -96,17 +99,30 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
   );
 }
 
-/** Calls `onDismiss` on a press outside `root`, for as long as `open` is true. */
-export function useDismissOutside(open: boolean, root: RefObject<HTMLElement | null>, onDismiss: () => void): void {
+/** Calls `onDismiss` on a press outside `root` or on Escape, for as long as `open` is true. */
+export function useDismissOutside(
+  open: boolean,
+  root: RefObject<HTMLElement | null>,
+  /** `refocus` is true for Escape: the focus goes back to the element that opened the menu. */
+  onDismiss: (refocus: boolean) => void,
+): void {
   const dismiss = useRef(onDismiss);
   dismiss.current = onDismiss;
   useEffect(() => {
     if (!open) return undefined;
     const onPointer = (event: PointerEvent): void => {
-      if (!(event.target instanceof Node) || root.current?.contains(event.target) !== true) dismiss.current();
+      if (!(event.target instanceof Node) || root.current?.contains(event.target) !== true) dismiss.current(false);
+    };
+    // The list reads Escape too. This one works when a press on the list's edge took the focus away.
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") dismiss.current(true);
     };
     document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open, root]);
 }
 
@@ -131,8 +147,10 @@ export function useContextMenu(
 ): { readonly props: ContextMenuProps; readonly menu: ReactElement | null } {
   const [opened, setOpened] = useState<{ readonly at: Point; readonly opener: HTMLElement } | null>(null);
   const press = useRef<{ readonly at: Point; readonly timer: ReturnType<typeof setTimeout> } | null>(null);
-  // The touch that opened the menu also ends in a click, and that click must not open the item.
-  const dropClick = useRef(false);
+  const longPressed = useRef(false);
+  // The touch that opened the menu ends in a click, and that click must not open the item. Only a
+  // click right after the finger lifts counts, so a later click from a keyboard or a screen reader works.
+  const dropClickUntil = useRef(0);
 
   const stopPress = (): void => {
     if (press.current !== null) clearTimeout(press.current.timer);
@@ -149,6 +167,8 @@ export function useContextMenu(
     "data-context-menu": true,
     onContextMenu: (event) => {
       event.preventDefault();
+      // A long press on Android sends this event before the timer ends, and the lift still ends in a click.
+      if (press.current !== null) longPressed.current = true;
       const opener = event.currentTarget;
       // The menu key and Shift+F10 give no pointer place, so the menu opens under the element.
       if (event.clientX === 0 && event.clientY === 0) {
@@ -159,7 +179,7 @@ export function useContextMenu(
       }
     },
     onPointerDown: (event) => {
-      dropClick.current = false;
+      longPressed.current = false;
       // Android sends a contextmenu event on a long press. Safari on an iPhone sends none, so a timer opens it.
       if (event.pointerType !== "touch") return;
       stopPress();
@@ -168,7 +188,7 @@ export function useContextMenu(
       press.current = {
         at,
         timer: setTimeout(() => {
-          dropClick.current = true;
+          longPressed.current = true;
           open(at, opener);
         }, longPressMs),
       };
@@ -178,11 +198,18 @@ export function useContextMenu(
       if (start === undefined) return;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > longPressSlop) stopPress();
     },
-    onPointerUp: stopPress,
-    onPointerCancel: stopPress,
+    onPointerUp: () => {
+      stopPress();
+      if (longPressed.current) dropClickUntil.current = performance.now() + clickAfterLiftMs;
+      longPressed.current = false;
+    },
+    onPointerCancel: () => {
+      stopPress();
+      longPressed.current = false;
+    },
     onClickCapture: (event) => {
-      if (!dropClick.current) return;
-      dropClick.current = false;
+      if (performance.now() >= dropClickUntil.current) return;
+      dropClickUntil.current = 0;
       event.preventDefault();
       event.stopPropagation();
     },
@@ -194,6 +221,7 @@ export function useContextMenu(
         items={items}
         label={label}
         at={opened.at}
+        opener={opened.opener}
         onClose={(refocus) => {
           setOpened(null);
           if (refocus) opened.opener.focus();
@@ -203,34 +231,42 @@ export function useContextMenu(
   return { props, menu };
 }
 
-/** The list at a point of the screen. It closes on a press outside it, a scroll or a resize. */
+/** The list at a point of the screen. It closes on a press outside it, Escape, a scroll or a resize. */
 function ContextMenu({
   items,
   label,
   at,
+  opener,
   onClose,
 }: {
   readonly items: readonly MenuItem[];
   readonly label: string;
   readonly at: Point;
+  readonly opener: HTMLElement;
   readonly onClose: (refocus: boolean) => void;
 }): ReactElement {
   const list = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<MenuPlace | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
-  useDismissOutside(true, list, () => onClose(false));
+  useDismissOutside(true, list, onClose);
 
   useEffect(() => {
-    // The menu has a fixed place, so it would stay behind when the page moves.
-    const onMove = (): void => close.current(false);
-    window.addEventListener("scroll", onMove, true);
-    window.addEventListener("resize", onMove);
-    return () => {
-      window.removeEventListener("scroll", onMove, true);
-      window.removeEventListener("resize", onMove);
+    // The menu has a fixed place, so it would stay behind when its element moves. A scroll of
+    // another part, such as a chat that streams an answer, leaves the element in place.
+    const onScroll = (event: Event): void => {
+      if (event.target === document || (event.target instanceof Node && event.target.contains(opener))) {
+        close.current(false);
+      }
     };
-  }, []);
+    const onResize = (): void => close.current(false);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [opener]);
 
   // Measure before the paint, so the menu never shows at a wrong place.
   useLayoutEffect(() => {
@@ -247,8 +283,16 @@ function ContextMenu({
       className="context-menu"
       listRef={list}
       // Not "visibility: hidden": the list takes the focus before the measure, and a hidden button cannot.
-      style={place === null ? { opacity: 0 } : { left: place.left, top: place.top }}
-      onClose={onClose}
+      style={place === null ? { opacity: 0, left: at.x, top: at.y } : { left: place.left, top: place.top }}
+      onClose={(refocus) => {
+        onClose(refocus);
+        // An item that opens a page moves no focus itself, so the focus goes back to the element that opened the menu.
+        if (!refocus) {
+          requestAnimationFrame(() => {
+            if (document.activeElement === document.body && opener.isConnected) opener.focus();
+          });
+        }
+      }}
     />,
     document.body,
   );

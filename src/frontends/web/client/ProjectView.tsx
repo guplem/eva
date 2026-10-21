@@ -142,6 +142,9 @@ export function ProjectView({
     };
   }, [openProjectId, cloneVersion, showError]);
 
+  const actionRequest = useChatActionRequest();
+  const clearAction = actionRequest.clear;
+
   // A linked Project chat opens in its clone, whatever the search and the filters show. A fork opens
   // as a branch of its first chat, because the page shows a chat with all its forks.
   const linkedId = linkedChat?.mode === "project" ? rootIdOf(linkedChat, sessions) : null;
@@ -162,6 +165,7 @@ export function ProjectView({
         if (project === undefined || clone === undefined) {
           showError(new Error("The linked chat's project or clone is not on this computer any more."));
         } else {
+          clearAction();
           setPage({ kind: "chat", project, clone, chatId: linkedId });
         }
       } catch (caught) {
@@ -169,7 +173,7 @@ export function ProjectView({
       }
       onLinkedChatOpened();
     })();
-  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened]);
+  }, [linkedId, linkedProjectId, linkedClone, showError, onLinkedChatOpened, clearAction]);
 
   const roots = useMemo(() => rootChats(sessions), [sessions]);
   const chatsOf = useCallback(
@@ -181,9 +185,6 @@ export function ProjectView({
     roots.filter(
       (session) => session.projectId === project.id && session.clone !== null && project.clones.includes(session.clone),
     ).length;
-
-  const actionRequest = useChatActionRequest();
-  const clearAction = actionRequest.clear;
 
   const open = (next: Page | null): void => {
     setError(null);

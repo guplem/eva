@@ -268,7 +268,11 @@ function MoreMenu({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  useDismissOutside(open, root, () => setOpen(false));
+  const close = (refocus: boolean): void => {
+    setOpen(false);
+    if (refocus) toggle.current?.focus();
+  };
+  useDismissOutside(open, root, close);
 
   return (
     <div className="more-picker" ref={root}>
@@ -283,17 +287,7 @@ function MoreMenu({
       >
         <Icon name="more" />
       </button>
-      {open && (
-        <MenuList
-          items={items}
-          label="Chat actions"
-          className="more-menu"
-          onClose={(refocus) => {
-            setOpen(false);
-            if (refocus) toggle.current?.focus();
-          }}
-        />
-      )}
+      {open && <MenuList items={items} label="Chat actions" className="more-menu" onClose={close} />}
     </div>
   );
 }

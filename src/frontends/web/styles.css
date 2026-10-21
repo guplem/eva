@@ -312,6 +312,63 @@ textarea {
   padding: 8px 10px;
 }
 
+/* Without base-select, the browser draws the open list in system colours.
+   A browser without it keeps its own list, which still works. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  select::picker-icon {
+    color: var(--muted);
+    transition: rotate 0.15s ease;
+  }
+
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+
+  ::picker(select) {
+    margin-block: var(--space-1);
+    padding: var(--space-1);
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-input);
+    box-shadow: var(--shadow);
+  }
+
+  option {
+    padding: var(--space-2) 10px;
+    border-radius: calc(var(--radius-input) - var(--space-1));
+    cursor: pointer;
+  }
+
+  option:hover,
+  option:focus-visible {
+    background: var(--chip);
+    outline: none;
+  }
+
+  option:checked {
+    background: var(--soft);
+    color: var(--soft-ink);
+    font-weight: 600;
+  }
+
+  option::checkmark {
+    color: var(--accent-ink);
+  }
+}
+
 /* A phone browser zooms into a field whose text is smaller than 16 px. */
 @media (pointer: coarse) {
   input,

@@ -202,6 +202,25 @@ a.files-entry[aria-current="true"] {
   height: 16px;
 }
 
+/* The bar and the error of a download stay under its button. */
+.files-download {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* Under the reason that a file does not show, the button starts the line, as the reason does. */
+.files-preview > .files-download {
+  align-items: flex-start;
+  margin-top: var(--space-3);
+}
+
+.files-download .icon {
+  width: 16px;
+  height: 16px;
+}
+
 .files-problem {
   margin: var(--space-3) var(--space-4) 0;
 }

@@ -1217,6 +1217,31 @@ textarea {
   line-height: 1.55;
 }
 
+/* A frame for one set of rules: the person's own, or Eva's built-in rules. */
+.rules-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* The built-in rules are read only, so their frame has the page ground. */
+.rules-box.built-in {
+  background: var(--bg);
+}
+
+/* The frame's title is muted, so it does not read as the first heading of the rules. */
+.rules-box > .field-label {
+  color: var(--muted);
+}
+
+.rules-box > summary {
+  cursor: pointer;
+}
+
+.rules-box > .rules-text > :first-child {
+  margin-top: var(--space-2);
+}
+
 .check-row .ok {
   color: var(--ok);
 }
@@ -2261,6 +2286,46 @@ button.link-button {
   color: var(--muted);
 }
 
+/* The list of setting homes is long, so it scrolls and the Close button stays on the screen. */
+.setting-homes {
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.setting-homes .search-results {
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+/* In the dialog, the rows are flat and compact: cards on a card would make the list four screens long. */
+.setting-homes .section-card {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-card:hover:not(:disabled) {
+  background: var(--chip);
+  box-shadow: none;
+}
+
+.setting-homes .section-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.setting-homes .section-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.setting-homes h3:first-child {
+  margin-top: 0;
+}
+
 /* ==========================================================================
    Settings: the setup list and a step's page
    ========================================================================== */
@@ -2650,6 +2715,18 @@ button.small {
   background: var(--chip);
   border-radius: 8px;
   padding: 2px 7px;
+}
+
+/* The title and the "New project" button share one row. */
+.list-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.list-title-row button {
+  flex-shrink: 0;
 }
 
 .sidebar .list-title {

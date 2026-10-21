@@ -194,6 +194,10 @@ const drawings = {
     </>
   ),
   home: <path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" />,
+  /** The corners of a frame point out: make the file preview fill the page. */
+  expand: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
+  /** The corners point in: give the page back to the folders. */
+  shrink: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
   mic: (
     <>
       <rect x="9" y="3" width="6" height="11" rx="3" />

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { formatProjectId, parseProjectId } from "../../../../src/core/projects/project-id.ts";
+import { formatProjectId, parseProjectId, projectSlug } from "../../../../src/core/projects/project-id.ts";
+import { EvaError } from "../../../../src/shared/errors.ts";
 
 describe("parseProjectId", () => {
   test("reads a full id to the minute", () => {
@@ -37,14 +38,31 @@ describe("parseProjectId", () => {
 
 describe("formatProjectId", () => {
   test("writes the creation time to the minute and the slug", () => {
-    expect(formatProjectId(new Date(2026, 9, 13, 15, 42), "Wall-I Rewrite")).toBe("2026-10-13-1542-wall-i-rewrite");
+    expect(formatProjectId("2026-10-13T15:42", "Wall-I Rewrite")).toBe("2026-10-13-1542-wall-i-rewrite");
   });
 
   test("turns any name into lowercase words joined by hyphens", () => {
-    expect(formatProjectId(new Date(2026, 0, 5, 9, 7), "  Café: Ñoño & co.  ")).toBe("2026-01-05-0907-cafe-nono-co");
+    expect(formatProjectId("2026-01-05T09:07", "  Café: Ñoño & co.  ")).toBe("2026-01-05-0907-cafe-nono-co");
   });
 
   test("refuses a name with no letters or digits", () => {
-    expect(() => formatProjectId(new Date(2026, 0, 5, 9, 7), "!!!")).toThrow("letter or digit");
+    expect(() => formatProjectId("2026-01-05T09:07", "!!!")).toThrow("a to z");
+    expect(() => formatProjectId("2026-01-05T09:07", "!!!")).toThrow(EvaError);
+  });
+});
+
+describe("projectSlug", () => {
+  test("is the name part of the id", () => {
+    expect(projectSlug("Wall-I Rewrite")).toBe("wall-i-rewrite");
+  });
+});
+
+describe("formatProjectId for a long name", () => {
+  test("cuts the slug at a hyphen, so the folder and the repository name stay short", () => {
+    const id = formatProjectId("2026-01-05T09:07", "word ".repeat(40));
+    const slug = id.slice("2026-01-05-0907-".length);
+    expect(slug.length).toBeLessThanOrEqual(60);
+    expect(slug).toMatch(/^word(-word)*$/);
+    expect(formatProjectId("2026-01-05T09:07", "a".repeat(80))).toBe(`2026-01-05-0907-${"a".repeat(60)}`);
   });
 });

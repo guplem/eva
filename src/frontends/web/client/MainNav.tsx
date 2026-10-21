@@ -2,22 +2,29 @@
  * The main navigation of the EVE shell: a nav rail on a computer and a bottom tab bar on a phone.
  * It is one element that the stylesheet places, so each destination has one accessible name.
  */
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
+import { navVisorState, tapFace, tapFaceMs, type NavVisorInput } from "./nav-visor.ts";
 import { destinations, type Destination } from "./navigation.ts";
 import { Visor } from "./Visor.tsx";
-import { stateFaces } from "./visor-faces.ts";
+import type { Face } from "./visor-faces.ts";
 
-interface MainNavProps {
+interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
   readonly onOpen: (destination: Destination) => void;
-  /** The approvals that wait, of any chat. */
-  readonly approvals: number;
   readonly setupMissing: number;
-  readonly isConnected: boolean;
 }
 
-export function MainNav({ current, onOpen, approvals, setupMissing, isConnected }: MainNavProps): ReactElement {
+export function MainNav(props: MainNavProps): ReactElement {
+  const { current, onOpen, approvals, setupMissing, isConnected } = props;
+  const visor = navVisorState(props);
+  // A tap plays a playful face for a moment. Then the face of the main state comes back.
+  const [tapped, setTapped] = useState<{ face: Face } | null>(null);
+  useEffect(() => {
+    if (tapped === null) return undefined;
+    const timer = setTimeout(() => setTapped(null), tapFaceMs);
+    return () => clearTimeout(timer);
+  }, [tapped]);
   // The visible badge is only a number. The hidden words say what it counts.
   const badges: Partial<Record<Destination, { count: number; words: string }>> = {
     chats: { count: approvals, words: approvals === 1 ? "approval waits" : "approvals wait" },
@@ -25,9 +32,15 @@ export function MainNav({ current, onOpen, approvals, setupMissing, isConnected 
   };
   return (
     <nav className="main-nav" aria-label="Main">
-      <span className="main-nav-visor">
-        <Visor size={36} face={isConnected ? stateFaces.idle : stateFaces.offline} />
-      </span>
+      <button
+        className="main-nav-visor"
+        aria-label={visor.words}
+        data-tooltip={visor.words}
+        data-tooltip-side="right"
+        onClick={() => setTapped((last) => ({ face: tapFace(Math.random, last?.face) }))}
+      >
+        <Visor size={36} face={tapped?.face ?? visor.face} />
+      </button>
       {destinations.map((destination) => {
         const badge = badges[destination.id];
         return (

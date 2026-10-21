@@ -6,7 +6,8 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
 import { navVisorState, tapFace, tapFaceMs, type NavVisorInput } from "./nav-visor.ts";
 import { destinations, type Destination } from "./navigation.ts";
-import { useSpecialDay, Visor } from "./Visor.tsx";
+import { useSpecialDay } from "./FestiveDay.tsx";
+import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {

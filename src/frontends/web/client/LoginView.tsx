@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactElement, type ReactNode, type SyntheticE
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { loginFace } from "./login-faces.ts";
-import { useSpecialDay, Visor } from "./Visor.tsx";
+import { useSpecialDay } from "./FestiveDay.tsx";
+import { Visor } from "./Visor.tsx";
 
 /** The page asks again at this pace until the owner answers in Telegram, in the terminal or on another Eva page. */
 const devicePollMs = 2_000;

@@ -7,7 +7,8 @@ import { useEffect, useId, useState, type ReactElement } from "react";
 import { api, type ChatBlocker } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { greeting, setupBlock, suggestions, type Suggestion } from "./new-chat.ts";
-import { useSpecialDay, Visor } from "./Visor.tsx";
+import { useSpecialDay } from "./FestiveDay.tsx";
+import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
 export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) => void }): ReactElement {

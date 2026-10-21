@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactElement } from "react";
-import { festiveArt, festiveIconSvg, sceneMarkup } from "./festive-art.ts";
-import { specialDayOn, type SpecialDay, type SpecialDayId } from "./special-days.ts";
+import { festiveArt, sceneMarkup } from "./festive-art.ts";
+import type { SpecialDayId } from "./special-days.ts";
 import { startRotation, visorClassName, type Face, type VisorSize } from "./visor-faces.ts";
 
 interface VisorProps {
@@ -56,33 +56,4 @@ function FestiveVisor({ id, size }: { readonly id: SpecialDayId; readonly size: 
       )}
     </span>
   );
-}
-
-/** How often a page that stays open checks for a new day. */
-const dayCheckMs = 60_000;
-
-/** Today's special day, or null. It changes at midnight on a page that stays open. */
-export function useSpecialDay(): SpecialDay | null {
-  const [day, setDay] = useState(() => specialDayOn(new Date()));
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const next = specialDayOn(new Date());
-      setDay((last) => (last?.id === next?.id && last?.greeting === next?.greeting ? last : next));
-    }, dayCheckMs);
-    return () => clearInterval(timer);
-  }, []);
-  return day;
-}
-
-/** Draws today's festive eyes in the browser tab icon, and puts the usual icon back after. */
-export function useFestiveTabIcon(day: SpecialDayId | null): void {
-  useEffect(() => {
-    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (link === null || day === null) return undefined;
-    const usual = link.href;
-    link.href = `data:image/svg+xml,${encodeURIComponent(festiveIconSvg(day))}`;
-    return () => {
-      link.href = usual;
-    };
-  }, [day]);
 }

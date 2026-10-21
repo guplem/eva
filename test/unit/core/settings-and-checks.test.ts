@@ -220,6 +220,22 @@ describe("settings", () => {
     expect(refused).toContain("empty");
   });
 
+  test("a Google client id pasted as a link is saved bare, and one that is no client id is refused (#323)", async () => {
+    const id = "123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com";
+    await eva.saveSecret("googleOauthClientId", `https://${id}/`);
+    await eva.saveSecret("googleOauthClientSecret", ' "GOCSPX-abc" ');
+    const saved = JSON.parse(readFileSync(homePaths(home).secrets, "utf-8")) as Record<string, string>;
+    expect(saved["googleOauthClientId"]).toBe(id);
+    expect(saved["googleOauthClientSecret"]).toBe("GOCSPX-abc");
+    const refused = await eva.saveSecret("googleOauthClientId", "GOCSPX-abc").then(
+      () => "saved",
+      (error: unknown) => String(error),
+    );
+    expect(refused).toContain("not a Google client id");
+    const after = JSON.parse(readFileSync(homePaths(home).secrets, "utf-8")) as Record<string, string>;
+    expect(after["googleOauthClientId"]).toBe(id);
+  });
+
   test("the setup state names the vault's remote, the Telegram pairing and the engines found", async () => {
     expect(await eva.setupState()).toMatchObject({
       vaultRemote: sandbox.remote,
@@ -369,14 +385,14 @@ describe("runCheck", () => {
         join(folder, "person@example.com.json"),
         JSON.stringify({
           refresh_token: "r",
-          client_id: "id",
+          client_id: "123456789012-clientid.apps.googleusercontent.com",
           client_secret: "s",
           scopes: googleScopes(defaultConfig.google),
         }),
       );
       const googleInputs = {
         config: { ...defaultConfig.google, email: "person@example.com" },
-        client: { clientId: "id", clientSecret: "s" },
+        client: { clientId: "123456789012-clientid.apps.googleusercontent.com", clientSecret: "s" },
         credentialsFolder: folder,
         baseUrl: google.url,
         readServices: false,
@@ -396,7 +412,7 @@ describe("runCheck", () => {
   test("the Google check names the missing step, redacted", async () => {
     const google = {
       config: { ...defaultConfig.google, email: "secret-value@example.com" },
-      client: { clientId: "id", clientSecret: "secret" },
+      client: { clientId: "123456789012-clientid.apps.googleusercontent.com", clientSecret: "secret" },
       credentialsFolder: home,
       readServices: true,
     };
@@ -732,7 +748,10 @@ describe("the Google setup", () => {
     const withGoogle = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
-      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      secrets: {
+        googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
+        googleOauthClientSecret: "GOCSPX-client-secret-value",
+      },
       engines: [engine],
       runner: uvRunner,
       processEnvironment: gitEnvironment,
@@ -765,7 +784,10 @@ describe("the Google setup", () => {
     const started = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, google: { ...defaultConfig.google, email: "person@example.com" } },
-      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      secrets: {
+        googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
+        googleOauthClientSecret: "GOCSPX-client-secret-value",
+      },
       engines: [engine],
       runner: uvRunner,
       processEnvironment: gitEnvironment,
@@ -798,7 +820,10 @@ describe("the Google setup", () => {
     const withGoogle = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, google: { ...defaultConfig.google, email: "person@example.com" } },
-      secrets: { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" },
+      secrets: {
+        googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
+        googleOauthClientSecret: "GOCSPX-client-secret-value",
+      },
       engines: [engine],
       runner: uvRunner,
       processEnvironment: gitEnvironment,

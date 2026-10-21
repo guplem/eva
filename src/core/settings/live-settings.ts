@@ -2,6 +2,7 @@
  * The settings and secrets of a running Eva: what the settings page reads and changes. A change
  * is saved at once; the update frequency and the vault fetch apply at once, the rest at a restart.
  */
+import { cleanGoogleClientId, cleanGoogleClientSecret, googleClientIdProblem } from "../google/google-client.ts";
 import { existsSync } from "node:fs";
 import type { EngineName } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
@@ -120,8 +121,10 @@ export class LiveSettings {
    * comes back. The git, engine and Telegram processes read the secrets at start, so a restart follows.
    */
   saveSecret(name: PageSecretName, value: string | null): { saved: true; restartNeeded: true } {
-    const trimmed = value?.trim() ?? null;
+    const trimmed = value === null ? null : cleanedSecret(name, value);
     if (trimmed === "") throw new EvaError("config_invalid", "A secret cannot be empty. Remove it instead.");
+    const problem = name === "googleOauthClientId" && trimmed !== null ? googleClientIdProblem(trimmed) : null;
+    if (problem !== null) throw new EvaError("config_invalid", problem);
     // Before anything else, so the value never reaches a log or an error unredacted.
     if (trimmed !== null) this.options.redactor.addSecret(trimmed);
     // From the file, so a secret that `eva setup` saved meanwhile stays.
@@ -158,4 +161,11 @@ export class LiveSettings {
 function changedKeys(change: unknown, prefix: string): string[] {
   if (change === null || typeof change !== "object" || Array.isArray(change)) return [prefix];
   return Object.entries(change).flatMap(([key, value]) => changedKeys(value, prefix === "" ? key : `${prefix}.${key}`));
+}
+
+/** A pasted secret without what a copy adds around it. A Google client id can come as a link (#323). */
+function cleanedSecret(name: PageSecretName, value: string): string {
+  if (name === "googleOauthClientId") return cleanGoogleClientId(value);
+  if (name === "googleOauthClientSecret") return cleanGoogleClientSecret(value);
+  return value.trim();
 }

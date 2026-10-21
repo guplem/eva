@@ -122,7 +122,10 @@ describe("doctor and setup", () => {
     const host = fakeHost();
     expect(await run(host, "doctor")).toBe(exitCodes.clean);
     expect(printed(host)).toContain("off     Google: not set up.");
-    saveSecrets(paths, { googleOauthClientId: "client-id", googleOauthClientSecret: "GOCSPX-client-secret-value" });
+    saveSecrets(paths, {
+      googleOauthClientId: "123456789012-clientid.apps.googleusercontent.com",
+      googleOauthClientSecret: "GOCSPX-client-secret-value",
+    });
     const withClient = fakeHost();
     expect(await run(withClient, "doctor")).toBe(exitCodes.clean);
     expect(printed(withClient)).toContain("failed  Google: No Google account is logged in.");

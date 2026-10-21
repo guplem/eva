@@ -3162,7 +3162,7 @@ test("Settings: Google sets up from the page, with a pasted login and a Test", a
   await openGoogleSteps(page);
   await expect(page.getByRole("link", { name: "Google Calendar API" })).toBeVisible();
   for (const [label, value] of [
-    ["Google client id", "client-id.apps.googleusercontent.com"],
+    ["Google client id", "123456789012-clientid.apps.googleusercontent.com"],
     ["Google client secret", "GOCSPX-e2e-client-secret-value"],
   ] as const) {
     await page.getByLabel(label, { exact: true }).fill(value);

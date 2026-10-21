@@ -7,6 +7,9 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+/** A day with no special day, so the greeting and the faces are the usual ones. */
+const ordinaryDay = new Date("2026-07-15T12:00:00");
+
 async function logIn(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByLabel(/Token/).fill(token);
@@ -1836,6 +1839,8 @@ test("the chat list shows each chat's time and last answer, and the search filte
 });
 
 test("a new chat greets with EVE and suggestions, and a tap on one starts the chat", async ({ page }) => {
+  // An ordinary day: a special day shows festive eyes and greeting instead.
+  await page.clock.setFixedTime(ordinaryDay);
   await logIn(page);
   await newChat(page);
   const greeting = page.locator(".new-chat");
@@ -4047,4 +4052,15 @@ test("Files: a file and a folder download from their own button, and a failed do
   );
   await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
+});
+
+test("on a special day, EVE greets with that day's eyes, and the tab icon wears them", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
+  await logIn(page);
+  await newChat(page);
+  const greeting = page.locator(".new-chat");
+  await expect(greeting.getByRole("heading", { level: 2 })).toHaveText("Merry Christmas!");
+  await expect(greeting.locator(".mk.festive.f-spin")).toBeVisible();
+  await expect(greeting.locator(".festive-decoration svg")).toBeVisible();
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
 });

@@ -158,6 +158,8 @@ const eva = new Eva({
   basePrompt: assistantBasePrompt,
   gatherMs: 20,
   googleBaseUrl: google.url,
+  // The Versions card never reaches npm or GitHub: a test answers for the latest versions.
+  toolLatestSources: { npmBaseUrl: "http://127.0.0.1:1", githubApiBaseUrl: "http://127.0.0.1:1" },
   // GitHub shows a code, and nobody types it: the demo never reaches the real GitHub.
   githubBrowserLogin: (show) => {
     show("WXYZ-1234", "https://github.com/login/device");

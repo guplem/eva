@@ -10,7 +10,7 @@ import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ChatHeader } from "./ChatHeader.tsx";
 import { ChatPanel, tasksOf } from "./ChatPanel.tsx";
-import { PhoneListHeader } from "./MainNav.tsx";
+import { NewChatDraft } from "./NewChatDraft.tsx";
 
 interface AssistantViewProps {
   readonly sessions: readonly ListedSession[];
@@ -78,15 +78,18 @@ export function AssistantView({
     onLinkedChatOpened();
   }, [linkedId, onLinkedChatOpened]);
 
+  const openNewChat = async (chat: SessionRecord): Promise<void> => {
+    await onChanged();
+    setSelectedId(chat.id);
+    // A new chat goes first in the list. Show it, because the list can be scrolled down.
+    listRef.current?.scrollTo({ top: 0 });
+    onNavigate();
+  };
+
   const newChat = async (): Promise<void> => {
     try {
       // The composer chip picks another model before the first message (lesson 41).
-      const chat = await api.newAssistantChat("default");
-      await onChanged();
-      setSelectedId(chat.id);
-      // A new chat goes first in the list. Show it, because the list can be scrolled down.
-      listRef.current?.scrollTo({ top: 0 });
-      onNavigate();
+      await openNewChat(await api.newAssistantChat("default"));
     } catch (caught) {
       showError(caught);
     }
@@ -142,10 +145,7 @@ export function AssistantView({
       <main className="main">
         {notices}
         {selected === undefined ? (
-          <>
-            <PhoneListHeader title="Chats" onShowList={onShowList} />
-            <div className="empty">No chats yet. Start one with “New chat”.</div>
-          </>
+          <NewChatDraft blocker={blocker} voiceNotes={voiceNotes} onShowList={onShowList} onStarted={openNewChat} />
         ) : (
           <>
             <ChatHeader

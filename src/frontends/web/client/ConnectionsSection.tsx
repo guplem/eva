@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 import { stepMark } from "./setup-summary.ts";
 import { Card, CheckRow, StatusPill, Steps, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -110,12 +111,10 @@ function CommitIdentityCard({ context }: { readonly context: SettingsContext }):
     setName(git.name ?? "");
     setEmail(git.email ?? "");
   }, [git.name, git.email]);
-  const save = (): void => {
-    const change = {
+  const save = (): Promise<boolean> =>
+    context.saveNow({
       git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
-    };
-    void context.saveNow(change);
-  };
+    });
   return (
     <Card
       item="commit-identity"
@@ -138,9 +137,9 @@ function CommitIdentityCard({ context }: { readonly context: SettingsContext }):
         />
       </label>
       <div className="button-row">
-        <button className="primary" onClick={save}>
+        <SaveButton className="primary" onSave={save}>
           Save
-        </button>
+        </SaveButton>
       </div>
     </Card>
   );

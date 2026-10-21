@@ -72,19 +72,3 @@ export function ShowListButton({ onClick }: { readonly onClick: () => void }): R
     </button>
   );
 }
-
-/** The header of a phone page that has no header of its own, so the list is always in reach. */
-export function PhoneListHeader({
-  title,
-  onShowList,
-}: {
-  readonly title?: string;
-  readonly onShowList: () => void;
-}): ReactElement {
-  return (
-    <div className="main-header phone-only">
-      <ShowListButton onClick={onShowList} />
-      {title !== undefined && <h1>{title}</h1>}
-    </div>
-  );
-}

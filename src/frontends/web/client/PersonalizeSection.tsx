@@ -1,6 +1,6 @@
 /**
  * The personalize page: this browser's look, the person's rules for Eva, then the time zone, the
- * rules for chat names and the extra project folders. The text fields wait for Save; the look applies at once.
+ * rules for chat names. The text fields wait for Save; the look applies at once.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, ApiError } from "./api.ts";
@@ -9,6 +9,7 @@ import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts
 import type { IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 import { restartNote } from "./notes.ts";
 
 /** The server refuses longer rules, because they go to a model with each new chat. */
@@ -69,7 +70,6 @@ export function AppearanceCard(): ReactElement {
 function PreferencesForm({ context }: { readonly context: SettingsContext }): ReactElement {
   const config = context.settings.config;
   const [timeZone, setTimeZone] = useState(config.timeZone ?? "");
-  const [projectRoots, setProjectRoots] = useState(config.projectRoots.join("\n"));
   /** Null until loaded, and when no vault holds the rules. */
   const [chatNameRules, setChatNameRules] = useState<string | null>(null);
   /** Save sends the rules only when they changed, so it never overwrites an edit that Eva made in a chat. */
@@ -89,7 +89,8 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
       });
   }, [notify]);
 
-  const save = async (): Promise<void> => {
+  /** True only when all of it saved: a half save shows no check. */
+  const save = async (): Promise<boolean> => {
     // The rules save on their own, so a vault that Eva cannot write still lets the other settings save.
     let rulesProblem = "";
     if (chatNameRules !== null && chatNameRules !== savedChatNameRules) {
@@ -104,10 +105,6 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
     try {
       const result = await api.saveSettings({
         timeZone: timeZone.trim() === "" ? null : timeZone.trim(),
-        projectRoots: projectRoots
-          .split("\n")
-          .map((root) => root.trim())
-          .filter((root) => root.length > 0),
       });
       notify(
         result.restartNeeded
@@ -115,8 +112,10 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           : `Saved.${rulesProblem}`,
       );
       context.reloadSettings();
+      return rulesProblem === "";
     } catch (error) {
       notify(errorText(error) + rulesProblem);
+      return false;
     }
   };
 
@@ -146,16 +145,10 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
           </label>
         </Card>
       )}
-      <Card item="project-folders" title="Project folders" description="Eva also looks for projects in these folders.">
-        <label className="field">
-          <span className="field-label">Extra project folders (one per line)</span>
-          <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
-        </label>
-      </Card>
       <div className="save-bar">
-        <button className="primary" onClick={() => void save()}>
+        <SaveButton className="primary" onSave={save}>
           Save
-        </button>
+        </SaveButton>
       </div>
     </>
   );

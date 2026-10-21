@@ -24,7 +24,12 @@ export const settingsSections: readonly SettingsSection[] = [
     summary: "Claude Code and pi: logins, models and tests.",
     steps: ["engine"],
   },
-  { id: "vault", title: "Vault and sync", summary: "Your notes, their repository and the sync.", steps: ["vault"] },
+  {
+    id: "vault",
+    title: "Vault and sync",
+    summary: "Your notes, their repository, the sync and the project folders.",
+    steps: ["vault"],
+  },
   {
     id: "connections",
     title: "Connections",
@@ -40,7 +45,7 @@ export const settingsSections: readonly SettingsSection[] = [
   {
     id: "personalize",
     title: "Personalize",
-    summary: "Theme, time zone, chat names and project folders.",
+    summary: "Theme, Eva's rules, time zone and chat names.",
     steps: [],
   },
   {
@@ -126,6 +131,7 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
+  { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },
   {
     item: "github",
     section: "connections",
@@ -158,15 +164,13 @@ export const searchEntries: readonly SearchEntry[] = [
   },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
-  { item: "project-folders", section: "personalize", title: "Project folders", words: "roots projects" },
   {
     item: "versions",
     section: "updates",
     title: "Versions",
-    words: "version eva claude code pi git bun tools installed",
+    words: "version eva claude code pi git bun tools installed update engine latest",
   },
   { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
-  { item: "engine-update", section: "updates", title: "Claude Code update", words: "version engine" },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },
   { item: "report-problem", section: "developer", title: "Report a problem", words: "bug issue github idea feedback" },
   {

@@ -1,5 +1,6 @@
-/** The updates page: the versions of Eva and her tools, Eva's update policy, the Claude Code update, and a restart. */
+/** The updates page: the versions of Eva and her tools with their updates, Eva's update policy, and a restart. */
 import { Fragment, useEffect, useState, type ReactElement } from "react";
+import { isNewerVersion } from "../../../core/updates/version-order.ts";
 import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
 import {
   ApiError,
@@ -45,7 +46,6 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
     <>
       <VersionsCard />
       <EvaUpdatesCard context={context} />
-      <EngineUpdateCard />
       <RestartCard context={context} />
     </>
   );
@@ -53,13 +53,24 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
 
 /**
  * The versions that `eva doctor` shows in a terminal, so a phone sees them too. A tool that Eva
- * installs herself gets a button, so a missing or old tool needs no terminal.
+ * installs herself gets a button, so a missing or old tool needs no terminal. claude updates with
+ * its own `claude update`, which waits until no chat runs a turn.
  */
 function VersionsCard(): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
+  /** The newest published version of each tool, by program. A tool that is missing here is unknown. */
+  const [latest, setLatest] = useState<ReadonlyMap<string, string>>(new Map());
+  /** False until the latest versions answer or fail, so no Update button flickers on and off. */
+  const [latestRead, setLatestRead] = useState(false);
   /** The tool that this page installs now. */
   const [installing, setInstalling] = useState<InstallableTool | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  /** Null when no claude program was found when Eva started. */
+  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
+  /** True while the request that starts `claude update` runs, so a second tap sends nothing. */
+  const [engineStarting, setEngineStarting] = useState(false);
+  /** Counts the failed engine status reads, so a failed read asks again. */
+  const [engineReadFailures, setEngineReadFailures] = useState(0);
 
   const readVersions = (): void => {
     api.versions().then(setVersions, () => {
@@ -67,6 +78,50 @@ function VersionsCard(): ReactElement {
     });
   };
   useEffect(readVersions, []);
+
+  // The latest versions come from the network, so they come after the versions of this machine.
+  useEffect(() => {
+    api.latestVersions().then(
+      (found) => {
+        setLatest(new Map(found.flatMap((tool) => (tool.latest === null ? [] : [[tool.program, tool.latest]]))));
+        setLatestRead(true);
+      },
+      // Without the latest versions, each tool keeps its Update button.
+      () => {
+        setLatestRead(true);
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    api.engineUpdateStatus().then(setEngineUpdate, () => {
+      setEngineReadFailures((count) => count + 1);
+    });
+  }, []);
+
+  // The engine update can wait for a long turn, then download for minutes. The page asks
+  // until it ends, also after a reload or a failed read on a weak phone connection.
+  const engineBusy = engineUpdate === "loading" || (engineUpdate !== null && engineUpdate.phase !== "idle");
+  /** `claude update` runs or waits. The page holds the other installs until it ends, so two installs never overlap. */
+  const engineRuns = engineUpdate !== "loading" && engineUpdate !== null && engineUpdate.phase !== "idle";
+  useEffect(() => {
+    if (!engineBusy) return;
+    const timer = setTimeout(() => {
+      api.engineUpdateStatus().then(
+        (status) => {
+          setEngineUpdate(status);
+          // The row shows the new version once the update ends.
+          if (engineUpdate !== "loading" && (status === null || status.phase === "idle")) readVersions();
+        },
+        () => {
+          setEngineReadFailures((count) => count + 1);
+        },
+      );
+    }, statusPollMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [engineUpdate, engineReadFailures]);
 
   const install = async (program: InstallableTool): Promise<void> => {
     setNote(null);
@@ -82,6 +137,22 @@ function VersionsCard(): ReactElement {
     }
   };
 
+  /** Starts `claude update`; the effect above asks for its status until it ends. */
+  const updateEngine = async (): Promise<void> => {
+    setNote(null);
+    setEngineStarting(true);
+    try {
+      setEngineUpdate(await api.updateEngine());
+    } catch (error) {
+      setNote({ ok: false, text: errorText(error) });
+    } finally {
+      setEngineStarting(false);
+    }
+  };
+
+  /** claude goes through `claude update` once Eva has found it; a missing claude goes through its installer. */
+  const usesEngineUpdate = (program: string): boolean => program === "claude" && engineUpdate !== null;
+
   return (
     <Card item="versions" title="Versions" description="The version of Eva and of each tool that she uses.">
       {versions === "loading" ? (
@@ -93,33 +164,47 @@ function VersionsCard(): ReactElement {
         <dl className="facts">
           <dt>Eva</dt>
           <dd>{versions.eva}</dd>
-          {versions.tools.map((tool) => (
-            <Fragment key={tool.program}>
-              <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
-              <dd className={toolAction(tool) === null ? undefined : "fact-with-action"}>
-                {tool.version === null ? "Not installed" : tool.tooOld ? `${tool.version}, too old` : tool.version}
-                {toolAction(tool) !== null && (
-                  <>
+          {versions.tools.map((tool) => {
+            const newest = latest.get(tool.program);
+            const action = toolAction(tool, newest);
+            const viaEngine = action === "Update" && usesEngineUpdate(tool.program);
+            const working = viaEngine ? engineRuns || engineStarting : installing === tool.program;
+            const waitsForLatest = action === "Update" && !tool.tooOld && !latestRead;
+            return (
+              <Fragment key={tool.program}>
+                <dt data-tooltip={`For ${tool.feature}`}>{tool.program}</dt>
+                <dd className={action === null ? undefined : "fact-with-action"}>
+                  {versionText(tool, newest)}
+                  {action !== null && (
                     <button
-                      className={tool.version === null || tool.tooOld ? "primary small" : "ghost small"}
-                      disabled={installing !== null}
-                      onClick={() => void install(tool.program as InstallableTool)}
+                      className={
+                        action === "Install" || tool.tooOld || freshness(tool, newest) === "old"
+                          ? "primary small"
+                          : "ghost small"
+                      }
+                      disabled={installing !== null || engineRuns || engineStarting || waitsForLatest}
+                      onClick={() => void (viaEngine ? updateEngine() : install(tool.program as InstallableTool))}
                     >
-                      {installing === tool.program
-                        ? toolAction(tool) === "Update"
-                          ? "Updating…"
-                          : "Installing…"
-                        : toolAction(tool)}
+                      {working ? (action === "Update" ? "Updating…" : "Installing…") : action}
                     </button>
-                  </>
-                )}
-              </dd>
-            </Fragment>
-          ))}
+                  )}
+                </dd>
+              </Fragment>
+            );
+          })}
         </dl>
       )}
       {/* An install says nothing until it ends, so its share is unknown. */}
       {installing !== null && <ProgressBar label={`Installing ${installing}. This can take a few minutes.`} />}
+      {/* `claude update` says nothing until it ends, so its share is unknown. */}
+      {engineUpdate !== "loading" && engineUpdate !== null && engineUpdate.phase !== "idle" && (
+        <ProgressBar label={describeEngineUpdate(engineUpdate)} />
+      )}
+      {engineUpdate !== "loading" && engineUpdate?.phase === "idle" && engineUpdate.last !== null && (
+        <div role="status" className={engineUpdate.last.outcome === "failed" ? "callout warning" : "callout"}>
+          {describeEngineUpdate(engineUpdate)}
+        </div>
+      )}
       {note !== null && (
         <div role="status" className={note.ok ? "callout" : "callout warning"}>
           {note.text}
@@ -130,13 +215,29 @@ function VersionsCard(): ReactElement {
 }
 
 /**
- * "Install" for a missing tool, "Update" for one that is there, or null for no button. The
- * Claude Code card updates claude with its own `claude update`, so claude gets only Install.
+ * Whether an installed tool is older than the newest version. A tool that prints no version
+ * number, or a newest version that Eva could not read, gives "unknown".
  */
-function toolAction(tool: EvaVersions["tools"][number]): "Install" | "Update" | null {
+function freshness(tool: EvaVersions["tools"][number], newest: string | undefined): "old" | "latest" | "unknown" {
+  if (tool.version === null || newest === undefined || !/\d/.test(tool.version)) return "unknown";
+  return isNewerVersion(newest, tool.version) ? "old" : "latest";
+}
+
+/** The version, and the newest one when it is newer. */
+function versionText(tool: EvaVersions["tools"][number], newest: string | undefined): string {
+  if (tool.version === null) return "Not installed";
+  if (tool.tooOld) return `${tool.version}, too old`;
+  return freshness(tool, newest) === "old" ? `${tool.version} (${newest ?? ""} available)` : tool.version;
+}
+
+/**
+ * "Install" for a missing tool, "Update" for an old one, or null for no button. Without the
+ * newest version, Eva cannot tell whether the tool is old, so it keeps its Update button.
+ */
+function toolAction(tool: EvaVersions["tools"][number], newest: string | undefined): "Install" | "Update" | null {
   if (!tool.installable) return null;
   if (tool.version === null) return "Install";
-  return tool.program === "claude" ? null : "Update";
+  return !tool.tooOld && freshness(tool, newest) === "latest" ? null : "Update";
 }
 
 function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -325,68 +426,6 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
           onClose={() => setPickingVersion(false)}
         />
       )}
-    </Card>
-  );
-}
-
-function EngineUpdateCard(): ReactElement {
-  /** Null when no claude program was found. */
-  const [engineUpdate, setEngineUpdate] = useState<EngineUpdateStatus | null | "loading">("loading");
-  const [note, setNote] = useState<string | null>(null);
-  /** Counts the failed status reads, so a failed read asks again. */
-  const [readFailures, setReadFailures] = useState(0);
-
-  useEffect(() => {
-    api.engineUpdateStatus().then(setEngineUpdate, () => {
-      setReadFailures((count) => count + 1);
-    });
-  }, []);
-
-  // The engine update can wait for a long turn, then download for minutes. The page asks
-  // until it ends, also after a reload or a failed read on a weak phone connection.
-  useEffect(() => {
-    if (engineUpdate === null || (engineUpdate !== "loading" && engineUpdate.phase === "idle")) return;
-    const timer = setTimeout(() => {
-      api.engineUpdateStatus().then(setEngineUpdate, () => {
-        setReadFailures((count) => count + 1);
-      });
-    }, statusPollMs);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [engineUpdate, readFailures]);
-
-  /** Starts `claude update`; the effect above asks for its status until it ends. */
-  const updateEngine = async (): Promise<void> => {
-    setNote(null);
-    try {
-      setEngineUpdate(await api.updateEngine());
-    } catch (error) {
-      setNote(errorText(error));
-    }
-  };
-
-  return (
-    <Card item="engine-update" title="Claude Code update">
-      {engineUpdate === "loading" ? (
-        <ProgressBar label="Claude Code: reading the update status…" />
-      ) : engineUpdate === null ? (
-        <div role="status">No claude program was found.</div>
-      ) : engineUpdate.phase === "idle" ? (
-        <div role="status">{describeEngineUpdate(engineUpdate)}</div>
-      ) : (
-        // `claude update` says nothing until it ends, so its share is unknown.
-        <ProgressBar label={describeEngineUpdate(engineUpdate)} />
-      )}
-      <div className="button-row">
-        <button
-          disabled={engineUpdate === "loading" || engineUpdate?.phase !== "idle"}
-          onClick={() => void updateEngine()}
-        >
-          Update Claude Code
-        </button>
-      </div>
-      {note !== null && <div role="status">{note}</div>}
     </Card>
   );
 }

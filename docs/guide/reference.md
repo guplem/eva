@@ -194,9 +194,9 @@ A request from Eva's own computer can come from any program there, so only the t
 
 ## Projects
 
-- **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<name>/` in the notebook, with its `AGENTS.md`.
-  - Tick **Create a private GitHub repository** to get a repository with the project's name, in your GitHub account.
-  - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs Google Drive with full access, in **Settings > Connections > Google**.
+- **Create a project:** open **Projects** in the web app and tap **New project**. Give a name, a short description, a status and tags. Eva makes the folder `Projects/<date>-<time>-<name>/` in the notebook, with its `AGENTS.md`.
+  - Tick **Create a private GitHub repository** to get a repository in your GitHub account. It takes the folder name without the date and time.
+  - Tick **Create a Google Drive folder** to get a folder in your Drive. It needs the Drive access "Read and change", in **Settings > Connections > Google**.
   - When one of these steps fails, the project stays. The form says what failed, so you can do that step by hand.
 
 ## Optional features

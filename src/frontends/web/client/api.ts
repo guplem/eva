@@ -221,6 +221,8 @@ export const api = {
   createProject: (input: NewProjectInput): Promise<NewProjectResult> => request("POST", "/api/projects", input),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  deleteClone: (projectId: string, clone: string): Promise<{ deletedChats: string[] }> =>
+    request("DELETE", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}`),
   /** Fetches each clone, so the cards count the commits to pull. A failed fetch is in `problems`. */
   fetchClones: (projectId: string): Promise<CloneFetch> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/fetch`, {}),

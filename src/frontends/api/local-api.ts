@@ -561,6 +561,8 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       const { repositoryUrl } = newCloneSchema.parse(await request.json());
       return json(await eva.newClone(projectId, repositoryUrl), 201);
     }
+    if (method === "DELETE" && parts[4] !== undefined && parts.length === 5)
+      return json(await eva.deleteClone(projectId, decodeURIComponent(parts[4])));
   }
   if (method === "POST" && url.pathname === "/api/transcribe") {
     // The audio stays in memory and in the transcriber's own temporary folder (lesson 123).

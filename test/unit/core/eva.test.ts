@@ -33,7 +33,7 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: 
     config: config(overrides),
     secrets: options.secrets ?? { claudeOauthToken: "oauth-token-value-for-tests" },
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: options.runner ?? systemProcessRunner,
     processEnvironment: gitEnvironment,
     now: () => clock,
     basePrompt: "Base.",
@@ -386,6 +386,93 @@ describe("Eva", () => {
       instance.newClone("2025-03-02-1015-example-app"),
     ]);
     expect(clones.map((clone) => clone.name).sort()).toEqual(["remote-0", "remote-1"]);
+  });
+
+  test("the person deletes a clone, and its chats and their forks go with it", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const instance = start(new FakeEngine());
+    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    const fork = instance.sessions.fork(chat.id, instance.sessions.get(chat.id).turns[0]?.lastMessageId ?? "");
+    await instance.newClone(projectId);
+    const other = await instance.createProjectSession({
+      projectId,
+      cloneName: "remote-1",
+      source: "cli",
+      model: "default",
+    });
+
+    expect(await instance.deleteClone(projectId, "remote-0")).toEqual({ deletedChats: [chat.id, fork.id] });
+    expect(existsSync(chat.startFolder)).toBe(false);
+    expect(instance.sessions.list().map((session) => session.id)).toEqual([other.id]);
+    expect((await instance.clones(projectId)).map((clone) => clone.name)).toEqual(["remote-1"]);
+    expect((await instance.newClone(projectId)).name).toBe("remote-0");
+  });
+
+  test("a clone where Eva works now, or that does not exist, stays", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    const running = instance.sessions.send(chat.id, "long task");
+    await waitFor(() => engine.requests.length >= 1);
+    expect(await instance.deleteClone(projectId, "remote-0").catch((caught: unknown) => caught)).toMatchObject({
+      code: "session_busy",
+    });
+    expect(existsSync(chat.startFolder)).toBe(true);
+    expect(instance.sessions.list().map((session) => session.id)).toEqual([chat.id]);
+    release();
+    await running;
+    expect(await instance.deleteClone(projectId, "remote-9").catch((caught: unknown) => caught)).toMatchObject({
+      code: "project_not_found",
+    });
+    expect(await instance.deleteClone(projectId, "../remote-0").catch((caught: unknown) => caught)).toMatchObject({
+      code: "project_not_found",
+    });
+  });
+
+  test("a clone that Eva pulls now stays", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    let pullStarted = false;
+    let release: () => void = () => undefined;
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command.includes("pull")) {
+          pullStarted = true;
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const instance = start(new FakeEngine(), {}, { runner });
+    const clone = await instance.newClone(projectId);
+    const pulling = instance.pullClone(projectId, clone.name);
+    await waitFor(() => pullStarted);
+    expect(await instance.deleteClone(projectId, clone.name).catch((caught: unknown) => caught)).toMatchObject({
+      code: "session_busy",
+    });
+    expect(existsSync(clone.path)).toBe(true);
+    release();
+    await pulling;
   });
 
   test("the person changes a project's details and its whole file, and the sweep commits them", async () => {
@@ -1494,7 +1581,6 @@ describe("Eva alerts", () => {
     // A tick with no waiting update never reports the old failure again, not even a day later.
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
-    await Bun.sleep(20);
     expect(alerts).toHaveLength(1);
     refuse = false;
     // The answer to a press still carries the old result while the new run starts.

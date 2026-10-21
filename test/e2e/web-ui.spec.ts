@@ -82,10 +82,26 @@ async function newCloneCard(page: Page): Promise<Locator> {
   // The clones load after the page opens, so wait for the cards or for the empty text first.
   await expect(cards.first().or(page.locator("main").getByText(/^No clones yet\./))).toBeVisible();
   const before = await cards.count();
+  const created = page.waitForResponse(
+    (response) => response.url().endsWith("/clones") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "New clone" }).click();
+  const name = ((await (await created).json()) as { name: string }).name;
   await expect(cards).toHaveCount(before + 1);
-  // The clones sort by number, so the new one is the last.
-  return cards.last();
+  // Not the last card: a new clone takes the first free number, which a deleted clone leaves.
+  return page.getByRole("region", { name: `Clone ${name}` });
+}
+
+/**
+ * Right-clicks an element after it scrolls into view. A scroll event comes a frame later, and a scroll
+ * closes an open context menu, so the click waits for that frame.
+ */
+async function rightClickInView(locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+  await locator.click({ button: "right" });
 }
 
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
@@ -797,6 +813,34 @@ test("a clone card lists all its chats, and a new chat starts in a clone that ha
   await expect(sameCard.locator(".clone-chat")).toHaveCount(2);
   await sameCard.locator(".clone-chat").last().click();
   await expect(page.locator(".main-header .sub")).toContainText(cloneName);
+});
+
+test("a right click on a clone deletes it, after a strong warning about its chats", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  const card = await newCloneCard(page);
+  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
+  await card.getByRole("button", { name: "New chat here" }).click();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await page.getByRole("button", { name: "Example app", exact: true }).click();
+  const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
+  await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
+
+  await rightClickInView(sameCard.locator(".clone-head"));
+  await page.getByRole("menuitem", { name: "Delete clone" }).click();
+  const dialog = page.getByRole("dialog", { name: `Delete the clone ${cloneName}` });
+  await expect(dialog.locator(".callout.danger")).toContainText("1 chat");
+  const remove = dialog.getByRole("button", { name: "Delete the clone and its chats" });
+  await expect(remove).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(sameCard).toBeVisible();
+
+  await rightClickInView(sameCard.locator(".clone-head"));
+  await page.getByRole("menuitem", { name: "Delete clone" }).click();
+  await dialog.getByLabel(/I understand/).check();
+  await remove.click();
+  await expect(dialog).toBeHidden();
+  await expect(sameCard).toBeHidden();
 });
 
 test("a deleted project chat shows its project page again", async ({ page }) => {

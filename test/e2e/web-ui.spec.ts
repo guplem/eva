@@ -1505,15 +1505,32 @@ test("the main navigation opens each destination at its own address, and the bac
   await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
-test("the Chats badge counts the approvals that wait, and the dot says that Eva is online", async ({ page }) => {
+test("the Chats badge counts the approvals that wait, and Settings sits at the foot of the rail", async ({ page }) => {
   await page.route("**/api/approvals", (route) =>
     route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
   );
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("button", { name: "Chats" })).toContainText("1 approval waits");
+  // Settings stays the last destination, so the phone tab bar keeps its order.
+  await expect(nav.getByRole("button").last()).toHaveAccessibleName(/^Settings/);
   if (test.info().project.name === "desktop") {
-    await expect(nav.getByRole("img", { name: "Eva is online" })).toBeVisible();
+    const rail = await nav.boundingBox();
+    const settings = await nav.getByRole("button", { name: /^Settings/ }).boundingBox();
+    const schedules = await nav.getByRole("button", { name: "Schedules" }).boundingBox();
+    if (rail === null || settings === null || schedules === null) throw new Error("The rail did not show.");
+    // A gap splits Settings from the other destinations, and the rail ends with it.
+    expect(settings.y - (schedules.y + schedules.height)).toBeGreaterThan(schedules.height);
+    expect(rail.y + rail.height - (settings.y + settings.height)).toBeLessThan(40);
+  }
+});
+
+test("the Settings home page shows Eva's status", async ({ page }) => {
+  await logIn(page);
+  await openSettings(page);
+  const card = page.getByRole("region", { name: "Status" });
+  for (const label of ["Version", "This machine", "Chats", "Vault sync", "Phone access", "Problems"]) {
+    await expect(card.getByRole("term").filter({ hasText: label })).toBeVisible();
   }
 });
 

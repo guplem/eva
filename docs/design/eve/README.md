@@ -134,7 +134,7 @@ Spacing uses steps of 4 px. Common gaps are 8, 10, 12, 16 and 20 px. Page paddin
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then Chats, Projects, Schedules and Settings. A count badge in `--warn` shows on Chats when an approval waits. A green dot at the bottom shows that the hub is online.
+- **Nav rail:** EVE's visor at the top, then Chats, Projects, Files and Schedules. Settings sits apart, at the bottom. A count badge in `--warn` shows on Chats when an approval waits. The visor and the "Reconnecting…" banner show when Eva is offline.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column of at most 760 px, and the composer.
 - **Inspector:** the details of the selected item, such as the chat details.

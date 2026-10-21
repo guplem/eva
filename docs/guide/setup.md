@@ -94,7 +94,7 @@ In the terminal, setup first logs in to GitHub:
 
 On the page, open **Connect GitHub** and press **Log in with GitHub**. Enter the code on GitHub. Then pick or create the notebook in **Set up your vault**. To use a token instead, press **Paste a token instead**.
 
-The GitHub login lets Eva and her agents read and write all your repositories, private ones too. Eva clones your projects with it. Your agents use it to push their work and open pull requests. Eva keeps it on this computer. To remove it, press **Remove** next to the GitHub token: Eva logs the agents out too. Then revoke it on GitHub under **Settings → Applications**. A login from before your agents shared it lacks some permissions: press **Log in with GitHub** once more.
+The GitHub login lets Eva and her agents read and write all your repositories, private ones too. Eva clones your projects with it. Your agents use it to push their work and open pull requests. Eva keeps it on this computer. To remove it, press **Log out** on the GitHub card: Eva logs the agents out too. Then revoke it on GitHub under **Settings → Applications**. A login from before your agents shared it lacks some permissions: press **Log in with GitHub** once more.
 
 To give Eva only some repositories, paste a token at the GitHub question instead. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Pick your notebook and your projects under **Repository access**, choose **Read and write** under **Permissions → Contents** and **Permissions → Pull requests**, and generate the token.
 

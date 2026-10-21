@@ -56,6 +56,8 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
 
   /** Eva has no account: a log out ends only this browser's login, and the others stay. */
   const logOutHere = async (): Promise<void> => {
+    // A phone then needs a new code, so a mistaken tap costs a round trip to the owner.
+    if (!window.confirm("Log out of this browser? To open Eva here again, you need the token or a new code.")) return;
     try {
       await api.logout();
       onLoggedOut();

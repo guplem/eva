@@ -79,7 +79,7 @@ import {
   type ProjectWorkInput,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
-import { browseVault, type BrowsedPath } from "./files/file-browser.ts";
+import { browseVault, saveVaultFile, type BrowsedPath } from "./files/file-browser.ts";
 import { cleanScratch } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
@@ -975,10 +975,19 @@ export class Eva {
 
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
+    return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
+  }
+
+  /** Replaces the text of a vault file from the file explorer. The idle sweep commits the change. */
+  saveFile(path: string, version: string, text: string): BrowsedPath {
+    return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
+  }
+
+  private browsedVault(): string {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null)
       throw new EvaError("vault_not_found", "Eva needs your vault. Finish the setup in Settings, on Eva's page.");
-    return browseVault(vaultPath, path, (text) => this.redactor.redact(text));
+    return vaultPath;
   }
 
   /** A project's `AGENTS.md` with its version, for the details editor. */

@@ -32,7 +32,7 @@ import {
   withTasks,
   type LiveState,
 } from "./live-state.ts";
-import { LoginView } from "./LoginView.tsx";
+import { AccountRefusedView, LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
@@ -65,6 +65,8 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  /** Why this Tailscale account cannot open this Eva, or null (#322). */
+  const [refusal, setRefusal] = useState<string | null>(null);
   /** The server sends "settled" before its answer, so the notice keeps this request until the answer comes. */
   const [answeringDevice, setAnsweringDevice] = useState<DeviceLoginRequest | null>(null);
   const answering = useRef(false);
@@ -165,6 +167,7 @@ function EvaApp(): ReactElement {
       setAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) setAuthenticated(false);
+      if (error instanceof ApiError && error.code === "tailscale_account_refused") setRefusal(error.message);
     }
   }, []);
 
@@ -339,6 +342,7 @@ function EvaApp(): ReactElement {
     return () => clearTimeout(timer);
   }, [allowedDevice]);
 
+  if (refusal !== null) return <AccountRefusedView reason={refusal} />;
   if (authenticated === null)
     return (
       <AppSkeleton

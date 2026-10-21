@@ -132,6 +132,18 @@ async function expectBackgroundTasks(page: Page): Promise<void> {
   await expect(dialog).toHaveCount(0);
 }
 
+test("a Tailscale account that this Eva does not let in sees why, instead of a page that waits (#322)", async ({
+  page,
+}) => {
+  const reason = "This Eva does not let in the Tailscale account partner@example.com. Run `eva setup`.";
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 403, json: { error: reason, code: "tailscale_account_refused" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "This account cannot open this Eva" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(reason);
+});
+
 test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/Token/).fill("wrong");

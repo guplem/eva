@@ -288,7 +288,15 @@ function guardSite(request: Request, options: LocalApiOptions): Response | null 
   // `tailscale serve` adds the identity header. A remote request without one is a tagged device or no Tailscale at all.
   const remote = !isLocalRequest(request);
   if (allowed.length > 0 && (identity === null ? remote : !allowed.includes(identity))) {
-    return json({ error: "This Tailscale identity is not allowed." }, 403);
+    // The page loads before this check, so its first read must say why, or it waits for ever (#322).
+    const account = identity ?? "with no account name";
+    return json(
+      {
+        error: `This Eva does not let in the Tailscale account ${account}. On Eva's computer, run \`eva setup\` for this Eva, and choose this account at the Tailscale account question. Then reload this page.`,
+        code: "tailscale_account_refused",
+      },
+      403,
+    );
   }
   return null;
 }

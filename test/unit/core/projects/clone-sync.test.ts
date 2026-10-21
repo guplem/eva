@@ -1,0 +1,147 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  commitAndPush,
+  describeChanges,
+  fallbackCommitMessage,
+  fetchClone,
+  pullClone,
+  readSyncState,
+} from "../../../../src/core/projects/clone-sync.ts";
+import { CloneOriginStore, createClone, type Clone } from "../../../../src/core/projects/clones.ts";
+import { isEvaError } from "../../../../src/shared/errors.ts";
+import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+
+let sandbox: GitSandbox;
+let clone: Clone;
+
+beforeEach(async () => {
+  sandbox = createGitSandbox();
+  const project = join(sandbox.root, "vault", "Projects", "2025-03-02-1015-example-app");
+  mkdirSync(project, { recursive: true });
+  clone = await createClone({
+    projectPath: project,
+    repositoryUrl: sandbox.remote,
+    runner: systemProcessRunner,
+    environment: gitEnvironment,
+    origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+  });
+}, gitHookTimeoutMs);
+afterEach(() => {
+  sandbox.dispose();
+}, gitHookTimeoutMs);
+
+/** A commit on the remote that the clone does not have yet. */
+function commitElsewhere(file: string): void {
+  const other = sandbox.clone(`other-${file}`);
+  sandbox.write(other, file, "from elsewhere\n");
+  sandbox.git(other, "add", "-A");
+  sandbox.git(other, "commit", "-q", "-m", `add ${file}`);
+  sandbox.git(other, "push", "-q", "origin", "main");
+}
+
+describe("sync state", () => {
+  test("a fresh clone is level with its upstream", async () => {
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
+  });
+
+  test("a fetch shows the commits of the remote that the clone lacks", async () => {
+    commitElsewhere("remote.txt");
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
+    expect(await fetchClone(clone, systemProcessRunner, gitEnvironment)).toBeNull();
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 1 });
+  });
+
+  test("a branch with no upstream has no counts", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: null, behind: null });
+  });
+
+  test("a failed fetch gives the reason", async () => {
+    sandbox.git(clone.path, "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
+    expect(await fetchClone(clone, systemProcessRunner, gitEnvironment)).not.toBeNull();
+  });
+});
+
+describe("pull", () => {
+  test("a pull brings the remote commits", async () => {
+    commitElsewhere("remote.txt");
+    await pullClone(clone, systemProcessRunner, gitEnvironment);
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("add remote.txt");
+  });
+
+  test("a pull that cannot fast-forward fails with git's reason and changes nothing", async () => {
+    commitElsewhere("remote.txt");
+    sandbox.write(clone.path, "local.txt", "local\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "local work");
+    const failure = await pullClone(clone, systemProcessRunner, gitEnvironment).catch((error: unknown) => error);
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("local work");
+  });
+});
+
+describe("commit and push", () => {
+  test("commits every change with the message, and pushes it", async () => {
+    sandbox.write(clone.path, "new.txt", "new\n");
+    writeFileSync(join(clone.path, "AGENTS.md"), "# Changed\n");
+    await commitAndPush(clone, "Add the new file", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(clone.path, "status", "--porcelain")).toBe("");
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Add the new file");
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
+  });
+
+  test("pushes commits that are already there, with no new commit", async () => {
+    sandbox.write(clone.path, "new.txt", "new\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "agent commit");
+    await commitAndPush(clone, "unused", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("agent commit");
+  });
+
+  test("a branch with no upstream gets one on the first push", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
+    sandbox.write(clone.path, "new.txt", "new\n");
+    await commitAndPush(clone, "Start the feature", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "feature")).toBe("Start the feature");
+    expect(await readSyncState(clone, systemProcessRunner, gitEnvironment)).toEqual({ ahead: 0, behind: 0 });
+  });
+
+  test("with nothing to push, it says so", async () => {
+    const failure = await commitAndPush(clone, "nothing", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+  });
+
+  test("a push that the remote refuses keeps the commit, and gives the reason", async () => {
+    commitElsewhere("remote.txt");
+    sandbox.write(clone.path, "local.txt", "local\n");
+    const failure = await commitAndPush(clone, "Local work", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("Local work");
+  });
+});
+
+describe("commit message", () => {
+  test("the description of the changes names each file and holds the diff", async () => {
+    sandbox.write(clone.path, "new.txt", "brand new\n");
+    writeFileSync(join(clone.path, "AGENTS.md"), "# Changed\n");
+    const changes = await describeChanges(clone, systemProcessRunner, gitEnvironment);
+    expect(changes.files).toEqual(["AGENTS.md", "new.txt"]);
+    expect(changes.diff).toContain("+# Changed");
+    expect(changes.diff).toContain("New file new.txt:\nbrand new");
+    expect(changes.recentSubjects).toEqual(["seed"]);
+  });
+
+  test("the fallback message names the file, or counts the files", () => {
+    expect(fallbackCommitMessage(["src/app.ts"])).toBe("Update app.ts");
+    expect(fallbackCommitMessage(["a.ts", "b.ts", "c.ts"])).toBe("Update 3 files");
+    expect(fallbackCommitMessage([])).toBe("Update files");
+  });
+});

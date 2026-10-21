@@ -952,6 +952,45 @@ describe("web routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("a clone fetches, pulls and pushes, and a model writes the message of an empty note", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const vault = join(sandbox.root, "vault");
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    const other = sandbox.clone("other");
+    sandbox.write(other, "remote.txt", "remote\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "remote work");
+    sandbox.git(other, "push", "-q", "origin", "main");
+
+    const fetched = await json<{ clones: { behind: number }[]; problems: string[] }>(
+      await call(`${path}/clones/fetch`, { method: "POST", body: {} }),
+    );
+    expect(fetched).toMatchObject({ clones: [{ behind: 1 }], problems: [] });
+    const pulled = await json<{ clones: { behind: number }[]; problems: string[] }>(
+      await call(`${path}/clones/pull`, { method: "POST", body: {} }),
+    );
+    expect(pulled).toMatchObject({ clones: [{ behind: 0 }], problems: [] });
+
+    sandbox.write(clonePath, "README.md", "# Example\n");
+    turnScript = (request) => FakeEngine.answer(request, "```\nAdd the readme\n```");
+    const pushed = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "  " } });
+    expect(await json<{ message: string }>(pushed)).toEqual({ message: "Add the readme" });
+    expect(engine.requests.at(-1)?.prompt).toContain("README.md");
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Add the readme");
+
+    const nothing = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "x" } });
+    expect(nothing.status).toBe(409);
+    expect((await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} })).status).toBe(200);
+    expect((await call(`${path}/clones/missing-0/pull`, { method: "POST", body: {} })).status).toBe(404);
+  });
+
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";
     const read = await json<{ text: string; version: string }>(await call(`${path}/file`));

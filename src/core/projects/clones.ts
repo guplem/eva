@@ -111,7 +111,15 @@ export interface CloneBranch extends Clone {
   readonly pullRequest: number | null;
 }
 
-export interface CloneDetails extends CloneBranch {
+/** Null counts when the branch has no upstream or git fails. */
+export interface SyncState {
+  /** Local commits that the upstream lacks. */
+  readonly ahead: number | null;
+  /** Upstream commits that the clone lacks, as of the last fetch. */
+  readonly behind: number | null;
+}
+
+export interface CloneDetails extends CloneBranch, SyncState {
   /** The files that `git status` lists: changed, staged or new. Null when git fails. */
   readonly changes: number | null;
 }

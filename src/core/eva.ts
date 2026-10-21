@@ -76,6 +76,7 @@ import { ProjectPreparer } from "./modes/project-mode.ts";
 import { CloneOriginStore, readOriginUrl, TrustStore, type Clone, type CloneDetails } from "./projects/clones.ts";
 import {
   ProjectWork,
+  type CloneFetch,
   type NewChatInput,
   type NewProjectChatInput,
   type ProjectWorkInput,
@@ -494,6 +495,7 @@ export class Eva {
       inBackground: (what, task) => {
         this.inBackground(what, task);
       },
+      modelCalls: this.modelCalls,
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -1040,6 +1042,26 @@ export class Eva {
   /** The clones of a project, with their branch and pull request. */
   clones(projectId: string): Promise<CloneDetails[]> {
     return this.projectWork.clones(projectId);
+  }
+
+  /** Fetches each clone of a project, for the counts of commits to pull. */
+  fetchClones(projectId: string): Promise<CloneFetch> {
+    return this.projectWork.fetchClones(projectId);
+  }
+
+  /** A fast-forward pull of one clone. */
+  pullClone(projectId: string, cloneName: string): Promise<void> {
+    return this.projectWork.pullClone(projectId, cloneName);
+  }
+
+  /** Pulls each clone of a project that is behind its remote. */
+  pullClones(projectId: string): Promise<CloneFetch> {
+    return this.projectWork.pullClones(projectId);
+  }
+
+  /** Commits every change of a clone and pushes it. An empty note lets a model write the message. */
+  pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
+    return this.projectWork.pushClone(projectId, cloneName, note);
   }
 
   /** Clones a project's repository into its next free folder (the "New clone" button). */

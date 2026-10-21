@@ -77,6 +77,7 @@ const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const newCloneSchema = z.object({ repositoryUrl: z.string().min(1).optional() });
+const pushSchema = z.object({ note: z.string().max(10_000).optional() });
 const updateSchema = z.object({
   version: z
     .string()
@@ -529,6 +530,28 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   ) {
     const { version, ...details } = projectDetailsSchema.parse(await request.json());
     return json(eva.saveProjectDetails(decodeURIComponent(parts[2]), version, details));
+  }
+  if (
+    method === "POST" &&
+    parts[0] === "api" &&
+    parts[1] === "projects" &&
+    parts[2] !== undefined &&
+    parts[3] === "clones" &&
+    parts[4] !== undefined
+  ) {
+    const projectId = decodeURIComponent(parts[2]);
+    // A clone name always ends in `-<n>`, so it never equals "fetch" or "pull".
+    if (parts.length === 5 && parts[4] === "fetch") return json(await eva.fetchClones(projectId));
+    if (parts.length === 5 && parts[4] === "pull") return json(await eva.pullClones(projectId));
+    const cloneName = decodeURIComponent(parts[4]);
+    if (parts.length === 6 && parts[5] === "pull") {
+      await eva.pullClone(projectId, cloneName);
+      return json({ ok: true });
+    }
+    if (parts.length === 6 && parts[5] === "push") {
+      const { note } = pushSchema.parse(await request.json());
+      return json(await eva.pushClone(projectId, cloneName, note ?? ""));
+    }
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2] !== undefined && parts[3] === "clones") {
     const projectId = decodeURIComponent(parts[2]);

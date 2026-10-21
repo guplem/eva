@@ -154,7 +154,7 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "appearance",
     section: "personalize",
     title: "Appearance",
-    words: "theme dark light density compact colour color seed",
+    words: "theme dark light density compact colour color seed files view columns folder finder explorer",
   },
   {
     item: "assistant-rules",

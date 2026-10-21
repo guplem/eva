@@ -115,6 +115,17 @@
   display: none;
 }
 
+/* One folder: the open folder or file fills the row, as in Windows Explorer. The path above leads back. */
+:root[data-files-view="single"] .files-parent,
+:root[data-files-view="single"] .files-placeholder,
+:root[data-files-view="single"] .files-large-button {
+  display: none;
+}
+
+:root[data-files-view="single"] .files-pane {
+  flex: 1 1 auto;
+}
+
 .files-list {
   list-style: none;
   margin: 0;

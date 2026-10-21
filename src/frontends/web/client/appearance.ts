@@ -1,15 +1,18 @@
 /**
- * Each browser keeps its own theme, density and seed colour in `localStorage`. A phone and a desktop
+ * Each browser keeps its own theme, density, seed colour and files view in `localStorage`. A phone and a desktop
  * need different density, so the vault keeps none of them.
  */
 export type Theme = "system" | "light" | "dark";
 export type Density = "comfortable" | "compact";
+/** "columns" shows each folder of the path, as a Finder does. "single" shows one folder at a time, as Windows does. */
+export type FilesView = "columns" | "single";
 
 export interface Appearance {
   readonly theme: Theme;
   readonly density: Density;
   /** The colour that every other colour of the page comes from, as `#rrggbb`. */
   readonly seed: string;
+  readonly filesView: FilesView;
 }
 
 export interface Oklch {
@@ -41,7 +44,12 @@ export const seedColours: readonly { readonly name: string; readonly hex: string
 ];
 
 const storageKey = "eva.appearance";
-const defaultAppearance: Appearance = { theme: "system", density: "comfortable", seed: defaultSeed };
+const defaultAppearance: Appearance = {
+  theme: "system",
+  density: "comfortable",
+  seed: defaultSeed,
+  filesView: "columns",
+};
 
 /** A private window or blocked storage throws or holds nothing: the page then uses the defaults. */
 export function readAppearance(): Appearance {
@@ -52,6 +60,7 @@ export function readAppearance(): Appearance {
       theme: stored["theme"] === "light" || stored["theme"] === "dark" ? stored["theme"] : defaultAppearance.theme,
       density: stored["density"] === "compact" ? "compact" : defaultAppearance.density,
       seed: typeof seed === "string" && /^#[0-9a-f]{6}$/i.test(seed) ? seed.toLowerCase() : defaultAppearance.seed,
+      filesView: stored["filesView"] === "single" ? "single" : defaultAppearance.filesView,
     };
   } catch {
     return defaultAppearance;
@@ -73,6 +82,7 @@ export function applyAppearance(appearance: Appearance): void {
   if (appearance.theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", appearance.theme);
   root.setAttribute("data-density", appearance.density);
+  root.setAttribute("data-files-view", appearance.filesView);
   for (const [name, value] of Object.entries(seedVariables(appearance.seed))) root.style.setProperty(name, value);
   // The phone's browser bar takes its colour from these tags, so they follow the theme and the seed too.
   const colours = themeColours(appearance.seed);

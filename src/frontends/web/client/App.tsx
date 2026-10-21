@@ -399,6 +399,12 @@ function EvaApp(): ReactElement {
     await refreshProblems();
   };
   const card = cards[0];
+  // A key of `live.steps` means that a turn runs. A session that the list does not know yet counts as Assistant mode.
+  const runningTurns = { assistant: 0, project: 0 };
+  for (const sessionId of Object.keys(live.steps)) {
+    const mode = sessions.find((session) => session.id === sessionId)?.mode;
+    runningTurns[mode === "project" ? "project" : "assistant"] += 1;
+  }
 
   const runProblemAction = (action: ProblemAction): void => {
     if (action === "pick_version") setConflictsOpen(true);
@@ -429,6 +435,10 @@ function EvaApp(): ReactElement {
         approvals={approvals.length}
         setupMissing={setupMissing}
         isConnected={isConnected}
+        problems={problems.length}
+        chatBlocked={chatBlocker !== null}
+        assistantTurns={runningTurns.assistant}
+        projectTurns={runningTurns.project}
       />
       <div className="app-body">
         {/* The chat views put the notices in their main area, beside the list. */}

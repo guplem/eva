@@ -1679,6 +1679,25 @@ test("the Chats badge counts the approvals that wait, and Settings sits at the f
   }
 });
 
+test("the nav visor names the approval that waits, and a tap plays a face that ends", async ({ page }) => {
+  // A phone hides the visor: its bottom bar has no room for it.
+  test.skip(test.info().project.name !== "desktop", "Only a computer shows the nav visor.");
+  await page.route("**/api/approvals", (route) =>
+    route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),
+  );
+  await logIn(page);
+  const visorButton = page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: "1 approval waits for you" });
+  const visor = visorButton.locator(".mk");
+  await expect(visor).toHaveClass(/e-firm/);
+  await visorButton.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
+  await visorButton.click();
+  await expect(visor).not.toHaveClass(/e-firm/);
+  await expect(visor).toHaveClass(/e-firm/, { timeout: 5000 });
+});
+
 test("the Settings home page shows Eva's status", async ({ page }) => {
   await logIn(page);
   await openSettings(page);

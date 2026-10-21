@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { favoritesPath, readFavorites, setFavorite } from "../../../../src/core/files/vault-favorites.ts";
+import {
+  favoritesPath,
+  moveFavorites,
+  readFavorites,
+  setFavorite,
+} from "../../../../src/core/files/vault-favorites.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let folder: string;
@@ -50,6 +55,27 @@ describe("readFavorites", () => {
   test("a path out of the vault or into git data counts as missing, so it never opens", () => {
     write(".eva/favorites.json", JSON.stringify({ version: 1, paths: ["../outside", ".git/config"] }));
     expect(readFavorites(vault).map((favorite) => favorite.kind)).toEqual(["missing", "missing"]);
+  });
+});
+
+describe("moveFavorites", () => {
+  test("a renamed favorite, and each favorite inside a renamed folder, keeps its place under the new path", () => {
+    write(
+      ".eva/favorites.json",
+      JSON.stringify({ version: 1, paths: ["Notes/list.md", "Projects", "Notes", "Notes-old/x.md"] }),
+    );
+    moveFavorites(vault, "Notes", "Ideas");
+    expect(readFavorites(vault).map((favorite) => favorite.path)).toEqual([
+      "Ideas/list.md",
+      "Projects",
+      "Ideas",
+      "Notes-old/x.md",
+    ]);
+  });
+
+  test("a rename of a path that is no favorite leaves the file alone", () => {
+    moveFavorites(vault, "Notes/list.md", "Notes/shopping.md");
+    expect(existsSync(favoritesPath(vault))).toBe(false);
   });
 });
 

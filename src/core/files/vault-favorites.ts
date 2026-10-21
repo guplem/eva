@@ -47,12 +47,28 @@ export function setFavorite(vaultPath: string, requested: string, favorite: bool
     if (path === "") throw new EvaError("file_not_found", "The vault is always at the top of the Files page.");
   }
   const next = favorite ? (stored.includes(path) ? stored : [...stored, path]) : stored.filter((kept) => kept !== path);
-  if (next.length !== stored.length) {
-    assertVaultWritable(vaultPath);
-    const file: StoredFavorites = { version: favoritesFormatVersion, paths: next };
-    writeFileAtomic(favoritesPath(vaultPath), `${JSON.stringify(file, null, 2)}\n`);
-  }
+  if (next.length !== stored.length) writeFavorites(vaultPath, next);
   return next.map((kept) => describe(vaultPath, kept));
+}
+
+/**
+ * Points the favorites at the new path after a rename: the renamed path itself, and each path
+ * inside a renamed folder. Without it, a rename would turn each such favorite into a missing one.
+ */
+export function moveFavorites(vaultPath: string, from: string, to: string): void {
+  const stored = storedPaths(vaultPath);
+  const moved = stored.map((path) => {
+    if (path === from) return to;
+    return path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : path;
+  });
+  if (moved.every((path, index) => path === stored[index])) return;
+  writeFavorites(vaultPath, [...new Set(moved)]);
+}
+
+function writeFavorites(vaultPath: string, paths: readonly string[]): void {
+  assertVaultWritable(vaultPath);
+  const file: StoredFavorites = { version: favoritesFormatVersion, paths };
+  writeFileAtomic(favoritesPath(vaultPath), `${JSON.stringify(file, null, 2)}\n`);
 }
 
 /** The stored paths, tidied, without doubles. A bad entry is skipped. */

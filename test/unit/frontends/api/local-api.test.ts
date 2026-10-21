@@ -1288,6 +1288,23 @@ describe("web routes", () => {
     expect((await call("/api/files/favorites", { method: "PUT", body: { path: "Projects" } })).status).toBe(400);
   });
 
+  test("files: a favorite follows its folder when the person renames the folder (issues 343 and 349)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Notes"));
+    writeFileSync(join(vaultPath, "Notes", "list.md"), "# Shopping\n");
+    try {
+      await call("/api/files/favorites", { method: "PUT", body: { path: "Notes/list.md", favorite: true } });
+      await call("/api/files/rename", { method: "POST", body: { path: "Notes", name: "Ideas" } });
+      expect(await json(await call("/api/files/favorites"))).toEqual([
+        { path: "Ideas/list.md", name: "list.md", kind: "file" },
+      ]);
+      await call("/api/files/favorites", { method: "PUT", body: { path: "Ideas/list.md", favorite: false } });
+    } finally {
+      rmSync(join(vaultPath, "Notes"), { recursive: true, force: true });
+      rmSync(join(vaultPath, "Ideas"), { recursive: true, force: true });
+    }
+  });
+
   test("files: a rename answers the new path, and a taken name answers file_not_writable (issue 343)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const renamed = await call("/api/files/rename", { method: "POST", body: { path: "AGENTS.md", name: "README.md" } });

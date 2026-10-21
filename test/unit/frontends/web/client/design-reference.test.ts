@@ -8,6 +8,7 @@ import {
   colourGroups,
   componentSamples,
   iconUses,
+  typeStyles,
   visorSizes,
 } from "../../../../../src/frontends/web/client/design-reference.ts";
 
@@ -21,6 +22,13 @@ describe("the design reference", () => {
   test("every colour that it shows is a token of the stylesheet", () => {
     const tokens = colourGroups.flatMap((group) => group.tokens.map((token) => token.name));
     expect(tokens.length).toBeGreaterThan(10);
+    for (const token of tokens) expect(styles, token).toContain(`${token}:`);
+    expect(new Set(tokens).size).toBe(tokens.length);
+  });
+
+  test("every text style that it shows is a token of the stylesheet", () => {
+    const tokens = typeStyles.map((style) => style.name);
+    for (const token of ["--font", "--mono", "--text-xs", "--text-xl"]) expect(tokens).toContain(token);
     for (const token of tokens) expect(styles, token).toContain(`${token}:`);
     expect(new Set(tokens).size).toBe(tokens.length);
   });

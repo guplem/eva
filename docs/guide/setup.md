@@ -130,6 +130,14 @@ Each Eva has a name, such as `ana` or `ana-1`, and her own notebook, bot, settin
 
 To make another Eva, run `eva setup` (the computer has Eva already, so skip the install command). Setup lists the Evas on this computer. Type a new name, and answer setup as for the first Eva. Setup suggests a free name, such as `ana-1` when `ana` exists.
 
+An Eva's page lets in the devices of one Tailscale account. For another person's Eva, that is their account:
+
+1. Invite the person to your Tailscale network, on the [Tailscale admin page](https://login.tailscale.com/admin/users). They sign in to the Tailscale app on their phone with their own account.
+2. In setup, at "Which account uses this Eva?", pick their account from the list. Enter keeps your own.
+3. They open their Eva's address, which ends with her own port, such as `:7421`.
+
+If their phone shows "This account cannot open this Eva", the page names the account and the command that lets it in: `eva --instance <name> settings set remoteAccess.allowedTailscaleIdentities '["<account>"]'`. Then restart that Eva.
+
 With more than one Eva, each command asks which Eva. To skip the question, name her: `eva --instance ana status`, or set `EVA_INSTANCE=ana` in the terminal.
 
 Each Eva lives in her own folder, `eva-<name>`, in `~/.config` on Linux or `%APPDATA%` on Windows. Her logins stay there, so two people never share a login or a subscription. Setup prints one command for each login that is missing: run it in another terminal while setup goes on.

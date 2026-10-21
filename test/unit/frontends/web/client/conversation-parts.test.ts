@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chipLock,
+  composerPlaceholder,
   elapsedText,
   engineLabel,
   foldSteps,
@@ -87,5 +88,15 @@ describe("shownPending", () => {
 
   test("shows nothing when nothing waits", () => {
     expect(shownPending(null, 0)).toBeNull();
+  });
+});
+
+describe("composerPlaceholder", () => {
+  test("addresses Eva in an Assistant chat", () => {
+    expect(composerPlaceholder(null)).toBe("Message Eva");
+  });
+
+  test("addresses the project in a project chat, because there the harness answers, not the assistant", () => {
+    expect(composerPlaceholder("Example App")).toBe("Message Example App");
   });
 });

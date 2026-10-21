@@ -2771,10 +2771,22 @@ test("Settings: the Versions card shows the shape of its list while it reads", a
   const card = page.getByRole("region", { name: "Versions" });
   await expect(card.getByRole("status")).toHaveText("Reading the versions…");
   await expect(card.locator(".skeleton-fact").first()).toBeVisible();
+  const skeletonRows = card.locator(".skeleton-fact");
+  const skeletonPitch = await rowPitch(skeletonRows.nth(0), skeletonRows.nth(1));
   answer();
   await expect(card.locator("dl.facts")).toBeVisible();
   await expect(card.locator(".skeleton")).toHaveCount(0);
+  // Eva and git have no button, so their rows have the plain height of a fact.
+  const names = card.locator("dl.facts dt");
+  expect(skeletonPitch).toBeCloseTo(await rowPitch(names.nth(0), names.nth(1)), 0);
 });
+
+/** The distance from the top of one row to the top of the next. */
+async function rowPitch(first: Locator, second: Locator): Promise<number> {
+  const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+  if (a === null || b === null) throw new Error("A row has no box.");
+  return b.y - a.y;
+}
 
 test("Settings: the Versions card installs a missing tool and shows the new version", async ({ page }) => {
   let installed = false;

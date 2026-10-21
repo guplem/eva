@@ -1,4 +1,7 @@
-/** The vault page: where the notes live and their repository, then how and when Eva syncs them. */
+/**
+ * The vault page: where the notes live and their repository, how and when Eva syncs them,
+ * and the other folders of this machine where Eva looks for projects.
+ */
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
@@ -18,6 +21,7 @@ export function VaultSection({ context }: { readonly context: SettingsContext })
     <>
       <VaultFolderCard context={context} />
       <VaultSyncCard context={context} />
+      <ProjectFoldersCard context={context} />
     </>
   );
 }
@@ -132,6 +136,39 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
         <SaveButton className="primary" disabled={sweepSeconds === savedSeconds} onSave={saveInterval}>
           Save the interval
         </SaveButton>
+      </div>
+    </Card>
+  );
+}
+
+/** The folders are paths on this machine, so they live in the machine's settings, not in the vault. */
+function ProjectFoldersCard({ context }: { readonly context: SettingsContext }): ReactElement {
+  const savedRoots = context.settings.config.projectRoots.join("\n");
+  const [projectRoots, setProjectRoots] = useState(savedRoots);
+
+  const save = async (): Promise<void> => {
+    await context.saveNow({
+      projectRoots: projectRoots
+        .split("\n")
+        .map((root) => root.trim())
+        .filter((root) => root.length > 0),
+    });
+  };
+
+  return (
+    <Card
+      item="project-folders"
+      title="Project folders"
+      description="Eva finds projects in your vault. She also looks in these folders on this machine."
+    >
+      <label className="field">
+        <span className="field-label">Extra project folders (one per line)</span>
+        <textarea value={projectRoots} onChange={(event) => setProjectRoots(event.target.value)} />
+      </label>
+      <div className="save-bar">
+        <button className="primary" disabled={projectRoots === savedRoots} onClick={() => void save()}>
+          Save the folders
+        </button>
       </div>
     </Card>
   );

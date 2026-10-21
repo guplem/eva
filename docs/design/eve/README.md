@@ -84,13 +84,13 @@ Semantic colours do not follow the seed:
 
 The Appearance setting offers 15 seeds, and a free colour input:
 
-| Name          | Seed      | Name  | Seed      | Name     | Seed      |
-| ------------- | --------- | ----- | --------- | -------- | --------- |
-| EVE (default) | `#2aa8ff` | Lime  | `#a3d82b` | Pink     | `#ff5ca8` |
-| Cyan          | `#11c5d9` | Sun   | `#f7c600` | Magenta  | `#d63bd9` |
-| Teal          | `#14b8a6` | Amber | `#ff9f1a` | Violet   | `#8b5cf6` |
-| Mint          | `#34d399` | Coral | `#ff6f59` | Indigo   | `#5468ff` |
-| Leaf          | `#4caf50` | Red   | `#e5484d` | Graphite | `#6b7a90` |
+| Name               | Seed      | Name  | Seed      | Name     | Seed      |
+| ------------------ | --------- | ----- | --------- | -------- | --------- |
+| EVE blue (default) | `#2aa8ff` | Lime  | `#a3d82b` | Pink     | `#ff5ca8` |
+| Cyan               | `#11c5d9` | Sun   | `#f7c600` | Magenta  | `#d63bd9` |
+| Teal               | `#14b8a6` | Amber | `#ff9f1a` | Violet   | `#8b5cf6` |
+| Mint               | `#34d399` | Coral | `#ff6f59` | Indigo   | `#5468ff` |
+| Leaf               | `#4caf50` | Red   | `#e5484d` | Graphite | `#6b7a90` |
 
 The seed is an appearance setting, as the theme and the density are. Store it per browser with them (`client/appearance.ts`).
 

@@ -3,7 +3,7 @@
  * such as subagents and background commands, and a way to fork it. A computer shows them in the
  * inspector column. A phone shows the same content in a bottom sheet from the chat header.
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
@@ -144,9 +144,39 @@ function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
   );
 }
 
+const panelStorageKey = "eva.chat-panel";
+
+/** The header's hide and show button controls the column with this id. */
+export const chatPanelId = "chat-panel";
+
+/**
+ * Whether a computer shows the inspector column. A person can hide it for a wider chat.
+ * Each browser keeps its own choice, as with the appearance. Blocked storage gives the default: shown.
+ */
+export function useChatPanelShown(): readonly [boolean, () => void] {
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem(panelStorageKey) !== "hidden";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = useCallback(() => {
+    setShown((current) => {
+      try {
+        localStorage.setItem(panelStorageKey, current ? "hidden" : "shown");
+      } catch {
+        // The choice still applies until the page reloads.
+      }
+      return !current;
+    });
+  }, []);
+  return [shown, toggle];
+}
+
 export function ChatPanel(props: ChatProps): ReactElement {
   return (
-    <aside className="chat-panel" aria-label="This chat">
+    <aside id={chatPanelId} className="chat-panel" aria-label="This chat">
       <h2>This chat</h2>
       <ChatDetails {...props} />
     </aside>

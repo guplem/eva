@@ -17,6 +17,7 @@ import { Icon, iconNames } from "./icons.tsx";
 import { FactsSkeleton, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { AppearanceCard } from "./PersonalizeSection.tsx";
 import { Card, ChoiceChips, CommandLine, StatusIcon, StatusPill, Steps } from "./SettingsParts.tsx";
+import { useContextMenu } from "./Menu.tsx";
 import { Toast } from "./Toast.tsx";
 import { faces } from "./visor-faces.ts";
 import { Visor } from "./Visor.tsx";
@@ -209,6 +210,8 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
           <span data-tooltip="A hint can also sit on plain text.">Rest the pointer here</span>
         </div>
       );
+    case "context-menu":
+      return <ContextMenuSample />;
     case "toasts":
       return <ToastSamples />;
     case "skeletons":
@@ -281,6 +284,32 @@ const toastSampleLabels: Readonly<Record<ToastSampleId, string>> = {
 };
 
 /** The real toasts, shown one at a time, so a person tests them on a phone too. */
+/** A list item with a context menu. A choice only shows its name, so the sample changes nothing. */
+function ContextMenuSample(): ReactElement {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const choose = (label: string) => (): void => setChosen(label);
+  const { props, menu } = useContextMenu(
+    [
+      { label: "Open", icon: "chat", onChoose: choose("Open") },
+      { label: "Rename", icon: "pen", onChoose: choose("Rename") },
+      { label: "Delete", icon: "trash", danger: true, onChoose: choose("Delete") },
+    ],
+    "Actions of the sample",
+  );
+  return (
+    <div className="design-stack">
+      <button className="list-item chat-item" {...props}>
+        <span className="chat-item-title">A chat in a list</span>
+        <span className="chat-item-preview">Right click here, or press and hold on a phone.</span>
+      </button>
+      {menu}
+      <span className="field-hint" role="status">
+        {chosen === null ? "No action chosen yet." : `You chose “${chosen}”.`}
+      </span>
+    </div>
+  );
+}
+
 function ToastSamples(): ReactElement {
   const [shown, setShown] = useState<ToastSampleId | null>(null);
   // Each press restarts the ring, also for the toast that shows now.

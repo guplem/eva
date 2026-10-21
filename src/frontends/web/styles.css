@@ -2790,11 +2790,8 @@ button.small {
   flex: none;
 }
 
-.more-menu {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  z-index: 5;
+/* The look of every menu. .more-menu and .context-menu give only its place. */
+.menu {
   min-width: 180px;
   display: flex;
   flex-direction: column;
@@ -2804,7 +2801,7 @@ button.small {
   box-shadow: var(--shadow);
 }
 
-.more-menu button {
+.menu button {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2814,13 +2811,34 @@ button.small {
   text-align: left;
 }
 
-.more-menu button:hover,
-.more-menu button:focus-visible {
+.menu button:hover,
+.menu button:focus-visible {
   background: var(--chip);
 }
 
-.more-menu button.danger {
+.menu button.danger {
   color: var(--bad);
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+}
+
+/* At the pointer, over the sidebar and the dialogs. The tooltip stays on top. */
+.context-menu {
+  position: fixed;
+  z-index: 35;
+  max-width: calc(100vw - 16px);
+}
+
+/* A long press opens Eva's menu, so a phone shows no callout and selects no text. */
+[data-context-menu] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The delete question takes a row of its own under the title, as a schedule row asks. */

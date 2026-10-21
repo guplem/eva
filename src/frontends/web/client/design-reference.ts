@@ -83,6 +83,7 @@ export type ComponentId =
   | "section-card"
   | "progress"
   | "tooltip"
+  | "context-menu"
   | "toasts"
   | "skeletons"
   | "visor"
@@ -184,6 +185,13 @@ export const componentSamples: readonly ComponentSample[] = [
     classes: ["tooltip"],
     part: "TooltipLayer",
     use: "A short hint over an element. Give the element a data-tooltip attribute, never a title. A pointer that rests on it, or the keyboard focus, shows it.",
+  },
+  {
+    id: "context-menu",
+    title: "Context menu",
+    classes: ["menu", "context-menu"],
+    part: "useContextMenu",
+    use: "The quick actions of an item, on a right click or a long press. Give it only to an item with actions, so text keeps the browser's menu. The More actions button shows the same MenuList.",
   },
   {
     id: "toasts",

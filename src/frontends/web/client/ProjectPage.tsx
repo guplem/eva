@@ -5,6 +5,8 @@ import { Icon } from "./icons.tsx";
 import { changesPill, projectFolder, repositoryLabel, statusPill, type Pill } from "./project-format.ts";
 import { chatTime } from "./chat-list.ts";
 import { CardsSkeleton } from "./Loading.tsx";
+import { chatListItems, type ChatAction } from "./ChatHeader.tsx";
+import { useContextMenu } from "./Menu.tsx";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -19,7 +21,8 @@ interface ProjectPageProps {
   readonly onDetails: () => void;
   readonly onSetup: () => void;
   readonly onNewClone: () => void;
-  readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord) => void;
+  /** With an action, the chat opens and its header starts it, as the context menu asks. */
+  readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: (clone: CloneDetails) => void;
 }
 
@@ -95,7 +98,7 @@ export function ProjectPage({
                 chats={chatsOf(clone)}
                 needsYou={needsYou}
                 now={now}
-                onOpenChat={(chat) => onOpenChat(clone, chat)}
+                onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
                 onNewChat={() => onNewChat(clone)}
               />
             ))}
@@ -111,7 +114,7 @@ interface CloneCardProps {
   readonly chats: readonly SessionRecord[];
   readonly now: Date;
   readonly needsYou: (chat: SessionRecord) => boolean;
-  readonly onOpenChat: (chat: SessionRecord) => void;
+  readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: () => void;
 }
 
@@ -130,12 +133,13 @@ function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: Clone
         <StatusPill pill={changesPill(clone.changes)} />
       </div>
       {chats.map((chat) => (
-        <button key={chat.id} className="clone-chat" onClick={() => onOpenChat(chat)}>
-          <Icon name="chat" />
-          <span className="clone-chat-title">{chat.title}</span>
-          {needsYou(chat) && <span className="status-pill needs-you">Needs you</span>}
-          <span className="muted">{chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}</span>
-        </button>
+        <CloneChat
+          key={chat.id}
+          chat={chat}
+          time={chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}
+          needsYou={needsYou(chat)}
+          onOpen={(action) => onOpenChat(chat, action)}
+        />
       ))}
       <div>
         <button className="soft small" onClick={onNewChat}>
@@ -143,6 +147,35 @@ function CloneCard({ clone, chats, now, needsYou, onOpenChat, onNewChat }: Clone
         </button>
       </div>
     </section>
+  );
+}
+
+/** One chat of a clone. Its context menu has the same actions as a chat in the Assistant list. */
+function CloneChat({
+  chat,
+  time,
+  needsYou,
+  onOpen,
+}: {
+  readonly chat: SessionRecord;
+  readonly time: string;
+  readonly needsYou: boolean;
+  readonly onOpen: (action?: ChatAction) => void;
+}): ReactElement {
+  const { props, menu } = useContextMenu(
+    chatListItems(() => onOpen(), onOpen),
+    `Actions of “${chat.title}”`,
+  );
+  return (
+    <>
+      <button className="clone-chat" onClick={() => onOpen()} {...props}>
+        <Icon name="chat" />
+        <span className="clone-chat-title">{chat.title}</span>
+        {needsYou && <span className="status-pill needs-you">Needs you</span>}
+        <span className="muted">{time}</span>
+      </button>
+      {menu}
+    </>
   );
 }
 

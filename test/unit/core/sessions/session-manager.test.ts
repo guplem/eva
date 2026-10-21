@@ -1483,14 +1483,14 @@ describe("one turn per clone (issue 356)", () => {
 
   test("a waiting turn gets its whole time-out after the wait", async () => {
     const { engine, release } = heldEngine();
-    const manager = createManager(engine, { turnTimeoutMs: 100 });
+    const manager = createManager(engine, { turnTimeoutMs: 400 });
     const first = newProjectSession(manager, "/clones/example-app-0");
     const second = newProjectSession(manager, "/clones/example-app-0");
     const running = manager.send(first, "long");
     await waitUntil(() => engine.requests.length === 1);
     const waiting = manager.send(second, "short");
     // Longer than the time-out: a timer that started before the wait would stop the waiting turn.
-    await Bun.sleep(200);
+    await Bun.sleep(500);
     release();
     await Promise.all([running, waiting]);
     expect(manager.get(second).turns[0]?.failure).toBeNull();
@@ -1501,8 +1501,14 @@ describe("recent activity (issue 356)", () => {
   test("a chat counts as active after its creation, a message and a turn, until the time passes", async () => {
     let clock = new Date("2026-10-14T12:00:00Z");
     let nextId = 0;
+    let open: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (open = resolve));
+    const engine = new FakeEngine(async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "done");
+    });
     const manager = new SessionManager({
-      engines: [new FakeEngine()],
+      engines: [engine],
       store: new SessionStore(join(folder, "sessions.json"), { now: () => clock }),
       preparers: { assistant: preparer, project: preparer },
       now: () => clock,
@@ -1517,10 +1523,18 @@ describe("recent activity (issue 356)", () => {
     expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(true);
     clock = new Date("2026-10-14T12:10:01Z");
     expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(false);
-    await manager.send(sessionId, "hello");
+    const turn = manager.send(sessionId, "hello");
+    await waitUntil(() => engine.requests.length === 1);
+    // The turn has not ended, so only the message and the turn start explain this.
     clock = new Date("2026-10-14T12:19:00Z");
     expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(true);
-    clock = new Date("2026-10-14T12:20:02Z");
+    clock = new Date("2026-10-14T12:30:00Z");
+    open();
+    await turn;
+    // Only the turn end explains this.
+    clock = new Date("2026-10-14T12:39:00Z");
+    expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(true);
+    clock = new Date("2026-10-14T12:40:01Z");
     expect(manager.hadActivityWithin(sessionId, tenMinutes)).toBe(false);
     expect(manager.hadActivityWithin("missing", tenMinutes)).toBe(false);
   });

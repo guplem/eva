@@ -2156,8 +2156,8 @@ button.link-button {
 }
 
 .search-field:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--soft);
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 5px var(--soft);
 }
 
 .search-field input {
@@ -2168,7 +2168,9 @@ button.link-button {
   padding: 9px 0;
 }
 
-.search-field input:focus-visible {
+/* The pill around the field shows the focus. */
+.search-field input:focus {
+  outline: none;
   box-shadow: none;
 }
 

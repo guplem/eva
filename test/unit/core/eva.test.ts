@@ -929,7 +929,7 @@ describe("Eva", () => {
     expect(versions.tools.some((tool) => tool.program === "bun")).toBe(false);
   });
 
-  test("the latest tool versions come from the sources, and a found one waits an hour before Eva asks again", async () => {
+  test("the latest tool versions come from the sources; a found one waits an hour, and a failure 10 minutes", async () => {
     const asked: string[] = [];
     let piAnswers = false;
     const server = Bun.serve({
@@ -958,16 +958,21 @@ describe("Eva", () => {
         toolLatestSources: { npmBaseUrl: base, githubApiBaseUrl: base },
       });
       eva = instance;
-      expect(await instance.latestToolVersions()).toEqual([
+      // Two reads at once share one lookup of each tool.
+      const [first] = await Promise.all([instance.latestToolVersions(), instance.latestToolVersions()]);
+      expect(first).toEqual([
         { program: "claude", latest: "2.1.310" },
         { program: "pi", latest: null },
         { program: "uv", latest: null },
         { program: "gh", latest: null },
       ]);
       expect(asked).toHaveLength(4);
-      // A failure is not kept, so the next read asks again; a found version is kept.
+      // A failure waits 10 minutes; a found version waits an hour.
       asked.length = 0;
       piAnswers = true;
+      expect((await instance.latestToolVersions()).find((tool) => tool.program === "pi")?.latest).toBeNull();
+      expect(asked).toHaveLength(0);
+      clock = new Date(clock.getTime() + 11 * 60_000);
       const second = await instance.latestToolVersions();
       expect(second.find((tool) => tool.program === "pi")?.latest).toBe("1.4.0");
       expect(asked).not.toContain("/@anthropic-ai/claude-code/latest");
@@ -976,6 +981,12 @@ describe("Eva", () => {
       await instance.latestToolVersions();
       expect(asked).toContain("/@anthropic-ai/claude-code/latest");
       expect(asked).toContain("/repos/earendil-works/pi/releases/latest");
+      // Claude Code on the stable channel reads the stable tag.
+      mkdirSync(join(home, "engines", "claude"), { recursive: true });
+      writeFileSync(join(home, "engines", "claude", "settings.json"), JSON.stringify({ autoUpdatesChannel: "stable" }));
+      asked.length = 0;
+      await instance.latestToolVersions();
+      expect(asked).toContain("/@anthropic-ai/claude-code/stable");
     } finally {
       await server.stop(true);
     }

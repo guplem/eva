@@ -110,7 +110,12 @@ import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
 import type { GitHubRepository } from "./vault/github-repositories.ts";
 import { VaultSetup, type NewVaultAnswers, type VaultSetupResult } from "./vault/vault-setup.ts";
 import { readToolVersions, type ToolPlaces, type ToolVersion } from "./tool-versions.ts";
-import { defaultLatestVersionSources, readLatestVersion, type LatestVersionSources } from "./tool-latest.ts";
+import {
+  claudeUpdateChannel,
+  defaultLatestVersionSources,
+  readLatestVersion,
+  type LatestVersionSources,
+} from "./tool-latest.ts";
 import {
   findGh,
   ghTooOld,
@@ -248,6 +253,8 @@ const housekeepingIntervalMs = 24 * 60 * 60_000;
 /** The front end that asked for a restart answers first, then Eva stops. */
 const restartDelayMs = 500;
 const latestToolKeepMs = 60 * 60_000;
+/** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
+const latestToolFailureKeepMs = 10 * 60_000;
 const maxLogEntries = 100;
 
 export class Eva {
@@ -270,8 +277,8 @@ export class Eva {
   /** The gh logins and logouts, one after the other. */
   private githubCliChanges: Promise<void>;
   private toolInstallRuns: boolean;
-  /** The latest version of each tool that a source gave, and when. A failure is not kept. */
-  private readonly latestToolCache: Map<InstallableTool, { readonly version: string; readonly at: number }>;
+  /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
+  private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -804,18 +811,25 @@ export class Eva {
 
   /**
    * The newest published version of each tool that Eva installs. GitHub allows 60 requests an
-   * hour without a login, so a found version stays for an hour.
+   * hour without a login, so a found version stays for an hour, and a failure for 10 minutes.
    */
   async latestToolVersions(): Promise<LatestToolVersion[]> {
     const sources = this.options.toolLatestSources ?? defaultLatestVersionSources;
     const now = this.options.now().getTime();
+    const channel = claudeUpdateChannel(engineFolders(this.options.paths).claude);
     return Promise.all(
       installableTools.map(async (program) => {
-        const kept = this.latestToolCache.get(program);
-        if (kept !== undefined && now - kept.at < latestToolKeepMs) return { program, latest: kept.version };
-        const latest = await readLatestVersion(program, sources);
-        if (latest !== null) this.latestToolCache.set(program, { version: latest, at: now });
-        return { program, latest };
+        // A change of the channel gives another version, so each channel keeps its own.
+        const key = program === "claude" ? `claude:${channel}` : program;
+        const kept = this.latestToolCache.get(key);
+        if (kept !== undefined) {
+          const latest = await kept.lookup;
+          if (now - kept.at < (latest === null ? latestToolFailureKeepMs : latestToolKeepMs))
+            return { program, latest };
+        }
+        const lookup = readLatestVersion(program, sources, channel);
+        this.latestToolCache.set(key, { lookup, at: now });
+        return { program, latest: await lookup };
       }),
     );
   }

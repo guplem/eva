@@ -6,8 +6,8 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Icon } from "./icons.tsx";
 import { navVisorState, tapFace, tapFaceMs, type NavVisorInput } from "./nav-visor.ts";
 import { destinations, type Destination } from "./navigation.ts";
-import { Visor } from "./Visor.tsx";
-import type { Face } from "./visor-faces.ts";
+import { useSpecialDay, Visor } from "./Visor.tsx";
+import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
@@ -18,6 +18,9 @@ interface MainNavProps extends NavVisorInput {
 export function MainNav(props: MainNavProps): ReactElement {
   const { current, onOpen, approvals, setupMissing } = props;
   const visor = navVisorState(props);
+  // At rest, on a special day, the visor wears that day's eyes. Any state that informs comes first.
+  const day = useSpecialDay();
+  const festive = visor.face === stateFaces.idle ? (day?.id ?? null) : null;
   // A tap plays a playful face for a moment. Then the face of the main state comes back.
   const [tapped, setTapped] = useState<{ face: Face } | null>(null);
   useEffect(() => {
@@ -64,7 +67,7 @@ export function MainNav(props: MainNavProps): ReactElement {
         data-tooltip-side="right"
         onClick={() => setTapped((last) => ({ face: tapFace(Math.random, last?.face) }))}
       >
-        <Visor size={36} face={tapped?.face ?? visor.face} />
+        <Visor size={36} face={tapped?.face ?? visor.face} festive={tapped === null ? festive : null} />
       </button>
       {destinations.filter((destination) => destination.id !== "settings").map(button)}
       <span className="nav-spacer" />

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement, type ReactNode, type SyntheticE
 import { api, ApiError, type DeviceLoginRequest } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { loginFace } from "./login-faces.ts";
-import { Visor } from "./Visor.tsx";
+import { useSpecialDay, Visor } from "./Visor.tsx";
 
 /** The page asks again at this pace until the owner answers in Telegram, in the terminal or on another Eva page. */
 const devicePollMs = 2_000;
@@ -142,9 +142,10 @@ function DeviceCode({
   readonly onUseToken: () => void;
 }): ReactElement {
   const { code, approvers } = request;
+  const day = useSpecialDay();
   return (
     <LoginPage>
-      <Visor size={128} rotate />
+      <Visor size={128} rotate festive={day?.id ?? null} />
       <div className="login-title">
         <h1>Confirm this device</h1>
         <p>Allow this code from a place you already trust.</p>

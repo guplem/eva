@@ -7,12 +7,14 @@ import { useEffect, useId, useState, type ReactElement } from "react";
 import { api, type ChatBlocker } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { greeting, setupBlock, suggestions, type Suggestion } from "./new-chat.ts";
-import { Visor } from "./Visor.tsx";
+import { useSpecialDay, Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
 
 export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) => void }): ReactElement {
   // Null until the settings answer, so the cards do not jump from three to four.
   const [shown, setShown] = useState<readonly Suggestion[] | null>(null);
+  // On a special day, EVE shows that day's eyes and greeting instead.
+  const day = useSpecialDay();
 
   useEffect(() => {
     let current = true;
@@ -31,11 +33,11 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
 
   return (
     <div className="new-chat">
-      <Visor size={128} face={stateFaces.greeting} />
+      <Visor size={128} face={stateFaces.greeting} festive={day?.id ?? null} />
       <div>
         {/* The chat's title is the page's h1. */}
-        <h2>{greeting(new Date().getHours())}</h2>
-        <p>How can I help today?</p>
+        <h2>{day?.greeting ?? greeting(new Date().getHours())}</h2>
+        <p>{day?.line ?? "How can I help today?"}</p>
       </div>
       {shown !== null && (
         <div className="suggestions" role="group" aria-label="Suggestions">

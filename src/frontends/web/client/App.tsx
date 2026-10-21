@@ -47,6 +47,7 @@ import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
 import { AppSkeleton } from "./Loading.tsx";
+import { useFestiveTabIcon, useSpecialDay } from "./Visor.tsx";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -56,6 +57,8 @@ const blockedPollMs = 5_000;
 const allowedFaceMs = 1_500;
 
 export function App(): ReactElement {
+  const day = useSpecialDay();
+  useFestiveTabIcon(day?.id ?? null);
   return (
     <ErrorToastProvider>
       <EvaApp />

@@ -83,6 +83,7 @@ export type ComponentId =
   | "section-card"
   | "progress"
   | "tooltip"
+  | "toasts"
   | "skeletons"
   | "visor"
   | "icons";
@@ -183,6 +184,13 @@ export const componentSamples: readonly ComponentSample[] = [
     classes: ["tooltip"],
     part: "TooltipLayer",
     use: "A short hint over an element. Give the element a data-tooltip attribute, never a title. A pointer that rests on it, or the keyboard focus, shows it.",
+  },
+  {
+    id: "toasts",
+    title: "Toasts",
+    classes: ["toast", "toast-mark", "toast-actions", "toast-close", "toast-timer", "ok", "warn", "bad"],
+    part: "Toast",
+    use: "A short message at the bottom of the screen, such as the result of an action. The ring around the close button empties, and then the toast closes. A pointer on the toast stops the ring. Press a button to show one.",
   },
   {
     id: "skeletons",

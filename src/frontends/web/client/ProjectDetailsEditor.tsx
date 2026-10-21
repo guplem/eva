@@ -143,8 +143,8 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
           {saved}
         </div>
         {problem !== null && (
-          <div className="settings-notice" role="alert">
-            <span style={{ flex: 1 }}>{problem.text}</span>
+          <div className="callout danger" role="alert">
+            {problem.text}
           </div>
         )}
         {file.details === null ? (

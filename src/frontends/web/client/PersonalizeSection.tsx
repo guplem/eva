@@ -27,6 +27,11 @@ const densityChoices: readonly { value: Appearance["density"]; label: string }[]
   { value: "compact", label: "Compact" },
 ];
 
+const filesViewChoices: readonly { value: Appearance["filesView"]; label: string }[] = [
+  { value: "columns", label: "Columns" },
+  { value: "single", label: "One folder" },
+];
+
 export function PersonalizeSection({ context }: { readonly context: SettingsContext }): ReactElement {
   return (
     <>
@@ -46,7 +51,11 @@ export function AppearanceCard(): ReactElement {
     saveAppearance(merged);
   };
   return (
-    <Card item="appearance" title="Appearance" description="This browser keeps its own colour, theme and density.">
+    <Card
+      item="appearance"
+      title="Appearance"
+      description="This browser keeps its own colour, theme, density and files view."
+    >
       <div className="field">
         <span className="field-label">Colour</span>
         <span className="field-hint">Pick a colour. Eva builds the whole palette from it.</span>
@@ -63,6 +72,13 @@ export function AppearanceCard(): ReactElement {
         value={appearance.density}
         choices={densityChoices}
         onChange={(density) => change({ density })}
+      />
+      <ChoiceChips
+        label="Files view"
+        value={appearance.filesView}
+        choices={filesViewChoices}
+        hint="Columns show each folder of the path side by side. One folder shows only the open folder or file. A phone always shows one."
+        onChange={(filesView) => change({ filesView })}
       />
     </Card>
   );

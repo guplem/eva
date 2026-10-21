@@ -387,16 +387,19 @@ export function ChoiceChips<T extends string>({
   label,
   value,
   choices,
+  hint,
   onChange,
 }: {
   readonly label: string;
   readonly value: T;
   readonly choices: readonly { readonly value: T; readonly label: string; readonly icon?: IconName }[];
+  readonly hint?: string;
   readonly onChange: (value: T) => void;
 }): ReactElement {
   return (
     <div className="field">
       <span className="field-label">{label}</span>
+      {hint !== undefined && <span className="field-hint">{hint}</span>}
       <div className="choice-chips" role="group" aria-label={label}>
         {choices.map((choice) => (
           <button

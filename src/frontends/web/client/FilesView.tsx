@@ -2,8 +2,8 @@
  * The Files page (issues 253 and 308): the vault's folders and the text of its files. Each folder
  * and file is a link, so the back button and a reload work as they do on any page. A wide screen
  * shows each folder of the path as a column and the open file at the right, as a Finder does. A
- * phone shows the last one alone. The person can edit a text file and save it in the vault, and
- * rename a file or a folder (issue 343).
+ * phone, or the "One folder" files view, shows the last one alone. The person can edit a text file
+ * and save it in the vault, and rename a file or a folder (issue 343).
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type FileEntry } from "./api.ts";

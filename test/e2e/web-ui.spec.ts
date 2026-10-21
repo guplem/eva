@@ -426,8 +426,9 @@ test("a link opened before the login opens its chat after the login", async ({ p
   const linked = await newAnsweredChat(page, "Linked before login");
   await newAnsweredChat(page, "Newer chat");
   const chatId = await chatIdNamed(page, linked);
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await openSettings(page, "Access");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
 
   await page.goto(`/#/chat/${chatId}`);
   await page.getByLabel(/Token/).fill(token);
@@ -976,9 +977,10 @@ test("Settings: the vault Test button checks the remote, and Log out ends the se
   const vaultRow = page.locator(".check-row", { hasText: "Vault repository" });
   await vaultRow.getByRole("button", { name: "Test" }).click();
   await expect(vaultRow.getByRole("img", { name: "Passed" })).toBeVisible();
-  // Log out sits on the Settings home page.
-  await openSettings(page);
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  // Log out sits on the Devices card, because it ends only this browser's login.
+  await openSettings(page, "Access");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Log out of this browser" }).click();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 });
 
@@ -1616,6 +1618,25 @@ test("the Settings home page shows Eva's status", async ({ page }) => {
   for (const label of ["Version", "This machine", "Chats", "Vault sync", "Phone access", "Problems"]) {
     await expect(card.getByRole("term").filter({ hasText: label })).toBeVisible();
   }
+});
+
+test("the Settings home page lists where each setting lives, and a row opens its card (issue 310)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await openSettings(page);
+  await page.getByRole("button", { name: "See where each setting lives" }).click();
+  const dialog = page.getByRole("dialog", { name: "Where each setting lives" });
+  for (const heading of ["In your vault", "On this machine only", "In this browser only"]) {
+    await expect(dialog.getByRole("heading", { name: new RegExp(heading) })).toBeVisible();
+  }
+  // A setting with no page is a row of text that says how to change it, not a button.
+  await expect(dialog.getByText("eva settings set voice.language")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Voice note language/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /Appearance/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Personalize");
+  expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
 });
 
 test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
@@ -3529,10 +3550,12 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
 }) => {
   await logIn(page);
   await page.getByRole("button", { name: "Files", exact: true }).click();
-  const list = page.getByRole("list", { name: "Folder contents" });
-  await list.getByRole("link", { name: "Projects" }).click();
-  await list.getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
-  await list.getByRole("link", { name: /AGENTS\.md/ }).click();
+  const list = (name: string): Locator => page.getByRole("list", { name: `Contents of ${name}` });
+  await list("Vault").getByRole("link", { name: "Projects" }).click();
+  await list("Projects").getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
+  await list("2025-03-02-1015-example-app")
+    .getByRole("link", { name: /AGENTS\.md/ })
+    .click();
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
   await page.getByRole("button", { name: "Show plain text" }).click();
@@ -3544,22 +3567,138 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await page.goBack();
   await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
-  await expect(list.getByRole("link", { name: ".eva" })).toBeVisible();
-  await expect(list.getByRole("link", { name: ".git" })).toHaveCount(0);
+  await expect(list("Vault").getByRole("link", { name: ".eva" })).toBeVisible();
+  await expect(list("Vault").getByRole("link", { name: ".git" })).toHaveCount(0);
+});
+
+test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  const vaultList = page.getByRole("list", { name: "Contents of Vault" });
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(vaultList).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
+  await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
+  // The open folder of each column is marked, so the path shows at a glance.
+  await expect(vaultList.getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "true");
+  await file.getByRole("button", { name: "Make the file large" }).click();
+  await expect(vaultList).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(vaultList).toBeVisible();
+  await file.getByRole("button", { name: "Make the file large" }).click();
+  await file.getByRole("button", { name: "Make the file small" }).click();
+  await expect(vaultList).toBeVisible();
+});
+
+test("Files: a phone shows only the open folder (issue 308)", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A wide screen shows every column.");
+  await logIn(page);
+  await page.goto("/#/files/Projects");
+  await expect(page.getByRole("list", { name: "Contents of Projects" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Make the file large" })).toHaveCount(0);
+});
+
+test("Files: the person edits a note, saves it in the vault, and sees it formatted again (issue 308)", async ({
+  page,
+}, testInfo) => {
+  await logIn(page);
+  const path = `Notes/${testInfo.project.name}-list.md`;
+  await page.goto(`/#/files/${path}`);
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.getByRole("heading", { name: "Shopping" })).toBeVisible();
+  await file.getByRole("button", { name: "Edit" }).click();
+  const editor = file.getByRole("textbox", { name: `Text of ${path}` });
+  await expect(editor).toHaveValue("# Shopping\n\n- Milk\n");
+  await editor.fill("# Shopping\n\n- Milk\n- Bread\n");
+  await file.getByRole("button", { name: "Save" }).click();
+  await expect(file.getByRole("listitem").filter({ hasText: "Bread" })).toBeVisible();
+  await expect(editor).toHaveCount(0);
+  // The core wrote the file: a reload reads it from the vault.
+  await page.reload();
+  await expect(file.getByRole("listitem").filter({ hasText: "Bread" })).toBeVisible();
+});
+
+test("Files: a save of a file that changed meanwhile asks to load it again (issue 308)", async ({ page }) => {
+  await logIn(page);
+  await page.route("**/api/files", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    return route.fulfill({
+      status: 409,
+      json: {
+        error: "The file changed since you opened it. Load it again, then redo your change.",
+        code: "file_changed",
+      },
+    });
+  });
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("textbox").fill("{}");
+  await file.getByRole("button", { name: "Save" }).click();
+  await expect(file.getByRole("alert")).toContainText("The file changed since you opened it.");
+  await file.getByRole("button", { name: "Load again" }).click();
+  await expect(file.getByRole("textbox")).toHaveValue('{"theme":"dark","size":2}');
+});
+
+test("Files: an edit stays while the person goes to another folder or page, and a save says so (issue 308)", async ({
+  page,
+}) => {
+  await logIn(page);
+  // The save answers the file as it is, so the file stays the same for the other tests.
+  let saves = 0;
+  await page.route("**/api/files", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    saves += 1;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const read = await route.fetch({ method: "GET", url: `${route.request().url()}?path=Notes%2Fsettings.json` });
+    return route.fulfill({ response: read });
+  });
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("textbox").fill('{"theme":"light"}');
+  await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Notes" }).click();
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await page.getByRole("list", { name: "Contents of Vault" }).getByRole("link", { name: "Notes" }).click();
+  await page
+    .getByRole("list", { name: "Contents of Notes" })
+    .getByRole("link", { name: /settings\.json/ })
+    .click();
+  await expect(file.getByRole("textbox")).toHaveValue('{"theme":"light"}');
+  await file.getByRole("button", { name: "Save" }).dblclick();
+  await expect(file.getByRole("textbox")).toHaveCount(0);
+  expect(saves).toBe(1);
+  await expect(file.getByRole("alert")).toHaveCount(0);
+  await expect(file.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+});
+
+test("Files: JSON shows indented, and its plain text shows as on disk (issue 308)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Notes/settings.json");
+  const file = page.getByRole("region", { name: "File text" });
+  await expect(file.locator("pre")).toHaveText('{\n  "theme": "dark",\n  "size": 2\n}');
+  await expect(file.locator(".code-key").first()).toHaveText('"theme"');
+  await file.getByRole("button", { name: "Show plain text" }).click();
+  await expect(file.locator("pre")).toHaveText('{"theme":"dark","size":2}');
 });
 
 test("Files: a path that the core tidies still shows its folder (issue 253)", async ({ page }) => {
   await logIn(page);
   // The page keeps `Projects\`, and the core answers for `Projects`.
   await page.goto("/#/files/Projects%5C");
-  await expect(page.getByRole("list", { name: "Folder contents" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Contents of Projects\\" })).toBeVisible();
   await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
 });
 
 test("Files: Try again reads a folder again after a failed read (issue 253)", async ({ page }) => {
   await logIn(page);
   let failNext = true;
-  await page.route("**/api/files?**", async (route) => {
+  await page.route("**/api/files?path=Projects", async (route) => {
     if (!failNext) return route.continue();
     failNext = false;
     return route.fulfill({ status: 500, json: { error: "Eva failed to handle the request." } });

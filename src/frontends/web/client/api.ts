@@ -187,6 +187,9 @@ export const api = {
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
+  /** A file that changed since `version` answers 409 with `file_changed`. */
+  saveFile: (path: string, version: string, text: string): Promise<BrowsedPath> =>
+    request("PUT", "/api/files", { path, version, text }),
   settings: (): Promise<PublicSettings> => request("GET", "/api/settings"),
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),

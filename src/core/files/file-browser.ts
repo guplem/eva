@@ -59,10 +59,9 @@ const noWait: number = (constants as Partial<typeof constants>).O_NONBLOCK ?? 0;
  * The empty path is the root. Throws `file_not_found` for a path that is missing or leaves the vault.
  */
 export function browseVault(vaultPath: string, requested: string, redact: (text: string) => string): BrowsedPath {
-  const { path, resolved, notFound } = resolveInVault(vaultPath, requested);
+  const { root, path, resolved, notFound } = resolveInVault(vaultPath, requested);
   try {
-    if (statSync(resolved).isDirectory())
-      return { kind: "folder", path, entries: listFolder(realpathSync(vaultPath), resolved) };
+    if (statSync(resolved).isDirectory()) return { kind: "folder", path, entries: listFolder(root, resolved) };
     return shownFile(path, readFile(path, resolved, notFound), redact);
   } catch (error) {
     if (error instanceof EvaError) throw error;
@@ -129,7 +128,7 @@ function replaceText(resolved: string, text: string, stats: Stats): void {
 function resolveInVault(
   vaultPath: string,
   requested: string,
-): { readonly path: string; readonly resolved: string; readonly notFound: EvaError } {
+): { readonly root: string; readonly path: string; readonly resolved: string; readonly notFound: EvaError } {
   const path = normalizedPath(requested);
   const notFound = new EvaError("file_not_found", `${path === "" ? "The vault" : path} was not found.`);
   // Windows reads a colon in a name as a file stream, which a name check cannot see through.
@@ -145,7 +144,7 @@ function resolveInVault(
   }
   // The resolved path decides, so a link named `notes.txt` that leads to `.env` or `.git` is caught too.
   if (!isInside(root, resolved) || isGitData(root, resolved)) throw notFound;
-  return { path, resolved, notFound };
+  return { root, path, resolved, notFound };
 }
 
 type ReadFile =

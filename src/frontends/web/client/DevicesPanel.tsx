@@ -116,7 +116,7 @@ export function DevicesPanel({ onChanged, onLoggedOut }: DevicesPanelProps): Rea
         </ul>
       )}
       <div className="button-row">
-        <button className="ghost" onClick={() => void logOutHere()}>
+        <button onClick={() => void logOutHere()}>
           <Icon name="key" />
           Log out of this browser
         </button>

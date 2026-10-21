@@ -84,6 +84,36 @@ export function findTailscale(input: {
   return ["tailscale"];
 }
 
+/**
+ * The people's accounts on this machine's tailnet, the machine's owner first, so setup can ask
+ * which one uses a second Eva (#322). Tailscale also lists `tagged-devices`, which is no person.
+ */
+export async function readTailnetAccounts(context: TailscaleContext): Promise<string[]> {
+  let parsed: unknown;
+  try {
+    const result = await context.runner.run([...context.program, "status", "--json"], {
+      cwd: ".",
+      environment: context.environment,
+      timeoutMs: tailscaleTimeoutMs,
+    });
+    if (result.exitCode !== 0) return [];
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return [];
+  }
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const status = parsed as {
+    Self?: { UserID?: unknown };
+    User?: Record<string, { LoginName?: unknown } | undefined>;
+  };
+  const owner = status.User?.[String(status.Self?.UserID)]?.LoginName;
+  const logins = Object.values(status.User ?? {})
+    .map((user) => user?.LoginName)
+    .filter((login): login is string => typeof login === "string" && login.includes("@"))
+    .toSorted();
+  return [...logins.filter((login) => login === owner), ...logins.filter((login) => login !== owner)];
+}
+
 /** Every state of Tailscale on this machine; a bad answer means a daemon that does not run. */
 export async function readTailscaleState(context: TailscaleContext): Promise<TailscaleState> {
   let stdout: string;

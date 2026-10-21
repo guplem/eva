@@ -4,7 +4,7 @@
  */
 import { existsSync } from "node:fs";
 import { RemoteAccessWatcher, type RemoteAccess } from "../../core/remote-access/remote-access.ts";
-import { findTailscale } from "../../core/remote-access/tailscale.ts";
+import { findTailscale, readTailnetAccounts } from "../../core/remote-access/tailscale.ts";
 import { canInstallTailscale, installTailscale } from "../../core/remote-access/tailscale-install.ts";
 import {
   baseEnvironmentAllowlist,
@@ -69,6 +69,19 @@ export function installEnvironment(host: CliHost): Record<string, string> {
  */
 export function evaCommand(host: CliHost): string[] {
   return host.standalone ? [host.execPath] : [host.execPath, host.mainScript];
+}
+
+/** The people's accounts on this machine's tailnet, the owner first, or none without Tailscale. */
+export function tailnetAccounts(host: CliHost): Promise<string[]> {
+  const environment = childEnvironment(host);
+  const program = findTailscale({
+    platform: host.platform,
+    homeFolder: host.userHome,
+    environment,
+    exists: existsSync,
+    which: (name) => Bun.which(name),
+  });
+  return readTailnetAccounts({ runner: host.runner, environment, program });
 }
 
 /** Phone access through Tailscale on this machine, for the running Eva and for `eva setup`. */

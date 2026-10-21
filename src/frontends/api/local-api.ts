@@ -88,6 +88,7 @@ const projectWorkSchema = z.object({ request: z.string().min(1), reportToSession
 /** A project file is a note: 1 MB is far more than one needs. */
 const projectFileSchema = z.object({ version: z.string().min(1), text: z.string().max(1_000_000) });
 const vaultFileSchema = projectFileSchema.extend({ path: z.string() });
+const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
 const projectDetailsSchema = z.object({
   version: z.string().min(1),
   title: z.string().max(500),
@@ -290,7 +291,15 @@ function guardSite(request: Request, options: LocalApiOptions): Response | null 
   // `tailscale serve` adds the identity header. A remote request without one is a tagged device or no Tailscale at all.
   const remote = !isLocalRequest(request);
   if (allowed.length > 0 && (identity === null ? remote : !allowed.includes(identity))) {
-    return json({ error: "This Tailscale identity is not allowed." }, 403);
+    // The page loads before this check, so its first read must say why, or it waits for ever (#322).
+    const account = identity ?? "with no account name";
+    return json(
+      {
+        error: `This Eva does not let in the Tailscale account ${account}. On Eva's computer, run \`eva setup\` for this Eva, and choose this account at the Tailscale account question. Or run \`eva settings set remoteAccess.allowedTailscaleIdentities '["${account}"]'\` for this Eva, and restart her. Then reload this page.`,
+        code: "tailscale_account_refused",
+      },
+      403,
+    );
   }
   return null;
 }
@@ -541,6 +550,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "PUT" && url.pathname === "/api/files") {
     const { path, version, text } = vaultFileSchema.parse(await request.json());
     return json(eva.saveFile(path, version, text));
+  }
+  if (method === "POST" && url.pathname === "/api/files/rename") {
+    const { path, name } = vaultRenameSchema.parse(await request.json());
+    return json(eva.renameFile(path, name));
   }
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());

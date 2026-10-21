@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { FakeTailscale, needsLoginStatus, runningStatus } from "../../../support/fake-tailscale.ts";
 import type { RemoteAccess, RemoteAccessWatcher } from "../../../../src/core/remote-access/remote-access.ts";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -172,6 +172,17 @@ describe("guards", () => {
     ).toBe(403);
     expect((await call("/api/status", { headers: { "tailscale-user-login": "owner@example.com" } })).status).toBe(401);
     expect((await call("/api/status", { headers: { host: "eva.example-tailnet.ts.net" } })).status).toBe(403);
+  });
+
+  test("a refused Tailscale account learns which account it is, and how to let it in (#322)", async () => {
+    // The page itself loads before any login; its first read gets the reason, and shows it.
+    const stranger = { host: "eva.example-tailnet.ts.net", "tailscale-user-login": "stranger@example.com" };
+    const refused = await call("/api/sessions", { headers: stranger });
+    expect(refused.status).toBe(403);
+    const body = (await refused.json()) as { error: string; code: string };
+    expect(body.code).toBe("tailscale_account_refused");
+    expect(body.error).toContain("stranger@example.com");
+    expect(body.error).toContain("eva setup");
   });
 
   test("refuses a Tailscale identity that is not on the allowlist", async () => {
@@ -1258,6 +1269,21 @@ describe("web routes", () => {
     expect(stale.status).toBe(409);
     expect(await json(stale)).toMatchObject({ code: "file_changed" });
     expect((await call("/api/files", { method: "PUT", body: { path, text: "# No version\n" } })).status).toBe(400);
+  });
+
+  test("files: a rename answers the new path, and a taken name answers file_not_writable (issue 343)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const renamed = await call("/api/files/rename", { method: "POST", body: { path: "AGENTS.md", name: "README.md" } });
+    expect(await json(renamed)).toEqual({ path: "README.md" });
+    expect(existsSync(join(vaultPath, "README.md"))).toBe(true);
+    expect(existsSync(join(vaultPath, "AGENTS.md"))).toBe(false);
+
+    const taken = await call("/api/files/rename", { method: "POST", body: { path: "README.md", name: ".eva" } });
+    expect(taken.status).toBe(409);
+    expect(await json(taken)).toMatchObject({ code: "file_not_writable" });
+    const missing = await call("/api/files/rename", { method: "POST", body: { path: "gone.md", name: "here.md" } });
+    expect(missing.status).toBe(404);
+    expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {

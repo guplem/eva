@@ -48,6 +48,7 @@ import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
 import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
+import { settingsHash } from "./settings-routes.ts";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -419,6 +420,8 @@ function EvaApp(): ReactElement {
 
   const runProblemAction = (action: ProblemAction): void => {
     if (action === "pick_version") setConflictsOpen(true);
+    else if (action === "choose_template_version")
+      window.location.hash = settingsHash({ section: "vault", item: "template-alignment" });
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const notices = (

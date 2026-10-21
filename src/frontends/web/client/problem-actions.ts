@@ -1,12 +1,13 @@
 /** The button that fixes each open problem, picked from the problem's key, never from its text. */
 import type { VaultSyncState } from "./api.ts";
 
-export type ProblemAction = "pick_version" | "open_schedules" | "open_settings";
+export type ProblemAction = "pick_version" | "open_schedules" | "open_settings" | "choose_template_version";
 
 export const problemActionLabels: Readonly<Record<ProblemAction, string>> = {
   pick_version: "Pick a version",
   open_schedules: "Open schedules",
   open_settings: "Open Settings",
+  choose_template_version: "Choose a version",
 };
 
 /** A relayed problem belongs to another machine: its own page fixes it. */
@@ -28,5 +29,6 @@ export function problemAction(
   }
   if (isOtherMachineProblem(key) || openPage === "settings") return null;
   if (key === "vault_sync" && syncStatus === "conflict") return "pick_version";
+  if (key === "template_alignment") return "choose_template_version";
   return "open_settings";
 }

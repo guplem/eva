@@ -28,6 +28,7 @@ import type { CloneFetch } from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
+import type { TemplatePart } from "../../../core/vault/template-alignment.ts";
 import type { SetupItem, SetupReport, SetupSection } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
@@ -45,6 +46,9 @@ import type {
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
+
+/** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
+export type TemplatePartView = TemplatePart;
 
 export type {
   BrowsedPath,
@@ -265,6 +269,10 @@ export const api = {
     request("PUT", "/api/assistant-rules", { version, text }),
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
+  /** Answers 409 when no vault is configured. */
+  templateParts: (): Promise<{ parts: TemplatePartView[] }> => request("GET", "/api/template-parts"),
+  chooseTemplateVersion: (path: string, choice: "new" | "mine"): Promise<{ parts: TemplatePartView[] }> =>
+    request("POST", "/api/template-parts", { path, choice }),
   /** The value goes one way: the answer never holds it. */
   saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>
     request("PUT", `/api/secrets/${name}`, { value }),

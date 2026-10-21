@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -265,3 +266,21 @@ describe("saveVaultFile (issue 308)", () => {
     expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy tea.\n");
   });
 });
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "a save into a folder that Eva cannot write is refused, and leaves no temporary file (issue 308)",
+  () => {
+    write("Locked/note.md", "# Note\n");
+    const shown = browseVault(vault, "Locked/note.md", keep);
+    chmodSync(join(vault, "Locked"), 0o555);
+    try {
+      const version = shown.kind === "file" ? shown.version : "";
+      expect(() => saveVaultFile(vault, "Locked/note.md", version, "# Changed\n", keep)).toThrow(
+        "Eva has no permission to change this.",
+      );
+      expect(readdirSync(join(vault, "Locked"))).toEqual(["note.md"]);
+    } finally {
+      chmodSync(join(vault, "Locked"), 0o755);
+    }
+  },
+);

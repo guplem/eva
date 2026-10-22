@@ -104,8 +104,30 @@ describe("createTranscriber (lessons 71, 123)", () => {
       () => null,
       (error: unknown) => error,
     );
-    expect(String(failure)).toContain("whisper could not transcribe");
+    // The program's own last line says why.
+    expect(String(failure)).toContain("whisper could not transcribe the voice note: no model");
     expect(readdirSync(folder)).toEqual([]);
+  });
+
+  test("a whisper-cli that lacks a system library says which one, and how to add it", async () => {
+    const { runner } = fakeRunner((command) =>
+      command[0] === "whisper-cli"
+        ? {
+            exitCode: 127,
+            stdout: "",
+            stderr:
+              "whisper-cli: error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory\n",
+          }
+        : ok(),
+    );
+    const transcribe = createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder });
+    const failure = await transcribe(new Uint8Array([1])).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "process_failed")).toBe(true);
+    expect(String(failure)).toContain("whisper-cli cannot start: this computer lacks the library libgomp.so.1.");
+    expect(String(failure)).toContain("sudo apt install libgomp1");
   });
 
   test("one note at a time, and a failed note does not block the next", async () => {

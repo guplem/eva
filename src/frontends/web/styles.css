@@ -125,6 +125,9 @@
   --scrim: oklch(0.25 0.03 var(--h) / 0.32);
   --main-gradient: radial-gradient(ellipse 90% 70% at 50% 0%, var(--bg), var(--bg2) 120%);
   --button-glow: 0 6px 18px -6px var(--glow);
+  /* Only a button with no padding rule of its own takes it. A rule on the buttons would also
+     replace the padding of each component, such as the tabs, and widen the tab bar (#413). */
+  --button-padding: 6px 12px;
   --dialog-shadow: 0 30px 60px -20px oklch(0.1 0.03 var(--h) / 0.45);
   /* A ready Send is a small visor with a shell ring, and its arrow glows as EVE's eyes. */
   --send-fill: var(--visor-fill);
@@ -1633,9 +1636,6 @@ textarea {
   --text-md: 15px;
   --text-lg: 18px;
   --text-xl: 24px;
-  /* Only a button with no padding rule of its own takes it. A rule on the buttons would also
-     replace the padding of each component, such as the tabs, and widen the tab bar (#413). */
-  --button-padding: 6px 12px;
 }
 
 :root[data-density="compact"] {

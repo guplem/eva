@@ -524,3 +524,17 @@ a.files-entry[aria-current="true"] {
   flex-shrink: 0;
   color: var(--ink);
 }
+
+/* The date that a smart name took from the start of the real name (issue 429). */
+.files-date {
+  font-weight: 500;
+}
+
+/* The real name under a smart name, on its own line, so a touch screen shows it without a tooltip. */
+.files-real-name {
+  flex-basis: 100%;
+  padding: 0 var(--space-2);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}

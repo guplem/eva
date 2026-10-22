@@ -4108,9 +4108,9 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await page.getByRole("button", { name: "Files", exact: true }).click();
   const list = (name: string): Locator => page.getByRole("list", { name: `Contents of ${name}` });
   await list("Vault").getByRole("link", { name: "Projects" }).click();
-  await list("Projects").getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
+  await list("Projects").getByRole("link", { name: "Example app" }).click();
   await list("2025-03-02-1015-example-app")
-    .getByRole("link", { name: /AGENTS\.md/ })
+    .getByRole("link", { name: /AGENTS/ })
     .click();
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
@@ -4121,7 +4121,7 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "AGENTS.md" })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
   await expect(list("Vault").getByRole("link", { name: ".eva" })).toBeVisible();
   await expect(list("Vault").getByRole("link", { name: ".git" })).toHaveCount(0);
@@ -4167,11 +4167,15 @@ test("Files: a file shows its type in colour, and a long name loses the part tha
   );
   await logIn(page);
   await page.goto("/#/files/Docs");
-  const row = page.getByRole("list", { name: "Contents of Docs" }).getByRole("link", { name });
+  // The badge shows the type, so a smart name drops the extension.
+  const row = page
+    .getByRole("list", { name: "Contents of Docs" })
+    .getByRole("link", { name: name.replace(/\.pdf$/, "") });
+  await expect(row).toHaveAttribute("data-tooltip", name);
   await expect(row.locator(".files-badge.type-red")).toHaveText("PDF");
-  // The middle gives way by default, so the start and the extension stay.
+  // The middle gives way by default, so the start and the end stay.
   await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "middle");
-  await expect(row.locator(".files-name-tail")).toHaveText(/version\.pdf$/);
+  await expect(row.locator(".files-name-tail")).toHaveText(/version$/);
   const headIsCut = await row
     .locator(".files-name-head")
     .evaluate((element) => element.scrollWidth > element.clientWidth);
@@ -4324,7 +4328,7 @@ test("Files: an edit stays while the person goes to another folder or page, and 
   await page.getByRole("list", { name: "Contents of Vault" }).getByRole("link", { name: "Notes" }).click();
   await page
     .getByRole("list", { name: "Contents of Notes" })
-    .getByRole("link", { name: /settings\.json/ })
+    .getByRole("link", { name: /settings/ })
     .click();
   await expect(file.getByRole("textbox")).toHaveValue('{"theme":"light"}');
   await file.getByRole("button", { name: "Save" }).dblclick();
@@ -4349,7 +4353,35 @@ test("Files: a path that the core tidies still shows its folder (issue 253)", as
   // The page keeps `Projects\`, and the core answers for `Projects`.
   await page.goto("/#/files/Projects%5C");
   await expect(page.getByRole("list", { name: "Contents of Projects\\" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Example app/ })).toBeVisible();
+});
+
+test("Files: smart names show a project title and a date pill, and Real shows the real names (issue 429)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/#/files/Journal");
+  const row = page.getByRole("list", { name: "Contents of Journal" }).getByRole("link", { name: /trips/ });
+  await expect(row.locator(".files-name-text")).toHaveText("trips");
+  await expect(row.locator(".files-date")).toHaveText("2027");
+  await expect(row.locator(".files-badge")).toHaveText("MD");
+  await expect(row).toHaveAttribute("data-tooltip", "2027-trips.md");
+
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  const path = page.getByRole("navigation", { name: "Folder path" });
+  await expect(path.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  await expect(path.locator(".files-date")).toHaveText("2 Mar 2025, 10:15");
+  // A phone shows no tooltip, so the real name stays in view.
+  await expect(path.locator(".files-real-name")).toHaveText("Real name: 2025-03-02-1015-example-app");
+
+  await openSettings(page, "Personalize");
+  await page.getByRole("group", { name: "File names" }).getByRole("button", { name: "Real" }).click();
+  await page.goto("/#/files/Journal");
+  await expect(page.getByRole("link", { name: "2027-trips.md" })).toBeVisible();
+  await expect(page.locator(".files-date")).toHaveCount(0);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.locator(".files-real-name")).toHaveCount(0);
 });
 
 test("Files: Try again reads a folder again after a failed read (issue 253)", async ({ page }) => {
@@ -4363,7 +4395,7 @@ test("Files: Try again reads a folder again after a failed read (issue 253)", as
   await page.goto("/#/files/Projects");
   await expect(page.getByRole("alert").filter({ hasText: "Eva failed to handle the request." })).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Example app/ })).toBeVisible();
 });
 
 test("Files: the person stars a note, it shows first on the page, and a tap opens it (issue 349)", async ({

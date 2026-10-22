@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  changelogEntries,
   pickUpdate,
   releaseLevel,
   releaseSummary,
@@ -161,5 +162,27 @@ describe("release summary", () => {
       ["Fixes and other changes:", "• Hand-written notes. (1.0.0)", "• one point (1.0.0)"].join("\n"),
     );
     expect(releaseSummary([{ version: "1.0.0", notes: "No change to the executable.\n" }])).toBe("No listed changes.");
+  });
+});
+
+describe("changelog", () => {
+  test("each release gives its own changes, with no version mark on each line", () => {
+    const entries = changelogEntries(
+      [
+        { ...release("1.1.0", "feat: voice notes", "fix: a typo"), publishedAt: "2026-10-12T09:00:00Z" },
+        release("1.0.0", "docs: a guide"),
+      ],
+      "1.0.0",
+    );
+    expect(entries).toEqual([
+      {
+        version: "1.1.0",
+        publishedAt: "2026-10-12T09:00:00Z",
+        headline: "Voice notes.",
+        changes: "New features:\n• feat: voice notes\n\nFixes and other changes:\n• fix: a typo",
+        installed: false,
+      },
+      { version: "1.0.0", publishedAt: null, headline: null, changes: "No listed changes.", installed: true },
+    ]);
   });
 });

@@ -241,6 +241,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Your location.** Share your live location with Eva's bot in Telegram, or open **Settings** > **Access** > **Your location** and let a device send its location while Eva is open. Eva keeps only the last location, on the hub computer, never in the notebook. Scripts such as a weather forecast use it. When your phone sent nothing in the last day, they use the home place of `Life/About me.md`.
 - **PDFs.** Install [typst](https://github.com/typst/typst/releases). Eva then writes a PDF in `Scratch/` and sends it.
 - **Voice notes.** Open **Settings → Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. The audio never leaves the computer.
+  On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.
 - **Google (Calendar, Drive, Contacts, Tasks).** See [Set up Google](#set-up-google).
 

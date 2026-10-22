@@ -214,7 +214,8 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "sounds",
     section: "personalize",
     title: "Sounds and vibration",
-    words: "sound audio volume mute quiet loud effects chirp haptic haptics vibrate vibration buzz phone",
+    words:
+      "sound audio volume mute quiet loud effects chirp style palette coin orbit fluent kalimba halo aurora crystal pulse blocks eve haptic haptics vibrate vibration buzz phone",
   },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },

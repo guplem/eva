@@ -3,12 +3,13 @@ import {
   canVibrate,
   cueOfClick,
   cueOfEvent,
-  cues,
-  cueTones,
   defaultCueLevels,
+  defaultCuePalette,
   playCue,
   readCueLevels,
+  readCuePalette,
   saveCueLevels,
+  saveCuePalette,
   startCues,
   vibrationPattern,
   type AudioOutput,
@@ -33,43 +34,69 @@ function useStorage(storage: unknown): void {
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 }
 
-/** Records each tone's start pitch and its loudest gain. */
-function fakeAudio(state = "running"): { audio: AudioOutput; pitches: number[]; peaks: number[]; resumed: number } {
-  const record = { pitches: [] as number[], peaks: [] as number[], resumed: 0 };
-  const ramp = (
-    onSet: (value: number) => void,
-    onRamp: (value: number) => void,
-  ): { setValueAtTime: (value: number) => void; exponentialRampToValueAtTime: (value: number) => void } => ({
+interface FakeSound {
+  readonly audio: AudioOutput;
+  /** The start pitch of each tone. */
+  readonly pitches: number[];
+  /** The loudest gain of each tone. */
+  readonly peaks: number[];
+  /** The kind of each node and buffer, in the order the cue made them. */
+  readonly made: string[];
+  readonly resumed: number;
+}
+
+function fakeAudio(state = "running"): FakeSound {
+  const record = { pitches: [] as number[], peaks: [] as number[], made: [] as string[], resumed: 0 };
+  const param = (
+    onSet: (value: number) => void = () => undefined,
+    onRamp: (value: number) => void = () => undefined,
+  ): {
+    value: number;
+    setValueAtTime: (value: number) => void;
+    exponentialRampToValueAtTime: (value: number) => void;
+  } => ({
+    value: 0,
     setValueAtTime: (value: number) => onSet(value),
     exponentialRampToValueAtTime: (value: number) => onRamp(value),
   });
+  const node = <T extends object>(kind: string, fields: T): T & { connect: () => undefined } => {
+    record.made.push(kind);
+    return { ...fields, connect: () => undefined };
+  };
   const audio: AudioOutput = {
     currentTime: 10,
     state,
     destination: {},
+    sampleRate: 100,
     resume: () => {
       record.resumed += 1;
       return Promise.resolve();
     },
-    createOscillator: () => ({
-      type: "",
-      frequency: ramp(
-        (value) => record.pitches.push(value),
-        () => undefined,
-      ),
-      connect: () => undefined,
-      start: () => undefined,
-      stop: () => undefined,
-    }),
-    createGain: () => ({
-      gain: ramp(
-        () => undefined,
-        (value) => {
+    createOscillator: () =>
+      node("oscillator", {
+        type: "",
+        frequency: param((value) => record.pitches.push(value)),
+        detune: { value: 0 },
+        start: () => undefined,
+        stop: () => undefined,
+      }),
+    createGain: () =>
+      node("gain", {
+        gain: param(undefined, (value) => {
           if (value > 0.001) record.peaks.push(value);
-        },
-      ),
-      connect: () => undefined,
-    }),
+        }),
+      }),
+    createBiquadFilter: () => node("filter", { type: "", frequency: param(), Q: { value: 0 } }),
+    createStereoPanner: () => node("panner", { pan: { value: 0 } }),
+    createConvolver: () => node("room", { buffer: null, normalize: true }),
+    createDelay: () => node("delay", { delayTime: { value: 0 } }),
+    createBuffer: (channels: number, length: number) => {
+      record.made.push("buffer");
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { getChannelData: (channel: number) => data[channel] ?? new Float32Array(0) };
+    },
+    createBufferSource: () =>
+      node("noise", { buffer: null, loop: false, start: () => undefined, stop: () => undefined }),
   };
   return {
     audio,
@@ -79,11 +106,17 @@ function fakeAudio(state = "running"): { audio: AudioOutput; pitches: number[]; 
     get peaks() {
       return record.peaks;
     },
+    get made() {
+      return record.made;
+    },
     get resumed() {
       return record.resumed;
     },
   };
 }
+
+const silentPhone = (sound: FakeSound): CueDevices => ({ audio: () => sound.audio, vibrate: undefined });
+const count = (made: readonly string[], kind: string): number => made.filter((entry) => entry === kind).length;
 
 function event(payload: Record<string, unknown>): SessionEvent {
   return { seq: 1, at: "2026-01-01T00:00:00.000Z", sessionId: "s1", ...payload } as unknown as SessionEvent;
@@ -116,29 +149,57 @@ describe("vibrationPattern", () => {
   });
 });
 
-describe("the tones", () => {
-  test("every cue is short, so a cue never talks over the next one", () => {
-    for (const cue of cues) {
-      const end = Math.max(...cueTones[cue].map((tone) => tone.at + tone.seconds));
-      expect(end).toBeLessThan(0.5);
-    }
-  });
-
-  test("the answer is EVE's call: a high note, then a lower one", () => {
-    const [ee, vah] = cueTones.answer;
-    expect(vah?.at).toBeGreaterThan(ee?.at ?? 0);
-    expect(vah?.to).toBeLessThan(ee?.from ?? 0);
-  });
-});
-
 describe("playCue", () => {
-  test("plays each tone with its octave, and vibrates", () => {
+  test("plays each tone of the palette with its overtones, and vibrates", () => {
     const sound = fakeAudio();
     const vibrations: number[][] = [];
     const devices: CueDevices = { audio: () => sound.audio, vibrate: (pattern) => vibrations.push(pattern) };
-    playCue("answer", { sound: "normal", vibration: "light" }, devices);
+    playCue("answer", { sound: "normal", vibration: "light" }, devices, "eve");
     expect(sound.pitches).toEqual([1480, 2960, 1180, 2360]);
     expect(vibrations).toEqual([vibrationPattern("answer", "light")]);
+  });
+
+  test("a palette with a room adds a reverb, and builds each room once", () => {
+    const sound = fakeAudio();
+    playCue("answer", defaultCueLevels, silentPhone(sound), "fluent");
+    playCue("answer", defaultCueLevels, silentPhone(sound), "fluent");
+    expect(count(sound.made, "room")).toBe(2);
+    expect(count(sound.made, "buffer")).toBe(1);
+  });
+
+  test("a palette with an echo repeats the cue three times, from side to side", () => {
+    const sound = fakeAudio();
+    playCue("tap", defaultCueLevels, silentPhone(sound), "orbit");
+    expect(count(sound.made, "delay")).toBe(3);
+    expect(count(sound.made, "panner")).toBe(3);
+  });
+
+  test("a dry palette plays with no room and no echo", () => {
+    const sound = fakeAudio();
+    playCue("answer", defaultCueLevels, silentPhone(sound), "pulse");
+    expect(count(sound.made, "room")).toBe(0);
+    expect(count(sound.made, "delay")).toBe(0);
+  });
+
+  test("plays noise, filters, pans, vibrato and a bent pitch", () => {
+    const sound = fakeAudio();
+    playCue("send", defaultCueLevels, silentPhone(sound), "crystal");
+    playCue("answer", defaultCueLevels, silentPhone(sound), "aurora");
+    playCue("saved", defaultCueLevels, silentPhone(sound), "blocks");
+    playCue("answer", defaultCueLevels, silentPhone(sound), "orbit");
+    expect(count(sound.made, "noise")).toBe(1);
+    expect(count(sound.made, "filter")).toBeGreaterThan(1);
+    expect(count(sound.made, "panner")).toBeGreaterThan(4);
+    // Blocks wobbles three orbs, and Orbit bends one tone: each takes a second oscillator.
+    expect(count(sound.made, "oscillator")).toBeGreaterThan(sound.pitches.length);
+  });
+
+  test("plays the saved palette by default", () => {
+    const sound = fakeAudio();
+    saveCuePalette("eve");
+    playCue("answer", defaultCueLevels, silentPhone(sound));
+    expect(sound.pitches).toEqual([1480, 2960, 1180, 2360]);
+    saveCuePalette(defaultCuePalette);
   });
 
   test("a louder level plays louder", () => {
@@ -247,6 +308,32 @@ describe("stored levels", () => {
       },
     });
     expect(() => saveCueLevels(defaultCueLevels)).not.toThrow();
+  });
+
+  test("the palette is Coin until the person picks another", () => {
+    expect(defaultCuePalette).toBe("coin");
+    expect(readCuePalette()).toBe("coin");
+    saveCuePalette("orbit");
+    expect(readCuePalette()).toBe("orbit");
+  });
+
+  test("a palette that no longer exists gives the default", () => {
+    useStorage(new FakeStorage({ "eva.cue-palette": "kazoo" }));
+    expect(readCuePalette()).toBe(defaultCuePalette);
+  });
+
+  test("a blocked storage gives the default palette and loses only the save", () => {
+    useStorage({
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    expect(readCuePalette()).toBe(defaultCuePalette);
+    expect(() => saveCuePalette("halo")).not.toThrow();
+    saveCuePalette(defaultCuePalette);
   });
 
   test("startCues listens to the clicks of the page", () => {

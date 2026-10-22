@@ -1,5 +1,5 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
-import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { IconName } from "./icons.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -87,6 +87,23 @@ function modelName(id: string): string {
 
 function capitalized(word: string): string {
   return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+}
+
+const effortNames: Readonly<Record<EffortLevel, string>> = {
+  default: "Default",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+export function effortName(effort: EffortLevel): string {
+  return effortNames[effort];
+}
+
+export function effortLabel(effort: EffortLevel): string {
+  return `${effortName(effort)} effort`;
 }
 
 /** The model that answered the newest turn that names one, or null before the first answer. */

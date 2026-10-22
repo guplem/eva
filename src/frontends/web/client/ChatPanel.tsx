@@ -14,7 +14,7 @@ import {
   taskStatus,
   titleCase,
 } from "./chat-details.ts";
-import { answeredModel, modelLabel } from "./conversation-parts.ts";
+import { answeredModel, effortName, modelLabel } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
@@ -125,6 +125,8 @@ function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
             <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
+            <dt>Effort</dt>
+            <dd>{effortName(root.effort)}</dd>
             <dt>Mode</dt>
             <dd>{titleCase(root.mode)}</dd>
             <dt>Answers</dt>

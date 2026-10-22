@@ -7,10 +7,18 @@
  * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
-import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import { effortLevels, type EffortLevel, type EngineName, type ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
-import { answeredModel, chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
+import {
+  answeredModel,
+  chipLock,
+  composerPlaceholder,
+  effortLabel,
+  effortName,
+  engineLabel,
+  modelLabel,
+} from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -22,12 +30,13 @@ import { recordingTime, recordingType } from "./voice-notes.ts";
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 
 /** What the composer shows of a chat. A new chat has no record until its first message. */
-type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "mode" | "parentId" | "turns">;
+type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
 
-/** How the chip changes the engine and the model of a chat that has no turn yet. */
+/** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
 export interface ChatChoices {
   readonly setEngine: (engine: EngineName) => Promise<unknown>;
   readonly setModel: (model: ModelAlias) => Promise<unknown>;
+  readonly setEffort: (effort: EffortLevel) => Promise<unknown>;
 }
 
 /** The choices of a chat that has a record: the server keeps them. */
@@ -35,6 +44,7 @@ export function storedChoices(sessionId: string): ChatChoices {
   return {
     setEngine: (engine) => api.setEngine(sessionId, engine),
     setModel: (model) => api.setModel(sessionId, model),
+    setEffort: (effort) => api.setEffort(sessionId, effort),
   };
 }
 
@@ -246,8 +256,9 @@ export function Composer({
 }
 
 /**
- * The engine and model of the chat. A chat with no turn picks them here. Afterwards the menu
- * says why they are fixed: a phone has no hover, so a tooltip alone would not reach it.
+ * The engine, model and effort of the chat. A chat with no turn picks the engine and model here.
+ * Afterwards the menu says why they are fixed: a phone has no hover, so a tooltip alone would not
+ * reach it. The effort changes no history, so the menu offers it at any time.
  */
 function EngineChip({
   session,
@@ -314,19 +325,19 @@ function EngineChip({
   return (
     <div className="chip-picker" ref={root}>
       <button
-        className={`chip${lock === null ? "" : " fixed"}`}
+        className="chip"
         aria-haspopup="dialog"
         aria-expanded={open}
-        data-tooltip={lock ?? "Pick the engine and the model"}
+        data-tooltip={lock === null ? "Pick the engine, the model and the effort" : "Pick the effort"}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="bolt" />
         <span className="chip-engine">{engineLabel(session.engine)} · </span>
-        {modelLabel(session.modelAlias, answeredModel(session.turns))}
-        {lock === null && <Icon name="down" />}
+        {modelLabel(session.modelAlias, answeredModel(session.turns))} · {effortLabel(session.effort)}
+        <Icon name="down" />
       </button>
       {open && (
-        <div className="chip-menu" role="dialog" aria-label="Engine and model">
+        <div className="chip-menu" role="dialog" aria-label="Engine, model and effort">
           {lock !== null ? (
             <p>{lock}</p>
           ) : (
@@ -361,6 +372,20 @@ function EngineChip({
               </div>
             </>
           )}
+          <div className="chip-group" role="group" aria-label="Effort">
+            <span className="chip-group-name">Effort</span>
+            {effortLevels.map((effort) => (
+              <button
+                key={effort}
+                className={`chip${effort === session.effort ? " on" : ""}`}
+                aria-pressed={effort === session.effort}
+                disabled={saving}
+                onClick={() => void choose(() => choices.setEffort(effort))}
+              >
+                {effortName(effort)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@ import {
   answeredModel,
   chipLock,
   composerPlaceholder,
+  effortLabel,
   elapsedText,
   engineLabel,
   foldSteps,
@@ -104,6 +105,12 @@ describe("labels", () => {
     // A pi model keeps its own id.
     expect(modelLabel("default", "fake-model")).toBe("Default · fake-model");
     expect(modelLabel("opus", null)).toBe("Opus");
+  });
+
+  test("names each effort level in plain words (#419)", () => {
+    expect(effortLabel("default")).toBe("Default effort");
+    expect(effortLabel("xhigh")).toBe("Extra high effort");
+    expect(effortLabel("max")).toBe("Max effort");
   });
 
   test("takes the model of the newest turn that names one", () => {

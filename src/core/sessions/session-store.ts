@@ -5,6 +5,7 @@
  */
 import { copyFileSync } from "node:fs";
 import { z } from "zod";
+import { effortLevels } from "../../shared/engine-port.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { stepKinds } from "../../shared/turn-steps.ts";
@@ -34,6 +35,8 @@ const turnSchema = z.object({
   contextTokens: z.number().int().min(0).nullable().catch(null),
   /** The size of the context window of the model that answered, or null when the engine did not say. */
   contextWindow: z.number().int().positive().nullable().catch(null),
+  /** The id of the model that answered, so a chat on the default model can name it. Null when the engine did not say. */
+  model: z.string().nullable().catch(null),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),
@@ -47,6 +50,8 @@ export const sessionSchema = z
     engine: z.enum(["claude-code", "pi"]),
     mode: z.enum(["assistant", "project"]),
     modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
+    /** How much the model reasons (issue 419). An older record, or a bad value, keeps the engine's own level. */
+    effort: z.enum(effortLevels).default("default").catch("default"),
     startFolder: z.string(),
     projectId: z.string().nullable(),
     clone: z.string().nullable(),

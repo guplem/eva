@@ -1361,6 +1361,7 @@ export class Eva {
       mode: "assistant",
       engine: input.engine ?? this.options.config.engines.default,
       model: input.model,
+      ...(input.effort === undefined ? {} : { effort: input.effort }),
       startFolder: vaultPath,
       source: input.source,
       ...(input.telegramTopicId === undefined ? {} : { telegramTopicId: input.telegramTopicId }),

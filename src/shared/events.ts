@@ -89,6 +89,8 @@ export type EngineEventPayload =
       readonly contextTokens: number | null;
       /** The size of the context window of the model that answered, or null when the engine does not say. */
       readonly contextWindow: number | null;
+      /** The id of the model that answered, such as `claude-opus-5-5`, or null when the engine does not say. */
+      readonly model: string | null;
     }
   | { readonly kind: "turn_failed"; readonly reason: string };
 

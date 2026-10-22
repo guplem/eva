@@ -1,12 +1,23 @@
 /**
- * The personalize page: this browser's look, the person's rules for Eva, then the time zone, the
- * rules for chat names. The text fields wait for Save; the look applies at once.
+ * The personalize page: this browser's look and sounds, the person's rules for Eva, then the time zone, the
+ * rules for chat names. The text fields wait for Save; the look and the sounds apply at once.
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, ApiError } from "./api.ts";
 import { AssistantRulesCard } from "./AssistantRulesCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
-import type { IconName } from "./icons.tsx";
+import {
+  canVibrate,
+  cues,
+  playCue,
+  readCueLevels,
+  saveCueLevels,
+  type Cue,
+  type CueLevels,
+  type SoundLevel,
+  type VibrationLevel,
+} from "./cues.ts";
+import { Icon, type IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
 import { SaveButton } from "./SaveButton.tsx";
@@ -42,6 +53,7 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
   return (
     <>
       <AppearanceCard />
+      <CuesCard />
       <AssistantRulesCard context={context} />
       <PreferencesForm context={context} />
     </>
@@ -183,5 +195,70 @@ function PreferencesForm({ context }: { readonly context: SettingsContext }): Re
         </SaveButton>
       </div>
     </>
+  );
+}
+
+const soundChoices: readonly { value: SoundLevel; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "quiet", label: "Quiet" },
+  { value: "normal", label: "Normal" },
+  { value: "loud", label: "Loud" },
+];
+
+const vibrationChoices: readonly { value: VibrationLevel; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "light", label: "Light" },
+  { value: "strong", label: "Strong" },
+];
+
+const cueLabels: Record<Cue, string> = {
+  tap: "Tap",
+  send: "Send",
+  answer: "Answer",
+  question: "Question",
+  saved: "Saved",
+  problem: "Problem",
+};
+
+/** A change plays the answer cue at the new levels, so the person hears and feels the choice. */
+function CuesCard(): ReactElement {
+  const [levels, setLevels] = useState<CueLevels>(readCueLevels);
+  const change = (next: Partial<CueLevels>): void => {
+    const merged = { ...levels, ...next };
+    setLevels(merged);
+    saveCueLevels(merged);
+    playCue("answer", merged);
+  };
+  return (
+    <Card
+      item="sounds"
+      title="Sounds and vibration"
+      description="EVE chirps and the phone vibrates when you tap, send and save, and when Eva answers, asks or hits a problem. This browser keeps its own levels."
+    >
+      <ChoiceChips label="Sounds" value={levels.sound} choices={soundChoices} onChange={(sound) => change({ sound })} />
+      <ChoiceChips
+        label="Vibration"
+        value={levels.vibration}
+        choices={vibrationChoices}
+        hint={
+          canVibrate()
+            ? "A web page cannot set the strength of a vibration, so Strong vibrates longer."
+            : "This browser cannot vibrate. Safari on an iPhone or an iPad never lets a web page vibrate."
+        }
+        onChange={(vibration) => change({ vibration })}
+      />
+      <div className="field">
+        <span className="field-label">Try them</span>
+        <div className="button-row">
+          {cues.map((cue) => (
+            // Each button plays its cue through `data-cue`, as every button of the page does.
+            <button key={cue} type="button" className="ghost" data-cue={cue}>
+              <Icon name="play" />
+              {cueLabels[cue]}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 }

@@ -45,7 +45,7 @@ export const settingsSections: readonly SettingsSection[] = [
   {
     id: "personalize",
     title: "Personalize",
-    summary: "Theme, Eva's rules, time zone and chat names.",
+    summary: "Theme, sounds, Eva's rules, time zone and chat names.",
     steps: [],
   },
   {
@@ -163,6 +163,12 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "Eva's rules",
     words: "system prompt personality instructions behaviour behavior assistant.md restore default",
   },
+  {
+    item: "sounds",
+    section: "personalize",
+    title: "Sounds and vibration",
+    words: "sound audio volume mute quiet loud effects chirp haptic haptics vibrate vibration buzz phone",
+  },
   { item: "time-zone", section: "personalize", title: "Time zone", words: "clock schedules" },
   { item: "chat-names", section: "personalize", title: "Chat names", words: "rules title rename" },
   {
@@ -272,6 +278,7 @@ export const settingPlaces: readonly SettingPlace[] = [
   },
   { title: "Trusted repository owners", home: "machine", keys: ["trust.trustedRepositoryOwners"], link: null },
   { title: "Appearance", home: "browser", keys: [], link: { section: "personalize", item: "appearance" } },
+  { title: "Sounds and vibration", home: "browser", keys: [], link: { section: "personalize", item: "sounds" } },
 ];
 
 /** Every typed word must appear in the entry's title, its words or its section's title. */

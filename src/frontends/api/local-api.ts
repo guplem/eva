@@ -680,6 +680,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return status === null ? json({ error: "No claude program was found." }, 409) : json(status);
     }
   }
+  if (method === "GET" && url.pathname === "/api/update/changelog") return json(await eva.changelog());
   if (url.pathname === "/api/update" || url.pathname === "/api/update/check") {
     if (method === "GET" && url.pathname === "/api/update") return json(eva.updateStatus());
     if (method === "POST") {

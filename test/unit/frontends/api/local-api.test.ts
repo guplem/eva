@@ -31,7 +31,18 @@ beforeAll(() => {
   githubApi = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: () => Response.json({ message: "Bad credentials" }, { status: 401 }),
+    fetch: (request) =>
+      new URL(request.url).pathname === "/repos/guplem/eva/releases"
+        ? Response.json([
+            {
+              tag_name: "v9.1.0",
+              body: "## New features\n\n- feat: voice notes (#7)\n",
+              published_at: null,
+              assets: [],
+            },
+            { tag_name: "v9.0.1", body: "", draft: true, assets: [] },
+          ])
+        : Response.json({ message: "Bad credentials" }, { status: 401 }),
   });
 });
 afterAll(async () => {
@@ -1667,6 +1678,18 @@ describe("updates and the vault sync", () => {
       { program: "pi", latest: null },
       { program: "uv", latest: null },
       { program: "gh", latest: null },
+    ]);
+  });
+
+  test("the changelog lists the published releases with their changes", async () => {
+    expect(await json<unknown>(await call("/api/update/changelog"))).toEqual([
+      {
+        version: "9.1.0",
+        publishedAt: null,
+        headline: "Voice notes.",
+        changes: "New features:\n• feat: voice notes (#7)",
+        installed: false,
+      },
     ]);
   });
 

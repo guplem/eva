@@ -151,6 +151,8 @@ import {
   type VoicePart,
 } from "./engine-install/voice-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
+import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.ts";
+import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
@@ -341,6 +343,8 @@ const latestToolKeepMs = 60 * 60_000;
 /** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
 const latestToolFailureKeepMs = 10 * 60_000;
 const maxLogEntries = 100;
+/** About a month of releases. A phone scrolls a longer list for nothing. */
+const changelogLength = 30;
 
 export class Eva {
   readonly sessions: SessionManager;
@@ -785,6 +789,14 @@ export class Eva {
     const status = (await this.updater?.updateNow(version)) ?? null;
     this.noticeUpdateState();
     return status;
+  }
+
+  /** The newest releases with what each one changed, also for a source checkout. */
+  async changelog(): Promise<ChangelogEntry[]> {
+    const releases = await publishedReleaseNotes(
+      this.options.githubApiBaseUrl === undefined ? {} : { apiBaseUrl: this.options.githubApiBaseUrl },
+    );
+    return changelogEntries(releases.slice(0, changelogLength), evaVersion);
   }
 
   engineUpdateStatus(): EngineUpdateStatus | null {

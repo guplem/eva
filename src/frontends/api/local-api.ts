@@ -72,6 +72,8 @@ const newSessionSchema = z.object({
 const messageSchema = z.object({ text: z.string().min(1) });
 /** About 20 minutes of the page's Opus recording: more than any voice note needs. */
 const maxVoiceNoteBytes = 25 * 1024 * 1024;
+/** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */
+const maxReceivedFileBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const renameSchema = z.object({ title: z.string() });
@@ -612,6 +614,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const audio = new Uint8Array(await request.arrayBuffer());
     if (audio.byteLength > maxVoiceNoteBytes) return json({ error: "The voice note is too long." }, 413);
     return json({ text: await eva.transcribeVoiceNote(audio) });
+  }
+  if (method === "POST" && url.pathname === "/api/files/received") {
+    // The body is the file as it is, like a voice note: no multipart form to parse.
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.byteLength > maxReceivedFileBytes) return json({ error: "Eva takes files up to 25 MB only." }, 413);
+    return json(eva.receiveFile(url.searchParams.get("name") ?? "file", bytes), 201);
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));

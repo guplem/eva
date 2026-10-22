@@ -136,7 +136,7 @@ export function saveReceivedFile(vaultPath: string, originalName: string, bytes:
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   const safeName =
     basename(originalName)
-      .replace(/[^\w.-]+/g, "-")
+      .replace(/[^\p{L}\p{N}_.-]+/gu, "-")
       .slice(-80) || "file";
   const extension = extname(safeName);
   const name = `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;

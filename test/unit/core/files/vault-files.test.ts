@@ -166,6 +166,12 @@ describe("received files and the scratch cleanup", () => {
     expect(saveReceivedFile(vault, "", new Uint8Array([2]))).toMatch(/^Scratch\/received\/file-[0-9a-f]{12}$/);
   });
 
+  test("a name in any language keeps its letters (issue 409)", () => {
+    expect(saveReceivedFile(vault, "写真 día.jpg", new Uint8Array([3]))).toMatch(
+      /^Scratch\/received\/写真-día-[0-9a-f]{12}\.jpg$/,
+    );
+  });
+
   test("the note tells the agent where a received file is", () => {
     expect(receivedFileNote("Scratch/received/a-1.jpg")).toBe(
       "[The person sent a file, saved as Scratch/received/a-1.jpg]",

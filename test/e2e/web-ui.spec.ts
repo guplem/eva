@@ -2000,7 +2000,9 @@ test("the Settings home page lists where each setting lives, and a row opens its
   expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
 });
 
-test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
+test("the New chat button sits in the list header on a computer and at its foot on a phone, and the list has no model menu", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -2015,13 +2017,33 @@ test("the New chat button sits in the list header, and the list has no model men
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("combobox")).toHaveCount(0);
   const buttonBox = await button.boundingBox();
   const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
-  if (buttonBox === null || firstChatBox === null) throw new Error("A sidebar part is not on the screen.");
-  expect(buttonBox.y).toBeLessThan(firstChatBox.y);
+  const listBox = await page.locator(".sidebar-list").boundingBox();
+  if (buttonBox === null || firstChatBox === null || listBox === null)
+    throw new Error("A sidebar part is not on the screen.");
+  // A thumb reaches the foot of a phone screen, not its top. The list scrolls above the button.
+  if (test.info().project.name === "phone") expect(buttonBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height);
+  else expect(buttonBox.y).toBeLessThan(firstChatBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
     .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
   expect(cut).toBe(0);
+});
+
+test("a tap on Chats while a chat is open shows the list on a phone and a new chat on a computer", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const chats = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats", exact: true });
+  await chats.click();
+  if (test.info().project.name === "phone") {
+    await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+    return;
+  }
+  // The new chat page selects no chat in the list. The first message makes the chat.
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(0);
+  await page.locator(".sidebar .list-item").first().click();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(1);
 });
 
 test("the chat list header does not cover the search field", async ({ page }) => {

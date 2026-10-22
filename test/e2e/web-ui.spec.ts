@@ -1017,6 +1017,33 @@ test("the project page says that the clones load, not that there are none", asyn
   await expect(page.getByText("Loading the clones…")).toHaveCount(0);
 });
 
+test("the project page shows the facts, the quick links and a clones section", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  const facts = page.getByRole("region", { name: "Project facts" });
+  await expect(facts.getByText("2025-03-02T10:15")).toBeVisible();
+  await expect(facts.getByText("#web")).toBeVisible();
+  const repository = facts.getByRole("link", { name: "github.com/example-owner/example-app" });
+  await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
+  await expect(repository).toHaveAttribute("target", "_blank");
+  // A local remote has no web page, so it stays plain text.
+  await expect(facts.getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
+
+  await facts.getByRole("link", { name: "Open in Files" }).click();
+  await expect(page).toHaveURL(/#\/files\/Projects\/2025-03-02-1015-example-app$/);
+  await expect(page.getByRole("link", { name: /AGENTS\.md/ }).first()).toBeVisible();
+});
+
+test("a failed read of the clones does not say that the project has none", async ({ page }) => {
+  await logIn(page);
+  await page.route("**/api/projects/*/clones", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await openExampleApp(page);
+  const clones = page.getByRole("region", { name: "Clones" });
+  await expect(clones.getByText(/^A new clone is another copy/)).toBeVisible();
+  await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
+});
+
 test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
   const title = `Forked project work (${test.info().project.name})`;
   await logIn(page);
@@ -1672,6 +1699,8 @@ test("Settings: Development links to a GitHub report and opens the design refere
   await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");
   await expect(page.getByRole("region", { name: "Components" })).toContainText(".pill");
   await expect(page.getByRole("list", { name: "Layers" })).toContainText("src/core");
+  // Only the panel scrolls. A hidden label deep in the panel must not make the whole page taller.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBe(0);
   // The theme switch on the page changes the colours of every sample.
   await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -3415,6 +3444,9 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByRole("heading", { name: `Draft ${run} · Details` })).toBeVisible();
   await expect(page.getByText("Created 2025-05-01T08:00")).toBeVisible();
+  // The page uses the cards of Settings and Repository setup, so it looks like them.
+  await expect(page.getByRole("region", { name: "Details" })).toHaveClass(/\bcard\b/);
+  await expect(page.getByRole("region", { name: "Whole file" })).toHaveClass(/\bcard\b/);
 
   await page.getByLabel("Title").fill(`Renamed ${run}`);
   await page.getByLabel("Project status").selectOption("active");

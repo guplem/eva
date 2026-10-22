@@ -254,11 +254,6 @@ samp {
   padding-bottom: 4px;
 }
 
-:root[data-density="compact"] .settings,
-:root[data-density="compact"] .settings fieldset {
-  gap: 6px;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -553,10 +548,13 @@ textarea {
   color: var(--accent-ink);
 }
 
-/* The rail shows only the icon. The name stays for a screen reader, and the title shows it on hover. */
+/* The rail shows only the icon. The name stays for a screen reader, and the title shows it on hover.
+   Without top and left, a hidden label deep in a scrolled panel makes the whole page taller, so the page scrolls too. */
 .nav-label,
 .visually-hidden {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
@@ -1160,37 +1158,6 @@ textarea {
   }
 }
 
-.settings {
-  /* A long Windows path or URL has no break points. */
-  overflow-wrap: anywhere;
-  padding: 20px;
-  max-width: 720px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.settings h1 {
-  font-size: 18px;
-  margin: 0;
-}
-
-.settings fieldset {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-}
-
-.settings label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-}
-
 .seed-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -1256,16 +1223,6 @@ textarea {
   gap: 10px;
 }
 
-.settings h3 {
-  margin: 8px 0 0;
-  font-size: 15px;
-}
-
-.settings .hint {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .remote-access ol {
   margin: 0;
   padding-left: 20px;
@@ -1278,11 +1235,6 @@ textarea {
   width: 200px;
   height: 200px;
   max-width: 100%;
-}
-
-.settings input[type="password"] {
-  flex: 1;
-  min-width: 0;
 }
 
 .sync-state li {
@@ -1336,11 +1288,6 @@ textarea {
 
 .check-row .failed {
   color: var(--bad);
-}
-
-.settings .muted {
-  color: var(--muted);
-  font-size: 13px;
 }
 
 /* The repository setup: each section of a report, with its items as the step rows of Remote access. */
@@ -1651,22 +1598,6 @@ textarea {
   }
 }
 
-.edit-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-}
-
-.edit-list ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 /* The whole AGENTS.md: monospace, so YAML indents line up. */
 .project-file {
   width: 100%;
@@ -1779,6 +1710,17 @@ button.link-button {
 }
 
 .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* A fieldset that only disables its fields: the card already gives the frame. */
+.card-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -1912,6 +1854,8 @@ button.link-button {
   background: var(--chip);
   font-size: var(--text-sm);
   line-height: 1.5;
+  /* An error can quote a long path or URL with no break points. */
+  overflow-wrap: anywhere;
 }
 
 .callout.success {
@@ -3079,6 +3023,47 @@ button.small {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
+}
+
+.project-facts {
+  gap: var(--space-3);
+}
+
+/* The chat panel is narrow, so its values sit at the right edge. Here the card is wide: each value stays by its name. */
+.project-facts .chat-facts dd {
+  justify-self: start;
+  text-align: start;
+}
+
+/* A quick link looks like the chip of a plain fact, with the link colour, so the person sees it opens. */
+a.link-chip {
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+
+a.link-chip:hover {
+  background: var(--soft);
+}
+
+.clones-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.clones-section h2 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+/* An empty slot, not a clone: a dashed line and no shadow, so it does not read as one more clone. */
+.clone-new {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: transparent;
+  box-shadow: none;
+  border: 2px dashed var(--line);
 }
 
 .clone-card {

@@ -91,7 +91,12 @@ export function ProjectView({
    */
   const [projects, setProjects] = useState<Project[] | "failed" | null>(null);
   const [page, setPage] = useState<Page | null>(null);
-  const [loaded, setLoaded] = useState<{ readonly projectId: string; readonly clones: CloneDetails[] } | null>(null);
+  /** `failed` when the read failed: the project may have clones that the page cannot show. */
+  const [loaded, setLoaded] = useState<{
+    readonly projectId: string;
+    readonly clones: CloneDetails[];
+    readonly failed?: boolean;
+  } | null>(null);
   const [listVersion, setListVersion] = useState(0);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +132,7 @@ export function ProjectView({
   // Null while the clones of the open project load, so the page never says "No clones yet" too early,
   // and never shows the cards of the project that was open before.
   const clones = loaded !== null && loaded.projectId === openProjectId ? loaded.clones : null;
+  const clonesFailed = clones !== null && loaded?.failed === true;
   const [cloneVersion, setCloneVersion] = useState(0);
   /** A fetch or a pull of all clones, with its project: a page shows only the work of its own project. */
   const [syncWork, setSyncWork] = useState<{ readonly projectId: string; readonly label: string } | null>(null);
@@ -147,7 +153,7 @@ export function ProjectView({
       },
       (caught: unknown) => {
         if (!current) return;
-        setLoaded({ projectId: openProjectId, clones: [] });
+        setLoaded({ projectId: openProjectId, clones: [], failed: true });
         showError(caught);
       },
     );
@@ -506,6 +512,7 @@ export function ProjectView({
             stateOf={stateOf}
             isWorking={isWorking}
             error={error}
+            clonesFailed={clonesFailed}
             onBackToList={() => open(null)}
             onDetails={() => open({ kind: "details", project: page.project })}
             onSetup={() => open({ kind: "setup", project: page.project })}

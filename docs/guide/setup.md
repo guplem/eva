@@ -190,3 +190,42 @@ EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault
 **Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator. On Windows, Eva starts at each logon from the list of programs that Windows starts for your user. Task Manager can show it under **Startup apps** as "Console Window Host". If setup cannot start Eva, run `eva service install` to try again, or `eva` to see the error. If Eva crashes, she starts again within a minute.
 
 **Tailscale without `sudo`.** On Linux, Eva installs Tailscale for your user only, with no `sudo`, when no `tailscale` program exists. It needs linger too: `eva doctor` checks it. If Tailscale already runs for the administrator, ask them to run `sudo tailscale set --operator=$USER` once, so that Eva can use it.
+
+## Remove Eva
+
+Run the uninstall command on Eva's computer. It removes only what you allow.
+
+On Linux:
+
+```bash
+curl -fsSL https://github.com/guplem/eva/releases/latest/download/uninstall.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/guplem/eva/releases/latest/download/uninstall.ps1 | iex
+```
+
+The command asks before each step. Each question shows the safe answer in `[brackets]`: press Enter to keep it. Press Ctrl+C to stop at any question.
+
+1. **Which Eva.** Type a name, or press Enter to remove every Eva on this computer.
+2. **Stop her.** The command stops each Eva that you picked, and removes her start at login. This step asks nothing.
+3. **Her folder.** The command asks to delete `eva-<name>`. It holds her settings, logins, logs and copy of your notebook. Enter keeps the folder, so a new install finds her again. When the notebook copy or a project clone has changes that are not on GitHub yet, the command lists them first.
+4. **The eva program.** When no other Eva uses the computer, the command asks to remove the `eva` program. Enter removes it.
+5. **The shared programs.** The command asks about each program that Eva installed: pi, gh, ffmpeg, whisper.cpp, Tailscale, Claude Code and uv. Other programs can use them too, so Enter keeps each one.
+
+The command never touches your notebook on GitHub, or your own Claude Code settings in `~/.claude`.
+
+Then do these steps outside the computer:
+
+- **GitHub:** revoke Eva's login under **Settings → Applications**. To delete your notebook too, open its repository on GitHub, then **Settings**.
+- **Telegram:** send `/deletebot` to @BotFather.
+- **Tailscale:** remove the computer on the [Machines page](https://login.tailscale.com/admin/machines), if it is still there.
+- **Phone:** delete Eva's icon from the home screen.
+- **Linux:** setup ran `loginctl enable-linger`. To undo it, run `loginctl disable-linger`.
+
+**By hand.** To read each step before it runs, read [uninstall.sh](../../install/uninstall.sh) or [uninstall.ps1](../../install/uninstall.ps1). Or do the main steps yourself, for each Eva:
+
+- On Linux, run `systemctl --user disable --now eva-<name>`. Then delete `~/.config/systemd/user/eva-<name>.service`, the folder `~/.config/eva-<name>` and the program `~/.local/bin/eva`.
+- On Windows, end each `eva.exe` task in Task Manager. Then run `Remove-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run Eva-<name>` in PowerShell. Delete the folders `%APPDATA%\eva-<name>` and `%LOCALAPPDATA%\Programs\Eva`, and remove the second one from your `PATH`.

@@ -95,7 +95,7 @@ Run `eva doctor` on Eva's computer. It lists the tools that are missing, and how
 
 ## More guides
 
-- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux.
+- [docs/guide/setup.md](docs/guide/setup.md): the full installation, step by step, for Windows and for Linux. Its last section, [Remove Eva](docs/guide/setup.md#remove-eva), removes Eva again.
 - [docs/guide/reference.md](docs/guide/reference.md): every command and setting, several computers, updates, and the optional features (voice notes, PDFs, Google Calendar).
 
 ## For developers

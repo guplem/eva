@@ -121,6 +121,16 @@ describe("browseVault: folders", () => {
     expect(projects.entries.find((entry) => entry.name === "2026-01-01-0000-large")?.title).toBe("Large");
   });
 
+  test("a letter of two bytes across the read limit keeps the title", () => {
+    const head = "---\ncreated: 2026-01-01T00:00\n---\n# Cut\n\n";
+    // "à" takes two bytes, and the first one is the last byte that the title read takes.
+    const filler = "x".repeat(64_000 - Buffer.byteLength(head) - 1);
+    write("Projects/2026-01-01-0000-cut/AGENTS.md", `${head}${filler}à and more text\n`);
+    const projects = browseVault(vault, "Projects", keep);
+    if (projects.kind !== "folder") throw new Error("Projects is a folder");
+    expect(projects.entries.find((entry) => entry.name === "2026-01-01-0000-cut")?.title).toBe("Cut");
+  });
+
   test.skipIf(process.platform === "win32")("an AGENTS.md that is a named pipe never blocks the core", () => {
     mkdirSync(join(vault, "Projects/2026-01-01-0000-pipe"), { recursive: true });
     const made = Bun.spawnSync(["mkfifo", join(vault, "Projects/2026-01-01-0000-pipe/AGENTS.md")]);

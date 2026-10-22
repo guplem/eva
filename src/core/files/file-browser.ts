@@ -357,7 +357,10 @@ export function projectTitleIn(root: string, folder: string): string | null {
   try {
     if (!fstatSync(handle).isFile()) return null;
     const bytes = Buffer.alloc(titleBytes);
-    const text = textOf(bytes.subarray(0, readSync(handle, bytes, 0, titleBytes, 0)));
+    const read = readSync(handle, bytes, 0, titleBytes, 0);
+    // A full read can end inside a letter of several bytes. A line break never does.
+    const end = read < titleBytes ? read : bytes.lastIndexOf(0x0a, read - 1) + 1;
+    const text = textOf(bytes.subarray(0, end));
     return text === null ? null : projectTitleOf(text, basename(folder));
   } catch {
     return null;

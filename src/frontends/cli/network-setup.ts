@@ -10,7 +10,6 @@ import { indented, noteLine, stepLines, yourTurnLines } from "./setup-output.ts"
 
 export interface NetworkSetupOptions {
   readonly access: RemoteAccessControl;
-  readonly localUrl: string;
   readonly write: (line: string) => void;
   /** Answers a yes or no question; an empty answer means the default. */
   readonly ask: (question: string) => Promise<string>;
@@ -27,7 +26,6 @@ const defaultWaitLimitMs = 10 * 60_000;
 /** The lines of `describeAccess`, and a QR code to scan once the address works. */
 export function accessLines(input: {
   readonly remoteAccess: RemoteAccess | null;
-  readonly localUrl: string;
   readonly actionHint?: string;
 }): string[] {
   const lines = describeAccess(input);
@@ -60,7 +58,6 @@ export async function runNetworkSetup(given: NetworkSetupOptions): Promise<strin
   }
   for (const line of accessLines({
     remoteAccess: access,
-    localUrl: options.localUrl,
     // Inside setup, a hint to run setup points back to itself.
     ...(options.interactive ? {} : { actionHint: "Run `eva setup` in a terminal to let Eva do these steps." }),
   }))

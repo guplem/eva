@@ -36,7 +36,7 @@ import {
   requestRestart,
   startProjectWork,
 } from "./client.ts";
-import { allowDevice } from "./devices.ts";
+import { allowDevice, canOpenBrowser, openEva, openLoggedIn } from "./devices.ts";
 import { chooseInstance } from "./instance-choice.ts";
 import { runDoctor } from "./doctor.ts";
 import {
@@ -127,6 +127,8 @@ async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring)
       return settings(host, paths, command);
     case "devices-allow":
       return allowDevice(host, paths, command.code);
+    case "open":
+      return openEva(host, paths);
     case "status":
     case "projects":
     case "chat":
@@ -247,13 +249,14 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
         interactive,
         // A script never waits for a device code or a choice: nobody is there to read the page.
         ask: (key, question) =>
-          interactive ? ask(question) : Promise.resolve(key === "deviceCode" || key === "finishOn" ? "" : script(key)),
+          interactive
+            ? ask(question)
+            : Promise.resolve(key === "deviceCode" || key === "finishOn" || key === "openHere" ? "" : script(key)),
         write,
         // Setup publishes too, so the address that it prints works as soon as Eva runs.
         network: () =>
           runNetworkSetup({
             access: remoteAccessWatcher(host, port()),
-            localUrl: localUrl(),
             write,
             sleep: host.sleep,
             interactive,
@@ -269,6 +272,12 @@ async function setup(host: CliHost, paths: HomePaths, nonInteractive: boolean): 
           const client = runningClient(host, paths);
           return client === null ? null : requestDeviceAllow(client, code);
         },
+        openHere: canOpenBrowser(host)
+          ? async (page) => {
+              const client = runningClient(host, paths);
+              return client !== null && (await openLoggedIn(host, client, page));
+            }
+          : null,
         sleep: host.sleep,
         account: asksAccount ? accountChoice(host, paths) : null,
       });

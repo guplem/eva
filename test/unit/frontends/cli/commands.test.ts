@@ -282,6 +282,12 @@ describe("the client commands", () => {
     expect(host.errors.join("")).toContain("Eva does not run");
   });
 
+  test("open needs a running Eva, and says how to start her", async () => {
+    const host = fakeHost();
+    expect(await run(host, "open")).toBe(exitCodes.badConfig);
+    expect(host.errors.join("")).toContain("`eva service install`");
+  });
+
   test("need the local token from setup", async () => {
     const host = fakeHost();
     expect(await run(host, "status")).toBe(exitCodes.badConfig);
@@ -340,6 +346,44 @@ describe("with a running Eva", () => {
   test("chat talks to the running Eva until the input ends", async () => {
     const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
+  });
+
+  test("open opens this computer's browser with a login link that works once (#407)", async () => {
+    const windows = fakeHost({ isProcessAlive: () => true, platform: "win32" });
+    expect(await run(windows, "open")).toBe(exitCodes.clean);
+    const [command] = windows.commands;
+    expect(command?.slice(0, 2)).toEqual(["rundll32.exe", "url.dll,FileProtocolHandler"]);
+    const link = new URL(command?.[2] ?? "");
+    expect(link.origin).toBe(api.url);
+    expect(link.search).toBe("");
+    const secret = /^#login=([\w-]+)$/.exec(link.hash)?.[1] ?? "";
+    expect(eva.deviceLogins.redeemLoginLink(secret, "this computer, a browser")).toBeString();
+    expect(printed(windows)).toContain("Opened Eva in this computer's browser.");
+    // The secret shows only when no browser opens.
+    expect(printed(windows)).not.toContain(secret);
+
+    const desktop = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, DISPLAY: ":0" },
+    });
+    expect(await run(desktop, "open")).toBe(exitCodes.clean);
+    expect(desktop.commands[0]?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(desktop.commands[0]?.[4]).toContain("#login=");
+  });
+
+  test("open with no desktop, or a browser that fails, prints the link to open by hand", async () => {
+    const server = fakeHost({ isProcessAlive: () => true });
+    expect(await run(server, "open")).toBe(exitCodes.clean);
+    expect(server.commands).toEqual([]);
+    expect(printed(server)).toContain(`${api.url}/#login=`);
+    expect(printed(server)).toContain("It works once, for 2 minutes");
+    const failing = fakeHost({
+      isProcessAlive: () => true,
+      platform: "darwin",
+      runner: scriptedRunner([], () => ({ exitCode: 1, stderr: "no browser" })),
+    });
+    expect(await run(failing, "open")).toBe(exitCodes.clean);
+    expect(printed(failing)).toContain(`${api.url}/#login=`);
   });
 
   test("sync, hub, link and update go to the running Eva", async () => {

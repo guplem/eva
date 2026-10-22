@@ -19,6 +19,9 @@ function fake(input: {
   running?: boolean;
   startWorks?: boolean;
   codes?: Record<string, string>;
+  /** The pages that setup opens in this computer's browser; undefined for a computer with no desktop. */
+  opened?: (string | null)[];
+  openWorks?: boolean;
   /** For an Eva that is not the first one: the tailnet's accounts, owner first, and the ones let in. */
   tailnet?: { accounts: string[]; allowed?: string[] };
 }): Fake {
@@ -49,6 +52,13 @@ function fake(input: {
       if (label !== null) allowed.push(code);
       return Promise.resolve(label);
     },
+    openHere:
+      input.opened === undefined
+        ? null
+        : (page) => {
+            input.opened?.push(page);
+            return Promise.resolve(input.openWorks ?? true);
+          },
     sleep: () => Promise.resolve(),
     account:
       input.tailnet === undefined
@@ -74,7 +84,7 @@ describe("startAndLetIn", () => {
     await startAndLetIn(setup.options);
     expect(setup.started.count).toBe(1);
     const text = setup.lines.join("\n");
-    expect(text).toContain("Open https://eva.example-tailnet.ts.net");
+    expect(text).toContain("open https://eva.example-tailnet.ts.net there");
     expect(text).toContain("No device waits with this code.");
     expect(text).toContain("Allowed this computer, a browser.");
     expect(text).toContain("Ctrl+C");
@@ -84,7 +94,7 @@ describe("startAndLetIn", () => {
   test("with no Tailscale address yet, the page opens on this computer", async () => {
     const setup = fake({});
     await startAndLetIn({ ...setup.options, network: () => Promise.resolve(null) });
-    expect(setup.lines.join("\n")).toContain("Open http://127.0.0.1:7420");
+    expect(setup.lines.join("\n")).toContain("open http://127.0.0.1:7420 in it");
   });
 
   test("no keeps Eva stopped, and setup asks for no code", async () => {
@@ -252,5 +262,52 @@ describe("the Tailscale account of a second Eva (#322)", () => {
     });
     await startAndLetIn(setup.options);
     expect(setup.accounts.allowed).toEqual(["partner@example.com"]);
+  });
+});
+
+describe("Eva in this computer's browser (#407)", () => {
+  test("on a computer with a desktop, setup opens Eva there, logged in, and names `eva open`", async () => {
+    const opened: (string | null)[] = [];
+    const setup = fake({ running: true, opened });
+    await startAndLetIn(setup.options);
+    expect(setup.asked.slice(0, 2)).toEqual(["openHere", "deviceCode"]);
+    expect(opened).toEqual([null]);
+    const text = setup.lines.join("\n");
+    expect(text).toContain("Eva is open in this computer's browser.");
+    expect(text).toContain("`eva open`");
+    expect(text).toContain("open https://eva.example-tailnet.ts.net there");
+    expect(text).not.toContain("secrets.json");
+  });
+
+  test("no keeps the browser closed, and a browser that does not open says what to run", async () => {
+    const declined: (string | null)[] = [];
+    const no = fake({ running: true, opened: declined, answers: { openHere: ["n"] } });
+    await startAndLetIn(no.options);
+    expect(declined).toEqual([]);
+    const failing = fake({ running: true, opened: [], openWorks: false });
+    await startAndLetIn(failing.options);
+    expect(failing.lines.join("\n")).toContain("No browser opened. Run `eva open` to try again.");
+  });
+
+  test("a computer with no desktop gets no question", async () => {
+    const setup = fake({ running: true });
+    await startAndLetIn(setup.options);
+    expect(setup.asked).not.toContain("openHere");
+  });
+
+  test("to finish on the page, setup opens the Setup page in this computer's browser", async () => {
+    const opened: (string | null)[] = [];
+    const setup = fake({ running: true, opened, answers: { openHere: ["n"], finishOn: ["2"] } });
+    expect(await startAndLetIn(setup.options)).toBe("page");
+    expect(opened).toEqual(["/settings/setup"]);
+    const text = setup.lines.join("\n");
+    expect(text).toContain("The Setup page is open in this computer's browser.");
+    expect(text).toContain("https://eva.example-tailnet.ts.net/#/settings/setup");
+  });
+
+  test("a failed start says how to start Eva later", async () => {
+    const setup = fake({ startWorks: false });
+    await startAndLetIn(setup.options);
+    expect(setup.lines.join("\n")).toContain("`eva service install`");
   });
 });

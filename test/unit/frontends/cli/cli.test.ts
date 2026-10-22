@@ -133,6 +133,7 @@ describe("parseArguments", () => {
     expect(parseArguments(["sync"])).toEqual({ command: "sync", instance: undefined });
     expect(parseArguments(["hub"])).toEqual({ command: "hub", instance: undefined });
     expect(parseArguments(["link"])).toEqual({ command: "link", instance: undefined });
+    expect(parseArguments(["open"])).toEqual({ command: "open", instance: undefined });
     expect(parseArguments(["devices", "allow", "AB2C"])).toEqual({
       command: "devices-allow",
       instance: undefined,

@@ -1384,7 +1384,7 @@ describe("approvals and commands", () => {
     expect(texts).toContain("Checking for updates…");
     expect(texts).toContain("Vault sync:");
     expect(texts).toContain("This Eva cannot update herself.");
-    expect(texts).toContain("On this machine only (advanced): http://127.0.0.1:");
+    expect(texts).toContain("On Eva's computer, run `eva open`.");
     expect(engine.requests).toEqual([]);
   });
 

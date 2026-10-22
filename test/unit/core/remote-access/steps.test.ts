@@ -69,23 +69,22 @@ describe("the steps for each new device", () => {
 });
 
 describe("describeAccess", () => {
-  const localUrl = "http://127.0.0.1:7420";
-
-  test("a ready address comes first, then the device steps, then the local address", () => {
+  test("a ready address comes first, then the device steps, then the way in on Eva's computer", () => {
     const lines = describeAccess({
       remoteAccess: { ...base, step: "ready", url: "https://server.example-tailnet.ts.net", account: "o@example.com" },
-      localUrl,
     });
     expect(lines[0]).toBe("Open Eva: https://server.example-tailnet.ts.net");
     expect(lines.join("\n")).toContain("1. Install Tailscale");
     expect(lines.join("\n")).toContain("o@example.com");
-    expect(lines.at(-1)).toContain("On this machine only (advanced): http://127.0.0.1:7420");
+    expect(lines.at(-1)).toBe(
+      "On Eva's computer, run `eva open`. It opens her page in that computer's browser, logged in.",
+    );
+    expect(lines.join("\n")).not.toContain("secrets.json");
   });
 
   test("before it is ready, the lines say what to do here, then on each device", () => {
     const text = describeAccess({
       remoteAccess: { ...base, step: "sign_in", link: "https://login.tailscale.com/a/x" },
-      localUrl,
       actionHint: "Run `eva setup` to do this with Eva.",
     }).join("\n");
     expect(text).toContain("Use Eva from any device");
@@ -97,6 +96,6 @@ describe("describeAccess", () => {
   });
 
   test("with tailscale serve turned off, the lines say how to turn it on", () => {
-    expect(describeAccess({ remoteAccess: null, localUrl })[0]).toContain("remoteAccess.tailscaleServe");
+    expect(describeAccess({ remoteAccess: null })[0]).toContain("remoteAccess.tailscaleServe");
   });
 });

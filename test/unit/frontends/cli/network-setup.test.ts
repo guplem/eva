@@ -60,7 +60,6 @@ function harness(
     run: () =>
       runNetworkSetup({
         access,
-        localUrl: "http://127.0.0.1:7420",
         write: (line) => lines.push(line),
         ask: (question) => {
           questions.push(question);
@@ -81,7 +80,7 @@ describe("the network step of eva setup", () => {
     expect(text).toContain("Open Eva: https://server.example-tailnet.ts.net");
     expect(text).toContain("owner@example.com");
     expect(text).toContain("▀");
-    expect(text).toContain("On this machine only (advanced): http://127.0.0.1:7420");
+    expect(text).toContain("On Eva's computer, run `eva open`.");
     // Setup publishes too, so the printed address works as soon as Eva runs.
     expect(run.commands).toContain("serve --bg --https=443 http://127.0.0.1:7420");
   });
@@ -157,11 +156,10 @@ describe("accessLines", () => {
   test("a ready address gets a QR code and the plain address, which works where the code does not show", () => {
     const lines = accessLines({
       remoteAccess: { url: "https://server.example-tailnet.ts.net:7421", problem: null, step: "ready" },
-      localUrl: "http://127.0.0.1:7421",
     });
     expect(lines[0]).toBe("Open Eva: https://server.example-tailnet.ts.net:7421");
     expect(lines.join("\n")).toContain("▀");
-    const notReady = accessLines({ remoteAccess: { url: null, problem: "x" }, localUrl: "x" });
+    const notReady = accessLines({ remoteAccess: { url: null, problem: "x" } });
     expect(notReady.join("\n")).not.toContain("▀");
   });
 });

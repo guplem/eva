@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UpdateStatus } from "../../../../../src/core/updates/updater.ts";
 import {
+  evaNewest,
   installLabel,
   releaseDay,
   updatesFace,
@@ -107,5 +108,17 @@ describe("updateWait", () => {
   test("nothing runs, so nothing waits", () => {
     expect(updateWait(status, null)).toBeNull();
     expect(updateWait(null, null)).toBeNull();
+  });
+});
+
+describe("evaNewest", () => {
+  test("names the newest release, or null when none is newer or Eva has not checked", () => {
+    expect(evaNewest(status)).toBe("2.15.0");
+    expect(evaNewest({ ...status, releases: [] })).toBeNull();
+    expect(evaNewest(null)).toBeNull();
+  });
+
+  test("a source checkout names no version, as it follows the main branch", () => {
+    expect(evaNewest({ ...status, kind: "source", releases: [], available: true })).toBeNull();
   });
 });

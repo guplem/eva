@@ -11,7 +11,11 @@ import {
   sha256Hex,
   verifyChecksumsSignature,
 } from "../../../../src/core/updates/release-verification.ts";
-import { executableUpdateChannel, updateExecutable } from "../../../../src/core/updates/self-update.ts";
+import {
+  executableUpdateChannel,
+  publishedReleaseNotes,
+  updateExecutable,
+} from "../../../../src/core/updates/self-update.ts";
 import type { UpdateDownload } from "../../../../src/core/updates/updater.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
@@ -189,6 +193,14 @@ describe("updateExecutable", () => {
     });
     expect(await executableUpdateChannel(inputs("0.2.0")).check()).toMatchObject({ available: false, releases: [] });
     expect(readFileSync(executable, "utf8")).toBe("old build");
+  });
+
+  test("the changelog reads every published release, newest first, also the installed and older ones", async () => {
+    expect(await publishedReleaseNotes({ apiBaseUrl: `http://127.0.0.1:${String(server.port)}` })).toEqual([
+      { version: "0.2.0", notes: "## New features\n\n- feat: voice notes\n", publishedAt: "2026-10-12T09:00:00Z" },
+      { version: "0.1.5", notes: "## Fixes and other changes\n\n- fix: a crash\n", publishedAt: null },
+      { version: "0.1.0", notes: "", publishedAt: null },
+    ]);
   });
 
   test("an update to a chosen version installs that release, not the newest", async () => {

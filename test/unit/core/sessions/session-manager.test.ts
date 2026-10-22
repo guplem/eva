@@ -233,6 +233,8 @@ describe("a conversation", () => {
       "message one",
       "text",
       "turn_finished",
+      // Telegram showed the first answer.
+      "session_seen",
       "message two",
       "text",
       "turn_finished",
@@ -592,6 +594,15 @@ describe("seen turns (issue 381)", () => {
     manager.markSeen(sessionId, 1);
     manager.markSeen(sessionId, 1);
     expect(events.filter((event) => event.kind === "session_seen")).toHaveLength(1);
+  });
+
+  test("an answer to a Telegram message is seen, because Telegram showed it", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "from the phone", "telegram");
+    expect(manager.get(sessionId).seenTurns).toBe(1);
+    await manager.send(sessionId, "from the web app", "api");
+    expect(manager.get(sessionId).seenTurns).toBe(1);
   });
 
   test("a missing chat is refused", () => {

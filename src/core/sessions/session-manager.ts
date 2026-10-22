@@ -520,6 +520,12 @@ export class SessionManager {
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
+        // Telegram showed the answer where the person asked, so the web app must not show it as unread.
+        // A follow-up of the mode has no message, so its answer stays unread.
+        const fromTelegram =
+          batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
+        const recorded = this.options.store.get(sessionId);
+        if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
         if (followUp !== null && followUps < maxFollowUps) {
           followUps += 1;
           runtime.pending ??= createBatch();

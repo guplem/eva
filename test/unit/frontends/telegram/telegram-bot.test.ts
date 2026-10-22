@@ -340,6 +340,28 @@ describe("chats", () => {
     expect(telegram.sentTexts().join("\n")).not.toContain("stray");
   });
 
+  test("a chat that the web app marks as seen never releases a held block early (issue 381)", async () => {
+    createEva((request, turnNumber) => {
+      const [, end] = FakeEngine.answer(request, "done");
+      if (turnNumber === 1) return FakeEngine.answer(request, "First answer.");
+      return (async function* () {
+        yield { kind: "text", text: "Second answer.", messageId: "m2" } as const;
+        // The person reads the first answer in the web app while this turn runs.
+        await Bun.sleep(0);
+        const [session] = eva.sessions.list();
+        eva.sessions.markSeen(session?.id ?? "", 1);
+        if (end !== undefined) yield end;
+      })();
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "One");
+    await settle(bot, () => telegram.sentTexts().includes("First answer."));
+    telegram.sendText(owner, "Two");
+    await settle(bot, () => telegram.sentTexts().includes("Second answer."));
+    const answer = telegram.callsTo("sendMessage").find((call) => call.params["text"] === "Second answer.");
+    expect(answer?.params["disable_notification"]).toBeUndefined();
+  });
+
   test("a quiet block stays quiet when Telegram refuses its HTML (lesson 58)", async () => {
     createEva((request) => {
       const [, end] = FakeEngine.answer(request, "done");

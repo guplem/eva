@@ -30,7 +30,7 @@ export function toolCategory(name: string): ToolCategory {
 /** One line that says what a tool call does, for an approval button or an activity chip. */
 export function summarizeToolCall(name: string, input: unknown): string {
   const fields = (input ?? {}) as Record<string, unknown>;
-  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
+  for (const key of ["command", "file_path", "path", "pattern", "url", "description", "skill"]) {
     const value = fields[key];
     if (typeof value === "string") return isShellTool(name) ? value : `${name} ${value}`;
   }

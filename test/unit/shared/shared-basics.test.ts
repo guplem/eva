@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
-import { toolCategory } from "../../../src/shared/outward-actions.ts";
+import { summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
 
 describe("EvaError", () => {
@@ -22,6 +22,12 @@ describe("toolCategory", () => {
     expect(toolCategory("bash")).toBe("command");
     expect(toolCategory("Read")).toBe("tool");
     expect(toolCategory("Agent")).toBe("tool");
+  });
+});
+
+describe("summarizeToolCall", () => {
+  test("names a skill by its name, not by its input as JSON", () => {
+    expect(summarizeToolCall("Skill", { skill: "eva:about-me" })).toBe("Skill eva:about-me");
   });
 });
 

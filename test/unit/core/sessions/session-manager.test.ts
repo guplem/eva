@@ -1108,7 +1108,7 @@ describe("after a turn", () => {
 
     const slow = createManager(
       new FakeEngine((request, turnNumber) =>
-        turnNumber === 1
+        turnNumber === 1 || turnNumber === 3
           ? (async function* () {
               yield { kind: "text", text: "Working", messageId: "m1" } as const;
               await Bun.sleep(2_000);
@@ -1127,6 +1127,15 @@ describe("after a turn", () => {
     await turn;
     await slow.send(slowId, "again");
     expect(stopped).toEqual([true, false]);
+
+    // A message that waits while the person stops the turn is new work: its answer is no stop.
+    events.length = 0;
+    const long = slow.send(slowId, "a long task");
+    await waitUntil(() => events.some((event) => event.kind === "text"));
+    const queued = slow.send(slowId, "the next task");
+    slow.stop(slowId);
+    await Promise.all([long, queued]);
+    expect(stopped).toEqual([true, false, false]);
   });
 });
 

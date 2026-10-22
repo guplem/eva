@@ -516,6 +516,8 @@ export class SessionManager {
         const batch = runtime.pending;
         runtime.pending = null;
         handled.push(batch);
+        // A new message after a stop is new work, so the stop no longer counts. A follow-up of the mode has no message.
+        if (batch.messages.length > 0) runtime.stopped = false;
         // When the turn starts, not at the send: a message sent during a turn joins the next one
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });

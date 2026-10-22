@@ -745,8 +745,14 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
 });
 
 test("the day line shows the time of a run and of now on hover", async ({ page }, info) => {
-  // Noon keeps the now mark in the middle of the line: near midnight it sits at the edge of a phone screen.
-  await page.clock.setFixedTime(ordinaryDay);
+  // The day line places "now" by the server's time. Near midnight the mark sits at an edge of a
+  // phone screen, so the hover misses it. Noon keeps it in the middle of the line.
+  await page.route("**/api/schedules", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as { now: string };
+    return route.fulfill({ response, json: { ...body, now: `${body.now.slice(0, 11)}12:00${body.now.slice(16)}` } });
+  });
   await logIn(page);
   const id = `hover-${info.project.name}`;
   await page.request.post("/api/schedules", {

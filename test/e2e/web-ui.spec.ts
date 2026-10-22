@@ -359,10 +359,12 @@ test("a link to an archived chat opens it, with the archived list (issue 388)", 
   const title = await newAnsweredChat(page, "An archived linked chat");
   const chatId = await chatIdNamed(page, title);
   await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
+  const nav = page.getByRole("navigation", { name: "Chats" });
+  // A new hash loads no page, so the link waits until the list of this page has the archive.
+  await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(0);
   await page.goto(`/#/chat/${chatId}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await openList(page);
-  const nav = page.getByRole("navigation", { name: "Chats" });
   await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
   await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(1);
   // The way back changes the list, not the open chat.

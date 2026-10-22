@@ -874,6 +874,8 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await card.getByRole("button", { name: "New chat here" }).click();
   await expect(page.locator(".main-header .sub")).toHaveText(`Example app › ${cloneName} · main`);
   await expect(page.getByText("Project mode")).toBeVisible();
+  // A received file lands in the vault, which a clone's agent does not reach (issue 409).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");

@@ -4,7 +4,7 @@
  * Eva queues a message sent during a turn, so typed text brings Send back.
  * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
  * Without voice notes on her machine, the microphone leads to the button that installs them.
- * The clip attaches files. Each file uploads when the person picks it, so Send waits for no upload.
+ * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
@@ -103,6 +103,8 @@ export function Composer({
   const lineId = useId();
   const canRecord = block === null && voice.isSupported;
   const showMic = canRecord && isEmpty;
+  // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
+  const canAttach = session.mode !== "project";
   if (voice.state.phase !== "idle") {
     return (
       <div className="composer">
@@ -183,15 +185,18 @@ export function Composer({
               event.target.value = "";
             }}
           />
-          <button
-            className="icon-button"
-            aria-label="Attach a file"
-            data-tooltip="Attach a file"
-            disabled={block !== null}
-            onClick={() => picker.current?.click()}
-          >
-            <Icon name="clip" />
-          </button>
+          {canAttach && (
+            <button
+              className="icon-button"
+              aria-label="Attach a file"
+              data-tooltip="Attach a file"
+              // A file picked during a send that fails would be lost when the box gets its files back.
+              disabled={block !== null || sending}
+              onClick={() => picker.current?.click()}
+            >
+              <Icon name="clip" />
+            </button>
+          )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
           <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />

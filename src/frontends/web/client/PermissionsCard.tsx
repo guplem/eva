@@ -3,11 +3,17 @@
  * asks first and what never runs. The person's own rules show apart. The engines write the words,
  * next to the code that enforces them. The card only reads.
  */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useId, useState, type ReactElement } from "react";
 import { api, type PermissionsOverview } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-import { chatTitles, modeWaitsForRestart, rulesPlaceWords, rulesStateWords } from "./permission-words.ts";
+import {
+  chatTitles,
+  modeWaitsForRestart,
+  personRulesHint,
+  rulesPlaceWords,
+  rulesStateWords,
+} from "./permission-words.ts";
 import { Card, errorText } from "./SettingsParts.tsx";
 import type { ChatPermissions, PersonPermissionRules } from "../../../shared/permissions.ts";
 
@@ -15,7 +21,12 @@ type EngineEntry = PermissionsOverview[number];
 
 const engineTitles: Readonly<Record<EngineEntry["engine"], string>> = { "claude-code": "Claude Code", pi: "pi" };
 
-export function PermissionsCard({ chosenClaudeMode }: { readonly chosenClaudeMode: string }): ReactElement {
+/** `chosenClaudeMode` is the saved setting and its words, which can differ from the running mode until a restart. */
+export function PermissionsCard({
+  chosenClaudeMode,
+}: {
+  readonly chosenClaudeMode: { readonly value: string; readonly words: string };
+}): ReactElement {
   const [overview, setOverview] = useState<PermissionsOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -63,15 +74,16 @@ function EnginePermissionsBox({
   chosenClaudeMode,
 }: {
   readonly entry: EngineEntry;
-  readonly chosenClaudeMode: string;
+  readonly chosenClaudeMode: { readonly value: string; readonly words: string };
 }): ReactElement {
   const title = engineTitles[entry.engine];
   return (
     <details className="rules-box built-in permissions-box">
-      <summary className="field-label">{entry.mode === null ? title : `${title}, ${entry.mode} mode`}</summary>
-      {entry.engine === "claude-code" && modeWaitsForRestart(entry.mode, chosenClaudeMode) && (
+      <summary className="field-label">{entry.mode === null ? title : `${title}, ${entry.mode.words} mode`}</summary>
+      {entry.engine === "claude-code" && modeWaitsForRestart(entry.mode, chosenClaudeMode.value) && (
         <div className="callout">
-          You chose {chosenClaudeMode}. Eva uses it after a restart. Until then, these lists show {entry.mode}.
+          You chose {chosenClaudeMode.words}. Eva uses it after a restart. Until then, these lists show{" "}
+          {entry.mode?.words}.
         </div>
       )}
       {entry.chats.map((chat) => (
@@ -82,9 +94,7 @@ function EnginePermissionsBox({
         <p className="field-hint">{title} has no permission rules of its own. Only the lists above apply.</p>
       ) : (
         <>
-          <p className="field-hint">
-            Claude Code also follows the allow, ask and deny rules in its settings files. A deny rule always wins.
-          </p>
+          <p className="field-hint">{personRulesHint}</p>
           {entry.personRules.map((rules) => (
             <PersonRulesView key={rules.place} rules={rules} />
           ))}
@@ -95,9 +105,10 @@ function EnginePermissionsBox({
 }
 
 function ChatPermissionsView({ chat }: { readonly chat: ChatPermissions }): ReactElement {
+  const headingId = useId();
   return (
-    <section className="permission-chat" aria-label={chatTitles[chat.chat]}>
-      <h3>{chatTitles[chat.chat]}</h3>
+    <section className="permission-chat" aria-labelledby={headingId}>
+      <h3 id={headingId}>{chatTitles[chat.chat]}</h3>
       {chat.note !== null && <p className="field-hint">{chat.note}</p>}
       <PermissionList icon="check" title="Runs with no question" items={chat.runs} />
       <PermissionList icon="alert" title="Asks you first" items={chat.asks} />
@@ -148,8 +159,9 @@ function PermissionList({
         <p className="field-hint">Nothing.</p>
       ) : (
         <ul>
-          {items.map((item) => (
-            <li key={item}>{code ? <code>{item}</code> : item}</li>
+          {/* A person's file can list one rule twice. */}
+          {items.map((item, index) => (
+            <li key={`${String(index)}-${item}`}>{code ? <code>{item}</code> : item}</li>
           ))}
         </ul>
       )}

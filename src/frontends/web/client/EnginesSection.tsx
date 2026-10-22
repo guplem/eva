@@ -44,17 +44,16 @@ export function EnginesSection({ context }: { readonly context: SettingsContext 
   return (
     <>
       <DefaultEngineCard context={context} />
-      <PermissionsCard chosenClaudeMode={chosenModeLabel(context)} />
+      <PermissionsCard chosenClaudeMode={chosenMode(context)} />
       <ClaudeCodeCard context={context} />
       <PiCard context={context} />
     </>
   );
 }
 
-/** The words of the chosen mode match the words that the engine gives for the mode it runs. */
-function chosenModeLabel(context: SettingsContext): string {
+function chosenMode(context: SettingsContext): { value: string; words: string } {
   const mode = context.settings.config.engines.claudeCode.permissionMode;
-  return permissionModeChoices.find((choice) => choice.value === mode)?.label ?? mode;
+  return { value: mode, words: permissionModeChoices.find((choice) => choice.value === mode)?.label ?? mode };
 }
 
 function found(context: SettingsContext, engine: EngineName): boolean {

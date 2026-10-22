@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chatTitles,
   modeWaitsForRestart,
+  personRulesHint,
   rulesPlaceWords,
   rulesStateWords,
 } from "../../../../../src/frontends/web/client/permission-words.ts";
@@ -31,9 +32,14 @@ describe("permission words", () => {
     expect(rulesStateWords(rules({ deny: ["Read(./.env)"] }))).toBeNull();
   });
 
+  test("says that in Assistant chats Eva decides, and only deny rules change that", () => {
+    expect(personRulesHint).toContain("Assistant chats");
+    expect(personRulesHint).toContain("deny rule");
+  });
+
   test("a chosen mode that the running engine does not use yet waits for a restart", () => {
-    expect(modeWaitsForRestart("Auto", "Bypass permissions")).toBe(true);
-    expect(modeWaitsForRestart("Auto", "Auto")).toBe(false);
-    expect(modeWaitsForRestart(null, "Auto")).toBe(false);
+    expect(modeWaitsForRestart({ value: "auto", words: "Auto" }, "bypassPermissions")).toBe(true);
+    expect(modeWaitsForRestart({ value: "auto", words: "Auto" }, "auto")).toBe(false);
+    expect(modeWaitsForRestart(null, "auto")).toBe(false);
   });
 });

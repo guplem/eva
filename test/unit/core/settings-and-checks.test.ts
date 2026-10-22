@@ -430,6 +430,14 @@ describe("runCheck", () => {
     expect(await runCheck("vault", inputs())).toMatchObject({ ok: false });
   });
 
+  test("a vault check that fails with no error output still gives a reason (#430)", async () => {
+    const silent: ProcessRunner = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "" }) };
+    expect(await runCheck("vault", inputs({ vaultPath: vault, runner: silent }))).toEqual({
+      ok: false,
+      detail: "git ended with exit code 128 and wrote no error.",
+    });
+  });
+
   test("without a saved GitHub token, the GitHub check runs gh", async () => {
     expect(await runCheck("github", inputs({ runner: failingRunner }))).toEqual({ ok: false, detail: "not logged in" });
     expect(await runCheck("github", inputs())).toEqual({ ok: true, detail: "gh is logged in." });

@@ -84,6 +84,7 @@ describe("describeEvent", () => {
         costUsd: null,
         contextTokens: null,
         contextWindow: null,
+        model: null,
       },
       { ...base, kind: "message_received", text: "Hi", origin: "api" },
       { ...base, kind: "session_deleted" },

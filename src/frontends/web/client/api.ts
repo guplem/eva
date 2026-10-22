@@ -48,7 +48,7 @@ import type {
   VaultConflictReport,
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
-import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
@@ -193,8 +193,13 @@ export const api = {
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
   /** With no engine, Eva starts the chat on her default engine. */
-  newAssistantChat: (model: ModelAlias, engine?: EngineName): Promise<SessionRecord> =>
-    request("POST", "/api/sessions", { mode: "assistant", model, ...(engine === undefined ? {} : { engine }) }),
+  newAssistantChat: (model: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", {
+      mode: "assistant",
+      model,
+      ...(engine === undefined ? {} : { engine }),
+      ...(effort === undefined ? {} : { effort }),
+    }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
   /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
@@ -202,6 +207,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
   setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
+  /** The effort changes no history, so a chat takes a new one at any time. The next turn uses it. */
+  setEffort: (sessionId: string, effort: EffortLevel): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/effort`, { effort }),
   /** Turns a recording into text on Eva's machine. Eva keeps no audio. */
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
   /** Keeps a file for the agent in the vault's Scratch folder, and answers the note that the message carries. */

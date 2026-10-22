@@ -71,8 +71,9 @@ jobs:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    # The browser tests take about 4 minutes. A stuck page must not hold a runner for the default 6 hours.
-    timeout-minutes: 15
+    # Each slow step has its own limit. The browser install takes about 10 minutes on some runners, and
+    # it must not use up the time of the tests. This limit only stops a runner that hangs for 6 hours.
+    timeout-minutes: 45
     env:
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
@@ -84,10 +85,29 @@ jobs:
           bun-version: 1.4.2
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
+      # The browser build depends on the Playwright version that bun.lock installs.
+      - id: playwright-version
+        if: env.RUN_CODE_CHECKS == 'true'
+        run: echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
       - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-chromium
+      # The cache holds the browser but not the system libraries, so a cache hit installs only those.
+      - name: Install the browser
+        if: env.RUN_CODE_CHECKS == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 20
         run: bunx playwright install --with-deps chromium
-      # Browser tests of the web UI, at desktop size and at 375 px.
+      - name: Install the browser libraries
+        if: env.RUN_CODE_CHECKS == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 20
+        run: bunx playwright install-deps chromium
+      # Browser tests of the web UI, at desktop size and at 375 px. They take about 4 minutes.
+      # A stuck page must not hold the runner.
       - if: env.RUN_CODE_CHECKS == 'true'
+        timeout-minutes: 15
         run: bun run test:e2e
       # A failure that only CI shows needs the browser trace of the failed test to be understood.
       - if: failure() && env.RUN_CODE_CHECKS == 'true'

@@ -129,6 +129,7 @@ export function buildQueryOptions(
     );
   }
   if (request.model !== "default") options.model = request.model;
+  if (request.effort !== "default") options.effort = request.effort;
   // The pieces only change what the SDK reports to Eva, so Project mode stays a transparent wrapper.
   if (request.mode !== "model-call") options.includePartialMessages = true;
 
@@ -162,7 +163,9 @@ export function buildQueryOptions(
     // A person's own allow rule, such as `Bash(git push:*)`, would skip canUseTool and so Eva's
     // approval. An ask rule always beats an allow rule, so every shell call and every call of
     // Eva's own tools reaches canUseTool, which lets local actions through at once (issue #51).
-    const ask = ["Bash", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
+    // Auto mode's classifier can skip a write in `.eva/`, Eva's own files, and auto mode then fails
+    // it with no question. So such a write also reaches canUseTool (issue #428). An Edit rule also covers Write.
+    const ask = ["Bash", "Edit(./.eva/**)", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
     // Claude Code's memory folder stays on one machine, outside the vault, so a fact stored there
     // never reaches the person's other machines (issue #68).
     options.settings = { disableAllHooks: true, autoMemoryEnabled: false, permissions: { ask } };
@@ -331,6 +334,7 @@ async function* mapEachTurn(
           costUsd: message.total_cost_usd,
           contextTokens,
           contextWindow: contextWindowOf(message.modelUsage, answeringModel),
+          model: answeringModel,
         };
         break;
       }

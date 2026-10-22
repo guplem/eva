@@ -23,6 +23,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     startFolder: "/demo-vault",
     prompt: "Hello",
     model: "default",
+    effort: "default",
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
@@ -96,14 +97,14 @@ describe("buildQueryOptions", () => {
     expect(options.resume).toBeUndefined();
   });
 
-  test("Assistant mode: Eva's ask rules beat a person's own allow rules for the shell and Eva's tools (issue #51)", () => {
+  test("Assistant mode: Eva's ask rules beat a person's own allow rules and auto mode (issues #51, #428)", () => {
     const server = { command: "uvx", args: [], environment: {} };
     const options = buildQueryOptions(request({ mcpServers: { google: server } }), "/bin/claude");
     // An "ask" rule wins over any "allow" rule, so every such call reaches canUseTool and Eva's approval.
     expect(options.settings).toEqual({
       disableAllHooks: true,
       autoMemoryEnabled: false,
-      permissions: { ask: ["Bash", "mcp__google"] },
+      permissions: { ask: ["Bash", "Edit(./.eva/**)", "mcp__google"] },
     });
   });
 
@@ -177,6 +178,11 @@ describe("buildQueryOptions", () => {
     expect(buildQueryOptions(request({ model: "haiku" }), "c").model).toBe("haiku");
   });
 
+  test("the chat's effort goes to Claude Code, and the default keeps Claude Code's own (#419)", () => {
+    expect(buildQueryOptions(request(), "c")).not.toHaveProperty("effort");
+    expect(buildQueryOptions(request({ effort: "xhigh" }), "c").effort).toBe("xhigh");
+  });
+
   test("Assistant and Project mode stream the text; a model call has no front end to stream to (issue 117)", () => {
     expect(buildQueryOptions(request(), "c").includePartialMessages).toBe(true);
     expect(buildQueryOptions(request({ mode: "project", appendSystemPrompt: null }), "c").includePartialMessages).toBe(
@@ -234,6 +240,7 @@ describe("mapSdkMessages", () => {
         // The context of the last call (8 + 25,062 + 295), not the sum over the turn's two calls.
         contextTokens: 25_365,
         contextWindow: 200_000,
+        model: "claude-haiku-4-5-20251001",
       },
     ]);
   });
@@ -286,7 +293,11 @@ describe("mapSdkMessages", () => {
       ...result,
       modelUsage: { "claude-helper": { ...main, contextWindow: 50_000 }, "claude-haiku-4-5-20251001": main },
     });
-    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
+    expect((await collect(lines)).at(-1)).toMatchObject({
+      kind: "turn_finished",
+      contextWindow: 200_000,
+      model: "claude-haiku-4-5-20251001",
+    });
   });
 
   test("a turn whose model the usage does not name has no context window, so Eva guesses no limit", async () => {
@@ -391,6 +402,7 @@ describe("mapSdkMessages", () => {
         costUsd: 0.003285575,
         contextTokens: 18_853,
         contextWindow: 1_000_000,
+        model: "claude-haiku-5-5",
       },
     ]);
   });
@@ -891,6 +903,7 @@ describe("ClaudeCodeEngine", () => {
     });
     await drain(engine.runTurn(turnRequest));
     expect(await canUseTool?.("Edit", { file_path: "Methods/A.md" })).toMatchObject({ behavior: "allow" });
+    expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });

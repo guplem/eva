@@ -1522,7 +1522,8 @@ textarea {
     inset: 0 auto 0 0;
     width: min(320px, 85vw);
     z-index: 10;
-    animation: sidebar-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* A fade only: a move changes the measured size and place of each item while it runs. */
+    animation: fade-in 160ms ease-out;
   }
 
   .sidebar-backdrop {
@@ -3206,13 +3207,6 @@ a.link-chip:hover {
 @media (prefers-reduced-motion: reduce) {
   .tooltip {
     animation: none;
-  }
-}
-
-/* A phone slides the list in from the left edge, where its button is. */
-@keyframes sidebar-in {
-  from {
-    transform: translateX(-100%);
   }
 }
 

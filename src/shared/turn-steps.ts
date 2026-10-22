@@ -31,7 +31,9 @@ export function addStep(steps: readonly TurnStep[], payload: EngineEventPayload)
     case "text":
       return [...steps, { kind: "message", text: payload.text, isError: false, id: payload.messageId }];
     case "tool_started": {
-      const step = { kind: payload.category, text: shortened(payload.summary), isError: false, id: payload.toolUseId };
+      // A summary in JSON has no tool name, and the step list shows the name as its action.
+      const text = payload.summary.startsWith("{") ? `${payload.name} ${payload.summary}` : payload.summary;
+      const step = { kind: payload.category, text: shortened(text), isError: false, id: payload.toolUseId };
       return [...steps, step];
     }
     case "tool_finished":

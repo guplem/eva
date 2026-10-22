@@ -9,6 +9,7 @@ import {
   modelLabel,
   shownPending,
   stepIcon,
+  stepParts,
 } from "../../../../../src/frontends/web/client/conversation-parts.ts";
 import type { TurnStep } from "../../../../../src/shared/turn-steps.ts";
 
@@ -38,6 +39,34 @@ describe("stepIcon", () => {
     expect(stepIcon(step("tool", "Read"))).toBe("bolt");
     expect(stepIcon(step("task", "Search"))).toBe("sync");
     expect(stepIcon(step("command", "ls", true))).toBe("x");
+  });
+});
+
+describe("stepParts", () => {
+  test("splits a tool step into the tool as the action and its target as the detail", () => {
+    expect(stepParts(step("tool", "Read /demo-vault/Life/Notes.md"))).toEqual({
+      action: "Read",
+      detail: "/demo-vault/Life/Notes.md",
+    });
+    expect(stepParts(step("tool", "Skill eva:about-me"))).toEqual({ action: "Skill", detail: "eva:about-me" });
+  });
+
+  test("shows only the tool part of an MCP name", () => {
+    expect(stepParts(step("tool", 'mcp__demo__list_notes {"limit":5}'))).toEqual({
+      action: "list_notes",
+      detail: '{"limit":5}',
+    });
+  });
+
+  test("names a stored tool step without a name, a command, a message and a task by their kind", () => {
+    expect(stepParts(step("tool", '{"skill":"eva:about-me"}'))).toEqual({
+      action: "Tool",
+      detail: '{"skill":"eva:about-me"}',
+    });
+    expect(stepParts(step("tool", "TodoWrite"))).toEqual({ action: "TodoWrite", detail: "" });
+    expect(stepParts(step("command", "git status"))).toEqual({ action: "Command", detail: "git status" });
+    expect(stepParts(step("message", "Let me look."))).toEqual({ action: "Message", detail: "Let me look." });
+    expect(stepParts(step("task", "Search the notes"))).toEqual({ action: "Task", detail: "Search the notes" });
   });
 });
 

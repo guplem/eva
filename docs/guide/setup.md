@@ -10,7 +10,7 @@ Create these accounts first, in your browser:
 
 1. **An AI subscription.** A Claude Pro or Max subscription at [claude.ai](https://claude.ai), or a login of another provider that pi supports, such as ChatGPT or GitHub Copilot.
 2. **GitHub** at [github.com](https://github.com). Your notebook lives there.
-3. **Telegram** on your phone. It is optional, but it is the easiest way to talk to Eva and to get her alerts.
+3. **Telegram** on your phone. It is optional, but it is the easiest way to talk to Eva and to get her alerts. Without it, Eva's page can send you notifications: see [Notifications on a device](reference.md#notifications-on-a-device).
 4. **Tailscale** at [tailscale.com](https://tailscale.com) (free). It is optional: you need it only to open Eva's page from your phone or another computer.
 
 Will Eva get her own computer, with no screen, such as an old laptop in a cupboard? Prepare it first: see [Prepare a server that you reach from your desk](#prepare-a-server-that-you-reach-from-your-desk).

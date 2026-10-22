@@ -188,7 +188,7 @@ export const searchEntries: readonly SearchEntry[] = [
     item: "notifications",
     section: "access",
     title: "Notifications on this device",
-    words: "push alerts notify phone closed telegram",
+    words: "push alerts notify phone closed telegram answers replies schedules approvals background",
   },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
@@ -220,7 +220,12 @@ export const searchEntries: readonly SearchEntry[] = [
     words:
       "version eva claude code pi git bun tools installed update engine latest voice notes audio microphone ffmpeg whisper",
   },
-  { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
+  {
+    item: "eva-updates",
+    section: "updates",
+    title: "Eva updates",
+    words: "version release install automatic changelog notes",
+  },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },
   { item: "report-problem", section: "developer", title: "Report a problem", words: "bug issue github idea feedback" },
   {

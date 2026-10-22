@@ -1,6 +1,7 @@
 /**
  * The "Update to a version" dialog of the EVE design: one row per version, a main button that
- * names the action, and a note on the restart. A phone shows it as a bottom sheet.
+ * names the action, and a note on the restart. A phone shows it as a bottom sheet. The
+ * changelog dialog uses the same look.
  */
 .update-backdrop {
   backdrop-filter: blur(3px);
@@ -125,6 +126,12 @@ label.version-row {
 .version-headline {
   grid-column: 2 / 4;
   grid-row: 2;
+}
+
+/* In the changelog, each row opens its own changes below its headline. */
+.version-row .update-changes {
+  grid-column: 1 / 4;
+  grid-row: 3;
 }
 
 .update-changes summary {

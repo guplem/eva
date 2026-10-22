@@ -107,7 +107,13 @@ machine state/location.json source=web
 machine state/push-subscriptions.json subscriptions
 machine state/push-subscriptions.json subscriptions[].auth
 machine state/push-subscriptions.json subscriptions[].createdAt
+machine state/push-subscriptions.json subscriptions[].deviceId
 machine state/push-subscriptions.json subscriptions[].endpoint
+machine state/push-subscriptions.json subscriptions[].kinds
+machine state/push-subscriptions.json subscriptions[].kinds[]=alerts
+machine state/push-subscriptions.json subscriptions[].kinds[]=approvals
+machine state/push-subscriptions.json subscriptions[].kinds[]=replies
+machine state/push-subscriptions.json subscriptions[].kinds[]=schedules
 machine state/push-subscriptions.json subscriptions[].label
 machine state/push-subscriptions.json subscriptions[].p256dh
 machine state/push-subscriptions.json version

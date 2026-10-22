@@ -25,13 +25,29 @@ let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
 let turnScript: FakeTurnScript | null;
-/** A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. */
+/**
+ * A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. It
+ * lists two releases for the changelog, and counts how often Eva reads them.
+ */
 let githubApi: ReturnType<typeof Bun.serve>;
+let releaseReads = 0;
 beforeAll(() => {
   githubApi = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: () => Response.json({ message: "Bad credentials" }, { status: 401 }),
+    fetch: (request) =>
+      new URL(request.url).pathname === "/repos/guplem/eva/releases"
+        ? (releaseReads++,
+          Response.json([
+            {
+              tag_name: "v9.1.0",
+              body: "## New features\n\n- feat: voice notes (#7)\n",
+              published_at: null,
+              assets: [],
+            },
+            { tag_name: "v9.0.1", body: "", draft: true, assets: [] },
+          ]))
+        : Response.json({ message: "Bad credentials" }, { status: 401 }),
   });
 });
 afterAll(async () => {
@@ -1325,6 +1341,80 @@ describe("web routes", () => {
     expect((await call("/api/push/other")).status).toBe(404);
   });
 
+  test("push: a device picks its kinds, says that its page is in view, and reads only its own alerts", async () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/device-2";
+    const subscription = { endpoint, keys: { p256dh: "key", auth: "secret" } };
+    await call("/api/push/devices", { method: "POST", body: { subscription, label: "Phone" } });
+    const picked = await json<{ devices: { kinds: string[] }[] }>(
+      await call("/api/push/devices", { method: "PATCH", body: { endpoint, kinds: ["replies", "alerts"] } }),
+    );
+    expect(picked.devices.map((device) => device.kinds)).toEqual([["replies", "alerts"]]);
+    const unknown = await call("/api/push/devices", {
+      method: "PATCH",
+      body: { endpoint: "https://fcm.googleapis.com/fcm/send/none", kinds: [] },
+    });
+    expect(unknown.status).toBe(404);
+    expect((await call("/api/push/devices", { method: "PATCH", body: { endpoint, kinds: ["nope"] } })).status).toBe(
+      400,
+    );
+
+    const other = "https://fcm.googleapis.com/fcm/send/device-3";
+    await call("/api/push/devices", {
+      method: "POST",
+      body: { subscription: { ...subscription, endpoint: other }, label: "PC" },
+    });
+
+    const claim = (inView: boolean): Promise<Response> =>
+      call("/api/push/in-view", { method: "POST", body: { endpoint, pageId: "tab-1", inView } });
+    expect((await claim(true)).status).toBe(204);
+    eva.reportProblem("while_in_view", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await claim(false);
+    eva.reportProblem("out_of_view", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toEqual([other, endpoint, other]);
+    const own = await json<{ alerts: { key: string }[] }>(
+      await call("/api/notifications/recent", { method: "POST", body: { endpoint } }),
+    );
+    expect(own.alerts.map((alert) => alert.key)).toEqual(["out_of_view"]);
+    const others = await json<{ alerts: { key: string }[] }>(
+      await call("/api/notifications/recent", { method: "POST", body: { endpoint: other } }),
+    );
+    expect(others.alerts.map((alert) => alert.key)).toEqual(["out_of_view", "while_in_view"]);
+
+    const unknownClaim = await call("/api/push/in-view", {
+      method: "POST",
+      body: { endpoint: "https://fcm.googleapis.com/fcm/send/none", pageId: "tab-1", inView: true },
+    });
+    expect(unknownClaim.status).toBe(404);
+    expect((await call("/api/notifications/recent", { method: "POST", body: {} })).status).toBe(400);
+  });
+
+  test("push: a device login's subscription ends with that device login, and a token login's stays", async () => {
+    eva.deviceLogins.attachApprover({ name: "Telegram", canApprove: () => true, ask: () => undefined });
+    const request = eva.deviceLogins.request("owner@example.com", "a phone");
+    eva.deviceLogins.answer(request.id, "allow");
+    const answer = eva.deviceLogins.check(request.id, "owner@example.com");
+    const deviceToken = answer.state === "allowed" ? answer.token : "";
+    const keys = { p256dh: "key", auth: "secret" };
+    const phone = "https://fcm.googleapis.com/fcm/send/phone";
+    const computer = "https://fcm.googleapis.com/fcm/send/computer";
+    await call("/api/push/devices", {
+      method: "POST",
+      body: { subscription: { endpoint: phone, keys }, label: "Phone" },
+      headers: { cookie: `eva_device=${deviceToken}`, "content-type": "application/json" },
+    });
+    // The token wins over a cookie that the same browser also carries.
+    await call("/api/push/devices", {
+      method: "POST",
+      body: { subscription: { endpoint: computer, keys }, label: "Computer" },
+      headers: headers({ cookie: `eva_device=${deviceToken}` }),
+    });
+    const [phoneDevice] = await json<{ id: string }[]>(await call("/api/devices"));
+    expect((await call(`/api/devices/${phoneDevice?.id ?? ""}`, { method: "DELETE" })).status).toBeLessThan(300);
+    const left = await json<{ devices: { endpoint: string }[] }>(await call("/api/push"));
+    expect(left.devices.map((device) => device.endpoint)).toEqual([computer]);
+  });
+
   test("the service worker loads before the login, from the root", async () => {
     const response = await fetch(`${api.url}/sw.js`);
     expect(response.status).toBe(200);
@@ -1682,6 +1772,25 @@ describe("updates and the vault sync", () => {
       { program: "pi", latest: null },
       { program: "uv", latest: null },
       { program: "gh", latest: null },
+    ]);
+  });
+
+  test("the changelog reads GitHub once, and the next page open in the hour reads it again from memory", async () => {
+    const before = releaseReads;
+    await call("/api/update/changelog");
+    expect((await call("/api/update/changelog")).status).toBe(200);
+    expect(releaseReads - before).toBe(1);
+  });
+
+  test("the changelog lists the published releases with their changes", async () => {
+    expect(await json<unknown>(await call("/api/update/changelog"))).toEqual([
+      {
+        version: "9.1.0",
+        publishedAt: null,
+        headline: "Voice notes.",
+        changes: "New features:\n• feat: voice notes (#7)",
+        installed: false,
+      },
     ]);
   });
 

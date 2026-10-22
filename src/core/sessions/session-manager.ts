@@ -142,6 +142,9 @@ export interface TurnSnapshot {
 
 type EventListener = (event: SessionEvent) => void;
 
+/** `stopped`: the person stopped a turn of this run. */
+type IdleListener = (sessionId: string, state: { readonly stopped: boolean }) => void;
+
 interface PendingBatch {
   readonly texts: string[];
   /** The messages that people and Eva sent, for the front ends. A follow-up of the mode is no message. */
@@ -158,6 +161,8 @@ interface SessionRuntime {
   controller: AbortController | null;
   timer: ReturnType<typeof setTimeout> | null;
   pending: PendingBatch | null;
+  /** True after a stop, until the session is free again. */
+  stopped: boolean;
 }
 
 const titleLength = 60;
@@ -176,6 +181,7 @@ const maxFollowUps = 20;
 export class SessionManager {
   private readonly options: SessionManagerOptions;
   private readonly listeners = new Set<EventListener>();
+  private readonly idleListeners = new Set<IdleListener>();
   private readonly runtimes = new Map<string, SessionRuntime>();
   private readonly approvals = new Map<
     string,
@@ -328,6 +334,15 @@ export class SessionManager {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Calls the listener each time a session is free again: its turn, the queued turns and the
+   * follow-ups of the mode have ended. A turn end alone does not say that Eva is done.
+   */
+  onIdle(listener: IdleListener): () => void {
+    this.idleListeners.add(listener);
+    return () => this.idleListeners.delete(listener);
+  }
+
   isBusy(sessionId: string): boolean {
     return this.runtimes.get(sessionId)?.busy ?? false;
   }
@@ -357,6 +372,8 @@ export class SessionManager {
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;
     if (controller === null) return false;
+    const runtime = this.runtimes.get(sessionId);
+    if (runtime !== undefined) runtime.stopped = true;
     controller.abort();
     return true;
   }
@@ -540,6 +557,8 @@ export class SessionManager {
         const batch = runtime.pending;
         runtime.pending = null;
         handled.push(batch);
+        // A new message after a stop is new work, so the stop no longer counts. A follow-up of the mode has no message.
+        if (batch.messages.length > 0) runtime.stopped = false;
         // When the turn starts, not at the send: a message sent during a turn joins the next one
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
@@ -558,6 +577,16 @@ export class SessionManager {
       }
     } finally {
       runtime.busy = false;
+      const stopped = runtime.stopped;
+      runtime.stopped = false;
+      for (const listener of this.idleListeners) {
+        // A listener's failure must never keep the senders waiting.
+        try {
+          listener(sessionId, { stopped });
+        } catch {
+          // The listener logs its own problems.
+        }
+      }
       for (const batch of handled) batch.resolve();
     }
   }
@@ -884,7 +913,7 @@ ${prompt}`,
   private runtimeOf(sessionId: string): SessionRuntime {
     let runtime = this.runtimes.get(sessionId);
     if (runtime === undefined) {
-      runtime = { busy: false, turnRunning: false, controller: null, timer: null, pending: null };
+      runtime = { busy: false, turnRunning: false, controller: null, timer: null, pending: null, stopped: false };
       this.runtimes.set(sessionId, runtime);
     }
     return runtime;

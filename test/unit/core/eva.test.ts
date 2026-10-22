@@ -1793,7 +1793,7 @@ describe("migrations (#119)", () => {
     };
     const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } };
     const hub = start(new FakeEngine(), { machineName: "example-pc" }, { pushSender });
-    hub.subscribePush(subscription, "Phone");
+    hub.subscribePush(subscription, "Phone", null);
     hub.reportProblem("example", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
     await Bun.sleep(10);
     expect(pushed).toHaveLength(1);
@@ -1804,6 +1804,57 @@ describe("migrations (#119)", () => {
     await Bun.sleep(10);
     expect(pushed).toHaveLength(1);
     expect(satellite.pushKey().isHub).toBe(false);
+  });
+
+  test("a finished turn goes to each device that picked replies and has no page in view, also on a satellite", async () => {
+    const pushed: string[] = [];
+    const pushSender = (request: { endpoint: string }): Promise<number> => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    };
+    const phone = { endpoint: "https://fcm.googleapis.com/fcm/send/phone", keys: { p256dh: "k", auth: "a" } };
+    const laptop = { endpoint: "https://fcm.googleapis.com/fcm/send/laptop", keys: { p256dh: "k", auth: "a" } };
+    const desk = { endpoint: "https://fcm.googleapis.com/fcm/send/desk", keys: { p256dh: "k", auth: "a" } };
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    const instance = start(
+      new FakeEngine((request) => FakeEngine.answer(request, "The report is ready.")),
+      { machineName: "example-pc", sync: syncOff },
+      { pushSender },
+    );
+    instance.subscribePush(phone, "Phone", null);
+    instance.subscribePush(laptop, "Laptop", null);
+    instance.subscribePush(desk, "Desk", null);
+    instance.setPushKinds(laptop.endpoint, ["alerts"]);
+    instance.markPushInView(desk.endpoint, "desk-tab", true);
+    const session = instance.createAssistantSession({ source: "web", model: "default", title: "Weekly report" });
+    await instance.sessions.send(session.id, "Write the report.", "api");
+    await Bun.sleep(10);
+    expect(pushed).toEqual([phone.endpoint]);
+    expect(instance.recentNotifications(laptop.endpoint)).toEqual([]);
+    expect(instance.recentNotifications(phone.endpoint)).toMatchObject([
+      {
+        key: `chat:${session.id}`,
+        title: "Weekly report",
+        message: "The report is ready.",
+        url: `/#/chat/${session.id}`,
+      },
+    ]);
+  });
+
+  test("a removed device login loses its notifications", () => {
+    const instance = start(new FakeEngine());
+    instance.deviceLogins.attachApprover({ name: "Test", canApprove: () => true, ask: () => undefined });
+    const request = instance.deviceLogins.request("owner", "Phone");
+    instance.deviceLogins.answer(request.id, "allow");
+    const state = instance.deviceLogins.check(request.id, "owner");
+    const token = state.state === "allowed" ? state.token : "";
+    instance.subscribePush(
+      { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } },
+      "Phone",
+      token,
+    );
+    instance.deviceLogins.forget(token);
+    expect(instance.pushDevices()).toEqual([]);
   });
 
   test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {

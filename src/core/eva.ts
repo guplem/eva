@@ -22,6 +22,7 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
+import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
@@ -151,6 +152,8 @@ import {
   type VoicePart,
 } from "./engine-install/voice-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
+import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.ts";
+import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
@@ -175,8 +178,15 @@ export interface CurrentPlace {
 /** A location older than this says little about where the person is now, so the home place wins. */
 const locationFreshMs = 24 * 60 * 60_000;
 
+/** What Eva sends to the devices: an alert, or a chat's notice with its own title and page. */
+interface PushedAlertInput extends Alert {
+  readonly title?: string;
+  /** The page that a tap opens. Without it, the device picks the page from the key. */
+  readonly url?: string;
+}
+
 /** An alert as a device reads it after a push. The number lets the device show each alert once. */
-export interface PushedAlert extends Alert {
+export interface PushedAlert extends PushedAlertInput {
   readonly seq: number;
 }
 
@@ -329,8 +339,11 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
-/** How many alerts a device can read after a push: the newest is the one it shows. */
-const recentAlertCount = 10;
+/**
+ * How many alerts a device can read after a push: the newest is the one it shows. The chats push
+ * too, and each device reads only its own, so the list keeps more than one device needs.
+ */
+const recentAlertCount = 30;
 /** A cold start of an engine and one short answer. */
 const modelCallTimeoutMs = 90_000;
 const backgroundTickMs = 60_000;
@@ -341,6 +354,8 @@ const latestToolKeepMs = 60 * 60_000;
 /** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
 const latestToolFailureKeepMs = 10 * 60_000;
 const maxLogEntries = 100;
+/** About a month of releases. A phone scrolls a longer list for nothing. */
+const changelogLength = 30;
 
 export class Eva {
   readonly sessions: SessionManager;
@@ -366,6 +381,8 @@ export class Eva {
   private toolInstallRuns: boolean;
   /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
+  /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
+  private changelogCache: { readonly lookup: Promise<ChangelogEntry[] | EvaError>; readonly at: number } | null;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -397,8 +414,11 @@ export class Eva {
   private readonly alerts: AlertCenter;
   /** Eva's alerts as notifications on the person's devices. */
   private readonly webPush: WebPush;
-  /** The newest alerts, newest first, which a device's service worker reads after a push. */
-  private readonly recentAlerts: PushedAlert[];
+  /**
+   * The newest alerts, newest first, which a device's service worker reads after a push. Each one
+   * keeps the devices that got it, so a device reads only its own.
+   */
+  private readonly recentAlerts: { readonly alert: PushedAlert; readonly endpoints: ReadonlySet<string> }[];
   /** The number of the last alert that went to the devices. */
   private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
@@ -440,7 +460,7 @@ export class Eva {
     this.pushedCount = 0;
     // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
     // machines, so a device that also subscribed on a satellite would get each one twice.
-    this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert) : undefined));
+    this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert, "alerts") : undefined));
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -483,6 +503,10 @@ export class Eva {
       engines: options.engines.map((engine) => engine.name),
     });
     this.deviceLogins = new DeviceLogins({ path: options.paths.devices, now: options.now });
+    // A removed device must not see the start of a reply on its lock screen.
+    this.deviceLogins.onForget(() => {
+      this.webPush.keepDevices(new Set(this.deviceLogins.list(null).map((device) => device.id)));
+    });
     this.checkResults = new Map();
     this.googleLogin = new GoogleLogin({
       credentialsFolder: googleCredentialsFolder(options.paths),
@@ -498,6 +522,7 @@ export class Eva {
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
     this.latestToolCache = new Map();
+    this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -625,6 +650,30 @@ export class Eva {
       this.lastTurn = { ...event.usage, at: event.at, costUsd: event.costUsd };
       // The cache counts go in the log too, so a broken prompt cache shows (lesson 120).
       options.logger?.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
+    });
+
+    // Every machine sends the notifications of its own chats: a satellite's chats run only there.
+    const chatNotifications = new ChatNotifications({
+      chatOf: (sessionId) => this.sessions.list().find((session) => session.id === sessionId) ?? null,
+      onNotification: (notification) => {
+        void this.pushAlert(
+          {
+            key: notification.key,
+            level: "news",
+            message: notification.body,
+            at: options.now().toISOString(),
+            title: notification.title,
+            url: `/#/chat/${encodeURIComponent(notification.sessionId)}`,
+          },
+          notification.kind,
+        );
+      },
+    });
+    this.sessions.subscribe((event) => {
+      chatNotifications.handle(event);
+    });
+    this.sessions.onIdle((sessionId, state) => {
+      chatNotifications.idle(sessionId, state);
     });
 
     this.schedules =
@@ -787,6 +836,30 @@ export class Eva {
     return status;
   }
 
+  /** The newest releases with what each one changed, also for a source checkout. */
+  async changelog(): Promise<ChangelogEntry[]> {
+    const now = this.options.now().getTime();
+    const kept = this.changelogCache;
+    if (kept !== null) {
+      const found = await kept.lookup;
+      if (now - kept.at < (found instanceof EvaError ? latestToolFailureKeepMs : latestToolKeepMs)) {
+        if (found instanceof EvaError) throw found;
+        return found;
+      }
+    }
+    const lookup = publishedReleaseNotes(
+      this.options.githubApiBaseUrl === undefined ? {} : { apiBaseUrl: this.options.githubApiBaseUrl },
+    ).then(
+      (releases) => changelogEntries(releases.slice(0, changelogLength), evaVersion),
+      (error: unknown) =>
+        error instanceof EvaError ? error : new EvaError("update_failed", "GitHub gave no list of releases."),
+    );
+    this.changelogCache = { lookup, at: now };
+    const found = await lookup;
+    if (found instanceof EvaError) throw found;
+    return found;
+  }
+
   engineUpdateStatus(): EngineUpdateStatus | null {
     if (this.engineUpdater === null) return null;
     const status = this.engineUpdater.status();
@@ -886,34 +959,62 @@ export class Eva {
     return this.webPush.devices();
   }
 
-  subscribePush(subscription: PushSubscriptionInput, label: string): void {
-    this.webPush.subscribe(subscription, label);
+  /** `deviceToken` is the caller's device login, or null for a login with the token. */
+  subscribePush(subscription: PushSubscriptionInput, label: string, deviceToken: string | null): void {
+    const device = deviceToken === null ? undefined : this.deviceLogins.list(deviceToken).find((each) => each.current);
+    this.webPush.subscribe(subscription, label, device?.id ?? null);
   }
 
   unsubscribePush(endpoint: string): boolean {
     return this.webPush.unsubscribe(endpoint);
   }
 
+  /** False when the device has no subscription. */
+  setPushKinds(endpoint: string, kinds: readonly NotificationKind[]): boolean {
+    return this.webPush.setKinds(endpoint, kinds);
+  }
+
+  /**
+   * A page of a device is in view, or went out of view: Eva sends that device no push while one of
+   * its pages is in view. False when the device has no subscription.
+   */
+  markPushInView(endpoint: string, pageId: string, inView: boolean): boolean {
+    return this.webPush.markInView(endpoint, pageId, inView);
+  }
+
   /** Sends a test notification to the devices only, not to Telegram. */
   async testPush(): Promise<void> {
-    await this.pushAlert({
-      key: "push_test",
-      level: "news",
-      message: "This is a test notification from Eva.",
-      at: this.options.now().toISOString(),
-    });
+    await this.pushAlert(
+      {
+        key: "push_test",
+        level: "news",
+        message: "This is a test notification from Eva.",
+        at: this.options.now().toISOString(),
+      },
+      null,
+    );
   }
 
-  /** The newest alerts, newest first: a device shows the first one after a push. */
-  recentNotifications(): readonly PushedAlert[] {
-    return this.recentAlerts;
+  /**
+   * The newest alerts, newest first: a device shows the first one after a push. With an endpoint,
+   * only the alerts that went to that device.
+   */
+  recentNotifications(endpoint: string | null = null): readonly PushedAlert[] {
+    return this.recentAlerts
+      .filter((entry) => endpoint === null || entry.endpoints.has(endpoint))
+      .map((entry) => entry.alert);
   }
 
-  private async pushAlert(alert: Alert): Promise<void> {
+  /** `kind` null is a test: it goes to every device. */
+  private async pushAlert(alert: PushedAlertInput, kind: NotificationKind | null): Promise<void> {
+    const endpoints = this.webPush.recipients(kind);
+    // An entry for nobody would push the entries of the other devices out of the short list.
+    if (kind !== null && endpoints.length === 0) return;
     this.pushedCount += 1;
-    this.recentAlerts.unshift({ ...alert, seq: this.pushedCount });
+    // The entry goes in the list first: a device reads the list as soon as the push wakes it.
+    this.recentAlerts.unshift({ alert: { ...alert, seq: this.pushedCount }, endpoints: new Set(endpoints) });
     this.recentAlerts.splice(recentAlertCount);
-    await this.webPush.notify();
+    await this.webPush.notify(endpoints);
   }
 
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */

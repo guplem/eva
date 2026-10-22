@@ -40,6 +40,14 @@ export function versionRows(update: UpdateStatus, now: Date): VersionRow[] {
   return [...newer, { version: update.current, day: "", headline: "This version runs now.", installed: true }];
 }
 
+/**
+ * The newest release that is newer than this Eva, for the Versions card, or null. A source
+ * checkout follows the main branch, so it has no release to name.
+ */
+export function evaNewest(update: UpdateStatus | null): string | null {
+  return update?.releases[0]?.version ?? null;
+}
+
 export function installLabel(version: string): string {
   return `Update to v${version} and restart`;
 }

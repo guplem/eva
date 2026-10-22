@@ -1,4 +1,6 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
+import type { NotificationKind } from "../../../core/alerts/chat-notifications.ts";
+import type { PushDevice } from "../../../core/alerts/web-push.ts";
 import type { CheckResult } from "../../../core/checks.ts";
 import type {
   EvaSetupState,
@@ -37,6 +39,7 @@ import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
+import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type {
   ConflictChoice,
@@ -59,6 +62,7 @@ export type CurrentPlaceView = CurrentPlace;
 export type {
   BrowsedPath,
   ChatBlocker,
+  ChangelogEntry,
   CheckResult,
   CloneDetails,
   CloneFetch,
@@ -114,7 +118,13 @@ export class ApiError extends Error {
   }
 }
 
-async function request<Body>(method: string, path: string, body?: unknown): Promise<Body> {
+/** `keepalive`: the request still goes out while the browser hides or closes the page. */
+async function request<Body>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options: { readonly keepalive?: boolean } = {},
+): Promise<Body> {
   // A Blob, such as a voice note, goes as it is.
   const sent =
     body === undefined
@@ -122,7 +132,7 @@ async function request<Body>(method: string, path: string, body?: unknown): Prom
       : body instanceof Blob
         ? { headers: { "content-type": body.type }, body }
         : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
-  const response = await fetch(path, { method, credentials: "same-origin", headers: {}, ...sent });
+  const response = await fetch(path, { method, credentials: "same-origin", headers: {}, ...sent, ...options });
   if (!response.ok) throw await failureOf(response);
   return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
 }
@@ -269,10 +279,15 @@ export const api = {
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
   trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
   forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
-  pushKey: (): Promise<{ publicKey: string; isHub: boolean }> => request("GET", "/api/push"),
-  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<unknown> =>
+  pushKey: (): Promise<{ publicKey: string; isHub: boolean; devices: readonly PushDevice[] }> =>
+    request("GET", "/api/push"),
+  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<{ devices: readonly PushDevice[] }> =>
     request("POST", "/api/push/devices", { subscription, label }),
+  setPushKinds: (endpoint: string, kinds: readonly NotificationKind[]): Promise<{ devices: readonly PushDevice[] }> =>
+    request("PATCH", "/api/push/devices", { endpoint, kinds }),
   removePushDevice: (endpoint: string): Promise<unknown> => request("DELETE", "/api/push/devices", { endpoint }),
+  setPushInView: (endpoint: string, pageId: string, inView: boolean): Promise<void> =>
+    request("POST", "/api/push/in-view", { endpoint, pageId, inView }, { keepalive: true }),
   testPush: (): Promise<void> => request("POST", "/api/push/test"),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
@@ -306,6 +321,7 @@ export const api = {
   updateNow: (version?: string): Promise<UpdateStatus> =>
     request("POST", "/api/update", version === undefined ? {} : { version }),
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
+  changelog: (): Promise<ChangelogEntry[]> => request("GET", "/api/update/changelog"),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),
   latestVersions: (): Promise<LatestToolVersion[]> => request("GET", "/api/versions/latest"),

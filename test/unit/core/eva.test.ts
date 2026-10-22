@@ -1217,12 +1217,12 @@ describe("Eva", () => {
       fetch(request): Response {
         const base = `http://127.0.0.1:${String(server.port)}`;
         const path = new URL(request.url).pathname;
-        const asset = (name: string): Response =>
-          Response.json({
-            assets: [{ name, browser_download_url: `${base}/files/${name}`, digest: `sha256:${archiveHash}` }],
-          });
-        if (path === "/ffmpeg") return asset("ffmpeg-master-latest-linux64-gpl.tar.xz");
-        if (path === "/whisper") return asset("whisper-bin-ubuntu-x64.tar.gz");
+        const release = (name: string): object => ({
+          assets: [{ name, browser_download_url: `${base}/files/${name}`, digest: `sha256:${archiveHash}` }],
+        });
+        if (path === "/ffmpeg") return Response.json(release("ffmpeg-master-latest-linux64-gpl.tar.xz"));
+        // whisper.cpp: the list of its recent releases, as GitHub gives it.
+        if (path === "/whisper") return Response.json([release("whisper-bin-ubuntu-x64.tar.gz")]);
         if (path === "/model") return new Response(model);
         return new Response(archive);
       },

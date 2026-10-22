@@ -307,7 +307,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
     if (request.method() === "DELETE") deletes.push(request.url());
   });
 
-  const question = page.getByRole("group", { name: `Delete “${title}”?` });
+  const question = page.getByRole("dialog", { name: `Delete “${title}”?` });
   await chooseFromMore(page, "Delete chat");
   await question.getByRole("button", { name: "Keep" }).click();
   await expect(question).toHaveCount(0);
@@ -351,7 +351,7 @@ test("the More actions menu works from the keyboard, and the focus never gets lo
   await expect(more).toBeFocused();
 
   await chooseFromMore(page, "Delete chat");
-  const keep = page.getByRole("group", { name: "Delete “New chat”?" }).getByRole("button", { name: "Keep" });
+  const keep = page.getByRole("dialog", { name: "Delete “New chat”?" }).getByRole("button", { name: "Keep" });
   await expect(keep).toBeFocused();
   await keep.click();
   await expect(more).toBeFocused();
@@ -521,10 +521,19 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   await logIn(page);
   await clickNewChat(page);
 
+  // The new title goes in a dialog, so the header keeps the old title meanwhile.
+  const rename = page.getByRole("dialog", { name: "Rename chat" });
   await chooseFromMore(page, "Rename");
+  await expect(rename).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   await page.getByLabel("Chat title").fill("Draft");
   await page.getByLabel("Chat title").press("Escape");
+  await expect(rename).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+
+  await chooseFromMore(page, "Rename");
+  await rename.getByRole("button", { name: "Cancel" }).click();
+  await expect(rename).toHaveCount(0);
 
   await chooseFromMore(page, "Rename");
   // The field is selected, so typing replaces the old title.
@@ -896,7 +905,7 @@ test("a deleted project chat shows its project page again", async ({ page }) => 
   }
   await chooseFromMore(page, "Delete chat");
   await page
-    .getByRole("group", { name: /^Delete “/ })
+    .getByRole("dialog", { name: /^Delete “/ })
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();

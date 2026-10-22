@@ -72,6 +72,10 @@ describe("settings search", () => {
     expect(searchSettings("telegram banana")).toEqual([]);
   });
 
+  test("the search finds the permission mode of Claude Code chats", () => {
+    expect(searchSettings("bypass permissions").map((entry) => entry.item)).toEqual(["default-engine"]);
+  });
+
   test("a section's title finds its entries", () => {
     const found = searchSettings("updates");
     expect(found.map((entry) => entry.item)).toEqual(["versions", "eva-updates", "restart"]);

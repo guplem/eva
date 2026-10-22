@@ -96,7 +96,10 @@ function createEngines(
   const claudeExecutable = config.engines.claudeCode.executable ?? locateEngineProgram("claude-code", places);
   if (claudeExecutable === null)
     logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
-  else engines.push(new ClaudeCodeEngine({ executable: claudeExecutable }));
+  else
+    engines.push(
+      new ClaudeCodeEngine({ executable: claudeExecutable, permissionMode: config.engines.claudeCode.permissionMode }),
+    );
   const piExecutable = config.engines.pi.executable ?? locateEngineProgram("pi", places);
   if (piExecutable !== null) {
     engines.push(

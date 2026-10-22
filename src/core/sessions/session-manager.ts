@@ -221,6 +221,7 @@ export class SessionManager {
       telegramTopicId: input.telegramTopicId ?? null,
       historyLost: false,
       turns: [],
+      seenTurns: 0,
     };
     this.options.store.save(record);
     return record;
@@ -270,6 +271,22 @@ export class SessionManager {
    */
   rename(sessionId: string, title: string): SessionRecord {
     return this.retitle(this.get(sessionId), title, false);
+  }
+
+  /**
+   * Records that the person saw the first `turnCount` turns of a chat. A page that loaded before
+   * an answer sends an old count, so the count never goes back. It never goes past the stored
+   * turns either, so a turn that ends later stays unseen.
+   */
+  markSeen(sessionId: string, turnCount: number): SessionRecord {
+    const session = this.get(sessionId);
+    const seenTurns = Math.max(session.seenTurns, Math.min(turnCount, session.turns.length));
+    if (seenTurns === session.seenTurns) return session;
+    const updated = { ...session, seenTurns };
+    this.options.store.save(updated);
+    // Every device shows the chat as read, not only the one where the person opened it.
+    this.emit(sessionId, { kind: "session_seen", seenTurns });
+    return updated;
   }
 
   private retitle(session: SessionRecord, title: string, automatic: boolean): SessionRecord {
@@ -894,6 +911,7 @@ function redactPayload(
     case "approval_resolved":
     case "turn_finished":
     case "session_deleted":
+    case "session_seen":
       return payload;
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };

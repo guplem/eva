@@ -65,6 +65,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     source: "cli",
     telegramTopicId: null,
     historyLost: false,
+    seenTurns: 0,
     turns: [],
     ...overrides,
   };

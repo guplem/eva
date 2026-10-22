@@ -1017,6 +1017,33 @@ test("the project page says that the clones load, not that there are none", asyn
   await expect(page.getByText("Loading the clones…")).toHaveCount(0);
 });
 
+test("the project page shows the facts, the quick links and a clones section", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  const facts = page.getByRole("region", { name: "Project facts" });
+  await expect(facts.getByText("2025-03-02T10:15")).toBeVisible();
+  await expect(facts.getByText("#web")).toBeVisible();
+  const repository = facts.getByRole("link", { name: "github.com/example-owner/example-app" });
+  await expect(repository).toHaveAttribute("href", "https://github.com/example-owner/example-app");
+  await expect(repository).toHaveAttribute("target", "_blank");
+  // A local remote has no web page, so it stays plain text.
+  await expect(facts.getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Clones" }).getByRole("button", { name: "New clone" })).toBeVisible();
+
+  await facts.getByRole("link", { name: "Open in Files" }).click();
+  await expect(page).toHaveURL(/#\/files\/Projects\/2025-03-02-1015-example-app$/);
+  await expect(page.getByRole("link", { name: /AGENTS\.md/ }).first()).toBeVisible();
+});
+
+test("a failed read of the clones does not say that the project has none", async ({ page }) => {
+  await logIn(page);
+  await page.route("**/api/projects/*/clones", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await openExampleApp(page);
+  const clones = page.getByRole("region", { name: "Clones" });
+  await expect(clones.getByText(/^A new clone is another copy/)).toBeVisible();
+  await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
+});
+
 test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
   const title = `Forked project work (${test.info().project.name})`;
   await logIn(page);

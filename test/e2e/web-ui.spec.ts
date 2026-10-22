@@ -1672,6 +1672,8 @@ test("Settings: Development links to a GitHub report and opens the design refere
   await expect(page.getByRole("region", { name: "Colours" })).toContainText("--accent");
   await expect(page.getByRole("region", { name: "Components" })).toContainText(".pill");
   await expect(page.getByRole("list", { name: "Layers" })).toContainText("src/core");
+  // Only the panel scrolls. A hidden label deep in the panel must not make the whole page taller.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBe(0);
   // The theme switch on the page changes the colours of every sample.
   await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");

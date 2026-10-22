@@ -249,7 +249,7 @@ export function AssistantView({
         )}
       </main>
       {/* The inspector is about one chat, so a new chat draft has none. */}
-      {selected !== undefined && panelShown && <ChatPanel {...chat} />}
+      {selected !== undefined && <ChatPanel shown={panelShown} {...chat} />}
     </div>
   );
 }

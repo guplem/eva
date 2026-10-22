@@ -71,6 +71,20 @@
 .message {
   min-width: 0;
   overflow-wrap: anywhere;
+  animation: message-in 220ms ease-out;
+}
+
+/* A new message fades in. A move would make each button in it measure a fraction of a pixel short while it runs. */
+@keyframes message-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message {
+    animation: none;
+  }
 }
 
 .message.answer {

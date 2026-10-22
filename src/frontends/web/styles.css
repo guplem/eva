@@ -1139,6 +1139,35 @@ textarea {
   gap: 12px;
 }
 
+/* A dialog fades in with its scrim and grows a little, so it does not flash onto the page. */
+.dialog-backdrop {
+  animation: fade-in 160ms ease-out;
+}
+
+.dialog {
+  animation: dialog-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .dialog {
+    animation: none;
+  }
+}
+
 .seed-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -1503,6 +1532,8 @@ textarea {
     inset: 0 auto 0 0;
     width: min(320px, 85vw);
     z-index: 10;
+    /* A fade only: a move changes the measured size and place of each item while it runs. */
+    animation: fade-in 160ms ease-out;
   }
 
   .sidebar-backdrop {
@@ -1513,6 +1544,7 @@ textarea {
     border: none;
     border-radius: 0;
     background: var(--scrim);
+    animation: fade-in 180ms ease-out;
   }
 
   /* A finger needs a target of 44 px or more. */
@@ -2900,6 +2932,14 @@ button.small {
   border-radius: var(--radius-input);
   background: var(--panel);
   box-shadow: var(--shadow);
+  /* A fade only. menu-place.ts measures the menu, and a move would also delay a click on it. */
+  animation: fade-in 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
 }
 
 .menu button {
@@ -3091,6 +3131,8 @@ a.link-chip:hover {
     width: auto;
     background: transparent;
     border-right: none;
+    /* The list is the page here, not a drawer. */
+    animation: none;
   }
 
   .layout.list-home .main {
@@ -3174,6 +3216,14 @@ a.link-chip:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .tooltip {
+    animation: none;
+  }
+}
+
+/* After the phone rules, so this one wins. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar.open,
+  .sidebar-backdrop {
     animation: none;
   }
 }

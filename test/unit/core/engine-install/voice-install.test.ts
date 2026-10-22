@@ -138,11 +138,12 @@ describe("the voice installs", () => {
     return `http://127.0.0.1:${String(server.port)}`;
   }
 
-  /** `tar` writes each file where the release keeps it. */
+  /** `tar` writes each file where the release keeps it. Each other program starts well. */
   function tarRunner(commands: string[][], files: readonly string[]): ProcessRunner {
     return {
       run: (command) => {
         commands.push([...command]);
+        if (!command.includes("-C")) return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
         const target = command[command.indexOf("-C") + 1] ?? "";
         for (const file of files) {
           mkdirSync(join(target, file, ".."), { recursive: true });
@@ -200,6 +201,24 @@ describe("the voice installs", () => {
     // The newer of two releases wins: the older one's /old would fail the download.
     const program = await installWhisper({ ...inputs(runner, base), whisperReleaseUrl: `${base}/whisper-two` });
     expect(readFileSync(program, "utf8")).toBe("pretend whisper-bin-ubuntu-x64/whisper-cli");
+  });
+
+  test("a whisper-cli that lacks a system library fails the install, with the command that adds it", async () => {
+    const commands: string[][] = [];
+    const tar = tarRunner(commands, ["whisper-bin-ubuntu-x64/whisper-cli"]);
+    const runner: ProcessRunner = {
+      run: (command, options) =>
+        command[0] === "tar"
+          ? tar.run(command, options)
+          : Promise.resolve({
+              exitCode: 127,
+              stdout: "",
+              stderr: `${command[0] ?? ""}: error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory\n`,
+            }),
+    };
+    const failure = String(await caught(installWhisper(inputs(runner, serve()))));
+    expect(failure).toContain("whisper-cli cannot start: this computer lacks the library libgomp.so.1.");
+    expect(failure).toContain("sudo apt install libgomp1");
   });
 
   test("a new install replaces an old copy", async () => {

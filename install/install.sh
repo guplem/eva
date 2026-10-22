@@ -1,8 +1,9 @@
 #!/bin/sh
 # Installs Eva on Linux with one command:
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
-# It installs git when it is missing, downloads Eva from the latest release, checks the download
-# against SHA256SUMS, puts it in ~/.local/bin, and starts `eva setup`. A second run updates Eva.
+# It installs git, and the OpenMP library for voice notes, when they are missing. It downloads Eva
+# from the latest release, checks the download against SHA256SUMS, puts it in ~/.local/bin, and
+# starts `eva setup`. A second run updates Eva.
 # EVA_INSTALL_BASE_URL downloads from another place, and EVA_INSTALL_SKIP_SETUP=1 skips the setup.
 # The CI uses both (scripts/smoke-install.sh).
 set -eu
@@ -46,34 +47,65 @@ as_root() {
   fi
 }
 
-# Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl.
+# whisper.cpp, for voice notes, needs the OpenMP library. Ubuntu Server does not have it. Eva
+# installs voice notes later from the web page, where sudo cannot ask for a password.
+has_openmp() {
+  { ldconfig -p || /sbin/ldconfig -p; } 2>/dev/null | grep -q 'libgomp\.so\.1'
+}
+
+# Installs the tools in $1 and, when $2 is not empty, the OpenMP library. Each package manager
+# names the library in its own way. $packages is a list of words on purpose. NEEDRESTART_SUSPEND
+# keeps Ubuntu's service check (needrestart) from taking over the screen after the install.
+install_packages() {
+  if command -v apt-get >/dev/null 2>&1; then
+    packages="$1${2:+ libgomp1}"
+    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq
+    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $packages
+  elif command -v dnf >/dev/null 2>&1; then
+    packages="$1${2:+ libgomp}"
+    as_root dnf install -y $packages
+  elif command -v pacman >/dev/null 2>&1; then
+    packages="$1${2:+ gcc-libs}"
+    as_root pacman -S --noconfirm --needed $packages
+  elif command -v zypper >/dev/null 2>&1; then
+    packages="$1${2:+ libgomp1}"
+    as_root zypper --non-interactive install $packages
+  elif command -v apk >/dev/null 2>&1; then
+    packages="$1${2:+ libgomp}"
+    as_root apk add $packages
+  else
+    return 1
+  fi
+}
+
+# Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl. Voice notes
+# are optional, so the OpenMP library never stops the install.
 install_tools() {
   missing=""
   for tool in git curl; do
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
   done
-  [ -n "$missing" ] || return 0
-  say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
-  # $missing is a list of words on purpose. NEEDRESTART_SUSPEND keeps Ubuntu's service check
-  # (needrestart) from taking over the screen after the install.
-  if command -v apt-get >/dev/null 2>&1; then
-    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get update -qq
-    as_root env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $missing
-  elif command -v dnf >/dev/null 2>&1; then
-    as_root dnf install -y $missing
-  elif command -v pacman >/dev/null 2>&1; then
-    as_root pacman -S --noconfirm --needed $missing
-  elif command -v zypper >/dev/null 2>&1; then
-    as_root zypper --non-interactive install $missing
-  elif command -v apk >/dev/null 2>&1; then
-    as_root apk add $missing
-  else
-    fail "this system has no package manager that the script knows. Install$missing, then run this command again."
+  openmp=""
+  has_openmp || openmp="yes"
+  if [ -n "$missing" ]; then
+    say "  Installing$missing${openmp:+ and the OpenMP library for voice notes}. It needs administrator rights, so sudo can ask for your password."
+    install_packages "$missing" "$openmp" ||
+      fail "this system has no package manager that the script knows. Install$missing, then run this command again."
+    for tool in $missing; do
+      command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
+      say "  [ok] Installed $tool."
+    done
+  elif [ -n "$openmp" ] && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
+    say "  Installing the OpenMP library for voice notes. It needs administrator rights, so sudo can ask for your password."
+    # The subshell keeps a failed step, such as a refused sudo, from stopping the install.
+    (install_packages "" yes) || true
   fi
-  for tool in $missing; do
-    command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
-    say "  [ok] Installed $tool."
-  done
+  [ -z "$openmp" ] && return 0
+  if has_openmp; then
+    say "  [ok] Installed the OpenMP library."
+  else
+    say "  Voice notes need the OpenMP library. Install it later with your package manager (libgomp1 on Ubuntu)."
+  fi
 }
 
 download() {

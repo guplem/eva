@@ -9,6 +9,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import { missingLibraryHelp } from "../engine-install/voice-install.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 export interface VoiceTools {
@@ -58,7 +59,7 @@ async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): P
       [tools.ffmpegExecutable, "-nostdin", "-loglevel", "error", "-i", input, "-ar", "16000", "-ac", "1", wave],
       { cwd: folder, environment, timeoutMs: decodeTimeoutMs },
     );
-    if (decode.exitCode !== 0) throw new EvaError("process_failed", "ffmpeg could not decode the voice note.");
+    if (decode.exitCode !== 0) throw failure("ffmpeg", "ffmpeg could not decode the voice note", decode.stderr);
     const vad = tools.vadModelPath === null ? [] : ["--vad", "--vad-model", tools.vadModelPath];
     const result = await runner.run(
       [
@@ -75,9 +76,22 @@ async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): P
       ],
       { cwd: folder, environment, timeoutMs: transcribeTimeoutMs },
     );
-    if (result.exitCode !== 0) throw new EvaError("process_failed", "whisper could not transcribe the voice note.");
+    if (result.exitCode !== 0)
+      throw failure("whisper-cli", "whisper could not transcribe the voice note", result.stderr);
     return result.stdout.replace(nonSpeechPattern, " ").replace(/\s+/g, " ").trim();
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+}
+
+/** The program's own last line says why it failed, so the person can act without a terminal. */
+function failure(program: string, summary: string, stderr: string): EvaError {
+  const help = missingLibraryHelp(program, stderr);
+  if (help !== null) return new EvaError("process_failed", help);
+  const lastLine = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .at(-1);
+  return new EvaError("process_failed", lastLine === undefined ? `${summary}.` : `${summary}: ${lastLine}`);
 }

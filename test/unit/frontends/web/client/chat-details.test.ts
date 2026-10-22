@@ -26,6 +26,7 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
     omittedSteps: 0,
     contextTokens,
     contextWindow: null,
+    model: null,
     failure: null,
     lastMessageId: null,
     at,

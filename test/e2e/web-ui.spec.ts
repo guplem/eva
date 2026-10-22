@@ -783,23 +783,48 @@ test("the composer's chip picks the model before the first message, and is fixed
   await newChat(page);
   const chip = page.getByRole("button", { name: /Default model/ });
   await chip.click();
-  const menu = page.getByRole("dialog", { name: "Engine and model" });
+  const menu = page.getByRole("dialog", { name: "Engine, model and effort" });
   await expect(
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
+  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Low" }).click();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   // The chip is the one place that shows the model.
-  await expect(page.locator(".chip-picker").getByRole("button", { name: /Haiku/ })).toBeVisible();
+  const picker = page.locator(".chip-picker > .chip");
+  await expect(picker).toContainText("Haiku");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await page.getByRole("button", { name: /Haiku/ }).click();
+  // The chip names the model that answered (#419).
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
+  await picker.click();
   await expect(menu).toContainText("fixed after the first message");
-  await expect(menu.getByRole("button")).toHaveCount(0);
+  // The chip starts mid-row on a phone, and its menu still fits the screen.
+  await expect(menu).toBeInViewport({ ratio: 1 });
+  await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
+  // The effort changes no history, so it changes after the first message too.
+  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Max" }).click();
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
+});
+
+test("a chat on the default model names the model that answered (#419)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const picker = page.locator(".chip-picker > .chip");
+  await expect(picker).toContainText("Default model");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Default effort");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  await expect(picker).toContainText("Default · Opus 5.5");
 });
 
 test("a new schedule's setup card waits in a dialog, and Got it lets it run (lesson 66)", async ({ page }, info) => {

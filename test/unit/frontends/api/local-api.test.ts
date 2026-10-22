@@ -906,6 +906,16 @@ describe("routes", () => {
     const late = await call(`/api/sessions/${session.id}/model`, { method: "POST", body: { model: "opus" } });
     expect(late.status).toBe(409);
     expect(eva.sessions.get(session.id).modelAlias).toBe("haiku");
+
+    // The effort changes between turns too (#419).
+    const effort = await call(`/api/sessions/${session.id}/effort`, { method: "POST", body: { effort: "high" } });
+    expect(effort.status).toBe(200);
+    expect((await json<{ effort: string }>(effort)).effort).toBe("high");
+    const badEffort = await call(`/api/sessions/${session.id}/effort`, { method: "POST", body: { effort: "huge" } });
+    expect(badEffort.status).toBe(400);
+    // A new chat takes its effort in the same call, so a failed second call leaves no empty chat.
+    const made = await call("/api/sessions", { method: "POST", body: { mode: "assistant", effort: "low" } });
+    expect((await json<{ effort: string }>(made)).effort).toBe("low");
   });
 
   test("searches projects", async () => {

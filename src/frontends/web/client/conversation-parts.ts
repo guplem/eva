@@ -1,5 +1,5 @@
 /** The rules of the conversation view that need no React: the step line, the faces and the chips. */
-import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { IconName } from "./icons.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -68,8 +68,48 @@ export function engineLabel(engine: EngineName): string {
   return engineLabels[engine];
 }
 
-export function modelLabel(model: ModelAlias): string {
-  return model === "default" ? "Default model" : `${model.charAt(0).toUpperCase()}${model.slice(1)}`;
+/**
+ * The model chip. With the default model, the engine login picks the model, so the chip names the
+ * model that answered once a turn says it.
+ */
+export function modelLabel(model: ModelAlias, answered: string | null = null): string {
+  if (answered === null) return model === "default" ? "Default model" : capitalized(model);
+  return model === "default" ? `Default · ${modelName(answered)}` : modelName(answered);
+}
+
+/** "claude-opus-5-5" reads "Opus 5.5". Another engine's id, such as a pi model, stays as it is. */
+function modelName(id: string): string {
+  // A date, such as the one in "claude-opus-4-20250514", has more digits than a minor version.
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?=-|\[|$)/.exec(id);
+  if (match === null) return id;
+  const [, family = "", major = "", minor] = match;
+  return `${capitalized(family)} ${major}${minor === undefined ? "" : `.${minor}`}`;
+}
+
+function capitalized(word: string): string {
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+}
+
+const effortNames: Readonly<Record<EffortLevel, string>> = {
+  default: "Default",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+export function effortName(effort: EffortLevel): string {
+  return effortNames[effort];
+}
+
+export function effortLabel(effort: EffortLevel): string {
+  return `${effortName(effort)} effort`;
+}
+
+/** The model that answered the newest turn that names one, or null before the first answer. */
+export function answeredModel(turns: readonly { readonly model: string | null }[]): string | null {
+  return turns.findLast((turn) => turn.model !== null)?.model ?? null;
 }
 
 /**

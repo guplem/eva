@@ -325,7 +325,9 @@ export const api = {
   updateStatus: (): Promise<UpdateStatus | null> => request("GET", "/api/update"),
   updateNow: (version?: string): Promise<UpdateStatus> =>
     request("POST", "/api/update", version === undefined ? {} : { version }),
-  checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
+  /** `ifStale` reuses a check of the last hour, so each page open does not ask GitHub. */
+  checkForUpdate: (ifStale = false): Promise<UpdateStatus> =>
+    request("POST", "/api/update/check", ifStale ? { ifStale } : {}),
   changelog: (): Promise<ChangelogEntry[]> => request("GET", "/api/update/changelog"),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),

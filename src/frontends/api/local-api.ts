@@ -90,6 +90,8 @@ const updateSchema = z.object({
     .regex(/^\d+\.\d+\.\d+$/)
     .optional(),
 });
+/** `ifStale` reuses a recent check, as the Versions page does on each open. */
+const updateCheckSchema = z.object({ ifStale: z.boolean().optional() });
 const toolInstallSchema = z.object({ program: z.enum(installableTools) });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
@@ -738,7 +740,9 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const status =
         url.pathname === "/api/update"
           ? await eva.updateNow(updateSchema.parse(await optionalJson(request)).version)
-          : await eva.checkForUpdate();
+          : updateCheckSchema.parse(await optionalJson(request)).ifStale === true
+            ? await eva.checkForUpdateIfStale()
+            : await eva.checkForUpdate();
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
   }

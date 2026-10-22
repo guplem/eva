@@ -3018,6 +3018,49 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await expect(update).toBeFocused();
 });
 
+test("Settings: the Versions card looks for a newer Eva when it opens, as for each tool", async ({ page }) => {
+  // The automatic check is off, so Eva has never looked.
+  const unchecked = {
+    kind: "executable",
+    frequency: "off",
+    install: "minor",
+    phase: "idle",
+    current: null,
+    latest: null,
+    available: false,
+    target: null,
+    heldBack: null,
+    releases: [],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  const checked = {
+    ...unchecked,
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: "2026-10-22T10:00:00Z",
+  };
+  const checks: unknown[] = [];
+  await page.route("**/api/update/check", async (route) => {
+    checks.push(route.request().postDataJSON());
+    await route.fulfill({ json: checked });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: unchecked });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  await expect(page.getByRole("region", { name: "Versions" })).toContainText("(0.3.0 available)");
+  // A recent check answers at once, so each page open does not ask GitHub.
+  expect(checks).toEqual([{ ifStale: true }]);
+});
+
 test("Settings: the changelog lists each release with its own changes", async ({ page }) => {
   await page.route("**/api/update/changelog", async (route) => {
     await route.fulfill({

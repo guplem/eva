@@ -146,6 +146,11 @@ export function saveReceivedFile(vaultPath: string, originalName: string, bytes:
   return `${scratchFolderName}/received/${name}`;
 }
 
+/** The line that tells the agent where a received file is. Every front end sends the same line. */
+export function receivedFileNote(savedPath: string): string {
+  return `[The person sent a file, saved as ${savedPath}]`;
+}
+
 /** Removes every Scratch file older than a week. Returns how many it removed. */
 export function cleanScratch(vaultPath: string, now: Date): number {
   return cleanFolder(join(vaultPath, scratchFolderName), now);

@@ -13,7 +13,7 @@ import {
   describeToolVersions,
   describeUpdate,
 } from "../cli/client.ts";
-import { extractFileMarkers, saveReceivedFile } from "../../core/files/vault-files.ts";
+import { extractFileMarkers, receivedFileNote, saveReceivedFile } from "../../core/files/vault-files.ts";
 import { parseProjectQuery } from "../../core/projects/project-catalog.ts";
 import type { DeviceLoginRequest } from "../../core/remote-access/device-logins.ts";
 
@@ -439,7 +439,7 @@ export class TelegramBot {
     const bytes = await this.files.download(chatId, topicId, file);
     if (bytes === null) return;
     const saved = saveReceivedFile(vaultPath, file.file_name ?? "file", bytes);
-    await this.forward(chatId, topicId, `${caption}\n\n[The person sent a file, saved as ${saved}]`.trim());
+    await this.forward(chatId, topicId, `${caption}\n\n${receivedFileNote(saved)}`.trim());
   }
 
   /** Transcribes a voice note on this machine, echoes it, then sends it as the message (lesson 123). */

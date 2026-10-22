@@ -15,6 +15,7 @@ import {
   cleanScratch,
   extractFileMarkers,
   OfferStore,
+  receivedFileNote,
   resolveSendableFile,
   saveReceivedFile,
 } from "../../../../src/core/files/vault-files.ts";
@@ -163,6 +164,12 @@ describe("received files and the scratch cleanup", () => {
     expect(saved).not.toContain("..");
     expect(existsSync(join(vault, saved))).toBe(true);
     expect(saveReceivedFile(vault, "", new Uint8Array([2]))).toMatch(/^Scratch\/received\/file-[0-9a-f]{12}$/);
+  });
+
+  test("the note tells the agent where a received file is", () => {
+    expect(receivedFileNote("Scratch/received/a-1.jpg")).toBe(
+      "[The person sent a file, saved as Scratch/received/a-1.jpg]",
+    );
   });
 
   test("files older than a week are removed, newer ones stay", () => {

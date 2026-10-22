@@ -202,6 +202,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   /** Turns a recording into text on Eva's machine. Eva keeps no audio. */
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
+  /** Keeps a file for the agent in the vault's Scratch folder, and answers the note that the message carries. */
+  attachFile: (file: File): Promise<{ path: string; note: string }> =>
+    request("POST", `/api/files/received?name=${encodeURIComponent(file.name)}`, file),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>

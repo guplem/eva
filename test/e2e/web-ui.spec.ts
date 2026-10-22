@@ -2351,6 +2351,31 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await expect(message).toContainText("Hello from my voice");
 });
 
+test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await newChat(page);
+  const picker = page.locator(".composer input[type=file]");
+  await picker.setInputFiles([
+    { name: "receipt.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") },
+    { name: "extra.txt", mimeType: "text/plain", buffer: Buffer.from("not this one") },
+  ]);
+  const attached = page.getByRole("list", { name: "Attached files" });
+  await expect(attached.getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("button", { name: "Remove extra.txt" }).click();
+  await expect(attached.getByRole("listitem")).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Message" }).fill("What is this?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText("What is this?");
+  await expect(message).toContainText(/saved as Scratch\/received\/receipt-[0-9a-f]{12}\.pdf/);
+  await expect(message).not.toContainText("extra");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
+  await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+});
+
 test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {
   let installs = 0;
   await page.route("**/api/voice-notes/install", async (route) => {

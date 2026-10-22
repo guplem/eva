@@ -2844,6 +2844,36 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
 });
 
+test("Settings: the changelog lists each release with its own changes", async ({ page }) => {
+  await page.route("**/api/update/changelog", async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          version: "0.3.0",
+          publishedAt: null,
+          headline: "Voice notes.",
+          changes: "New features:\n• feat: voice notes (#7)",
+          installed: false,
+        },
+        { version: "0.2.0", publishedAt: null, headline: null, changes: "No listed changes.", installed: true },
+      ],
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Eva updates" });
+  await card.getByRole("button", { name: "Changelog" }).click();
+  const dialog = page.getByRole("dialog", { name: "Changelog" });
+  await expect(dialog).toContainText("v0.3.0");
+  await expect(dialog).toContainText("Voice notes.");
+  await expect(dialog.locator(".version-row", { hasText: "v0.2.0" })).toContainText("Installed");
+  await dialog.getByText("Every change in v0.3.0").click();
+  await expect(dialog.getByText("feat: voice notes (#7)")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Changelog" })).toBeFocused();
+});
+
 test("Settings: the update choices are chips, and the major update policy shows a warning", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Updates");

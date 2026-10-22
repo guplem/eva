@@ -220,7 +220,12 @@ export const searchEntries: readonly SearchEntry[] = [
     words:
       "version eva claude code pi git bun tools installed update engine latest voice notes audio microphone ffmpeg whisper",
   },
-  { item: "eva-updates", section: "updates", title: "Eva updates", words: "version release install automatic" },
+  {
+    item: "eva-updates",
+    section: "updates",
+    title: "Eva updates",
+    words: "version release install automatic changelog notes",
+  },
   { item: "restart", section: "updates", title: "Restart Eva", words: "reload stop start" },
   { item: "report-problem", section: "developer", title: "Report a problem", words: "bug issue github idea feedback" },
   {

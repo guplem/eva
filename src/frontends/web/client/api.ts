@@ -37,6 +37,7 @@ import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { ListedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
+import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
 import type {
   ConflictChoice,
@@ -59,6 +60,7 @@ export type CurrentPlaceView = CurrentPlace;
 export type {
   BrowsedPath,
   ChatBlocker,
+  ChangelogEntry,
   CheckResult,
   CloneDetails,
   CloneFetch,
@@ -304,6 +306,7 @@ export const api = {
   updateNow: (version?: string): Promise<UpdateStatus> =>
     request("POST", "/api/update", version === undefined ? {} : { version }),
   checkForUpdate: (): Promise<UpdateStatus> => request("POST", "/api/update/check", {}),
+  changelog: (): Promise<ChangelogEntry[]> => request("GET", "/api/update/changelog"),
   engineUpdateStatus: (): Promise<EngineUpdateStatus | null> => request("GET", "/api/update/engine"),
   versions: (): Promise<EvaVersions> => request("GET", "/api/versions"),
   latestVersions: (): Promise<LatestToolVersion[]> => request("GET", "/api/versions/latest"),

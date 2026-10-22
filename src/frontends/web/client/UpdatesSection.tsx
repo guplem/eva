@@ -11,6 +11,7 @@ import {
   type PublicSettings,
   type UpdateStatus,
 } from "./api.ts";
+import { ChangelogDialog } from "./ChangelogDialog.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { FactsSkeleton, ProgressBar } from "./Loading.tsx";
 import { evaNewest, updatesFace, updateWait } from "./update-words.ts";
@@ -324,6 +325,7 @@ function EvaUpdatesCard({
   const [posting, setPosting] = useState(false);
   /** Counts the failed status reads, so a failed read asks again. */
   const [readFailures, setReadFailures] = useState(0);
+  const [showingChangelog, setShowingChangelog] = useState(false);
   /** Only an answer from the new Eva proves the install, so only then does the card look happy. */
   const [restarted, setRestarted] = useState(false);
 
@@ -484,6 +486,9 @@ function EvaUpdatesCard({
         <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
           Update to a version…
         </button>
+        <button className="ghost" onClick={() => setShowingChangelog(true)}>
+          Changelog
+        </button>
       </div>
       {update?.kind === "source" && (
         <div className="field-hint">This Eva runs from a git checkout, so she follows the main branch.</div>
@@ -497,6 +502,7 @@ function EvaUpdatesCard({
           onClose={() => setPickingVersion(false)}
         />
       )}
+      {showingChangelog && <ChangelogDialog onClose={() => setShowingChangelog(false)} />}
     </Card>
   );
 }

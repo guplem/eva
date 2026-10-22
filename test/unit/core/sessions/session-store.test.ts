@@ -39,6 +39,7 @@ function session(id: string): SessionRecord {
     historyLost: false,
     turns: [],
     seenTurns: 0,
+    archived: false,
   };
 }
 
@@ -97,6 +98,14 @@ describe("SessionStore", () => {
     const { seenTurns: _left, ...old } = { ...session("one"), turns: [turn, turn] };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old] }));
     expect(openStore().get("one")?.seenTurns).toBe(2);
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before the archive flag, or with a bad one, is not archived (issue 388)", () => {
+    const { archived: _left, ...old } = session("one");
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), archived: "yes" }] }));
+    expect(openStore().get("one")?.archived).toBe(false);
+    expect(openStore().get("two")?.archived).toBe(false);
     expect(corruptCopies()).toEqual([]);
   });
 

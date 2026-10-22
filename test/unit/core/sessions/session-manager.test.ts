@@ -559,6 +559,58 @@ describe("renames (issue 46)", () => {
   });
 });
 
+describe("archived chats (issue 388)", () => {
+  test("an archive saves the flag, tells every front end, and survives a restart", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.get(sessionId).archived).toBe(false);
+    expect(manager.setArchived(sessionId, true).archived).toBe(true);
+    expect(events).toMatchObject([{ kind: "session_archived", sessionId, archived: true }]);
+    expect(createManager(new FakeEngine()).get(sessionId).archived).toBe(true);
+    expect(manager.setArchived(sessionId, false).archived).toBe(false);
+  });
+
+  test("a flag that changes nothing tells no front end", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.setArchived(sessionId, false);
+    expect(events).toEqual([]);
+  });
+
+  test("a new message brings an archived chat back", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    manager.setArchived(sessionId, true);
+    await manager.send(sessionId, "Hello again");
+    expect(manager.get(sessionId).archived).toBe(false);
+    expect(events.filter((event) => event.kind === "session_archived")).toMatchObject([
+      { archived: true },
+      { archived: false },
+    ]);
+  });
+
+  test("a new message in a fork brings its archived chat back", async () => {
+    const manager = createManager(new FakeEngine());
+    const parentId = newAssistantSession(manager);
+    await manager.send(parentId, "one");
+    const fork = manager.fork(parentId, manager.get(parentId).turns[0]?.lastMessageId ?? "");
+    manager.setArchived(parentId, true);
+    await manager.send(fork.id, "another path");
+    expect(manager.get(parentId).archived).toBe(false);
+  });
+
+  test("an archive of an unknown chat is refused", () => {
+    const manager = createManager(new FakeEngine());
+    let caught: unknown;
+    try {
+      manager.setArchived("missing", true);
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "session_not_found")).toBe(true);
+  });
+});
+
 describe("seen turns (issue 381)", () => {
   test("a new chat has no unseen turn, and an answer is unseen until the person sees it", async () => {
     const manager = createManager(new FakeEngine());

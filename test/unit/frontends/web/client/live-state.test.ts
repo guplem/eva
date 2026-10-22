@@ -232,6 +232,7 @@ describe("applyEvent", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
     expect(applyEvent(state, event({ kind: "session_seen", seenTurns: 1 }))).toBe(state);
+    expect(applyEvent(state, event({ kind: "session_archived", archived: true }))).toBe(state);
   });
 });
 

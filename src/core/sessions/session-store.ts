@@ -67,6 +67,8 @@ export const sessionSchema = z
      * bad value, counts every turn as seen: an old chat never shows as unread.
      */
     seenTurns: z.number().int().min(0).optional().catch(undefined),
+    /** True when the person archived the chat (issue 388). The web app lists it apart. */
+    archived: z.boolean().default(false).catch(false),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

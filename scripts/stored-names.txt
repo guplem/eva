@@ -113,6 +113,7 @@ machine state/push-subscriptions.json subscriptions[].p256dh
 machine state/push-subscriptions.json version
 machine state/push-subscriptions.json version=1
 machine state/sessions.json sessions
+machine state/sessions.json sessions[].archived
 machine state/sessions.json sessions[].clone
 machine state/sessions.json sessions[].createdAt
 machine state/sessions.json sessions[].engine

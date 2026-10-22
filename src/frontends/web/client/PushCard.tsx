@@ -4,12 +4,51 @@
  * its own kinds.
  */
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import type { NotificationKind } from "../../../core/alerts/chat-notices.ts";
+import type { NotificationKind } from "../../../core/alerts/chat-notifications.ts";
 import { api } from "./api.ts";
 import { describeDevice } from "./device-words.ts";
 import { ProgressBar } from "./Loading.tsx";
+import type { PresencePage } from "./push-presence.ts";
 import { keyBytes, pushSupport, type PushSupport } from "./push-support.ts";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
+
+/** The card says so when the person turns the notifications of this device on or off. */
+const deviceChangeEvent = "eva-push-device";
+
+/** The browser's side of the claims that this page is in view (`push-presence.ts`). */
+export function browserPresencePage(): PresencePage {
+  const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
+    for (const name of names) target.addEventListener(name, listener);
+    return () => {
+      for (const name of names) target.removeEventListener(name, listener);
+    };
+  };
+  return {
+    isInView: () => document.visibilityState === "visible" && document.hasFocus(),
+    readEndpoint: async () => {
+      if (!("serviceWorker" in navigator)) return null;
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      return subscription?.endpoint ?? null;
+    },
+    send: (endpoint, pageId, inView) => api.setPushInView(endpoint, pageId, inView),
+    onViewChange: (listener) => {
+      const stopDocument = listen(document, ["visibilitychange"], listener);
+      const stopWindow = listen(window, ["focus", "blur"], listener);
+      return () => {
+        stopDocument();
+        stopWindow();
+      };
+    },
+    onLeave: (listener) => listen(window, ["pagehide"], listener),
+    onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
+    setInterval: (callback, ms) => {
+      const timer = window.setInterval(callback, ms);
+      return () => window.clearInterval(timer);
+    },
+    pageId: crypto.randomUUID(),
+  };
+}
 
 function currentSupport(): PushSupport {
   const standalone =
@@ -126,6 +165,7 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
       setBusy(false);
       setSupport(currentSupport());
       load();
+      window.dispatchEvent(new Event(deviceChangeEvent));
     }
   };
 

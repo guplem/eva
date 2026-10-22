@@ -59,13 +59,16 @@ function pageOf(key) {
 
 const titles = { error: "Eva: problem", warn: "Eva: problem", resolved: "Eva: solved", news: "Eva" };
 
-/** A chat's notice carries its own title and page: the chat's title, and the chat. */
-function show(alert) {
+/**
+ * A chat's notification carries its own title and page: the chat's title, and the chat. \`again\`:
+ * the alert showed already, so it comes back silent.
+ */
+function show(alert, again = false) {
   return self.registration.showNotification(alert.title ?? titles[alert.level] ?? "Eva", {
     body: alert.message,
     tag: alert.key,
     // A problem that comes back, or a chat's new answer, sounds again while the old notice is still there.
-    renotify: alert.level === "warn" || alert.level === "error" || alert.url !== undefined,
+    renotify: !again && (alert.level === "warn" || alert.level === "error" || alert.url !== undefined),
     icon: "/icon-192.png",
     data: { url: alert.url ?? pageOf(alert.key) },
   });
@@ -81,8 +84,9 @@ async function showNew() {
   // A lower number means that Eva restarted, so every alert in the list is new to this device.
   const fresh = alerts.filter((alert) => alert.seq > last || alerts[0].seq < last).slice(0, maxAtOnce);
   await remember(alerts[0].seq);
-  // A push with no new alert still shows one, as browsers require: the newest replaces its own notice.
-  await Promise.all((fresh.length === 0 ? [alerts[0]] : fresh.reverse()).map(show));
+  // A push with no new alert still shows one, as browsers require: the newest replaces its own notice, silent.
+  if (fresh.length === 0) return show(alerts[0], true);
+  await Promise.all(fresh.reverse().map((alert) => show(alert)));
 }
 
 self.addEventListener("push", (event) => event.waitUntil(showNew()));

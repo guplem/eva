@@ -96,9 +96,9 @@ describe("the service worker", () => {
       ["Eva: problem", "Alert 1", "/#/schedules"],
       ["Eva: problem", "Alert 2", "/#/settings"],
     ]);
-    // The second push of the pair finds nothing new, so it only shows the newest again.
+    // The second push of the pair finds nothing new, so it only shows the newest again, silent.
     await sw.push();
-    expect(sw.shown.at(-1)?.body).toBe("Alert 2");
+    expect(sw.shown.at(-1)).toMatchObject({ body: "Alert 2", renotify: false });
     list = [alert(3, "template_alignment", "resolved"), ...list];
     await sw.push();
     expect(sw.shown.at(-1)).toMatchObject({

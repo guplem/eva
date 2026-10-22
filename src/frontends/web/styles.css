@@ -3046,11 +3046,7 @@ button.small {
   gap: var(--space-3);
 }
 
-/* The chat panel is narrow, so its facts sit at the right edge. Here the card is wide: each value stays by its name. */
-.project-facts .chat-facts {
-  justify-content: start;
-}
-
+/* The chat panel is narrow, so its values sit at the right edge. Here the card is wide: each value stays by its name. */
 .project-facts .chat-facts dd {
   justify-self: start;
   text-align: start;

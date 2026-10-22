@@ -174,11 +174,33 @@ export function useChatPanelShown(): readonly [boolean, () => void] {
   return [shown, toggle];
 }
 
-export function ChatPanel(props: ChatProps): ReactElement {
+type PanelMotion = "open" | "opening" | "closing" | "gone";
+
+/**
+ * The column slides open and shut, so a hide does not jump the chat. It stays in the page until its
+ * close animation ends. A page load shows it at once: only a toggle animates it.
+ */
+export function ChatPanel({ shown, ...props }: ChatProps & { readonly shown: boolean }): ReactElement | null {
+  const [motion, setMotion] = useState<PanelMotion>(shown ? "open" : "gone");
+  if (shown && (motion === "closing" || motion === "gone")) setMotion("opening");
+  if (!shown && (motion === "open" || motion === "opening")) setMotion("closing");
+  if (motion === "gone") return null;
   return (
-    <aside id={chatPanelId} className="chat-panel" aria-label="This chat">
-      <h2>This chat</h2>
-      <ChatDetails {...props} />
+    <aside
+      id={chatPanelId}
+      className={`chat-panel-frame ${motion}`}
+      aria-label="This chat"
+      inert={motion === "closing"}
+      onAnimationEnd={(event) => {
+        // The animations of the content inside bubble up here too.
+        if (event.target !== event.currentTarget) return;
+        setMotion((current) => (current === "opening" ? "open" : current === "closing" ? "gone" : current));
+      }}
+    >
+      <div className="chat-panel">
+        <h2>This chat</h2>
+        <ChatDetails {...props} />
+      </div>
     </aside>
   );
 }

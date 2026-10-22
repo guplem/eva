@@ -3,10 +3,67 @@
  * The design is in docs/design/eve/README.md, section "Chat details and background tasks".
  */
 
+/* The frame clips the column while its width animates, so the text inside never rewraps. */
+.chat-panel-frame {
+  width: 300px;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-panel-frame.opening {
+  animation: chat-panel-open 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.chat-panel-frame.closing {
+  animation: chat-panel-close 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes chat-panel-open {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes chat-panel-close {
+  to {
+    width: 0;
+  }
+}
+
+.chat-panel-frame.opening > .chat-panel {
+  animation: chat-panel-content-in 240ms ease-out;
+}
+
+.chat-panel-frame.closing > .chat-panel {
+  opacity: 0;
+  transition: opacity 150ms ease-in;
+}
+
+@keyframes chat-panel-content-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The frame still needs its animation end to leave the page, so the motion only gets near instant. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel-frame.opening,
+  .chat-panel-frame.closing {
+    animation-duration: 1ms;
+  }
+
+  .chat-panel-frame > .chat-panel {
+    animation: none;
+    transition: none;
+  }
+}
+
 .chat-panel {
   /* The ring's hole takes the colour of the surface under it. */
   --ring-hole: var(--side);
   width: 300px;
+  flex: none;
   min-height: 0;
   overflow-y: auto;
   padding: 22px 18px;
@@ -210,6 +267,19 @@
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   padding: 10px 20px max(20px, env(safe-area-inset-bottom));
   box-shadow: var(--sheet-shadow);
+  animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog.sheet {
+    animation: none;
+  }
 }
 
 /* The grab handle says that the sheet came up from the bottom. */
@@ -258,7 +328,7 @@
 }
 
 @media (max-width: 760px) {
-  .layout > .chat-panel {
+  .layout > .chat-panel-frame {
     display: none;
   }
 }

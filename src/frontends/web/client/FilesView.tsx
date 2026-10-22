@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry } from "./api.ts";
+import { readAppearance } from "./appearance.ts";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
@@ -24,6 +25,7 @@ import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
+import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
@@ -42,6 +44,8 @@ export function FilesView(): ReactElement {
   const columns = useRef<HTMLDivElement>(null);
   /** Null until the first read. A failed read shows no bar: the folders still work without it. */
   const [favorites, setFavorites] = useState<readonly Favorite[] | null>(null);
+  /** The Appearance setting changes on the Settings page, so the page reads it once, as it opens. */
+  const [smart] = useState(() => readAppearance().fileNames === "smart");
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
@@ -75,6 +79,18 @@ export function FilesView(): ReactElement {
   }, []);
 
   const crumbs = pathCrumbs(path);
+  // The root keeps its name "Vault": it has no real name to tidy.
+  const shownCrumbs = crumbs.map((crumb, index) => {
+    const parentAnswer = index === 0 ? undefined : answers.get(crumbs[index - 1]?.path ?? "");
+    const title =
+      parentAnswer?.state === "shown" && parentAnswer.answer.kind === "folder"
+        ? parentAnswer.answer.entries.find((entry) => entry.name === crumb.name)?.title
+        : undefined;
+    const shown = smart && index > 0 ? smartName(crumb.name, { title }) : { name: crumb.name, date: null };
+    return { ...crumb, shown };
+  });
+  const lastCrumb = shownCrumbs[shownCrumbs.length - 1];
+  const lastDate = lastCrumb?.shown.date ?? null;
   useEffect(() => {
     setLarge(false);
     setNaming(null);
@@ -134,17 +150,30 @@ export function FilesView(): ReactElement {
             />
           ) : (
             <nav className="files-crumbs" aria-label="Folder path">
-              {crumbs.map((crumb, index) =>
-                index === crumbs.length - 1 ? (
+              {shownCrumbs.map((crumb, index) =>
+                index === shownCrumbs.length - 1 ? (
                   <h1 key={crumb.path} aria-current="page">
-                    {crumb.name}
+                    {crumb.shown.name}
                   </h1>
                 ) : (
                   <span key={crumb.path} className="files-crumb">
-                    <a href={fileAddressOf(crumb.path)}>{crumb.name}</a>
+                    <a
+                      href={fileAddressOf(crumb.path)}
+                      data-tooltip={crumb.shown.name === crumb.name ? undefined : crumb.name}
+                    >
+                      {crumb.shown.name}
+                    </a>
                     <span aria-hidden="true">/</span>
                   </span>
                 ),
+              )}
+              {lastDate !== null && <span className="pill files-date">{lastDate}</span>}
+              {/* A touch screen shows no tooltip, so the real name stays in view under the smart one. */}
+              {lastCrumb !== undefined && lastCrumb.shown.name !== lastCrumb.name && (
+                <span className="files-real-name">
+                  <span className="visually-hidden">Real name: </span>
+                  {lastCrumb.name}
+                </span>
               )}
             </nav>
           )}
@@ -165,7 +194,7 @@ export function FilesView(): ReactElement {
             <DownloadButton key={path} path={path} folder={true} />
           )}
         </div>
-        <FavoriteBar favorites={favorites} openPath={shownPath} onChange={setFavorites} />
+        <FavoriteBar favorites={favorites} openPath={shownPath} smart={smart} onChange={setFavorites} />
         <div className="files-columns" ref={columns}>
           {crumbs.map((crumb, index) => (
             <Column
@@ -176,6 +205,7 @@ export function FilesView(): ReactElement {
               // Only the open path is the person's choice: a parent that is not a folder shows nothing.
               isLast={index === crumbs.length - 1}
               openChild={crumbs[index + 1]?.name ?? null}
+              smart={smart}
               large={large}
               onLarge={setLarge}
               onSaved={onSaved}
@@ -200,6 +230,7 @@ interface ColumnProps {
   readonly answer: Answer | undefined;
   readonly isLast: boolean;
   readonly openChild: string | null;
+  readonly smart: boolean;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
@@ -213,6 +244,7 @@ function Column({
   answer,
   isLast,
   openChild,
+  smart,
   large,
   onLarge,
   onSaved,
@@ -238,7 +270,7 @@ function Column({
   if (shown.kind === "folder")
     return (
       <div className={place}>
-        <FolderList path={path} name={name} entries={shown.entries} openChild={openChild} />
+        <FolderList path={path} name={name} entries={shown.entries} openChild={openChild} smart={smart} />
       </div>
     );
   if (!isLast) return null;
@@ -360,10 +392,12 @@ function StarButton({
 function FavoriteBar({
   favorites,
   openPath,
+  smart,
   onChange,
 }: {
   readonly favorites: readonly Favorite[] | null;
   readonly openPath: string | null;
+  readonly smart: boolean;
   readonly onChange: (favorites: readonly Favorite[]) => void;
 }): ReactElement | null {
   const showError = useShowError();
@@ -378,34 +412,39 @@ function FavoriteBar({
   return (
     <nav className="files-favorites" aria-label="Favorites">
       <ul>
-        {favorites.map((favorite) => (
-          <li key={favorite.path}>
-            {favorite.kind === "missing" ? (
-              <span className="files-favorite missing" data-tooltip={favorite.path}>
-                <Icon name="alert" />
-                <span className="files-name">{favorite.name}</span>
-                <span className="files-size">Missing</span>
-                <button
-                  className="icon-button"
-                  aria-label={`Remove ${favorite.name} from favorites`}
-                  onClick={() => void remove(favorite.path)}
+        {favorites.map((favorite) => {
+          // The date stays, so two dated notes with the same name never look the same.
+          const shown = shownNameOf(favorite.name, smart, { title: favorite.title });
+          return (
+            <li key={favorite.path}>
+              {favorite.kind === "missing" ? (
+                <span className="files-favorite missing" data-tooltip={favorite.path}>
+                  <Icon name="alert" />
+                  <span className="files-name">{favorite.name}</span>
+                  <span className="files-size">Missing</span>
+                  <button
+                    className="icon-button"
+                    aria-label={`Remove ${favorite.name} from favorites`}
+                    onClick={() => void remove(favorite.path)}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </span>
+              ) : (
+                <a
+                  className="files-favorite"
+                  href={fileAddressOf(favorite.path)}
+                  data-tooltip={favorite.path}
+                  aria-current={favorite.path === openPath ? "page" : undefined}
                 >
-                  <Icon name="x" />
-                </button>
-              </span>
-            ) : (
-              <a
-                className="files-favorite"
-                href={fileAddressOf(favorite.path)}
-                data-tooltip={favorite.path}
-                aria-current={favorite.path === openPath ? "page" : undefined}
-              >
-                <Icon name={favorite.kind === "folder" ? "folder" : "file"} />
-                <span className="files-name">{favorite.name}</span>
-              </a>
-            )}
-          </li>
-        ))}
+                  <Icon name={favorite.kind === "folder" ? "folder" : "file"} />
+                  <span className="files-name">{shown.name}</span>
+                  {shown.date !== null && <span className="pill files-date">{dayOf(shown.date)}</span>}
+                </a>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
@@ -416,38 +455,53 @@ function FolderList({
   name,
   entries,
   openChild,
+  smart,
 }: {
   readonly path: string;
   readonly name: string;
   readonly entries: readonly FileEntry[];
   readonly openChild: string | null;
+  readonly smart: boolean;
 }): ReactElement {
   if (entries.length === 0) return <div className="empty">This folder is empty.</div>;
   return (
     <ul className="files-list" aria-label={`Contents of ${name}`}>
-      {entries.map((entry) => (
-        <li key={entry.name}>
-          {entry.kind === "other" ? (
-            <span className="files-entry other">
-              <Icon name="info" />
-              <FileName name={entry.name} />
-              <span className="files-size">Does not open</span>
-            </span>
-          ) : (
-            <a
-              className="files-entry"
-              href={fileAddressOf(childPath(path, entry.name))}
-              aria-current={entry.name === openChild ? "true" : undefined}
-            >
-              {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
-              <FileName name={entry.name} />
-              {entry.size !== null && <span className="files-size">{sizeWords(entry.size)}</span>}
-            </a>
-          )}
-        </li>
-      ))}
+      {entries.map((entry) => {
+        // Only a file row shows a type badge, so only a file can drop its extension.
+        const shown = shownNameOf(entry.name, smart, { title: entry.title, badge: entry.kind === "file" });
+        // The badge is hidden from a screen reader, so the spoken name keeps the extension.
+        const spoken = shownNameOf(entry.name, smart, { title: entry.title }).name;
+        const realName = shown.name === entry.name ? undefined : entry.name;
+        return (
+          <li key={entry.name}>
+            {entry.kind === "other" ? (
+              <span className="files-entry other" data-tooltip={realName}>
+                <Icon name="info" />
+                <FileName shown={shown} spoken={spoken} />
+                <span className="files-size">Does not open</span>
+              </span>
+            ) : (
+              <a
+                className="files-entry"
+                href={fileAddressOf(childPath(path, entry.name))}
+                aria-current={entry.name === openChild ? "true" : undefined}
+                data-tooltip={realName}
+              >
+                {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
+                <FileName shown={shown} spoken={spoken} />
+                {entry.size !== null && <span className="files-size">{sizeWords(entry.size)}</span>}
+              </a>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
+}
+
+/** The smart name of the Appearance setting, or the real name with no date. */
+function shownNameOf(real: string, smart: boolean, options: Parameters<typeof smartName>[1]): SmartName {
+  return smart ? smartName(real, options) : { name: real, date: null };
 }
 
 /** A file with a known short extension shows it on a small page, in the colour of its type. */
@@ -465,18 +519,21 @@ function FileIcon({ name }: { readonly name: string }): ReactElement {
  * A name on one line. When it does not fit, the start, the middle or the end gives way to "…", as
  * the Appearance setting says. The open file shows its whole name in the path above.
  */
-function FileName({ name }: { readonly name: string }): ReactElement {
-  const { head, tail } = nameEnds(name);
+function FileName({ shown, spoken }: { readonly shown: SmartName; readonly spoken: string }): ReactElement {
+  const { head, tail } = nameEnds(shown.name);
   return (
-    <span className="files-name">
-      {/* A flex box splits the name in two words for a screen reader, so it reads the whole name instead. */}
-      <span className="visually-hidden">{name}</span>
-      {/* The isolate keeps the letters in order when a cut at the start turns the box right to left. */}
-      <span className="files-name-text" dir="ltr" aria-hidden="true">
-        <span className="files-name-head">{head}</span>
-        <span className="files-name-tail">{tail}</span>
+    <>
+      <span className="files-name">
+        {/* A flex box splits the name in two words for a screen reader, so it reads the whole name instead. */}
+        <span className="visually-hidden">{spoken}</span>
+        {/* The isolate keeps the letters in order when a cut at the start turns the box right to left. */}
+        <span className="files-name-text" dir="ltr" aria-hidden="true">
+          <span className="files-name-head">{head}</span>
+          <span className="files-name-tail">{tail}</span>
+        </span>
       </span>
-    </span>
+      {shown.date !== null && <span className="pill files-date">{dayOf(shown.date)}</span>}
+    </>
   );
 }
 

@@ -22,3 +22,4 @@
 ## Captures
 
 - To capture the web page, start `bun run test/e2e/serve-demo.ts`. Then run `scripts/capture-ui.ts`: its header gives the arguments.
+- In Git Bash, set `MSYS_NO_PATHCONV=1` for the capture command. Otherwise Git Bash turns `#/files` into a Windows path, and the captures show the wrong page.

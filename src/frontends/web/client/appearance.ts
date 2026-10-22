@@ -1,5 +1,5 @@
 /**
- * Each browser keeps its own theme, density, seed colour, files view and cut of long file names in
+ * Each browser keeps its own theme, density, seed colour, files view, file names and cut of long file names in
  * `localStorage`. A phone and a desktop need different density, so the vault keeps none of them.
  */
 export type Theme = "system" | "light" | "dark";
@@ -8,6 +8,8 @@ export type Density = "comfortable" | "compact";
 export type FileNameCut = "start" | "middle" | "end";
 /** "columns" shows each folder of the path, as a Finder does. "single" shows one folder at a time, as Windows does. */
 export type FilesView = "columns" | "single";
+/** "smart" shows a project title and moves a date at the start of a name to a pill (issue 429). */
+export type FileNames = "smart" | "real";
 
 export interface Appearance {
   readonly theme: Theme;
@@ -16,6 +18,7 @@ export interface Appearance {
   readonly seed: string;
   readonly fileNameCut: FileNameCut;
   readonly filesView: FilesView;
+  readonly fileNames: FileNames;
 }
 
 export interface Oklch {
@@ -53,6 +56,7 @@ const defaultAppearance: Appearance = {
   seed: defaultSeed,
   fileNameCut: "middle",
   filesView: "columns",
+  fileNames: "smart",
 };
 
 /** A private window or blocked storage throws or holds nothing: the page then uses the defaults. */
@@ -67,6 +71,7 @@ export function readAppearance(): Appearance {
       seed: typeof seed === "string" && /^#[0-9a-f]{6}$/i.test(seed) ? seed.toLowerCase() : defaultAppearance.seed,
       fileNameCut: cut === "start" || cut === "end" ? cut : defaultAppearance.fileNameCut,
       filesView: stored["filesView"] === "single" ? "single" : defaultAppearance.filesView,
+      fileNames: stored["fileNames"] === "real" ? "real" : defaultAppearance.fileNames,
     };
   } catch {
     return defaultAppearance;

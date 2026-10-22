@@ -90,7 +90,7 @@ export function ProjectDetailsEditor({ projectId, onSaved, onBack }: ProjectDeta
             </section>
           ) : (
             <div className="callout danger" role="status">
-              Eva could not read the project: {file.reason} Press Load again to try again.
+              Eva could not read the project ({file.reason}). Press Load again to try again.
             </div>
           )}
         </div>

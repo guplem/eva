@@ -1820,6 +1820,8 @@ button.link-button {
   background: var(--chip);
   font-size: var(--text-sm);
   line-height: 1.5;
+  /* An error can quote a long path or URL with no break points. */
+  overflow-wrap: anywhere;
 }
 
 .callout.success {

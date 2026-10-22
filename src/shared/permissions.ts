@@ -33,8 +33,8 @@ export interface PersonPermissionRules {
 }
 
 export interface EnginePermissions {
-  /** The mode that the running engine uses, in words, or null when the engine has no modes. */
-  readonly mode: string | null;
+  /** The mode that the running engine uses, or null when the engine has no modes. `value` is the stored setting. */
+  readonly mode: { readonly value: string; readonly words: string } | null;
   readonly chats: readonly ChatPermissions[];
   /** Null: the engine has no permission rules of its own, as pi. */
   readonly personRules: readonly PersonPermissionRules[] | null;

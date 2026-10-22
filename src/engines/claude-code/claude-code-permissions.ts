@@ -27,7 +27,7 @@ const anyDenyRule = "Each action that a deny rule names";
 
 export function describeClaudePermissions(mode: ClaudePermissionMode, context: PermissionContext): EnginePermissions {
   return {
-    mode: modeWords[mode],
+    mode: { value: mode, words: modeWords[mode] },
     chats: [assistantChat(mode), projectChat("trusted-project", mode), projectChat("untrusted-project", "auto")],
     personRules: personRules(context),
   };

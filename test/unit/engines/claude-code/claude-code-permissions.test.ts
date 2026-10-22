@@ -28,15 +28,17 @@ const noRules = { vaultFolder: null, environment: {} };
 describe("describeClaudePermissions", () => {
   test("in auto mode, an Assistant chat asks before each action that reaches other people", () => {
     const permissions = describeClaudePermissions("auto", noRules);
-    expect(permissions.mode).toBe("Auto");
+    expect(permissions.mode).toEqual({ value: "auto", words: "Auto" });
     expect(chat(permissions, "assistant").asks).toEqual(outwardActionWords);
     expect(chat(permissions, "assistant").blocks.join(" ")).toContain("safety check");
     expect(chat(permissions, "assistant").runs.join(" ")).toContain(".eva/");
+    // The patterns need an explicit method, so the words name it.
+    expect(chat(permissions, "assistant").asks.join(" ")).toContain("curl -X");
   });
 
   test("in bypass mode, a trusted chat asks nothing, and an untrusted clone still uses auto", () => {
     const permissions = describeClaudePermissions("bypassPermissions", noRules);
-    expect(permissions.mode).toBe("Bypass permissions");
+    expect(permissions.mode?.value).toBe("bypassPermissions");
     expect(chat(permissions, "assistant").asks).toEqual([]);
     expect(chat(permissions, "trusted-project").asks).toEqual([]);
     expect(chat(permissions, "untrusted-project").asks).not.toEqual([]);
@@ -82,7 +84,7 @@ describe("describeClaudePermissions", () => {
 
   test("the engine describes the mode it runs with", () => {
     const engine = new ClaudeCodeEngine({ executable: "claude", permissionMode: "bypassPermissions" });
-    expect(engine.describePermissions(noRules).mode).toBe("Bypass permissions");
-    expect(new ClaudeCodeEngine({ executable: "claude" }).describePermissions(noRules).mode).toBe("Auto");
+    expect(engine.describePermissions(noRules).mode?.value).toBe("bypassPermissions");
+    expect(new ClaudeCodeEngine({ executable: "claude" }).describePermissions(noRules).mode?.value).toBe("auto");
   });
 });

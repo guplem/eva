@@ -17,8 +17,8 @@ const calendarEventToolPattern = /^mcp__.*manage_event$/;
 export const outwardActionWords: readonly string[] = [
   "Push commits with git push",
   "Create, comment on, edit, close or merge a GitHub issue, pull request, release or gist",
-  "Change GitHub through gh api",
-  "Send data to a web address with curl",
+  "Change GitHub with gh api -X POST, PATCH, PUT or DELETE",
+  "Send data with curl -X POST, PUT, PATCH or DELETE",
   "A tool that sends, shares, invites, posts, replies, forwards, comments, reacts or changes access",
   "A calendar event with guests or updates, and an answer to an invitation",
 ];

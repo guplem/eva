@@ -15,7 +15,8 @@ describe("describePiPermissions", () => {
     expect(trusted?.asks).toEqual([]);
     expect(untrusted?.chat).toBe("untrusted-project");
     expect(untrusted?.asks).toEqual([]);
-    expect(untrusted?.note).toContain("off");
+    expect(trusted?.note).toContain("Eva answers no");
+    expect(untrusted?.note).toContain("your own");
   });
 
   test("the engine gives the same words", () => {

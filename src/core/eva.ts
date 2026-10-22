@@ -326,10 +326,10 @@ export interface EvaSetupState extends SetupState {
   readonly vaultNeedsPush: boolean;
 }
 
-/** Whose repositories Eva trusts, for the Trusted repositories section. */
 /** Each engine's permissions, with its name. */
 export type PermissionsOverview = readonly (EnginePermissions & { readonly engine: EngineName })[];
 
+/** Whose repositories Eva trusts, for the Trusted repositories section. */
 export interface TrustOverview {
   /** The login of this Eva's GitHub account, or null when Eva has no record of it. */
   readonly githubAccount: string | null;

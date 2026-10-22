@@ -177,6 +177,8 @@ export const api = {
   login: (token: string): Promise<void> => request("POST", "/api/login", { token }),
   logout: (): Promise<void> => request("POST", "/api/logout"),
   requestDeviceLogin: (): Promise<DeviceLoginRequest> => request("POST", "/api/login/device", {}),
+  /** Trades the secret of an `eva open` link for a device cookie, once. */
+  redeemLoginLink: (secret: string): Promise<void> => request("POST", "/api/login/link", { secret }),
   /** The device token never reaches the page: the server sets it as an HTTP-only cookie. */
   deviceLoginState: (requestId: string): Promise<{ state: DeviceLoginState["state"] }> =>
     request("GET", `/api/login/device/${encodeURIComponent(requestId)}`),

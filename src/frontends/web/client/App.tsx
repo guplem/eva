@@ -61,18 +61,19 @@ const blockedPollMs = 5_000;
 /** How long the notice of an allowed device shows the delighted face. */
 const allowedFaceMs = 1_500;
 
-export function App(): ReactElement {
+/** `loginNotice`: why the login link of `eva open` did not work, or null. */
+export function App({ loginNotice }: { readonly loginNotice: string | null }): ReactElement {
   return (
     <ErrorToastProvider>
       <SpecialDayProvider>
-        <EvaApp />
+        <EvaApp loginNotice={loginNotice} />
       </SpecialDayProvider>
       <TooltipLayer />
     </ErrorToastProvider>
   );
 }
 
-function EvaApp(): ReactElement {
+function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   // A device that chose to share its location sends it while the person is logged in.
   useLocationSharing(authenticated === true);
@@ -373,7 +374,7 @@ function EvaApp(): ReactElement {
         page={screen === "chats" ? "chat" : screen === "projects" ? "list" : screen === "files" ? "files" : "cards"}
       />
     );
-  if (!authenticated) return <LoginView onLoggedIn={() => void refreshSessions()} />;
+  if (!authenticated) return <LoginView notice={loginNotice} onLoggedIn={() => void refreshSessions()} />;
 
   const answerApproval = async (requestId: string, answer: "allow" | "deny"): Promise<void> => {
     try {

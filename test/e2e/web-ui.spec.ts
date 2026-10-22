@@ -1621,6 +1621,26 @@ test("device login: a browser shows its code and how to allow it, then opens", a
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 });
 
+test("login link: the link of `eva open` logs in this browser once, and leaves the address (#407)", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/devices/link", { headers: { authorization: `Bearer ${token}` }, data: {} });
+  expect(created.status()).toBe(201);
+  const { secret } = (await created.json()) as { secret: string };
+  await page.goto(`/#login=${secret}/settings/setup`);
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("#/settings/setup");
+  // A used link logs in nobody: a new browser gets the login page, which says why.
+  await page.context().clearCookies();
+  // A new tab, as `eva open` opens: in the same tab, a new fragment loads no new page.
+  const fresh = await page.context().newPage();
+  await routeDeviceLogin(fresh, { id: "request-link", code: "L1NK", approvers: ["terminal"], state: "pending" });
+  await fresh.goto(`/#login=${secret}`);
+  await expect(fresh.getByText("This login link was used, or it expired.")).toBeVisible();
+  expect(fresh.url()).not.toContain(secret);
+});
+
 test("device login: the page lists only the ways that can allow the code", async ({ page }) => {
   await routeDeviceLogin(page, { id: "request-3", code: "T4NB", approvers: ["terminal"], state: "pending" });
   await page.goto("/");

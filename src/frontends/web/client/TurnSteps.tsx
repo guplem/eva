@@ -1,22 +1,29 @@
 /**
  * The steps of an answer, folded into one line: the count, the last step and an arrow. A tap
- * opens the list, one monospace line for each message, command, tool and task.
+ * opens the list, one line for each message, command, tool and task: a pill says what the step
+ * did, and plain text says what it did it to, such as the file that it read.
  */
 import { useId, useState, type ReactElement } from "react";
-import type { StepKind, TurnStep } from "../../../shared/turn-steps.ts";
-import { stepIcon } from "./conversation-parts.ts";
+import type { TurnStep } from "../../../shared/turn-steps.ts";
+import { stepIcon, stepParts } from "./conversation-parts.ts";
 import { Icon } from "./icons.tsx";
-
-/** The icon shows the kind to the eye; this word says it to a screen reader. */
-const kindLabels: Readonly<Record<StepKind, string>> = {
-  message: "Message",
-  command: "Command",
-  tool: "Tool",
-  task: "Task",
-};
 
 function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** The pill and the text of one step. The pill is a word, so a failed step shows by more than colour. */
+function StepParts({ step }: { readonly step: TurnStep }): ReactElement {
+  const { action, detail } = stepParts(step);
+  return (
+    <>
+      <span className={`pill step-pill${step.isError ? " failed" : ""}`}>
+        {action}
+        {step.isError && <span className="visually-hidden"> (failed)</span>}
+      </span>{" "}
+      {detail !== "" && <span className="step-text">{detail}</span>}
+    </>
+  );
 }
 
 export function StepFold({
@@ -52,7 +59,11 @@ export function StepFold({
           <Icon name={failed ? "alert" : live ? "sync" : "check"} />
         </span>
         <span className="steps-count">{counted(total, "step")}</span>
-        {last !== undefined && <span className="steps-last">{last.text}</span>}
+        {last !== undefined && (
+          <span className="steps-last">
+            <StepParts step={last} />
+          </span>
+        )}
         <span className={`steps-arrow${open ? " open" : ""}`}>
           <Icon name="down" />
         </span>
@@ -63,11 +74,7 @@ export function StepFold({
           {steps.map((step, index) => (
             <li key={`${step.id ?? ""}-${String(index)}`} className={step.isError ? "failed" : undefined}>
               <Icon name={stepIcon(step)} />
-              <span className="visually-hidden">
-                {kindLabels[step.kind]}
-                {step.isError ? " (failed)" : ""}{" "}
-              </span>
-              <span className="step-text">{step.text}</span>
+              <StepParts step={step} />
             </li>
           ))}
         </ol>

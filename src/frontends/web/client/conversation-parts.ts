@@ -28,6 +28,26 @@ export function stepIcon(step: TurnStep): IconName {
   return step.isError ? "x" : kindIcons[step.kind];
 }
 
+const kindActions: Readonly<Record<TurnStep["kind"], string>> = {
+  message: "Message",
+  command: "Command",
+  tool: "Tool",
+  task: "Task",
+};
+
+/**
+ * What a step did, for its pill, and what it did it to, as plain text. A tool step reads
+ * "Read /path", so its first word is the tool. A step stored before the name came first starts
+ * with JSON, so it falls back to its kind.
+ */
+export function stepParts(step: TurnStep): { action: string; detail: string } {
+  if (step.kind !== "tool" || step.text.startsWith("{")) return { action: kindActions[step.kind], detail: step.text };
+  const space = step.text.indexOf(" ");
+  const name = space === -1 ? step.text : step.text.slice(0, space);
+  const detail = space === -1 ? "" : step.text.slice(space + 1);
+  return { action: name.split("__").at(-1) ?? name, detail };
+}
+
 /** "8 s", "2 min 5 s": the time of a running turn. */
 export function elapsedText(ms: number): string {
   const seconds = Math.floor(ms / 1000);

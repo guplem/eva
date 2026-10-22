@@ -16,11 +16,14 @@ type Listener = (event: { waitUntil: (work: Promise<unknown>) => void; notificat
 interface FakeWorker {
   readonly shown: Shown[];
   readonly opened: string[];
+  /** The method and body of each read of the alert list. */
+  readonly reads: { readonly method: string; readonly body: unknown }[];
   readonly push: () => Promise<void>;
   readonly click: (url: string) => Promise<void>;
 }
 
-function worker(alerts: () => unknown[]): FakeWorker {
+function worker(alerts: () => unknown[], endpoint: string | null = null): FakeWorker {
+  const reads: { method: string; body: unknown }[] = [];
   const listeners = new Map<string, Listener>();
   const shown: Shown[] = [];
   const store = new Map<string, string>();
@@ -38,6 +41,7 @@ function worker(alerts: () => unknown[]): FakeWorker {
         shown.push({ title, ...options });
         return Promise.resolve();
       },
+      pushManager: { getSubscription: () => Promise.resolve(endpoint === null ? null : { endpoint }) },
     },
     location: { origin: "https://eva.example.ts.net" },
   };
@@ -51,7 +55,10 @@ function worker(alerts: () => unknown[]): FakeWorker {
           }),
       }),
   };
-  const fetch = (): Promise<Response> => Promise.resolve(new Response(JSON.stringify({ alerts: alerts() })));
+  const fetch = (_url: string, init?: { method?: string; body?: string }): Promise<Response> => {
+    reads.push({ method: init?.method ?? "GET", body: init?.body === undefined ? null : JSON.parse(init.body) });
+    return Promise.resolve(new Response(JSON.stringify({ alerts: alerts() })));
+  };
   runInNewContext(serviceWorkerScript, { self, caches, fetch, Response, URL, Promise });
   const run = async (name: string, notification?: unknown): Promise<void> => {
     let work: Promise<unknown> = Promise.resolve();
@@ -66,6 +73,7 @@ function worker(alerts: () => unknown[]): FakeWorker {
   return {
     shown,
     opened,
+    reads,
     push: () => run("push"),
     click: (url: string) => run("notificationclick", { close: () => undefined, data: { url } }),
   };
@@ -88,9 +96,9 @@ describe("the service worker", () => {
       ["Eva: problem", "Alert 1", "/#/schedules"],
       ["Eva: problem", "Alert 2", "/#/settings"],
     ]);
-    // The second push of the pair finds nothing new, so it only shows the newest again.
+    // The second push of the pair finds nothing new, so it only shows the newest again, silent.
     await sw.push();
-    expect(sw.shown.at(-1)?.body).toBe("Alert 2");
+    expect(sw.shown.at(-1)).toMatchObject({ body: "Alert 2", renotify: false });
     list = [alert(3, "template_alignment", "resolved"), ...list];
     await sw.push();
     expect(sw.shown.at(-1)).toMatchObject({
@@ -113,6 +121,26 @@ describe("the service worker", () => {
     list = [alert(1, "b")];
     await sw.push();
     expect(sw.shown.map((each) => each.body)).toEqual(["Alert 7", "Alert 1"]);
+  });
+
+  test("reads only the alerts of its own device", async () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/phone";
+    const sw = worker(() => [alert(1, "a")], endpoint);
+    await sw.push();
+    expect(sw.reads).toEqual([{ method: "POST", body: { endpoint } }]);
+    const old = worker(() => [alert(1, "a")]);
+    await old.push();
+    expect(old.reads).toEqual([{ method: "GET", body: null }]);
+  });
+
+  test("shows a chat's notice with its title, rings again, and opens the chat", async () => {
+    const sw = worker(() => [
+      { ...alert(1, "chat:chat-1", "news"), title: "Plan the trip", url: "/#/chat/chat-1", message: "Ready." },
+    ]);
+    await sw.push();
+    expect(sw.shown).toMatchObject([
+      { title: "Plan the trip", body: "Ready.", tag: "chat:chat-1", renotify: true, data: { url: "/#/chat/chat-1" } },
+    ]);
   });
 
   test("a tap opens the page that fixes the problem", async () => {

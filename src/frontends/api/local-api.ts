@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+import { notificationKinds } from "../../core/alerts/chat-notifications.ts";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
@@ -152,6 +153,8 @@ const pushDeviceSchema = z.object({
   label: z.string().min(1).max(200),
 });
 const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
+const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
+const pushInViewSchema = pushEndpointSchema.extend({ pageId: z.string().min(1).max(100), inView: z.boolean() });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -246,7 +249,12 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       )
         bunServer.timeout(request, 0);
       try {
-        return (await devices(request, url, options.eva, pageApprover)) ?? (await route(request, url, options.eva));
+        // As for the socket: a login with the token has no device login, whatever cookie it also carries.
+        const deviceToken = hasValidToken(request, options.token) ? null : cookieValue(request, deviceCookie);
+        return (
+          (await devices(request, url, options.eva, pageApprover)) ??
+          (await route(request, url, options.eva, deviceToken))
+        );
       } catch (error) {
         return errorResponse(error, options.eva);
       }
@@ -427,7 +435,8 @@ async function devices(
 }
 
 // A device login has the same control as the token: the owner chose this in #137.
-async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
+/** `deviceToken` is the caller's device login, or null for a login with the token. */
+async function route(request: Request, url: URL, eva: Eva, deviceToken: string | null): Promise<Response> {
   const parts = url.pathname.split("/").filter((part) => part.length > 0);
   const method = request.method;
 
@@ -717,9 +726,14 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json({ saved: eva.saveLocation(point, "web", new Date(takenAt), false) });
     }
   }
-  if (url.pathname.startsWith("/api/push")) return pushRoute(request, method, url.pathname, eva);
+  if (url.pathname.startsWith("/api/push")) return pushRoute(request, method, url.pathname, eva, deviceToken);
   if (method === "GET" && url.pathname === "/api/notifications/recent") {
     return json({ alerts: eva.recentNotifications() });
+  }
+  // The worker of #360 names its device in the body, so it reads only the alerts that went to it.
+  if (method === "POST" && url.pathname === "/api/notifications/recent") {
+    const { endpoint } = pushEndpointSchema.parse(await request.json());
+    return json({ alerts: eva.recentNotifications(endpoint) });
   }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
@@ -740,13 +754,34 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   return json({ error: "Not found." }, 404);
 }
 
-/** The devices that get Eva's alerts as notifications: the key, the list, a new device, a removal and a test. */
-async function pushRoute(request: Request, method: string, path: string, eva: Eva): Promise<Response> {
+/**
+ * The devices that get Eva's notifications: the key, the list, a new device, its kinds, a removal,
+ * a page in view and a test.
+ */
+async function pushRoute(
+  request: Request,
+  method: string,
+  path: string,
+  eva: Eva,
+  deviceToken: string | null,
+): Promise<Response> {
   if (method === "GET" && path === "/api/push") return json({ ...eva.pushKey(), devices: eva.pushDevices() });
   if (method === "POST" && path === "/api/push/devices") {
     const { subscription, label } = pushDeviceSchema.parse(await request.json());
-    eva.subscribePush(subscription, label);
+    eva.subscribePush(subscription, label, deviceToken);
     return json({ devices: eva.pushDevices() });
+  }
+  if (method === "PATCH" && path === "/api/push/devices") {
+    const { endpoint, kinds } = pushKindsSchema.parse(await request.json());
+    if (!eva.setPushKinds(endpoint, kinds)) return json({ error: "This device gets no notifications." }, 404);
+    return json({ devices: eva.pushDevices() });
+  }
+  if (method === "POST" && path === "/api/push/in-view") {
+    const { endpoint, pageId, inView } = pushInViewSchema.parse(await request.json());
+    if (!eva.markPushInView(endpoint, pageId, inView)) {
+      return json({ error: "This device gets no notifications." }, 404);
+    }
+    return new Response(null, { status: 204 });
   }
   if (method === "DELETE" && path === "/api/push/devices") {
     const { endpoint } = pushEndpointSchema.parse(await request.json());

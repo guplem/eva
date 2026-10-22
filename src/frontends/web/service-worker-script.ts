@@ -16,9 +16,22 @@ const maxAtOnce = 3;
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
+/**
+ * The alerts that went to this device (#360). Each device picks its own kinds, so another device's
+ * entry must not show here. Without a subscription, the worker reads the whole list.
+ */
 async function recentAlerts() {
   try {
-    const response = await fetch("/api/notifications/recent", { credentials: "same-origin", cache: "no-store" });
+    const subscription = await self.registration.pushManager.getSubscription();
+    const own =
+      subscription === null
+        ? {}
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          };
+    const response = await fetch("/api/notifications/recent", { credentials: "same-origin", cache: "no-store", ...own });
     if (!response.ok) return [];
     return (await response.json()).alerts;
   } catch {
@@ -46,14 +59,18 @@ function pageOf(key) {
 
 const titles = { error: "Eva: problem", warn: "Eva: problem", resolved: "Eva: solved", news: "Eva" };
 
-function show(alert) {
-  return self.registration.showNotification(titles[alert.level] ?? "Eva", {
+/**
+ * A chat's notification carries its own title and page: the chat's title, and the chat. \`again\`:
+ * the alert showed already, so it comes back silent.
+ */
+function show(alert, again = false) {
+  return self.registration.showNotification(alert.title ?? titles[alert.level] ?? "Eva", {
     body: alert.message,
     tag: alert.key,
-    // A problem that comes back while its old notice is still there sounds again.
-    renotify: alert.level === "warn" || alert.level === "error",
+    // A problem that comes back, or a chat's new answer, sounds again while the old notice is still there.
+    renotify: !again && (alert.level === "warn" || alert.level === "error" || alert.url !== undefined),
     icon: "/icon-192.png",
-    data: { url: pageOf(alert.key) },
+    data: { url: alert.url ?? pageOf(alert.key) },
   });
 }
 
@@ -67,8 +84,9 @@ async function showNew() {
   // A lower number means that Eva restarted, so every alert in the list is new to this device.
   const fresh = alerts.filter((alert) => alert.seq > last || alerts[0].seq < last).slice(0, maxAtOnce);
   await remember(alerts[0].seq);
-  // A push with no new alert still shows one, as browsers require: the newest replaces its own notice.
-  await Promise.all((fresh.length === 0 ? [alerts[0]] : fresh.reverse()).map(show));
+  // A push with no new alert still shows one, as browsers require: the newest replaces its own notice, silent.
+  if (fresh.length === 0) return show(alerts[0], true);
+  await Promise.all(fresh.reverse().map((alert) => show(alert)));
 }
 
 self.addEventListener("push", (event) => event.waitUntil(showNew()));

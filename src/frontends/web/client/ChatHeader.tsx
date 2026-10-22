@@ -1,6 +1,6 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Chat info and Delete chat. One row leaves the chat its height. A computer also has a button that
+ * Chat info and Delete chat. Rename and Delete chat ask in a dialog. One row leaves the chat its height. A computer also has a button that
  * hides or shows the chat details column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
@@ -9,9 +9,9 @@ import { chatStateLabels, type ChatState } from "./chat-list.ts";
 import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
+import { ProgressBar } from "./Loading.tsx";
 import { ShowListButton } from "./MainNav.tsx";
 import { MenuList, useDismissOutside, type MenuItem } from "./Menu.tsx";
-import { RenameForm } from "./RenameForm.tsx";
 
 /** A header action that a list asks for, such as Rename from the context menu of a chat in the list. */
 export type ChatAction = "rename" | "delete";
@@ -105,7 +105,7 @@ export function ChatHeader({
   startWith = null,
 }: ChatHeaderProps): ReactElement {
   const isPhone = useIsPhone();
-  const [draft, setDraft] = useState<string | null>(startWith === "rename" ? chat.title : null);
+  const [renaming, setRenaming] = useState(startWith === "rename");
   const [infoOpen, setInfoOpen] = useState(false);
   const [asking, setAsking] = useState(startWith === "delete");
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -120,7 +120,7 @@ export function ChatHeader({
     setInfoOpen(true);
   };
 
-  const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setDraft(chat.title) }];
+  const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setRenaming(true) }];
   // A computer shows the details in the inspector column.
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
   items.push({ label: "Delete chat", icon: "trash", danger: true, onChoose: () => setAsking(true) });
@@ -128,39 +128,23 @@ export function ChatHeader({
   return (
     <div className="main-header chat-header">
       <ShowListButton onClick={onShowList} unread={listHasUnread} />
-      {draft === null ? (
-        <div className="header-text">
-          <h1>
-            {isPhone ? (
-              <button
-                className="chat-title-button"
-                data-tooltip="Show the chat details"
-                aria-haspopup="dialog"
-                onClick={(event) => openInfo(event.currentTarget)}
-              >
-                {chat.title}
-              </button>
-            ) : (
-              chat.title
-            )}
-          </h1>
-          <div className="sub">{subtitle}</div>
-        </div>
-      ) : (
-        <RenameForm
-          label="Chat title"
-          draft={draft}
-          onDraft={setDraft}
-          onSave={async (title) => {
-            await api.rename(chat.id, title);
-            await onChanged();
-          }}
-          onEnd={() => {
-            setDraft(null);
-            moreButton.current?.focus();
-          }}
-        />
-      )}
+      <div className="header-text">
+        <h1>
+          {isPhone ? (
+            <button
+              className="chat-title-button"
+              data-tooltip="Show the chat details"
+              aria-haspopup="dialog"
+              onClick={(event) => openInfo(event.currentTarget)}
+            >
+              {chat.title}
+            </button>
+          ) : (
+            chat.title
+          )}
+        </h1>
+        <div className="sub">{subtitle}</div>
+      </div>
       {extra}
       {!isPhone && (
         <button
@@ -175,6 +159,16 @@ export function ChatHeader({
         </button>
       )}
       <MoreMenu items={items} toggle={moreButton} />
+      {renaming && (
+        <RenameDialog
+          chat={chat}
+          onEnd={() => {
+            setRenaming(false);
+            moreButton.current?.focus();
+          }}
+          onChanged={onChanged}
+        />
+      )}
       {asking && (
         <DeleteQuestion
           chat={chat}
@@ -190,7 +184,86 @@ export function ChatHeader({
   );
 }
 
-/** Deletes the chat and its forks in every front end. It asks in the page, as a schedule row does. */
+/** Closes a dialog on Escape, unless it waits for a request. */
+function useEscape(onEscape: () => void, busy: boolean): void {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !busy) onEscape();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onEscape, busy]);
+}
+
+/** Asks for a new title. Enter saves; Escape or Cancel keeps the old title. */
+function RenameDialog({
+  chat,
+  onEnd,
+  onChanged,
+}: {
+  readonly chat: SessionRecord;
+  /** Closes the dialog, with the new title saved or not. */
+  readonly onEnd: () => void;
+  readonly onChanged: () => Promise<void>;
+}): ReactElement {
+  const [draft, setDraft] = useState(chat.title);
+  // A second Enter while the request runs must not send it again.
+  const [saving, setSaving] = useState(false);
+  const showError = useShowError();
+  useEscape(onEnd, saving);
+
+  const save = async (): Promise<void> => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await api.rename(chat.id, draft);
+      await onChanged();
+      onEnd();
+    } catch (caught) {
+      // The dialog stays open, so the person can try again.
+      showError(caught);
+      setSaving(false);
+    }
+  };
+
+  return (
+    // A tap beside the dialog does not close it, so a slip never loses a half-written title.
+    <div className="dialog-backdrop schedule-backdrop">
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Rename chat">
+        <h2>Rename chat</h2>
+        <form
+          className="schedule-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <label>
+            Chat title
+            <input
+              value={draft}
+              autoFocus
+              // Selected, so the person can type a new title at once.
+              onFocus={(event) => event.target.select()}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          </label>
+          <div className="schedule-sheet-actions">
+            <button type="submit" className="primary" disabled={saving || draft.trim() === ""}>
+              Save
+            </button>
+            <span className="spacer" />
+            <button type="button" onClick={onEnd} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** Deletes the chat and its forks in every front end, after the person says yes in a dialog. */
 function DeleteQuestion({
   chat,
   onKeep,
@@ -202,6 +275,7 @@ function DeleteQuestion({
 }): ReactElement {
   const [deleting, setDeleting] = useState(false);
   const showError = useShowError();
+  useEscape(onKeep, deleting);
   const remove = async (): Promise<void> => {
     if (deleting) return;
     setDeleting(true);
@@ -214,16 +288,27 @@ function DeleteQuestion({
     }
   };
   return (
-    <div className="chat-delete-question" role="group" aria-label={`Delete “${chat.title}”?`}>
-      <span>Delete “{chat.title}” and its forks everywhere?</span>
-      {/* Not disabled: a disabled button drops the focus, and a failed delete must leave it here. */}
-      <button className="danger" aria-disabled={deleting} onClick={() => void remove()}>
-        Delete
-      </button>
-      {/* Focus comes here, so a keyboard or a screen reader reaches the question at once. */}
-      <button autoFocus onClick={onKeep}>
-        Keep
-      </button>
+    <div
+      className="dialog-backdrop schedule-backdrop"
+      // A click inside the dialog also reaches the scrim, so only a click on the scrim itself keeps the chat.
+      onClick={(event) => event.target === event.currentTarget && !deleting && onKeep()}
+    >
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`Delete “${chat.title}”?`}>
+        <h2>Delete “{chat.title}”?</h2>
+        <p>Eva deletes the chat and its forks everywhere.</p>
+        <div className="schedule-sheet-actions">
+          {/* Not disabled: a disabled button drops the focus, and a failed delete must leave it here. */}
+          <button className="danger" aria-disabled={deleting} onClick={() => void remove()}>
+            Delete
+          </button>
+          <span className="spacer" />
+          {/* Focus comes here, so a keyboard or a screen reader reaches the question at once. */}
+          <button autoFocus onClick={onKeep}>
+            Keep
+          </button>
+        </div>
+        {deleting && <ProgressBar label="Eva deletes the chat." />}
+      </div>
     </div>
   );
 }

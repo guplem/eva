@@ -1154,7 +1154,54 @@ describe("after a turn", () => {
     expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill", "continue the skill run"]);
     expect(engine.requests[1]?.history.kind).toBe("continue");
   });
+
+  test("the idle listener hears once, after the follow-ups, and hears whether the person stopped a turn", async () => {
+    followUps = ["continue the skill run", null];
+    const manager = createManager(new FakeEngine());
+    const idle: [string, boolean, number][] = [];
+    manager.onIdle((sessionId, { stopped }) => {
+      idle.push([sessionId, stopped, engineTurns(events)]);
+    });
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "start the skill");
+    expect(idle).toEqual([[sessionId, false, 2]]);
+
+    const slow = createManager(
+      new FakeEngine((request, turnNumber) =>
+        turnNumber === 1 || turnNumber === 3
+          ? (async function* () {
+              yield { kind: "text", text: "Working", messageId: "m1" } as const;
+              await Bun.sleep(2_000);
+            })()
+          : FakeEngine.answer(request, "done"),
+      ),
+    );
+    const stopped: boolean[] = [];
+    slow.onIdle((_, state) => stopped.push(state.stopped));
+    // The second manager makes the same session ids, so the old events must not count.
+    events.length = 0;
+    const slowId = newAssistantSession(slow);
+    const turn = slow.send(slowId, "go");
+    await waitUntil(() => events.some((event) => event.sessionId === slowId && event.kind === "text"));
+    slow.stop(slowId);
+    await turn;
+    await slow.send(slowId, "again");
+    expect(stopped).toEqual([true, false]);
+
+    // A message that waits while the person stops the turn is new work: its answer is no stop.
+    events.length = 0;
+    const long = slow.send(slowId, "a long task");
+    await waitUntil(() => events.some((event) => event.kind === "text"));
+    const queued = slow.send(slowId, "the next task");
+    slow.stop(slowId);
+    await Promise.all([long, queued]);
+    expect(stopped).toEqual([true, false, false]);
+  });
 });
+
+function engineTurns(seen: readonly SessionEvent[]): number {
+  return seen.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed").length;
+}
 
 describe("persistence and redaction", () => {
   test("a second manager on the same store sees the sessions", async () => {

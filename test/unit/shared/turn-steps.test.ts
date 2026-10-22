@@ -41,6 +41,13 @@ describe("addStep", () => {
     expect(steps).toEqual([{ kind: "task", text: "look", isError: true, id: "k1" }]);
   });
 
+  test("a tool with no short field keeps its name before the input, so the step says which tool ran", () => {
+    const steps = stepsOf([
+      { kind: "tool_started", toolUseId: "t1", name: "mcp__demo__list", category: "tool", summary: '{"limit":5}' },
+    ]);
+    expect(steps[0]?.text).toBe('mcp__demo__list {"limit":5}');
+  });
+
   test("other events add no step", () => {
     const steps = stepsOf([
       { kind: "notice", text: "hi" },

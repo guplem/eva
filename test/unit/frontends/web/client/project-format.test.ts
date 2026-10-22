@@ -9,6 +9,7 @@ import {
   shownTags,
   tagsByUse,
   repositoryLabel,
+  repositoryWebUrl,
   statusPill,
   syncPills,
 } from "../../../../../src/frontends/web/client/project-format.ts";
@@ -78,6 +79,32 @@ describe("repositoryLabel", () => {
     expect(repositoryLabel("ssh://git@github.com/example/example-app.git")).toBe("github.com/example/example-app");
     expect(repositoryLabel("git@github.com:example/example-app.git")).toBe("github.com:example/example-app");
     expect(repositoryLabel("/srv/git/remote.git")).toBe("/srv/git/remote");
+  });
+});
+
+describe("repositoryWebUrl", () => {
+  test("gives the web page of a hosted repository", () => {
+    expect(repositoryWebUrl("https://github.com/example/example-app.git")).toBe(
+      "https://github.com/example/example-app",
+    );
+    expect(repositoryWebUrl("git@github.com:example/example-app.git")).toBe("https://github.com/example/example-app");
+    expect(repositoryWebUrl("ssh://git@github.com:22/example/example-app.git")).toBe(
+      "https://github.com/example/example-app",
+    );
+    expect(repositoryWebUrl("github.com/example/example-app")).toBe("https://github.com/example/example-app");
+  });
+
+  test("never keeps a token", () => {
+    expect(repositoryWebUrl("https://user:token@github.com/example/example-app")).toBe(
+      "https://github.com/example/example-app",
+    );
+  });
+
+  test("gives null for a repository with no web page", () => {
+    expect(repositoryWebUrl("/srv/git/remote.git")).toBeNull();
+    expect(repositoryWebUrl("C:\\git\\remote.git")).toBeNull();
+    expect(repositoryWebUrl("file:///srv/git/remote.git")).toBeNull();
+    expect(repositoryWebUrl("example-app")).toBeNull();
   });
 });
 

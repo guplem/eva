@@ -51,6 +51,20 @@ export function repositoryLabel(url: string): string {
     .replace(/\.git$/, "");
 }
 
+/**
+ * The web page of a hosted repository, such as `https://github.com/example/example-app`, or null for
+ * a local path. An SSH address has no web page of its own, so the link guesses the host's HTTPS page.
+ */
+export function repositoryWebUrl(url: string): string | null {
+  if (/^file:/i.test(url)) return null;
+  const label = repositoryLabel(url)
+    // `git@host:owner/repo` and `ssh://host:22/owner/repo`: the part after the colon is the path or a port.
+    .replace(/^([^/:]+):\d+\//, "$1/")
+    .replace(/^([^/:]+):/, "$1/");
+  // A host has a dot, such as `github.com`. A local path, such as `/srv` or `C:\`, has none before its first slash.
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+\/[^\s\\]+$/i.test(label) ? `https://${label}` : null;
+}
+
 /** "Projects/2026-10-12-0930-example-app": the place in the vault, without the path of the computer. */
 export function projectFolder(path: string): string {
   return path.split(/[\\/]/).slice(-2).join("/");

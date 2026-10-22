@@ -90,6 +90,8 @@ try {
   $smokeHome = Join-Path $env:APPDATA 'eva-smoke'
   New-Item -ItemType Directory -Path $smokeHome | Out-Null
   Set-Content -Path (Join-Path $smokeHome 'config.json') -Value '{}'
+  # A fresh Windows user has no Run key until a program adds a start at logon.
+  if (-not (Test-Path $runKey)) { New-Item -Path $runKey | Out-Null }
   New-ItemProperty -Path $runKey -Name 'Eva-smoke' -Value 'smoke' -Force | Out-Null
   $global:answers = [Collections.Queue]::new([string[]]@('', 'y', ''))
   function global:Read-Host { if ($global:answers.Count -gt 0) { $global:answers.Dequeue() } else { '' } }

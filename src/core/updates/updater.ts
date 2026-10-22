@@ -94,6 +94,8 @@ export class Updater {
   /** The new version is in place, and Eva restarts once no chat runs a turn. */
   private restartPending: boolean;
   private download: UpdateDownload | null;
+  /** The check that runs now, so an update by hand can wait for it. */
+  private checking: Promise<UpdateStatus> | null;
 
   constructor(options: UpdaterOptions) {
     this.options = options;
@@ -105,6 +107,7 @@ export class Updater {
     this.chosen = null;
     this.restartPending = false;
     this.download = null;
+    this.checking = null;
   }
 
   status(): UpdateStatus {
@@ -136,6 +139,15 @@ export class Updater {
   /** Looks for a newer version, and installs nothing. */
   async check(): Promise<UpdateStatus> {
     if (this.phase !== "idle") return this.status();
+    this.checking = this.runCheck();
+    try {
+      return await this.checking;
+    } finally {
+      this.checking = null;
+    }
+  }
+
+  private async runCheck(): Promise<UpdateStatus> {
     this.phase = "checking";
     try {
       this.last = await this.options.channel.check();
@@ -156,6 +168,13 @@ export class Updater {
    * else the newest release that the policy allows. Throws for a version that is not a newer release.
    */
   async updateNow(version?: string): Promise<UpdateStatus> {
+    // The settings page checks when it opens, so a tap on "Check and install" can come during it.
+    const running = this.checking;
+    if (version === undefined && running !== null) {
+      await running;
+      if (this.lastError !== null) return this.status();
+      return this.installWhenIdle();
+    }
     // One check or install at a time: a second download could replace the first one's file.
     if (this.phase === "checking" || this.phase === "updating" || this.phase === "restarting") {
       // A chosen version must never vanish without a word.
@@ -171,7 +190,13 @@ export class Updater {
       if (this.lastError !== null) return this.status();
     }
     if (version !== undefined) this.choose(version);
-    if (this.phase === "waiting_for_idle") return this.status();
+    return this.installWhenIdle();
+  }
+
+  /** Installs the target now, or waits for the chats to end. */
+  private async installWhenIdle(): Promise<UpdateStatus> {
+    // The check that ran can have left the phase busy, as an install that another tap started.
+    if (this.phase !== "idle") return this.status();
     if (this.target() === null) return this.status();
     if (!this.options.isIdle()) {
       this.phase = "waiting_for_idle";

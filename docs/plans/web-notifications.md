@@ -49,3 +49,5 @@ Issue 369 already sends Eva's alerts as Web Push. This plan extends that path. I
 
 - **A logged-in device that knows another device's push address can read its entries or claim that its page is in view.** Eva has one owner, every caller is logged in, and the entries are already redacted. A device sees the addresses only in the owner's own device list.
 - **Telegram shows the turns of a project chat that a Telegram message asked for, and the push for the report turn rings too.** A fix needs the origin to travel through the project work. The person can turn off a kind per device.
+- **Set `idleListeners` in the constructor.** Every other field of `SessionManager` uses an initializer, and the file keeps its coverage.
+- **Commit `f2252127` says that the worker reads only its own entries.** The worker change is in the next commit. History stays as it is: the rules forbid an amend and a force push.

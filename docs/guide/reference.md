@@ -172,14 +172,14 @@ Eva can also tell a phone or a computer through the browser, with a system notif
 1. Open **Settings**, then **Access**, then **Notifications on this device**.
 2. Tap **Turn on notifications**, and allow them in the browser's question.
 3. Pick when Eva tells this device:
-   - **Eva answers:** a reply is ready, also at the end of a long task.
+   - **Eva answers:** her answer is ready, also at the end of a long task.
    - **A schedule finishes:** the chat of a reminder has its answer.
    - **Eva waits for your approval:** a tool call needs your yes or no.
    - **Problems and their fixes:** the alerts above. Only the hub sends them.
 
 A tap on a notification opens its chat. Each device picks its own kinds.
 
-Eva sends a device no notification while her page on that device is in view and in front. A chat that you started from Telegram sends none either: Telegram shows the answer already. A turn that you stopped sends none.
+Eva sends a device no notification while her page on that device is in view and in front. Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
 
 On an iPhone or an iPad, add Eva to the home screen first, then open her from there. Each computer of your notebook sends the notifications of its own chats, so turn them on in the page of each computer that you use.
 

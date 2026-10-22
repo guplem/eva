@@ -19,6 +19,7 @@ import {
   type ListedSession,
 } from "./api.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
+import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
@@ -320,6 +321,8 @@ function EvaApp(): ReactElement {
         return;
       }
       setLive((state) => applyEvent(state, event));
+      const cue = cueOfEvent(event);
+      if (cue !== null) playCue(cue);
       if (event.kind === "approval_resolved") {
         setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
       } else if (event.kind === "approval_needed") {

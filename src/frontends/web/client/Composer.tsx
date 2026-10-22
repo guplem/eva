@@ -9,6 +9,7 @@ import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
+import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
@@ -75,6 +76,7 @@ export function Composer({
   const send = async (): Promise<void> => {
     const message = text.trim();
     if (message === "" || sending || blocker !== null) return;
+    playCue("send");
     setSending(true);
     setText("");
     // The person must not type the message again.
@@ -105,6 +107,7 @@ export function Composer({
                 className="send"
                 aria-label="Send the voice note"
                 data-tooltip="Send the voice note"
+                data-cue="send"
                 onClick={voice.finish}
               >
                 <Icon name="send" />
@@ -163,6 +166,8 @@ export function Composer({
             !showMic && (
               <button
                 className="send"
+                // The send itself plays its cue, also for the Enter key.
+                data-cue="none"
                 aria-label="Send"
                 data-tooltip="Send"
                 disabled={sending || text.trim() === "" || block !== null}

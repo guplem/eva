@@ -4,6 +4,7 @@
  * pressed shows the result.
  */
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from "react";
+import { playCue } from "./cues.ts";
 import { Icon } from "./icons.tsx";
 
 /** Long enough to see after the finger lifts, short enough to be ready for the next save. */
@@ -37,14 +38,19 @@ export function SaveButton({
   const press = async (): Promise<void> => {
     if (timer.current !== null) clearTimeout(timer.current);
     setDone(false);
-    if (!(await onSave())) return;
+    if (!(await onSave())) {
+      playCue("problem");
+      return;
+    }
+    playCue("saved");
     setDone(true);
     timer.current = setTimeout(() => setDone(false), doneMs);
   };
 
   const classes = ["save-button", className, done ? "done" : undefined].filter(Boolean).join(" ");
   return (
-    <button {...button} className={classes} onClick={() => void press()}>
+    // The save plays its own cue when it ends.
+    <button {...button} className={classes} data-cue="none" onClick={() => void press()}>
       <span className="save-button-label">{children}</span>
       {/* Hidden from a screen reader: the name of the button stays, and the page's notice talks. */}
       <span className="save-button-done" aria-hidden="true">

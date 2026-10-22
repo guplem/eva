@@ -333,7 +333,8 @@ function EngineChip({
       >
         <Icon name="bolt" />
         <span className="chip-engine">{engineLabel(session.engine)} · </span>
-        {modelLabel(session.modelAlias, answeredModel(session.turns))} · {effortLabel(session.effort)}
+        {modelLabel(session.modelAlias, answeredModel(session.turns))}
+        <span className="chip-effort">· {effortLabel(session.effort)}</span>
         <Icon name="down" />
       </button>
       {open && (

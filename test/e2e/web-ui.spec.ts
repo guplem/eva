@@ -793,27 +793,33 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(menu).toHaveCount(0);
   // The chip is the one place that shows the model.
   const picker = page.locator(".chip-picker > .chip");
-  await expect(picker).toContainText("Haiku · Low effort");
+  await expect(picker).toContainText("Haiku");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   // The chip names the model that answered (#419).
-  await expect(picker).toContainText("Haiku 5.5 · Low effort");
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await picker.click();
   await expect(menu).toContainText("fixed after the first message");
+  // The chip starts mid-row on a phone, and its menu still fits the screen.
+  await expect(menu).toBeInViewport({ ratio: 1 });
   await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
   // The effort changes no history, so it changes after the first message too.
   await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Max" }).click();
-  await expect(picker).toContainText("Haiku 5.5 · Max effort");
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
 });
 
 test("a chat on the default model names the model that answered (#419)", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   const picker = page.locator(".chip-picker > .chip");
-  await expect(picker).toContainText("Default model · Default effort");
+  await expect(picker).toContainText("Default model");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Default effort");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");

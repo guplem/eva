@@ -553,10 +553,13 @@ textarea {
   color: var(--accent-ink);
 }
 
-/* The rail shows only the icon. The name stays for a screen reader, and the title shows it on hover. */
+/* The rail shows only the icon. The name stays for a screen reader, and the title shows it on hover.
+   Without top and left, a hidden label deep in a scrolled panel makes the whole page taller, so the page scrolls too. */
 .nav-label,
 .visually-hidden {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;

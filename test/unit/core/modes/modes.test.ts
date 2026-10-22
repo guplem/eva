@@ -139,6 +139,15 @@ describe("Assistant mode", () => {
     expect(first.messagePrefix).toBe("[Local time: 2026-10-14 12:30, Europe/Madrid]");
   });
 
+  test("a bad field in Life/About me.md adds a note to the message, so Eva fixes it", async () => {
+    mkdirSync(join(vault, "Life"), { recursive: true });
+    writeFileSync(join(vault, "Life", "About me.md"), "---\nhemisphere: up\n---\n\n# About Alex\n");
+    const prepared = await assistant(silentRunner).prepare(session());
+    expect(prepared.messagePrefix).toBe(
+      "[Local time: 2026-10-14 12:30, Europe/Madrid]\n[Life/About me.md has problems: hemisphere must be north or south. Fix them with the about-me skill.]",
+    );
+  });
+
   test("a missing .eva/assistant.md fails the turn (lesson 11)", async () => {
     rmSync(join(vault, ".eva", "assistant.md"));
     const error: unknown = await assistant(silentRunner)

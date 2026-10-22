@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { greeting, setupBlock, suggestions } from "../../../../../src/frontends/web/client/new-chat.ts";
+import { factQuestion, greeting, setupBlock, suggestions } from "../../../../../src/frontends/web/client/new-chat.ts";
 
 describe("greeting", () => {
   test("follows the time of day", () => {
@@ -59,5 +59,21 @@ describe("setupBlock after a new login", () => {
       composerLine: "Restart Eva to send a message.",
       address: "#/settings/updates/restart",
     });
+  });
+});
+
+describe("factQuestion", () => {
+  test("asks for the most useful missing fact first", () => {
+    expect(factQuestion(["birthDate", "region"])?.title).toBe("Hey Eva! I was born on…");
+    expect(factQuestion(["region"])?.answer).toBe("text");
+    expect(factQuestion(["somethingNew"])).toBeNull();
+    expect(factQuestion([])).toBeNull();
+  });
+
+  test("puts the answer in a message that names the note and the skill", () => {
+    const message = factQuestion(["birthDate"])?.message("1990-05-14") ?? "";
+    expect(message).toContain("I was born on 1990-05-14");
+    expect(message).toContain("Life/About me.md");
+    expect(message).toContain("about-me skill");
   });
 });

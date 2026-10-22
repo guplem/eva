@@ -13,6 +13,7 @@ import readmeFile from "../../../templates/vault/README.md" with { type: "text" 
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
 import assistantFile from "../../../templates/vault/.eva/assistant.md" with { type: "text" };
 import aboutFile from "../../../templates/vault/Life/About me.md" with { type: "text" };
+import aboutMeSkillFile from "../../../templates/vault/.eva/skills/about-me/SKILL.md" with { type: "text" };
 import scheduleSkillFile from "../../../templates/vault/.eva/skills/schedule/SKILL.md" with { type: "text" };
 
 /**
@@ -26,6 +27,7 @@ export const defaultAssistantRules: string = assistantFile;
  * vault root (`template-alignment.ts`). Add each new skill here.
  */
 export const templateParts: Readonly<Record<string, string>> = {
+  ".eva/skills/about-me/SKILL.md": aboutMeSkillFile,
   ".eva/skills/schedule/SKILL.md": scheduleSkillFile,
 };
 
@@ -52,6 +54,8 @@ export function vaultTemplateFiles(answers: VaultTemplateAnswers): Record<string
   const topicList = answers.topics.length === 0 ? "None yet." : answers.topics.map((topic) => `- ${topic}`).join("\n");
   const fill = (text: string): string =>
     text
+      // A JSON string is a YAML string too: the escapes keep any name one value in the header.
+      .replaceAll("{{nameInQuotes}}", JSON.stringify(answers.name).slice(1, -1))
       .replaceAll("{{name}}", answers.name)
       .replaceAll("{{language}}", answers.language)
       .replaceAll("{{timeZone}}", answers.timeZone)

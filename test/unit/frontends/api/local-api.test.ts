@@ -1284,6 +1284,25 @@ describe("web routes", () => {
     expect((await call("/api/assistant-rules/other", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("about me: the person's facts, and the facts that Eva still needs", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Life"), { recursive: true });
+    writeFileSync(
+      join(vaultPath, "Life", "About me.md"),
+      "---\nname: Alex\nbirthDate: 1990-05-14\n---\n\n# About Alex\n",
+    );
+    const facts = await json<{ installedOn: string | null }>(await call("/api/about-me"));
+    expect(facts).toMatchObject({
+      name: "Alex",
+      birthDate: "1990-05-14",
+      region: null,
+      hemisphere: null,
+      missing: ["region"],
+    });
+    // The day of the test vault's first commit.
+    expect(facts.installedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   test("template parts: list their states, and keep the person's version of one", async () => {
     interface Parts {
       parts: { path: string; name: string; state: string; updatedAt: string | null; newText: string | null }[];
@@ -1292,17 +1311,20 @@ describe("web routes", () => {
     mkdirSync(join(vaultPath, ".eva", "skills", "schedule"), { recursive: true });
     writeFileSync(join(vaultPath, ".eva", "skills", "schedule", "SKILL.md"), "# My own skill\n");
     const listed = await json<Parts>(await call("/api/template-parts"));
-    expect(listed.parts.map((part) => [part.path, part.name, part.state, part.updatedAt])).toEqual([
-      [".eva/skills/schedule/SKILL.md", "schedule", "differs", null],
+    const schedule = listed.parts.find((part) => part.name === "schedule");
+    expect([schedule?.path, schedule?.state, schedule?.updatedAt]).toEqual([
+      ".eva/skills/schedule/SKILL.md",
+      "differs",
+      null,
     ]);
-    expect(listed.parts[0]?.newText).toContain("# Schedule a message");
+    expect(schedule?.newText).toContain("# Schedule a message");
     const kept = await json<Parts>(
       await call("/api/template-parts", {
         method: "POST",
         body: { path: ".eva/skills/schedule/SKILL.md", choice: "mine" },
       }),
     );
-    expect(kept.parts.map((part) => part.state)).toEqual(["kept"]);
+    expect(kept.parts.find((part) => part.name === "schedule")?.state).toBe("kept");
     const unknown = await call("/api/template-parts", {
       method: "POST",
       body: { path: ".eva/assistant.md", choice: "new" },

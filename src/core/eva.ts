@@ -127,6 +127,7 @@ import {
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
+import { firstCommitDay, installedOn, readAboutMe, type AboutMe } from "./vault/about-me.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -150,6 +151,14 @@ import {
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
+
+/** The person's facts as the web page reads them. */
+export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
+  /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
+  readonly installedOn: string | null;
+  /** The facts that Eva still needs, the most useful first. */
+  readonly missing: readonly ("birthDate" | "region")[];
+}
 
 export interface EvaOptions {
   readonly paths: HomePaths;
@@ -339,6 +348,10 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
+  /** The day of the vault's first commit, read once. */
+  private vaultFirstCommit: Promise<string | null> | null;
+  /** The git environment of this instance, for reads of the vault's history. */
+  private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
   private readonly vaultSetup: VaultSetup;
@@ -374,6 +387,8 @@ export class Eva {
       commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
+    this.gitEnvironmentForReads = ownGitEnvironment;
+    this.vaultFirstCommit = null;
 
     const redactor = new Redactor();
     for (const secret of Object.values(options.secrets)) redactor.addSecret(secret);
@@ -807,6 +822,29 @@ export class Eva {
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+  }
+
+  /**
+   * The person's facts that the web page uses, from `Life/About me.md`, and the facts that Eva
+   * still needs. Null when no vault is configured.
+   */
+  async personalFacts(): Promise<PersonalFactsView | null> {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return null;
+    // The first commit never changes, so one git call serves every read.
+    this.vaultFirstCommit ??= firstCommitDay(vaultPath, this.options.runner, this.gitEnvironmentForReads);
+    const firstCommit = await this.vaultFirstCommit;
+    const about = readAboutMe(vaultPath);
+    // The most useful fact first: the new chat page asks for one at a time.
+    const missing = (["birthDate", "region"] as const).filter((key) => about[key] === null);
+    return {
+      name: about.name,
+      birthDate: about.birthDate,
+      region: about.region,
+      hemisphere: about.hemisphere,
+      installedOn: installedOn(vaultPath, firstCommit),
+      missing,
+    };
   }
 
   /**

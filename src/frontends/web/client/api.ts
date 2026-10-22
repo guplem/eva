@@ -6,6 +6,7 @@ import type {
   EvaVersions,
   InstallableTool,
   LatestToolVersion,
+  PersonalFactsView,
   ToolInstallResult,
   TrustOverview,
 } from "../../../core/eva.ts";
@@ -49,6 +50,8 @@ import type { SessionEvent } from "../../../shared/events.ts";
 
 /** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
+
+export type { PersonalFactsView };
 
 export type {
   BrowsedPath,
@@ -269,6 +272,8 @@ export const api = {
     request("PUT", "/api/assistant-rules", { version, text }),
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
+  /** Answers 409 when no vault is configured. */
+  aboutMe: (): Promise<PersonalFactsView> => request("GET", "/api/about-me"),
   /** Answers 409 when no vault is configured. */
   templateParts: (): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
     request("GET", "/api/template-parts"),

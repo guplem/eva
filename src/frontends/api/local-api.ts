@@ -686,6 +686,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
     return assistantRulesRoute(request, method, parts[2], eva);
   }
+  if (method === "GET" && url.pathname === "/api/about-me") {
+    const facts = await eva.personalFacts();
+    return facts === null ? json({ error: "No vault is configured." }, 409) : json(facts);
+  }
   if (url.pathname === "/api/template-parts") return templatePartsRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);

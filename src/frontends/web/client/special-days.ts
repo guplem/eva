@@ -43,13 +43,19 @@ export interface SpecialDay {
   readonly line: string;
 }
 
-/** The person's own dates, as `YYYY-MM-DD`. Null when Eva does not know them. */
-export interface PersonalDates {
+/** What Eva knows about the person, from `Life/About me.md`. Null when she does not know it. */
+export interface PersonalFacts {
+  /** `YYYY-MM-DD`. */
   readonly birthDate: string | null;
+  /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
   readonly installedOn: string | null;
+  /** An ISO 3166 code, such as `ES` or `ES-CT`. With no region, every local day shows. */
+  readonly region?: string | null;
+  /** With no hemisphere, the seasons follow the northern one. */
+  readonly hemisphere?: "north" | "south" | null;
 }
 
-const noPersonalDates: PersonalDates = { birthDate: null, installedOn: null };
+const noPersonalFacts: PersonalFacts = { birthDate: null, installedOn: null };
 
 interface CalendarDay {
   readonly date: Date;
@@ -147,10 +153,12 @@ function isFullMoonDay(today: CalendarDay): boolean {
   return [nearest - 1, nearest, nearest + 1].some((k) => sameDay(fullMoonInstant(k), today));
 }
 
+/** A date as `YYYY-MM-DD`, or a birthday with no year as `--MM-DD`, which reads as in the leap year 2000. */
 function parseDate(text: string | null): CalendarDay | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text ?? "");
+  const match = /^(\d{4}|-)-(\d{2})-(\d{2})$/.exec(text ?? "");
   if (match === null) return null;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const year = match[1] === "-" ? 2000 : Number(match[1]);
+  const [month, day] = [Number(match[2]), Number(match[3])];
   const date = new Date(year, month - 1, day, 12);
   if (date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return { date, year, month, day };
@@ -173,36 +181,83 @@ type WordedDayId = Exclude<SpecialDayId, "anniversary">;
 
 interface Rule {
   readonly id: WordedDayId;
-  readonly on: (today: CalendarDay) => boolean;
+  readonly on: (today: CalendarDay, facts: PersonalFacts) => boolean;
 }
 
 function fixed(id: WordedDayId, ...dates: readonly (readonly [number, number])[]): Rule {
   return { id, on: (today) => dates.some(([month, day]) => today.month === month && today.day === day) };
 }
 
-function season(id: WordedDayId, which: Season): Rule {
-  return { id, on: (today) => sameDay(seasonInstant(today.year, which), today) };
+/** A solstice or an equinox. In the southern hemisphere, the March equinox starts autumn. */
+function season(id: WordedDayId, which: Season, hemisphere: "north" | "south"): Rule {
+  return {
+    id,
+    on: (today, facts) =>
+      (facts.hemisphere ?? "north") === hemisphere && sameDay(seasonInstant(today.year, which), today),
+  };
 }
+
+/**
+ * A day that only some places keep, by the start of their ISO 3166 code. A person whose region
+ * Eva does not know sees every local day.
+ */
+function local(rule: Rule, places: readonly string[]): Rule {
+  return {
+    id: rule.id,
+    on: (today, facts) => {
+      const region = facts.region ?? null;
+      return (region === null || places.some((place) => region.startsWith(place))) && rule.on(today, facts);
+    },
+  };
+}
+
+const spanishSpeaking = [
+  "ES",
+  "GQ",
+  "PH",
+  "MX",
+  "AR",
+  "CO",
+  "PE",
+  "VE",
+  "CL",
+  "UY",
+  "PY",
+  "BO",
+  "EC",
+  "GT",
+  "HN",
+  "SV",
+  "NI",
+  "CR",
+  "PA",
+  "DO",
+  "PR",
+  "CU",
+];
 
 // The first rule that matches wins: holidays, then the cycle of the year, the world days and the curiosities.
 const rules: readonly Rule[] = [
   fixed("newYear", [12, 31], [1, 1]),
-  fixed("kings", [1, 5], [1, 6]),
+  local(fixed("kings", [1, 5], [1, 6]), spanishSpeaking),
   fixed("valentine", [2, 14]),
   // From the Saturday to Shrove Tuesday, the day before Ash Wednesday.
   { id: "carnival", on: (today) => daysFromEaster(today) >= -50 && daysFromEaster(today) <= -47 },
   { id: "easter", on: (today) => daysFromEaster(today) === 0 || daysFromEaster(today) === 1 },
-  fixed("santJordi", [4, 23]),
-  fixed("santJoan", [6, 23], [6, 24]),
+  local(fixed("santJordi", [4, 23]), ["ES-CT", "ES-AR", "AD"]),
+  local(fixed("santJoan", [6, 23], [6, 24]), ["ES", "PT", "AD", "FI", "SE", "NO", "DK", "EE", "LV", "LT"]),
   fixed("pride", [6, 28]),
   fixed("halloween", [10, 31]),
   fixed("allSaints", [11, 1], [11, 2]),
   fixed("christmas", [12, 24], [12, 25], [12, 26]),
-  // The seasons follow the northern hemisphere until Eva knows where the person lives (#370).
-  season("springEquinox", "march"),
-  season("summerSolstice", "june"),
-  season("autumnEquinox", "september"),
-  season("winterSolstice", "december"),
+  season("springEquinox", "march", "north"),
+  season("summerSolstice", "june", "north"),
+  season("autumnEquinox", "september", "north"),
+  season("winterSolstice", "december", "north"),
+  season("autumnEquinox", "march", "south"),
+  season("winterSolstice", "june", "south"),
+  season("springEquinox", "september", "south"),
+  season("summerSolstice", "december", "south"),
   fixed("perseids", [8, 12], [8, 13]),
   fixed("womensDay", [3, 8]),
   fixed("piDay", [3, 14]),
@@ -255,7 +310,7 @@ function dayOf(id: WordedDayId): SpecialDay {
   return { id, greeting, line };
 }
 
-function personalDay(today: CalendarDay, personal: PersonalDates): SpecialDay | null {
+function personalDay(today: CalendarDay, personal: PersonalFacts): SpecialDay | null {
   const birthDate = parseDate(personal.birthDate);
   if (birthDate !== null && isYearlyDay(birthDate, today)) return dayOf("birthday");
   const installedOn = parseDate(personal.installedOn);
@@ -267,10 +322,10 @@ function personalDay(today: CalendarDay, personal: PersonalDates): SpecialDay | 
 }
 
 /** The special day of a date, or null on an ordinary day. The person's own days come first. */
-export function specialDayOn(date: Date, personal: PersonalDates = noPersonalDates): SpecialDay | null {
+export function specialDayOn(date: Date, personal: PersonalFacts = noPersonalFacts): SpecialDay | null {
   const today: CalendarDay = { date, year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate() };
   const own = personalDay(today, personal);
   if (own !== null) return own;
-  const rule = rules.find((each) => each.on(today));
+  const rule = rules.find((each) => each.on(today, personal));
   return rule === undefined ? null : dayOf(rule.id);
 }

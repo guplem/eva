@@ -1732,7 +1732,10 @@ describe("migrations (#119)", () => {
       vault: { kind: "done", applied: [], later: [] },
     });
     expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
-    expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([["schedule", "current"]]);
+    expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([
+      ["about-me", "current"],
+      ["schedule", "current"],
+    ]);
     expect(instance.templateParts()?.canChoose).toBe(true);
     expect(alerts).toEqual([]);
   });
@@ -1750,7 +1753,7 @@ describe("migrations (#119)", () => {
       "# My own schedule skill\n",
     );
     const parts = instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "mine");
-    expect(parts.map((part) => part.state)).toEqual(["kept"]);
+    expect(parts.find((part) => part.name === "schedule")?.state).toBe("kept");
     expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
   });
 

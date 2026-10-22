@@ -25,6 +25,7 @@ import { configSchema, secretsSchema } from "../src/core/settings/home.ts";
 import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
 import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
+import { aboutMeHeaderKeys } from "../src/core/vault/about-me.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 
@@ -154,6 +155,8 @@ export function currentNames(): string[] {
       "parts",
       ...templatePartFields.map((field) => `parts{}.${field}`),
     ].map((name) => `vault .eva/template.json ${name}`),
+    // A line of the snapshot is three words, so the path of the note drops its space.
+    ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),
     ...migrations.map((migration) => `migration ${migration.store} ${migration.id}`),

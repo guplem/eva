@@ -102,6 +102,9 @@ try {
   if (Test-Path (Split-Path $target)) { throw 'The uninstall kept the eva program.' }
   if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains (Split-Path $target)) { throw 'The user PATH still holds the Eva folder.' }
   if ($null -ne (Get-ItemProperty -Path $runKey -Name 'Eva-smoke' -ErrorAction SilentlyContinue)) { throw 'The uninstall kept the start at logon.' }
+  # The CI step exits with the last program's exit code. Here that is the uninstall's
+  # `schtasks /Query`, which fails as expected: this runner has no old logon task.
+  $global:LASTEXITCODE = 0
   Write-Host 'The install and uninstall scripts passed the smoke test.'
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue

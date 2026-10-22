@@ -234,6 +234,7 @@ describe("mapSdkMessages", () => {
         // The context of the last call (8 + 25,062 + 295), not the sum over the turn's two calls.
         contextTokens: 25_365,
         contextWindow: 200_000,
+        model: "claude-haiku-4-5-20251001",
       },
     ]);
   });
@@ -286,7 +287,11 @@ describe("mapSdkMessages", () => {
       ...result,
       modelUsage: { "claude-helper": { ...main, contextWindow: 50_000 }, "claude-haiku-4-5-20251001": main },
     });
-    expect((await collect(lines)).at(-1)).toMatchObject({ kind: "turn_finished", contextWindow: 200_000 });
+    expect((await collect(lines)).at(-1)).toMatchObject({
+      kind: "turn_finished",
+      contextWindow: 200_000,
+      model: "claude-haiku-4-5-20251001",
+    });
   });
 
   test("a turn whose model the usage does not name has no context window, so Eva guesses no limit", async () => {
@@ -391,6 +396,7 @@ describe("mapSdkMessages", () => {
         costUsd: 0.003285575,
         contextTokens: 18_853,
         contextWindow: 1_000_000,
+        model: "claude-haiku-5-5",
       },
     ]);
   });

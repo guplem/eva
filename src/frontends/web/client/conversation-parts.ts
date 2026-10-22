@@ -68,8 +68,30 @@ export function engineLabel(engine: EngineName): string {
   return engineLabels[engine];
 }
 
-export function modelLabel(model: ModelAlias): string {
-  return model === "default" ? "Default model" : `${model.charAt(0).toUpperCase()}${model.slice(1)}`;
+/**
+ * The model chip. With the default model, the engine login picks the model, so the chip names the
+ * model that answered once a turn says it.
+ */
+export function modelLabel(model: ModelAlias, answered: string | null = null): string {
+  if (answered === null) return model === "default" ? "Default model" : capitalized(model);
+  return model === "default" ? `Default · ${modelName(answered)}` : modelName(answered);
+}
+
+/** "claude-opus-5-5" reads "Opus 5.5". Another engine's id, such as a pi model, stays as it is. */
+function modelName(id: string): string {
+  const match = /^claude-([a-z]+)-(\d+)-(\d+)(?:\D|$)/.exec(id);
+  if (match === null) return id;
+  const [, family = "", major = "", minor = ""] = match;
+  return `${capitalized(family)} ${major}.${minor}`;
+}
+
+function capitalized(word: string): string {
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+}
+
+/** The model that answered the newest turn that names one, or null before the first answer. */
+export function answeredModel(turns: readonly { readonly model: string | null }[]): string | null {
+  return turns.findLast((turn) => turn.model !== null)?.model ?? null;
 }
 
 /**

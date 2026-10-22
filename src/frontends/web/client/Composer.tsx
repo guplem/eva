@@ -10,7 +10,7 @@ import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { messageWithFiles } from "./attachments.ts";
-import { chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
+import { answeredModel, chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -322,7 +322,7 @@ function EngineChip({
       >
         <Icon name="bolt" />
         <span className="chip-engine">{engineLabel(session.engine)} · </span>
-        {modelLabel(session.modelAlias)}
+        {modelLabel(session.modelAlias, answeredModel(session.turns))}
         {lock === null && <Icon name="down" />}
       </button>
       {open && (

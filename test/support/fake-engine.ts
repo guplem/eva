@@ -40,6 +40,7 @@ export class FakeEngine implements EnginePort {
         costUsd: null,
         contextTokens: 15,
         contextWindow: 200_000,
+        model: "claude-test-model",
       },
     ];
   }

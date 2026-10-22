@@ -724,6 +724,7 @@ ${prompt}`,
               ...storedSteps(steps),
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
+              model: payload.model,
             },
             payload,
             lastText,
@@ -825,6 +826,7 @@ ${prompt}`,
       answerText: string;
       contextTokens: number | null;
       contextWindow: number | null;
+      model: string | null;
     } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
@@ -873,6 +875,7 @@ ${prompt}`,
           ...activity,
           contextTokens: null,
           contextWindow: null,
+          model: null,
           failure: last,
           lastMessageId: null,
           at,

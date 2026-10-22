@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  answeredModel,
   chipLock,
   composerPlaceholder,
   elapsedText,
@@ -94,6 +95,21 @@ describe("labels", () => {
     expect(engineLabel("pi")).toBe("pi");
     expect(modelLabel("default")).toBe("Default model");
     expect(modelLabel("sonnet")).toBe("Sonnet");
+  });
+
+  test("names the model that answered, so the default model is no mystery (#419)", () => {
+    expect(modelLabel("default", "claude-opus-5-5")).toBe("Default · Opus 5.5");
+    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Sonnet 4.6");
+    // A pi model keeps its own id.
+    expect(modelLabel("default", "fake-model")).toBe("Default · fake-model");
+    expect(modelLabel("opus", null)).toBe("Opus");
+  });
+
+  test("takes the model of the newest turn that names one", () => {
+    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }])).toBe("claude-opus-5-5");
+    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }])).toBe("claude-opus-5-5");
+    expect(answeredModel([])).toBeNull();
   });
 });
 

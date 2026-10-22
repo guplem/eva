@@ -51,6 +51,7 @@ interface PiMessage {
   readonly content?: readonly { readonly type: string; readonly text?: string }[];
   readonly stopReason?: string;
   readonly errorMessage?: string;
+  readonly model?: string;
   readonly usage?: {
     readonly input?: number;
     readonly output?: number;
@@ -179,6 +180,7 @@ export class PiEngine implements EnginePort {
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     let costUsd = 0;
     let contextTokens: number | null = null;
+    let model: string | null = null;
     let answers = 0;
     // True from the start of an answer until its first text piece.
     let messageStarts = false;
@@ -212,6 +214,7 @@ export class PiEngine implements EnginePort {
         if (message.role !== "assistant") continue;
         addUsage(usage, message);
         contextTokens = contextOf(message) ?? contextTokens;
+        model = message.model ?? model;
         costUsd += message.usage?.cost?.total ?? 0;
         const text = (message.content ?? [])
           .filter((part) => part.type === "text")
@@ -267,6 +270,7 @@ export class PiEngine implements EnginePort {
         contextTokens,
         // pi names no context window in its turn events, so the panel shows the count only.
         contextWindow: null,
+        model,
       };
     }
   }

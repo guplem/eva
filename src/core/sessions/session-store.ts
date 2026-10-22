@@ -34,6 +34,8 @@ const turnSchema = z.object({
   contextTokens: z.number().int().min(0).nullable().catch(null),
   /** The size of the context window of the model that answered, or null when the engine did not say. */
   contextWindow: z.number().int().positive().nullable().catch(null),
+  /** The id of the model that answered, so a chat on the default model can name it. Null when the engine did not say. */
+  model: z.string().nullable().catch(null),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),

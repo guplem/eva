@@ -111,6 +111,7 @@ describe("a conversation", () => {
         omittedSteps: 0,
         contextTokens: 15,
         contextWindow: 200_000,
+        model: "claude-test-model",
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",

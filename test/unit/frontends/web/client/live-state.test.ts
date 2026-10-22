@@ -18,6 +18,7 @@ const finished = {
   costUsd: null,
   contextTokens: null,
   contextWindow: null,
+  model: null,
 } as const;
 
 let seq = 0;
@@ -127,6 +128,7 @@ describe("applyEvent", () => {
         costUsd: null,
         contextTokens: null,
         contextWindow: null,
+        model: null,
       },
     ]);
     expect(ended.notes["s1"]).toEqual(["one"]);

@@ -15,6 +15,7 @@ function turn(text: string): Turn {
     omittedSteps: 2,
     contextTokens: null,
     contextWindow: null,
+    model: null,
     failure: null,
     lastMessageId: text,
     at: "2026-10-14T12:00:00.000Z",

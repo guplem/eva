@@ -46,6 +46,7 @@ const finished: Payload = {
   costUsd: null,
   contextTokens: null,
   contextWindow: null,
+  model: null,
 };
 
 function received(origin: "api" | "telegram" | "schedule" | "eva"): Payload {

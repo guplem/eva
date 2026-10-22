@@ -323,6 +323,7 @@ async function* mapEachTurn(
           costUsd: message.total_cost_usd,
           contextTokens,
           contextWindow: contextWindowOf(message.modelUsage, answeringModel),
+          model: answeringModel,
         };
         break;
       }

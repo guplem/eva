@@ -74,11 +74,10 @@
   animation: message-in 220ms ease-out;
 }
 
-/* A new message rises a little into place. Only opacity and transform move, so the layout stays still. */
+/* A new message fades in. A move would make each button in it measure a fraction of a pixel short while it runs. */
 @keyframes message-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
 }
 

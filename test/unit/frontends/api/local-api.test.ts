@@ -25,15 +25,20 @@ let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
 let turnScript: FakeTurnScript | null;
-/** A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. */
+/**
+ * A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. It
+ * lists two releases for the changelog, and counts how often Eva reads them.
+ */
 let githubApi: ReturnType<typeof Bun.serve>;
+let releaseReads = 0;
 beforeAll(() => {
   githubApi = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch: (request) =>
       new URL(request.url).pathname === "/repos/guplem/eva/releases"
-        ? Response.json([
+        ? (releaseReads++,
+          Response.json([
             {
               tag_name: "v9.1.0",
               body: "## New features\n\n- feat: voice notes (#7)\n",
@@ -41,7 +46,7 @@ beforeAll(() => {
               assets: [],
             },
             { tag_name: "v9.0.1", body: "", draft: true, assets: [] },
-          ])
+          ]))
         : Response.json({ message: "Bad credentials" }, { status: 401 }),
   });
 });
@@ -1679,6 +1684,13 @@ describe("updates and the vault sync", () => {
       { program: "uv", latest: null },
       { program: "gh", latest: null },
     ]);
+  });
+
+  test("the changelog reads GitHub once, and the next page open in the hour reads it again from memory", async () => {
+    const before = releaseReads;
+    await call("/api/update/changelog");
+    expect((await call("/api/update/changelog")).status).toBe(200);
+    expect(releaseReads - before).toBe(1);
   });
 
   test("the changelog lists the published releases with their changes", async () => {

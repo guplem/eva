@@ -23,6 +23,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     startFolder: "/demo-vault",
     prompt: "Hello",
     model: "default",
+    effort: "default",
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
@@ -175,6 +176,11 @@ describe("buildQueryOptions", () => {
 
   test("a model alias other than default is passed through", () => {
     expect(buildQueryOptions(request({ model: "haiku" }), "c").model).toBe("haiku");
+  });
+
+  test("the chat's effort goes to Claude Code, and the default keeps Claude Code's own (#419)", () => {
+    expect(buildQueryOptions(request(), "c")).not.toHaveProperty("effort");
+    expect(buildQueryOptions(request({ effort: "xhigh" }), "c").effort).toBe("xhigh");
   });
 
   test("Assistant and Project mode stream the text; a model call has no front end to stream to (issue 117)", () => {

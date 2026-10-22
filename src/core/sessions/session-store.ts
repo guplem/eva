@@ -5,6 +5,7 @@
  */
 import { copyFileSync } from "node:fs";
 import { z } from "zod";
+import { effortLevels } from "../../shared/engine-port.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { stepKinds } from "../../shared/turn-steps.ts";
@@ -49,6 +50,8 @@ export const sessionSchema = z
     engine: z.enum(["claude-code", "pi"]),
     mode: z.enum(["assistant", "project"]),
     modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
+    /** How much the model reasons (issue 419). An older record, or a bad value, keeps the engine's own level. */
+    effort: z.enum(effortLevels).default("default").catch("default"),
     startFolder: z.string(),
     projectId: z.string().nullable(),
     clone: z.string().nullable(),

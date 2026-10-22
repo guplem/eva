@@ -125,6 +125,13 @@ machine state/sessions.json sessions
 machine state/sessions.json sessions[].archived
 machine state/sessions.json sessions[].clone
 machine state/sessions.json sessions[].createdAt
+machine state/sessions.json sessions[].effort
+machine state/sessions.json sessions[].effort=default
+machine state/sessions.json sessions[].effort=high
+machine state/sessions.json sessions[].effort=low
+machine state/sessions.json sessions[].effort=max
+machine state/sessions.json sessions[].effort=medium
+machine state/sessions.json sessions[].effort=xhigh
 machine state/sessions.json sessions[].engine
 machine state/sessions.json sessions[].engine=claude-code
 machine state/sessions.json sessions[].engine=pi

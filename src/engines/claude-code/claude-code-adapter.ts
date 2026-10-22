@@ -129,6 +129,7 @@ export function buildQueryOptions(
     );
   }
   if (request.model !== "default") options.model = request.model;
+  if (request.effort !== "default") options.effort = request.effort;
   // The pieces only change what the SDK reports to Eva, so Project mode stays a transparent wrapper.
   if (request.mode !== "model-call") options.includePartialMessages = true;
 

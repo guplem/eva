@@ -29,6 +29,7 @@ function session(turns: Turn[]): SessionRecord {
     engine: "claude-code",
     mode: "assistant",
     modelAlias: "default",
+    effort: "default",
     startFolder: "/vault",
     projectId: null,
     clone: null,

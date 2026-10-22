@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+import { effortLevels } from "../../shared/engine-port.ts";
 import { notificationKinds } from "../../core/alerts/chat-notifications.ts";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
@@ -558,6 +559,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (action === "model") {
       const { model } = z.object({ model: modelSchema.unwrap() }).parse(await request.json());
       return json(eva.sessions.setModel(sessionId, model));
+    }
+    if (action === "effort") {
+      const { effort } = z.object({ effort: z.enum(effortLevels) }).parse(await request.json());
+      return json(eva.sessions.setEffort(sessionId, effort));
     }
     if (action === "engine") {
       const { engine } = z.object({ engine: engineSchema }).parse(await request.json());

@@ -5,6 +5,7 @@
  */
 import type {
   ApprovalAnswer,
+  EffortLevel,
   EngineName,
   EnginePort,
   McpServerSpec,
@@ -63,6 +64,7 @@ export interface NewSessionInput {
   readonly mode: SessionMode;
   readonly engine: EngineName;
   readonly model: ModelAlias;
+  readonly effort?: EffortLevel;
   readonly startFolder: string;
   readonly source: SessionRecord["source"];
   readonly projectId?: string;
@@ -214,6 +216,7 @@ export class SessionManager {
       engine: input.engine,
       mode: input.mode,
       modelAlias: input.model,
+      effort: input.effort ?? "default",
       startFolder: input.startFolder,
       projectId: input.projectId ?? null,
       clone: input.clone ?? null,
@@ -251,6 +254,16 @@ export class SessionManager {
       throw new EvaError("session_busy", "The model of a chat is chosen before its first message.");
     }
     const updated = { ...session, modelAlias: model };
+    this.options.store.save(updated);
+    return updated;
+  }
+
+  /**
+   * Chooses how much the model of a chat reasons. Unlike the model, it can change between turns:
+   * it changes no history. A running turn keeps the effort it started with.
+   */
+  setEffort(sessionId: string, effort: EffortLevel): SessionRecord {
+    const updated = { ...this.get(sessionId), effort };
     this.options.store.save(updated);
     return updated;
   }
@@ -447,6 +460,7 @@ export class SessionManager {
         mode: parent.mode,
         engine: parent.engine,
         model: parent.modelAlias,
+        effort: parent.effort,
         startFolder: parent.startFolder,
         source: parent.source,
         ...(parent.projectId === null ? {} : { projectId: parent.projectId }),
@@ -533,6 +547,7 @@ export class SessionManager {
         mode: session.mode,
         engine: session.engine,
         model: session.modelAlias,
+        effort: session.effort,
         startFolder: session.startFolder,
         source: session.source,
       }),
@@ -658,6 +673,7 @@ export class SessionManager {
 
 ${prompt}`,
         model: session.modelAlias,
+        effort: session.effort,
         appendSystemPrompt: prepared.appendSystemPrompt,
         pluginFolders: prepared.pluginFolders,
         mcpServers: prepared.mcpServers,

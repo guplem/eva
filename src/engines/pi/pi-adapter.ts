@@ -310,6 +310,8 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
   ];
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.model !== null) args.push("--model", inputs.model);
+  // pi has no level above `xhigh`, so Max asks for pi's highest level.
+  if (request.effort !== "default") args.push("--thinking", request.effort === "max" ? "xhigh" : request.effort);
   if (request.mode === "model-call") {
     // Eva's own extension still loads with `-e`, so a tool that still appears gets a refusal.
     args.push("--no-extensions", "--no-tools", "--no-skills", "--no-prompt-templates", "--no-context-files");

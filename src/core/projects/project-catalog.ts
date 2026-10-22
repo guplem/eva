@@ -182,17 +182,12 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
 }
 
 /**
- * The title of the project in the folder `path`, by the same rules as `discoverProjects`, or null
- * for a folder that is not a project or has no title heading. The Files page shows it (issue 429).
+ * The title in `text`, the `AGENTS.md` of the folder `name`, by the same rules as `discoverProjects`.
+ * Null for a folder that is not a project or has no title heading. The Files page shows it (issue 429).
  */
-export function readProjectTitle(path: string, name: string): string | null {
+export function projectTitleOf(text: string, name: string): string | null {
   if (parseProjectId(name) === null) return null;
-  try {
-    const text = readFileSync(join(path, "AGENTS.md"), "utf-8");
-    return parseFrontMatter(text).frontMatter === null ? null : readTitle(text);
-  } catch {
-    return null;
-  }
+  return parseFrontMatter(text).frontMatter === null ? null : readTitle(text);
 }
 
 /** `2025-03-02T10:15` matches `2025-03-02-1015-...`; `2019-03` matches `2019-03-...`. */

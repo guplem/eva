@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
-import { readProjectTitle } from "../projects/project-catalog.ts";
+import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { looksLikeSecretsFile } from "./vault-files.ts";
 
@@ -335,20 +335,35 @@ function listFolder(root: string, folder: string): FileEntry[] {
   );
 }
 
+/** The front matter and the title of a project file come first, so a title read needs no more. */
+const titleBytes = 64_000;
+
 /**
  * The project title of `folder`, a folder in the vault's `Projects/`, or null. An `AGENTS.md` link
  * that leads out of the vault gives no title, so the page never shows a line of a file outside it.
+ * The read goes through the open file, as `readFile` does, so a named pipe never blocks the core.
  */
 export function projectTitleIn(root: string, folder: string): string | null {
   // `Projects` in any case, as `isLayoutEntry` reads it.
   if (relative(root, dirname(folder)).toLowerCase() !== "projects") return null;
+  let handle: number;
   try {
     const agentsFile = realpathSync(join(folder, "AGENTS.md"));
     if (!isInside(root, agentsFile) || isGitData(root, agentsFile)) return null;
+    handle = openSync(agentsFile, constants.O_RDONLY | noWait);
   } catch {
     return null;
   }
-  return readProjectTitle(folder, basename(folder));
+  try {
+    if (!fstatSync(handle).isFile()) return null;
+    const bytes = Buffer.alloc(titleBytes);
+    const text = textOf(bytes.subarray(0, readSync(handle, bytes, 0, titleBytes, 0)));
+    return text === null ? null : projectTitleOf(text, basename(folder));
+  } catch {
+    return null;
+  } finally {
+    closeSync(handle);
+  }
 }
 
 function describeEntry(root: string, path: string, name: string): FileEntry {

@@ -111,6 +111,29 @@ describe("browseVault: folders", () => {
     });
   });
 
+  test("a large AGENTS.md gives its title from the start of the file", () => {
+    write(
+      "Projects/2026-01-01-0000-large/AGENTS.md",
+      `---\ncreated: 2026-01-01T00:00\n---\n# Large\n\n${"A long line.\n".repeat(20_000)}`,
+    );
+    const projects = browseVault(vault, "Projects", keep);
+    if (projects.kind !== "folder") throw new Error("Projects is a folder");
+    expect(projects.entries.find((entry) => entry.name === "2026-01-01-0000-large")?.title).toBe("Large");
+  });
+
+  test.skipIf(process.platform === "win32")("an AGENTS.md that is a named pipe never blocks the core", () => {
+    mkdirSync(join(vault, "Projects/2026-01-01-0000-pipe"), { recursive: true });
+    const made = Bun.spawnSync(["mkfifo", join(vault, "Projects/2026-01-01-0000-pipe/AGENTS.md")]);
+    if (made.exitCode !== 0) return; // A system without mkfifo cannot hold a named pipe here.
+    const projects = browseVault(vault, "Projects", keep);
+    if (projects.kind !== "folder") throw new Error("Projects is a folder");
+    expect(projects.entries.find((entry) => entry.name === "2026-01-01-0000-pipe")).toEqual({
+      name: "2026-01-01-0000-pipe",
+      kind: "folder",
+      size: null,
+    });
+  });
+
   test("a folder outside Projects gets no title, even with an AGENTS.md", () => {
     write("Methods/2025-03-02-1015-example-app/AGENTS.md", "---\ncreated: 2025-03-02T10:15\n---\n# Example app\n");
     const methods = browseVault(vault, "Methods", keep);

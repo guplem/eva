@@ -79,10 +79,11 @@ export function modelLabel(model: ModelAlias, answered: string | null = null): s
 
 /** "claude-opus-5-5" reads "Opus 5.5". Another engine's id, such as a pi model, stays as it is. */
 function modelName(id: string): string {
-  const match = /^claude-([a-z]+)-(\d+)-(\d+)(?:\D|$)/.exec(id);
+  // A date, such as the one in "claude-opus-4-20250514", has more digits than a minor version.
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?=-|\[|$)/.exec(id);
   if (match === null) return id;
-  const [, family = "", major = "", minor = ""] = match;
-  return `${capitalized(family)} ${major}.${minor}`;
+  const [, family = "", major = "", minor] = match;
+  return `${capitalized(family)} ${major}${minor === undefined ? "" : `.${minor}`}`;
 }
 
 function capitalized(word: string): string {

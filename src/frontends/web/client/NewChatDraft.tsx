@@ -77,7 +77,7 @@ export function NewChatDraft({
     setSending(true);
     try {
       // The chat runs on the engine that the chip shows, even when Eva read another default at start.
-      made.current ??= await newChat(model, effort, shownEngine);
+      made.current ??= await api.newAssistantChat(model, shownEngine ?? undefined, effort);
       onSending({ sessionId: made.current.id, text: message });
       await api.send(made.current.id, message);
       await onStarted(made.current);
@@ -143,10 +143,4 @@ export function NewChatDraft({
       </div>
     </>
   );
-}
-
-/** A new chat takes its model when Eva makes it, and its effort right after. */
-async function newChat(model: ModelAlias, effort: EffortLevel, engine: EngineName | null): Promise<SessionRecord> {
-  const chat = await api.newAssistantChat(model, engine ?? undefined);
-  return effort === "default" ? chat : api.setEffort(chat.id, effort);
 }

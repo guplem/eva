@@ -126,7 +126,8 @@ function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
             <dt>Model</dt>
             <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
             <dt>Effort</dt>
-            <dd>{effortName(root.effort)}</dd>
+            {/* Each branch has its own composer, so a fork can have its own effort. */}
+            <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
             <dt>Mode</dt>
             <dd>{titleCase(root.mode)}</dd>
             <dt>Answers</dt>

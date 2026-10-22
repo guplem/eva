@@ -193,8 +193,13 @@ export const api = {
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
   /** With no engine, Eva starts the chat on her default engine. */
-  newAssistantChat: (model: ModelAlias, engine?: EngineName): Promise<SessionRecord> =>
-    request("POST", "/api/sessions", { mode: "assistant", model, ...(engine === undefined ? {} : { engine }) }),
+  newAssistantChat: (model: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
+    request("POST", "/api/sessions", {
+      mode: "assistant",
+      model,
+      ...(engine === undefined ? {} : { engine }),
+      ...(effort === undefined ? {} : { effort }),
+    }),
   newProjectChat: (projectId: string, clone: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, clone, model }),
   /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */

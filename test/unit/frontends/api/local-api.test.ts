@@ -913,6 +913,9 @@ describe("routes", () => {
     expect((await json<{ effort: string }>(effort)).effort).toBe("high");
     const badEffort = await call(`/api/sessions/${session.id}/effort`, { method: "POST", body: { effort: "huge" } });
     expect(badEffort.status).toBe(400);
+    // A new chat takes its effort in the same call, so a failed second call leaves no empty chat.
+    const made = await call("/api/sessions", { method: "POST", body: { mode: "assistant", effort: "low" } });
+    expect((await json<{ effort: string }>(made)).effort).toBe("low");
   });
 
   test("searches projects", async () => {

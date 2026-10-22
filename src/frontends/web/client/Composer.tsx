@@ -4,10 +4,12 @@
  * Eva queues a message sent during a turn, so typed text brings Send back.
  * The microphone records a voice note. Eva turns it into text on her machine and sends the text.
  * Without voice notes on her machine, the microphone leads to the button that installs them.
+ * The clip attaches files in an Assistant chat. Each file uploads when the person picks it, so Send waits for no upload.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { messageWithFiles } from "./attachments.ts";
 import { chipLock, composerPlaceholder, engineLabel, modelLabel } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
@@ -68,28 +70,41 @@ export function Composer({
 }: ComposerProps): ReactElement {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const files = useAttachments();
+  const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
     // The person must not lose what they said.
     if (!(await onSend(heard, recording))) setText(heard);
   });
 
+  const uploading = files.attachments.some((attachment) => attachment.note === null);
+  const notes = files.attachments.flatMap((attachment) => (attachment.note === null ? [] : [attachment.note]));
+  const isEmpty = text.trim() === "" && files.attachments.length === 0;
+
   const send = async (): Promise<void> => {
-    const message = text.trim();
-    if (message === "" || sending || blocker !== null) return;
+    const message = messageWithFiles(text, notes);
+    if (message === "" || uploading || sending || blocker !== null) return;
+    const attached = files.attachments;
     playCue("send");
     setSending(true);
     setText("");
-    // The person must not type the message again.
-    if (!(await onSend(message))) setText(text);
+    files.set([]);
+    // The person must not type the message again, nor pick the files again.
+    if (!(await onSend(message))) {
+      setText(text);
+      files.set(attached);
+    }
     setSending(false);
   };
 
   // A locked box cannot be cleared, so a running turn keeps its Stop button.
-  const showStop = running && (text.trim() === "" || blocker !== null);
+  const showStop = running && (isEmpty || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
   const canRecord = block === null && voice.isSupported;
-  const showMic = canRecord && text.trim() === "";
+  const showMic = canRecord && isEmpty;
+  // A received file lands in the vault. A Project chat's agent works in its clone and does not reach it.
+  const canAttach = session.mode !== "project";
   if (voice.state.phase !== "idle") {
     return (
       <div className="composer">
@@ -139,7 +154,49 @@ export function Composer({
             }
           }}
         />
+        {files.attachments.length > 0 && (
+          <ul className="composer-files" aria-label="Attached files">
+            {files.attachments.map((attachment) => (
+              <li key={attachment.key} className="chip">
+                <Icon name="file" />
+                <span className="composer-file-name">{attachment.name}</span>
+                <button
+                  className="icon-button"
+                  aria-label={`Remove ${attachment.name}`}
+                  data-tooltip="Remove the file"
+                  onClick={() => files.remove(attachment.key)}
+                >
+                  <Icon name="x" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {uploading && <ProgressBar label="Eva receives the file" />}
         <div className="composer-row">
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              files.add([...(event.target.files ?? [])]);
+              // The same file can be picked again after the person removes it.
+              event.target.value = "";
+            }}
+          />
+          {canAttach && (
+            <button
+              className="icon-button"
+              aria-label="Attach a file"
+              data-tooltip="Attach a file"
+              // A file picked during a send that fails would be lost when the box gets its files back.
+              disabled={block !== null || sending}
+              onClick={() => picker.current?.click()}
+            >
+              <Icon name="clip" />
+            </button>
+          )}
           <EngineChip session={session} choices={choices} running={running} onChanged={onChanged} />
           <span className="chip soft">{session.mode === "project" ? "Project" : "Assistant"}</span>
           <span className="grow" />
@@ -170,7 +227,7 @@ export function Composer({
                 data-cue="none"
                 aria-label="Send"
                 data-tooltip="Send"
-                disabled={sending || text.trim() === "" || block !== null}
+                disabled={sending || uploading || messageWithFiles(text, notes) === "" || block !== null}
                 onClick={() => void send()}
               >
                 <Icon name="send" />
@@ -308,6 +365,47 @@ function EngineChip({
       )}
     </div>
   );
+}
+
+interface Attachment {
+  readonly key: number;
+  readonly name: string;
+  /** The line for the agent, or null while the upload runs. */
+  readonly note: string | null;
+}
+
+interface Attachments {
+  readonly attachments: readonly Attachment[];
+  /** Uploads each file at once. A failed upload leaves the list and shows its error. */
+  readonly add: (picked: readonly File[]) => void;
+  readonly remove: (key: number) => void;
+  readonly set: (attachments: readonly Attachment[]) => void;
+}
+
+function useAttachments(): Attachments {
+  const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
+  const nextKey = useRef(0);
+  const showError = useShowError();
+
+  const remove = (key: number): void => setAttachments((current) => current.filter((item) => item.key !== key));
+
+  const add = (picked: readonly File[]): void => {
+    for (const file of picked) {
+      const key = nextKey.current;
+      nextKey.current += 1;
+      setAttachments((current) => [...current, { key, name: file.name, note: null }]);
+      api.attachFile(file).then(
+        // A file that the person removed during its upload stays removed.
+        ({ note }) => setAttachments((current) => current.map((item) => (item.key === key ? { ...item, note } : item))),
+        (caught: unknown) => {
+          remove(key);
+          showError(caught);
+        },
+      );
+    }
+  };
+
+  return { attachments, add, remove, set: setAttachments };
 }
 
 type VoiceState =

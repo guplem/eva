@@ -874,6 +874,8 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await card.getByRole("button", { name: "New chat here" }).click();
   await expect(page.locator(".main-header .sub")).toHaveText(`Example app › ${cloneName} · main`);
   await expect(page.getByText("Project mode")).toBeVisible();
+  // A received file lands in the vault, which a clone's agent does not reach (issue 409).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
@@ -2371,6 +2373,44 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await expect(message).not.toContainText("Hello from my voice");
   await message.getByRole("button", { name: "Heard" }).click();
   await expect(message).toContainText("Hello from my voice");
+});
+
+test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await newChat(page);
+  const picker = page.locator(".composer input[type=file]");
+  await picker.setInputFiles([
+    { name: "receipt.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") },
+    { name: "extra.txt", mimeType: "text/plain", buffer: Buffer.from("not this one") },
+  ]);
+  const attached = page.getByRole("list", { name: "Attached files" });
+  await expect(attached.getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("button", { name: "Remove extra.txt" }).click();
+  await expect(attached.getByRole("listitem")).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Message" }).fill("What is this?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText("What is this?");
+  await expect(message).toContainText(/saved as Scratch\/received\/receipt-[0-9a-f]{12}\.pdf/);
+  await expect(message).not.toContainText("extra");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
+  await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+});
+
+test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
+  await page.route("**/api/files/received*", async (route) => {
+    await route.fulfill({ status: 413, json: { error: "Eva takes files up to 25 MB only." } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page
+    .locator(".composer input[type=file]")
+    .setInputFiles({ name: "video.mp4", mimeType: "video/mp4", buffer: Buffer.from("too big") });
+  await expect(page.getByRole("alert")).toContainText("Eva takes files up to 25 MB only.");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
 });
 
 test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {

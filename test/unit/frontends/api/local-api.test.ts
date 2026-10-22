@@ -1690,6 +1690,28 @@ describe("web routes", () => {
     expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
+  test("files: a file from the chat lands in Scratch/received/ and answers its note (issue 409)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    const response = await fetch(`${api.url}/api/files/received?name=${encodeURIComponent("my photo.jpg")}`, {
+      method: "POST",
+      headers: headers({ "content-type": "image/jpeg" }),
+      body: new Uint8Array([7, 8, 9]),
+    });
+    expect(response.status).toBe(201);
+    const saved = await json<{ path: string; note: string }>(response);
+    expect(saved.path).toMatch(/^Scratch\/received\/my-photo-[0-9a-f]{12}\.jpg$/);
+    expect(saved.note).toBe(`[The person sent a file, saved as ${saved.path}]`);
+    expect([...readFileSync(join(vaultPath, saved.path))]).toEqual([7, 8, 9]);
+
+    const tooLarge = await fetch(`${api.url}/api/files/received?name=big.bin`, {
+      method: "POST",
+      headers: headers({ "content-type": "application/octet-stream" }),
+      body: new Uint8Array(26 * 1024 * 1024),
+    });
+    expect(tooLarge.status).toBe(413);
+    expect(existsSync(join(vaultPath, "Scratch", "received", "big.bin"))).toBe(false);
+  });
+
   test("schedule cards: a waiting card is listed, and counts once the person confirms it (lesson 66)", async () => {
     const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water." };
     await call("/api/schedules", { method: "POST", body: entry });
@@ -1776,6 +1798,12 @@ describe("without a vault", () => {
       expect(rules.status).toBe(409);
       const files = await fetch(`${bareApi.url}/api/files`, { headers: headers() });
       expect(await files.json()).toMatchObject({ code: "vault_not_found" });
+      const received = await fetch(`${bareApi.url}/api/files/received?name=a.txt`, {
+        method: "POST",
+        headers: headers({ "content-type": "text/plain" }),
+        body: "text",
+      });
+      expect(await received.json()).toMatchObject({ code: "vault_not_found" });
     } finally {
       bareApi.stop();
     }

@@ -100,7 +100,7 @@ import {
   type BrowsedPath,
 } from "./files/file-browser.ts";
 import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
-import { cleanScratch } from "./files/vault-files.ts";
+import { cleanScratch, receivedFileNote, saveReceivedFile } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
 import { ClaudeLogin } from "./setup/claude-login.ts";
@@ -1421,6 +1421,12 @@ export class Eva {
   /** Replaces the text of a vault file from the file explorer. The idle sweep commits the change. */
   saveFile(path: string, version: string, text: string): BrowsedPath {
     return saveVaultFile(this.browsedVault(), path, version, text, (shown) => this.redactor.redact(shown));
+  }
+
+  /** Keeps a file that the person attached in the web chat, as Telegram does, and answers the note for the agent. */
+  receiveFile(name: string, bytes: Uint8Array): { path: string; note: string } {
+    const path = saveReceivedFile(this.browsedVault(), name, bytes);
+    return { path, note: receivedFileNote(path) };
   }
 
   /** The favorite files and folders, which the file explorer shows first. */

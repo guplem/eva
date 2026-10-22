@@ -449,6 +449,35 @@ button.ghost .icon {
   flex: 1;
 }
 
+.composer-row > .icon-button {
+  padding: 2px 4px;
+  color: var(--muted);
+}
+
+/* The attached files, as chips above the row. A long name gets shorter, so the box never grows wider. */
+.composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-files .chip {
+  max-width: 100%;
+  padding-right: 4px;
+}
+
+.composer-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-files .icon-button {
+  padding: 0 4px;
+}
+
 .composer .chip,
 .chip-menu .chip {
   display: inline-flex;

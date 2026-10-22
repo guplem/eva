@@ -134,16 +134,23 @@ export class OfferStore {
  */
 export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+  // Cut by letters, not UTF-16 units, so no letter splits in two. 60 letters of 4 bytes each,
+  // with the hash, stay under the 255-byte limit of a file name.
   const safeName =
-    basename(originalName)
-      .replace(/[^\w.-]+/g, "-")
-      .slice(-80) || "file";
+    Array.from(basename(originalName).replace(/[^\p{L}\p{M}\p{N}_.-]+/gu, "-"))
+      .slice(-60)
+      .join("") || "file";
   const extension = extname(safeName);
   const name = `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
   const folder = join(vaultPath, scratchFolderName, "received");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, name), bytes);
   return `${scratchFolderName}/received/${name}`;
+}
+
+/** The line that tells the agent where a received file is. Every front end sends the same line. */
+export function receivedFileNote(savedPath: string): string {
+  return `[The person sent a file, saved as ${savedPath}]`;
 }
 
 /** Removes every Scratch file older than a week. Returns how many it removed. */

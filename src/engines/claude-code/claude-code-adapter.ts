@@ -230,6 +230,8 @@ async function* mapEachTurn(
   let contextTokens: number | null = null;
   let answeringModel: string | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  // After a refusal, the engine repeats the limit in its own words with a UTC time. Eva's line says it in local time.
+  let refused = false;
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
@@ -242,6 +244,7 @@ async function* mapEachTurn(
           contextTokens = callContext;
           answeringModel = message.message.model;
         }
+        if (refused && message.message.model === syntheticModel) break;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -293,6 +296,7 @@ async function* mapEachTurn(
       case "rate_limit_event": {
         const limit = usageLimitEvent(message.rate_limit_info);
         if (limit !== null) yield limit;
+        if (limit?.kind === "usage_limit" && limit.status === "rejected") refused = true;
         break;
       }
       case "result": {
@@ -307,6 +311,10 @@ async function* mapEachTurn(
               text: `Eva could not start the MCP server "${server.name}": it was still starting when the model answered.`,
             };
           }
+        }
+        if (refused && (message.subtype !== "success" || message.is_error)) {
+          yield { kind: "turn_failed", reason: "Claude Code refused the turn at the usage limit." };
+          return;
         }
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.
@@ -377,6 +385,9 @@ function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEven
   }
   return null;
 }
+
+/** The model name of a message that the engine writes itself, with no model call. */
+const syntheticModel = "<synthetic>";
 
 const knownWindows: readonly UsageWindow[] = [
   "five_hour",

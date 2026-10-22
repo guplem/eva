@@ -75,6 +75,7 @@ const maxVoiceNoteBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const renameSchema = z.object({ title: z.string() });
+const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
@@ -513,6 +514,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (action === "rename") {
       const { title } = renameSchema.parse(await request.json());
       return json(eva.sessions.rename(sessionId, title));
+    }
+    if (action === "seen") {
+      const { turnCount } = seenSchema.parse(await request.json());
+      return json(eva.sessions.markSeen(sessionId, turnCount));
     }
     if (action === "model") {
       const { model } = z.object({ model: modelSchema.unwrap() }).parse(await request.json());

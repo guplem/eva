@@ -802,6 +802,20 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("marks the turns of a chat as seen, and refuses a bad count or an unknown chat (issue 381)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    // The chat has no turn yet, so no count can mark one as seen.
+    const seen = await call(`/api/sessions/${session.id}/seen`, { method: "POST", body: { turnCount: 3 } });
+    expect(seen.status).toBe(200);
+    expect((await json<{ seenTurns: number }>(seen)).seenTurns).toBe(0);
+    const bad = await call(`/api/sessions/${session.id}/seen`, { method: "POST", body: { turnCount: -1 } });
+    expect(bad.status).toBe(400);
+    const missing = await call("/api/sessions/missing/seen", { method: "POST", body: { turnCount: 1 } });
+    expect(missing.status).toBe(404);
+  });
+
   test("the composer's chips set the engine and model of a chat before its first message only", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

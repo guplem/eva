@@ -77,17 +77,27 @@ describe("chatPreview", () => {
 
 describe("chatState", () => {
   const running = (id: string): boolean => id === "fork";
+  const seen = (id: string): { id: string; turns: Turn[]; seenTurns: number } => ({
+    id,
+    turns: [turn({})],
+    seenTurns: 1,
+  });
+  const unseen = (id: string): { id: string; turns: Turn[]; seenTurns: number } => ({ ...seen(id), seenTurns: 0 });
 
   test("a waiting approval in the chat or a fork needs the person, also while the turn runs", () => {
-    expect(chatState(["root", "fork"], running, ["fork"])).toBe("needs-you");
+    expect(chatState([unseen("root"), seen("fork")], running, ["fork"])).toBe("needs-you");
   });
 
-  test("a running turn in the chat or a fork shows that Eva works", () => {
-    expect(chatState(["root", "fork"], running, ["other"])).toBe("working");
+  test("a running turn in the chat or a fork shows that Eva works, also with an unseen answer", () => {
+    expect(chatState([unseen("root"), seen("fork")], running, ["other"])).toBe("working");
+  });
+
+  test("an answer that the person did not see in the chat or a fork makes the chat unread (issue 381)", () => {
+    expect(chatState([seen("root"), unseen("side")], running, ["other"])).toBe("unread");
   });
 
   test("a quiet chat has no state", () => {
-    expect(chatState(["root"], running, ["other"])).toBeNull();
+    expect(chatState([seen("root")], running, ["other"])).toBeNull();
   });
 });
 
@@ -117,6 +127,10 @@ describe("chatPreview with a state", () => {
   test("a first turn that runs says that Eva works, not that the chat is empty", () => {
     expect(chatPreview({ turns: [] }, "working")).toBe("Eva is working on it");
     expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "working")).toBe("Done.");
+  });
+
+  test("an unread chat shows its new answer", () => {
+    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "unread")).toBe("Done.");
   });
 });
 

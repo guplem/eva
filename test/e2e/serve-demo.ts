@@ -119,6 +119,8 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;
   }
+  // Long enough for the person to open another chat before the answer comes.
+  if (lastLine.includes("slow")) await Bun.sleep(2_000);
   yield* FakeEngine.answer(request, `**Echo ${String(turnNumber)}**: ${lastLine}`);
 });
 

@@ -95,7 +95,41 @@ describe("the voice installs", () => {
           });
         if (path === "/ffmpeg")
           return release(["ffmpeg-master-latest-linux64-gpl.tar.xz", "ffmpeg-master-latest-win64-gpl.zip"]);
-        if (path === "/whisper") return release(["whisper-bin-ubuntu-x64.tar.gz", "whisper-bin-x64.zip"]);
+        // As GitHub lists whisper.cpp today: the newest version holds no files, and a build release
+        // marked as a pre-release holds them.
+        if (path === "/whisper")
+          return Response.json([
+            { tag_name: "v1.9.5", prerelease: false, assets: [] },
+            {
+              tag_name: "b5454",
+              prerelease: true,
+              assets: ["whisper-bin-ubuntu-x64.tar.gz", "whisper-bin-x64.zip"].map((name) => ({
+                name,
+                browser_download_url: `${base}/files/${name}`,
+                ...(digest === null ? {} : { digest }),
+              })),
+            },
+          ]);
+        // Two releases that hold the files: the newer one comes first, as GitHub lists them.
+        if (path === "/whisper-two")
+          return Response.json([
+            {
+              tag_name: "b5454",
+              prerelease: true,
+              assets: [
+                {
+                  name: "whisper-bin-ubuntu-x64.tar.gz",
+                  browser_download_url: `${base}/files/whisper-bin-ubuntu-x64.tar.gz`,
+                  digest,
+                },
+              ],
+            },
+            {
+              tag_name: "b4938",
+              prerelease: false,
+              assets: [{ name: "whisper-bin-ubuntu-x64.tar.gz", browser_download_url: `${base}/old`, digest }],
+            },
+          ]);
         if (path === "/model") return new Response(model);
         if (path.startsWith("/files/")) return new Response(archive);
         return new Response("not found", { status: 404 });
@@ -156,6 +190,16 @@ describe("the voice installs", () => {
     expect(commands[0]?.slice(0, 2)).toEqual(["tar", "-xzf"]);
     if (process.platform !== "win32")
       expect(lstatSync(join(home, ".local", "bin", "whisper-cli")).isSymbolicLink()).toBe(true);
+  });
+
+  test("whisper-cli comes from the newest release that holds the build, whatever its pre-release mark", async () => {
+    const runner = tarRunner([], ["whisper-bin-ubuntu-x64/whisper-cli"]);
+    const base = serve();
+    // Today's list: the newest version holds no files, and a pre-release holds them.
+    await installWhisper(inputs(runner, base));
+    // The newer of two releases wins: the older one's /old would fail the download.
+    const program = await installWhisper({ ...inputs(runner, base), whisperReleaseUrl: `${base}/whisper-two` });
+    expect(readFileSync(program, "utf8")).toBe("pretend whisper-bin-ubuntu-x64/whisper-cli");
   });
 
   test("a new install replaces an old copy", async () => {

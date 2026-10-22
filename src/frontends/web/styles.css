@@ -901,6 +901,34 @@ textarea {
   color: var(--warn-ink);
 }
 
+/* Like "Working", but the dot has no glow: nothing runs, a new answer waits. */
+.status-pill.unread {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.status-pill.unread::before {
+  background: var(--accent);
+}
+
+.chat-item.unread .chat-item-preview {
+  color: var(--ink);
+}
+
+.menu-button {
+  position: relative;
+}
+
+.unread-dot {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .main {
   min-width: 0;
   overflow: auto;

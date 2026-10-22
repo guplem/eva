@@ -19,6 +19,7 @@ import {
   type ListedSession,
 } from "./api.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
+import { cueOfEvent, playCue } from "./cues.ts";
 import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
@@ -324,6 +325,8 @@ function EvaApp(): ReactElement {
         return;
       }
       setLive((state) => applyEvent(state, event));
+      const cue = cueOfEvent(event);
+      if (cue !== null) playCue(cue);
       if (event.kind === "approval_resolved") {
         setApprovals((current) => current.filter((approval) => approval.requestId !== event.requestId));
       } else if (event.kind === "approval_needed") {
@@ -336,6 +339,9 @@ function EvaApp(): ReactElement {
         void refreshSessions();
       } else if (event.kind === "session_renamed") {
         // A rename can come from Telegram or the terminal.
+        void refreshSessions();
+      } else if (event.kind === "session_seen") {
+        // The person read the chat here or on another device: the list drops its unread mark.
         void refreshSessions();
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         void refreshSessions();

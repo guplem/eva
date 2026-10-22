@@ -3,8 +3,11 @@ import type { SessionRecord } from "./api.ts";
 
 export type ChatGroup = "Today" | "This week" | "Older";
 
-/** "Needs you" wins over "Working": the turn waits for the approval. */
-export type ChatState = "needs-you" | "working" | null;
+/**
+ * "Needs you" wins over "Working": the turn waits for the approval. "Working" wins over "Unread":
+ * the answer that the person did not see is not the last one.
+ */
+export type ChatState = "needs-you" | "working" | "unread" | null;
 
 const dayMs = 24 * 60 * 60 * 1000;
 // Fixed English names: the rest of the page is in English, whatever the browser's language.
@@ -74,12 +77,18 @@ function oneLine(text: string): string {
 
 /** The state of a chat and its forks. Any session of the tree counts. */
 export function chatState(
-  treeIds: readonly string[],
+  tree: readonly Pick<SessionRecord, "id" | "turns" | "seenTurns">[],
   isRunning: (sessionId: string) => boolean,
   approvalSessionIds: readonly string[],
 ): ChatState {
-  if (approvalSessionIds.some((id) => treeIds.includes(id))) return "needs-you";
-  return treeIds.some(isRunning) ? "working" : null;
+  if (tree.some((session) => approvalSessionIds.includes(session.id))) return "needs-you";
+  if (tree.some((session) => isRunning(session.id))) return "working";
+  return tree.some(hasUnseenTurns) ? "unread" : null;
+}
+
+/** The core stores a turn only when it ends, so a running turn never counts as unseen. */
+export function hasUnseenTurns(session: Pick<SessionRecord, "turns" | "seenTurns">): boolean {
+  return session.turns.length > session.seenTurns;
 }
 
 /** Case and the spaces around the query do not count. An empty query keeps every chat. */
@@ -102,3 +111,10 @@ export function groupChats<Chat>(
   }
   return groups;
 }
+
+/** The words of each state's pill: a state shows with a word, never with colour alone. */
+export const chatStateLabels: Record<NonNullable<ChatState>, string> = {
+  "needs-you": "Needs you",
+  working: "Working",
+  unread: "Unread",
+};

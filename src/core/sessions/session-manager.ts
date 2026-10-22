@@ -227,6 +227,7 @@ export class SessionManager {
       telegramTopicId: input.telegramTopicId ?? null,
       historyLost: false,
       turns: [],
+      seenTurns: 0,
     };
     this.options.store.save(record);
     return record;
@@ -276,6 +277,22 @@ export class SessionManager {
    */
   rename(sessionId: string, title: string): SessionRecord {
     return this.retitle(this.get(sessionId), title, false);
+  }
+
+  /**
+   * Records that the person saw the first `turnCount` turns of a chat. A page that loaded before
+   * an answer sends an old count, so the count never goes back. It never goes past the stored
+   * turns either, so a turn that ends later stays unseen.
+   */
+  markSeen(sessionId: string, turnCount: number): SessionRecord {
+    const session = this.get(sessionId);
+    const seenTurns = Math.max(session.seenTurns, Math.min(turnCount, session.turns.length));
+    if (seenTurns === session.seenTurns) return session;
+    const updated = { ...session, seenTurns };
+    this.options.store.save(updated);
+    // Every device shows the chat as seen, not only the one where the person opened it.
+    this.emit(sessionId, { kind: "session_seen", seenTurns });
+    return updated;
   }
 
   private retitle(session: SessionRecord, title: string, automatic: boolean): SessionRecord {
@@ -522,6 +539,12 @@ export class SessionManager {
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
         const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
+        // Telegram showed the answer where the person asked, so the web app must not show it as unread.
+        // A follow-up of the mode has no message, so its answer stays unread.
+        const fromTelegram =
+          batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
+        const recorded = this.options.store.get(sessionId);
+        if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
         if (followUp !== null && followUps < maxFollowUps) {
           followUps += 1;
           runtime.pending ??= createBatch();
@@ -923,6 +946,7 @@ function redactPayload(
     case "approval_resolved":
     case "turn_finished":
     case "session_deleted":
+    case "session_seen":
       return payload;
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };

@@ -21,7 +21,7 @@ import {
 export interface VoiceInstallInputs extends EngineInstallInputs {
   /** GitHub's API answer for the ffmpeg builds; a test points it at a fake server. */
   readonly ffmpegReleaseUrl?: string;
-  /** GitHub's API answer for the latest whisper.cpp release; a test points it at a fake server. */
+  /** GitHub's API list of the recent whisper.cpp releases; a test points it at a fake server. */
   readonly whisperReleaseUrl?: string;
   /** The whisper model download; a test points it at a fake server. */
   readonly voiceModelUrl?: string;
@@ -38,7 +38,9 @@ export interface VoicePrograms {
 }
 
 const defaultFfmpegReleaseUrl = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest";
-const defaultWhisperReleaseUrl = "https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest";
+// The list, not the latest release: since v1.9.3, each whisper.cpp version holds no files, and a
+// build release marked as a pre-release (such as b5454) holds the programs.
+const defaultWhisperReleaseUrl = "https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=30";
 /** `ggml-base.bin` reads Spanish and English well, and runs fast enough on a small computer. */
 const defaultModelUrl =
   "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin";
@@ -123,8 +125,8 @@ export async function installFfmpeg(inputs: VoiceInstallInputs): Promise<string>
 export async function installWhisper(inputs: VoiceInstallInputs): Promise<string> {
   const program = ownVoicePrograms(inputs.platform, inputs.homeFolder, inputs.environment).whisper;
   await installStep("whisper.cpp", async () => {
-    const release = await readRelease(inputs.whisperReleaseUrl ?? defaultWhisperReleaseUrl);
     const archive = buildName(whisperBuilds, "whisper.cpp", inputs);
+    const release = newestWithFile(await readReleases(inputs.whisperReleaseUrl ?? defaultWhisperReleaseUrl), archive);
     const exe = inputs.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
     // The program finds its libraries next to it, so the whole folder moves.
     await installArchive(release, archive, "whisper.cpp", inputs, (folder) =>
@@ -170,6 +172,20 @@ interface Release {
 
 async function readRelease(url: string): Promise<Release> {
   return (await (await download(url)).json()) as Release;
+}
+
+async function readReleases(url: string): Promise<readonly Release[]> {
+  const list: unknown = await (await download(url)).json();
+  return Array.isArray(list) ? (list as Release[]) : [];
+}
+
+/**
+ * The newest release that holds the file. GitHub lists the newest first. whisper.cpp marks its
+ * build releases as pre-releases at random, so the mark decides nothing. The checksum still checks
+ * each file.
+ */
+function newestWithFile(releases: readonly Release[], file: string): Release {
+  return releases.find((release) => release.assets?.some((asset) => asset.name === file) === true) ?? {};
 }
 
 function buildName(builds: Readonly<Record<string, string>>, name: string, inputs: VoiceInstallInputs): string {

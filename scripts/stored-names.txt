@@ -140,6 +140,7 @@ machine state/sessions.json sessions[].modelAlias=opus
 machine state/sessions.json sessions[].modelAlias=sonnet
 machine state/sessions.json sessions[].parentId
 machine state/sessions.json sessions[].projectId
+machine state/sessions.json sessions[].seenTurns
 machine state/sessions.json sessions[].source
 machine state/sessions.json sessions[].source=cli
 machine state/sessions.json sessions[].source=schedule

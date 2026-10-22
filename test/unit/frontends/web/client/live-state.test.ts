@@ -231,6 +231,7 @@ describe("applyEvent", () => {
   test("an event with no step leaves the state as it was", () => {
     const state = run([{ kind: "text", text: "hi", messageId: "m1" }]);
     expect(applyEvent(state, event({ kind: "session_renamed", title: "x" }))).toBe(state);
+    expect(applyEvent(state, event({ kind: "session_seen", seenTurns: 1 }))).toBe(state);
   });
 });
 

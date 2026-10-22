@@ -77,11 +77,25 @@ export function MainNav(props: MainNavProps): ReactElement {
   );
 }
 
-/** Opens the chat or project list. Only a phone shows it, because a computer always shows the list. */
-export function ShowListButton({ onClick }: { readonly onClick: () => void }): ReactElement {
+/**
+ * Opens the chat or project list. Only a phone shows it, because a computer always shows the list.
+ * A dot tells a phone that the hidden list has an unread chat.
+ */
+export function ShowListButton({
+  onClick,
+  unread = false,
+}: {
+  readonly onClick: () => void;
+  readonly unread?: boolean;
+}): ReactElement {
   return (
-    <button className="menu-button icon-button" aria-label="Show the list" onClick={onClick}>
+    <button
+      className="menu-button icon-button"
+      aria-label={unread ? "Show the list (unread)" : "Show the list"}
+      onClick={onClick}
+    >
       <Icon name="menu" />
+      {unread && <span className="unread-dot" />}
     </button>
   );
 }

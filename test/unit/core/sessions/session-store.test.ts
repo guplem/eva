@@ -38,6 +38,7 @@ function session(id: string): SessionRecord {
     telegramTopicId: null,
     historyLost: false,
     turns: [],
+    seenTurns: 0,
   };
 }
 
@@ -88,6 +89,24 @@ describe("SessionStore", () => {
       contextTokens: null,
       contextWindow: null,
     });
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before the seen count has every turn seen, with no copy (issue 381)", () => {
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    const { seenTurns: _left, ...old } = { ...session("one"), turns: [turn, turn] };
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old] }));
+    expect(openStore().get("one")?.seenTurns).toBe(2);
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a bad seen count keeps its session and counts every turn as seen", () => {
+    const turn = { userText: "hi", lastMessageId: null, at: "2026-10-14T10:00:00.000Z" };
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn], seenTurns: -3 }] }),
+    );
+    expect(openStore().get("one")?.seenTurns).toBe(1);
     expect(corruptCopies()).toEqual([]);
   });
 

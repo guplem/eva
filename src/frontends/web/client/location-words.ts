@@ -4,7 +4,7 @@ import type { CurrentPlaceView } from "./api.ts";
 /** Where this device keeps the person's choice. Only this browser reads it. */
 export const shareLocationKey = "eva-share-location";
 
-/** The web app sends a point at most this often, as Eva keeps one every 15 minutes. */
+/** How often an open web app asks the browser for its location. */
 export const shareEveryMs = 15 * 60_000;
 
 function ago(at: string, now: Date): string {
@@ -19,7 +19,7 @@ function ago(at: string, now: Date): string {
 export function placeWords(place: CurrentPlaceView | null, now: Date): string {
   if (place === null) return "Eva does not know where you are yet.";
   if (place.source === "home" || place.at === null) {
-    return "Eva uses your home place from Life/About me.md: your phone sent no location in the last day.";
+    return "Your phone sent no location in the last day. Eva uses your home place from Life/About me.md.";
   }
   const from = place.source === "telegram" ? "Telegram" : "this web app";
   return `Eva knows your location from ${from}, ${ago(place.at, now)}.`;

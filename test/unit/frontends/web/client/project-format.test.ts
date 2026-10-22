@@ -79,6 +79,9 @@ describe("repositoryLabel", () => {
     expect(repositoryLabel("ssh://git@github.com/example/example-app.git")).toBe("github.com/example/example-app");
     expect(repositoryLabel("git@github.com:example/example-app.git")).toBe("github.com:example/example-app");
     expect(repositoryLabel("/srv/git/remote.git")).toBe("/srv/git/remote");
+    expect(repositoryLabel("https://user:to@ken@github.com/example/example-app")).toBe(
+      "github.com/example/example-app",
+    );
   });
 });
 
@@ -94,10 +97,28 @@ describe("repositoryWebUrl", () => {
     expect(repositoryWebUrl("github.com/example/example-app")).toBe("https://github.com/example/example-app");
   });
 
+  test("keeps the scheme and the port of a web address, but not the port of SSH", () => {
+    expect(repositoryWebUrl("https://git.example.com:8443/example/example-app.git")).toBe(
+      "https://git.example.com:8443/example/example-app",
+    );
+    expect(repositoryWebUrl("http://git.example.com/example/example-app")).toBe(
+      "http://git.example.com/example/example-app",
+    );
+    expect(repositoryWebUrl("git@github.com:/example/example-app.git")).toBe("https://github.com/example/example-app");
+    expect(repositoryWebUrl("  https://github.com/example/example-app  ")).toBe(
+      "https://github.com/example/example-app",
+    );
+  });
+
   test("never keeps a token", () => {
     expect(repositoryWebUrl("https://user:token@github.com/example/example-app")).toBe(
       "https://github.com/example/example-app",
     );
+    expect(repositoryWebUrl("https://user:to@ken@github.com/example/example-app")).toBe(
+      "https://github.com/example/example-app",
+    );
+    // A slash in a password breaks the address, so no part of it may become a link.
+    expect(repositoryWebUrl("https://user:to/ken@github.com/example/example-app")).toBeNull();
   });
 
   test("gives null for a repository with no web page", () => {

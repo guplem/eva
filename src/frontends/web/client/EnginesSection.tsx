@@ -3,6 +3,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { PermissionsCard } from "./PermissionsCard.tsx";
 import { restartNote } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { stepMark } from "./setup-summary.ts";
@@ -43,10 +44,17 @@ export function EnginesSection({ context }: { readonly context: SettingsContext 
   return (
     <>
       <DefaultEngineCard context={context} />
+      <PermissionsCard chosenClaudeMode={chosenModeLabel(context)} />
       <ClaudeCodeCard context={context} />
       <PiCard context={context} />
     </>
   );
+}
+
+/** The words of the chosen mode match the words that the engine gives for the mode it runs. */
+function chosenModeLabel(context: SettingsContext): string {
+  const mode = context.settings.config.engines.claudeCode.permissionMode;
+  return permissionModeChoices.find((choice) => choice.value === mode)?.label ?? mode;
 }
 
 function found(context: SettingsContext, engine: EngineName): boolean {
@@ -77,7 +85,7 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         label="Claude Code permission mode"
         value={config.engines.claudeCode.permissionMode}
         choices={permissionModeChoices}
-        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: every action runs with no question, also one that reaches other people. A clone that Eva does not trust always uses Auto."
+        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: every action runs with no question, also one that reaches other people. A clone that Eva does not trust always uses Auto. The next card lists what each kind of chat may do."
         onChange={(value) => void context.saveNow({ engines: { claudeCode: { permissionMode: value } } })}
       />
     </Card>

@@ -10,6 +10,7 @@ import type {
   CurrentPlace,
   LatestToolVersion,
   PersonalFactsView,
+  PermissionsOverview,
   ToolInstallResult,
   TrustOverview,
 } from "../../../core/eva.ts";
@@ -77,6 +78,7 @@ export type {
   FileEntry,
   InstallableTool,
   EvaVersions,
+  PermissionsOverview,
   TrustOverview,
   PageSecretName,
   PendingApproval,
@@ -291,6 +293,7 @@ export const api = {
     request("PUT", "/api/settings", patch),
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
   trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
+  permissions: (): Promise<PermissionsOverview> => request("GET", "/api/permissions"),
   forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
   pushKey: (): Promise<{ publicKey: string; isHub: boolean; devices: readonly PushDevice[] }> =>
     request("GET", "/api/push"),

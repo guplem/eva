@@ -20,6 +20,7 @@ import {
 
 type EngineName = PublicSettings["config"]["engines"]["default"];
 type ModelAlias = PublicSettings["config"]["engines"]["claudeCode"]["defaultModel"];
+type PermissionMode = PublicSettings["config"]["engines"]["claudeCode"]["permissionMode"];
 
 const engineChoices: readonly { value: EngineName; label: string }[] = [
   { value: "claude-code", label: "Claude Code" },
@@ -31,6 +32,11 @@ const modelChoices: readonly { value: ModelAlias; label: string }[] = [
   { value: "opus", label: "Opus" },
   { value: "sonnet", label: "Sonnet" },
   { value: "haiku", label: "Haiku" },
+];
+
+const permissionModeChoices: readonly { value: PermissionMode; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "bypassPermissions", label: "Bypass permissions" },
 ];
 
 export function EnginesSection({ context }: { readonly context: SettingsContext }): ReactElement {
@@ -66,6 +72,13 @@ function DefaultEngineCard({ context }: { readonly context: SettingsContext }): 
         value={config.engines.claudeCode.defaultModel}
         choices={modelChoices}
         onChange={(value) => void context.saveNow({ engines: { claudeCode: { defaultModel: value } } })}
+      />
+      <SelectField
+        label="Claude Code permission mode"
+        value={config.engines.claudeCode.permissionMode}
+        choices={permissionModeChoices}
+        hint="Auto: Claude Code asks you only about risky actions. Bypass permissions: every action runs with no question, also one that reaches other people. A clone that Eva does not trust always uses Auto."
+        onChange={(value) => void context.saveNow({ engines: { claudeCode: { permissionMode: value } } })}
       />
     </Card>
   );

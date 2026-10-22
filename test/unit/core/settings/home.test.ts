@@ -217,6 +217,18 @@ describe("config", () => {
     writeFileSync(paths.config, "{");
     expect(() => loadConfig(paths)).toThrow("not valid JSON");
   });
+
+  test("Claude Code chats start in auto mode; bypassPermissions is the one other choice", () => {
+    const paths = homePaths(home);
+    expect(defaultConfig.engines.claudeCode.permissionMode).toBe("auto");
+    writeFileSync(
+      paths.config,
+      JSON.stringify({ version: 1, engines: { claudeCode: { permissionMode: "bypassPermissions" } } }),
+    );
+    expect(loadConfig(paths).engines.claudeCode.permissionMode).toBe("bypassPermissions");
+    writeFileSync(paths.config, JSON.stringify({ version: 1, engines: { claudeCode: { permissionMode: "plan" } } }));
+    expect(() => loadConfig(paths)).toThrow("permissionMode");
+  });
 });
 
 describe("secrets", () => {

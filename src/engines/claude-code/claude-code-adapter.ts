@@ -30,9 +30,14 @@ export interface McpStartCheck {
 /** The SDK's control request has no time bound of its own, so a slow answer must not hold the turn. */
 const mcpStatusWaitMs = 5_000;
 
+/** The two modes that a person may pick for Claude Code chats. */
+export type ClaudePermissionMode = "auto" | "bypassPermissions";
+
 export interface ClaudeCodeEngineOptions {
   /** Absolute path of the person's `claude` program. Eva never embeds one. */
   readonly executable: string;
+  /** How a chat asks before a tool runs. Default: `auto`. */
+  readonly permissionMode?: ClaudePermissionMode;
   readonly query?: QueryFunction;
   readonly newSessionId?: () => string;
 }
@@ -83,7 +88,7 @@ export class ClaudeCodeEngine implements EnginePort {
   /** Runs the SDK once and sends each event as it arrives. A thrown SDK error becomes the turn end. */
   private async *runOnce(request: TurnRequest): AsyncIterable<EngineEventPayload> {
     const options: Options = {
-      ...buildQueryOptions(request, this.options.executable),
+      ...buildQueryOptions(request, this.options.executable, this.options.permissionMode),
       canUseTool: async (toolName, input) => {
         const decision = await decidePermission(request, toolName, input);
         return decision === "allow"
@@ -102,7 +107,11 @@ export class ClaudeCodeEngine implements EnginePort {
 }
 
 /** The SDK options for one turn. `canUseTool` is added by the engine. */
-export function buildQueryOptions(request: TurnRequest, executable: string): Options {
+export function buildQueryOptions(
+  request: TurnRequest,
+  executable: string,
+  permissionMode: ClaudePermissionMode = "auto",
+): Options {
   const options: Options = {
     cwd: request.startFolder,
     pathToClaudeCodeExecutable: executable,
@@ -157,6 +166,7 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
     // Claude Code's memory folder stays on one machine, outside the vault, so a fact stored there
     // never reaches the person's other machines (issue #68).
     options.settings = { disableAllHooks: true, autoMemoryEnabled: false, permissions: { ask } };
+    setPermissionMode(options, permissionMode);
   } else {
     // Project mode is a transparent wrapper: the same prompt and setting sources as a manual session.
     options.systemPrompt = { type: "preset", preset: "claude_code" };
@@ -167,8 +177,16 @@ export function buildQueryOptions(request: TurnRequest, executable: string): Opt
       options.settings = { disableAllHooks: true };
       options.strictMcpConfig = true;
     }
+    // A bypass would let an untrusted clone's own text run any tool with no question.
+    setPermissionMode(options, request.trusted ? permissionMode : "auto");
   }
   return options;
+}
+
+function setPermissionMode(options: Options, mode: ClaudePermissionMode): void {
+  options.permissionMode = mode;
+  // The SDK refuses the bypass mode without this flag.
+  if (mode === "bypassPermissions") options.allowDangerouslySkipPermissions = true;
 }
 
 /**

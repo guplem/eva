@@ -179,6 +179,8 @@ describe("settings by command", () => {
     expect(isSettingKey("port.number")).toBe(false);
     expect(isSharedSettingKey("updates.frequency")).toBe(true);
     expect(isSharedSettingKey("engines.claudeCode.executable")).toBe(false);
+    // A security setting: an agent edits the vault.
+    expect(isSharedSettingKey("engines.claudeCode.permissionMode")).toBe(false);
   });
 
   test("a value is JSON when it parses, and text otherwise", () => {

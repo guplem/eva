@@ -242,8 +242,10 @@ export const configSchema = z.object({
         .object({
           executable: z.string().min(1).nullable().default(null),
           defaultModel: modelAliasSchema.default("default"),
+          /** How Claude Code asks before a tool runs. `bypassPermissions` also skips Eva's own approvals. */
+          permissionMode: z.enum(["auto", "bypassPermissions"]).default("auto"),
         })
-        .default({ executable: null, defaultModel: "default" }),
+        .default({ executable: null, defaultModel: "default", permissionMode: "auto" }),
       pi: z
         .object({
           /** The program that starts pi. Null: `pi` found on PATH. */
@@ -265,7 +267,7 @@ export const configSchema = z.object({
     })
     .default({
       default: "claude-code",
-      claudeCode: { executable: null, defaultModel: "default" },
+      claudeCode: { executable: null, defaultModel: "default", permissionMode: "auto" },
       pi: { executable: null, models: { default: null, opus: null, sonnet: null, haiku: null } },
     }),
   telegram: z

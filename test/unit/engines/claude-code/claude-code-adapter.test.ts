@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpServerStatus, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus, Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildQueryOptions,
   ClaudeCodeEngine,
@@ -122,7 +122,6 @@ describe("buildQueryOptions", () => {
     expect(options.settingSources).toEqual(["user", "project", "local"]);
     expect(options.settings).toBeUndefined();
     expect(options.plugins).toEqual([]);
-    expect(options.permissionMode).toBeUndefined();
   });
 
   test("Project mode on an untrusted clone turns off its hooks, its settings and its project MCP servers", () => {
@@ -184,6 +183,32 @@ describe("buildQueryOptions", () => {
       true,
     );
     expect(buildQueryOptions(request({ mode: "model-call" }), "c").includePartialMessages).toBeUndefined();
+  });
+
+  test("Assistant and Project chats start in auto mode by default", () => {
+    expect(buildQueryOptions(request(), "c").permissionMode).toBe("auto");
+    const project = buildQueryOptions(request({ mode: "project", appendSystemPrompt: null }), "c");
+    expect(project.permissionMode).toBe("auto");
+    expect(project.allowDangerouslySkipPermissions).toBeUndefined();
+  });
+
+  test("the bypass setting skips every permission check in Assistant and trusted Project chats", () => {
+    for (const mode of ["assistant", "project"] as const) {
+      const options = buildQueryOptions(request({ mode }), "c", "bypassPermissions");
+      expect(options).toMatchObject({ permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true });
+    }
+  });
+
+  test("an untrusted clone stays in auto mode, even with the bypass setting", () => {
+    const options = buildQueryOptions(request({ mode: "project", trusted: false }), "c", "bypassPermissions");
+    expect(options.permissionMode).toBe("auto");
+    expect(options.allowDangerouslySkipPermissions).toBeUndefined();
+  });
+
+  test("a model call gets no permission mode: it has no tools", () => {
+    const options = buildQueryOptions(request({ mode: "model-call" }), "c", "bypassPermissions");
+    expect(options.permissionMode).toBeUndefined();
+    expect(options.allowDangerouslySkipPermissions).toBeUndefined();
   });
 });
 
@@ -697,6 +722,20 @@ describe("ClaudeCodeEngine", () => {
     for await (const event of engine.runTurn(request())) events.push(event);
     expect(events.map((event) => event.kind)).toEqual(["text", "turn_finished"]);
     expect(seen[0]).toMatchObject({ prompt: "Hello", options: { cwd: "/demo-vault" } });
+  });
+
+  test("runs each chat in the permission mode of its setting", async () => {
+    const seen: Options[] = [];
+    const engine = new ClaudeCodeEngine({
+      executable: "/bin/claude",
+      permissionMode: "bypassPermissions",
+      query: ({ options }) => {
+        seen.push(options);
+        return replay(loadCapture("resumed-turn"));
+      },
+    });
+    await drain(engine.runTurn(request()));
+    expect(seen[0]?.permissionMode).toBe("bypassPermissions");
   });
 
   test("each event arrives while the turn still runs, not at its end (issue #40)", async () => {

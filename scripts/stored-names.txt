@@ -8,6 +8,9 @@ machine config.json engines.claudeCode.defaultModel=haiku
 machine config.json engines.claudeCode.defaultModel=opus
 machine config.json engines.claudeCode.defaultModel=sonnet
 machine config.json engines.claudeCode.executable
+machine config.json engines.claudeCode.permissionMode
+machine config.json engines.claudeCode.permissionMode=auto
+machine config.json engines.claudeCode.permissionMode=bypassPermissions
 machine config.json engines.default
 machine config.json engines.default=claude-code
 machine config.json engines.default=pi

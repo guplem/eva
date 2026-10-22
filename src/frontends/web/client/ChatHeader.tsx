@@ -1,6 +1,6 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Chat info and Delete chat. One row leaves the chat its height. A computer also has a button that
+ * Chat info, Archive and Delete chat. One row leaves the chat its height. A computer also has a button that
  * hides or shows the chat details column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
@@ -46,13 +46,36 @@ export function useChatActionRequest(): {
   };
 }
 
-/** The context menu of a chat in a list: the actions that need no open chat first. */
-export function chatListItems(onOpen: () => void, onAction: (action: ChatAction) => void): MenuItem[] {
+/**
+ * The context menu of a chat in a list: the actions that need no open chat first. A list that
+ * keeps archived chats apart gives the Archive item.
+ */
+export function chatListItems(
+  onOpen: () => void,
+  onAction: (action: ChatAction) => void,
+  archive?: MenuItem,
+): MenuItem[] {
   return [
     { label: "Open", icon: "chat", onChoose: onOpen },
     { label: "Rename", icon: "pen", onChoose: () => onAction("rename") },
+    ...(archive === undefined ? [] : [archive]),
     { label: "Delete chat", icon: "trash", danger: true, onChoose: () => onAction("delete") },
   ];
+}
+
+/** "Archive" for a chat in the list, "Unarchive" for an archived one. A failure shows as a toast. */
+export function useArchiveItem(onChanged: () => Promise<void>): (chat: SessionRecord) => MenuItem {
+  const showError = useShowError();
+  return (chat) => ({
+    label: chat.archived ? "Unarchive" : "Archive",
+    icon: "archive",
+    onChoose: () => {
+      api
+        .archive(chat.id, !chat.archived)
+        .then(onChanged)
+        .catch((caught: unknown) => showError(caught));
+    },
+  });
 }
 
 /** The state of a chat in a list, as a word on a pill with a dot. No state shows no pill. */
@@ -90,6 +113,8 @@ interface ChatHeaderProps {
   readonly onChanged: () => Promise<void>;
   /** An action that the header starts with, asked from the chat's context menu in a list. */
   readonly startWith?: ChatAction | null;
+  /** True when the chat's list keeps archived chats apart, so the menu has Archive. */
+  readonly archivable?: boolean;
 }
 
 export function ChatHeader({
@@ -103,8 +128,10 @@ export function ChatHeader({
   onTogglePanel,
   onChanged,
   startWith = null,
+  archivable = false,
 }: ChatHeaderProps): ReactElement {
   const isPhone = useIsPhone();
+  const archiveItem = useArchiveItem(onChanged);
   const [draft, setDraft] = useState<string | null>(startWith === "rename" ? chat.title : null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [asking, setAsking] = useState(startWith === "delete");
@@ -123,6 +150,7 @@ export function ChatHeader({
   const items: MenuItem[] = [{ label: "Rename", icon: "pen", onChoose: () => setDraft(chat.title) }];
   // A computer shows the details in the inspector column.
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
+  if (archivable) items.push(archiveItem(chat));
   items.push({ label: "Delete chat", icon: "trash", danger: true, onChoose: () => setAsking(true) });
 
   return (

@@ -56,6 +56,7 @@ const designIcons: readonly IconName[] = [
   "shrink",
   "panel",
   "star",
+  "archive",
 ];
 
 function render(name: IconName, label?: string): string {

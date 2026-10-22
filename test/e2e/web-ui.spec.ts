@@ -320,6 +320,53 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   expect(deletes).toHaveLength(1);
 });
 
+test("Archive moves a chat to the archived list, where it opens, and Unarchive brings it back (issue 388)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "A chat to archive");
+  const nav = page.getByRole("navigation", { name: "Chats" });
+  const listed = nav.locator(".list-item", { hasText: title });
+  await openList(page);
+  await listed.click({ button: "right" });
+  await page
+    .getByRole("menu", { name: /^Actions of / })
+    .getByRole("menuitem", { name: "Archive" })
+    .click();
+  await expect(listed).toHaveCount(0);
+
+  // The list stays open, so a phone can archive the next chat at once.
+  await nav.getByRole("button", { name: /^Archived chats/ }).click();
+  await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
+  await expect(listed).toHaveCount(1);
+  // The search covers the archived list too.
+  await nav.getByLabel("Search chats").fill("no such chat");
+  await expect(listed).toHaveCount(0);
+  await nav.getByLabel("Search chats").fill(title);
+  await listed.click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+
+  await chooseFromMore(page, "Unarchive");
+  await openList(page);
+  await expect(listed).toHaveCount(0);
+  await nav.getByRole("button", { name: "Back to the chats" }).click();
+  await nav.getByLabel("Search chats").fill("");
+  await expect(listed).toHaveCount(1);
+});
+
+test("a link to an archived chat opens it, with the archived list (issue 388)", async ({ page }) => {
+  await logIn(page);
+  const title = await newAnsweredChat(page, "An archived linked chat");
+  const chatId = await chatIdNamed(page, title);
+  await page.request.post(`/api/sessions/${chatId}/archive`, { data: { archived: true } });
+  await page.goto(`/#/chat/${chatId}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await openList(page);
+  const nav = page.getByRole("navigation", { name: "Chats" });
+  await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
+  await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(1);
+});
+
 /** Opens the "More actions" menu of the chat header and picks an item. */
 async function chooseFromMore(page: Page, item: string): Promise<void> {
   await page.getByRole("button", { name: "More actions" }).click();

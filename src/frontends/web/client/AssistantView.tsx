@@ -29,6 +29,8 @@ interface AssistantViewProps {
   readonly onShowList: () => void;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
+  /** Grows at each tap on Chats while Chats is open on a computer. Each change opens a new chat. */
+  readonly newChatRequest: number;
   /** The chat that the address names; it opens once it is in the list. */
   readonly linkedChat: SessionRecord | null;
   readonly onLinkedChatOpened: () => void;
@@ -48,6 +50,7 @@ export function AssistantView({
   onShowList,
   onChanged,
   onNavigate,
+  newChatRequest,
   linkedChat,
   onLinkedChatOpened,
   notices,
@@ -62,6 +65,8 @@ export function AssistantView({
   const [showArchived, setShowArchived] = useState(false);
   const chats = showArchived ? roots.filter((chat) => chat.archived) : active;
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // True while the page shows a new chat before its first message. The chat exists only once it is sent.
+  const [drafting, setDrafting] = useState(false);
   const [query, setQuery] = useState("");
   /** An archived chat leaves the page, so the list opens another one. */
   const afterArchive = async (chat: SessionRecord): Promise<void> => {
@@ -82,7 +87,7 @@ export function AssistantView({
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
   // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
-  const selected = roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0];
+  const selected = drafting ? undefined : (roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0]);
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   const [panelShown, togglePanel] = useChatPanelShown();
@@ -116,6 +121,7 @@ export function AssistantView({
   /** Opens a chat, and starts a header action when the chat's context menu asks for one. */
   const select = (chatId: string, action?: ChatAction): void => {
     setSelectedId(chatId);
+    setDrafting(false);
     if (action === undefined) clearAction();
     else actionRequest.ask(chatId, action);
     onNavigate();
@@ -124,6 +130,7 @@ export function AssistantView({
   useEffect(() => {
     if (linkedId === null) return;
     setSelectedId(linkedId);
+    setDrafting(false);
     // The list shows where the linked chat lives.
     setShowArchived(linkedArchived);
     setQuery("");
@@ -131,9 +138,19 @@ export function AssistantView({
     onLinkedChatOpened();
   }, [linkedId, linkedArchived, onLinkedChatOpened, clearAction]);
 
+  // The view mounts again at each screen change, so only a request made while it shows opens a new chat.
+  const handledRequest = useRef(newChatRequest);
+  useEffect(() => {
+    if (newChatRequest === handledRequest.current) return;
+    handledRequest.current = newChatRequest;
+    setDrafting(true);
+    clearAction();
+  }, [newChatRequest, clearAction]);
+
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
     setSelectedId(chat.id);
+    setDrafting(false);
     clearAction();
     // A new chat goes first in the list. Show it, because the list can be scrolled down.
     listRef.current?.scrollTo({ top: 0 });
@@ -163,7 +180,7 @@ export function AssistantView({
               <>
                 <h2>Chats</h2>
                 {/* "New" is short for the header; the name says what it makes. */}
-                <button className="primary" aria-label="New chat" onClick={() => void newChat()}>
+                <button className="primary wide-only" aria-label="New chat" onClick={() => void newChat()}>
                   <Icon name="plus" /> New
                 </button>
               </>
@@ -205,6 +222,14 @@ export function AssistantView({
             </button>
           )}
         </div>
+        {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
+        {!showArchived && (
+          <div className="chat-list-footer phone-only">
+            <button className="primary large" onClick={() => void newChat()}>
+              <Icon name="plus" /> New chat
+            </button>
+          </div>
+        )}
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
       <main className="main">

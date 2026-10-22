@@ -771,10 +771,22 @@ textarea {
   color: var(--ink);
 }
 
-.chat-list-header .primary {
+.chat-list-header .primary,
+.chat-list-footer .primary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+}
+
+/* Below the list, which scrolls, so the button stays at the foot of the drawer. */
+.chat-list-footer {
+  padding: var(--space-3);
+  box-shadow: inset 0 1px 0 var(--line);
+}
+
+.chat-list-footer .primary {
+  flex: 1;
 }
 
 .chat-search {
@@ -1425,7 +1437,9 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .wide-only {
+  /* The header button rule sets a display too, so this one needs the same weight. */
+  .wide-only,
+  .chat-list-header .wide-only {
     display: none;
   }
 

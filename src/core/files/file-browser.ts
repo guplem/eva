@@ -19,8 +19,9 @@ import {
   writeFileSync,
   type Stats,
 } from "node:fs";
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
+import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { looksLikeSecretsFile } from "./vault-files.ts";
 
@@ -30,6 +31,8 @@ export interface FileEntry {
   readonly kind: "folder" | "file" | "other";
   /** Bytes, for a file only. */
   readonly size: number | null;
+  /** The project title, for a project folder in `Projects/` only. The Files page can show it as the name. */
+  readonly title?: string;
 }
 
 export type BrowsedPath =
@@ -321,12 +324,49 @@ function listFolder(root: string, folder: string): FileEntry[] {
   const entries: FileEntry[] = [];
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     if (entry.name.toLowerCase() === hiddenName) continue;
-    entries.push(describeEntry(root, join(folder, entry.name), entry.name));
+    const path = join(folder, entry.name);
+    const described = describeEntry(root, path, entry.name);
+    const title = described.kind === "folder" ? projectTitleIn(root, path) : null;
+    entries.push(title === null ? described : { ...described, title });
   }
   const order = { folder: 0, file: 1, other: 2 };
   return entries.sort(
     (first, second) => order[first.kind] - order[second.kind] || first.name.localeCompare(second.name),
   );
+}
+
+/** The front matter and the title of a project file come first, so a title read needs no more. */
+const titleBytes = 64_000;
+
+/**
+ * The project title of `folder`, a folder in the vault's `Projects/`, or null. An `AGENTS.md` link
+ * that leads out of the vault gives no title, so the page never shows a line of a file outside it.
+ * The read goes through the open file, as `readFile` does, so a named pipe never blocks the core.
+ */
+export function projectTitleIn(root: string, folder: string): string | null {
+  // `Projects` in any case, as `isLayoutEntry` reads it.
+  if (relative(root, dirname(folder)).toLowerCase() !== "projects") return null;
+  let handle: number;
+  try {
+    const agentsFile = realpathSync(join(folder, "AGENTS.md"));
+    if (!isInside(root, agentsFile) || isGitData(root, agentsFile)) return null;
+    handle = openSync(agentsFile, constants.O_RDONLY | noWait);
+  } catch {
+    return null;
+  }
+  try {
+    if (!fstatSync(handle).isFile()) return null;
+    const bytes = Buffer.alloc(titleBytes);
+    const read = readSync(handle, bytes, 0, titleBytes, 0);
+    // A full read can end inside a letter of several bytes. A line break never does.
+    const end = read < titleBytes ? read : bytes.lastIndexOf(0x0a, read - 1) + 1;
+    const text = textOf(bytes.subarray(0, end));
+    return text === null ? null : projectTitleOf(text, basename(folder));
+  } catch {
+    return null;
+  } finally {
+    closeSync(handle);
+  }
 }
 
 function describeEntry(root: string, path: string, name: string): FileEntry {

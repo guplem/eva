@@ -62,14 +62,20 @@ export const cueTones: Record<Cue, readonly Tone[]> = {
   ],
 };
 
+/**
+ * The shortest vibration that every phone can feel. Many Android phones have a slow motor that needs
+ * about 25 ms to spin up, so a shorter vibration does nothing there.
+ */
+export const minimumVibrationMs = 25;
+
 /** On and off times in milliseconds, as `navigator.vibrate` takes them, at the light level. */
 const lightVibrations: Record<Cue, readonly number[]> = {
-  tap: [6],
-  send: [12],
-  answer: [14, 60, 22],
-  question: [18, 70, 18, 70, 18],
-  saved: [10, 50, 14],
-  problem: [40, 50, 40],
+  tap: [25],
+  send: [30],
+  answer: [30, 60, 40],
+  question: [30, 70, 30, 70, 30],
+  saved: [25, 50, 30],
+  problem: [50, 50, 50],
 };
 
 const soundGains: Record<SoundLevel, number> = { off: 0, quiet: 0.12, normal: 0.3, loud: 0.65 };
@@ -152,6 +158,10 @@ export function playCue(cue: Cue, levels: CueLevels = current, devices: CueDevic
   try {
     const pattern = vibrationPattern(cue, levels.vibration);
     if (pattern.length > 0) devices.vibrate?.(pattern);
+  } catch {
+    // A broken vibration must not silence the sound.
+  }
+  try {
     const gain = soundGains[levels.sound];
     if (gain === 0) return;
     const audio = devices.audio();
@@ -202,7 +212,8 @@ const browserDevices: CueDevices = {
     typeof navigator !== "undefined" && typeof navigator.vibrate === "function"
       ? (pattern) => {
           // Before the first touch, Chrome refuses the vibration and logs an error.
-          if (navigator.userActivation.hasBeenActive) navigator.vibrate(pattern);
+          // An older browser, such as Firefox before 120, has no `userActivation`: it simply tries.
+          if (!("userActivation" in navigator) || navigator.userActivation.hasBeenActive) navigator.vibrate(pattern);
         }
       : undefined,
 };

@@ -183,6 +183,15 @@ describe("Updater", () => {
     await first;
     expect(calls).toEqual(["check"]);
   });
+
+  test("update now during a check waits for its answer, then installs", async () => {
+    // The settings page checks when it opens, so a tap on "Check and install" can come during it.
+    const { updater, calls } = harness();
+    const first = updater.check();
+    expect((await updater.updateNow()).phase).toBe("restarting");
+    await first;
+    expect(calls).toEqual(["check", "apply", "restart"]);
+  });
 });
 
 describe("Updater restart", () => {

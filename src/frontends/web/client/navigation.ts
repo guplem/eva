@@ -33,3 +33,11 @@ export function destinationOf(hash: string): Destination | null {
   const name = /^#\/([^/]+)(\/|$)/.exec(hash)?.[1];
   return destinations.find((destination) => destination.id === name)?.id ?? "chats";
 }
+
+/**
+ * What a tap on Chats does while Chats is open. A phone hides the chat list, so the tap shows it.
+ * A computer always shows the list, so the tap opens a new chat.
+ */
+export function chatsTapAgain(isPhone: boolean): "show-list" | "new-chat" {
+  return isPhone ? "show-list" : "new-chat";
+}

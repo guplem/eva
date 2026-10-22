@@ -107,7 +107,6 @@ export async function link(host: CliHost, paths: HomePaths): Promise<number> {
     host,
     accessLines({
       remoteAccess: status.remoteAccess,
-      localUrl: status.localUrl,
       actionHint: "Run `eva setup`, or open Settings in Eva's web page, to let Eva do these steps.",
     }).join("\n"),
   );

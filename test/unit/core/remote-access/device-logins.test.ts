@@ -400,3 +400,41 @@ describe("requests from this computer", () => {
     expect(logins.request("owner@example.com", "a phone").approvers).toEqual(["Telegram", "terminal"]);
   });
 });
+
+describe("login links (#407)", () => {
+  test("a link logs in one browser once, as a new device, and keeps only a hash of its secret", () => {
+    const logins = createLogins();
+    const link = logins.createLoginLink();
+    expect(link.secret.length).toBeGreaterThanOrEqual(40);
+    expect(link.expiresAt).toBe("2026-10-17T10:02:00.000Z");
+    const token = logins.redeemLoginLink(link.secret, "this computer, a browser");
+    expect(token).toBeString();
+    expect(logins.isValidToken(token ?? "")).toBe(true);
+    expect(logins.list(token).map((device) => device.label)).toEqual(["this computer, a browser"]);
+    // Single use: a second try, such as a reload of the page, gets nothing.
+    expect(logins.redeemLoginLink(link.secret, "this computer, a browser")).toBeNull();
+    expect(logins.count()).toBe(1);
+    expect(readFileSync(path, "utf8")).not.toContain(link.secret);
+  });
+
+  test("a link ends after two minutes, and a wrong secret logs in nobody", () => {
+    const logins = createLogins();
+    const late = logins.createLoginLink();
+    clock = new Date("2026-10-17T10:02:00Z");
+    expect(logins.redeemLoginLink(late.secret, "late")).toBeNull();
+    logins.createLoginLink();
+    expect(logins.redeemLoginLink("not-a-secret", "guess")).toBeNull();
+    expect(logins.redeemLoginLink("", "guess")).toBeNull();
+    expect(logins.count()).toBe(0);
+  });
+
+  test("only a few links wait at once, so a loop of requests keeps no memory", () => {
+    const logins = createLogins();
+    const first = logins.createLoginLink();
+    for (let index = 0; index < 10; index += 1) logins.createLoginLink();
+    // The oldest links go first.
+    expect(logins.redeemLoginLink(first.secret, "old")).toBeNull();
+    const newest = logins.createLoginLink();
+    expect(logins.redeemLoginLink(newest.secret, "new")).toBeString();
+  });
+});

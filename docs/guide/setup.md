@@ -46,16 +46,18 @@ In the terminal, a line that starts with `>` is a question: type the answer, or 
 
 1. **Programs.** Setup installs what is missing: Claude Code and pi (the harnesses), uv (for the Google tools), and gh (for your agents' pushes and pull requests). It also replaces a gh older than 2.40.
 2. **Phone access.** Press Enter to install Tailscale, and Enter again to sign in. Open the link that setup shows, on any device, and sign in with your Tailscale account. A new Tailscale account must turn on **HTTPS Certificates** once: setup shows the page.
-3. **Start Eva.** Press Enter. Eva starts now, and each time the computer starts.
-4. **Your devices.** Open Eva's address on your phone and your laptop. Each page shows a short code: type it in the terminal. Press Enter when every device is in. Then setup asks where to go on:
+3. **Start Eva.** Press Enter. Eva starts now, and again each time you log in. On Windows, this needs no administrator, and no window stays open.
+4. **Your devices.** Press Enter to open Eva in this computer's browser, already logged in. Then open Eva's address on your phone and your other computers. Each page shows a short code: type it in the terminal. Press Enter when every device is in. Then setup asks where to go on:
    - Type `1`, or press Enter, to answer steps 5 to 8 in the terminal.
-   - Type `2` to finish on Eva's web page. Setup shows the link to the Setup page, and the steps to follow there. Then you can close the terminal.
+   - Type `2` to finish on Eva's web page. Setup opens the Setup page in this computer's browser, and shows the steps to follow there. Then you can close the terminal.
 5. **Notebook and GitHub.** Your time zone, the GitHub login, your notebook, and other GitHub accounts that you trust, such as an organization. Eva trusts the account of her GitHub login already.
 6. **AI login.** The Claude token, or the pi login.
 7. **Telegram** (optional). Your bot.
 8. **Google and voice notes** (optional).
 
 On the page, **Settings → Setup** lists each step that is left. Each answer is saved at once, in both places. You can stop setup with Ctrl+C at any question and lose nothing. Run `eva setup` again at any time: it asks only for the steps that are not done.
+
+To open Eva on her own computer later, run `eva open`. It opens her page in this computer's browser, already logged in. You need no code and no token.
 
 The next sections explain each step in more detail.
 
@@ -185,6 +187,6 @@ EVA_TIME_ZONE="Europe/Madrid" EVA_VAULT_REPOSITORY="https://github.com/you/vault
 
 **Updates.** Eva updates herself from new releases. To update her now, run `eva update`. To repair an install, run the install command again.
 
-**Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator. On Windows, if setup cannot start the service, open PowerShell with **Run as administrator**, and run `eva service install`. If Eva crashes, she starts again within a minute.
+**Service.** On Linux, setup runs `loginctl enable-linger`, so that Eva keeps running after you log out. When that fails, it prints the command for an administrator. On Windows, Eva starts at each logon from the list of programs that Windows starts for your user. Task Manager can show it under **Startup apps** as "Console Window Host". If setup cannot start Eva, run `eva service install` to try again, or `eva` to see the error. If Eva crashes, she starts again within a minute.
 
 **Tailscale without `sudo`.** On Linux, Eva installs Tailscale for your user only, with no `sudo`, when no `tailscale` program exists. It needs linger too: `eva doctor` checks it. If Tailscale already runs for the administrator, ask them to run `sudo tailscale set --operator=$USER` once, so that Eva can use it.

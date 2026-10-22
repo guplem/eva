@@ -177,6 +177,8 @@ export const api = {
   login: (token: string): Promise<void> => request("POST", "/api/login", { token }),
   logout: (): Promise<void> => request("POST", "/api/logout"),
   requestDeviceLogin: (): Promise<DeviceLoginRequest> => request("POST", "/api/login/device", {}),
+  /** Trades the secret of an `eva open` link for a device cookie, once. */
+  redeemLoginLink: (secret: string): Promise<void> => request("POST", "/api/login/link", { secret }),
   /** The device token never reaches the page: the server sets it as an HTTP-only cookie. */
   deviceLoginState: (requestId: string): Promise<{ state: DeviceLoginState["state"] }> =>
     request("GET", `/api/login/device/${encodeURIComponent(requestId)}`),
@@ -202,6 +204,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   /** Turns a recording into text on Eva's machine. Eva keeps no audio. */
   transcribe: (audio: Blob): Promise<{ text: string }> => request("POST", "/api/transcribe", audio),
+  /** Keeps a file for the agent in the vault's Scratch folder, and answers the note that the message carries. */
+  attachFile: (file: File): Promise<{ path: string; note: string }> =>
+    request("POST", `/api/files/received?name=${encodeURIComponent(file.name)}`, file),
   send: (sessionId: string, text: string): Promise<void> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>

@@ -15,6 +15,7 @@ import {
   cleanScratch,
   extractFileMarkers,
   OfferStore,
+  receivedFileNote,
   resolveSendableFile,
   saveReceivedFile,
 } from "../../../../src/core/files/vault-files.ts";
@@ -163,6 +164,28 @@ describe("received files and the scratch cleanup", () => {
     expect(saved).not.toContain("..");
     expect(existsSync(join(vault, saved))).toBe(true);
     expect(saveReceivedFile(vault, "", new Uint8Array([2]))).toMatch(/^Scratch\/received\/file-[0-9a-f]{12}$/);
+  });
+
+  test("a name in any language keeps its letters (issue 409)", () => {
+    expect(saveReceivedFile(vault, "写真 día.jpg", new Uint8Array([3]))).toMatch(
+      /^Scratch\/received\/写真-día-[0-9a-f]{12}\.jpg$/,
+    );
+    expect(saveReceivedFile(vault, "हिन्दी.txt", new Uint8Array([4]))).toMatch(
+      /^Scratch\/received\/हिन्दी-[0-9a-f]{12}\.txt$/,
+    );
+  });
+
+  test("a long name in a script of several bytes a letter still fits the file system", () => {
+    // Letters of 4 bytes, and an extension of odd length, so a cut by UTF-16 units splits a letter in two.
+    const saved = saveReceivedFile(vault, `${"𠀀".repeat(100)}.jpeg`, new Uint8Array([5]));
+    expect(saved).toMatch(/^Scratch\/received\/(𠀀)+-[0-9a-f]{12}\.jpeg$/u);
+    expect(existsSync(join(vault, saved))).toBe(true);
+  });
+
+  test("the note tells the agent where a received file is", () => {
+    expect(receivedFileNote("Scratch/received/a-1.jpg")).toBe(
+      "[The person sent a file, saved as Scratch/received/a-1.jpg]",
+    );
   });
 
   test("files older than a week are removed, newer ones stay", () => {

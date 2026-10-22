@@ -10,7 +10,7 @@ import { doneLine, noteLine, stepLines } from "./setup-output.ts";
 export interface StartOptions {
   readonly interactive: boolean;
   readonly ask: (
-    key: "startService" | "deviceCode" | "finishOn" | "tailscaleAccount",
+    key: "startService" | "openHere" | "deviceCode" | "finishOn" | "tailscaleAccount",
     question: string,
   ) => Promise<string>;
   readonly write: (line: string) => void;
@@ -25,6 +25,12 @@ export interface StartOptions {
   /** Lets in the browser that waits with this code. Returns its label, or null. */
   readonly allow: (code: string) => Promise<string | null>;
   readonly sleep: (ms: number) => Promise<void>;
+  /**
+   * Opens this computer's browser at Eva's page, logged in, as `eva open` does. `page` is a path of
+   * the page, such as `/settings/setup`, or null for the start. True when a browser opened.
+   * Null on a computer with no desktop, such as a server over SSH.
+   */
+  readonly openHere: ((page: string | null) => Promise<boolean>) | null;
   /**
    * Who may log in to an Eva that is not the first one on this computer, or null for the first
    * one, whose page lets in the computer's own Tailscale account (#322).
@@ -80,14 +86,22 @@ export async function startAndLetIn(options: StartOptions): Promise<FinishPlace>
       return "terminal";
     }
     if (!(await options.startService()) || !(await waitUntilRunning(options))) {
-      options.write(noteLine("Eva did not start. Run `eva` to see why. Setup goes on here."));
+      options.write(noteLine("Eva did not start. Setup goes on here."));
+      options.write(noteLine("Later, run `eva service install` to start her, or `eva` to see why she stops."));
       return "terminal";
     }
     options.write(doneLine("Eva runs, and starts again each time this computer starts."));
   }
   if (!options.interactive) return "terminal";
   for (const line of stepLines("Your devices")) options.write(line);
-  options.write(noteLine(`Open ${address} on each device that should reach Eva, such as your phone and your laptop.`));
+  await openOnThisComputer(options);
+  options.write(
+    noteLine(
+      address === options.localUrl
+        ? `To let in a browser by hand, open ${address} in it.`
+        : `To let in another device, such as your phone, open ${address} there.`,
+    ),
+  );
   options.write(noteLine("Each page shows a short code. Type it here to let that device in."));
   let allowed = 0;
   for (;;) {
@@ -108,12 +122,28 @@ export async function startAndLetIn(options: StartOptions): Promise<FinishPlace>
   }
   const place = await askFinishPlace(options);
   if (place === "page") {
-    for (const line of pageSteps(address, options.localUrl)) options.write(line);
+    const opened = options.openHere !== null && (await options.openHere("/settings/setup"));
+    for (const line of pageSteps(address, options.localUrl, opened)) options.write(line);
     return "page";
   }
   options.write("");
   options.write(noteLine("Setup goes on here. Each answer is saved at once, so Ctrl+C at any question loses nothing."));
   return "terminal";
+}
+
+/** Offers to open Eva in this computer's browser, logged in, so the person needs no code here (#407). */
+async function openOnThisComputer(options: StartOptions): Promise<void> {
+  if (options.openHere === null) return;
+  const answer = await options.ask("openHere", "Open Eva in this computer's browser now? [Y/n]: ");
+  if (/^no?$/i.test(answer.trim())) {
+    options.write(noteLine("To open Eva in this computer's browser later, run `eva open`."));
+    return;
+  }
+  options.write(
+    (await options.openHere(null))
+      ? doneLine("Eva is open in this computer's browser. To open her again later, run `eva open`.")
+      : noteLine("No browser opened. Run `eva open` to try again."),
+  );
 }
 
 async function askFinishPlace(options: StartOptions): Promise<FinishPlace> {
@@ -132,14 +162,21 @@ async function askFinishPlace(options: StartOptions): Promise<FinishPlace> {
   }
 }
 
-/** The steps to finish on the page: its link on this computer, and on the other devices. */
-function pageSteps(address: string, localUrl: string): string[] {
+/**
+ * The steps to finish on the page: its link on this computer, and on the other devices.
+ * `opened`: the page is open in this computer's browser already.
+ */
+function pageSteps(address: string, localUrl: string, opened: boolean): string[] {
   const local = `${localUrl}${setupPagePath}`;
   const remote = `${address}${setupPagePath}`;
   return [
     "",
     "  >> Your turn: finish the setup on Eva's web page.",
-    noteLine(`  1. Open ${local} in a browser on this computer.`),
+    noteLine(
+      opened
+        ? "  1. The Setup page is open in this computer's browser."
+        : `  1. Open ${local} in a browser on this computer.`,
+    ),
     ...(remote === local ? [] : [noteLine(`     Or open ${remote} on a device that you let in, such as your phone.`)]),
     noteLine(
       '  2. The page lists each step. A step marked "Needs you" is left to do. Open it, and follow its instructions.',

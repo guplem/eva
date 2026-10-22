@@ -25,7 +25,7 @@ import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { startLocalApi } from "./frontends/api/local-api.ts";
 import { describeFailure, runCli } from "./frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "./frontends/cli/devices.ts";
-import { evaCommand, remoteAccessWatcher, writeLine, type CliHost } from "./frontends/cli/host.ts";
+import { evaCommand, remoteAccessWatcher, withLinePrompt, writeLine, type CliHost } from "./frontends/cli/host.ts";
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
@@ -63,14 +63,7 @@ const host: CliHost = {
   write: (text) => process.stdout.write(text),
   writeError: (text) => process.stderr.write(text),
   interactive: process.stdin.isTTY,
-  withPrompt: async (work) => {
-    const prompt = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      await work((question) => prompt.question(question));
-    } finally {
-      prompt.close();
-    }
-  },
+  withPrompt: (work) => withLinePrompt(createInterface({ input: process.stdin, output: process.stdout }), work),
   sleep: (ms) => Bun.sleep(ms),
   // A `bun build --compile` executable runs its code from Bun's embedded file system.
   standalone: Bun.main.includes("$bunfs") || Bun.main.includes("~BUN"),

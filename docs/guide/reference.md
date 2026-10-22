@@ -4,7 +4,7 @@ Every command and setting, for when the [README](../../README.md) is not enough.
 
 ## Commands
 
-Run these on the computer where Eva runs. `eva status`, `eva link`, `eva chat`, `eva projects`, `eva work` and `eva devices allow` need Eva to run. The other commands also work when Eva is stopped.
+Run these on the computer where Eva runs. `eva status`, `eva link`, `eva open`, `eva chat`, `eva projects`, `eva work` and `eva devices allow` need Eva to run. The other commands also work when Eva is stopped.
 
 | Command                           | What it does                                                                                                                        |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -13,9 +13,10 @@ Run these on the computer where Eva runs. `eva status`, `eva link`, `eva chat`, 
 | `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                                                         |
 | `eva`                             | Runs Eva in this terminal (the service does this for you).                                                                          |
 | `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                                                           |
-| `eva supervise`                   | Runs Eva, and starts her again after a crash (the Windows service does this for you).                                               |
+| `eva supervise`                   | Runs Eva, and starts her again after a crash (the start at logon on Windows does this for you).                                     |
 | `eva status`                      | Starts with "All good" or the problems, then the sync, updates, phone address, tool versions and Telegram pairing code.             |
 | `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                                                 |
+| `eva open`                        | Opens Eva in this computer's browser, already logged in, with no code or token.                                                     |
 | `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                      |
 | `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                           |
 | `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                                                     |
@@ -195,10 +196,13 @@ The first time a device opens Eva's page, the page shows a short code. Allow the
 | **Allow** in Telegram                                                             | A phone or another computer, not a browser on Eva's own computer |
 | **Allow** on Eva's page on another logged-in device                               | A phone or another computer, not a browser on Eva's own computer |
 
-A request from Eva's own computer can come from any program there, so only the terminal answers it.
+A request from Eva's own computer can come from any program there, so only the terminal answers it. On that computer, `eva open` needs no code at all.
+
+**Start at logon on Windows.** `eva service install` adds `Eva-<name>` to the programs that Windows starts when you log in (the `Run` list of your user). It needs no administrator, and shows no window. An `Eva-<name>` task in Task Scheduler, from an older Eva, is removed. To stop the start at logon, turn it off in Task Manager under **Startup apps**, where it can show as "Console Window Host".
 
 - **Through Tailscale,** only the Tailscale account that owns Eva's computer can ask. To let other accounts ask, such as a partner's, list them all in `remoteAccess.allowedTailscaleIdentities`.
-- **On the computer itself,** the page listens at `http://127.0.0.1:7420` (or that Eva's port). The token `localApiToken` from `secrets.json` always works there as the last way in.
+- **On the computer itself,** run `eva open`. It opens the page in that computer's browser, already logged in, with no code. Its login link works once, for 2 minutes, and only on that computer. The page listens at `http://127.0.0.1:7420` (or that Eva's port).
+- **The last way in,** when nothing else works: the token `localApiToken` from `secrets.json` in Eva's home folder. On the page, press "Log in with the token instead", and paste it. Never share it.
 - **Devices** in Settings lists each allowed device. Tap **Remove** to log out one, such as a lost phone, or **Log out every device**. A lost phone that is still logged in can allow new devices, so remove it at once.
 - **Keep Eva off Tailscale:** run `eva settings set remoteAccess.tailscaleServe false`.
 

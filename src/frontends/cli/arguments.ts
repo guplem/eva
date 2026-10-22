@@ -18,6 +18,7 @@ export type CliCommand =
   | { readonly command: "sync"; readonly instance: string | undefined }
   | { readonly command: "hub"; readonly instance: string | undefined }
   | { readonly command: "link"; readonly instance: string | undefined }
+  | { readonly command: "open"; readonly instance: string | undefined }
   | {
       readonly command: "settings";
       readonly instance: string | undefined;
@@ -63,13 +64,14 @@ Commands:
       status:<idea|active|paused|closed|any>  only projects with this status
       tag:<tag>                               only projects with this tag ("#<tag>" needs the quotes)
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
-  service install   Start Eva by herself, and again after a crash (systemd on Linux, a logon task on Windows)
-  supervise         Run Eva, and start her again after a crash (the Windows logon task runs this)
+  service install   Start Eva by herself, and again after a crash (systemd on Linux, a start at logon on Windows)
+  supervise         Run Eva, and start her again after a crash (the Windows start at logon runs this)
   update [version]  Install what the update policy allows, or a newer version, then restart Eva
       --check                            only look for a newer version
   sync              Bring the vault's remote changes in, then save and push this machine's changes
   hub               Make this machine the hub, which runs Telegram and the schedules
   link              Show the address that opens Eva on your phone and other computers
+  open              Open Eva in this computer's browser, logged in, with no token or code
   settings          Show every setting; "(vault)" marks the settings that every machine shares
   settings get <key>          Show one setting, such as updates.frequency
   settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
@@ -95,6 +97,7 @@ export const cliCommands: readonly string[] = [
   "sync",
   "hub",
   "link",
+  "open",
   "settings",
   "settings get",
   "settings set",
@@ -143,6 +146,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
     case "sync":
     case "hub":
     case "link":
+    case "open":
     case "supervise":
       return { command: name, instance };
     case "update":

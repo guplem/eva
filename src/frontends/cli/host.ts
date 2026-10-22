@@ -12,6 +12,7 @@ import {
   proxyEnvironmentAllowlist,
   type EnvironmentMap,
 } from "../../shared/environment.ts";
+import { EvaError } from "../../shared/errors.ts";
 import type { ProcessRunner } from "../../shared/process-runner.ts";
 
 export interface CliHost {
@@ -47,6 +48,52 @@ export interface CliHost {
   readonly bootId: string | null;
   /** Calls the handler once at the first SIGINT or SIGTERM. */
   readonly onStopSignal: (handler: () => void) => void;
+}
+
+/** The part of a `node:readline/promises` interface that a prompt uses. */
+export interface LinePrompt {
+  question(query: string): Promise<string>;
+  on(event: "SIGINT", listener: () => void): unknown;
+  close(): void;
+}
+
+/**
+ * Lends the prompt to the work, and closes it after. Ctrl+C at any moment, or the end of the
+ * input, stops the work with `prompt_stopped`, so the command prints one line and no stack (#407).
+ */
+export async function withLinePrompt(
+  prompt: LinePrompt,
+  work: (ask: (question: string) => Promise<string>) => Promise<void>,
+): Promise<void> {
+  const stoppedError = (): EvaError => new EvaError("prompt_stopped", "Stopped with Ctrl+C.");
+  let stop: (error: EvaError) => void = () => undefined;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    stop = reject;
+  });
+  // With a listener, readline no longer closes itself at Ctrl+C, so a long step stops at once too.
+  prompt.on("SIGINT", () => {
+    stop(stoppedError());
+  });
+  const ask = async (question: string): Promise<string> => {
+    try {
+      return await prompt.question(question);
+    } catch (error) {
+      throw isClosedPrompt(error) ? stoppedError() : error;
+    }
+  };
+  try {
+    await Promise.race([work(ask), stopped]);
+  } finally {
+    prompt.close();
+  }
+}
+
+/** readline rejects a question with AbortError when it closes, and a closed one with ERR_USE_AFTER_CLOSE. */
+function isClosedPrompt(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || (error as { readonly code?: unknown }).code === "ERR_USE_AFTER_CLOSE")
+  );
 }
 
 export function writeLine(host: CliHost, text: string): void {

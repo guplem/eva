@@ -354,3 +354,14 @@ async function getJson<Body>(options: ClientOptions, path: string): Promise<Body
   if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
   return (await response.json()) as Body;
 }
+
+/** A new login link from the running Eva, for `eva open`. Only the local token may ask (#407). */
+export async function requestLoginLink(options: ClientOptions): Promise<{ secret: string; expiresAt: string }> {
+  const response = await fetch(`${options.baseUrl}/api/devices/link`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) throw new Error(`Eva answered ${String(response.status)}: ${await response.text()}`);
+  return (await response.json()) as { secret: string; expiresAt: string };
+}

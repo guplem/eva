@@ -72,6 +72,8 @@ const newSessionSchema = z.object({
 const messageSchema = z.object({ text: z.string().min(1) });
 /** About 20 minutes of the page's Opus recording: more than any voice note needs. */
 const maxVoiceNoteBytes = 25 * 1024 * 1024;
+/** Above the 20 MB that Telegram lets Eva download, so the web chat takes at least what Telegram takes. */
+const maxReceivedFileBytes = 25 * 1024 * 1024;
 const forkSchema = z.object({ atMessageId: z.string().min(1) });
 const retrySchema = z.object({ turnIndex: z.number().int().min(0) });
 const renameSchema = z.object({ title: z.string() });
@@ -114,6 +116,7 @@ const settingsPatchSchema = z.record(z.string(), z.unknown());
 const secretSchema = z.object({ value: z.string() });
 const trustAnswerSchema = z.object({ url: z.string().min(1).max(2_000) });
 const deviceCodeSchema = z.object({ code: z.string().min(1).max(20) });
+const loginLinkSchema = z.object({ secret: z.string().min(1).max(200) });
 /** The account of a browser on Eva's own computer, which has no Tailscale account. */
 const localAccount = "this computer";
 /** The address that Google sent the browser to, or its code alone. */
@@ -218,12 +221,16 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (url.pathname === "/api/login" || url.pathname === "/api/logout") return session(request, url, options);
       if (url.pathname === "/api/login/device" || url.pathname.startsWith("/api/login/device/"))
         return deviceLogin(request, url, options);
+      if (url.pathname === "/api/login/link") return loginLink(request, options);
       // A Tailscale identity alone never authenticates: any program on this machine can forge the header.
       if (!hasValidToken(request, options.token) && !hasValidDeviceCookie(request, options.eva))
         return json({ error: "A valid token is required." }, 401);
       // The owner's rule: only a person with a shell as Eva's user, who can read the token, allows a device.
       if (url.pathname === "/api/devices/allow" && !hasValidToken(request, options.token))
         return json({ error: "Only the token, from a terminal on Eva's computer, can allow a device." }, 403);
+      // The same rule for a login link: it lets in a new browser too.
+      if (url.pathname === "/api/devices/link" && !hasValidToken(request, options.token))
+        return json({ error: "Only the token, from a terminal on Eva's computer, can make a login link." }, 403);
       if (url.pathname === "/api/events") {
         return bunServer.upgrade(request, {
           data: {
@@ -399,6 +406,29 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
 }
 
 /**
+ * A login link of `eva open`: a browser on this computer trades the link's secret for a device
+ * cookie, once. A request through Tailscale never can: the link is for Eva's own computer (#407).
+ */
+async function loginLink(request: Request, options: LocalApiOptions): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "Not found." }, 404);
+  if (!isLocalRequest(request)) return json({ error: "A login link works only on Eva's computer." }, 403);
+  let secret: string;
+  try {
+    secret = loginLinkSchema.parse(await request.json()).secret;
+  } catch {
+    return json({ error: "The request body is invalid." }, 400);
+  }
+  const browser = (request.headers.get("user-agent") ?? "an unknown browser").slice(0, deviceLabelBrowserLength);
+  const deviceToken = options.eva.deviceLogins.redeemLoginLink(secret, `${localAccount}, ${browser}`);
+  if (deviceToken === null)
+    return json({ error: "This login link was used, or it expired. Run `eva open` again on this computer." }, 401);
+  return new Response(null, {
+    status: 204,
+    headers: { "set-cookie": cookieHeader(request, deviceCookie, deviceToken, cookieMaxAgeSeconds) },
+  });
+}
+
+/**
  * The devices and the device requests, for Settings and for the page as an approver. A device login
  * may use them too: the person removes a lost phone, or allows a new one, from any allowed device.
  * Returns null for any other path.
@@ -413,6 +443,7 @@ async function devices(
   const parts = url.pathname.split("/").filter((part) => part.length > 0);
   if (parts[0] !== "api" || parts[1] !== "devices") return null;
   const method = request.method;
+  if (parts.length === 3 && parts[2] === "link" && method === "POST") return json(logins.createLoginLink(), 201);
   if (parts.length === 2 && method === "GET")
     return json(
       logins.list(cookieValue(request, deviceCookie)).map((device) => ({ ...device, label: eva.redact(device.label) })),
@@ -612,6 +643,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const audio = new Uint8Array(await request.arrayBuffer());
     if (audio.byteLength > maxVoiceNoteBytes) return json({ error: "The voice note is too long." }, 413);
     return json({ text: await eva.transcribeVoiceNote(audio) });
+  }
+  if (method === "POST" && url.pathname === "/api/files/received") {
+    // The body is the file as it is, like a voice note: no multipart form to parse.
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.byteLength > maxReceivedFileBytes) return json({ error: "Eva takes files up to 25 MB only." }, 413);
+    return json(eva.receiveFile(url.searchParams.get("name") ?? "file", bytes), 201);
   }
   if (method === "GET" && url.pathname === "/api/files")
     return json(eva.browseFiles(url.searchParams.get("path") ?? ""));

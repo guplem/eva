@@ -228,6 +228,28 @@ describe("doctor and setup", () => {
     expect(printed(host)).toContain("Eva did not start.");
   });
 
+  test("Ctrl+C at a setup question prints one line on how to go on, with no stack (#407)", async () => {
+    const host = fakeHost({
+      userHome: join(root, "user"),
+      withPrompt: (work) =>
+        work((question) =>
+          question.includes("GitHub login")
+            ? Promise.resolve("skip")
+            : Promise.reject(new EvaError("prompt_stopped", "Stopped with Ctrl+C.")),
+        ),
+    });
+    expect(await run(host, "setup")).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("Setup stopped. Each answer is saved. Run `eva setup` to go on.");
+    expect(printed(host) + host.errors.join("")).not.toContain("    at ");
+    // Another command that asks, such as the instance choice, says only that it stopped.
+    saveSecrets(paths, { localApiToken: "test-token" });
+    const other = fakeHost({
+      withPrompt: () => Promise.reject(new EvaError("prompt_stopped", "Stopped with Ctrl+C.")),
+    });
+    expect(await run(other, "chat")).toBe(exitCodes.clean);
+    expect(printed(other)).toContain("Stopped.");
+  });
+
   test("setup explains Enter before the first question, and asks the name in its own step", async () => {
     const log: string[] = [];
     // A config folder with no Eva yet, so setup asks the name.
@@ -258,6 +280,12 @@ describe("the client commands", () => {
     const host = fakeHost();
     expect(await run(host, "devices", "allow", "AB2C")).toBe(exitCodes.badConfig);
     expect(host.errors.join("")).toContain("Eva does not run");
+  });
+
+  test("open needs a running Eva, and says how to start her", async () => {
+    const host = fakeHost();
+    expect(await run(host, "open")).toBe(exitCodes.badConfig);
+    expect(host.errors.join("")).toContain("`eva service install`");
   });
 
   test("need the local token from setup", async () => {
@@ -318,6 +346,44 @@ describe("with a running Eva", () => {
   test("chat talks to the running Eva until the input ends", async () => {
     const chatting = fakeHost({ isProcessAlive: () => true }, ["/exit"]);
     expect(await run(chatting, "chat")).toBe(exitCodes.clean);
+  });
+
+  test("open opens this computer's browser with a login link that works once (#407)", async () => {
+    const windows = fakeHost({ isProcessAlive: () => true, platform: "win32" });
+    expect(await run(windows, "open")).toBe(exitCodes.clean);
+    const [command] = windows.commands;
+    expect(command?.slice(0, 2)).toEqual(["rundll32.exe", "url.dll,FileProtocolHandler"]);
+    const link = new URL(command?.[2] ?? "");
+    expect(link.origin).toBe(api.url);
+    expect(link.search).toBe("");
+    const secret = /^#login=([\w-]+)$/.exec(link.hash)?.[1] ?? "";
+    expect(eva.deviceLogins.redeemLoginLink(secret, "this computer, a browser")).toBeString();
+    expect(printed(windows)).toContain("Opened Eva in this computer's browser.");
+    // The secret shows only when no browser opens.
+    expect(printed(windows)).not.toContain(secret);
+
+    const desktop = fakeHost({
+      isProcessAlive: () => true,
+      environment: { ...gitEnvironment, DISPLAY: ":0" },
+    });
+    expect(await run(desktop, "open")).toBe(exitCodes.clean);
+    expect(desktop.commands[0]?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(desktop.commands[0]?.[4]).toContain("#login=");
+  });
+
+  test("open with no desktop, or a browser that fails, prints the link to open by hand", async () => {
+    const server = fakeHost({ isProcessAlive: () => true });
+    expect(await run(server, "open")).toBe(exitCodes.clean);
+    expect(server.commands).toEqual([]);
+    expect(printed(server)).toContain(`${api.url}/#login=`);
+    expect(printed(server)).toContain("It works once, for 2 minutes");
+    const failing = fakeHost({
+      isProcessAlive: () => true,
+      platform: "darwin",
+      runner: scriptedRunner([], () => ({ exitCode: 1, stderr: "no browser" })),
+    });
+    expect(await run(failing, "open")).toBe(exitCodes.clean);
+    expect(printed(failing)).toContain(`${api.url}/#login=`);
   });
 
   test("sync, hub, link and update go to the running Eva", async () => {
@@ -516,33 +582,74 @@ describe("service install and supervise", () => {
     expect(printed(noLinger)).toContain("sudo loginctl enable-linger example");
   });
 
-  test("on Windows, creates and starts the logon task", async () => {
-    const host = fakeHost({ platform: "win32" });
+  test("on Windows, saves a start at logon with no administrator, and starts Eva now with no window (#407)", async () => {
+    // No old logon task: schtasks /Query fails.
+    const commands: string[][] = [];
+    const host = fakeHost({
+      platform: "win32",
+      environment: { ...gitEnvironment, SystemRoot: "C:\\Windows" },
+      runner: scriptedRunner(commands, (command) =>
+        command[1] === "/Query" ? { exitCode: 1, stderr: "not found" } : {},
+      ),
+    });
     expect(await run(host, "service", "install")).toBe(exitCodes.clean);
-    expect(host.commands.map((command) => command[0])).toEqual(["schtasks", "powershell.exe", "schtasks"]);
+    expect(commands.map((command) => command.slice(0, 2))).toEqual([
+      ["schtasks", "/Query"],
+      ["reg", "add"],
+      ["powershell.exe", "-NoProfile"],
+    ]);
+    expect(commands[1]?.[8]).toContain('"C:\\Windows\\System32\\conhost.exe" --headless');
     expect(printed(host)).toContain("Eva now starts when you log in, and she runs now.");
+    expect(printed(host)).not.toContain("administrator");
   });
 
-  test("on Windows, a refused task names Run as administrator, and a running Eva keeps running", async () => {
+  test("on Windows, an old logon task is replaced, or kept when only an administrator can remove it", async () => {
+    const replaced = fakeHost({ platform: "win32" });
+    expect(await run(replaced, "service", "install")).toBe(exitCodes.clean);
+    expect(replaced.commands.map((command) => command.slice(0, 2))).toEqual([
+      ["schtasks", "/Query"],
+      ["schtasks", "/Delete"],
+      ["reg", "add"],
+      ["powershell.exe", "-NoProfile"],
+    ]);
+    const keptCommands: string[][] = [];
+    const kept = fakeHost({
+      platform: "win32",
+      runner: scriptedRunner(keptCommands, (command) =>
+        command[1] === "/Delete" ? { exitCode: 1, stderr: "denied" } : {},
+      ),
+    });
+    expect(await run(kept, "service", "install")).toBe(exitCodes.clean);
+    expect(keptCommands.map((command) => command.slice(0, 2))).toEqual([
+      ["schtasks", "/Query"],
+      ["schtasks", "/Delete"],
+      ["schtasks", "/Run"],
+    ]);
+    expect(printed(kept)).toContain("Eva starts when you log in, with her scheduled task.");
+  });
+
+  test("on Windows, a refused start at logon says so, and a running Eva keeps running", async () => {
+    const noTask = (command: readonly string[]): { exitCode: number } | undefined =>
+      command[1] === "/Query" ? { exitCode: 1 } : undefined;
     const refused = fakeHost({
       platform: "win32",
-      runner: scriptedRunner([], (command) => (command[0] === "schtasks" ? { exitCode: 1, stderr: "denied" } : {})),
+      runner: scriptedRunner([], (command) =>
+        command[0] === "reg" ? { exitCode: 1, stderr: "denied" } : noTask(command),
+      ),
     });
     expect(await run(refused, "service", "install")).toBe(exitCodes.crash);
-    expect(printed(refused)).toContain("Run as administrator");
+    expect(printed(refused)).toContain("Windows did not save the start at logon: denied");
     acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
-    const running = fakeHost({
-      platform: "win32",
-      isProcessAlive: () => true,
-      runner: scriptedRunner([], (command) => (command[0] === "powershell.exe" ? { exitCode: 1, stderr: "no" } : {})),
-    });
+    const running = fakeHost({ platform: "win32", isProcessAlive: () => true, runner: scriptedRunner([], noTask) });
     expect(await run(running, "service", "install")).toBe(exitCodes.clean);
-    expect(printed(running)).toContain("Windows may stop Eva after three days");
-    expect(printed(running)).toContain("She already runs");
+    expect(printed(running)).toContain("she already runs");
+    expect(running.commands.map((command) => command[0])).not.toContain("powershell.exe");
     rmSync(paths.lock, { force: true });
     const notStarted = fakeHost({
       platform: "win32",
-      runner: scriptedRunner([], (command) => (command[1] === "/Run" ? { exitCode: 1, stderr: "busy" } : {})),
+      runner: scriptedRunner([], (command) =>
+        command[0] === "powershell.exe" ? { exitCode: 1, stderr: "busy" } : noTask(command),
+      ),
     });
     expect(await run(notStarted, "service", "install")).toBe(exitCodes.clean);
     expect(printed(notStarted)).toContain("She did not start now: busy");

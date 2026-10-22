@@ -7,6 +7,8 @@ import { Visor } from "./Visor.tsx";
 
 /** The page asks again at this pace until the owner answers in Telegram, in the terminal or on another Eva page. */
 const devicePollMs = 2_000;
+/** The account of a browser on Eva's own computer, as the server names it. */
+const localAccount = "this computer";
 
 type DeviceStep =
   | { readonly kind: "asking" }
@@ -26,7 +28,14 @@ type DeviceStep =
  * Telegram, so a phone needs no long token. The token stays as the last way in: in a form, never in a URL. The server answers
  * each login with a cookie.
  */
-export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElement {
+/** `notice`: why the login link of `eva open` did not work, or null. */
+export function LoginView({
+  notice,
+  onLoggedIn,
+}: {
+  readonly notice: string | null;
+  readonly onLoggedIn: () => void;
+}): ReactElement {
   const [step, setStep] = useState<DeviceStep>({ kind: "asking" });
   const [attempt, setAttempt] = useState(0);
 
@@ -88,6 +97,7 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
   if (step.kind === "waiting") {
     return (
       <DeviceCode
+        notice={notice}
         request={step.request}
         onUseToken={() => setStep({ kind: "token", reason: null, ended: null, waiting: step.request })}
       />
@@ -96,7 +106,7 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }): ReactElem
   const waiting = step.waiting;
   return (
     <TokenForm
-      reason={step.reason}
+      reason={step.reason ?? notice}
       ended={step.ended}
       onLoggedIn={onLoggedIn}
       onAskAgain={
@@ -136,13 +146,15 @@ function LoginPage({ children }: { readonly children: ReactNode }): ReactElement
 }
 
 function DeviceCode({
+  notice,
   request,
   onUseToken,
 }: {
+  readonly notice: string | null;
   readonly request: DeviceLoginRequest;
   readonly onUseToken: () => void;
 }): ReactElement {
-  const { code, approvers } = request;
+  const { code, approvers, account } = request;
   const day = useSpecialDay();
   return (
     <LoginPage>
@@ -150,15 +162,22 @@ function DeviceCode({
       <div className="login-title">
         <h1>Confirm this device</h1>
         <p>Allow this code from a place you already trust.</p>
+        {notice !== null && <p role="status">{notice}</p>}
       </div>
       <div className="login-code-block">
         <div className="login-code">{code}</div>
         <CopyCodeButton code={code} />
       </div>
       <div className="login-ways">
+        {account === localAccount && (
+          <Way icon="term">
+            This is Eva's computer. Run <code>eva open</code> in a terminal here.
+            <small>It opens Eva in this browser, logged in, with no code.</small>
+          </Way>
+        )}
         {approvers.includes("terminal") && (
           <Way icon="term">
-            On Eva's computer, run
+            {account === localAccount ? "Or run" : "On Eva's computer, run"}
             <br />
             <code>eva devices allow {code}</code>
             <small>
@@ -285,7 +304,7 @@ function TokenForm({
           }}
         />
         <small id="token-hint">
-          It is the <code>localApiToken</code> in the <code>secrets.json</code> file of your instance.
+          On Eva's computer, run <code>eva open</code> instead. It opens Eva there with no token.
         </small>
         {error !== null && (
           <span role="alert" className="login-error">

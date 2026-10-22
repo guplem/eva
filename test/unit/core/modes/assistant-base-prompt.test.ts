@@ -40,6 +40,12 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).not.toContain("{{");
   });
 
+  test("installs missing programs without administrator rights: a service has no terminal for a sudo password", () => {
+    expect(assistantBasePrompt).toContain("## Installing programs");
+    expect(assistantBasePrompt).toContain("sudo");
+    expect(assistantBasePrompt).toContain("uv run --with");
+  });
+
   test("names no person: the person's rules come from their vault", () => {
     expect(assistantBasePrompt).not.toMatch(/\b(he|she|his|her)\b/i);
   });

@@ -1,6 +1,6 @@
 /**
  * `eva service install`: starts Eva by herself, as a systemd user service on Linux (lesson 85)
- * or a logon task on Windows. The logon task runs Eva's own supervisor, which restarts her
+ * or a start at logon on Windows. The start at logon runs Eva's own supervisor, which restarts her
  * after a crash as systemd does. Exit codes 2 (bad config) and 3 (second instance) never
  * restart (lesson 89). This file also holds `eva supervise`, and how Eva starts again after an update.
  */
@@ -83,76 +83,114 @@ WantedBy=default.target
 `;
 }
 
-/** The logon task runs the supervisor, because Task Scheduler cannot restart Eva after a crash. */
-export function windowsTaskCommand(target: ServiceTarget, name: string): string[] {
-  const command = [...target.executable.map((part) => `"${part}"`), "supervise", "--instance", target.instance].join(
-    " ",
-  );
-  return ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", windowsTaskName(name), "/TR", command];
+/** Windows runs each value of this key at the user's logon. A normal user may write it: no administrator. */
+const windowsRunKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+/**
+ * The program and arguments that run the supervisor at logon. conhost.exe is a GUI program, so
+ * Windows opens no window for it, and `--headless` gives Eva a console that nobody sees (#407).
+ * The supervisor restarts Eva after a crash, and never stops on battery or after some days.
+ */
+function windowsHiddenStart(
+  target: ServiceTarget,
+  systemRoot: string,
+): { readonly program: string; readonly arguments: string } {
+  const eva = [...target.executable.map((part) => `"${part}"`), "supervise", "--instance", target.instance];
+  return { program: `${systemRoot}\\System32\\conhost.exe`, arguments: ["--headless", ...eva].join(" ") };
+}
+
+/** Saves the start at logon of this Eva, under the name of her old logon task. */
+export function windowsRunKeyCommand(target: ServiceTarget, name: string, systemRoot: string): string[] {
+  const start = windowsHiddenStart(target, systemRoot);
+  const line = `"${start.program}" ${start.arguments}`;
+  return ["reg", "add", windowsRunKey, "/v", windowsTaskName(name), "/t", "REG_SZ", "/d", line, "/f"];
 }
 
 /**
- * Lifts the limits that `schtasks /Create` sets on each task. Windows stops a task after three
- * days, and when a laptop switches to its battery. Either stop would end the supervisor.
- * The new settings replace all of the task's settings: the other defaults suit Eva too.
+ * Starts the same command now. A child of the process runner gets NUL as its input, and then
+ * `conhost --headless` stops at once. Start-Process gives it no input handle, as Windows does at logon.
  */
-export function windowsTaskSettingsCommand(name: string): string[] {
-  const settings =
-    "New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries";
-  // The task name comes from serviceName, which keeps only letters, digits and dashes, so the quotes are safe.
+export function windowsStartNowCommand(target: ServiceTarget, systemRoot: string): string[] {
+  const start = windowsHiddenStart(target, systemRoot);
+  const quoted = (text: string): string => `'${text.replaceAll("'", "''")}'`;
   return [
     "powershell.exe",
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    `Set-ScheduledTask -TaskName '${windowsTaskName(name)}' -Settings (${settings}) -ErrorAction Stop | Out-Null`,
+    `Start-Process -FilePath ${quoted(start.program)} -ArgumentList ${quoted(start.arguments)} -ErrorAction Stop`,
   ];
 }
 
-/** Starts the logon task now, so Eva runs without a new logon. */
-export function windowsRunTaskCommand(name: string): string[] {
-  return ["schtasks", "/Run", "/TN", windowsTaskName(name)];
+/**
+ * The logon task of an older Eva, which only an administrator could make. It keeps working, so
+ * setup removes it only to avoid a second supervisor at logon.
+ */
+export function windowsOldTaskCommands(name: string): {
+  readonly query: string[];
+  readonly remove: string[];
+  readonly run: string[];
+} {
+  const task = windowsTaskName(name);
+  return {
+    query: ["schtasks", "/Query", "/TN", task],
+    remove: ["schtasks", "/Delete", "/TN", task, "/F"],
+    run: ["schtasks", "/Run", "/TN", task],
+  };
 }
 
 function windowsTaskName(name: string): string {
   return `Eva-${name.slice("eva-".length)}`;
 }
 
-/** `eva service install`: installs and starts the service, or the logon task on Windows. */
+/** `eva service install` on Windows: the start at logon, then a start now. */
+async function installWindowsStart(
+  host: CliHost,
+  paths: HomePaths,
+  runStep: (step: readonly string[]) => Promise<ProcessResult>,
+): Promise<number> {
+  const name = serviceName(paths);
+  const target = { executable: evaCommand(host), instance: instanceNameOf(paths) };
+  const systemRoot = host.environment["SystemRoot"] ?? host.environment["SYSTEMROOT"] ?? "C:\\Windows";
+  const oldTask = windowsOldTaskCommands(name);
+  const isRunning =
+    runningInstancePid(paths.lock, { bootId: host.bootId, isProcessAlive: host.isProcessAlive }) !== null;
+  if ((await runStep(oldTask.query)).exitCode === 0 && (await runStep(oldTask.remove)).exitCode !== 0) {
+    writeLine(host, "Eva starts when you log in, with her scheduled task.");
+    if (isRunning) return exitCodes.clean;
+    const started = await runStep(oldTask.run);
+    writeLine(host, started.exitCode === 0 ? "She runs now." : `She did not start now: ${started.stderr.trim()}`);
+    return exitCodes.clean;
+  }
+  const saved = await runStep(windowsRunKeyCommand(target, name, systemRoot));
+  if (saved.exitCode !== 0) {
+    writeLine(host, `Windows did not save the start at logon: ${saved.stderr.trim()}`);
+    return exitCodes.crash;
+  }
+  // A running Eva keeps the lock, so a new supervisor's Eva would only exit 3.
+  if (isRunning) {
+    writeLine(host, "Eva now starts when you log in, and she already runs.");
+    writeLine(host, "If she runs in a terminal window, close it, then run `eva service install` again.");
+    return exitCodes.clean;
+  }
+  const started = await runStep(windowsStartNowCommand(target, systemRoot));
+  writeLine(
+    host,
+    started.exitCode === 0
+      ? "Eva now starts when you log in, and she runs now."
+      : `Eva now starts when you log in. She did not start now: ${started.stderr.trim()}`,
+  );
+  return exitCodes.clean;
+}
+
+/** `eva service install`: installs and starts the service, or the start at logon on Windows. */
 export async function installService(host: CliHost, paths: HomePaths): Promise<number> {
+  const runStep = (step: readonly string[]): Promise<ProcessResult> =>
+    host.runner.run(step, { cwd: paths.root, environment: childEnvironment(host), timeoutMs: serviceStepTimeoutMs });
+  if (host.platform === "win32") return installWindowsStart(host, paths, runStep);
   const executable = evaCommand(host);
   const name = serviceName(paths);
   const instance = instanceNameOf(paths);
-  const runStep = (step: readonly string[]): Promise<ProcessResult> =>
-    host.runner.run(step, { cwd: paths.root, environment: childEnvironment(host), timeoutMs: serviceStepTimeoutMs });
-  if (host.platform === "win32") {
-    const created = await runStep(windowsTaskCommand({ executable, instance }, name));
-    if (created.exitCode !== 0) {
-      writeLine(host, `schtasks failed: ${created.stderr.trim()}`);
-      writeLine(host, "If it says that access is denied, open the terminal with Run as administrator, then try again.");
-      return exitCodes.crash;
-    }
-    const settings = await runStep(windowsTaskSettingsCommand(name));
-    if (settings.exitCode !== 0)
-      writeLine(host, `Windows may stop Eva after three days, or on battery: ${settings.stderr.trim()}`);
-    // A running Eva keeps the lock, so the new task's Eva would only exit 3.
-    if (runningInstancePid(paths.lock, { bootId: host.bootId, isProcessAlive: host.isProcessAlive }) !== null) {
-      writeLine(
-        host,
-        "Eva now starts when you log in. She already runs, so the new task takes over at your next logon.",
-      );
-      writeLine(host, `To switch now, stop her, then run: ${windowsRunTaskCommand(name).join(" ")}`);
-      return exitCodes.clean;
-    }
-    const started = await runStep(windowsRunTaskCommand(name));
-    writeLine(
-      host,
-      started.exitCode === 0
-        ? "Eva now starts when you log in, and she runs now."
-        : `Eva now starts when you log in. She did not start now: ${started.stderr.trim()}`,
-    );
-    return exitCodes.clean;
-  }
   const unitPath = join(host.userHome, ".config", "systemd", "user", `${name}.service`);
   mkdirSync(dirname(unitPath), { recursive: true });
   writeFileSync(

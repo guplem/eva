@@ -1,6 +1,7 @@
 /**
  * Device login for the web UI. A browser asks to log in with a short code. The owner allows it in
- * Telegram, or types the code in a terminal on Eva's computer, and the browser gets a device token. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
+ * Telegram, or types the code in a terminal on Eva's computer, and the browser gets a device token.
+ * A login link from that terminal logs in a browser on Eva's computer with no code. Eva stores only the SHA-256 hash of each token, in `state/devices.json`.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EvaError } from "../../shared/errors.ts";
@@ -82,12 +83,25 @@ const codeLetters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const codeLength = 4;
 /** 64 bits of the hash tell the devices apart, and the id never logs anyone in. */
 const deviceIdLength = 16;
+/** A login link opens a browser on Eva's computer, which starts at once: two minutes are enough. */
+const loginLinkLifetimeMs = 2 * 60_000;
+/** Only the terminal asks for links, so a few at once are enough, and a loop of requests uses no memory. */
+const loginLinksAtOnce = 5;
+
+/** A link that logs in one browser on Eva's computer, once (#407). */
+export interface LoginLink {
+  /** Only the page reads it, from the address fragment, which no request carries. */
+  readonly secret: string;
+  readonly expiresAt: string;
+}
 
 export class DeviceLogins {
   private readonly options: DeviceLoginsOptions;
   private readonly pending: Map<string, PendingLogin>;
   private readonly approvers: Set<DeviceLoginApprover>;
   private readonly forgetListeners: Set<() => void>;
+  /** The SHA-256 hash of each waiting login link's secret, and when it ends. */
+  private readonly loginLinks: Map<string, number>;
   /** The recent requests of each account, so one account cannot use up another's. */
   private requestTimes: Map<string, number[]>;
   private devices: StoredDevice[];
@@ -97,6 +111,7 @@ export class DeviceLogins {
     this.pending = new Map();
     this.approvers = new Set();
     this.forgetListeners = new Set();
+    this.loginLinks = new Map();
     this.requestTimes = new Map();
     this.devices = loadDevices(options.path);
   }
@@ -159,12 +174,7 @@ export class DeviceLogins {
       settle(login, "deny");
       return true;
     }
-    const token = randomBytes(32).toString("base64url");
-    this.devices = [
-      ...this.devices,
-      { hash: hashOf(token), label: login.label, createdAt: new Date(nowMs).toISOString() },
-    ];
-    this.saveDevices();
+    const token = this.addDevice(login.label, nowMs);
     login.answer = { state: "allowed", token };
     settle(login, "allow");
     return true;
@@ -200,6 +210,32 @@ export class DeviceLogins {
     if (found.length !== 1 || found[0] === undefined) return null;
     this.answer(found[0].request.id, "allow");
     return found[0].label;
+  }
+
+  /**
+   * A new login link, for the terminal, which can read the local token. The page that opens the
+   * link trades its secret for a device token with `redeemLoginLink`.
+   */
+  createLoginLink(): LoginLink {
+    const nowMs = this.options.now().getTime();
+    this.removeEndedLinks(nowMs);
+    // A Map keeps its order, so the first key is the oldest link.
+    for (const hash of this.loginLinks.keys()) {
+      if (this.loginLinks.size < loginLinksAtOnce) break;
+      this.loginLinks.delete(hash);
+    }
+    const secret = randomBytes(32).toString("base64url");
+    this.loginLinks.set(hashOf(secret), nowMs + loginLinkLifetimeMs);
+    return { secret, expiresAt: new Date(nowMs + loginLinkLifetimeMs).toISOString() };
+  }
+
+  /** Trades the secret of a waiting link for a new device token, once. Returns null for any other secret. */
+  redeemLoginLink(secret: string, label: string): string | null {
+    const nowMs = this.options.now().getTime();
+    this.removeEndedLinks(nowMs);
+    const hash = hashOf(secret);
+    if (secret === "" || !this.loginLinks.delete(hash)) return null;
+    return this.addDevice(label, nowMs);
   }
 
   /** The state of a request, for the browser that made it. An issued token is handed out once. */
@@ -271,6 +307,18 @@ export class DeviceLogins {
 
   private removeExpired(nowMs: number): void {
     for (const [id, login] of this.pending) if (login.expiresAtMs <= nowMs) this.pending.delete(id);
+  }
+
+  /** Saves a new device, and gives its token, which Eva never stores. */
+  private addDevice(label: string, nowMs: number): string {
+    const token = randomBytes(32).toString("base64url");
+    this.devices = [...this.devices, { hash: hashOf(token), label, createdAt: new Date(nowMs).toISOString() }];
+    this.saveDevices();
+    return token;
+  }
+
+  private removeEndedLinks(nowMs: number): void {
+    for (const [hash, endsAtMs] of this.loginLinks) if (endsAtMs <= nowMs) this.loginLinks.delete(hash);
   }
 
   private notifyForget(): void {

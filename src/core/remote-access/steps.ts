@@ -102,10 +102,10 @@ export function deviceSteps(access: RemoteAccess): GuideStep[] {
  */
 export function describeAccess(input: {
   readonly remoteAccess: RemoteAccess | null;
-  readonly localUrl: string;
   readonly actionHint?: string;
 }): string[] {
-  const local = `On this machine only (advanced): ${input.localUrl}, with the token \`localApiToken\` from secrets.json.`;
+  // The terminal makes a login link, so a person on this computer needs no token or code (#407).
+  const local = "On Eva's computer, run `eva open`. It opens her page in that computer's browser, logged in.";
   const access = input.remoteAccess;
   if (access === null)
     return [

@@ -66,3 +66,14 @@ export function buildChildEnvironment(
   }
   return environment;
 }
+
+/** The desktop session's variables, for a child that opens a window, such as the default browser. */
+export const desktopEnvironmentAllowlist: readonly string[] = [
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "XDG_CURRENT_DESKTOP",
+  "XDG_SESSION_TYPE",
+  "XDG_DATA_DIRS",
+  "BROWSER",
+];

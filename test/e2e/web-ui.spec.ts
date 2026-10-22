@@ -874,6 +874,8 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   await card.getByRole("button", { name: "New chat here" }).click();
   await expect(page.locator(".main-header .sub")).toHaveText(`Example app › ${cloneName} · main`);
   await expect(page.getByText("Project mode")).toBeVisible();
+  // A received file lands in the vault, which a clone's agent does not reach (issue 409).
+  await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
   await composer.press("Enter");
@@ -1640,6 +1642,28 @@ test("device login: a browser shows its code and how to allow it, then opens", a
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 });
 
+test("login link: the link of `eva open` logs in this browser once, and leaves the address (#407)", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/devices/link", { headers: { authorization: `Bearer ${token}` }, data: {} });
+  expect(created.status()).toBe(201);
+  const { secret } = (await created.json()) as { secret: string };
+  await page.goto(`/#login=${secret}/settings/setup`);
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("#/settings/setup");
+  // A used link logs in nobody: a new browser gets the login page, which says why.
+  await page.context().clearCookies();
+  // A new tab, as `eva open` opens: in the same tab, a new fragment loads no new page.
+  const fresh = await page.context().newPage();
+  await routeDeviceLogin(fresh, { id: "request-link", code: "L1NK", approvers: ["terminal"], state: "pending" });
+  await fresh.goto(`/#login=${secret}`);
+  await expect(fresh.getByText("This login link was used, or it expired.")).toBeVisible();
+  expect(fresh.url()).not.toContain(secret);
+  // The link allowed a real device. Later tests expect the demo to have none.
+  await request.delete("/api/devices", { headers: { authorization: `Bearer ${token}` } });
+});
+
 test("device login: the page lists only the ways that can allow the code", async ({ page }) => {
   await routeDeviceLogin(page, { id: "request-3", code: "T4NB", approvers: ["terminal"], state: "pending" });
   await page.goto("/");
@@ -2368,6 +2392,44 @@ test("a voice note sends what Eva heard, and its message can play the recording"
   await expect(message).not.toContainText("Hello from my voice");
   await message.getByRole("button", { name: "Heard" }).click();
   await expect(message).toContainText("Hello from my voice");
+});
+
+test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await newChat(page);
+  const picker = page.locator(".composer input[type=file]");
+  await picker.setInputFiles([
+    { name: "receipt.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") },
+    { name: "extra.txt", mimeType: "text/plain", buffer: Buffer.from("not this one") },
+  ]);
+  const attached = page.getByRole("list", { name: "Attached files" });
+  await expect(attached.getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("button", { name: "Remove extra.txt" }).click();
+  await expect(attached.getByRole("listitem")).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Message" }).fill("What is this?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  const message = page.locator(".message.user").last();
+  await expect(message).toContainText("What is this?");
+  await expect(message).toContainText(/saved as Scratch\/received\/receipt-[0-9a-f]{12}\.pdf/);
+  await expect(message).not.toContainText("extra");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
+  await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
+});
+
+test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
+  await page.route("**/api/files/received*", async (route) => {
+    await route.fulfill({ status: 413, json: { error: "Eva takes files up to 25 MB only." } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page
+    .locator(".composer input[type=file]")
+    .setInputFiles({ name: "video.mp4", mimeType: "video/mp4", buffer: Buffer.from("too big") });
+  await expect(page.getByRole("alert")).toContainText("Eva takes files up to 25 MB only.");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
 });
 
 test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {

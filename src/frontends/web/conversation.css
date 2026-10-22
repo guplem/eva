@@ -71,6 +71,21 @@
 .message {
   min-width: 0;
   overflow-wrap: anywhere;
+  animation: message-in 220ms ease-out;
+}
+
+/* A new message rises a little into place. Only opacity and transform move, so the layout stays still. */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message {
+    animation: none;
+  }
 }
 
 .message.answer {

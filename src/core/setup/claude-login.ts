@@ -48,11 +48,17 @@ export class ClaudeLogin {
   private current: TerminalProcess | null;
   /** True from the address until the first Finish: claude reads one code only. */
   private waitsForCode: boolean;
+  /**
+   * A token that claude printed before the Finish. On Windows, claude opens a browser by itself.
+   * A login in that browser ends claude with the token, and the next Finish takes it.
+   */
+  private earlyToken: string | null;
 
   constructor(options: ClaudeLoginOptions) {
     this.options = options;
     this.current = null;
     this.waitsForCode = false;
+    this.earlyToken = null;
   }
 
   /** Starts `claude setup-token` and returns the address of Claude's login page. */
@@ -75,7 +81,10 @@ export class ClaudeLogin {
     }
     this.current = terminal;
     void terminal.exited.then(() => {
-      if (this.current === terminal) this.release();
+      if (this.current !== terminal) return;
+      const early = this.waitsForCode ? match(screenOf(terminal.output(), 0).text, tokenPattern) : null;
+      this.release();
+      this.earlyToken = early;
     });
     const result = await this.waitFor(terminal, (screen) =>
       promptPattern.test(screen.text)
@@ -97,6 +106,11 @@ export class ClaudeLogin {
     const code = pasted.trim();
     if (code === "" || code.length > codeLimit || /\s/.test(code))
       throw failure("Paste the code from Claude's page: one line, with no spaces.");
+    if (this.earlyToken !== null) {
+      const early = this.earlyToken;
+      this.earlyToken = null;
+      return { token: early };
+    }
     const terminal = this.current;
     if (terminal === null || !this.waitsForCode)
       throw failure(
@@ -133,6 +147,7 @@ export class ClaudeLogin {
   private release(): void {
     this.current = null;
     this.waitsForCode = false;
+    this.earlyToken = null;
   }
 
   private stopTerminal(terminal: TerminalProcess): void {

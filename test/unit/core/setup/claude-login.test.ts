@@ -189,6 +189,20 @@ describe("ClaudeLogin", () => {
     expect((error as Error).message).toContain("Start the login");
   });
 
+  test("keeps the token when claude ends the login by itself, such as in the browser that claude opened", async () => {
+    const { login, terminals } = makeLogin(happyScript);
+    await login.start();
+    const terminal = terminals[0];
+    if (terminal === undefined) throw new Error("No terminal started.");
+    printAll(terminal, tokenScreen);
+    terminal.exit(0);
+    await Bun.sleep(0);
+    expect(await login.finish("example-code")).toEqual({ token });
+    expect(terminal.written).toEqual([]);
+    // The token goes out once only.
+    expect((await failure(login.finish("example-code"))) as Error).toBeInstanceOf(Error);
+  });
+
   test("refuses an empty code or one with a line break inside", async () => {
     const { login, terminals } = makeLogin(happyScript);
     await login.start();

@@ -134,10 +134,12 @@ export class OfferStore {
  */
 export function saveReceivedFile(vaultPath: string, originalName: string, bytes: Uint8Array): string {
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+  // Cut by letters, not UTF-16 units, so no letter splits in two. 60 letters of 4 bytes each,
+  // with the hash, stay under the 255-byte limit of a file name.
   const safeName =
-    basename(originalName)
-      .replace(/[^\p{L}\p{N}_.-]+/gu, "-")
-      .slice(-80) || "file";
+    Array.from(basename(originalName).replace(/[^\p{L}\p{M}\p{N}_.-]+/gu, "-"))
+      .slice(-60)
+      .join("") || "file";
   const extension = extname(safeName);
   const name = `${safeName.slice(0, safeName.length - extension.length)}-${hash}${extension}`;
   const folder = join(vaultPath, scratchFolderName, "received");

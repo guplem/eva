@@ -170,6 +170,16 @@ describe("received files and the scratch cleanup", () => {
     expect(saveReceivedFile(vault, "写真 día.jpg", new Uint8Array([3]))).toMatch(
       /^Scratch\/received\/写真-día-[0-9a-f]{12}\.jpg$/,
     );
+    expect(saveReceivedFile(vault, "हिन्दी.txt", new Uint8Array([4]))).toMatch(
+      /^Scratch\/received\/हिन्दी-[0-9a-f]{12}\.txt$/,
+    );
+  });
+
+  test("a long name in a script of several bytes a letter still fits the file system", () => {
+    // Letters of 4 bytes, and an extension of odd length, so a cut by UTF-16 units splits a letter in two.
+    const saved = saveReceivedFile(vault, `${"𠀀".repeat(100)}.jpeg`, new Uint8Array([5]));
+    expect(saved).toMatch(/^Scratch\/received\/(𠀀)+-[0-9a-f]{12}\.jpeg$/u);
+    expect(existsSync(join(vault, saved))).toBe(true);
   });
 
   test("the note tells the agent where a received file is", () => {

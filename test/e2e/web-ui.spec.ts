@@ -2061,7 +2061,8 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   // The demo turn runs a task, a tool and a command before its one message. The line shows the last one.
   const toggle = answer.getByRole("button", { name: "Show 3 steps" });
   await expect(toggle).toContainText("3 steps");
-  await expect(toggle.locator(".steps-last")).toHaveText("ls");
+  await expect(toggle.locator(".steps-last .pill")).toHaveText("Command");
+  await expect(toggle.locator(".steps-last .step-text")).toHaveText("ls");
   if (test.info().project.name === "phone") {
     // A finger needs a target of 44 px or more.
     const box = await toggle.boundingBox();
@@ -2069,11 +2070,7 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   }
   await toggle.click();
   const steps = answer.getByRole("list", { name: "Steps" });
-  await expect(steps.getByRole("listitem")).toHaveText([
-    /Task\s+Search the notes/,
-    /Tool\s+Grep notes/,
-    /Command\s+ls/,
-  ]);
+  await expect(steps.getByRole("listitem")).toHaveText([/Task\s+Search the notes/, /Grep\s+notes/, /Command\s+ls/]);
   await answer.getByRole("button", { name: "Hide 3 steps" }).click();
   await expect(steps).toHaveCount(0);
 });

@@ -71,8 +71,6 @@ jobs:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    # The browser tests take about 4 minutes. A stuck page must not hold a runner for the default 6 hours.
-    timeout-minutes: 15
     env:
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
@@ -84,10 +82,15 @@ jobs:
           bun-version: 1.4.2
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
+      # The install and the tests each have their own limit. The Ubuntu mirror is sometimes very slow:
+      # its fonts took 10 minutes once, and a single job limit then stopped tests that were passing.
       - if: env.RUN_CODE_CHECKS == 'true'
+        timeout-minutes: 25
         run: bunx playwright install --with-deps chromium
-      # Browser tests of the web UI, at desktop size and at 375 px.
+      # Browser tests of the web UI, at desktop size and at 375 px. They take about 7 minutes.
+      # A stuck page must not hold a runner for the default 6 hours.
       - if: env.RUN_CODE_CHECKS == 'true'
+        timeout-minutes: 15
         run: bun run test:e2e
       # A failure that only CI shows needs the browser trace of the failed test to be understood.
       - if: failure() && env.RUN_CODE_CHECKS == 'true'

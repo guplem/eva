@@ -45,7 +45,8 @@ export function changesPill(changes: number | null): Pill | null {
 /** A repository URL without its scheme, user and `.git`: short enough for a chip, and no token shows. */
 export function repositoryLabel(url: string): string {
   const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
-  const rest = url.slice(scheme?.[0].length ?? 0);
+  // A query can hold a token too, so it goes before the chip shows the rest.
+  const rest = url.slice(scheme?.[0].length ?? 0).replace(/[?#].*$/, "");
   return (
     // After a scheme, all up to the last `@` is the user part: a password can hold an `@` or a `/` too.
     (scheme === null ? rest.replace(/^[^/\\]*@/, "") : rest.slice(rest.lastIndexOf("@") + 1))

@@ -3,7 +3,7 @@
  * reports to an Assistant chat, the setup report of a project's repositories, and the edits of
  * its `AGENTS.md`.
  */
-import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
+import type { EffortLevel, EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
@@ -50,6 +50,8 @@ import { evaluateSetup, unreadableReport, type RepositoryFacts, type SetupReport
 export interface NewChatInput {
   readonly source: SessionRecord["source"];
   readonly model: ModelAlias;
+  /** Without one, the engine's own level. */
+  readonly effort?: EffortLevel;
   /** The engine of this chat; without one, the configured default. */
   readonly engine?: EngineName;
   readonly telegramTopicId?: number;

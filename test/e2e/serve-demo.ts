@@ -58,6 +58,8 @@ for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Notes/${run}-draft.md`, "# Draft\n");
 }
 sandbox.write(vault, "Notes/settings.json", '{"theme":"dark","size":2}');
+// A date at the start of a name shows as a pill (issue 429).
+sandbox.write(vault, "Journal/2027-trips.md", "# Trips\n");
 sandbox.git(vault, "add", "-A");
 sandbox.git(vault, "commit", "-q", "-m", "demo vault");
 sandbox.git(vault, "push", "-q", "origin", "main");

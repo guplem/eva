@@ -130,6 +130,7 @@ describe("stored appearance", () => {
       seed: defaultSeed,
       fileNameCut: "middle",
       filesView: "columns",
+      fileNames: "smart",
     });
   });
 
@@ -141,6 +142,7 @@ describe("stored appearance", () => {
       seed: "#8b5cf6",
       fileNameCut: "middle",
       filesView: "columns",
+      fileNames: "smart",
     });
     useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ seed: "red" }) }));
     expect(readAppearance().seed).toBe(defaultSeed);
@@ -160,6 +162,13 @@ describe("stored appearance", () => {
     expect(readAppearance().filesView).toBe("columns");
   });
 
+  test("reads stored real file names, and drops an unknown choice (issue 429)", () => {
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ fileNames: "real" }) }));
+    expect(readAppearance().fileNames).toBe("real");
+    useStorage(new FakeStorage({ "eva.appearance": JSON.stringify({ fileNames: "fancy" }) }));
+    expect(readAppearance().fileNames).toBe("smart");
+  });
+
   test("uses the defaults when the storage throws", () => {
     useStorage({
       getItem: () => {
@@ -173,7 +182,14 @@ describe("stored appearance", () => {
     const storage = new FakeStorage();
     useStorage(storage);
     const page = fakeDocument();
-    saveAppearance({ theme: "dark", density: "compact", seed: "#ff0000", filesView: "single", fileNameCut: "end" });
+    saveAppearance({
+      theme: "dark",
+      density: "compact",
+      seed: "#ff0000",
+      filesView: "single",
+      fileNameCut: "end",
+      fileNames: "real",
+    });
     expect(page.attributes.get("data-theme")).toBe("dark");
     expect(page.attributes.get("data-density")).toBe("compact");
     expect(page.attributes.get("data-files-view")).toBe("single");
@@ -189,6 +205,7 @@ describe("stored appearance", () => {
       seed: "#ff0000",
       fileNameCut: "end",
       filesView: "single",
+      fileNames: "real",
     });
   });
 
@@ -205,6 +222,7 @@ describe("stored appearance", () => {
       density: "comfortable",
       seed: defaultSeed,
       filesView: "columns",
+      fileNames: "smart",
       fileNameCut: "middle",
     });
     expect(page.attributes.has("data-theme")).toBe(false);
@@ -221,6 +239,7 @@ describe("stored appearance", () => {
       density: "comfortable",
       seed: defaultSeed,
       filesView: "columns",
+      fileNames: "smart",
       fileNameCut: "middle",
     });
     expect(page.metas.map((meta) => meta.media)).toEqual(["all", "not all"]);

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  answeredModel,
   chipLock,
   composerPlaceholder,
+  effortLabel,
   elapsedText,
   engineLabel,
   foldSteps,
@@ -94,6 +96,30 @@ describe("labels", () => {
     expect(engineLabel("pi")).toBe("pi");
     expect(modelLabel("default")).toBe("Default model");
     expect(modelLabel("sonnet")).toBe("Sonnet");
+  });
+
+  test("names the model that answered, so the default model is no mystery (#419)", () => {
+    expect(modelLabel("default", "claude-opus-5-5")).toBe("Default · Opus 5.5");
+    expect(modelLabel("haiku", "claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(modelLabel("sonnet", "claude-sonnet-4-6[1m]")).toBe("Sonnet 4.6");
+    // A date is no minor version.
+    expect(modelLabel("default", "claude-opus-4-20250514")).toBe("Default · Opus 4");
+    expect(modelLabel("opus", "claude-opus-4-1-20250805")).toBe("Opus 4.1");
+    // A pi model keeps its own id.
+    expect(modelLabel("default", "fake-model")).toBe("Default · fake-model");
+    expect(modelLabel("opus", null)).toBe("Opus");
+  });
+
+  test("names each effort level in plain words (#419)", () => {
+    expect(effortLabel("default")).toBe("Default effort");
+    expect(effortLabel("xhigh")).toBe("Extra high effort");
+    expect(effortLabel("max")).toBe("Max effort");
+  });
+
+  test("takes the model of the newest turn that names one", () => {
+    expect(answeredModel([{ model: "claude-opus-5-5" }, { model: null }])).toBe("claude-opus-5-5");
+    expect(answeredModel([{ model: "claude-opus-4-6" }, { model: "claude-opus-5-5" }])).toBe("claude-opus-5-5");
+    expect(answeredModel([])).toBeNull();
   });
 });
 

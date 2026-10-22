@@ -34,6 +34,7 @@ function request(overrides: Partial<TurnRequest> = {}): TurnRequest {
     startFolder: "/demo-vault",
     prompt: "Hello",
     model: "default",
+    effort: "default",
     appendSystemPrompt: "You are Eva.",
     pluginFolders: ["/demo-vault/.eva"],
     mcpServers: {},
@@ -167,6 +168,13 @@ describe("buildPiArguments", () => {
       "openai/gpt-5",
     ]);
   });
+
+  test("the chat's effort becomes pi's thinking level, and Max is pi's highest level (#419)", () => {
+    const project = request({ mode: "project", appendSystemPrompt: null, effort: "medium" });
+    const projectInputs = { ...inputs, promptFile: null };
+    expect(buildPiArguments(project, projectInputs)).toEqual([...base, "--thinking", "medium"]);
+    expect(buildPiArguments({ ...project, effort: "max" }, projectInputs)).toEqual([...base, "--thinking", "xhigh"]);
+  });
 });
 
 describe("PiEngine", () => {
@@ -189,6 +197,7 @@ describe("PiEngine", () => {
       usage: { inputTokens: 1000, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 0 },
       contextTokens: 1200,
       contextWindow: null,
+      model: "fake-model",
     });
     expect((events.at(-1) as { costUsd: number }).costUsd).toBeGreaterThan(0);
     const run = fake.runs[0];

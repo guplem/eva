@@ -25,6 +25,7 @@ function session(id: string): SessionRecord {
     engine: "claude-code",
     mode: "assistant",
     modelAlias: "default",
+    effort: "default",
     startFolder: "/vault",
     projectId: null,
     clone: null,
@@ -89,6 +90,7 @@ describe("SessionStore", () => {
       omittedSteps: 0,
       contextTokens: null,
       contextWindow: null,
+      model: null,
     });
     expect(corruptCopies()).toEqual([]);
   });
@@ -98,6 +100,14 @@ describe("SessionStore", () => {
     const { seenTurns: _left, ...old } = { ...session("one"), turns: [turn, turn] };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old] }));
     expect(openStore().get("one")?.seenTurns).toBe(2);
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before the effort, or with a bad one, uses the engine's default effort (#419)", () => {
+    const { effort: _left, ...old } = session("one");
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), effort: "huge" }] }));
+    expect(openStore().get("one")?.effort).toBe("default");
+    expect(openStore().get("two")?.effort).toBe("default");
     expect(corruptCopies()).toEqual([]);
   });
 
@@ -128,6 +138,7 @@ describe("SessionStore", () => {
       omittedSteps: -1,
       contextTokens: "many",
       contextWindow: 0,
+      model: 42,
     };
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [{ ...session("one"), turns: [turn] }] }));
     expect(openStore().get("one")?.turns[0]).toMatchObject({
@@ -135,6 +146,7 @@ describe("SessionStore", () => {
       omittedSteps: 0,
       contextTokens: null,
       contextWindow: null,
+      model: null,
     });
   });
 

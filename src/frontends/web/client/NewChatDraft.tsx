@@ -3,7 +3,7 @@
  * The first message makes the chat, so an open page leaves no empty chat behind.
  */
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
+import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { Composer, type ChatChoices } from "./Composer.tsx";
@@ -36,6 +36,7 @@ export function NewChatDraft({
   const [defaultEngine, setDefaultEngine] = useState<EngineName | null>(null);
   const [engine, setEngine] = useState<EngineName | null>(null);
   const [model, setModel] = useState<ModelAlias>("default");
+  const [effort, setEffort] = useState<EffortLevel>("default");
   const [sending, setSending] = useState(false);
   // A suggestion tap and the message box must not both make a chat.
   const busy = useRef(false);
@@ -76,7 +77,7 @@ export function NewChatDraft({
     setSending(true);
     try {
       // The chat runs on the engine that the chip shows, even when Eva read another default at start.
-      made.current ??= await api.newAssistantChat(model, shownEngine ?? undefined);
+      made.current ??= await api.newAssistantChat(model, shownEngine ?? undefined, effort);
       onSending({ sessionId: made.current.id, text: message });
       await api.send(made.current.id, message);
       await onStarted(made.current);
@@ -100,8 +101,13 @@ export function NewChatDraft({
       if (made.current !== null) made.current = await api.setModel(made.current.id, picked);
       setModel(picked);
     },
+    setEffort: async (picked) => {
+      if (made.current !== null) made.current = await api.setEffort(made.current.id, picked);
+      setEffort(picked);
+    },
   };
-  const draft = shownEngine === null ? null : { engine: shownEngine, modelAlias: model, mode: "assistant" as const };
+  const draft =
+    shownEngine === null ? null : { engine: shownEngine, modelAlias: model, effort, mode: "assistant" as const };
 
   return (
     <>

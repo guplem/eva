@@ -53,6 +53,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     engine: "claude-code",
     mode: "assistant",
     modelAlias: "default",
+    effort: "default",
     startFolder: vault,
     projectId: null,
     clone: null,

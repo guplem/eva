@@ -6,6 +6,7 @@ import {
   cues,
   cueTones,
   defaultCueLevels,
+  minimumVibrationMs,
   playCue,
   readCueLevels,
   saveCueLevels,
@@ -114,6 +115,13 @@ describe("vibrationPattern", () => {
     expect(strong[0]).toBeGreaterThan(light[0] ?? 0);
     expect(strong[1]).toBe(light[1]);
   });
+
+  test("each vibration is long enough for a slow motor to spin up", () => {
+    for (const cue of cues) {
+      const pulses = vibrationPattern(cue, "light").filter((_, index) => index % 2 === 0);
+      for (const ms of pulses) expect(ms).toBeGreaterThanOrEqual(minimumVibrationMs);
+    }
+  });
 });
 
 describe("the tones", () => {
@@ -176,6 +184,18 @@ describe("playCue", () => {
       vibrate: undefined,
     };
     expect(() => playCue("tap", defaultCueLevels, broken)).not.toThrow();
+  });
+
+  test("a broken vibration does not silence the sound", () => {
+    const sound = fakeAudio();
+    const devices: CueDevices = {
+      audio: () => sound.audio,
+      vibrate: () => {
+        throw new TypeError("no userActivation");
+      },
+    };
+    playCue("answer", { sound: "normal", vibration: "light" }, devices);
+    expect(sound.pitches.length).toBeGreaterThan(0);
   });
 
   test("the browser's own devices play without an error", () => {

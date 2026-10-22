@@ -1983,6 +1983,42 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("a shared location is kept for the scripts, and a live location moves with no new reply", async () => {
+    const bot = createBot();
+    telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17, live_period: 3600 } });
+    await settle(bot, () => telegram.sentTexts().length === 1);
+    expect(telegram.sentTexts()[0]).toContain("while you share it");
+    expect(eva.currentPlace()).toMatchObject({ lat: 41.39, lon: 2.17, source: "telegram" });
+    // Eva keeps one point every 15 minutes, so the next move counts only after that.
+    clock = new Date(clock.getTime() + 16 * 60_000);
+    telegram.editMessageWith(owner, { location: { latitude: 41.4, longitude: 2.18, horizontal_accuracy: 12 } });
+    await settle(bot, () => eva.currentPlace()?.lat === 41.4);
+    expect(telegram.sentTexts()).toHaveLength(1);
+    expect(engine.requests).toEqual([]);
+  });
+
+  test("a new shared point counts at once, and a venue never counts", async () => {
+    const bot = createBot();
+    telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17 } });
+    await settle(bot, () => telegram.sentTexts().length === 1);
+    telegram.sendMessageWith(owner, { venue: { title: "Cafe" }, location: { latitude: 1, longitude: 1 } });
+    telegram.sendMessageWith(owner, { location: { latitude: 40.4, longitude: -3.7 } });
+    await settle(bot, () => telegram.sentTexts().length === 3);
+    expect(telegram.sentTexts()[1]).toBe("Eva cannot read places yet.");
+    expect(eva.currentPlace()).toMatchObject({ lat: 40.4, source: "telegram" });
+  });
+
+  test("a location from a stranger never counts as the person's", async () => {
+    const bot = createBot();
+    telegram.sendMessageWith(9999, { location: { latitude: 1, longitude: 1 } });
+    telegram.editMessageWith(9999, { location: { latitude: 1, longitude: 1 } });
+    // A text after the two locations: its reply shows that the bot read all three.
+    telegram.sendText(9999, "hi");
+    await settle(bot, () => telegram.sentTexts().length === 1);
+    expect(telegram.sentTexts()[0]).toContain("This bot is private");
+    expect(eva.currentPlace()).toBeNull();
+  });
+
   test("a failed download gets a sentence", async () => {
     const bot = createBot();
     telegram.failNext("getFile", 400, "Bad Request: file is too big");

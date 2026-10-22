@@ -2,6 +2,7 @@
 import type { ReactElement } from "react";
 import { api } from "./api.ts";
 import { DevicesPanel } from "./DevicesPanel.tsx";
+import { LocationCard } from "./LocationCard.tsx";
 import { PushCard } from "./PushCard.tsx";
 import { RemoteAccessPanel } from "./RemoteAccessPanel.tsx";
 import { Card, errorText, Steps, type SettingsContext } from "./SettingsParts.tsx";
@@ -12,6 +13,7 @@ export function AccessSection({ context }: { readonly context: SettingsContext }
     <>
       <PhoneAccess context={context} />
       <DevicesPanel onChanged={context.notify} onLoggedOut={context.onLoggedOut} />
+      <LocationCard context={context} />
       <PushCard context={context} />
       <MachineCard context={context} />
       <AccountsCard context={context} />

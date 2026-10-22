@@ -134,6 +134,14 @@ const assistantRulesSchema = z.object({ version: z.string().min(1).max(100), tex
 const restoreRulesSchema = z.object({ version: z.string().min(1).max(100), backup: z.boolean() });
 /** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
+/** A point from the web app's location, with the radius of its error in meters. */
+const locationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).nullable().default(null),
+  /** When the device took the point, in milliseconds since 1970, as the browser gives it. */
+  takenAt: z.number().int().positive(),
+});
 /** A browser's push subscription, as its push manager gives it. */
 const pushDeviceSchema = z.object({
   subscription: z.object({
@@ -695,6 +703,13 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     const name = checkNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "No such check." }, 404);
     return json(await eva.runCheck(name));
+  }
+  if (url.pathname === "/api/location") {
+    if (method === "GET") return json({ place: eva.currentPlace(), isHub: eva.role() === "hub" });
+    if (method === "POST") {
+      const { takenAt, ...point } = locationSchema.parse(await request.json());
+      return json({ saved: eva.saveLocation(point, "web", new Date(takenAt), false) });
+    }
   }
   if (url.pathname.startsWith("/api/push")) return pushRoute(request, method, url.pathname, eva);
   if (method === "GET" && url.pathname === "/api/notifications/recent") {

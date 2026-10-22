@@ -183,6 +183,7 @@ export const searchEntries: readonly SearchEntry[] = [
   },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
   { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
+  { item: "location", section: "access", title: "Your location", words: "weather place gps telegram live home" },
   {
     item: "notifications",
     section: "access",

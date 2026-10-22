@@ -85,21 +85,29 @@ function isMap(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Reads the header and checks each field that the `about-me` skill describes. */
-export function readAboutMe(vaultPath: string): AboutMe {
-  const empty: AboutMe = { name: null, birthDate: null, region: null, hemisphere: null, problems: [] };
+/**
+ * The header of the note: a map, null when the note has none, or "broken" when it is not YAML. The
+ * failsafe schema keeps every value as text, so a date stays exactly as the person wrote it.
+ */
+function readHeader(vaultPath: string): Record<string, unknown> | null | "broken" {
   const text = readTextTolerant(join(vaultPath, aboutMeFile));
   // A Windows editor can put a byte order mark before the header.
   const match = frontMatterPattern.exec((text ?? "").replace(/^\uFEFF/, ""));
-  if (match === null) return empty;
-  let header: unknown;
+  if (match === null) return null;
   try {
-    // The failsafe schema keeps every value as text, so a date stays exactly as the person wrote it.
-    header = parseYaml(match[1] ?? "", { schema: "failsafe" });
+    const header: unknown = parseYaml(match[1] ?? "", { schema: "failsafe" });
+    return isMap(header) ? header : null;
   } catch {
-    return { ...empty, problems: [`The header of ${aboutMeFile} is not valid YAML.`] };
+    return "broken";
   }
-  if (!isMap(header)) return empty;
+}
+
+/** Reads the header and checks each field that the `about-me` skill describes. */
+export function readAboutMe(vaultPath: string): AboutMe {
+  const empty: AboutMe = { name: null, birthDate: null, region: null, hemisphere: null, problems: [] };
+  const header = readHeader(vaultPath);
+  if (header === "broken") return { ...empty, problems: [`The header of ${aboutMeFile} is not valid YAML.`] };
+  if (header === null) return empty;
 
   const problems: string[] = [];
   const text1 = (key: string, valid: (value: string) => boolean, problem: string): string | null => {
@@ -204,4 +212,22 @@ export async function firstCommitDay(
   if (result.exitCode !== 0) return null;
   // A vault can have more than one root commit, such as after a merge of two histories.
   return result.stdout.split(/\r?\n/).filter(isRealDate).sort()[0] ?? null;
+}
+
+/**
+ * The person's home as a point, from `places.home` in the header, or null. Scripts use it when
+ * the phone sent no recent location.
+ */
+export function readHomePlace(vaultPath: string): { readonly lat: number; readonly lon: number } | null {
+  const header = readHeader(vaultPath);
+  const places = isMap(header) ? header["places"] : undefined;
+  const home = isMap(places) ? places["home"] : undefined;
+  if (!isMap(home)) return null;
+  const [lat, lon] = [coordinate(home["lat"]), coordinate(home["lon"])];
+  return lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
+/** A decimal number written as text. An empty field must not read as 0, which is a place at sea. */
+function coordinate(value: unknown): number | null {
+  return typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null;
 }

@@ -3042,6 +3042,45 @@ button.small {
   gap: 16px;
 }
 
+.project-facts {
+  gap: var(--space-3);
+}
+
+.project-facts dd.tags {
+  justify-content: flex-end;
+}
+
+/* A quick link looks like the chip of a plain fact, with the link colour, so the person sees it opens. */
+a.link-chip {
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+
+a.link-chip:hover {
+  background: var(--soft);
+}
+
+.clones-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.clones-section h2 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+/* An empty slot, not a clone: a dashed line and no shadow, so it does not read as one more clone. */
+.clone-new {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: transparent;
+  box-shadow: none;
+  border: 2px dashed var(--line);
+}
+
 .clone-card {
   display: flex;
   flex-direction: column;

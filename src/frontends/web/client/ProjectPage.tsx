@@ -1,4 +1,8 @@
-/** The page of one project: its details, its warnings, and one card per clone with its chats. */
+/**
+ * The page of one project: its warnings, its facts with quick links, and one card per clone with its
+ * chats. The clones grid ends with the card that makes a new clone, so a project with no clones still
+ * shows the way to start (issue 392).
+ */
 import { useState, type ReactElement } from "react";
 import type { CloneDetails, Project, SessionRecord } from "./api.ts";
 import { Icon } from "./icons.tsx";
@@ -8,6 +12,7 @@ import {
   countOf,
   projectFolder,
   repositoryLabel,
+  repositoryWebUrl,
   statusPill,
   syncPills,
   type Pill,
@@ -17,6 +22,7 @@ import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { Dialog } from "./ChatPanel.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
+import { fileAddressOf } from "./file-paths.ts";
 
 interface ProjectPageProps {
   readonly project: Project;
@@ -89,73 +95,136 @@ export function ProjectPage({
         <button className="soft" onClick={onSetup}>
           Repository setup
         </button>
-        <button className="primary" onClick={onNewClone}>
-          <Icon name="plus" /> New clone
-        </button>
       </div>
       <div className="project-page">
         <Warnings project={project} />
-        {project.description !== null && <p className="muted">{project.description}</p>}
-        {(project.frontMatter.tags.length > 0 || project.frontMatter.repos.length > 0) && (
-          <div className="tags">
-            {project.frontMatter.tags.map((tag) => (
-              <span key={`tag-${tag}`} className="tag">
-                #{tag}
-              </span>
-            ))}
-            {project.frontMatter.repos.map((repo) => (
-              <span key={`repo-${repo}`} className="mode-chip">
-                <Icon name="globe" /> {repositoryLabel(repo)}
-              </span>
-            ))}
-          </div>
-        )}
+        <ProjectFacts project={project} />
         {error !== null && (
           <div className="warning-banner" role="alert">
             <Icon name="alert" />
             <span>{error}</span>
           </div>
         )}
-        {clones === null ? (
-          <CardsSkeleton label="Loading the clones…" cards={2} />
-        ) : clones.length === 0 ? (
-          <p className="muted">No clones yet. "New clone" copies the repository into this project.</p>
-        ) : (
-          <>
-            <div className="button-row">
-              <button className="soft small" disabled={syncWork !== null} onClick={onCheckRemotes}>
-                <Icon name="sync" /> Check remotes
-              </button>
-              {behind > 0 && (
-                <button className="soft small" disabled={syncWork !== null} onClick={onPullAll}>
-                  <Icon name="download" /> Pull all ({behind})
-                </button>
+        <section className="clones-section" aria-labelledby="clones-heading">
+          <h2 id="clones-heading">Clones</h2>
+          {clones === null ? (
+            <CardsSkeleton label="Loading the clones…" cards={2} />
+          ) : (
+            <>
+              {clones.length > 0 && (
+                <div className="button-row">
+                  <button className="soft small" disabled={syncWork !== null} onClick={onCheckRemotes}>
+                    <Icon name="sync" /> Check remotes
+                  </button>
+                  {behind > 0 && (
+                    <button className="soft small" disabled={syncWork !== null} onClick={onPullAll}>
+                      <Icon name="download" /> Pull all ({behind})
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
-            {syncWork !== null && <ProgressBar label={syncWork} />}
-            <div className="clone-grid">
-              {clones.map((clone) => (
-                <CloneCard
-                  key={clone.path}
-                  clone={clone}
-                  chats={chatsOf(clone)}
-                  stateOf={stateOf}
-                  isWorking={isWorking}
-                  now={now}
-                  onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
-                  onNewChat={() => onNewChat(clone)}
-                  onDelete={() => onDeleteClone(clone)}
-                  pulling={pulling === clone.name}
-                  syncBusy={syncWork !== null}
-                  onPull={() => onPull(clone)}
-                  onPush={() => onPush(clone)}
-                />
-              ))}
-            </div>
-          </>
-        )}
+              {syncWork !== null && <ProgressBar label={syncWork} />}
+              <div className="clone-grid">
+                {clones.map((clone) => (
+                  <CloneCard
+                    key={clone.path}
+                    clone={clone}
+                    chats={chatsOf(clone)}
+                    stateOf={stateOf}
+                    isWorking={isWorking}
+                    now={now}
+                    onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
+                    onNewChat={() => onNewChat(clone)}
+                    onDelete={() => onDeleteClone(clone)}
+                    pulling={pulling === clone.name}
+                    syncBusy={syncWork !== null}
+                    onPull={() => onPull(clone)}
+                    onPush={() => onPush(clone)}
+                  />
+                ))}
+                <NewCloneCard first={clones.length === 0} onNewClone={onNewClone} />
+              </div>
+            </>
+          )}
+        </section>
       </div>
     </>
+  );
+}
+
+/**
+ * What the front matter says, and the quick links: each repository's web page and the project folder
+ * in Files. A repository with no web page, such as a local remote, stays plain text.
+ */
+function ProjectFacts({ project }: { readonly project: Project }): ReactElement {
+  const { created, tags, repos } = project.frontMatter;
+  return (
+    <section className="card project-facts" aria-label="Project facts">
+      {project.description !== null && <p>{project.description}</p>}
+      {(created !== null || tags.length > 0) && (
+        <dl className="chat-facts">
+          {created !== null && (
+            <>
+              <dt>Created</dt>
+              <dd className="mono">{created}</dd>
+            </>
+          )}
+          {tags.length > 0 && (
+            <>
+              <dt>Tags</dt>
+              <dd className="tags">
+                {tags.map((tag) => (
+                  <span key={tag} className="tag">
+                    #{tag}
+                  </span>
+                ))}
+              </dd>
+            </>
+          )}
+        </dl>
+      )}
+      <div className="tags">
+        {repos.map((repo) => {
+          const url = repositoryWebUrl(repo);
+          return url === null ? (
+            <span key={repo} className="mode-chip">
+              <Icon name="globe" /> {repositoryLabel(repo)}
+            </span>
+          ) : (
+            <a key={repo} className="mode-chip link-chip" href={url} target="_blank" rel="noreferrer">
+              <Icon name="globe" /> {repositoryLabel(repo)}
+            </a>
+          );
+        })}
+        {project.vaultFolder !== null && (
+          <a className="mode-chip link-chip" href={fileAddressOf(project.vaultFolder)}>
+            <Icon name="folder" /> Open in Files
+          </a>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The last card of the clones grid. With no clone yet, it says what a clone is. */
+function NewCloneCard({
+  first,
+  onNewClone,
+}: {
+  readonly first: boolean;
+  readonly onNewClone: () => void;
+}): ReactElement {
+  return (
+    <div className="card clone-new">
+      <p className="muted">
+        {first
+          ? "No clones yet. A clone is a copy of the repository where you and Eva work."
+          : "A new clone is another copy of the repository, for work beside the others."}
+      </p>
+      <button className="primary" onClick={onNewClone}>
+        <Icon name="plus" /> New clone
+      </button>
+    </div>
   );
 }
 

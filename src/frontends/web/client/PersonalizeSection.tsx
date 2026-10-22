@@ -242,7 +242,7 @@ function CuesCard(): ReactElement {
         choices={vibrationChoices}
         hint={
           canVibrate()
-            ? "A web page cannot set the strength of a vibration, so Strong vibrates longer."
+            ? "A web page cannot set the strength of a vibration, so Strong vibrates longer. Android does not let a web page vibrate while the phone is on silent."
             : "This browser cannot vibrate. Safari on an iPhone or an iPad never lets a web page vibrate."
         }
         onChange={(vibration) => change({ vibration })}

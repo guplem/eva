@@ -97,14 +97,14 @@ describe("buildQueryOptions", () => {
     expect(options.resume).toBeUndefined();
   });
 
-  test("Assistant mode: Eva's ask rules beat a person's own allow rules for the shell and Eva's tools (issue #51)", () => {
+  test("Assistant mode: Eva's ask rules beat a person's own allow rules and auto mode (issues #51, #428)", () => {
     const server = { command: "uvx", args: [], environment: {} };
     const options = buildQueryOptions(request({ mcpServers: { google: server } }), "/bin/claude");
     // An "ask" rule wins over any "allow" rule, so every such call reaches canUseTool and Eva's approval.
     expect(options.settings).toEqual({
       disableAllHooks: true,
       autoMemoryEnabled: false,
-      permissions: { ask: ["Bash", "mcp__google"] },
+      permissions: { ask: ["Bash", "Edit(./.eva/**)", "mcp__google"] },
     });
   });
 
@@ -903,6 +903,7 @@ describe("ClaudeCodeEngine", () => {
     });
     await drain(engine.runTurn(turnRequest));
     expect(await canUseTool?.("Edit", { file_path: "Methods/A.md" })).toMatchObject({ behavior: "allow" });
+    expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });

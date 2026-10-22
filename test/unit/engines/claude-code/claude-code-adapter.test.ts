@@ -96,7 +96,7 @@ describe("buildQueryOptions", () => {
     expect(options.resume).toBeUndefined();
   });
 
-  test("Assistant mode: Eva's ask rules beat a person's own allow rules for the shell and Eva's tools (issue #51)", () => {
+  test("Assistant mode: Eva's ask rules beat a person's own allow rules and auto mode (issues #51, #428)", () => {
     const server = { command: "uvx", args: [], environment: {} };
     const options = buildQueryOptions(request({ mcpServers: { google: server } }), "/bin/claude");
     // An "ask" rule wins over any "allow" rule, so every such call reaches canUseTool and Eva's approval.
@@ -105,14 +105,6 @@ describe("buildQueryOptions", () => {
       autoMemoryEnabled: false,
       permissions: { ask: ["Bash", "Edit(./.eva/**)", "mcp__google"] },
     });
-  });
-
-  test("Assistant mode: a write in .eva/ reaches Eva's approval, not the auto mode classifier (issue #428)", () => {
-    const options = buildQueryOptions(request(), "/bin/claude");
-    // The classifier skipped a Write to .eva/schedules.json and auto mode failed it, so no schedule existed.
-    // An Edit rule also covers Write.
-    const settings = options.settings as { permissions: { ask: string[] } };
-    expect(settings.permissions.ask).toContain("Edit(./.eva/**)");
   });
 
   test("Assistant mode: Claude Code's auto-memory is off, so a fact lands in the vault (issue #68)", () => {

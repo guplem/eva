@@ -5,6 +5,7 @@ import type {
   EvaStatus,
   EvaVersions,
   InstallableTool,
+  CurrentPlace,
   LatestToolVersion,
   PersonalFactsView,
   ToolInstallResult,
@@ -52,6 +53,8 @@ import type { SessionEvent } from "../../../shared/events.ts";
 export type TemplatePartView = TemplatePart;
 
 export type { PersonalFactsView };
+/** Where the person is, for scripts: a recent point from a phone, or the home place. */
+export type CurrentPlaceView = CurrentPlace;
 
 export type {
   BrowsedPath,
@@ -272,6 +275,9 @@ export const api = {
     request("PUT", "/api/assistant-rules", { version, text }),
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
+  currentPlace: (): Promise<{ place: CurrentPlaceView | null }> => request("GET", "/api/location"),
+  sendLocation: (lat: number, lon: number, accuracy: number | null): Promise<{ saved: boolean }> =>
+    request("POST", "/api/location", { lat, lon, accuracy }),
   /** Answers 409 when no vault is configured. */
   aboutMe: (): Promise<PersonalFactsView> => request("GET", "/api/about-me"),
   /** Answers 409 when no vault is configured. */

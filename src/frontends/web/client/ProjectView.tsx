@@ -543,7 +543,7 @@ export function ProjectView({
         {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}
       </main>
       {/* The inspector is about one chat, so a project page has none. */}
-      {chat !== undefined && panelShown && <ChatPanel {...chatDetails} />}
+      {chat !== undefined && <ChatPanel shown={panelShown} {...chatDetails} />}
     </div>
   );
 }

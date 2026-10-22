@@ -27,12 +27,14 @@ import { TelegramFiles } from "./telegram-files.ts";
 import { splitForTelegram } from "./telegram-format.ts";
 import {
   keyOf,
+  locationThanks,
   receivedFileOf,
   threadOf,
   titleOf,
   topicOf,
   unreadableContentOf,
   type TelegramFile,
+  type TelegramMessage,
   type TelegramUpdate,
 } from "./telegram-messages.ts";
 import { PollHealth, sleepUntilAborted, type TelegramPollState } from "./telegram-poll.ts";
@@ -285,7 +287,7 @@ export class TelegramBot {
       updates = await this.options.api.call<TelegramUpdate[]>("getUpdates", {
         offset: this.state.offset,
         timeout: this.options.pollTimeoutSeconds ?? 30,
-        allowed_updates: ["message", "callback_query"],
+        allowed_updates: ["message", "edited_message", "callback_query"],
       });
     } catch (error) {
       return this.poll.failed(error);
@@ -341,14 +343,38 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Keeps a shared location of the paired person, for scripts such as a weather forecast. False
+   * for a message from anyone else: the location of a stranger must never count as the person's.
+   */
+  private keepLocation(message: TelegramMessage): boolean {
+    const location = message.location;
+    if (location === undefined) return false;
+    if (message.chat.id !== this.allowedChatId || !this.isAllowedSender(message.from?.id)) return false;
+    this.options.eva.saveLocation(
+      { lat: location.latitude, lon: location.longitude, accuracy: location.horizontal_accuracy ?? null },
+      "telegram",
+    );
+    return true;
+  }
+
   private async handle(update: TelegramUpdate): Promise<void> {
     if (update.callback_query !== undefined) {
       await this.handleButton(update.callback_query);
       return;
     }
+    if (update.edited_message?.location !== undefined) {
+      this.keepLocation(update.edited_message);
+      return;
+    }
     const message = update.message;
     if (message === undefined) return;
     const chatId = message.chat.id;
+    // A location from anyone else goes on to the reply that says the bot is private.
+    if (message.location !== undefined && !("venue" in message) && this.keepLocation(message)) {
+      await this.send(chatId, topicOf(message), locationThanks(message));
+      return;
+    }
     const topicId = topicOf(message);
     const text = (message.text ?? message.caption ?? "").trim();
     const file = receivedFileOf(message);

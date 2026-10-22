@@ -73,7 +73,7 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
           {!listed.canChoose && (
             <div className="field-hint">Only the hub computer changes these files. Open its page to choose.</div>
           )}
-          <ul className="device-list" aria-label="Template parts">
+          <ul className="device-list template-parts" aria-label="Template parts">
             {listed.parts.map((part) => {
               const words = partStateWords(part.state);
               const updated = part.state === "current" ? updatedWords(part.updatedAt) : null;
@@ -103,9 +103,11 @@ export function TemplateAlignmentCard({ context }: { readonly context: SettingsC
                     </div>
                   )}
                   {part.state === "missing" && listed.canChoose && (
-                    <button className="ghost" disabled={!canAct} onClick={() => void choose(part, "new")}>
-                      Add it again
-                    </button>
+                    <div className="button-row">
+                      <button className="ghost" disabled={!canAct} onClick={() => void choose(part, "new")}>
+                        Add it again
+                      </button>
+                    </div>
                   )}
                 </li>
               );

@@ -2839,9 +2839,14 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await openSettings(page, "Updates");
   const card = page.getByRole("region", { name: "Versions" });
   await expect(card).toContainText("(0.3.0 available)");
-  await card.getByRole("button", { name: "Update" }).first().click();
+  const update = card.getByRole("button", { name: "Update" }).first();
+  await update.click();
   const dialog = page.getByRole("dialog", { name: "Update to a version" });
   await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  // Focus goes back to the button that opened the dialog.
+  await expect(update).toBeFocused();
 });
 
 test("Settings: the changelog lists each release with its own changes", async ({ page }) => {
@@ -2872,6 +2877,21 @@ test("Settings: the changelog lists each release with its own changes", async ({
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Changelog" })).toBeFocused();
+});
+
+test("Settings: the changelog says why it cannot read the releases", async ({ page }) => {
+  await page.route("**/api/update/changelog", async (route) => {
+    await route.fulfill({
+      status: 502,
+      json: { error: "GitHub answered 403 for the list of releases.", code: "update_failed" },
+    });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  await page.getByRole("region", { name: "Eva updates" }).getByRole("button", { name: "Changelog" }).click();
+  await expect(page.getByRole("dialog", { name: "Changelog" }).getByRole("status")).toContainText(
+    "GitHub answered 403 for the list of releases.",
+  );
 });
 
 test("Settings: the update choices are chips, and the major update policy shows a warning", async ({ page }) => {

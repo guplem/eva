@@ -51,6 +51,9 @@ interface EvaUpdate {
   readonly setUpdate: (update: UpdateStatus | null) => void;
   readonly pickingVersion: boolean;
   readonly setPickingVersion: (picking: boolean) => void;
+  /** True while the request to update runs. It ends only after the download. */
+  readonly posting: boolean;
+  readonly setPosting: (posting: boolean) => void;
   /** Checks first, so the dialog lists the releases of now. */
   readonly openVersions: () => Promise<void>;
 }
@@ -58,11 +61,12 @@ interface EvaUpdate {
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [pickingVersion, setPickingVersion] = useState(false);
+  const [posting, setPosting] = useState(false);
   const openVersions = async (): Promise<void> => {
     setUpdate(await api.checkForUpdate());
     setPickingVersion(true);
   };
-  const eva: EvaUpdate = { update, setUpdate, pickingVersion, setPickingVersion, openVersions };
+  const eva: EvaUpdate = { update, setUpdate, pickingVersion, setPickingVersion, posting, setPosting, openVersions };
   return (
     <>
       <VersionsCard eva={eva} />
@@ -177,6 +181,7 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   };
 
   const openVersions = async (): Promise<void> => {
+    if (openingVersions) return;
     setNote(null);
     setOpeningVersions(true);
     try {
@@ -202,11 +207,14 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
         <dl className="facts">
           <dt>Eva</dt>
           <dd className={newestEva === null ? undefined : "fact-with-action"}>
-            {newestEva === null ? versions.eva : `${versions.eva} (${newestEva} available)`}
+            {/* The status follows a restart into a new version. The list of versions is read once. */}
+            {newestEva === null
+              ? (eva.update?.current ?? versions.eva)
+              : `${eva.update?.current ?? versions.eva} (${newestEva} available)`}
             {newestEva !== null && (
               <button
                 className="primary small"
-                disabled={openingVersions || eva.update?.phase !== "idle"}
+                disabled={eva.posting || eva.update?.phase !== "idle"}
                 onClick={() => void openVersions()}
               >
                 {openingVersions ? "Checking…" : "Update"}
@@ -317,12 +325,10 @@ function EvaUpdatesCard({
   readonly eva: EvaUpdate;
 }): ReactElement {
   const config = context.settings.config;
-  const { update, setUpdate, pickingVersion, setPickingVersion } = eva;
+  const { update, setUpdate, pickingVersion, setPickingVersion, posting, setPosting } = eva;
   const [note, setNote] = useState<string | null>(null);
   /** The sentence of a wait that this page started, such as a check. */
   const [work, setWork] = useState<string | null>(null);
-  /** True while the request to update runs. It ends only after the download. */
-  const [posting, setPosting] = useState(false);
   /** Counts the failed status reads, so a failed read asks again. */
   const [readFailures, setReadFailures] = useState(0);
   const [showingChangelog, setShowingChangelog] = useState(false);
@@ -486,9 +492,7 @@ function EvaUpdatesCard({
         <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>
           Update to a version…
         </button>
-        <button className="ghost" onClick={() => setShowingChangelog(true)}>
-          Changelog
-        </button>
+        <button onClick={() => setShowingChangelog(true)}>Changelog</button>
       </div>
       {update?.kind === "source" && (
         <div className="field-hint">This Eva runs from a git checkout, so she follows the main branch.</div>

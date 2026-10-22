@@ -169,6 +169,21 @@ describe("discoverProjects", () => {
     ]);
   });
 
+  test("gives the vault folder of a vault project only, so the Files page can open it", () => {
+    addProject("2025-03-02-1015-example-app", "status: active");
+    const extra = join(vault, "elsewhere");
+    mkdirSync(join(extra, "2026-01-01-0000-outside"), { recursive: true });
+    writeFileSync(join(extra, "2026-01-01-0000-outside", "AGENTS.md"), "---\nstatus: idea\n---\n");
+    const folders = discoverProjects({ vaultPath: vault, extraRoots: [extra] }).map((project) => [
+      project.id,
+      project.vaultFolder,
+    ]);
+    expect(folders).toEqual([
+      ["2025-03-02-1015-example-app", "Projects/2025-03-02-1015-example-app"],
+      ["2026-01-01-0000-outside", null],
+    ]);
+  });
+
   test("a vault with no Projects folder has no projects", () => {
     expect(discoverProjects({ vaultPath: vault, extraRoots: [join(vault, "missing")] })).toEqual([]);
   });

@@ -33,6 +33,11 @@ export interface Project {
   readonly title: string;
   /** The first paragraph after the title, in one line. */
   readonly description: string | null;
+  /**
+   * The folder in the vault, such as `Projects/<id>`. Null for a project in an extra root: the Files
+   * page shows only the vault.
+   */
+  readonly vaultFolder: string | null;
   /** The names of the clone folders in `repos/`, so a page can match chats to clones. */
   readonly clones: readonly string[];
   readonly warnings: readonly string[];
@@ -83,12 +88,13 @@ export interface DiscoveryOptions {
 
 /** Every project of the vault's `Projects/` folder and of the extra roots. */
 export function discoverProjects(options: DiscoveryOptions): Project[] {
-  const roots = [join(options.vaultPath, "Projects"), ...options.extraRoots];
+  const vaultRoot = join(options.vaultPath, "Projects");
+  const roots = [vaultRoot, ...options.extraRoots];
   const projects: Project[] = [];
   for (const root of roots) {
     if (!existsSync(root)) continue;
     for (const name of readdirSync(root)) {
-      const project = readProject(join(root, name), name);
+      const project = readProject(join(root, name), name, root === vaultRoot ? `Projects/${name}` : null);
       if (project !== null) projects.push(project);
     }
   }
@@ -148,7 +154,7 @@ export function searchProjects(projects: readonly Project[], query: ProjectQuery
     .sort((first, second) => second.id.localeCompare(first.id));
 }
 
-function readProject(path: string, name: string): Project | null {
+function readProject(path: string, name: string, vaultFolder: string | null): Project | null {
   const parsedId = parseProjectId(name);
   if (parsedId === null) return null;
   const agentsFile = join(path, "AGENTS.md");
@@ -165,6 +171,7 @@ function readProject(path: string, name: string): Project | null {
   return {
     id: name,
     path,
+    vaultFolder,
     parsedId,
     frontMatter,
     title: readTitle(text) ?? parsedId.slug,

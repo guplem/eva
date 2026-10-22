@@ -44,11 +44,53 @@ export function changesPill(changes: number | null): Pill | null {
 
 /** A repository URL without its scheme, user and `.git`: short enough for a chip, and no token shows. */
 export function repositoryLabel(url: string): string {
-  return url
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-    .replace(/^[^@/]+@/, "")
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
+  // A query can hold a token too, so it goes before the chip shows the rest.
+  const rest = url.slice(scheme?.[0].length ?? 0).replace(/[?#].*$/, "");
+  // A password can hold an `@` or a `/`. So after a scheme, the user part ends at the last `@` that
+  // a host and a path follow. An `@` with no `/` after it is in the path, such as `repo@v2`.
+  const tail = rest.slice(rest.lastIndexOf("@") + 1);
+  const withoutUser =
+    scheme !== null && rest.includes("@") && tail.includes("/") ? tail : rest.replace(/^[^/\\]*@/, "");
+  return withoutUser.replace(/\/+$/, "").replace(/\.git$/, "");
+}
+
+/**
+ * The web page of a hosted repository, such as `https://github.com/example/example-app`, or null for
+ * a local path or an address that Eva cannot read. An SSH address has no web page of its own, so the
+ * link guesses the host's HTTPS page, without the SSH port.
+ */
+export function repositoryWebUrl(url: string): string | null {
+  const address = url.trim();
+  // `git@host:owner/repo`.
+  const scp = /^[^@/\s]+@([^:/\s]+):\/*([^@\s\\]+)$/.exec(address);
+  // `scheme://user@host:port/owner/repo`. A user part with a slash is a broken address, so it never matches.
+  const full = /^([a-z][a-z0-9+.-]*):\/\/(?:[^/@\s]*@)*([^/:@\s]+)(:\d+)?\/+([^@\s\\]+)$/i.exec(address);
+  // `host/owner/repo`, with no scheme.
+  const bare = /^([^/:@\s]+)\/+([^@\s\\]+)$/.exec(address);
+  let scheme = "https";
+  let host: string;
+  let port = "";
+  let path: string;
+  if (scp !== null) {
+    [host, path] = [scp[1] ?? "", scp[2] ?? ""];
+  } else if (full !== null) {
+    const given = (full[1] ?? "").toLowerCase();
+    if (given === "http" || given === "https") [scheme, port] = [given, full[3] ?? ""];
+    else if (!["ssh", "git", "git+ssh"].includes(given)) return null;
+    [host, path] = [full[2] ?? "", full[4] ?? ""];
+  } else if (bare !== null) {
+    [host, path] = [bare[1] ?? "", bare[2] ?? ""];
+  } else {
+    return null;
+  }
+  // A host has a dot, such as `github.com`, so a local name such as `example-app` gives no link.
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host)) return null;
+  const tidy = path
+    .replace(/[?#].*$/, "")
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
+  return tidy === "" ? null : `${scheme}://${host}${port}/${tidy}`;
 }
 
 /** "Projects/2026-10-12-0930-example-app": the place in the vault, without the path of the computer. */

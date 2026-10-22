@@ -158,6 +158,10 @@ export function playCue(cue: Cue, levels: CueLevels = current, devices: CueDevic
   try {
     const pattern = vibrationPattern(cue, levels.vibration);
     if (pattern.length > 0) devices.vibrate?.(pattern);
+  } catch {
+    // A broken vibration must not silence the sound.
+  }
+  try {
     const gain = soundGains[levels.sound];
     if (gain === 0) return;
     const audio = devices.audio();
@@ -208,7 +212,8 @@ const browserDevices: CueDevices = {
     typeof navigator !== "undefined" && typeof navigator.vibrate === "function"
       ? (pattern) => {
           // Before the first touch, Chrome refuses the vibration and logs an error.
-          if (navigator.userActivation.hasBeenActive) navigator.vibrate(pattern);
+          // An older browser, such as Firefox before 120, has no `userActivation`: it simply tries.
+          if (!("userActivation" in navigator) || navigator.userActivation.hasBeenActive) navigator.vibrate(pattern);
         }
       : undefined,
 };

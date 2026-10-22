@@ -186,6 +186,18 @@ describe("playCue", () => {
     expect(() => playCue("tap", defaultCueLevels, broken)).not.toThrow();
   });
 
+  test("a broken vibration does not silence the sound", () => {
+    const sound = fakeAudio();
+    const devices: CueDevices = {
+      audio: () => sound.audio,
+      vibrate: () => {
+        throw new TypeError("no userActivation");
+      },
+    };
+    playCue("answer", { sound: "normal", vibration: "light" }, devices);
+    expect(sound.pitches.length).toBeGreaterThan(0);
+  });
+
   test("the browser's own devices play without an error", () => {
     expect(() => playCue("tap")).not.toThrow();
   });

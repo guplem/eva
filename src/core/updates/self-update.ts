@@ -18,6 +18,7 @@ import {
   signedVersion,
   verifyChecksumsSignature,
 } from "./release-verification.ts";
+import type { ReleaseInfo } from "./release-policy.ts";
 import type { UpdateChannel, UpdateDownload } from "./updater.ts";
 import { isNewerVersion } from "./version-order.ts";
 
@@ -35,6 +36,9 @@ export interface UpdateInputs {
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
 }
+
+/** Where the releases live. A test points it at a fake server. */
+export type ReleaseSource = Pick<UpdateInputs, "apiBaseUrl" | "repository">;
 
 export type UpdateResult =
   | { readonly status: "up_to_date"; readonly version: string }
@@ -117,17 +121,13 @@ export function executableUpdateChannel(inputs: UpdateInputs): UpdateChannel {
   return {
     kind: "executable",
     async check() {
-      const releases = await publishedReleases(inputs);
-      const newer = releases.filter((release) => isNewerVersion(release.tag_name, inputs.currentVersion));
+      const releases = await publishedReleaseNotes(inputs);
+      const newer = releases.filter((release) => isNewerVersion(release.version, inputs.currentVersion));
       return {
         current: inputs.currentVersion,
-        latest: releases[0] === undefined ? inputs.currentVersion : versionOf(releases[0]),
+        latest: releases[0]?.version ?? inputs.currentVersion,
         available: newer.length > 0,
-        releases: newer.map((release) => ({
-          version: versionOf(release),
-          notes: release.body ?? "",
-          publishedAt: release.published_at ?? null,
-        })),
+        releases: newer,
       };
     },
     async apply(version, onDownload) {
@@ -143,8 +143,17 @@ function versionOf(release: Release): string {
   return release.tag_name.replace(/^v/, "");
 }
 
+/** Every published release with its notes, newest first, for the changelog. */
+export async function publishedReleaseNotes(inputs: ReleaseSource): Promise<ReleaseInfo[]> {
+  return (await publishedReleases(inputs)).map((release) => ({
+    version: versionOf(release),
+    notes: release.body ?? "",
+    publishedAt: release.published_at ?? null,
+  }));
+}
+
 /** The published releases, newest first: never a draft or a pre-release. */
-async function publishedReleases(inputs: UpdateInputs): Promise<Release[]> {
+async function publishedReleases(inputs: ReleaseSource): Promise<Release[]> {
   // One page of 100 holds months of releases; an older one is too old to pick by hand.
   const url = `${inputs.apiBaseUrl ?? "https://api.github.com"}/repos/${inputs.repository ?? evaRepository}/releases?per_page=100`;
   let response: Response;

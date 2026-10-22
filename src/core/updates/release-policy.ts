@@ -135,18 +135,46 @@ export function releaseSummary(releases: readonly ReleaseInfo[]): string {
   return parts.length === 0 ? "No listed changes." : parts.join("\n\n");
 }
 
+/** The changes of one release. Each line of one release needs no version mark. */
+function releaseChanges(release: ReleaseInfo): string {
+  const versionMark = ` (${release.version})`;
+  return releaseSummary([release])
+    .split("\n")
+    .map((line) => (line.startsWith("• ") && line.endsWith(versionMark) ? line.slice(0, -versionMark.length) : line))
+    .join("\n");
+}
+
+/** One release in the changelog. */
+export interface ChangelogEntry {
+  readonly version: string;
+  readonly publishedAt: string | null;
+  readonly headline: string | null;
+  readonly changes: string;
+  /** True for the version that runs now. */
+  readonly installed: boolean;
+}
+
+/** The changelog: each release with its own changes, in the order given. */
+export function changelogEntries(releases: readonly ReleaseInfo[], current: string): ChangelogEntry[] {
+  return releases.map((release) => ({
+    version: release.version,
+    publishedAt: release.publishedAt ?? null,
+    headline: releaseHeadline(release),
+    changes: releaseChanges(release),
+    installed: release.version === current,
+  }));
+}
+
 /**
  * The first change of one release as a sentence for a list row, breaking changes first. A row
  * has room for one line. Drop the commit type and the pull request number.
  */
 function releaseHeadline(release: ReleaseInfo): string | null {
-  const first = releaseSummary([release])
+  const first = releaseChanges(release)
     .split("\n")
     .find((line) => line.startsWith("• "));
   if (first === undefined) return null;
-  const versionMark = ` (${release.version})`;
-  const line = first.slice(2);
-  const change = (line.endsWith(versionMark) ? line.slice(0, -versionMark.length) : line).replace(/ \(#\d+\)$/, "");
+  const change = first.slice(2).replace(/ \(#\d+\)$/, "");
   // Only a known commit type goes: a hand-written line such as a link keeps its first word.
   const text = (isConventionalSubject(change) ? change.replace(/^\w+(\([^)]*\))?!?:\s*/, "") : change).trim();
   if (text === "") return null;

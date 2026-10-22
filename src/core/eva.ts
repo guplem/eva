@@ -152,6 +152,8 @@ import {
   type VoicePart,
 } from "./engine-install/voice-install.ts";
 import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.ts";
+import { changelogEntries, type ChangelogEntry } from "./updates/release-policy.ts";
+import { publishedReleaseNotes } from "./updates/self-update.ts";
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
@@ -352,6 +354,8 @@ const latestToolKeepMs = 60 * 60_000;
 /** A failure, such as GitHub's rate limit, waits too, so each page open does not use up the limit. */
 const latestToolFailureKeepMs = 10 * 60_000;
 const maxLogEntries = 100;
+/** About a month of releases. A phone scrolls a longer list for nothing. */
+const changelogLength = 30;
 
 export class Eva {
   readonly sessions: SessionManager;
@@ -377,6 +381,8 @@ export class Eva {
   private toolInstallRuns: boolean;
   /** The lookup of each latest tool version, and when it started. A running lookup is shared. */
   private readonly latestToolCache: Map<string, { readonly lookup: Promise<string | null>; readonly at: number }>;
+  /** The changelog, kept as the latest tool versions are, so each dialog open does not use up GitHub's limit. */
+  private changelogCache: { readonly lookup: Promise<ChangelogEntry[] | EvaError>; readonly at: number } | null;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -516,6 +522,7 @@ export class Eva {
     this.githubCliChanges = Promise.resolve();
     this.toolInstallRuns = false;
     this.latestToolCache = new Map();
+    this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
       sleep: (ms) => Bun.sleep(ms),
@@ -827,6 +834,30 @@ export class Eva {
     const status = (await this.updater?.updateNow(version)) ?? null;
     this.noticeUpdateState();
     return status;
+  }
+
+  /** The newest releases with what each one changed, also for a source checkout. */
+  async changelog(): Promise<ChangelogEntry[]> {
+    const now = this.options.now().getTime();
+    const kept = this.changelogCache;
+    if (kept !== null) {
+      const found = await kept.lookup;
+      if (now - kept.at < (found instanceof EvaError ? latestToolFailureKeepMs : latestToolKeepMs)) {
+        if (found instanceof EvaError) throw found;
+        return found;
+      }
+    }
+    const lookup = publishedReleaseNotes(
+      this.options.githubApiBaseUrl === undefined ? {} : { apiBaseUrl: this.options.githubApiBaseUrl },
+    ).then(
+      (releases) => changelogEntries(releases.slice(0, changelogLength), evaVersion),
+      (error: unknown) =>
+        error instanceof EvaError ? error : new EvaError("update_failed", "GitHub gave no list of releases."),
+    );
+    this.changelogCache = { lookup, at: now };
+    const found = await lookup;
+    if (found instanceof EvaError) throw found;
+    return found;
   }
 
   engineUpdateStatus(): EngineUpdateStatus | null {

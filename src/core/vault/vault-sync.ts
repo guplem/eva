@@ -477,7 +477,7 @@ export class VaultSync {
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .join(" ");
-    this.update({ status: "error", lastError: `git ${name} failed: ${reason}` });
+    this.update({ status: "error", lastError: `git ${name} failed: ${reason.slice(0, 500)}` });
     return false;
   }
 
@@ -539,7 +539,7 @@ export class VaultSync {
     const toAdd = kept.filter((path) => !stagedSources.has(path));
     const add = toAdd.length === 0 ? null : await this.git(["add", "-A", "--", ...toAdd], localTimeoutMs);
     if (add !== null && add.exitCode !== 0) {
-      this.update({ status: "error", lastError: `git add failed: ${add.stderr.trim()}` });
+      this.update({ status: "error", lastError: `git add failed: ${failureReason(add, "git")}` });
       return false;
     }
     const plural = kept.length === 1 ? "file" : "files";
@@ -552,7 +552,7 @@ export class VaultSync {
       localTimeoutMs,
     );
     if (commit.exitCode !== 0) {
-      this.update({ status: "error", lastError: `git commit failed: ${commit.stderr.trim()}` });
+      this.update({ status: "error", lastError: `git commit failed: ${failureReason(commit, "git")}` });
       return false;
     }
     this.update({ lastCommitAt: this.options.now() });
@@ -566,7 +566,7 @@ export class VaultSync {
       if (fetched.exitCode !== 0) {
         this.update({
           status: "offline",
-          lastError: `Could not reach the remote: ${firstLine(fetched)} The notes are committed here.`,
+          lastError: `The notes are committed here, but Eva could not reach the remote: ${firstLine(fetched)}`,
         });
         return;
       }

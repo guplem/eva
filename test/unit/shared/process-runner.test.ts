@@ -67,7 +67,8 @@ describe("failureReason", () => {
     );
   });
 
-  test("keeps a long output short", () => {
-    expect(failureReason({ exitCode: 1, stdout: "", stderr: "x".repeat(2000) }, "git").length).toBeLessThanOrEqual(500);
+  test("keeps the whole error output, but a long normal output short", () => {
+    expect(failureReason({ exitCode: 1, stdout: "", stderr: "x".repeat(2000) }, "git")).toHaveLength(2000);
+    expect(failureReason({ exitCode: 1, stdout: "x".repeat(2000), stderr: "" }, "git").length).toBeLessThan(600);
   });
 });

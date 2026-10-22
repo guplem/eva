@@ -23,8 +23,8 @@ export interface ProcessRunner {
   run(command: readonly string[], options: ProcessRunOptions): Promise<ProcessResult>;
 }
 
-/** The longest reason, so that a message stays readable on a phone. */
-const maxReasonLength = 500;
+/** The longest normal output in a reason: a command can print a lot, and a phone shows little. */
+const maxOutputLength = 500;
 
 /**
  * Why a command failed: its error output, or else its exit code and its normal output.
@@ -32,10 +32,10 @@ const maxReasonLength = 500;
  */
 export function failureReason(result: ProcessResult, program: string): string {
   const errorOutput = result.stderr.trim();
-  if (errorOutput !== "") return errorOutput.slice(0, maxReasonLength);
-  const output = result.stdout.trim();
+  if (errorOutput !== "") return errorOutput;
+  const output = result.stdout.trim().slice(0, maxOutputLength);
   const reason = `${program} ended with exit code ${String(result.exitCode)} and wrote no error.`;
-  return (output === "" ? reason : `${reason} Its output: ${output}`).slice(0, maxReasonLength);
+  return output === "" ? reason : `${reason} Its output: ${output}`;
 }
 
 /** After a gentle stop, the time a process gets before the hard stop. */

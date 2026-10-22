@@ -284,7 +284,7 @@ export class SessionManager {
     if (seenTurns === session.seenTurns) return session;
     const updated = { ...session, seenTurns };
     this.options.store.save(updated);
-    // Every device shows the chat as read, not only the one where the person opened it.
+    // Every device shows the chat as seen, not only the one where the person opened it.
     this.emit(sessionId, { kind: "session_seen", seenTurns });
     return updated;
   }

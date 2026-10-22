@@ -108,7 +108,8 @@ export function AssistantView({
   };
   // A fork opens as a branch of its first chat, which holds the archive flag.
   const linkedId = linkedChat?.mode === "assistant" ? rootIdOf(linkedChat, sessions) : null;
-  const linkedArchived = roots.some((chat) => chat.id === linkedId && chat.archived);
+  // A link can come before the list, so the linked record itself answers until then.
+  const linkedArchived = (sessions.find((chat) => chat.id === linkedId) ?? linkedChat)?.archived === true;
   const actionRequest = useChatActionRequest();
   const clearAction = actionRequest.clear;
 
@@ -199,7 +200,8 @@ export function AssistantView({
           ))}
           {!showArchived && archivedCount > 0 && (
             <button className="ghost archived-link" onClick={() => showList(true)}>
-              <Icon name="archive" /> Archived chats ({archivedCount})
+              {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
+              <Icon name="archive" /> Archived ({archivedCount})
             </button>
           )}
         </div>

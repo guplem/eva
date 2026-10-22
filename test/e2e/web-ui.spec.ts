@@ -336,7 +336,7 @@ test("Archive moves a chat to the archived list, where it opens, and Unarchive b
   await expect(listed).toHaveCount(0);
 
   // The list stays open, so a phone can archive the next chat at once.
-  await nav.getByRole("button", { name: /^Archived chats/ }).click();
+  await nav.getByRole("button", { name: /^Archived \(/ }).click();
   await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
   await expect(listed).toHaveCount(1);
   // The search covers the archived list too.

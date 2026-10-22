@@ -35,7 +35,8 @@ import {
 } from "./live-state.ts";
 import { AccountRefusedView, LoginView } from "./LoginView.tsx";
 import { MainNav } from "./MainNav.tsx";
-import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import { addressOf, chatsTapAgain, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
+import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
@@ -92,6 +93,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /** The request that the person just allowed. Its notice stays a moment, with the delighted face. */
   const [allowedDevice, setAllowedDevice] = useState<DeviceLoginRequest | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  /** Counts the taps on Chats while Chats is open. Each one opens a new chat on a computer. */
+  const [newChatRequest, setNewChatRequest] = useState(0);
+  const isPhone = useIsPhone();
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
   const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
@@ -142,6 +146,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     setSidebarOpen(false);
     if (window.location.hash === addressOf(destination)) setScreen(destination);
     else window.location.hash = addressOf(destination);
+  };
+
+  /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */
+  const openFromNav = (destination: Destination): void => {
+    if (destination !== "chats" || screen !== "chats") {
+      openDestination(destination);
+      return;
+    }
+    if (chatsTapAgain(isPhone) === "show-list") setSidebarOpen(true);
+    else setNewChatRequest((count) => count + 1);
   };
 
   // A waiting card is also a problem, so both come back together.
@@ -462,7 +476,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
       <MainNav
         current={screen}
-        onOpen={openDestination}
+        onOpen={openFromNav}
         approvals={approvals.length}
         setupMissing={setupMissing}
         isConnected={isConnected}
@@ -483,6 +497,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             onShowList={() => setSidebarOpen(true)}
             onChanged={refreshSessions}
             onNavigate={() => setSidebarOpen(false)}
+            newChatRequest={newChatRequest}
             linkedChat={linkedChat}
             onLinkedChatOpened={onLinkedChatOpened}
             notices={notices}

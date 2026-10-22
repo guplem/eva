@@ -5,8 +5,15 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
-import { errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
+import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
 import { ProgressBar } from "./Loading.tsx";
+
+type Path = "existing" | "new";
+
+const pathChoices: readonly { value: Path; label: string; icon: "download" | "plus" }[] = [
+  { value: "existing", label: "I have a vault on GitHub", icon: "download" },
+  { value: "new", label: "Start a new vault", icon: "plus" },
+];
 
 type Listing =
   | { readonly state: "loading" }
@@ -18,6 +25,8 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
   /** Which action runs now, so a second click never starts a second clone. */
   const [busy, setBusy] = useState<"clone" | "create" | null>(null);
   const [pasteToken, setPasteToken] = useState(false);
+  // The two paths ask for different things, so the page shows only the chosen one.
+  const [path, setPath] = useState<Path>("existing");
 
   const run = async (kind: "clone" | "create", work: () => Promise<VaultSetupResult>): Promise<void> => {
     setBusy(kind);
@@ -39,7 +48,14 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
 
   return (
     <>
-      {hasToken ? (
+      <ChoiceChips label="Do you already have a vault?" value={path} choices={pathChoices} onChange={setPath} />
+      {path === "new" ? (
+        <NewVault
+          busy={busy}
+          hasToken={hasToken}
+          onCreate={(answers) => void run("create", () => api.createVault(answers))}
+        />
+      ) : hasToken ? (
         <PickRepository
           context={context}
           busy={busy}
@@ -47,8 +63,10 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
         />
       ) : (
         <div className="vault-choice">
-          <h3>Use your vault from GitHub</h3>
-          <p className="field-hint">Log in to GitHub first, so that Eva can list your repositories.</p>
+          <p className="field-hint">
+            Eva copies a vault that you made before, for example on another computer. Log in to GitHub first, so that
+            Eva can list your repositories.
+          </p>
           <GitHubLogin context={context} />
           {!pasteToken ? (
             <button className="link-button" onClick={() => setPasteToken(true)}>
@@ -72,11 +90,6 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
           )}
         </div>
       )}
-      <NewVault
-        busy={busy}
-        hasToken={hasToken}
-        onCreate={(answers) => void run("create", () => api.createVault(answers))}
-      />
     </>
   );
 }
@@ -111,7 +124,9 @@ function PickRepository({
   const repository = typed.trim() !== "" ? typed.trim() : picked;
   return (
     <div className="vault-choice">
-      <h3>Use your vault from GitHub</h3>
+      <p className="field-hint">
+        Eva copies a vault that you made before, for example on another computer. Pick its repository.
+      </p>
       {listing.state === "loading" && <ProgressBar label="Reading your GitHub repositories…" />}
       {listing.state === "failed" && (
         <div className="callout danger callout-action">
@@ -181,9 +196,8 @@ function NewVault({
   };
   return (
     <div className="vault-choice">
-      <h3>Or create a new vault</h3>
       <p className="field-hint">
-        Eva starts a vault from her template.
+        Eva starts an empty vault from her template, with a few answers about you.
         {hasToken
           ? " She keeps it in a new private repository on your GitHub account."
           : " With a GitHub login, she also keeps it in a new private repository."}

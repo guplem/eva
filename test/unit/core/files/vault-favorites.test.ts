@@ -52,6 +52,19 @@ describe("readFavorites", () => {
     ]);
   });
 
+  test("a favorite project folder has the title of its AGENTS.md (issue 429)", () => {
+    write("Projects/2025-03-02-1015-example-app/AGENTS.md", "---\ncreated: 2025-03-02T10:15\n---\n# Example app\n");
+    write(".eva/favorites.json", JSON.stringify({ version: 1, paths: ["Projects/2025-03-02-1015-example-app"] }));
+    expect(readFavorites(vault)).toEqual([
+      {
+        path: "Projects/2025-03-02-1015-example-app",
+        name: "2025-03-02-1015-example-app",
+        kind: "folder",
+        title: "Example app",
+      },
+    ]);
+  });
+
   test("a path out of the vault or into git data counts as missing, so it never opens", () => {
     write(".eva/favorites.json", JSON.stringify({ version: 1, paths: ["../outside", ".git/config"] }));
     expect(readFavorites(vault).map((favorite) => favorite.kind)).toEqual(["missing", "missing"]);

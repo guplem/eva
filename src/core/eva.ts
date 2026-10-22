@@ -827,6 +827,19 @@ export class Eva {
   }
 
   /**
+   * A check for the Versions page, as fresh as the latest tool versions. The automatic check
+   * can be a week old or off, but the page must show a new Eva as it shows a new tool.
+   */
+  async checkForUpdateIfStale(): Promise<UpdateStatus | null> {
+    const status = this.updateStatus();
+    if (status === null) return null;
+    const keepMs = status.failedStep === "check" ? latestToolFailureKeepMs : latestToolKeepMs;
+    const checkedAt = status.lastCheckAt === null ? null : Date.parse(status.lastCheckAt);
+    if (checkedAt !== null && this.options.now().getTime() - checkedAt < keepMs) return status;
+    return this.checkForUpdate();
+  }
+
+  /**
    * Installs `version`, or the newest one that the policy allows, as soon as no chat runs a turn,
    * then restarts. Throws for a version that is not a newer release.
    */

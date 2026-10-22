@@ -8,7 +8,7 @@ import { basename, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { assertVaultWritable } from "../migrations/migrations.ts";
-import { normalizedPath, resolveInVault } from "./file-browser.ts";
+import { normalizedPath, projectTitleIn, resolveInVault } from "./file-browser.ts";
 
 export interface Favorite {
   /** A forward-slash path from the vault root. */
@@ -16,6 +16,8 @@ export interface Favorite {
   readonly name: string;
   /** "missing" is a favorite that was moved or deleted. It stays, so the person can remove it. */
   readonly kind: "folder" | "file" | "missing";
+  /** The project title, for a project folder in `Projects/` only, as `FileEntry` has it. */
+  readonly title?: string;
 }
 
 export const favoritesFormatVersion = 1;
@@ -84,9 +86,12 @@ function storedPaths(vaultPath: string): string[] {
 function describe(vaultPath: string, path: string): Favorite {
   const name = basename(path);
   try {
-    const { resolved } = resolveInVault(vaultPath, path);
+    const { root, resolved } = resolveInVault(vaultPath, path);
     const stats = statSync(resolved);
-    if (stats.isDirectory()) return { path, name, kind: "folder" };
+    if (stats.isDirectory()) {
+      const title = projectTitleIn(root, join(root, path));
+      return title === null ? { path, name, kind: "folder" } : { path, name, kind: "folder", title };
+    }
     if (stats.isFile()) return { path, name, kind: "file" };
   } catch {
     // Moved, deleted, or out of the vault: the page shows it as missing.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addressOf,
+  chatsTapAgain,
   destinations,
   destinationOf,
   linkedChatIdOf,
@@ -51,5 +52,15 @@ describe("linkedChatIdOf", () => {
     expect(linkedChatIdOf("#/chats")).toBeNull();
     expect(linkedChatIdOf("#/chat/")).toBeNull();
     expect(linkedChatIdOf("#/chat/a/b")).toBeNull();
+  });
+});
+
+describe("chatsTapAgain", () => {
+  test("a phone shows the hidden chat list", () => {
+    expect(chatsTapAgain(true)).toBe("show-list");
+  });
+
+  test("a computer always shows the list, so it opens a new chat", () => {
+    expect(chatsTapAgain(false)).toBe("new-chat");
   });
 });

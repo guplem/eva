@@ -1935,6 +1935,7 @@ describe("the vault step", () => {
 describe("an Eva with an update channel", () => {
   test("the API checks, then installs", async () => {
     const restarts: string[] = [];
+    let checks = 0;
     const updating = new Eva({
       paths: homePaths(home),
       config: { ...defaultConfig, vaultPath: null },
@@ -1946,7 +1947,10 @@ describe("an Eva with an update channel", () => {
       basePrompt: "Base.",
       updateChannel: {
         kind: "executable",
-        check: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null }),
+        check: () => {
+          checks += 1;
+          return Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: null });
+        },
         apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: null }),
       },
       restartForUpdate: () => restarts.push("restart"),
@@ -1961,7 +1965,17 @@ describe("an Eva with an update channel", () => {
     try {
       const post = (path: string): Promise<Response> =>
         fetch(`${updatingApi.url}${path}`, { method: "POST", headers: headers(), body: "{}" });
+      const checkIfStale = (): Promise<Response> =>
+        fetch(`${updatingApi.url}/api/update/check`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ ifStale: true }),
+        });
+      expect(await json<unknown>(await checkIfStale())).toMatchObject({ available: true, latest: "0.2.0" });
       expect(await json<unknown>(await post("/api/update/check"))).toMatchObject({ available: true, latest: "0.2.0" });
+      // The check just ran, so a page that opens now gets its answer without a new one.
+      await checkIfStale();
+      expect(checks).toBe(2);
       expect(await json<unknown>(await post("/api/update"))).toMatchObject({ phase: "restarting" });
       expect(restarts).toEqual(["restart"]);
     } finally {

@@ -82,6 +82,9 @@ describe("repositoryLabel", () => {
     expect(repositoryLabel("https://user:to@ken@github.com/example/example-app")).toBe(
       "github.com/example/example-app",
     );
+    expect(repositoryLabel("https://user:to/ken@github.com/example/example-app")).toBe(
+      "github.com/example/example-app",
+    );
   });
 });
 
@@ -105,6 +108,9 @@ describe("repositoryWebUrl", () => {
       "http://git.example.com/example/example-app",
     );
     expect(repositoryWebUrl("git@github.com:/example/example-app.git")).toBe("https://github.com/example/example-app");
+    expect(repositoryWebUrl("git@github.com:example/example-app.git#readme")).toBe(
+      "https://github.com/example/example-app",
+    );
     expect(repositoryWebUrl("  https://github.com/example/example-app  ")).toBe(
       "https://github.com/example/example-app",
     );

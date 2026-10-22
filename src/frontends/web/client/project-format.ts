@@ -44,11 +44,11 @@ export function changesPill(changes: number | null): Pill | null {
 
 /** A repository URL without its scheme, user and `.git`: short enough for a chip, and no token shows. */
 export function repositoryLabel(url: string): string {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
+  const rest = url.slice(scheme?.[0].length ?? 0);
   return (
-    url
-      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-      // Up to the last `@` of the user part: a password can hold an `@` too.
-      .replace(/^[^/\\]*@/, "")
+    // After a scheme, all up to the last `@` is the user part: a password can hold an `@` or a `/` too.
+    (scheme === null ? rest.replace(/^[^/\\]*@/, "") : rest.slice(rest.lastIndexOf("@") + 1))
       .replace(/\/+$/, "")
       .replace(/\.git$/, "")
   );
@@ -85,7 +85,10 @@ export function repositoryWebUrl(url: string): string | null {
   }
   // A host has a dot, such as `github.com`, so a local name such as `example-app` gives no link.
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host)) return null;
-  const tidy = path.replace(/\/+$/, "").replace(/\.git$/, "");
+  const tidy = path
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "");
   return tidy === "" ? null : `${scheme}://${host}${port}/${tidy}`;
 }
 

@@ -1,5 +1,5 @@
 /** The words and the face of the Updates page, apart from the components so that unit tests reach them. */
-import { downloadShare } from "../../cli/client.ts";
+import { describeUpdate, downloadShare } from "../../cli/client.ts";
 import type { UpdateStatus } from "./api.ts";
 import { chatGroup, chatTime } from "./chat-list.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";
@@ -59,11 +59,14 @@ export function updatesFace(update: UpdateStatus | null, restarted: boolean): Fa
   return stateFaces.idle;
 }
 
-/** The wait of the Eva updates card: its sentence and the share done, or null when nothing runs. */
-export function updateWait(
-  update: UpdateStatus | null,
-  work: string | null,
-): { readonly label: string; readonly share: number | null } | null {
+/** A wait of the Eva updates card: its sentence and the share done, or null when unknown. */
+export interface UpdateWait {
+  readonly label: string;
+  readonly share: number | null;
+}
+
+/** The wait of the Eva updates card, or null when nothing runs. */
+export function updateWait(update: UpdateStatus | null, work: string | null): UpdateWait | null {
   // The phase comes first: it also shows an install that Eva started by herself.
   if (update?.phase === "updating")
     return {
@@ -72,4 +75,19 @@ export function updateWait(
     };
   if (update?.phase === "checking") return { label: work ?? "Looking for a new version…", share: null };
   return work === null ? null : { label: work, share: null };
+}
+
+/** The wait for the new Eva. It names the version, as the status callout hides during the wait. */
+export function restartWait(update: UpdateStatus): string {
+  return `Eva restarts with ${update.latest ?? "the new version"} when no chat runs…`;
+}
+
+/**
+ * The status callout of the Eva updates card, or null while its progress bar says the same thing.
+ * An error always shows: a check or an install keeps the last error until it ends.
+ */
+export function updateCallout(update: UpdateStatus | null, wait: UpdateWait | null): string | null {
+  if (update !== null && update.lastError !== null) return describeUpdate(update);
+  if (wait !== null) return null;
+  return update === null ? "This Eva cannot update herself." : describeUpdate(update);
 }

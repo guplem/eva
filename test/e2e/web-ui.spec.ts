@@ -3031,7 +3031,9 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
   await logIn(page);
   await openSettings(page, "Updates");
   await page.getByRole("button", { name: "Check and install" }).click();
-  await expect(page.getByText("Eva restarts with the new version when no chat runs…")).toBeVisible();
+  await expect(page.getByText("Eva restarts with 0.2.0 when no chat runs…")).toBeVisible();
+  // The progress bar says the wait, so the status callout does not repeat it.
+  await expect(page.getByRole("region", { name: "Eva updates" }).locator(".callout")).toHaveCount(0);
   await expect(page.getByText("Eva restarted with the new version.")).toBeVisible({ timeout: 20_000 });
   expect(readsWhileRestarting).toBe(3);
   // The install worked, so EVE looks happy.
@@ -3081,8 +3083,11 @@ test("Settings: an install shows a bar that fills with the download", async ({ p
   const bar = card.getByRole("progressbar", { name: "Installing 0.2.0…" });
   await expect(bar).toHaveAttribute("aria-valuenow", "42");
   await expect(card.getByText("42%", { exact: true })).toBeVisible();
+  // The bar shows the share, so the status callout does not repeat it.
+  await expect(card.locator(".callout")).toHaveCount(0);
   finish();
   await expect(card.getByRole("progressbar")).toHaveCount(0);
+  await expect(card.locator(".callout")).toHaveText("Updates: 0.2.0 is the latest; checks daily");
 });
 
 test("Settings: an install goes on when a proxy drops the request", async ({ page }) => {

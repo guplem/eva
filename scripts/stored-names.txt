@@ -92,6 +92,7 @@ machine secrets.json googleOauthClientId
 machine secrets.json googleOauthClientSecret
 machine secrets.json localApiToken
 machine secrets.json telegramBotToken
+machine secrets.json webPushPrivateKey
 machine state/devices.json devices
 machine state/devices.json devices[].createdAt
 machine state/devices.json devices[].hash
@@ -103,6 +104,14 @@ machine state/location.json lon
 machine state/location.json source
 machine state/location.json source=telegram
 machine state/location.json source=web
+machine state/push-subscriptions.json subscriptions
+machine state/push-subscriptions.json subscriptions[].auth
+machine state/push-subscriptions.json subscriptions[].createdAt
+machine state/push-subscriptions.json subscriptions[].endpoint
+machine state/push-subscriptions.json subscriptions[].label
+machine state/push-subscriptions.json subscriptions[].p256dh
+machine state/push-subscriptions.json version
+machine state/push-subscriptions.json version=1
 machine state/sessions.json sessions
 machine state/sessions.json sessions[].clone
 machine state/sessions.json sessions[].createdAt

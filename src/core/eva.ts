@@ -22,6 +22,7 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
+import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
   engineUpdateProblem,
@@ -174,6 +175,11 @@ export interface CurrentPlace {
 /** A location older than this says little about where the person is now, so the home place wins. */
 const locationFreshMs = 24 * 60 * 60_000;
 
+/** An alert as a device reads it after a push. The number lets the device show each alert once. */
+export interface PushedAlert extends Alert {
+  readonly seq: number;
+}
+
 export interface EvaOptions {
   readonly paths: HomePaths;
   readonly config: EvaConfig;
@@ -187,6 +193,8 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine update. Null: no engine update. */
   readonly claudeExecutable?: string | null;
+  /** Sends a web push. Tests pass their own; the default posts to the push service. */
+  readonly pushSender?: PushSender;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
   /** Deletes the log files past their retention; the background tick calls it once a day. */
@@ -321,6 +329,8 @@ const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
+/** How many alerts a device can read after a push: the newest is the one it shows. */
+const recentAlertCount = 10;
 /** A cold start of an engine and one short answer. */
 const modelCallTimeoutMs = 90_000;
 const backgroundTickMs = 60_000;
@@ -385,6 +395,12 @@ export class Eva {
   private backgroundTicking: boolean;
   private lastHousekeepingAt: Date | null;
   private readonly alerts: AlertCenter;
+  /** Eva's alerts as notifications on the person's devices. */
+  private readonly webPush: WebPush;
+  /** The newest alerts, newest first, which a device's service worker reads after a push. */
+  private readonly recentAlerts: PushedAlert[];
+  /** The number of the last alert that went to the devices. */
+  private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
   private relayed = new Map<string, ReadonlySet<string>>();
   private reportNameTaken = false;
@@ -414,6 +430,17 @@ export class Eva {
     });
     this.redactor = redactor;
     this.locations = new LocationStore({ path: options.paths.location, now: options.now });
+    this.webPush = new WebPush({
+      paths: options.paths,
+      now: options.now,
+      ...(options.pushSender === undefined ? {} : { send: options.pushSender }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+    this.recentAlerts = [];
+    this.pushedCount = 0;
+    // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
+    // machines, so a device that also subscribed on a satellite would get each one twice.
+    this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert) : undefined));
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -848,6 +875,45 @@ export class Eva {
     const vaultPath = this.options.config.vaultPath;
     const home = vaultPath === null ? null : readHomePlace(vaultPath);
     return home === null ? null : { ...home, source: "home", at: null };
+  }
+
+  /** The public key that a device needs to subscribe, and whether this machine sends the alerts. */
+  pushKey(): { readonly publicKey: string; readonly isHub: boolean } {
+    return { publicKey: this.webPush.publicKey(), isHub: this.role() === "hub" };
+  }
+
+  pushDevices(): PushDevice[] {
+    return this.webPush.devices();
+  }
+
+  subscribePush(subscription: PushSubscriptionInput, label: string): void {
+    this.webPush.subscribe(subscription, label);
+  }
+
+  unsubscribePush(endpoint: string): boolean {
+    return this.webPush.unsubscribe(endpoint);
+  }
+
+  /** Sends a test notification to the devices only, not to Telegram. */
+  async testPush(): Promise<void> {
+    await this.pushAlert({
+      key: "push_test",
+      level: "news",
+      message: "This is a test notification from Eva.",
+      at: this.options.now().toISOString(),
+    });
+  }
+
+  /** The newest alerts, newest first: a device shows the first one after a push. */
+  recentNotifications(): readonly PushedAlert[] {
+    return this.recentAlerts;
+  }
+
+  private async pushAlert(alert: Alert): Promise<void> {
+    this.pushedCount += 1;
+    this.recentAlerts.unshift({ ...alert, seq: this.pushedCount });
+    this.recentAlerts.splice(recentAlertCount);
+    await this.webPush.notify();
   }
 
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */

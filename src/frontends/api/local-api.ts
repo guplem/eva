@@ -23,6 +23,7 @@ import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
+import { serviceWorkerScript } from "../web/service-worker-script.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
@@ -141,6 +142,15 @@ const locationSchema = z.object({
   /** When the device took the point, in milliseconds since 1970, as the browser gives it. */
   takenAt: z.number().int().positive(),
 });
+/** A browser's push subscription, as its push manager gives it. */
+const pushDeviceSchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().min(1).max(2_000),
+    keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
+  }),
+  label: z.string().min(1).max(200),
+});
+const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -187,6 +197,10 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       "/icon.svg": staticFile(iconSvg, "image/svg+xml"),
       "/icon-192.png": staticFile(icon192, "image/png"),
       "/icon-512.png": staticFile(icon512, "image/png"),
+      // The worker must load from the root, so its scope is the whole app. It holds no data.
+      "/sw.js": new Response(serviceWorkerScript, {
+        headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" },
+      }),
     },
     development: false,
     // Bun closes a request after 10 idle seconds by default. Some routes run git or gh for longer,
@@ -697,6 +711,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
       return json({ saved: eva.saveLocation(point, "web", new Date(takenAt), false) });
     }
   }
+  if (url.pathname.startsWith("/api/push")) return pushRoute(request, method, url.pathname, eva);
+  if (method === "GET" && url.pathname === "/api/notifications/recent") {
+    return json({ alerts: eva.recentNotifications() });
+  }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
     return assistantRulesRoute(request, method, parts[2], eva);
@@ -711,6 +729,26 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
     const { answer } = approvalSchema.parse(await request.json());
     eva.sessions.answerApproval(decodeURIComponent(parts[2]), answer);
+    return new Response(null, { status: 204 });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
+/** The devices that get Eva's alerts as notifications: the key, the list, a new device, a removal and a test. */
+async function pushRoute(request: Request, method: string, path: string, eva: Eva): Promise<Response> {
+  if (method === "GET" && path === "/api/push") return json({ ...eva.pushKey(), devices: eva.pushDevices() });
+  if (method === "POST" && path === "/api/push/devices") {
+    const { subscription, label } = pushDeviceSchema.parse(await request.json());
+    eva.subscribePush(subscription, label);
+    return json({ devices: eva.pushDevices() });
+  }
+  if (method === "DELETE" && path === "/api/push/devices") {
+    const { endpoint } = pushEndpointSchema.parse(await request.json());
+    eva.unsubscribePush(endpoint);
+    return json({ devices: eva.pushDevices() });
+  }
+  if (method === "POST" && path === "/api/push/test") {
+    await eva.testPush();
     return new Response(null, { status: 204 });
   }
   return json({ error: "Not found." }, 404);

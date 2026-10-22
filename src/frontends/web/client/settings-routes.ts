@@ -184,6 +184,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
   { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
   { item: "location", section: "access", title: "Your location", words: "weather place gps telegram live home" },
+  {
+    item: "notifications",
+    section: "access",
+    title: "Notifications on this device",
+    words: "push alerts notify phone closed telegram",
+  },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {

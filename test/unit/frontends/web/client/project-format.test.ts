@@ -85,6 +85,7 @@ describe("repositoryLabel", () => {
     expect(repositoryLabel("https://user:to/ken@github.com/example/example-app")).toBe(
       "github.com/example/example-app",
     );
+    expect(repositoryLabel("https://github.com/example/example-app@v2")).toBe("github.com/example/example-app@v2");
     expect(repositoryLabel("https://github.com/example/example-app.git?token=abc#readme")).toBe(
       "github.com/example/example-app",
     );

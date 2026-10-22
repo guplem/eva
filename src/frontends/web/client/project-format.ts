@@ -47,12 +47,12 @@ export function repositoryLabel(url: string): string {
   const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
   // A query can hold a token too, so it goes before the chip shows the rest.
   const rest = url.slice(scheme?.[0].length ?? 0).replace(/[?#].*$/, "");
-  return (
-    // After a scheme, all up to the last `@` is the user part: a password can hold an `@` or a `/` too.
-    (scheme === null ? rest.replace(/^[^/\\]*@/, "") : rest.slice(rest.lastIndexOf("@") + 1))
-      .replace(/\/+$/, "")
-      .replace(/\.git$/, "")
-  );
+  // A password can hold an `@` or a `/`. So after a scheme, the user part ends at the last `@` that
+  // a host and a path follow. An `@` with no `/` after it is in the path, such as `repo@v2`.
+  const tail = rest.slice(rest.lastIndexOf("@") + 1);
+  const withoutUser =
+    scheme !== null && rest.includes("@") && tail.includes("/") ? tail : rest.replace(/^[^/\\]*@/, "");
+  return withoutUser.replace(/\/+$/, "").replace(/\.git$/, "");
 }
 
 /**

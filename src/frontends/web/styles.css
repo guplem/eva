@@ -2977,15 +2977,8 @@ button.small {
   border-radius: var(--radius-input);
   background: var(--panel);
   box-shadow: var(--shadow);
-  /* No scale: menu-place.ts measures the menu, and a scale would change its size. */
-  animation: menu-in 140ms ease-out;
-}
-
-@keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
+  /* A fade only. menu-place.ts measures the menu, and a move would also delay a click on it. */
+  animation: fade-in 120ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

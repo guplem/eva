@@ -105,6 +105,20 @@ export function voiceInstallSteps(): string {
   return "To set up voice notes by hand, see https://github.com/guplem/eva/blob/main/docs/guide/reference.md#optional-features.";
 }
 
+/**
+ * Why a voice program could not start, when the system lacks a library that it needs, else null.
+ * The whisper.cpp build needs the OpenMP library (libgomp), and Ubuntu Server does not have it.
+ * Only an administrator adds a library, so the text gives the command.
+ */
+export function missingLibraryHelp(program: string, stderr: string): string | null {
+  const library = /error while loading shared libraries: ([^:\s]+)/.exec(stderr)?.[1];
+  if (library === undefined) return null;
+  const add = library.startsWith("libgomp.")
+    ? "On Ubuntu, run `sudo apt install libgomp1`."
+    : "Install it with the package manager of the system.";
+  return `${program} cannot start: this computer lacks the library ${library}. ${add} Then try again.`;
+}
+
 /** Installs ffmpeg and returns Eva's own copy. Throws EvaError `engine_install_failed` with the steps. */
 export async function installFfmpeg(inputs: VoiceInstallInputs): Promise<string> {
   const program = ownVoicePrograms(inputs.platform, inputs.homeFolder, inputs.environment).ffmpeg;
@@ -132,6 +146,16 @@ export async function installWhisper(inputs: VoiceInstallInputs): Promise<string
     await installArchive(release, archive, "whisper.cpp", inputs, (folder) =>
       existsSync(pathOf(inputs).join(folder, exe)),
     );
+    // Start the program once, so a missing library shows now and not on the first voice note.
+    if (inputs.platform !== "win32") {
+      const started = await inputs.runner.run([program, "--help"], {
+        cwd: inputs.homeFolder,
+        environment: inputs.environment,
+        timeoutMs: commandTimeoutMs,
+      });
+      const help = missingLibraryHelp("whisper-cli", started.stderr);
+      if (help !== null) throw new Error(help);
+    }
   });
   if (inputs.platform !== "win32") linkForTerminal(program, inputs.homeFolder, "whisper-cli");
   return program;

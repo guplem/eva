@@ -2000,7 +2000,9 @@ test("the Settings home page lists where each setting lives, and a row opens its
   expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
 });
 
-test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
+test("the New chat button sits in the list header on a computer and at its foot on a phone, and the list has no model menu", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -2015,13 +2017,33 @@ test("the New chat button sits in the list header, and the list has no model men
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("combobox")).toHaveCount(0);
   const buttonBox = await button.boundingBox();
   const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
-  if (buttonBox === null || firstChatBox === null) throw new Error("A sidebar part is not on the screen.");
-  expect(buttonBox.y).toBeLessThan(firstChatBox.y);
+  const listBox = await page.locator(".sidebar-list").boundingBox();
+  if (buttonBox === null || firstChatBox === null || listBox === null)
+    throw new Error("A sidebar part is not on the screen.");
+  // A thumb reaches the foot of a phone screen, not its top. The list scrolls above the button.
+  if (test.info().project.name === "phone") expect(buttonBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height);
+  else expect(buttonBox.y).toBeLessThan(firstChatBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
     .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
   expect(cut).toBe(0);
+});
+
+test("a tap on Chats while a chat is open shows the list on a phone and a new chat on a computer", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const chats = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats", exact: true });
+  await chats.click();
+  if (test.info().project.name === "phone") {
+    await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+    return;
+  }
+  // The new chat page selects no chat in the list. The first message makes the chat.
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(0);
+  await page.locator(".sidebar .list-item").first().click();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(1);
 });
 
 test("the chat list header does not cover the search field", async ({ page }) => {
@@ -2723,13 +2745,19 @@ test("Settings: the vault step lists the repositories and clones the picked one,
     .getByRole("region", { name: "Progress list" })
     .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
+  // The page asks for one path first and shows only its form.
+  await expect(page.getByRole("button", { name: "I have a vault on GitHub" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toHaveCount(0);
   const clone = page.getByRole("button", { name: "Clone this vault" });
   await expect(clone).toBeDisabled();
   await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
   await clone.click();
   await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
-  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+  // The other path stays off after a clone, so a second click never starts a second vault.
+  await page.getByRole("button", { name: "Start a new vault" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
 test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
@@ -2756,6 +2784,7 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await page.getByRole("button", { name: "Start a new vault" }).click();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
 });
@@ -3016,6 +3045,49 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.
   await expect(update).toBeFocused();
+});
+
+test("Settings: the Versions card looks for a newer Eva when it opens, as for each tool", async ({ page }) => {
+  // The automatic check is off, so Eva has never looked.
+  const unchecked = {
+    kind: "executable",
+    frequency: "off",
+    install: "minor",
+    phase: "idle",
+    current: null,
+    latest: null,
+    available: false,
+    target: null,
+    heldBack: null,
+    releases: [],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  const checked = {
+    ...unchecked,
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: "2026-10-22T10:00:00Z",
+  };
+  const checks: unknown[] = [];
+  await page.route("**/api/update/check", async (route) => {
+    checks.push(route.request().postDataJSON());
+    await route.fulfill({ json: checked });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: unchecked });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  await expect(page.getByRole("region", { name: "Versions" })).toContainText("(0.3.0 available)");
+  // A recent check answers at once, so each page open does not ask GitHub.
+  expect(checks).toEqual([{ ifStale: true }]);
 });
 
 test("Settings: the changelog lists each release with its own changes", async ({ page }) => {

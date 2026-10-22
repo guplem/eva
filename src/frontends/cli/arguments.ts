@@ -64,8 +64,8 @@ Commands:
       status:<idea|active|paused|closed|any>  only projects with this status
       tag:<tag>                               only projects with this tag ("#<tag>" needs the quotes)
   work <project> <request>  Give work to a project: a Project chat in a free clone runs it
-  service install   Start Eva by herself, and again after a crash (systemd on Linux, a logon task on Windows)
-  supervise         Run Eva, and start her again after a crash (the Windows logon task runs this)
+  service install   Start Eva by herself, and again after a crash (systemd on Linux, a start at logon on Windows)
+  supervise         Run Eva, and start her again after a crash (the Windows start at logon runs this)
   update [version]  Install what the update policy allows, or a newer version, then restart Eva
       --check                            only look for a newer version
   sync              Bring the vault's remote changes in, then save and push this machine's changes

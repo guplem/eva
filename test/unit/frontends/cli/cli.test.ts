@@ -41,9 +41,9 @@ import {
   serviceName,
   servicePath,
   systemdUnit,
-  windowsRunTaskCommand,
-  windowsTaskSettingsCommand,
-  windowsTaskCommand,
+  windowsOldTaskCommands,
+  windowsRunKeyCommand,
+  windowsStartNowCommand,
 } from "../../../../src/frontends/cli/service.ts";
 import type { UpdateStatus } from "../../../../src/core/updates/updater.ts";
 import {
@@ -1596,39 +1596,42 @@ describe("service", () => {
   test("each Eva on the same machine gets her own service, named after her", () => {
     expect(serviceName(homePaths("/u/.config/eva-ana"))).toBe("eva-ana");
     expect(serviceName(homePaths("/u/.config/eva-eva"))).toBe("eva-eva");
-    expect(windowsTaskCommand({ executable: ["eva.exe"], instance: "ana" }, "eva-ana")).toContain("Eva-ana");
+    expect(windowsRunKeyCommand({ executable: ["eva.exe"], instance: "ana" }, "eva-ana", "C:\\Windows")).toContain(
+      "Eva-ana",
+    );
   });
 
-  test("the Windows task starts the Eva supervisor at logon, which restarts her after a crash", () => {
-    expect(
-      windowsTaskCommand({ executable: ["C:/bun/bun.exe", "C:/eva/src/main.ts"], instance: "ana" }, "eva-ana"),
-    ).toEqual([
-      "schtasks",
-      "/Create",
-      "/F",
-      "/SC",
-      "ONLOGON",
-      "/TN",
+  test("on Windows, the start at logon needs no administrator, and runs the supervisor with no window (#407)", () => {
+    const target = { executable: ["C:\\Program Files\\bun\\bun.exe", "C:\\eva\\src\\main.ts"], instance: "ana" };
+    expect(windowsRunKeyCommand(target, "eva-ana", "C:\\Windows")).toEqual([
+      "reg",
+      "add",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "/v",
       "Eva-ana",
-      "/TR",
-      '"C:/bun/bun.exe" "C:/eva/src/main.ts" supervise --instance ana',
+      "/t",
+      "REG_SZ",
+      "/d",
+      '"C:\\Windows\\System32\\conhost.exe" --headless "C:\\Program Files\\bun\\bun.exe" "C:\\eva\\src\\main.ts" supervise --instance ana',
+      "/f",
     ]);
   });
 
-  test("the Windows task runs with no time limit, and on battery too, so Windows never stops the supervisor", () => {
-    const command = windowsTaskSettingsCommand("eva-partner");
+  test("on Windows, the start now runs the same command through Start-Process, quoted for PowerShell", () => {
+    const target = { executable: ["C:\\it's\\eva.exe"], instance: "ana" };
+    const command = windowsStartNowCommand(target, "C:\\Windows");
     expect(command.slice(0, 4)).toEqual(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]);
-    const script = command[4] ?? "";
-    expect(script).toContain("Set-ScheduledTask -TaskName 'Eva-partner'");
-    expect(script).toContain("-ExecutionTimeLimit ([TimeSpan]::Zero)");
-    expect(script).toContain("-AllowStartIfOnBatteries");
-    expect(script).toContain("-DontStopIfGoingOnBatteries");
-    // Without it, a failed Set-ScheduledTask still exits 0, and the install would say nothing.
-    expect(script).toContain("-ErrorAction Stop");
+    expect(command[4]).toBe(
+      "Start-Process -FilePath 'C:\\Windows\\System32\\conhost.exe' -ArgumentList '--headless \"C:\\it''s\\eva.exe\" supervise --instance ana' -ErrorAction Stop",
+    );
   });
 
-  test("after the install, the Windows task starts at once, under the same name", () => {
-    expect(windowsRunTaskCommand("eva-partner")).toEqual(["schtasks", "/Run", "/TN", "Eva-partner"]);
+  test("an old logon task of the same Eva is found and removed by its name", () => {
+    expect(windowsOldTaskCommands("eva-partner")).toEqual({
+      query: ["schtasks", "/Query", "/TN", "Eva-partner"],
+      remove: ["schtasks", "/Delete", "/TN", "Eva-partner", "/F"],
+      run: ["schtasks", "/Run", "/TN", "Eva-partner"],
+    });
   });
 });
 

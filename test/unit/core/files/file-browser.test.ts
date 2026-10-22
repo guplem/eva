@@ -76,6 +76,48 @@ describe("browseVault: folders", () => {
     expect(clone).toMatchObject({ entries: [{ name: "main.py", kind: "file" }] });
   });
 
+  test("Projects lists each project folder with the title of its AGENTS.md (issue 429)", () => {
+    write("Projects/2025-03-02-1015-example-app/AGENTS.md", "---\ncreated: 2025-03-02T10:15\n---\n# Example app\n");
+    write("Projects/2026-01-01-0000-untitled/AGENTS.md", "---\ncreated: 2026-01-01T00:00\n---\nNo heading.\n");
+    write("Projects/not-a-project/AGENTS.md", "---\ncreated: 2026\n---\n# Not a project\n");
+    write("Projects/2026-02-02-0000-no-front-matter/AGENTS.md", "# No front matter\n");
+    expect(browseVault(vault, "Projects", keep)).toMatchObject({
+      entries: [
+        { name: "2025-03-02-1015-example-app", kind: "folder", size: null, title: "Example app" },
+        { name: "2026-01-01-0000-untitled", kind: "folder", size: null },
+        { name: "2026-02-02-0000-no-front-matter", kind: "folder", size: null },
+        { name: "not-a-project", kind: "folder", size: null },
+      ],
+    });
+    const entries = browseVault(vault, "Projects", keep);
+    if (entries.kind !== "folder") throw new Error("Projects is a folder");
+    expect(entries.entries.filter((entry) => entry.title !== undefined)).toHaveLength(1);
+  });
+
+  test("an AGENTS.md link that leads out of the vault gives no title", () => {
+    writeFileSync(join(folder, "outside.md"), "---\ncreated: 2026-01-01T00:00\n---\n# Private line\n");
+    mkdirSync(join(vault, "Projects/2026-01-01-0000-linked"), { recursive: true });
+    try {
+      symlinkSync(join(folder, "outside.md"), join(vault, "Projects/2026-01-01-0000-linked/AGENTS.md"));
+    } catch {
+      return; // A system that cannot make the link cannot follow one either.
+    }
+    const projects = browseVault(vault, "Projects", keep);
+    if (projects.kind !== "folder") throw new Error("Projects is a folder");
+    expect(projects.entries.find((entry) => entry.name === "2026-01-01-0000-linked")).toEqual({
+      name: "2026-01-01-0000-linked",
+      kind: "folder",
+      size: null,
+    });
+  });
+
+  test("a folder outside Projects gets no title, even with an AGENTS.md", () => {
+    write("Methods/2025-03-02-1015-example-app/AGENTS.md", "---\ncreated: 2025-03-02T10:15\n---\n# Example app\n");
+    const methods = browseVault(vault, "Methods", keep);
+    if (methods.kind !== "folder") throw new Error("Methods is a folder");
+    expect(methods.entries.every((entry) => entry.title === undefined)).toBe(true);
+  });
+
   test("a trailing slash, a leading slash and a dot part give the same path", () => {
     expect(browseVault(vault, "/Methods/", keep)).toMatchObject({ path: "Methods" });
     expect(browseVault(vault, "./Methods", keep)).toMatchObject({ path: "Methods" });

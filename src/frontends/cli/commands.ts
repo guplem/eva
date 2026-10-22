@@ -64,6 +64,19 @@ export interface CliWiring {
 /** Runs one `eva` command and gives the process's exit code. */
 export async function runCli(argv: readonly string[], host: CliHost, wiring: CliWiring): Promise<number> {
   const command = parseArguments(argv);
+  try {
+    return await runCommand(command, host, wiring);
+  } catch (error) {
+    if (!isEvaError(error, "prompt_stopped")) throw error;
+    // Setup saves each answer at once, so a stop loses nothing (#407).
+    writeLine(host, command.command === "setup" ? setupStoppedLine : "Stopped.");
+    return exitCodes.clean;
+  }
+}
+
+const setupStoppedLine = "Setup stopped. Each answer is saved. Run `eva setup` to go on.";
+
+async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring): Promise<number> {
   if (command.command === "usage-error") {
     host.writeError(`${command.message}\n\n${usageText}`);
     return exitCodes.badConfig;
@@ -351,6 +364,7 @@ async function runClientCommand(
     }
     return exitCodes.clean;
   } catch (error) {
+    if (isEvaError(error, "prompt_stopped")) throw error;
     host.writeError(
       `${error instanceof Error ? error.message : String(error)}\nIs Eva running? Start her with \`eva\`.\n`,
     );

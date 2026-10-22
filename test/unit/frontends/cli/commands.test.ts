@@ -228,6 +228,28 @@ describe("doctor and setup", () => {
     expect(printed(host)).toContain("Eva did not start.");
   });
 
+  test("Ctrl+C at a setup question prints one line on how to go on, with no stack (#407)", async () => {
+    const host = fakeHost({
+      userHome: join(root, "user"),
+      withPrompt: (work) =>
+        work((question) =>
+          question.includes("GitHub login")
+            ? Promise.resolve("skip")
+            : Promise.reject(new EvaError("prompt_stopped", "Stopped with Ctrl+C.")),
+        ),
+    });
+    expect(await run(host, "setup")).toBe(exitCodes.clean);
+    expect(printed(host)).toContain("Setup stopped. Each answer is saved. Run `eva setup` to go on.");
+    expect(printed(host) + host.errors.join("")).not.toContain("    at ");
+    // Another command that asks, such as the instance choice, says only that it stopped.
+    saveSecrets(paths, { localApiToken: "test-token" });
+    const other = fakeHost({
+      withPrompt: () => Promise.reject(new EvaError("prompt_stopped", "Stopped with Ctrl+C.")),
+    });
+    expect(await run(other, "chat")).toBe(exitCodes.clean);
+    expect(printed(other)).toContain("Stopped.");
+  });
+
   test("setup explains Enter before the first question, and asks the name in its own step", async () => {
     const log: string[] = [];
     // A config folder with no Eva yet, so setup asks the name.

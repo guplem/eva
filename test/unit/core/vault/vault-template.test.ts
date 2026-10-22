@@ -47,6 +47,7 @@ describe("the vault template", () => {
       ".eva/.claude-plugin/plugin.json",
       ".eva/assistant.md",
       ".eva/schedules.json",
+      ".eva/skills/about-me/SKILL.md",
       ".eva/skills/schedule/SKILL.md",
       ".gitignore",
       "AGENTS.md",
@@ -59,6 +60,9 @@ describe("the vault template", () => {
       "Toolbox/.gitkeep",
     ]);
     expect(files["Life/About me.md"]).toContain("- **Name:** Alex");
+    // The header holds the name as one YAML value, and every other fact empty.
+    expect(files["Life/About me.md"]).toStartWith("---\n");
+    expect(files["Life/About me.md"]).toContain('\nname: "Alex"\n');
     expect(files["Life/About me.md"]).toContain("## Main topics\n\n- Work\n- Music\n");
     // The rules hold no setup answer, so the settings page can restore them as they are.
     expect(files[".eva/assistant.md"]).toBe(defaultAssistantRules);

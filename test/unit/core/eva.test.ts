@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
+import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -33,7 +34,7 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: 
     config: config(overrides),
     secrets: options.secrets ?? { claudeOauthToken: "oauth-token-value-for-tests" },
     engines: [engine],
-    runner: systemProcessRunner,
+    runner: options.runner ?? systemProcessRunner,
     processEnvironment: gitEnvironment,
     now: () => clock,
     basePrompt: "Base.",
@@ -386,6 +387,93 @@ describe("Eva", () => {
       instance.newClone("2025-03-02-1015-example-app"),
     ]);
     expect(clones.map((clone) => clone.name).sort()).toEqual(["remote-0", "remote-1"]);
+  });
+
+  test("the person deletes a clone, and its chats and their forks go with it", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const instance = start(new FakeEngine());
+    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    const fork = instance.sessions.fork(chat.id, instance.sessions.get(chat.id).turns[0]?.lastMessageId ?? "");
+    await instance.newClone(projectId);
+    const other = await instance.createProjectSession({
+      projectId,
+      cloneName: "remote-1",
+      source: "cli",
+      model: "default",
+    });
+
+    expect(await instance.deleteClone(projectId, "remote-0")).toEqual({ deletedChats: [chat.id, fork.id] });
+    expect(existsSync(chat.startFolder)).toBe(false);
+    expect(instance.sessions.list().map((session) => session.id)).toEqual([other.id]);
+    expect((await instance.clones(projectId)).map((clone) => clone.name)).toEqual(["remote-1"]);
+    expect((await instance.newClone(projectId)).name).toBe("remote-0");
+  });
+
+  test("a clone where Eva works now, or that does not exist, stays", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const chat = await instance.createProjectSession({ projectId, source: "cli", model: "default" });
+    const running = instance.sessions.send(chat.id, "long task");
+    await waitFor(() => engine.requests.length >= 1);
+    expect(await instance.deleteClone(projectId, "remote-0").catch((caught: unknown) => caught)).toMatchObject({
+      code: "session_busy",
+    });
+    expect(existsSync(chat.startFolder)).toBe(true);
+    expect(instance.sessions.list().map((session) => session.id)).toEqual([chat.id]);
+    release();
+    await running;
+    expect(await instance.deleteClone(projectId, "remote-9").catch((caught: unknown) => caught)).toMatchObject({
+      code: "project_not_found",
+    });
+    expect(await instance.deleteClone(projectId, "../remote-0").catch((caught: unknown) => caught)).toMatchObject({
+      code: "project_not_found",
+    });
+  });
+
+  test("a clone that Eva pulls now stays", async () => {
+    const projectId = "2025-03-02-1015-example-app";
+    sandbox.write(
+      vault,
+      `Projects/${projectId}/AGENTS.md`,
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    let pullStarted = false;
+    let release: () => void = () => undefined;
+    const runner: ProcessRunner = {
+      run: async (command, options) => {
+        if (command.includes("pull")) {
+          pullStarted = true;
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        return systemProcessRunner.run(command, options);
+      },
+    };
+    const instance = start(new FakeEngine(), {}, { runner });
+    const clone = await instance.newClone(projectId);
+    const pulling = instance.pullClone(projectId, clone.name);
+    await waitFor(() => pullStarted);
+    expect(await instance.deleteClone(projectId, clone.name).catch((caught: unknown) => caught)).toMatchObject({
+      code: "session_busy",
+    });
+    expect(existsSync(clone.path)).toBe(true);
+    release();
+    await pulling;
   });
 
   test("the person changes a project's details and its whole file, and the sweep commits them", async () => {
@@ -1494,7 +1582,6 @@ describe("Eva alerts", () => {
     // A tick with no waiting update never reports the old failure again, not even a day later.
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
-    await Bun.sleep(20);
     expect(alerts).toHaveLength(1);
     refuse = false;
     // The answer to a press still carries the old result while the new run starts.
@@ -1637,6 +1724,88 @@ describe("migrations (#119)", () => {
     expect(alerts[0]?.message).toContain("disk is full");
   });
 
+  test("after the vault migrations, the hub brings the template parts up to date", () => {
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
+    expect(instance.templateParts()?.parts.map((part) => [part.name, part.state])).toEqual([
+      ["about-me", "current"],
+      ["schedule", "current"],
+    ]);
+    expect(instance.templateParts()?.canChoose).toBe(true);
+    expect(alerts).toEqual([]);
+  });
+
+  test("a template part that the person changed waits for their choice, with an alert", () => {
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([["template_alignment", "warn"]]);
+    expect(readFileSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"), "utf-8")).toBe(
+      "# My own schedule skill\n",
+    );
+    const parts = instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "mine");
+    expect(parts.find((part) => part.name === "schedule")?.state).toBe("kept");
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("a satellite leaves the template parts alone", () => {
+    const instance = start(new FakeEngine());
+    instance.reportStartMigrations({ machine: { kind: "done", applied: [], later: [] }, vault: null });
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(false);
+  });
+
+  test("a satellite shows the template parts but leaves the choice to the hub", () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    expect(instance.templateParts()?.canChoose).toBe(false);
+    expect(() => instance.chooseTemplateVersion(".eva/skills/schedule/SKILL.md", "new")).toThrow("hub");
+  });
+
+  test("the alert of a part clears after a sync that brings the person's fix", async () => {
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", "# My own schedule skill\n");
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+    sandbox.write(vault, ".eva/skills/schedule/SKILL.md", templateParts[".eva/skills/schedule/SKILL.md"] ?? "");
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
+  });
+
+  test("only the hub sends the alerts to the devices, as only the hub runs Telegram", async () => {
+    const pushed: string[] = [];
+    const pushSender = (request: { endpoint: string }): Promise<number> => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    };
+    const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } };
+    const hub = start(new FakeEngine(), { machineName: "example-pc" }, { pushSender });
+    hub.subscribePush(subscription, "Phone");
+    hub.reportProblem("example", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toHaveLength(1);
+
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    const satellite = start(new FakeEngine(), { machineName: "example-pc" }, { pushSender });
+    satellite.reportProblem("other", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toHaveLength(1);
+    expect(satellite.pushKey().isHub).toBe(false);
+  });
+
   test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);
@@ -1679,6 +1848,7 @@ describe("migrations (#119)", () => {
     expect(instance.role()).toBe("hub");
     expect(JSON.parse(readFileSync(join(vault, ".eva", "settings.json"), "utf-8"))).toEqual({});
     expect(existsSync(join(vault, ".eva", "migrations.json"))).toBe(true);
+    expect(existsSync(join(vault, ".eva", "skills", "schedule", "SKILL.md"))).toBe(true);
   });
 
   test("a machine that is behind the vault cannot become the hub", async () => {
@@ -1810,5 +1980,22 @@ describe("machine reports (#126)", () => {
     await instance.syncVault();
     expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
     expect(instance.status().problems).toEqual([]);
+  });
+});
+
+describe("the person's place (#371)", () => {
+  test("a phone's point counts for a day, then the home place of About me", () => {
+    const instance = start(new FakeEngine());
+    sandbox.write(vault, "Life/About me.md", "---\nplaces:\n  home: { lat: 41.39, lon: 2.17 }\n---\n");
+    expect(instance.saveLocation({ lat: 40.4, lon: -3.7, accuracy: null }, "telegram", clock, true)).toBe(true);
+    expect(instance.currentPlace()).toMatchObject({ lat: 40.4, source: "telegram" });
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    expect(instance.currentPlace()).toEqual({ lat: 41.39, lon: 2.17, source: "home", at: null });
+  });
+
+  test("only the hub keeps a location, as only the hub runs the schedules", () => {
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    const satellite = start(new FakeEngine(), { machineName: "example-pc" });
+    expect(() => satellite.saveLocation({ lat: 1, lon: 1, accuracy: null }, "web", clock, true)).toThrow("hub");
   });
 });

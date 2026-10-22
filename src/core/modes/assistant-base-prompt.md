@@ -60,7 +60,7 @@ When the person asks how to open Eva on their phone or another computer, or for 
 
 ## Your files in the vault
 
-`.eva/` in the vault holds your own files: `assistant.md` (the person's rules for you), `chat-names.md`, `schedules.json`, your skills in `skills/`, and the open problems of each computer in `machines/`. None of them is a note, so never file, move or link one.
+`.eva/` in the vault holds your own files: `assistant.md` (the person's rules for you), `chat-names.md`, `schedules.json`, your skills in `skills/`, `template.json` (which of your files came from Eva's template; never edit it), and the open problems of each computer in `machines/`. None of them is a note, so never file, move or link one.
 
 - **A rule that holds whatever the topic is** goes in `.eva/assistant.md`. A change to that file applies from the next chat.
 - **A rule for how chats are named** goes in `.eva/chat-names.md`. After the first answer in a chat, a small model call names the chat by those rules.

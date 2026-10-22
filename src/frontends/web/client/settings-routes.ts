@@ -131,13 +131,19 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "device", section: "setup", title: "Allow your devices", words: "step phone code login" },
   { item: "github", section: "setup", title: "Connect GitHub", words: "step login browser token git code" },
   { item: "telegram", section: "setup", title: "Connect Telegram", words: "step bot chat" },
-  { item: "google", section: "setup", title: "Connect Google", words: "step calendar drive" },
+  { item: "google", section: "setup", title: "Connect Google", words: "step calendar drive gmail mail" },
   { item: "default-engine", section: "engines", title: "Engine for new chats", words: "default claude pi model" },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token model opus sonnet" },
   { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },
+  {
+    item: "template-alignment",
+    section: "vault",
+    title: "Template alignment",
+    words: "skills update template version merge",
+  },
   {
     item: "github",
     section: "connections",
@@ -151,7 +157,12 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "git author signature user",
   },
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
-  { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
+  {
+    item: "google",
+    section: "connections",
+    title: "Google",
+    words: "calendar drive contacts tasks gmail mail oauth client",
+  },
   {
     item: "own-account",
     section: "trust",
@@ -172,6 +183,13 @@ export const searchEntries: readonly SearchEntry[] = [
   },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
   { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
+  { item: "location", section: "access", title: "Your location", words: "weather place gps telegram live home" },
+  {
+    item: "notifications",
+    section: "access",
+    title: "Notifications on this device",
+    words: "push alerts notify phone closed telegram",
+  },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {

@@ -9,6 +9,7 @@ import {
   googleLevelLabels,
   googleServiceLabels,
   matchingGoogleAccessPreset,
+  withGoogleService,
   type GoogleAccessPreset,
 } from "../../../core/google/google-access.ts";
 import { googleSetupSteps } from "../../../core/google/google-steps.ts";
@@ -28,6 +29,7 @@ import {
 } from "./SettingsParts.tsx";
 
 type GoogleAccess = EvaConfig["google"]["access"];
+type GoogleService = EvaConfig["google"]["services"][number];
 
 export function GooglePanel({ context }: { readonly context: SettingsContext }): ReactElement {
   const { settings, saveNow, noteAndReload: onChanged, reloadSettings: reload } = context;
@@ -78,11 +80,19 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       onChanged("Saved. Log in to Google again below, then press Restart Eva.");
   };
 
+  /** A new service needs its API on and a new login, because the old login lacks its access. */
+  const changeServices = async (services: readonly GoogleService[]): Promise<void> => {
+    if ((await saveNow({ google: { services } })) && google.email !== null)
+      onChanged(
+        "Saved. Turn on the API of each new service above, log in to Google again below, then press Restart Eva.",
+      );
+  };
+
   const card = (children: ReactNode): ReactElement => (
     <Card
       item="google"
       title="Google"
-      description="Eva can use your Google Calendar, Drive, Contacts and Tasks. Google needs an OAuth client: a key that lets an app ask for access to your account. Each person makes their own, for free."
+      description="Eva can use your Google Calendar, Drive, Contacts, Tasks and Gmail. Google needs an OAuth client: a key that lets an app ask for access to your account. Each person makes their own, for free."
       aside={<StatusPill state={google.email === null ? "optional" : "done"} />}
     >
       {children}
@@ -93,7 +103,7 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       <>
         <LoggedIn
           service="Google"
-          text={`You are logged in to Google as ${google.email ?? ""}.`}
+          text={`You are logged in to Google as ${google.email ?? ""}. To add a service, such as Gmail, or to change the access, press Log in again.`}
           warning="Eva deletes the Google login from this machine. Chats cannot reach your Google account until you log in again. The OAuth client stays, so a new login needs no new setup."
           logOut={api.logOutOfGoogle}
           context={context}
@@ -113,6 +123,10 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
         {steps.slice(0, 3).map((step, index) => (
           <li key={step.title}>
             <GoogleStepView title={step.title} text={step.text} links={step.links} />
+            {/* The services sit in step 1, because they decide which API links it shows. */}
+            {index === 0 && (
+              <GoogleServiceFields services={google.services} onChange={(services) => void changeServices(services)} />
+            )}
             {/* The client fields sit in step 3, so the numbers match the ones that the Google check names. */}
             {index === 2 && (
               <>
@@ -175,6 +189,34 @@ export function GooglePanel({ context }: { readonly context: SettingsContext }):
       </ol>
       <CheckRow name="google" label="Test Google" />
     </>,
+  );
+}
+
+/** One box for each Google service. Only the services that are on get access and an API link. */
+function GoogleServiceFields({
+  services,
+  onChange,
+}: {
+  readonly services: readonly GoogleService[];
+  readonly onChange: (services: readonly GoogleService[]) => void;
+}): ReactElement {
+  const all = Object.keys(googleAccessLevels) as GoogleService[];
+  return (
+    <div role="group" aria-labelledby="google-services-label">
+      <div id="google-services-label" className="field-hint">
+        Google services that Eva may use. Each one needs its API above.
+      </div>
+      {all.map((service) => (
+        <label key={service} className="check-row">
+          <input
+            type="checkbox"
+            checked={services.includes(service)}
+            onChange={(event) => onChange(withGoogleService(services, service, event.target.checked))}
+          />
+          <span>{googleServiceLabels[service]}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 

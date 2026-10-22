@@ -120,6 +120,8 @@ test("the nav rail shows EVE, worried while the page reconnects", async ({ page 
     socket.connectToServer();
     sockets.push(socket);
   });
+  // An ordinary day: on a special day the visor at rest wears that day's eyes.
+  await page.clock.setFixedTime(new Date("2026-07-15T12:00:00"));
   await page.goto("/");
   await page.getByLabel(/Token/).fill("e2e-demo-token");
   await page.getByRole("button", { name: "Log in" }).click();
@@ -129,4 +131,13 @@ test("the nav rail shows EVE, worried while the page reconnects", async ({ page 
   await sockets.at(-1)?.close();
   await expect(visor).toHaveClass("mk e-worry");
   await expect(visor).toHaveClass("mk");
+});
+
+test("on a special day, the nav visor at rest wears that day's eyes", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "The tab bar of a phone has no visor.");
+  await page.clock.setFixedTime(new Date("2026-10-31T12:00:00"));
+  await page.goto("/");
+  await page.getByLabel(/Token/).fill("e2e-demo-token");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("navigation", { name: "Main" }).locator(".mk")).toHaveClass("mk festive f-candle");
 });

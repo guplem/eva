@@ -11,7 +11,7 @@ export function unavailableSteps(settings: PublicSettings): { github: string | n
   let drive: string | null = null;
   if (google.email === null) drive = "Log in to Google in Settings > Connections > Google first.";
   else if (!google.services.includes("drive"))
-    drive = "Google Drive is off. Add drive to google.services on the machine.";
+    drive = "Google Drive is off. Turn on Drive in Settings > Connections > Google.";
   else if (google.access.drive !== "full")
     drive =
       "In Settings > Connections > Google, set Google access for Drive to Read and change. Then log in to Google again.";

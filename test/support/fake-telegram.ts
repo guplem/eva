@@ -151,6 +151,19 @@ export class FakeTelegram {
     });
   }
 
+  /** An edit of an earlier message, as Telegram sends each move of a live location. */
+  editMessageWith(chatId: number, content: Record<string, unknown>): void {
+    this.updates.push({
+      update_id: this.nextUpdateId++,
+      edited_message: {
+        message_id: this.nextMessageId - 1,
+        chat: { id: chatId, type: "private" },
+        from: { id: chatId },
+        ...content,
+      },
+    });
+  }
+
   /** The next `times` calls of a method fail; a 429 can carry Telegram's `retry_after`. */
   failNext(
     method: string,

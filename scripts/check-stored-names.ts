@@ -15,6 +15,7 @@ import type { HubClaim } from "../src/core/instance/hub.ts";
 import { favoritesFormatVersion, type StoredFavorites } from "../src/core/files/vault-favorites.ts";
 import { migrations } from "../src/core/migrations/migrations.ts";
 import type { StoredDevice } from "../src/core/remote-access/device-logins.ts";
+import { pushFormatVersion, type StoredPushSubscription } from "../src/core/alerts/web-push.ts";
 import {
   dayNames,
   formatVersion as scheduleFormatVersion,
@@ -24,6 +25,9 @@ import { sessionSchema, storeSchema } from "../src/core/sessions/session-store.t
 import { configSchema, secretsSchema } from "../src/core/settings/home.ts";
 import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
+import { storedLocationSchema } from "../src/core/location/last-location.ts";
+import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
+import { aboutMeHeaderKeys } from "../src/core/vault/about-me.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 
@@ -102,8 +106,19 @@ const leafTypes = new Set([
 ]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
+const pushFields = Object.keys({
+  endpoint: true,
+  p256dh: true,
+  auth: true,
+  label: true,
+  createdAt: true,
+} satisfies Record<keyof StoredPushSubscription, true>);
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
+const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true } satisfies Record<
+  keyof RecordedPart,
+  true
+>);
 const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } satisfies Record<
   keyof StoredDevice,
   true
@@ -126,6 +141,12 @@ export function currentNames(): string[] {
     ...["devices", ...deviceFields.map((field) => `devices[].${field}`)].map(
       (name) => `machine state/devices.json ${name}`,
     ),
+    ...[
+      "version",
+      `version=${String(pushFormatVersion)}`,
+      "subscriptions",
+      ...pushFields.map((field) => `subscriptions[].${field}`),
+    ].map((name) => `machine state/push-subscriptions.json ${name}`),
     ...config
       .filter((name) => isSharedSettingKey(settingKeyOf(name)))
       .map((name) => `vault .eva/settings.json ${name}`),
@@ -142,6 +163,16 @@ export function currentNames(): string[] {
     ...[...favoritesFields, `version=${String(favoritesFormatVersion)}`].map(
       (name) => `vault .eva/favorites.json ${name}`,
     ),
+    ...[
+      "version",
+      `version=${String(templateRecordFormatVersion)}`,
+      "eva",
+      "parts",
+      ...templatePartFields.map((field) => `parts{}.${field}`),
+    ].map((name) => `vault .eva/template.json ${name}`),
+    // A line of the snapshot is three words, so the path of the note drops its space.
+    ...aboutMeHeaderKeys.map((key) => `vault Life/About-me.md ${key}`),
+    ...schemaNames(storedLocationSchema).map((name) => `machine state/location.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),
     ...migrations.map((migration) => `migration ${migration.store} ${migration.id}`),

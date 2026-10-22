@@ -77,7 +77,7 @@ describe("createDriveFolder", () => {
       createDriveFolder({ ...inputs, config: { ...driveFull, services: ["calendar"] } }, "Example app"),
     );
 
-    expect(message).toContain("google.services");
+    expect(message).toContain("Settings > Connections > Google");
     expect(google.tokenRequests).toHaveLength(0);
   });
 

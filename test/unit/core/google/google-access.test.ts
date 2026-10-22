@@ -3,6 +3,7 @@ import {
   googleAccessLevels,
   googleAccessPresets,
   matchingGoogleAccessPreset,
+  withGoogleService,
 } from "../../../../src/core/google/google-access.ts";
 import { defaultConfig } from "../../../../src/core/settings/home.ts";
 
@@ -58,5 +59,17 @@ describe("matchingGoogleAccessPreset", () => {
     const access = { ...defaultConfig.google.access, gmail: "organize" } as const;
     expect(matchingGoogleAccessPreset(access, ["calendar", "drive", "contacts", "tasks"])?.id).toBe("read");
     expect(matchingGoogleAccessPreset(access, allServices)).toBeNull();
+  });
+});
+
+describe("withGoogleService", () => {
+  test("turns a service on in the order of the access levels, so the saved list stays stable", () => {
+    expect(withGoogleService(["calendar", "drive", "contacts", "tasks"], "gmail", true)).toEqual([...allServices]);
+    expect(withGoogleService(["gmail", "tasks"], "calendar", true)).toEqual(["calendar", "tasks", "gmail"]);
+  });
+
+  test("turns a service off, and a second turn on changes nothing", () => {
+    expect(withGoogleService(allServices, "drive", false)).toEqual(["calendar", "contacts", "tasks", "gmail"]);
+    expect(withGoogleService(["calendar"], "calendar", true)).toEqual(["calendar"]);
   });
 });

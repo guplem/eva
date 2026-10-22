@@ -7,6 +7,9 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+/** A day with no special day, so the greeting and the faces are the usual ones. */
+const ordinaryDay = new Date("2026-07-15T12:00:00");
+
 async function logIn(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByLabel(/Token/).fill(token);
@@ -79,10 +82,26 @@ async function newCloneCard(page: Page): Promise<Locator> {
   // The clones load after the page opens, so wait for the cards or for the empty text first.
   await expect(cards.first().or(page.locator("main").getByText(/^No clones yet\./))).toBeVisible();
   const before = await cards.count();
+  const created = page.waitForResponse(
+    (response) => response.url().endsWith("/clones") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "New clone" }).click();
+  const name = ((await (await created).json()) as { name: string }).name;
   await expect(cards).toHaveCount(before + 1);
-  // The clones sort by number, so the new one is the last.
-  return cards.last();
+  // Not the last card: a new clone takes the first free number, which a deleted clone leaves.
+  return page.getByRole("region", { name: `Clone ${name}` });
+}
+
+/**
+ * Right-clicks an element after it scrolls into view. A scroll event comes a frame later, and a scroll
+ * closes an open context menu, so the click waits for that frame.
+ */
+async function rightClickInView(locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+  await locator.click({ button: "right" });
 }
 
 /** Opens Settings, then a section by its card on the home page, which a phone shows too. */
@@ -726,6 +745,14 @@ test("a setup card's Remove button removes the schedule", async ({ page }, info)
 });
 
 test("the day line shows the time of a run and of now on hover", async ({ page }, info) => {
+  // The day line places "now" by the server's time. Near midnight the mark sits at an edge of a
+  // phone screen, so the hover misses it. Noon keeps it in the middle of the line.
+  await page.route("**/api/schedules", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as { now: string };
+    return route.fulfill({ response, json: { ...body, now: `${body.now.slice(0, 11)}12:00${body.now.slice(16)}` } });
+  });
   await logIn(page);
   const id = `hover-${info.project.name}`;
   await page.request.post("/api/schedules", {
@@ -794,6 +821,34 @@ test("a clone card lists all its chats, and a new chat starts in a clone that ha
   await expect(sameCard.locator(".clone-chat")).toHaveCount(2);
   await sameCard.locator(".clone-chat").last().click();
   await expect(page.locator(".main-header .sub")).toContainText(cloneName);
+});
+
+test("a right click on a clone deletes it, after a strong warning about its chats", async ({ page }) => {
+  await logIn(page);
+  await openExampleApp(page);
+  const card = await newCloneCard(page);
+  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
+  await card.getByRole("button", { name: "New chat here" }).click();
+  await expect(page.getByText("Project mode")).toBeVisible();
+  await page.getByRole("button", { name: "Example app", exact: true }).click();
+  const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
+  await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
+
+  await rightClickInView(sameCard.locator(".clone-head"));
+  await page.getByRole("menuitem", { name: "Delete clone" }).click();
+  const dialog = page.getByRole("dialog", { name: `Delete the clone ${cloneName}` });
+  await expect(dialog.locator(".callout.danger")).toContainText("1 chat");
+  const remove = dialog.getByRole("button", { name: "Delete the clone and its chats" });
+  await expect(remove).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(sameCard).toBeVisible();
+
+  await rightClickInView(sameCard.locator(".clone-head"));
+  await page.getByRole("menuitem", { name: "Delete clone" }).click();
+  await dialog.getByLabel(/I understand/).check();
+  await remove.click();
+  await expect(dialog).toBeHidden();
+  await expect(sameCard).toBeHidden();
 });
 
 test("a deleted project chat shows its project page again", async ({ page }) => {
@@ -1836,6 +1891,8 @@ test("the chat list shows each chat's time and last answer, and the search filte
 });
 
 test("a new chat greets with EVE and suggestions, and a tap on one starts the chat", async ({ page }) => {
+  // An ordinary day: a special day shows festive eyes and greeting instead.
+  await page.clock.setFixedTime(ordinaryDay);
   await logIn(page);
   await newChat(page);
   const greeting = page.locator(".new-chat");
@@ -4064,4 +4121,30 @@ test("Files: a file and a folder download from their own button, and a failed do
   );
   await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
+});
+
+test("on a special day, EVE greets with that day's eyes, and the tab icon wears them", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
+  await logIn(page);
+  await newChat(page);
+  const greeting = page.locator(".new-chat");
+  await expect(greeting.getByRole("heading", { level: 2 })).toHaveText("Merry Christmas!");
+  await expect(greeting.locator(".mk.festive.f-spin")).toBeVisible();
+  await expect(greeting.locator(".festive-decoration svg")).toBeVisible();
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml,/);
+});
+
+test("a fact that Eva still needs shows as one special suggestion, and the answer goes to Eva", async ({ page }) => {
+  await page.clock.setFixedTime(ordinaryDay);
+  await logIn(page);
+  await newChat(page);
+  // The demo vault has no birthday yet, so Eva asks for it first.
+  await page.getByRole("button", { name: "Hey Eva! I was born on…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Tell Eva your birthday" });
+  const field = dialog.getByLabel("Your birthday");
+  await expect(field).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Tell Eva" })).toBeDisabled();
+  await field.fill("1990-05-14");
+  await dialog.getByRole("button", { name: "Tell Eva" }).click();
+  await expect(page.locator(".message.answer").first()).toContainText("I was born on 1990-05-14");
 });

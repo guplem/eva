@@ -10,6 +10,11 @@ describe("problemAction", () => {
     expect(problemAction("vault_sync", "offline")).toBe("open_settings");
   });
 
+  test("a template part that differs opens its card", () => {
+    expect(problemAction("template_alignment", "ok")).toBe("choose_template_version");
+    expect(problemAction("template_alignment", "ok", "settings")).toBeNull();
+  });
+
   test("a schedule problem opens the schedules", () => {
     expect(problemAction("schedule:lunch", "ok")).toBe("open_schedules");
     expect(problemAction("schedule_card:lunch", "ok")).toBe("open_schedules");

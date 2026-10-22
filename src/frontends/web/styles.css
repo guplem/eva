@@ -254,11 +254,6 @@ samp {
   padding-bottom: 4px;
 }
 
-:root[data-density="compact"] .settings,
-:root[data-density="compact"] .settings fieldset {
-  gap: 6px;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -1131,37 +1126,6 @@ textarea {
   gap: 12px;
 }
 
-.settings {
-  /* A long Windows path or URL has no break points. */
-  overflow-wrap: anywhere;
-  padding: 20px;
-  max-width: 720px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.settings h1 {
-  font-size: 18px;
-  margin: 0;
-}
-
-.settings fieldset {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
-}
-
-.settings label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-}
-
 .seed-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -1227,16 +1191,6 @@ textarea {
   gap: 10px;
 }
 
-.settings h3 {
-  margin: 8px 0 0;
-  font-size: 15px;
-}
-
-.settings .hint {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .remote-access ol {
   margin: 0;
   padding-left: 20px;
@@ -1249,11 +1203,6 @@ textarea {
   width: 200px;
   height: 200px;
   max-width: 100%;
-}
-
-.settings input[type="password"] {
-  flex: 1;
-  min-width: 0;
 }
 
 .sync-state li {
@@ -1307,11 +1256,6 @@ textarea {
 
 .check-row .failed {
   color: var(--bad);
-}
-
-.settings .muted {
-  color: var(--muted);
-  font-size: 13px;
 }
 
 /* The repository setup: each section of a report, with its items as the step rows of Remote access. */
@@ -1620,22 +1564,6 @@ textarea {
   }
 }
 
-.edit-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-}
-
-.edit-list ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 /* The whole AGENTS.md: monospace, so YAML indents line up. */
 .project-file {
   width: 100%;
@@ -1748,6 +1676,17 @@ button.link-button {
 }
 
 .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* A fieldset that only disables its fields: the card already gives the frame. */
+.card-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

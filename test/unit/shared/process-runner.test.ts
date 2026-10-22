@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isEvaError } from "../../../src/shared/errors.ts";
-import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
+import { failureReason, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 
 const bun = process.execPath;
 const environment = { PATH: process.env["PATH"] ?? "", SYSTEMROOT: process.env["SYSTEMROOT"] ?? "" };
@@ -47,5 +47,27 @@ describe("systemProcessRunner", () => {
       .run(["eva-program-that-does-not-exist"], { cwd: process.cwd(), environment, timeoutMs: 5_000 })
       .catch((caught: unknown) => caught);
     expect(isEvaError(error, "process_failed")).toBe(true);
+  });
+});
+
+describe("failureReason", () => {
+  test("gives the error output when there is one", () => {
+    expect(failureReason({ exitCode: 128, stdout: "", stderr: "fatal: no remote\n" }, "git")).toBe("fatal: no remote");
+  });
+
+  test("gives the exit code when the error output is empty (#430)", () => {
+    expect(failureReason({ exitCode: 128, stdout: "", stderr: "  \n" }, "git")).toBe(
+      "git ended with exit code 128 and wrote no error.",
+    );
+  });
+
+  test("adds the normal output when the error output is empty", () => {
+    expect(failureReason({ exitCode: 1, stdout: "nothing to commit\n", stderr: "" }, "git")).toBe(
+      "git ended with exit code 1 and wrote no error. Its output: nothing to commit",
+    );
+  });
+
+  test("keeps a long output short", () => {
+    expect(failureReason({ exitCode: 1, stdout: "", stderr: "x".repeat(2000) }, "git").length).toBeLessThanOrEqual(500);
   });
 });

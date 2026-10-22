@@ -7,7 +7,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 
 /** The environment variable that holds the GitHub token for Eva's git commands. */
 export const githubTokenVariable = "EVA_GITHUB_TOKEN";
@@ -45,7 +45,7 @@ export async function checkVaultRepository(inputs: Omit<VaultCloneInputs, "folde
     { cwd: process.cwd(), environment: { ...inputs.environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: checkTimeoutMs },
   );
   if (result.exitCode === 0) return null;
-  return result.stderr.trim() || `git ended with exit code ${String(result.exitCode)}.`;
+  return failureReason(result, "git");
 }
 
 /** Clones the vault into an empty or missing folder, and keeps Eva's credential helper in the clone. */
@@ -59,7 +59,7 @@ export async function cloneVault(inputs: VaultCloneInputs): Promise<void> {
     { cwd: process.cwd(), environment, timeoutMs: cloneTimeoutMs },
   );
   if (clone.exitCode !== 0) {
-    throw new EvaError("git_failed", `git could not clone ${inputs.repository}: ${clone.stderr.trim()}`);
+    throw new EvaError("git_failed", `git could not clone ${inputs.repository}: ${failureReason(clone, "git")}`);
   }
   await keepCredentialHelper(inputs.folder, inputs.runner, environment);
 }
@@ -80,7 +80,10 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
     configTimeoutMs,
   );
   if (remote.exitCode !== 0) {
-    throw new EvaError("git_failed", `git could not add ${inputs.repository} as the remote: ${remote.stderr.trim()}`);
+    throw new EvaError(
+      "git_failed",
+      `git could not add ${inputs.repository} as the remote: ${failureReason(remote, "git")}`,
+    );
   }
   await keepCredentialHelper(inputs.folder, inputs.runner, environment);
   // HEAD, not main: a vault that the person made by hand can be on another branch, such as master.
@@ -89,7 +92,10 @@ export async function pushNewVault(inputs: VaultCloneInputs): Promise<void> {
     // Sync cannot push to an empty remote, so a remote left here would keep the vault off GitHub for good.
     // With no remote, a rerun of setup offers the push again.
     await run(["remote", "remove", "origin"], configTimeoutMs);
-    throw new EvaError("git_failed", `git could not push the vault to ${inputs.repository}: ${push.stderr.trim()}`);
+    throw new EvaError(
+      "git_failed",
+      `git could not push the vault to ${inputs.repository}: ${failureReason(push, "git")}`,
+    );
   }
   // Sync reads the remote's default branch from origin/HEAD, which only a clone writes.
   const branch = await run(["symbolic-ref", "--short", "HEAD"], configTimeoutMs);

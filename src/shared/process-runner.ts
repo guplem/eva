@@ -23,6 +23,21 @@ export interface ProcessRunner {
   run(command: readonly string[], options: ProcessRunOptions): Promise<ProcessResult>;
 }
 
+/** The longest reason, so that a message stays readable on a phone. */
+const maxReasonLength = 500;
+
+/**
+ * Why a command failed: its error output, or else its exit code and its normal output.
+ * Never empty: git can fail with no error output, and an empty message tells the person nothing (#430).
+ */
+export function failureReason(result: ProcessResult, program: string): string {
+  const errorOutput = result.stderr.trim();
+  if (errorOutput !== "") return errorOutput.slice(0, maxReasonLength);
+  const output = result.stdout.trim();
+  const reason = `${program} ended with exit code ${String(result.exitCode)} and wrote no error.`;
+  return (output === "" ? reason : `${reason} Its output: ${output}`).slice(0, maxReasonLength);
+}
+
 /** After a gentle stop, the time a process gets before the hard stop. */
 const gracePeriodMs = 2_000;
 

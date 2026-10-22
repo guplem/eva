@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, posix } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 
@@ -162,7 +162,8 @@ export class VaultSync {
       // save commits that edit first, then merges.
       if (await this.hasUnpushedMerge(branch)) return this.state;
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
-      if (fetched.exitCode !== 0) return this.update({ status: "offline", lastError: "Could not reach the remote." });
+      if (fetched.exitCode !== 0)
+        return this.update({ status: "offline", lastError: `Could not reach the remote: ${firstLine(fetched)}` });
       await this.rebaseOnto(branch, { canMerge: false });
       return this.state;
     });
@@ -316,7 +317,7 @@ export class VaultSync {
     if (written.kept.length === 0) return true;
     const checkout = await this.git(["checkout", "--", ...written.kept], localTimeoutMs);
     if (checkout.exitCode !== 0) {
-      this.update({ status: "error", lastError: `git checkout failed: ${firstLine(checkout.stderr)}` });
+      this.update({ status: "error", lastError: `git checkout failed: ${firstLine(checkout)}` });
       return false;
     }
     return true;
@@ -351,7 +352,7 @@ export class VaultSync {
     for (const step of steps) {
       const result = await this.git(step, localTimeoutMs, environment);
       if (result.exitCode !== 0) {
-        this.update({ status: "error", lastError: `git update-index failed: ${firstLine(result.stderr)}` });
+        this.update({ status: "error", lastError: `git update-index failed: ${firstLine(result)}` });
         return null;
       }
     }
@@ -433,7 +434,7 @@ export class VaultSync {
       if (reportFailure) {
         this.update({
           status: "error",
-          lastError: `git merge-tree failed: ${firstLine(merged.stderr)}${/unknown option|usage:/i.test(merged.stderr) ? " To resolve a conflict from the phone, Eva needs git 2.38 or newer on this machine." : ""}`,
+          lastError: `git merge-tree failed: ${firstLine(merged)}${/unknown option|usage:/i.test(merged.stderr) ? " To resolve a conflict from the phone, Eva needs git 2.38 or newer on this machine." : ""}`,
         });
       }
       return null;
@@ -471,12 +472,12 @@ export class VaultSync {
 
   /** Keeps every line of git's reason: a refused fast-forward names the blocking files on the lines after the first. */
   private failStep(name: string, result: GitResult): false {
-    const reason = result.stderr
+    const reason = failureReason(result, "git")
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .join(" ");
-    this.update({ status: "error", lastError: `git ${name} failed: ${reason.slice(0, 500) || "git gave no reason."}` });
+    this.update({ status: "error", lastError: `git ${name} failed: ${reason}` });
     return false;
   }
 
@@ -510,7 +511,7 @@ export class VaultSync {
     if (abort.exitCode !== 0) {
       this.update({
         status: "error",
-        lastError: `A rebase is still open in the vault, and git rebase --abort failed: ${firstLine(abort.stderr)}`,
+        lastError: `A rebase is still open in the vault, and git rebase --abort failed: ${firstLine(abort)}`,
       });
       return false;
     }
@@ -563,7 +564,10 @@ export class VaultSync {
     for (let attempt = 1; attempt <= maxPushAttempts; attempt += 1) {
       const fetched = await this.git(["fetch", "-q", "origin", branch], networkTimeoutMs);
       if (fetched.exitCode !== 0) {
-        this.update({ status: "offline", lastError: "Could not reach the remote. The notes are committed here." });
+        this.update({
+          status: "offline",
+          lastError: `Could not reach the remote: ${firstLine(fetched)} The notes are committed here.`,
+        });
         return;
       }
       if (!(await this.rebaseOnto(branch))) return;
@@ -576,7 +580,7 @@ export class VaultSync {
         this.update({ status: "ok", lastError: null, lastPushAt: this.options.now() });
         return;
       }
-      pushError = firstLine(pushed.stderr);
+      pushError = firstLine(pushed);
     }
     this.update({ status: "error", lastError: `The push failed ${String(maxPushAttempts)} times: ${pushError}` });
   }
@@ -597,7 +601,7 @@ export class VaultSync {
       const conflicted = unmergedPaths(await this.statusEntries());
       await this.git(["rebase", "--abort"], localTimeoutMs);
       if (conflicted.length === 0) {
-        this.update({ status: "error", lastError: `The rebase on the remote failed: ${firstLine(rebase.stderr)}` });
+        this.update({ status: "error", lastError: `The rebase on the remote failed: ${firstLine(rebase)}` });
         return false;
       }
       const plan = await this.mergePlan(branch);
@@ -635,7 +639,7 @@ export class VaultSync {
     if (applied.exitCode !== 0) {
       this.update({
         status: "error",
-        lastError: `Local edits clash with the remote, and git stash apply failed: ${firstLine(applied.stderr)} Git keeps the edits in the stash.`,
+        lastError: `Local edits clash with the remote, and git stash apply failed: ${firstLine(applied)} Git keeps the edits in the stash.`,
       });
       return false;
     }
@@ -792,12 +796,13 @@ function parseStageEntries(output: string): { path: string; stage: string; versi
   return entries;
 }
 
-function firstLine(text: string): string {
+/** The first line of the reason why a git command failed. It is never empty. */
+function firstLine(result: GitResult): string {
   return (
-    text
+    failureReason(result, "git")
       .split("\n")
       .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "git gave no reason."
+      .find((line) => line.length > 0) ?? ""
   );
 }
 

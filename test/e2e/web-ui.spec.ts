@@ -4448,3 +4448,25 @@ test("a fact that Eva still needs shows as one special suggestion, and the answe
   await dialog.getByRole("button", { name: "Tell Eva" }).click();
   await expect(page.locator(".message.answer").first()).toContainText("I was born on 1990-05-14");
 });
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("on a phone, the tab bar hides while the keyboard is open, and comes back after it (#426)", async ({ page }) => {
+    test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+    await logIn(page);
+    const nav = page.getByRole("navigation", { name: "Main" });
+    const composer = page.getByLabel("Message").first();
+    await composer.focus();
+    await expect(nav).toBeHidden();
+    await composer.blur();
+    await expect(nav).toBeVisible();
+  });
+});
+
+test("a narrow window on a computer keeps its tab bar while the person types (#426)", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await page.getByLabel("Message").first().focus();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+});

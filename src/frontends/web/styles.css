@@ -1458,6 +1458,30 @@ textarea {
     overflow: visible;
   }
 
+  /* While a person types on a touch screen, the keyboard is open: the tab bar only takes room from the text. */
+  @media (pointer: coarse) {
+    .app:has(
+        :is(
+          textarea,
+          [contenteditable]:not([contenteditable="false"]),
+          input:not(
+            [type="checkbox"],
+            [type="radio"],
+            [type="range"],
+            [type="color"],
+            [type="file"],
+            [type="button"],
+            [type="submit"],
+            [type="reset"],
+            [type="image"]
+          )
+        ):focus
+      )
+      .main-nav {
+      display: none;
+    }
+  }
+
   /* The visor stays on the rail. On a phone, the "Reconnecting…" banner says when Eva is offline. */
   .main-nav-visor,
   .nav-spacer {

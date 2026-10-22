@@ -6,7 +6,7 @@ import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatS
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { chatTree, Conversation, rootChats, type SentMessage } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import {
@@ -63,7 +63,12 @@ export function AssistantView({
   const chats = showArchived ? roots.filter((chat) => chat.archived) : active;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const archiveItem = useArchiveItem(onChanged);
+  /** An archived chat leaves the page, so the list opens another one. */
+  const afterArchive = async (chat: SessionRecord): Promise<void> => {
+    if (chat.archived) setSelectedId((current) => (current === chat.id ? null : current));
+    await onChanged();
+  };
+  const archiveItem = useArchiveItem(afterArchive);
   /** Switches the sidebar between the chats and the archived chats. The open chat stays open. */
   const showList = (archived: boolean): void => {
     setShowArchived(archived);
@@ -76,9 +81,8 @@ export function AssistantView({
   // The list knows the turns that ran before this page loaded. The events know the newer ones.
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
-  // A chat archived from the chats leaves the page. A chat opened from the archive stays open
-  // when the person brings it back.
-  const selected = (showArchived ? roots : chats).find((chat) => chat.id === selectedId) ?? chats[0] ?? active[0];
+  // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
+  const selected = roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0];
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   const [panelShown, togglePanel] = useChatPanelShown();
@@ -102,8 +106,9 @@ export function AssistantView({
     // The person reads the open chat now. Its mark reaches the core a moment later.
     return state === "unread" && candidate.id === selected?.id && !sidebarOpen ? null : state;
   };
-  const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
-  const linkedArchived = linkedChat?.archived === true;
+  // A fork opens as a branch of its first chat, which holds the archive flag.
+  const linkedId = linkedChat?.mode === "assistant" ? rootIdOf(linkedChat, sessions) : null;
+  const linkedArchived = roots.some((chat) => chat.id === linkedId && chat.archived);
   const actionRequest = useChatActionRequest();
   const clearAction = actionRequest.clear;
 
@@ -223,7 +228,7 @@ export function AssistantView({
               )}
               onShowList={onShowList}
               listHasUnread={active.some((candidate) => stateOf(candidate) === "unread")}
-              archivable
+              onArchived={afterArchive}
               panelShown={panelShown}
               onTogglePanel={togglePanel}
               onChanged={onChanged}

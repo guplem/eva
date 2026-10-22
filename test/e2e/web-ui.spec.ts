@@ -365,6 +365,10 @@ test("a link to an archived chat opens it, with the archived list (issue 388)", 
   const nav = page.getByRole("navigation", { name: "Chats" });
   await expect(nav.getByRole("heading", { name: "Archived" })).toBeVisible();
   await expect(nav.locator(".list-item", { hasText: title })).toHaveCount(1);
+  // The way back changes the list, not the open chat.
+  await nav.getByRole("button", { name: "Back to the chats" }).click();
+  await expect(nav.getByRole("heading", { name: "Chats" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
 });
 
 /** Opens the "More actions" menu of the chat header and picks an item. */

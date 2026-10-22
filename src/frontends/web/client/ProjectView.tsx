@@ -11,7 +11,7 @@ import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
-import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
@@ -546,19 +546,6 @@ export function ProjectView({
       {chat !== undefined && panelShown && <ChatPanel {...chatDetails} />}
     </div>
   );
-}
-
-/** The first chat of a fork's line, found through the parents that the list still has. */
-function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]): string {
-  let current = chat;
-  const seen = new Set<string>();
-  while (current.parentId !== null && !seen.has(current.id)) {
-    seen.add(current.id);
-    const parent = sessions.find((candidate) => candidate.id === current.parentId);
-    if (parent === undefined) break;
-    current = parent;
-  }
-  return current.id;
 }
 
 /** A project in the list. Its context menu opens the project's pages at once. */

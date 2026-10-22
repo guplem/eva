@@ -6,6 +6,7 @@ import {
   cues,
   cueTones,
   defaultCueLevels,
+  minimumVibrationMs,
   playCue,
   readCueLevels,
   saveCueLevels,
@@ -113,6 +114,13 @@ describe("vibrationPattern", () => {
     const strong = vibrationPattern("answer", "strong");
     expect(strong[0]).toBeGreaterThan(light[0] ?? 0);
     expect(strong[1]).toBe(light[1]);
+  });
+
+  test("each vibration is long enough for a slow motor to spin up", () => {
+    for (const cue of cues) {
+      const pulses = vibrationPattern(cue, "light").filter((_, index) => index % 2 === 0);
+      for (const ms of pulses) expect(ms).toBeGreaterThanOrEqual(minimumVibrationMs);
+    }
   });
 });
 

@@ -432,11 +432,12 @@ function EvaUpdatesCard({
       const result = await waitForNewEva();
       setWork(null);
       setRestarted(result === "restarted");
+      // "waiting" leaves the phase at restarting, and the status callout already says so.
       setNote(
         result === "restarted"
           ? "Eva restarted with the new version."
           : result === "waiting"
-            ? "Eva restarts with the new version when no chat runs."
+            ? null
             : "Eva did not answer after the update. Check her log.",
       );
     } catch (error) {

@@ -4,6 +4,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ApiError } from "./api.ts";
+import { playCue } from "./cues.ts";
 import { errorFix, type ErrorFix } from "./error-fixes.ts";
 import { destinationOf } from "./navigation.ts";
 import { Toast } from "./Toast.tsx";
@@ -34,6 +35,7 @@ export function ErrorToastProvider({ children }: { readonly children: ReactNode 
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
   const showError = useCallback((caught: unknown): void => {
+    playCue("problem");
     setToast(describeError(caught));
     setShown((count) => count + 1);
   }, []);

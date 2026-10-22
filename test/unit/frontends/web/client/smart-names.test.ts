@@ -26,7 +26,7 @@ describe("smartName: a date at the start", () => {
   });
 
   test("a rest that starts with a digit is part of a longer number, not a name", () => {
-    for (const name of ["2024-2025 plan", "2026_03_02_notes"])
+    for (const name of ["2024-2025 plan", "2026_03_02_notes", "2024 - 2025 plan", "2026-03-02  10 notes"])
       expect(smartName(name, {})).toEqual({ name, date: null });
   });
 

@@ -20,14 +20,14 @@ export interface SmartNameOptions {
 
 /**
  * The forms of a project id, the longest first: `YYYY-MM-DD-HHmm`, `YYYY-MM-DD`, `YYYY-MM` and
- * `YYYY`. A space, a `_` or a `-` ends the date. The rest starts with no digit, so a short form
- * never takes a part of a longer number, as in `2024-2025 plan`.
+ * `YYYY`. A space, a `_` or a `-` ends the date. The rest starts with no digit and no separator,
+ * so a short form never takes a part of a longer number, as in `2024 - 2025 plan`.
  */
 const datePatterns = [
-  /^(\d{4})-(\d{2})-(\d{2})[-_ ](\d{2})(\d{2})[-_ ]+(\D.*)$/,
-  /^(\d{4})-(\d{2})-(\d{2})[-_ ]+(\D.*)$/,
-  /^(\d{4})-(\d{2})[-_ ]+(\D.*)$/,
-  /^(\d{4})[-_ ]+(\D.*)$/,
+  /^(\d{4})-(\d{2})-(\d{2})[-_ ](\d{2})(\d{2})[-_ ]+([^\d\s_-].*)$/,
+  /^(\d{4})-(\d{2})-(\d{2})[-_ ]+([^\d\s_-].*)$/,
+  /^(\d{4})-(\d{2})[-_ ]+([^\d\s_-].*)$/,
+  /^(\d{4})[-_ ]+([^\d\s_-].*)$/,
 ];
 
 /** A rest with no letter before its extension, as in `2026-03-02-.md`, is no name. */

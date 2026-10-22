@@ -39,7 +39,7 @@ export function NewChatGreeting({ onPick }: { readonly onPick: (text: string) =>
 
   return (
     <div className="new-chat">
-      <Visor size={128} face={stateFaces.greeting} festive={day?.id ?? null} />
+      <Visor size={128} face={stateFaces.greeting} festive={day?.id ?? null} followPointer />
       <div>
         {/* The chat's title is the page's h1. */}
         <h2>{day?.greeting ?? greeting(new Date().getHours())}</h2>

@@ -2802,6 +2802,48 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
   await expect(dialog).toHaveCount(0);
 });
 
+test("Settings: the Versions card names a newer Eva, and its Update button opens the version dialog", async ({
+  page,
+}) => {
+  const status = {
+    kind: "executable",
+    frequency: "daily",
+    install: "minor",
+    phase: "idle",
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    heldBack: null,
+    releases: [
+      {
+        version: "0.3.0",
+        notes: "",
+        level: "minor",
+        summary: "New features:\n• feat: voice notes (0.3.0)",
+        headline: "Voice notes.",
+        publishedAt: null,
+      },
+    ],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  await page.route("**/api/update/check", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: status });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  const card = page.getByRole("region", { name: "Versions" });
+  await expect(card).toContainText("(0.3.0 available)");
+  await card.getByRole("button", { name: "Update" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Update to a version" });
+  await expect(dialog.getByRole("radio", { name: /v0\.3\.0/ })).toBeChecked();
+});
+
 test("Settings: the update choices are chips, and the major update policy shows a warning", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Updates");

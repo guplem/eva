@@ -13,7 +13,7 @@ import {
 } from "./api.ts";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { FactsSkeleton, ProgressBar } from "./Loading.tsx";
-import { updatesFace, updateWait } from "./update-words.ts";
+import { evaNewest, updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 
@@ -41,11 +41,31 @@ const downloadPollLimit = 220;
 /** What a proxy answers when the server behind it does not. */
 const gatewayErrors = new Set([502, 503, 504]);
 
+/**
+ * Eva's update status and the version dialog, for both cards: the Versions card names a newer
+ * Eva and opens the dialog, and the Eva updates card installs the version that the dialog picks.
+ */
+interface EvaUpdate {
+  readonly update: UpdateStatus | null;
+  readonly setUpdate: (update: UpdateStatus | null) => void;
+  readonly pickingVersion: boolean;
+  readonly setPickingVersion: (picking: boolean) => void;
+  /** Checks first, so the dialog lists the releases of now. */
+  readonly openVersions: () => Promise<void>;
+}
+
 export function UpdatesSection({ context }: { readonly context: SettingsContext }): ReactElement {
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [pickingVersion, setPickingVersion] = useState(false);
+  const openVersions = async (): Promise<void> => {
+    setUpdate(await api.checkForUpdate());
+    setPickingVersion(true);
+  };
+  const eva: EvaUpdate = { update, setUpdate, pickingVersion, setPickingVersion, openVersions };
   return (
     <>
-      <VersionsCard />
-      <EvaUpdatesCard context={context} />
+      <VersionsCard eva={eva} />
+      <EvaUpdatesCard context={context} eva={eva} />
       <RestartCard context={context} />
     </>
   );
@@ -55,9 +75,10 @@ export function UpdatesSection({ context }: { readonly context: SettingsContext 
  * The versions that `eva doctor` shows in a terminal, so a phone sees them too. A tool that Eva
  * installs herself gets a button, so a missing or old tool needs no terminal. claude updates with
  * its own `claude update`, which waits until no chat runs a turn. Voice notes get one row and one
- * button for all their parts, as the person wants the feature, not each program.
+ * button for all their parts, as the person wants the feature, not each program. A newer Eva
+ * opens the version dialog, so a major update shows its warning first.
  */
-function VersionsCard(): ReactElement {
+function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   const [versions, setVersions] = useState<EvaVersions | "loading" | "failed">("loading");
   /** The newest published version of each tool, by program. A tool that is missing here is unknown. */
   const [latest, setLatest] = useState<ReadonlyMap<string, string>>(new Map());
@@ -72,6 +93,9 @@ function VersionsCard(): ReactElement {
   const [engineStarting, setEngineStarting] = useState(false);
   /** Counts the failed engine status reads, so a failed read asks again. */
   const [engineReadFailures, setEngineReadFailures] = useState(0);
+  /** True while the Eva row checks for the releases before the version dialog opens. */
+  const [openingVersions, setOpeningVersions] = useState(false);
+  const newestEva = evaNewest(eva.update);
 
   const readVersions = (): void => {
     api.versions().then(setVersions, () => {
@@ -151,6 +175,18 @@ function VersionsCard(): ReactElement {
     }
   };
 
+  const openVersions = async (): Promise<void> => {
+    setNote(null);
+    setOpeningVersions(true);
+    try {
+      await eva.openVersions();
+    } catch (error) {
+      setNote({ ok: false, text: errorText(error) });
+    } finally {
+      setOpeningVersions(false);
+    }
+  };
+
   /** claude goes through `claude update` once Eva has found it; a missing claude goes through its installer. */
   const usesEngineUpdate = (program: string): boolean => program === "claude" && engineUpdate !== null;
 
@@ -164,7 +200,18 @@ function VersionsCard(): ReactElement {
       ) : (
         <dl className="facts">
           <dt>Eva</dt>
-          <dd>{versions.eva}</dd>
+          <dd className={newestEva === null ? undefined : "fact-with-action"}>
+            {newestEva === null ? versions.eva : `${versions.eva} (${newestEva} available)`}
+            {newestEva !== null && (
+              <button
+                className="primary small"
+                disabled={openingVersions || eva.update?.phase !== "idle"}
+                onClick={() => void openVersions()}
+              >
+                {openingVersions ? "Checking…" : "Update"}
+              </button>
+            )}
+          </dd>
           {versions.tools.map((tool) => {
             const newest = latest.get(tool.program);
             const action = toolAction(tool, newest);
@@ -208,6 +255,7 @@ function VersionsCard(): ReactElement {
           </dd>
         </dl>
       )}
+      {openingVersions && <ProgressBar label="Looking for the versions…" />}
       {/* An install says nothing until it ends, so its share is unknown. */}
       {installing !== null && <ProgressBar label={`Installing ${installing}. This can take a few minutes.`} />}
       {/* `claude update` says nothing until it ends, so its share is unknown. */}
@@ -260,9 +308,15 @@ function toolAction(tool: EvaVersions["tools"][number], newest: string | undefin
   return !tool.tooOld && freshness(tool, newest) === "latest" ? null : "Update";
 }
 
-function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): ReactElement {
+function EvaUpdatesCard({
+  context,
+  eva,
+}: {
+  readonly context: SettingsContext;
+  readonly eva: EvaUpdate;
+}): ReactElement {
   const config = context.settings.config;
-  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const { update, setUpdate, pickingVersion, setPickingVersion } = eva;
   const [note, setNote] = useState<string | null>(null);
   /** The sentence of a wait that this page started, such as a check. */
   const [work, setWork] = useState<string | null>(null);
@@ -270,7 +324,6 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
   const [posting, setPosting] = useState(false);
   /** Counts the failed status reads, so a failed read asks again. */
   const [readFailures, setReadFailures] = useState(0);
-  const [pickingVersion, setPickingVersion] = useState(false);
   /** Only an answer from the new Eva proves the install, so only then does the card look happy. */
   const [restarted, setRestarted] = useState(false);
 
@@ -385,13 +438,11 @@ function EvaUpdatesCard({ context }: { readonly context: SettingsContext }): Rea
     }
   };
 
-  /** Checks first, so the dialog lists the releases of now. */
   const pickVersion = async (): Promise<void> => {
     setNote(null);
     setWork("Looking for the versions…");
     try {
-      setUpdate(await api.checkForUpdate());
-      setPickingVersion(true);
+      await eva.openVersions();
     } catch (error) {
       setNote(errorText(error));
     } finally {

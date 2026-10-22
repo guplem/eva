@@ -50,6 +50,7 @@ import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
 import { settingsHash } from "./settings-routes.ts";
+import { browserPresencePage, startPushPresence } from "./push-presence.ts";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -290,6 +291,8 @@ function EvaApp(): ReactElement {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [authenticated, recover]);
+
+  useEffect(() => (authenticated === true ? startPushPresence(browserPresencePage()) : undefined), [authenticated]);
 
   useEffect(() => {
     if (authenticated !== true) return undefined;

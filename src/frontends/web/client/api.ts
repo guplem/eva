@@ -1,4 +1,6 @@
 /** The web UI's client of the local API. The login cookie carries the token or a device token. */
+import type { NotificationKind } from "../../../core/alerts/chat-notices.ts";
+import type { PushDevice } from "../../../core/alerts/web-push.ts";
 import type { CheckResult } from "../../../core/checks.ts";
 import type {
   EvaSetupState,
@@ -265,9 +267,12 @@ export const api = {
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
   trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
   forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
-  pushKey: (): Promise<{ publicKey: string; isHub: boolean }> => request("GET", "/api/push"),
-  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<unknown> =>
+  pushKey: (): Promise<{ publicKey: string; isHub: boolean; devices: readonly PushDevice[] }> =>
+    request("GET", "/api/push"),
+  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<{ devices: readonly PushDevice[] }> =>
     request("POST", "/api/push/devices", { subscription, label }),
+  setPushKinds: (endpoint: string, kinds: readonly NotificationKind[]): Promise<{ devices: readonly PushDevice[] }> =>
+    request("PATCH", "/api/push/devices", { endpoint, kinds }),
   removePushDevice: (endpoint: string): Promise<unknown> => request("DELETE", "/api/push/devices", { endpoint }),
   testPush: (): Promise<void> => request("POST", "/api/push/test"),
   /** Answers 409 when no vault is configured. */

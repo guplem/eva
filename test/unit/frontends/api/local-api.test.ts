@@ -1259,7 +1259,8 @@ describe("web routes", () => {
   });
 
   test("push: a device subscribes, gets each alert as a push, reads the newest alert, and leaves", async () => {
-    const key = await json<{ publicKey: string; devices: unknown[] }>(await call("/api/push"));
+    const key = await json<{ publicKey: string; isHub: boolean; devices: unknown[] }>(await call("/api/push"));
+    expect(key.isHub).toBe(true);
     expect(Buffer.from(key.publicKey, "base64url")).toHaveLength(65);
     expect(key.devices).toEqual([]);
     const endpoint = "https://fcm.googleapis.com/fcm/send/device-1";
@@ -1273,8 +1274,15 @@ describe("web routes", () => {
 
     expect((await call("/api/push/test", { method: "POST" })).status).toBe(204);
     expect(pushed).toEqual([endpoint]);
-    const recent = await json<{ alerts: { key: string; message: string }[] }>(await call("/api/notifications/recent"));
-    expect(recent.alerts[0]).toMatchObject({ key: "push_test", message: "This is a test notification from Eva." });
+    // A real alert goes to the device too, with a number that the device uses to show it once.
+    eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toEqual([endpoint, endpoint]);
+    const recent = await json<{ alerts: { key: string; seq: number }[] }>(await call("/api/notifications/recent"));
+    expect(recent.alerts.map((alert) => [alert.key, alert.seq])).toEqual([
+      ["example_problem", 2],
+      ["push_test", 1],
+    ]);
 
     const bad = await call("/api/push/devices", {
       method: "POST",

@@ -68,15 +68,23 @@ const pushHosts = ["fcm.googleapis.com", "push.apple.com", "push.services.mozill
 /** A push waits for the device this long, in seconds, then the push service drops it. */
 const pushTtlSeconds = 86_400;
 
-/** The contact that RFC 8292 asks for. A push service writes to it about a problem with the sender. */
+/**
+ * The contact that RFC 8292 asks for. A push service writes to it about a problem with the sender.
+ * Each instance names the project on purpose: an instance has no public address of its own.
+ */
 const vapidSubject = "https://github.com/guplem/eva";
 
 const requestTimeoutMs = 15_000;
+
+/** Each alert costs one request for each device, so the list stays short. */
+const maxDevices = 20;
 
 const fetchSender: PushSender = async (request) => {
   const response = await fetch(request.endpoint, {
     method: "POST",
     headers: request.headers,
+    // A redirect could lead to a host outside the push services, so Eva never follows one.
+    redirect: "manual",
     signal: AbortSignal.timeout(requestTimeoutMs),
   });
   return response.status;
@@ -90,7 +98,9 @@ function isPushEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
     return (
-      url.protocol === "https:" && pushHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))
+      url.protocol === "https:" &&
+      url.port === "" &&
+      pushHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))
     );
   } catch {
     return false;
@@ -108,7 +118,11 @@ export class WebPush {
 
   /** The public key that a browser needs to subscribe, as base64url of the uncompressed point. */
   publicKey(): string {
-    const jwk = this.privateKey().export({ format: "jwk" });
+    return this.publicKeyOf(this.privateKey());
+  }
+
+  private publicKeyOf(key: KeyObject): string {
+    const jwk = key.export({ format: "jwk" });
     const x = Buffer.from(jwk.x ?? "", "base64url");
     const y = Buffer.from(jwk.y ?? "", "base64url");
     return base64url(Buffer.concat([Buffer.from([4]), x, y]));
@@ -123,6 +137,12 @@ export class WebPush {
       throw new EvaError("config_invalid", "This push address is not a browser's push service.");
     }
     const others = this.read().filter((each) => each.endpoint !== subscription.endpoint);
+    if (others.length >= maxDevices) {
+      throw new EvaError(
+        "config_invalid",
+        `Eva sends notifications to ${String(maxDevices)} devices at most. Turn them off on a device first.`,
+      );
+    }
     this.write([
       ...others,
       {
@@ -146,9 +166,21 @@ export class WebPush {
 
   /** Wakes each device. A device whose subscription ended is forgotten. It never throws. */
   async notify(): Promise<void> {
+    try {
+      await this.notifyAll();
+    } catch (error) {
+      // A damaged secrets.json must not reach the alert path.
+      this.options.logger?.log("warn", "The pushes failed.", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async notifyAll(): Promise<void> {
     const subscriptions = this.read();
     if (subscriptions.length === 0) return;
     const key = this.privateKey();
+    const publicKey = this.publicKeyOf(key);
     const ended = new Set<string>();
     await Promise.all(
       subscriptions.map(async (subscription) => {
@@ -158,7 +190,7 @@ export class WebPush {
             headers: {
               TTL: String(pushTtlSeconds),
               Urgency: "high",
-              Authorization: `vapid t=${this.vapidToken(subscription.endpoint, key)}, k=${this.publicKey()}`,
+              Authorization: `vapid t=${this.vapidToken(subscription.endpoint, key)}, k=${publicKey}`,
               "Content-Length": "0",
             },
           });
@@ -172,6 +204,7 @@ export class WebPush {
         }
       }),
     );
+    // Read again: a device may subscribe while the pushes wait.
     if (ended.size > 0) this.write(this.read().filter((each) => !ended.has(each.endpoint)));
   }
 

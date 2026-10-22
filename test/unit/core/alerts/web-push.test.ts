@@ -146,3 +146,24 @@ function publicJwk(raw: string): { x: string; y: string } {
   const bytes = base64url(raw);
   return { x: bytes.subarray(1, 33).toString("base64url"), y: bytes.subarray(33, 65).toString("base64url") };
 }
+
+describe("limits", () => {
+  test("refuse a push host with a port, and a 21st device", () => {
+    expect(() => push().subscribe({ ...subscription, endpoint: "https://fcm.googleapis.com:8443/x" }, "X")).toThrow();
+    const pusher = push();
+    for (let index = 0; index < 20; index += 1) {
+      pusher.subscribe({ ...subscription, endpoint: `${subscription.endpoint}-${String(index)}` }, "Phone");
+    }
+    expect(() => pusher.subscribe({ ...subscription, endpoint: `${subscription.endpoint}-more` }, "Phone")).toThrow(
+      "20 devices at most",
+    );
+  });
+
+  test("a damaged secrets.json never reaches the alert path", async () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    writeFileSync(paths.secrets, "{ broken");
+    expect(await pusher.notify()).toBeUndefined();
+    expect(sent).toEqual([]);
+  });
+});

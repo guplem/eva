@@ -721,7 +721,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
 
 /** The devices that get Eva's alerts as notifications: the key, the list, a new device, a removal and a test. */
 async function pushRoute(request: Request, method: string, path: string, eva: Eva): Promise<Response> {
-  if (method === "GET" && path === "/api/push") return json({ publicKey: eva.pushKey(), devices: eva.pushDevices() });
+  if (method === "GET" && path === "/api/push") return json({ ...eva.pushKey(), devices: eva.pushDevices() });
   if (method === "POST" && path === "/api/push/devices") {
     const { subscription, label } = pushDeviceSchema.parse(await request.json());
     eva.subscribePush(subscription, label);

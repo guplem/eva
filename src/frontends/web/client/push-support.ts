@@ -12,6 +12,8 @@ export type PushSupport =
 
 export interface PushEnvironment {
   readonly userAgent: string;
+  /** An iPad sends the user agent of a Mac, so a Mac with a touch screen is an iPad. */
+  readonly touchScreen: boolean;
   /** True when the page runs as the installed app, not in a browser tab. */
   readonly standalone: boolean;
   readonly secure: boolean;
@@ -20,7 +22,9 @@ export interface PushEnvironment {
 }
 
 export function pushSupport(environment: PushEnvironment): PushSupport {
-  const apple = /iPhone|iPad|iPod/.test(environment.userAgent);
+  const apple =
+    /iPhone|iPad|iPod/.test(environment.userAgent) ||
+    (environment.userAgent.includes("Macintosh") && environment.touchScreen);
   // Safari on an iPhone has no PushManager in a tab, so this check comes before the next one.
   if (apple && !environment.standalone) return "needs-install";
   if (!environment.secure || !environment.hasPush || environment.permission === null) return "unsupported";

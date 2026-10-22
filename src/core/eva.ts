@@ -161,6 +161,11 @@ export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
   readonly missing: readonly ("birthDate" | "region")[];
 }
 
+/** An alert as a device reads it after a push. The number lets the device show each alert once. */
+export interface PushedAlert extends Alert {
+  readonly seq: number;
+}
+
 export interface EvaOptions {
   readonly paths: HomePaths;
   readonly config: EvaConfig;
@@ -378,7 +383,9 @@ export class Eva {
   /** Eva's alerts as notifications on the person's devices. */
   private readonly webPush: WebPush;
   /** The newest alerts, newest first, which a device's service worker reads after a push. */
-  private readonly recentAlerts: Alert[];
+  private readonly recentAlerts: PushedAlert[];
+  /** The number of the last alert that went to the devices. */
+  private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
   private relayed = new Map<string, ReadonlySet<string>>();
   private reportNameTaken = false;
@@ -414,7 +421,10 @@ export class Eva {
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     this.recentAlerts = [];
-    this.alerts.onAlert((alert) => this.pushAlert(alert));
+    this.pushedCount = 0;
+    // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
+    // machines, so a device that also subscribed on a satellite would get each one twice.
+    this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert) : undefined));
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -825,9 +835,9 @@ export class Eva {
     return this.alerts.onAlert(listener);
   }
 
-  /** The public key that a device needs to subscribe to the alerts. */
-  pushKey(): string {
-    return this.webPush.publicKey();
+  /** The public key that a device needs to subscribe, and whether this machine sends the alerts. */
+  pushKey(): { readonly publicKey: string; readonly isHub: boolean } {
+    return { publicKey: this.webPush.publicKey(), isHub: this.role() === "hub" };
   }
 
   pushDevices(): PushDevice[] {
@@ -853,12 +863,13 @@ export class Eva {
   }
 
   /** The newest alerts, newest first: a device shows the first one after a push. */
-  recentNotifications(): readonly Alert[] {
+  recentNotifications(): readonly PushedAlert[] {
     return this.recentAlerts;
   }
 
   private async pushAlert(alert: Alert): Promise<void> {
-    this.recentAlerts.unshift(alert);
+    this.pushedCount += 1;
+    this.recentAlerts.unshift({ ...alert, seq: this.pushedCount });
     this.recentAlerts.splice(recentAlertCount);
     await this.webPush.notify();
   }

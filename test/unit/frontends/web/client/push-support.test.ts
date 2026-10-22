@@ -3,6 +3,7 @@ import { keyBytes, pushSupport, type PushEnvironment } from "../../../../../src/
 
 const chrome: PushEnvironment = {
   userAgent: "Mozilla/5.0 (Linux; Android 15) Chrome/140.0",
+  touchScreen: true,
   standalone: false,
   secure: true,
   hasPush: true,
@@ -19,6 +20,12 @@ describe("pushSupport", () => {
     const iphone = { ...chrome, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) Safari/604.1", hasPush: false };
     expect(pushSupport(iphone)).toBe("needs-install");
     expect(pushSupport({ ...iphone, standalone: true, hasPush: true })).toBe("ready");
+  });
+
+  test("knows an iPad by its touch screen, as it sends the user agent of a Mac", () => {
+    const mac = { ...chrome, userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15" };
+    expect(pushSupport({ ...mac, hasPush: false })).toBe("needs-install");
+    expect(pushSupport({ ...mac, touchScreen: false })).toBe("ready");
   });
 
   test("names a refusal, and a browser or a page with no push", () => {

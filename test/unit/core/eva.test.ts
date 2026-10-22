@@ -1785,6 +1785,27 @@ describe("migrations (#119)", () => {
     expect(alerts.map((alert) => alert.level)).toEqual(["warn", "resolved"]);
   });
 
+  test("only the hub sends the alerts to the devices, as only the hub runs Telegram", async () => {
+    const pushed: string[] = [];
+    const pushSender = (request: { endpoint: string }): Promise<number> => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    };
+    const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/a", keys: { p256dh: "k", auth: "a" } };
+    const hub = start(new FakeEngine(), { machineName: "example-pc" }, { pushSender });
+    hub.subscribePush(subscription, "Phone");
+    hub.reportProblem("example", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toHaveLength(1);
+
+    sandbox.write(vault, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
+    const satellite = start(new FakeEngine(), { machineName: "example-pc" }, { pushSender });
+    satellite.reportProblem("other", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toHaveLength(1);
+    expect(satellite.pushKey().isHub).toBe(false);
+  });
+
   test("a machine record from a newer Eva sends an alert, and a satellite reports no vault run", () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);

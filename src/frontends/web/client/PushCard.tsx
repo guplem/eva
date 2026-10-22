@@ -15,6 +15,7 @@ function currentSupport(): PushSupport {
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
   return pushSupport({
     userAgent: navigator.userAgent,
+    touchScreen: navigator.maxTouchPoints > 1,
     standalone,
     secure: window.isSecureContext,
     hasPush: "serviceWorker" in navigator && "PushManager" in window,
@@ -22,10 +23,49 @@ function currentSupport(): PushSupport {
   });
 }
 
-/** This device's subscription, or null when it has none. */
-async function currentSubscription(): Promise<PushSubscription | null> {
-  const registration = await navigator.serviceWorker.ready;
-  return registration.pushManager.getSubscription();
+/** A worker that failed to start never gets ready, so the card stops waiting after this long. */
+const workerWaitMs = 10_000;
+
+async function workerRegistration(): Promise<ServiceWorkerRegistration> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("The browser did not start Eva's notification helper. Reload the page.")),
+      workerWaitMs,
+    );
+  });
+  try {
+    return await Promise.race([navigator.serviceWorker.ready, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function deviceLabel(): string {
+  const words = describeDevice(navigator.userAgent);
+  return `${words.name}, ${words.browser}`;
+}
+
+/** True when two keys hold the same bytes. */
+function sameKey(first: ArrayBuffer | null, second: Uint8Array): boolean {
+  return first !== null && new Uint8Array(first).join() === second.join();
+}
+
+/**
+ * This device's subscription, sent to Eva again, or null when it has none. Eva may have lost it:
+ * a failed save, or an ended subscription. A subscription to another key never reaches this Eva,
+ * so it ends.
+ */
+async function syncedSubscription(): Promise<PushSubscription | null> {
+  const subscription = await (await workerRegistration()).pushManager.getSubscription();
+  if (subscription === null) return null;
+  const { publicKey } = await api.pushKey();
+  if (!sameKey(subscription.options.applicationServerKey, keyBytes(publicKey))) {
+    await subscription.unsubscribe();
+    return null;
+  }
+  await api.addPushDevice(subscription.toJSON(), deviceLabel());
+  return subscription;
 }
 
 const supportWords: Readonly<Record<Exclude<PushSupport, "ready">, string>> = {
@@ -37,7 +77,10 @@ const supportWords: Readonly<Record<Exclude<PushSupport, "ready">, string>> = {
 };
 
 export function PushCard({ context }: { readonly context: SettingsContext }): ReactElement {
-  const [support] = useState(currentSupport);
+  // The person can say no in the browser's prompt, so the card reads the support again after each step.
+  const [support, setSupport] = useState(currentSupport);
+  /** False on a computer that is not the hub: only the hub sends the alerts. */
+  const [isHub, setIsHub] = useState(true);
   /** Null until the page knows whether this device gets the alerts. */
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,7 +88,11 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
 
   const load = useCallback((): void => {
     if (support !== "ready") return;
-    currentSubscription()
+    api
+      .pushKey()
+      .then((key) => setIsHub(key.isHub))
+      .catch(() => undefined);
+    syncedSubscription()
       .then((subscription) => setSubscribed(subscription !== null))
       .catch((error: unknown) => notify(errorText(error)));
   }, [support, notify]);
@@ -60,6 +107,7 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
       notify(errorText(error));
     } finally {
       setBusy(false);
+      setSupport(currentSupport());
       load();
     }
   };
@@ -70,18 +118,23 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
         throw new Error("The browser did not allow notifications.");
       }
       const { publicKey } = await api.pushKey();
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await workerRegistration();
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: keyBytes(publicKey),
       });
-      const words = describeDevice(navigator.userAgent);
-      await api.addPushDevice(subscription.toJSON(), `${words.name}, ${words.browser}`);
+      try {
+        await api.addPushDevice(subscription.toJSON(), deviceLabel());
+      } catch (error) {
+        // Eva has no record of it, so a kept subscription would look on and never get a push.
+        await subscription.unsubscribe();
+        throw error;
+      }
     }, "This device now gets Eva's alerts.");
 
   const turnOff = (): Promise<void> =>
     run(async () => {
-      const subscription = await currentSubscription();
+      const subscription = await (await workerRegistration()).pushManager.getSubscription();
       if (subscription === null) return;
       await api.removePushDevice(subscription.endpoint);
       await subscription.unsubscribe();
@@ -97,6 +150,10 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
     >
       {support !== "ready" ? (
         <div className="field-hint">{supportWords[support]}</div>
+      ) : !isHub ? (
+        <div className="field-hint">
+          Only the hub computer sends the alerts. Open its page to turn on notifications.
+        </div>
       ) : subscribed === null ? (
         <ProgressBar label="Eva checks this device…" />
       ) : (

@@ -574,6 +574,7 @@ test("a chat that answers while another chat is open shows as unread until the p
   await openList(page);
   await page.locator(".sidebar .list-item", { hasNotText: message }).first().click();
   await openList(page);
+  await expect(slow).toBeVisible();
   await expect(slow.locator(".status-pill")).toHaveCount(0);
 });
 

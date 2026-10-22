@@ -79,11 +79,11 @@ export class TelegramChats {
     return this.turnsOf(sessionId).at(-1)?.answerText ?? null;
   }
 
-  /** /chats: the newest chats of every front end. A schedule's chats live in its own topic. */
+  /** /chats: the newest chats of every front end, but not the archived ones. A schedule's chats live in its own topic. */
   async list(chatId: number, topicId: number | null): Promise<void> {
     const chats = this.options.eva.sessions
       .list()
-      .filter((session) => session.parentId === null && session.source !== "schedule")
+      .filter((session) => session.parentId === null && session.source !== "schedule" && !session.archived)
       .sort((first, second) => lastActivityOf(second).localeCompare(lastActivityOf(first)))
       .slice(0, chatListLimit);
     if (chats.length === 0) {

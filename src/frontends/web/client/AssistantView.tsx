@@ -6,11 +6,19 @@ import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatS
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { chatTree, Conversation, rootChats, type SentMessage } from "./Conversation.tsx";
+import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ChatHeader, ChatStatePill, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
-import { useContextMenu } from "./Menu.tsx";
+import {
+  ChatHeader,
+  ChatStatePill,
+  chatListItems,
+  useArchiveItem,
+  useChatActionRequest,
+  type ChatAction,
+} from "./ChatHeader.tsx";
+import { BackButton } from "./ProjectPage.tsx";
+import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
 
@@ -48,9 +56,24 @@ export function AssistantView({
   voiceNotes,
 }: AssistantViewProps): ReactElement {
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
-  const chats = rootChats(sessions.filter((session) => session.mode === "assistant"));
+  const roots = rootChats(sessions.filter((session) => session.mode === "assistant"));
+  const active = roots.filter((chat) => !chat.archived);
+  const archivedCount = roots.length - active.length;
+  const [showArchived, setShowArchived] = useState(false);
+  const chats = showArchived ? roots.filter((chat) => chat.archived) : active;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  /** An archived chat leaves the page, so the list opens another one. */
+  const afterArchive = async (chat: SessionRecord): Promise<void> => {
+    if (chat.archived) setSelectedId((current) => (current === chat.id ? null : current));
+    await onChanged();
+  };
+  const archiveItem = useArchiveItem(afterArchive);
+  /** Switches the sidebar between the chats and the archived chats. The open chat stays open. */
+  const showList = (archived: boolean): void => {
+    setShowArchived(archived);
+    setQuery("");
+  };
   // The turn start lists the new chat, and the chat then opens before its turn is stored.
   const [firstMessage, setFirstMessage] = useState<SentMessage | null>(null);
   const shown = chats.filter((chat) => matchesSearch(chat.title, query));
@@ -58,7 +81,8 @@ export function AssistantView({
   // The list knows the turns that ran before this page loaded. The events know the newer ones.
   const isRunning = (sessionId: string): boolean =>
     sessionId in live.steps || sessions.some((session) => session.id === sessionId && session.running);
-  const selected = chats.find((chat) => chat.id === selectedId) ?? chats[0];
+  // Any root chat, and the chats list first, so a switch between the lists keeps the open chat.
+  const selected = roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0];
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
   const [panelShown, togglePanel] = useChatPanelShown();
@@ -82,7 +106,10 @@ export function AssistantView({
     // The person reads the open chat now. Its mark reaches the core a moment later.
     return state === "unread" && candidate.id === selected?.id && !sidebarOpen ? null : state;
   };
-  const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
+  // A fork opens as a branch of its first chat, which holds the archive flag.
+  const linkedId = linkedChat?.mode === "assistant" ? rootIdOf(linkedChat, sessions) : null;
+  // A link can come before the list, so the linked record itself answers until then.
+  const linkedArchived = (sessions.find((chat) => chat.id === linkedId) ?? linkedChat)?.archived === true;
   const actionRequest = useChatActionRequest();
   const clearAction = actionRequest.clear;
 
@@ -97,9 +124,12 @@ export function AssistantView({
   useEffect(() => {
     if (linkedId === null) return;
     setSelectedId(linkedId);
+    // The list shows where the linked chat lives.
+    setShowArchived(linkedArchived);
+    setQuery("");
     clearAction();
     onLinkedChatOpened();
-  }, [linkedId, onLinkedChatOpened, clearAction]);
+  }, [linkedId, linkedArchived, onLinkedChatOpened, clearAction]);
 
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
@@ -124,11 +154,20 @@ export function AssistantView({
       <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
         <div className="sidebar-list" ref={listRef}>
           <div className="chat-list-header">
-            <h2>Chats</h2>
-            {/* "New" is short for the header; the name says what it makes. */}
-            <button className="primary" aria-label="New chat" onClick={() => void newChat()}>
-              <Icon name="plus" /> New
-            </button>
+            {showArchived ? (
+              <>
+                <BackButton label="Back to the chats" onClick={() => showList(false)} />
+                <h2>Archived</h2>
+              </>
+            ) : (
+              <>
+                <h2>Chats</h2>
+                {/* "New" is short for the header; the name says what it makes. */}
+                <button className="primary" aria-label="New chat" onClick={() => void newChat()}>
+                  <Icon name="plus" /> New
+                </button>
+              </>
+            )}
           </div>
           <label className="chat-search">
             <Icon name="search" />
@@ -141,6 +180,7 @@ export function AssistantView({
             />
           </label>
           {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
+          {showArchived && chats.length === 0 && <span className="chip">No archived chat.</span>}
           {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
             <section key={group} className="chat-group" aria-label={group}>
               <h3>{group}</h3>
@@ -153,10 +193,17 @@ export function AssistantView({
                   isSelected={chat.id === selected?.id}
                   onSelect={() => select(chat.id)}
                   onAction={(action) => select(chat.id, action)}
+                  archiveItem={archiveItem(chat)}
                 />
               ))}
             </section>
           ))}
+          {!showArchived && archivedCount > 0 && (
+            <button className="ghost archived-link" onClick={() => showList(true)}>
+              {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
+              <Icon name="archive" /> Archived ({archivedCount})
+            </button>
+          )}
         </div>
       </nav>
       {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
@@ -182,7 +229,8 @@ export function AssistantView({
                 tree.some((session) => isRunning(session.id)),
               )}
               onShowList={onShowList}
-              listHasUnread={chats.some((candidate) => stateOf(candidate) === "unread")}
+              listHasUnread={active.some((candidate) => stateOf(candidate) === "unread")}
+              onArchived={afterArchive}
               panelShown={panelShown}
               onTogglePanel={togglePanel}
               onChanged={onChanged}
@@ -219,6 +267,7 @@ function ChatItem({
   isSelected,
   onSelect,
   onAction,
+  archiveItem,
 }: {
   readonly chat: SessionRecord;
   readonly time: string;
@@ -226,8 +275,9 @@ function ChatItem({
   readonly isSelected: boolean;
   readonly onSelect: () => void;
   readonly onAction: (action: ChatAction) => void;
+  readonly archiveItem: MenuItem;
 }): ReactElement {
-  const { props, menu } = useContextMenu(chatListItems(onSelect, onAction), `Actions of “${chat.title}”`);
+  const { props, menu } = useContextMenu(chatListItems(onSelect, onAction, archiveItem), `Actions of “${chat.title}”`);
   return (
     <>
       <button

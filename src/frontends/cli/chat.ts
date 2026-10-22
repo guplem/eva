@@ -195,7 +195,8 @@ export function describeEvent(event: SessionEvent): string | null {
       // The terminal shows no title, and its own /rename answers from the request.
       return null;
     case "session_seen":
-      // Only the web app has a list with unread chats.
+    case "session_archived":
+      // Only the web app has a list with unread and archived chats.
       return null;
   }
 }

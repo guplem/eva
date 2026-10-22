@@ -520,6 +520,19 @@ function descendantsOf(sessionId: string, sessions: readonly SessionRecord[]): S
   return children.flatMap((child) => [child, ...descendantsOf(child.id, sessions)]);
 }
 
+/** The first chat of a fork's line, found through the parents that the list still has. */
+export function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]): string {
+  let current = chat;
+  const seen = new Set<string>();
+  while (current.parentId !== null && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = sessions.find((candidate) => candidate.id === current.parentId);
+    if (parent === undefined) break;
+    current = parent;
+  }
+  return current.id;
+}
+
 /** The chats that start a tree: no parent, newest first. */
 export function rootChats(sessions: readonly SessionRecord[]): SessionRecord[] {
   return sessions

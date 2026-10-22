@@ -41,6 +41,7 @@ function session(turns: Turn[]): SessionRecord {
     telegramTopicId: null,
     historyLost: false,
     seenTurns: 0,
+    archived: false,
     turns,
   };
 }

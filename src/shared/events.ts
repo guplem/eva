@@ -65,6 +65,8 @@ export type EngineEventPayload =
   | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
   /** The person saw the first `seenTurns` turns of the chat in the web app (issue 381). */
   | { readonly kind: "session_seen"; readonly seenTurns: number }
+  /** The person archived the chat, or brought it back to the chat list (issue 388). */
+  | { readonly kind: "session_archived"; readonly archived: boolean }
   | { readonly kind: "notice"; readonly text: string }
   /** The subscription is near the limit of a usage window, or past it, so the engine refused the turn. */
   | {

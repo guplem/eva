@@ -214,6 +214,13 @@ const drawings = {
   ),
   /** A favorite. The page fills it when the path is one. */
   star: <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.15 1 5.85L12 16.9l-5.25 2.8 1-5.85L3.5 9.7l5.9-.9z" />,
+  /** A box with a lid: a chat that leaves the list but stays. */
+  archive: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="4.5" rx="1.5" />
+      <path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9M10 13h4" />
+    </>
+  ),
 } satisfies Record<string, ReactElement>;
 
 export type IconName = keyof typeof drawings;

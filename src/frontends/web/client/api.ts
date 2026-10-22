@@ -214,6 +214,8 @@ export const api = {
     request("DELETE", `/api/sessions/${encodeURIComponent(sessionId)}`),
   rename: (sessionId: string, title: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }),
+  archive: (sessionId: string, archived: boolean): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/seen`, { turnCount }),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),

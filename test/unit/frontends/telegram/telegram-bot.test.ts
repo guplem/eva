@@ -745,6 +745,15 @@ describe("/chats: every chat of the instance (#9)", () => {
     ]);
   });
 
+  test("leaves out the archived chats, as the chat list of the web app does (issue 388)", async () => {
+    const kept = await webChat("Plan the garden");
+    eva.sessions.setArchived(await webChat("Write the letter"), true);
+    const bot = createBot();
+    telegram.sendText(owner, "/chats");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Pick a chat")));
+    expect(chatButtons()).toEqual([{ text: "Plan the garden", callback_data: `o:${kept}` }]);
+  });
+
   test("a press opens a topic with the last turns, and the topic continues the web chat", async () => {
     const sessionId = await webChat("one");
     for (const text of ["two", "three", "four"]) await eva.sessions.send(sessionId, text);

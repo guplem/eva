@@ -307,6 +307,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   expand: "Make the file preview large",
   shrink: "Make the file preview small again",
   star: "A favorite file or folder: filled when it is one",
+  archive: "Archive a chat, the archived chats",
 };
 
 export interface ArchitectureLayer {

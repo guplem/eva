@@ -228,6 +228,7 @@ export class SessionManager {
       historyLost: false,
       turns: [],
       seenTurns: 0,
+      archived: false,
     };
     this.options.store.save(record);
     return record;
@@ -292,6 +293,16 @@ export class SessionManager {
     this.options.store.save(updated);
     // Every device shows the chat as seen, not only the one where the person opened it.
     this.emit(sessionId, { kind: "session_seen", seenTurns });
+    return updated;
+  }
+
+  /** Moves a chat to the archive, or brings it back. The web app archives the root chat, and its forks follow it. */
+  setArchived(sessionId: string, archived: boolean): SessionRecord {
+    const session = this.get(sessionId);
+    if (session.archived === archived) return session;
+    const updated = { ...session, archived };
+    this.options.store.save(updated);
+    this.emit(sessionId, { kind: "session_archived", archived });
     return updated;
   }
 
@@ -369,7 +380,8 @@ export class SessionManager {
 
   /** Sends a message. It resolves when the session is free again: its turn, queued turns and follow-ups have ended. */
   send(sessionId: string, text: string, origin: MessageOrigin = "eva"): Promise<void> {
-    this.get(sessionId);
+    // A new answer must not hide in the archive.
+    this.setArchived(this.rootOf(this.get(sessionId)).id, false);
     const runtime = this.runtimeOf(sessionId);
     const batch = runtime.pending ?? createBatch();
     runtime.pending = batch;
@@ -408,6 +420,18 @@ export class SessionManager {
     // Only after the whole tree is gone: a front end that reloads the list must not find a fork.
     for (const id of ids) this.emit(id, { kind: "session_deleted" });
     return ids;
+  }
+
+  /** The chat that a fork branches from, through every level. A missing parent ends the walk. */
+  private rootOf(session: SessionRecord): SessionRecord {
+    let root = session;
+    // The bound stops a loop of parents, which only a damaged file can hold.
+    for (let depth = 0; root.parentId !== null && depth < 1000; depth += 1) {
+      const parent = this.options.store.get(root.parentId);
+      if (parent === undefined) break;
+      root = parent;
+    }
+    return root;
   }
 
   /** Tells the front ends that a chat gave work to a project, and which Project chat runs it. */
@@ -947,6 +971,7 @@ function redactPayload(
     case "turn_finished":
     case "session_deleted":
     case "session_seen":
+    case "session_archived":
       return payload;
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };

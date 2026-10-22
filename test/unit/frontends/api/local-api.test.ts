@@ -832,6 +832,21 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("archives and brings back a chat, and refuses a bad body or an unknown chat (issue 388)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    const archived = await call(`/api/sessions/${session.id}/archive`, { method: "POST", body: { archived: true } });
+    expect(archived.status).toBe(200);
+    expect((await json<{ archived: boolean }>(archived)).archived).toBe(true);
+    const back = await call(`/api/sessions/${session.id}/archive`, { method: "POST", body: { archived: false } });
+    expect((await json<{ archived: boolean }>(back)).archived).toBe(false);
+    const bad = await call(`/api/sessions/${session.id}/archive`, { method: "POST", body: { archived: "yes" } });
+    expect(bad.status).toBe(400);
+    const missing = await call("/api/sessions/missing/archive", { method: "POST", body: { archived: true } });
+    expect(missing.status).toBe(404);
+  });
+
   test("the composer's chips set the engine and model of a chat before its first message only", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

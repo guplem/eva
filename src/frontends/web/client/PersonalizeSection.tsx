@@ -107,7 +107,7 @@ export function AppearanceCard(): ReactElement {
         label="File names"
         value={appearance.fileNames}
         choices={fileNamesChoices}
-        hint="Smart names show each project by its title, and move a date at the start of a name to a pill: “2027-trips.md” shows as “trips” with “2027”. The real name shows under the name of the open folder or file."
+        hint="Smart names show each project by its title, and move a date at the start of a name to a pill: “2027-trips.md” shows as “trips” with “2027”. A folder list drops the extension that the type badge shows. The real name shows under the name of the open folder or file."
         onChange={(fileNames) => change({ fileNames })}
       />
       <ChoiceChips

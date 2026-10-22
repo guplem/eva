@@ -20,16 +20,17 @@ export interface SmartNameOptions {
 
 /**
  * The forms of a project id, the longest first: `YYYY-MM-DD-HHmm`, `YYYY-MM-DD`, `YYYY-MM` and
- * `YYYY`. A space, a `_` or a `-` ends the date. A date that cannot exist tries the next form.
+ * `YYYY`. A space, a `_` or a `-` ends the date. The rest starts with no digit, so a short form
+ * never takes a part of a longer number, as in `2024-2025 plan`.
  */
 const datePatterns = [
-  /^(\d{4})-(\d{2})-(\d{2})[-_ ](\d{2})(\d{2})[-_ ]+(.+)$/,
-  /^(\d{4})-(\d{2})-(\d{2})[-_ ]+(.+)$/,
-  /^(\d{4})-(\d{2})[-_ ]+(.+)$/,
-  /^(\d{4})[-_ ]+(.+)$/,
+  /^(\d{4})-(\d{2})-(\d{2})[-_ ](\d{2})(\d{2})[-_ ]+(\D.*)$/,
+  /^(\d{4})-(\d{2})-(\d{2})[-_ ]+(\D.*)$/,
+  /^(\d{4})-(\d{2})[-_ ]+(\D.*)$/,
+  /^(\d{4})[-_ ]+(\D.*)$/,
 ];
 
-/** A rest with no letter, as in `2026-03-02`, is part of the date, not a name. */
+/** A rest with no letter before its extension, as in `2026-03-02-.md`, is no name. */
 const letter = /\p{L}/u;
 
 export function smartName(real: string, options: SmartNameOptions): SmartName {
@@ -42,6 +43,11 @@ export function smartName(real: string, options: SmartNameOptions): SmartName {
   return dated ?? { name: base, date: null };
 }
 
+/** "2 Mar 2026" for "2 Mar 2026, 10:15": a list row has little room, and the header shows the time. */
+export function dayOf(date: string): string {
+  return date.replace(/, \d{2}:\d{2}$/, "");
+}
+
 function splitDate(name: string): SmartName | null {
   for (const pattern of datePatterns) {
     const match = pattern.exec(name);
@@ -49,7 +55,9 @@ function splitDate(name: string): SmartName | null {
     const parts = match.slice(1, -1).map(Number);
     const rest = match[match.length - 1] ?? "";
     const date = dateWords(parts);
-    if (date !== null && letter.test(rest)) return { name: rest, date };
+    // A date that cannot exist stays in the name: a shorter form would show another date.
+    if (date === null || !letter.test(rest.split(".")[0] ?? "")) return null;
+    return { name: rest, date };
   }
   return null;
 }

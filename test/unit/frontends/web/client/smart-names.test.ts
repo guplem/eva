@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { smartName } from "../../../../../src/frontends/web/client/smart-names.ts";
+import { dayOf, smartName } from "../../../../../src/frontends/web/client/smart-names.ts";
 
 describe("smartName: a date at the start", () => {
   test("a year moves to the date, and the badge carries the extension (issue 429)", () => {
@@ -20,10 +20,20 @@ describe("smartName: a date at the start", () => {
     expect(smartName("2026_trips", {})).toEqual({ name: "trips", date: "2026" });
   });
 
-  test("a date that cannot exist keeps the shorter date that can", () => {
-    expect(smartName("2026-13-things", {})).toEqual({ name: "13-things", date: "2026" });
-    expect(smartName("2026-02-30-plan", {})).toEqual({ name: "30-plan", date: "Feb 2026" });
-    expect(smartName("2026-03-02-2590-plan", {})).toEqual({ name: "2590-plan", date: "2 Mar 2026" });
+  test("a date that cannot exist stays in the name, so the pill never shows another date", () => {
+    for (const name of ["2026-13-things", "2026-02-29-x", "2026-02-30-plan", "2026-03-02-2590-plan", "2024-25 budget"])
+      expect(smartName(name, {})).toEqual({ name, date: null });
+  });
+
+  test("a rest that starts with a digit is part of a longer number, not a name", () => {
+    for (const name of ["2024-2025 plan", "2026_03_02_notes"])
+      expect(smartName(name, {})).toEqual({ name, date: null });
+  });
+
+  test("a date with only an extension after it stays as it is", () => {
+    expect(smartName("2026-03-02.md", {})).toEqual({ name: "2026-03-02.md", date: null });
+    expect(smartName("2026-03-02-1015.md", {})).toEqual({ name: "2026-03-02-1015.md", date: null });
+    expect(smartName("2026-03-02.tar.gz", { badge: true })).toEqual({ name: "2026-03-02.tar", date: null });
   });
 
   test("a name that is only a date, or no date, stays as it is", () => {
@@ -57,5 +67,12 @@ describe("smartName: a project folder", () => {
 
   test("a blank title falls back to the folder name", () => {
     expect(smartName("2019-03-old-tool", { title: "  " })).toEqual({ name: "old-tool", date: "Mar 2019" });
+  });
+});
+
+describe("dayOf", () => {
+  test("drops the time, and keeps a date with no time", () => {
+    expect(dayOf("2 Mar 2026, 10:15")).toBe("2 Mar 2026");
+    expect(dayOf("Mar 2026")).toBe("Mar 2026");
   });
 });

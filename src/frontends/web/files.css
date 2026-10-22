@@ -530,6 +530,24 @@ a.files-entry[aria-current="true"] {
   font-weight: 500;
 }
 
+/*
+ * In a narrow row the name matters more than the date. Both start at their own width, and the
+ * large shrink factor makes the date give way first, down to a few letters.
+ */
+.files-entry .files-name,
+.files-favorite .files-name {
+  flex: 1 1 auto;
+}
+
+.files-entry .files-date,
+.files-favorite .files-date {
+  display: block;
+  flex: 0 1000 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* The real name under a smart name, on its own line, so a touch screen shows it without a tooltip. */
 .files-real-name {
   flex-basis: 100%;

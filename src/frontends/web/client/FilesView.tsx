@@ -25,7 +25,7 @@ import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
-import { smartName, type SmartName } from "./smart-names.ts";
+import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
@@ -412,35 +412,39 @@ function FavoriteBar({
   return (
     <nav className="files-favorites" aria-label="Favorites">
       <ul>
-        {favorites.map((favorite) => (
-          <li key={favorite.path}>
-            {favorite.kind === "missing" ? (
-              <span className="files-favorite missing" data-tooltip={favorite.path}>
-                <Icon name="alert" />
-                <span className="files-name">{favorite.name}</span>
-                <span className="files-size">Missing</span>
-                <button
-                  className="icon-button"
-                  aria-label={`Remove ${favorite.name} from favorites`}
-                  onClick={() => void remove(favorite.path)}
+        {favorites.map((favorite) => {
+          // The date stays, so two dated notes with the same name never look the same.
+          const shown = shownNameOf(favorite.name, smart, { title: favorite.title });
+          return (
+            <li key={favorite.path}>
+              {favorite.kind === "missing" ? (
+                <span className="files-favorite missing" data-tooltip={favorite.path}>
+                  <Icon name="alert" />
+                  <span className="files-name">{favorite.name}</span>
+                  <span className="files-size">Missing</span>
+                  <button
+                    className="icon-button"
+                    aria-label={`Remove ${favorite.name} from favorites`}
+                    onClick={() => void remove(favorite.path)}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </span>
+              ) : (
+                <a
+                  className="files-favorite"
+                  href={fileAddressOf(favorite.path)}
+                  data-tooltip={favorite.path}
+                  aria-current={favorite.path === openPath ? "page" : undefined}
                 >
-                  <Icon name="x" />
-                </button>
-              </span>
-            ) : (
-              <a
-                className="files-favorite"
-                href={fileAddressOf(favorite.path)}
-                data-tooltip={favorite.path}
-                aria-current={favorite.path === openPath ? "page" : undefined}
-              >
-                <Icon name={favorite.kind === "folder" ? "folder" : "file"} />
-                {/* The chip has no room for a date pill, and its tooltip shows the real path. */}
-                <span className="files-name">{shownNameOf(favorite.name, smart, { title: favorite.title }).name}</span>
-              </a>
-            )}
-          </li>
-        ))}
+                  <Icon name={favorite.kind === "folder" ? "folder" : "file"} />
+                  <span className="files-name">{shown.name}</span>
+                  {shown.date !== null && <span className="pill files-date">{dayOf(shown.date)}</span>}
+                </a>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
@@ -465,13 +469,15 @@ function FolderList({
       {entries.map((entry) => {
         // Only a file row shows a type badge, so only a file can drop its extension.
         const shown = shownNameOf(entry.name, smart, { title: entry.title, badge: entry.kind === "file" });
+        // The badge is hidden from a screen reader, so the spoken name keeps the extension.
+        const spoken = shownNameOf(entry.name, smart, { title: entry.title }).name;
         const realName = shown.name === entry.name ? undefined : entry.name;
         return (
           <li key={entry.name}>
             {entry.kind === "other" ? (
               <span className="files-entry other" data-tooltip={realName}>
                 <Icon name="info" />
-                <FileName shown={shown} />
+                <FileName shown={shown} spoken={spoken} />
                 <span className="files-size">Does not open</span>
               </span>
             ) : (
@@ -482,7 +488,7 @@ function FolderList({
                 data-tooltip={realName}
               >
                 {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
-                <FileName shown={shown} />
+                <FileName shown={shown} spoken={spoken} />
                 {entry.size !== null && <span className="files-size">{sizeWords(entry.size)}</span>}
               </a>
             )}
@@ -513,20 +519,20 @@ function FileIcon({ name }: { readonly name: string }): ReactElement {
  * A name on one line. When it does not fit, the start, the middle or the end gives way to "…", as
  * the Appearance setting says. The open file shows its whole name in the path above.
  */
-function FileName({ shown }: { readonly shown: SmartName }): ReactElement {
+function FileName({ shown, spoken }: { readonly shown: SmartName; readonly spoken: string }): ReactElement {
   const { head, tail } = nameEnds(shown.name);
   return (
     <>
       <span className="files-name">
         {/* A flex box splits the name in two words for a screen reader, so it reads the whole name instead. */}
-        <span className="visually-hidden">{shown.name}</span>
+        <span className="visually-hidden">{spoken}</span>
         {/* The isolate keeps the letters in order when a cut at the start turns the box right to left. */}
         <span className="files-name-text" dir="ltr" aria-hidden="true">
           <span className="files-name-head">{head}</span>
           <span className="files-name-tail">{tail}</span>
         </span>
       </span>
-      {shown.date !== null && <span className="pill files-date">{shown.date}</span>}
+      {shown.date !== null && <span className="pill files-date">{dayOf(shown.date)}</span>}
     </>
   );
 }

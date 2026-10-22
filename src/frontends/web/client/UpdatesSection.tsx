@@ -1,7 +1,7 @@
 /** The updates page: the versions of Eva and her tools with their updates, Eva's update policy, and a restart. */
 import { Fragment, useEffect, useState, type ReactElement } from "react";
 import { isNewerVersion } from "../../../core/updates/version-order.ts";
-import { describeEngineUpdate, describeUpdate } from "../../cli/client.ts";
+import { describeEngineUpdate } from "../../cli/client.ts";
 import {
   ApiError,
   api,
@@ -14,7 +14,7 @@ import {
 import { ChangelogDialog } from "./ChangelogDialog.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { FactsSkeleton, ProgressBar } from "./Loading.tsx";
-import { evaNewest, updatesFace, updateWait } from "./update-words.ts";
+import { evaNewest, restartWait, updateCallout, updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
 
@@ -428,7 +428,7 @@ function EvaUpdatesCard({
         setWork(null);
         return;
       }
-      setWork("Eva restarts with the new version when no chat runs…");
+      setWork(restartWait(status));
       const result = await waitForNewEva();
       setWork(null);
       setRestarted(result === "restarted");
@@ -459,6 +459,7 @@ function EvaUpdatesCard({
   };
 
   const wait = updateWait(update, work);
+  const callout = updateCallout(update, wait);
 
   return (
     <Card
@@ -467,7 +468,7 @@ function EvaUpdatesCard({
       description="Eva installs an update only when no chat is running, then restarts."
       aside={<Visor face={updatesFace(update, restarted)} />}
     >
-      <div className="callout">{update === null ? "This Eva cannot update herself." : describeUpdate(update)}</div>
+      {callout !== null && <div className="callout">{callout}</div>}
       <ChoiceChips
         label="Install updates automatically"
         value={config.updates.frequency}

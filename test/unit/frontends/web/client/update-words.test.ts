@@ -4,6 +4,8 @@ import {
   evaNewest,
   installLabel,
   releaseDay,
+  restartWait,
+  updateCallout,
   updatesFace,
   updateWait,
   versionRows,
@@ -108,6 +110,35 @@ describe("updateWait", () => {
   test("nothing runs, so nothing waits", () => {
     expect(updateWait(status, null)).toBeNull();
     expect(updateWait(null, null)).toBeNull();
+  });
+});
+
+describe("restartWait", () => {
+  test("names the installed version, as the status callout hides during the wait", () => {
+    expect(restartWait({ ...status, phase: "restarting" })).toBe("Eva restarts with 2.15.0 when no chat runs…");
+    expect(restartWait({ ...status, phase: "restarting", latest: null })).toBe(
+      "Eva restarts with the new version when no chat runs…",
+    );
+  });
+});
+
+describe("updateCallout", () => {
+  const wait = { label: "Installing 2.15.0…", share: 0.25 };
+
+  test("nothing runs, so the callout says the status", () => {
+    expect(updateCallout(status, null)).toBe("Updates: 2.15.0 is available (this is 2.14.2); checks daily");
+    expect(updateCallout(null, null)).toBe("This Eva cannot update herself.");
+  });
+
+  test("the progress bar says the wait, so the callout does not repeat it", () => {
+    expect(updateCallout({ ...status, phase: "updating" }, wait)).toBeNull();
+    expect(updateCallout(null, wait)).toBeNull();
+  });
+
+  test("an error shows even during a wait", () => {
+    expect(updateCallout({ ...status, phase: "checking", lastError: "offline" }, wait)).toBe(
+      "Updates: checks daily; the last check failed: offline",
+    );
   });
 });
 

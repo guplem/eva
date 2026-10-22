@@ -1521,6 +1521,23 @@ test("Settings: the theme and the density apply at once and stay in this browser
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
 });
 
+test("Settings: in compact density on a narrow phone, the tab bar fits and buttons keep their shape (#413)", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await page.setViewportSize({ width: 360, height: 812 });
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  await page.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  const tabBar = await page.getByRole("navigation", { name: "Main" }).boundingBox();
+  expect((tabBar?.x ?? 0) + (tabBar?.width ?? 0)).toBeLessThanOrEqual(360);
+  // A phone button is 44 px tall at least, so a short label with narrow sides becomes a circle, not a pill.
+  const edit = await page.getByRole("button", { name: "Edit", exact: true }).boundingBox();
+  expect(edit?.width ?? 0).toBeGreaterThan(edit?.height ?? 0);
+});
+
 test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
   await logIn(page);
   const accent = (): Promise<string> =>

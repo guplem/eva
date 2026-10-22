@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { api, type SessionRecord } from "./api.ts";
+import { chatStateLabels, type ChatState } from "./chat-list.ts";
 import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -54,6 +55,11 @@ export function chatListItems(onOpen: () => void, onAction: (action: ChatAction)
   ];
 }
 
+/** The state of a chat in a list, as a word on a pill with a dot. No state shows no pill. */
+export function ChatStatePill({ state }: { readonly state: ChatState }): ReactElement | null {
+  return state === null ? null : <span className={`status-pill ${state}`}>{chatStateLabels[state]}</span>;
+}
+
 /** The phone breakpoint of `styles.css`. */
 const phoneQuery = "(max-width: 760px)";
 
@@ -76,6 +82,8 @@ interface ChatHeaderProps {
   /** Parts between the title and the menu, such as the pull request of a clone. */
   readonly extra?: ReactNode;
   readonly onShowList: () => void;
+  /** True when another chat in the list has an answer that the person did not see. */
+  readonly listHasUnread?: boolean;
   /** Whether a computer shows the chat details column. */
   readonly panelShown: boolean;
   readonly onTogglePanel: () => void;
@@ -90,6 +98,7 @@ export function ChatHeader({
   subtitle,
   extra,
   onShowList,
+  listHasUnread = false,
   panelShown,
   onTogglePanel,
   onChanged,
@@ -118,7 +127,7 @@ export function ChatHeader({
 
   return (
     <div className="main-header chat-header">
-      <ShowListButton onClick={onShowList} />
+      <ShowListButton onClick={onShowList} unread={listHasUnread} />
       <div className="header-text">
         <h1>
           {isPhone ? (

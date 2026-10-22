@@ -8,7 +8,8 @@ import { api, type ChatBlocker, type CloneDetails, type CloneFetch, type Project
 import { PushCloneDialog } from "./PushCloneDialog.tsx";
 import { Toast } from "./Toast.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
-import { chatState } from "./chat-list.ts";
+import { chatState, type ChatState } from "./chat-list.ts";
+import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatTree, Conversation, rootChats } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -333,14 +334,12 @@ export function ProjectView({
     tree.map((session) => session.id),
   );
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
-  const needsYou = (candidate: SessionRecord): boolean =>
-    chatState(
-      chatTree(candidate, sessions).map((session) => session.id),
-      () => false,
-      approvalSessionIds,
-    ) === "needs-you";
   const isWorking = (candidate: SessionRecord): boolean =>
     chatTree(candidate, sessions).some((session) => live.steps[session.id] !== undefined);
+  const stateOf = (candidate: SessionRecord): ChatState =>
+    chatState(chatTree(candidate, sessions), (sessionId) => live.steps[sessionId] !== undefined, approvalSessionIds);
+  // On a phone, the open list covers the chat.
+  useMarkSeen(tree, !sidebarOpen);
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
@@ -504,7 +503,7 @@ export function ProjectView({
             project={page.project}
             clones={clones}
             chatsOf={chatsOf}
-            needsYou={needsYou}
+            stateOf={stateOf}
             isWorking={isWorking}
             error={error}
             onBackToList={() => open(null)}

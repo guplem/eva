@@ -73,6 +73,8 @@ describe("engine folders of an instance (lesson 111)", () => {
       XDG_CONFIG_HOME: xdg,
       GH_CONFIG_DIR: "partner-gh",
       GIT_CONFIG_GLOBAL: gitConfig,
+      // The system config of Git for Windows adds its credential manager, which opens a sign-in window.
+      GIT_CONFIG_NOSYSTEM: "1",
       GIT_TERMINAL_PROMPT: "0",
     };
     const git = (stdin: string, ...arguments_: string[]): string =>

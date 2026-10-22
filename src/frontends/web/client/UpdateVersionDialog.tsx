@@ -124,7 +124,7 @@ export function UpdateVersionDialog(props: {
   );
 }
 
-function VersionRowText(props: { version: string; day: string; headline: string }): ReactElement {
+export function VersionRowText(props: { version: string; day: string; headline: string }): ReactElement {
   return (
     <>
       <span className="version-number">v{props.version}</span>

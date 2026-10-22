@@ -59,6 +59,8 @@ You can also send voice notes, photos and files.
 
 Eva's web page shows your conversations, your projects, your reminders and the settings. Its address looks like `https://your-computer.your-tailnet.ts.net`: send `/link` in Telegram to get it. See [Open Eva on your phone](docs/guide/setup.md#open-eva-on-your-phone).
 
+On Eva's own computer, run `eva open`. It opens her page in that computer's browser, already logged in.
+
 A device without Tailscale cannot open Eva. That is on purpose: Eva can act on your computer, so only your own devices may reach her.
 
 [Settings](docs/guide/reference.md#settings) explains each setting.

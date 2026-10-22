@@ -83,7 +83,7 @@ export function restartWait(update: UpdateStatus): string {
 }
 
 /**
- * The status line of the Eva updates card, or null while its progress bar says the same thing.
+ * The status callout of the Eva updates card, or null while its progress bar says the same thing.
  * An error always shows: a check or an install keeps the last error until it ends.
  */
 export function updateCallout(update: UpdateStatus | null, wait: UpdateWait | null): string | null {

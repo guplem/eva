@@ -163,6 +163,25 @@ describe("a chat that is free again", () => {
     idle("project");
     expect(sent.map((notification) => notification.sessionId)).toEqual(["web", "project"]);
   });
+
+  test("of a project chat that the person stopped does not silence its next run", () => {
+    const { sent, feed, idle } = notifications();
+    feed("web", { kind: "project_work_started", projectId: "p", projectSessionId: "project", request: "x" });
+    feed("project", received("eva"), { kind: "turn_failed", reason: "Stopped." });
+    idle("project", true);
+    feed("project", received("api"), text("Done."), finished);
+    idle("project");
+    expect(sent.map((notification) => notification.sessionId)).toEqual(["project"]);
+  });
+
+  test("keeps the kind of a schedule's run through the report turn of its project work", () => {
+    const { sent, feed, idle } = notifications();
+    feed("daily", received("schedule"), text("I asked the project chat."), finished);
+    idle("daily");
+    feed("daily", received("eva"), text("The project chat is done."), finished);
+    idle("daily");
+    expect(sent.map((notification) => notification.kind)).toEqual(["schedules", "schedules"]);
+  });
 });
 
 describe("an approval", () => {

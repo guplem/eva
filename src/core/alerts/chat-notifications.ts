@@ -58,7 +58,8 @@ export class ChatNotifications {
     const { sessionId } = event;
     switch (event.kind) {
       case "message_received":
-        this.origins.set(sessionId, event.origin);
+        // Eva's own message, such as a project chat's report or a retry, carries on the run of the last person.
+        if (event.origin !== "eva" || !this.origins.has(sessionId)) this.origins.set(sessionId, event.origin);
         return;
       case "text":
         this.lastTexts.set(sessionId, event.text);
@@ -92,9 +93,10 @@ export class ChatNotifications {
   idle(sessionId: string, state: { readonly stopped: boolean }): void {
     const ending = this.endings.get(sessionId);
     this.forget(sessionId);
-    if (ending === undefined || state.stopped) return;
     // The project chat's report reaches the chat that asked, as a turn there: one notification is enough.
-    if (this.reportingChats.delete(sessionId)) return;
+    // The mark goes first, also after a stop, so it never silences a later run of the person's own.
+    const reports = this.reportingChats.delete(sessionId);
+    if (ending === undefined || state.stopped || reports) return;
     const kind = this.origins.get(sessionId) === "schedule" ? "schedules" : "replies";
     this.send(sessionId, kind, ending);
   }

@@ -22,7 +22,7 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
-import { ChatNotices, type NotificationKind } from "./alerts/chat-notices.ts";
+import { ChatNotifications, type NotificationKind } from "./alerts/chat-notifications.ts";
 import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
@@ -645,25 +645,28 @@ export class Eva {
       options.logger?.log("info", "A turn finished.", { sessionId: event.sessionId, ...event.usage });
     });
 
-    // Every machine sends the notices of its own chats: a satellite's chats run only there.
-    const chatNotices = new ChatNotices({
+    // Every machine sends the notifications of its own chats: a satellite's chats run only there.
+    const chatNotifications = new ChatNotifications({
       chatOf: (sessionId) => this.sessions.list().find((session) => session.id === sessionId) ?? null,
-      onNotice: (notice) => {
+      onNotification: (notification) => {
         void this.pushAlert(
           {
-            key: notice.key,
+            key: notification.key,
             level: "news",
-            message: notice.body,
+            message: notification.body,
             at: options.now().toISOString(),
-            title: notice.title,
-            url: `/#/chat/${encodeURIComponent(notice.sessionId)}`,
+            title: notification.title,
+            url: `/#/chat/${encodeURIComponent(notification.sessionId)}`,
           },
-          notice.kind,
+          notification.kind,
         );
       },
     });
     this.sessions.subscribe((event) => {
-      chatNotices.handle(event);
+      chatNotifications.handle(event);
+    });
+    this.sessions.onIdle((sessionId, state) => {
+      chatNotifications.idle(sessionId, state);
     });
 
     this.schedules =
@@ -940,9 +943,12 @@ export class Eva {
     return this.webPush.setKinds(endpoint, kinds);
   }
 
-  /** The page of a device is in view, or went out of view: Eva sends it no push while it is in view. */
-  markPushInView(endpoint: string, inView: boolean): void {
-    this.webPush.markInView(endpoint, inView);
+  /**
+   * A page of a device is in view, or went out of view: Eva sends that device no push while one of
+   * its pages is in view. False when the device has no subscription.
+   */
+  markPushInView(endpoint: string, pageId: string, inView: boolean): boolean {
+    return this.webPush.markInView(endpoint, pageId, inView);
   }
 
   /** Sends a test notification to the devices only, not to Telegram. */
@@ -970,8 +976,10 @@ export class Eva {
 
   /** `kind` null is a test: it goes to every device. */
   private async pushAlert(alert: PushedAlertInput, kind: NotificationKind | null): Promise<void> {
-    this.pushedCount += 1;
     const endpoints = this.webPush.recipients(kind);
+    // An entry for nobody would push the entries of the other devices out of the short list.
+    if (kind !== null && endpoints.length === 0) return;
+    this.pushedCount += 1;
     // The entry goes in the list first: a device reads the list as soon as the push wakes it.
     this.recentAlerts.unshift({ alert: { ...alert, seq: this.pushedCount }, endpoints: new Set(endpoints) });
     this.recentAlerts.splice(recentAlertCount);

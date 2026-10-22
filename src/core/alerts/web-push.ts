@@ -13,7 +13,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { loadSecrets, saveSecrets, type HomePaths } from "../settings/home.ts";
-import { notificationKinds, type NotificationKind } from "./chat-notices.ts";
+import { notificationKinds, type NotificationKind } from "./chat-notifications.ts";
 
 /** One push to one device. */
 export interface PushRequest {
@@ -59,7 +59,8 @@ const storedSubscriptionSchema = z.object({
   deviceId: z.string().optional(),
 });
 
-const storeSchema = z.object({
+/** Exported for the stored-name check, which lists its fields and the values of `kinds`. */
+export const pushStoreSchema = z.object({
   version: z.literal(pushFormatVersion),
   subscriptions: z.array(storedSubscriptionSchema),
 });
@@ -123,8 +124,12 @@ function isPushEndpoint(endpoint: string): boolean {
 export class WebPush {
   private readonly options: WebPushOptions;
   private readonly send: PushSender;
-  /** The end of each page's claim that it is in view, by push address. It lives in memory only. */
-  private readonly inViewUntil: Map<string, number>;
+  /**
+   * The end of each page's claim that it is in view, by push address and then by page. The tabs
+   * of one browser share one push address, so one tab that goes out of view must not end the
+   * claim of another. It lives in memory only.
+   */
+  private readonly inViewUntil: Map<string, Map<string, number>>;
 
   constructor(options: WebPushOptions) {
     this.options = options;
@@ -191,10 +196,24 @@ export class WebPush {
     return true;
   }
 
-  /** The page of a device says that it is in view, or that it went out of view. */
-  markInView(endpoint: string, inView: boolean): void {
-    if (inView) this.inViewUntil.set(endpoint, this.options.now().getTime() + inViewMs);
-    else this.inViewUntil.delete(endpoint);
+  /**
+   * A page of a device says that it is in view, or that it went out of view. False for an
+   * address with no subscription: Eva keeps no claim for it, so a page cannot fill her memory.
+   */
+  markInView(endpoint: string, pageId: string, inView: boolean): boolean {
+    if (!this.read().some((each) => each.endpoint === endpoint)) return false;
+    const pages = this.inViewUntil.get(endpoint) ?? new Map<string, number>();
+    const now = this.options.now().getTime();
+    for (const [page, until] of pages) if (until <= now) pages.delete(page);
+    if (inView) pages.set(pageId, now + inViewMs);
+    else pages.delete(pageId);
+    if (pages.size === 0) this.inViewUntil.delete(endpoint);
+    else this.inViewUntil.set(endpoint, pages);
+    return true;
+  }
+
+  private isInView(endpoint: string, now: number): boolean {
+    return [...(this.inViewUntil.get(endpoint)?.values() ?? [])].some((until) => until > now);
   }
 
   /** Ends the subscriptions of each device login that is gone. A subscription with no device login stays. */
@@ -213,7 +232,7 @@ export class WebPush {
     const now = this.options.now().getTime();
     return this.read()
       .filter((each) => (each.kinds ?? notificationKinds).includes(kind))
-      .filter((each) => (this.inViewUntil.get(each.endpoint) ?? 0) <= now)
+      .filter((each) => !this.isInView(each.endpoint, now))
       .map((each) => each.endpoint);
   }
 
@@ -300,7 +319,7 @@ export class WebPush {
 
   private read(): StoredPushSubscription[] {
     const read = readJsonTolerant(this.options.paths.pushSubscriptions);
-    const parsed = read.ok ? storeSchema.safeParse(read.value) : null;
+    const parsed = read.ok ? pushStoreSchema.safeParse(read.value) : null;
     return parsed?.success === true ? parsed.data.subscriptions : [];
   }
 
@@ -309,5 +328,8 @@ export class WebPush {
       this.options.paths.pushSubscriptions,
       JSON.stringify({ version: pushFormatVersion, subscriptions }, null, 2) + "\n",
     );
+    // A device that subscribes again later starts with no claim of its old pages.
+    const kept = new Set(subscriptions.map((each) => each.endpoint));
+    for (const endpoint of this.inViewUntil.keys()) if (!kept.has(endpoint)) this.inViewUntil.delete(endpoint);
   }
 }

@@ -1825,7 +1825,7 @@ describe("migrations (#119)", () => {
     instance.subscribePush(laptop, "Laptop", null);
     instance.subscribePush(desk, "Desk", null);
     instance.setPushKinds(laptop.endpoint, ["alerts"]);
-    instance.markPushInView(desk.endpoint, true);
+    instance.markPushInView(desk.endpoint, "desk-tab", true);
     const session = instance.createAssistantSession({ source: "web", model: "default", title: "Weekly report" });
     await instance.sessions.send(session.id, "Write the report.", "api");
     await Bun.sleep(10);

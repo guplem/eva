@@ -3,7 +3,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { notificationKinds } from "../../../../src/core/alerts/chat-notices.ts";
+import { notificationKinds } from "../../../../src/core/alerts/chat-notifications.ts";
 import { WebPush, type PushRequest } from "../../../../src/core/alerts/web-push.ts";
 import { homePaths, loadSecrets, type HomePaths } from "../../../../src/core/settings/home.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -213,7 +213,7 @@ describe("a page in view", () => {
   test("gets no push while its claim lasts, and the claim ends by itself", () => {
     const pusher = push();
     pusher.subscribe(subscription, "Phone");
-    pusher.markInView(subscription.endpoint, true);
+    expect(pusher.markInView(subscription.endpoint, "tab-1", true)).toBe(true);
     expect(pusher.recipients("replies")).toEqual([]);
     expect(pusher.recipients(null)).toEqual([subscription.endpoint]);
     nowMs += 89_000;
@@ -222,11 +222,34 @@ describe("a page in view", () => {
     expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
   });
 
-  test("that goes out of view gets pushes again", () => {
+  test("that goes out of view gets pushes again, unless another tab of the device is still in view", () => {
     const pusher = push();
     pusher.subscribe(subscription, "Phone");
-    pusher.markInView(subscription.endpoint, true);
-    pusher.markInView(subscription.endpoint, false);
+    pusher.markInView(subscription.endpoint, "tab-1", true);
+    pusher.markInView(subscription.endpoint, "tab-2", true);
+    pusher.markInView(subscription.endpoint, "tab-2", false);
+    expect(pusher.recipients("replies")).toEqual([]);
+    pusher.markInView(subscription.endpoint, "tab-1", false);
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+  });
+
+  test("of an address with no subscription keeps no claim, and a removal ends the claims", () => {
+    const pusher = push();
+    expect(pusher.markInView(subscription.endpoint, "tab-1", true)).toBe(false);
+    pusher.subscribe(subscription, "Phone");
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+    pusher.markInView(subscription.endpoint, "tab-1", true);
+    pusher.unsubscribe(subscription.endpoint);
+    pusher.subscribe(subscription, "Phone");
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+  });
+
+  test("an old claim of another tab ends by itself", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.markInView(subscription.endpoint, "tab-1", true);
+    nowMs += 100_000;
+    pusher.markInView(subscription.endpoint, "tab-2", false);
     expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
   });
 });

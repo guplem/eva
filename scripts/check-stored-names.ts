@@ -15,7 +15,7 @@ import type { HubClaim } from "../src/core/instance/hub.ts";
 import { favoritesFormatVersion, type StoredFavorites } from "../src/core/files/vault-favorites.ts";
 import { migrations } from "../src/core/migrations/migrations.ts";
 import type { StoredDevice } from "../src/core/remote-access/device-logins.ts";
-import { pushFormatVersion, type StoredPushSubscription } from "../src/core/alerts/web-push.ts";
+import { pushStoreSchema } from "../src/core/alerts/web-push.ts";
 import {
   dayNames,
   formatVersion as scheduleFormatVersion,
@@ -106,15 +106,6 @@ const leafTypes = new Set([
 ]);
 
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
-const pushFields = Object.keys({
-  endpoint: true,
-  p256dh: true,
-  auth: true,
-  label: true,
-  createdAt: true,
-  kinds: true,
-  deviceId: true,
-} satisfies Record<keyof StoredPushSubscription, true>);
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
 const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true } satisfies Record<
@@ -143,12 +134,7 @@ export function currentNames(): string[] {
     ...["devices", ...deviceFields.map((field) => `devices[].${field}`)].map(
       (name) => `machine state/devices.json ${name}`,
     ),
-    ...[
-      "version",
-      `version=${String(pushFormatVersion)}`,
-      "subscriptions",
-      ...pushFields.map((field) => `subscriptions[].${field}`),
-    ].map((name) => `machine state/push-subscriptions.json ${name}`),
+    ...schemaNames(pushStoreSchema).map((name) => `machine state/push-subscriptions.json ${name}`),
     ...config
       .filter((name) => isSharedSettingKey(settingKeyOf(name)))
       .map((name) => `vault .eva/settings.json ${name}`),

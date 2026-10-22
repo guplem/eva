@@ -165,6 +165,24 @@ Eva sends each alert to your Telegram chat when the problem starts, again once a
 | Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                     |
 | Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                 |
 
+## Notifications on a device
+
+Eva can also tell a phone or a computer through the browser, with a system notification. This works also when Eva's page is closed.
+
+1. Open **Settings**, then **Access**, then **Notifications on this device**.
+2. Tap **Turn on notifications**, and allow them in the browser's question.
+3. Pick when Eva tells this device:
+   - **Eva answers:** a reply is ready, also at the end of a long task.
+   - **A schedule finishes:** the chat of a reminder has its answer.
+   - **Eva waits for your approval:** a tool call needs your yes or no.
+   - **Problems and their fixes:** the alerts above. Only the hub sends them.
+
+A tap on a notification opens its chat. Each device picks its own kinds.
+
+Eva sends a device no notification while her page on that device is in view and in front. A chat that you started from Telegram sends none either: Telegram shows the answer already. A turn that you stopped sends none.
+
+On an iPhone or an iPad, add Eva to the home screen first, then open her from there. Each computer of your notebook sends the notifications of its own chats, so turn them on in the page of each computer that you use.
+
 From a phone: `/status` shows the problems and the version of Eva and each tool, `/logs [n]` shows the last `n` warnings and errors (20 by default), and `/restart` restarts Eva after you confirm. The Settings page has a **Restart Eva** button too. Its **Updates** section shows the version of Eva and each tool.
 
 ## Logging in to the web page

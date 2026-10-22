@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+import { notificationKinds } from "../../core/alerts/chat-notices.ts";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
 import type { VaultDownload } from "../../core/files/file-download.ts";
@@ -151,6 +152,8 @@ const pushDeviceSchema = z.object({
   label: z.string().min(1).max(200),
 });
 const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
+const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
+const pushInViewSchema = pushEndpointSchema.extend({ inView: z.boolean() });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -715,6 +718,11 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (method === "GET" && url.pathname === "/api/notifications/recent") {
     return json({ alerts: eva.recentNotifications() });
   }
+  // The worker of #360 names its device in the body, so it reads only the alerts that went to it.
+  if (method === "POST" && url.pathname === "/api/notifications/recent") {
+    const { endpoint } = pushEndpointSchema.parse(await request.json());
+    return json({ alerts: eva.recentNotifications(endpoint) });
+  }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
     return assistantRulesRoute(request, method, parts[2], eva);
@@ -734,13 +742,26 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   return json({ error: "Not found." }, 404);
 }
 
-/** The devices that get Eva's alerts as notifications: the key, the list, a new device, a removal and a test. */
+/**
+ * The devices that get Eva's notifications: the key, the list, a new device, its kinds, a removal,
+ * a page in view and a test.
+ */
 async function pushRoute(request: Request, method: string, path: string, eva: Eva): Promise<Response> {
   if (method === "GET" && path === "/api/push") return json({ ...eva.pushKey(), devices: eva.pushDevices() });
   if (method === "POST" && path === "/api/push/devices") {
     const { subscription, label } = pushDeviceSchema.parse(await request.json());
-    eva.subscribePush(subscription, label);
+    eva.subscribePush(subscription, label, cookieValue(request, deviceCookie));
     return json({ devices: eva.pushDevices() });
+  }
+  if (method === "PATCH" && path === "/api/push/devices") {
+    const { endpoint, kinds } = pushKindsSchema.parse(await request.json());
+    if (!eva.setPushKinds(endpoint, kinds)) return json({ error: "This device gets no notifications." }, 404);
+    return json({ devices: eva.pushDevices() });
+  }
+  if (method === "POST" && path === "/api/push/in-view") {
+    const { endpoint, inView } = pushInViewSchema.parse(await request.json());
+    eva.markPushInView(endpoint, inView);
+    return new Response(null, { status: 204 });
   }
   if (method === "DELETE" && path === "/api/push/devices") {
     const { endpoint } = pushEndpointSchema.parse(await request.json());

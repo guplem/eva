@@ -112,6 +112,8 @@ const pushFields = Object.keys({
   auth: true,
   label: true,
   createdAt: true,
+  kinds: true,
+  deviceId: true,
 } satisfies Record<keyof StoredPushSubscription, true>);
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);

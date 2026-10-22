@@ -3,6 +3,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { notificationKinds } from "../../../../src/core/alerts/chat-notices.ts";
 import { WebPush, type PushRequest } from "../../../../src/core/alerts/web-push.ts";
 import { homePaths, loadSecrets, type HomePaths } from "../../../../src/core/settings/home.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -23,15 +24,18 @@ beforeEach(() => {
   mkdirSync(paths.stateFolder, { recursive: true });
   sent = [];
   status = 201;
+  nowMs = Date.parse("2026-10-22T08:00:00.000Z");
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+let nowMs = Date.parse("2026-10-22T08:00:00.000Z");
+
 function push(): WebPush {
   return new WebPush({
     paths,
-    now: () => new Date("2026-10-22T08:00:00.000Z"),
+    now: () => new Date(nowMs),
     send: (request) => {
       sent.push(request);
       return Promise.resolve(status);
@@ -58,7 +62,12 @@ describe("subscriptions", () => {
     pusher.subscribe(subscription, "Phone");
     pusher.subscribe(subscription, "Phone again");
     expect(pusher.devices()).toEqual([
-      { endpoint: subscription.endpoint, label: "Phone again", createdAt: "2026-10-22T08:00:00.000Z" },
+      {
+        endpoint: subscription.endpoint,
+        label: "Phone again",
+        createdAt: "2026-10-22T08:00:00.000Z",
+        kinds: [...notificationKinds],
+      },
     ]);
     expect(JSON.parse(readFileSync(paths.pushSubscriptions, "utf-8"))).toMatchObject({ version: 1 });
     expect(pusher.unsubscribe(subscription.endpoint)).toBe(true);
@@ -94,7 +103,7 @@ describe("notify", () => {
   test("sends an empty push with a signed VAPID header to each device", async () => {
     const pusher = push();
     pusher.subscribe(subscription, "Phone");
-    await pusher.notify();
+    await pusher.notify(pusher.recipients("alerts"));
     expect(sent).toHaveLength(1);
     const request = sent[0];
     expect(request?.endpoint).toBe(subscription.endpoint);
@@ -126,7 +135,7 @@ describe("notify", () => {
     const pusher = push();
     pusher.subscribe(subscription, "Phone");
     status = 410;
-    await pusher.notify();
+    await pusher.notify(pusher.recipients("alerts"));
     expect(pusher.devices()).toEqual([]);
   });
 
@@ -137,7 +146,7 @@ describe("notify", () => {
       send: () => Promise.reject(new Error("offline")),
     });
     pusher.subscribe(subscription, "Phone");
-    await pusher.notify();
+    await pusher.notify(pusher.recipients("alerts"));
     expect(pusher.devices()).toHaveLength(1);
   });
 });
@@ -163,7 +172,72 @@ describe("limits", () => {
     const pusher = push();
     pusher.subscribe(subscription, "Phone");
     writeFileSync(paths.secrets, "{ broken");
-    expect(await pusher.notify()).toBeUndefined();
+    expect(await pusher.notify(pusher.recipients("alerts"))).toBeUndefined();
     expect(sent).toEqual([]);
+  });
+});
+
+describe("kinds", () => {
+  const second = { ...subscription, endpoint: "https://web.push.apple.com/second" };
+
+  test("a device gets only the kinds that it picked, and a new subscribe keeps them", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.subscribe(second, "Laptop");
+    expect(pusher.setKinds(second.endpoint, ["alerts"])).toBe(true);
+    pusher.subscribe(second, "Laptop");
+    expect(pusher.devices().map((device) => device.kinds)).toEqual([[...notificationKinds], ["alerts"]]);
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+    expect(pusher.recipients("alerts")).toEqual([subscription.endpoint, second.endpoint]);
+    expect(pusher.setKinds("https://web.push.apple.com/unknown", [])).toBe(false);
+  });
+
+  test("a test goes to every device", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.setKinds(subscription.endpoint, []);
+    expect(pusher.recipients("alerts")).toEqual([]);
+    expect(pusher.recipients(null)).toEqual([subscription.endpoint]);
+  });
+
+  test("notify sends only to the given devices", async () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.subscribe(second, "Laptop");
+    await pusher.notify([second.endpoint]);
+    expect(sent.map((request) => request.endpoint)).toEqual([second.endpoint]);
+  });
+});
+
+describe("a page in view", () => {
+  test("gets no push while its claim lasts, and the claim ends by itself", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.markInView(subscription.endpoint, true);
+    expect(pusher.recipients("replies")).toEqual([]);
+    expect(pusher.recipients(null)).toEqual([subscription.endpoint]);
+    nowMs += 89_000;
+    expect(pusher.recipients("replies")).toEqual([]);
+    nowMs += 2_000;
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+  });
+
+  test("that goes out of view gets pushes again", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone");
+    pusher.markInView(subscription.endpoint, true);
+    pusher.markInView(subscription.endpoint, false);
+    expect(pusher.recipients("replies")).toEqual([subscription.endpoint]);
+  });
+});
+
+describe("device logins", () => {
+  test("a removed device login loses its subscriptions, and a token login keeps its own", () => {
+    const pusher = push();
+    pusher.subscribe(subscription, "Phone", "device-1");
+    pusher.subscribe({ ...subscription, endpoint: "https://web.push.apple.com/kept" }, "Laptop", "device-2");
+    pusher.subscribe({ ...subscription, endpoint: "https://web.push.apple.com/token" }, "Computer", null);
+    pusher.keepDevices(new Set(["device-2"]));
+    expect(pusher.devices().map((device) => device.label)).toEqual(["Laptop", "Computer"]);
   });
 });

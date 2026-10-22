@@ -1,6 +1,7 @@
 /**
  * Eva's alerts as system notifications on the person's devices (Web Push), so a person without
- * Telegram learns about a problem while the web app is closed (#369).
+ * Telegram learns about a problem while the web app is closed (#369). The chats use it too: a
+ * finished turn, a schedule's turn and an approval that waits (#360).
  *
  * Each push is empty: it only wakes the web app's service worker, which reads the newest alert
  * from this Eva and shows it. An empty push needs no payload encryption, only the VAPID signature
@@ -12,6 +13,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { loadSecrets, saveSecrets, type HomePaths } from "../settings/home.ts";
+import { notificationKinds, type NotificationKind } from "./chat-notices.ts";
 
 /** One push to one device. */
 export interface PushRequest {
@@ -33,6 +35,7 @@ export interface PushDevice {
   /** The device's name, as the device list shows it. */
   readonly label: string;
   readonly createdAt: string;
+  readonly kinds: readonly NotificationKind[];
 }
 
 export interface WebPushOptions {
@@ -50,6 +53,10 @@ const storedSubscriptionSchema = z.object({
   auth: z.string(),
   label: z.string(),
   createdAt: z.string(),
+  /** The kinds that this device gets. A subscription from before #360 has none, and gets every kind. */
+  kinds: z.array(z.enum(notificationKinds)).optional(),
+  /** The device login that made the subscription, so its removal ends the subscription too. */
+  deviceId: z.string().optional(),
 });
 
 const storeSchema = z.object({
@@ -78,6 +85,12 @@ const requestTimeoutMs = 15_000;
 
 /** Each alert costs one request for each device, so the list stays short. */
 const maxDevices = 20;
+
+/**
+ * How long a page's claim that it is in view lasts. The page renews it each minute. A phone that
+ * sleeps cannot say that its page went out of view, so the claim must end by itself.
+ */
+const inViewMs = 90_000;
 
 const fetchSender: PushSender = async (request) => {
   const response = await fetch(request.endpoint, {
@@ -110,10 +123,13 @@ function isPushEndpoint(endpoint: string): boolean {
 export class WebPush {
   private readonly options: WebPushOptions;
   private readonly send: PushSender;
+  /** The end of each page's claim that it is in view, by push address. It lives in memory only. */
+  private readonly inViewUntil: Map<string, number>;
 
   constructor(options: WebPushOptions) {
     this.options = options;
     this.send = options.send ?? fetchSender;
+    this.inViewUntil = new Map();
   }
 
   /** The public key that a browser needs to subscribe, as base64url of the uncompressed point. */
@@ -129,14 +145,23 @@ export class WebPush {
   }
 
   devices(): PushDevice[] {
-    return this.read().map(({ endpoint, label, createdAt }) => ({ endpoint, label, createdAt }));
+    return this.read().map(({ endpoint, label, createdAt, kinds }) => ({
+      endpoint,
+      label,
+      createdAt,
+      kinds: kinds ?? notificationKinds,
+    }));
   }
 
-  subscribe(subscription: PushSubscriptionInput, label: string): void {
+  /** `deviceId` is the device login of the caller, or null for a login with the token. */
+  subscribe(subscription: PushSubscriptionInput, label: string, deviceId: string | null = null): void {
     if (!isPushEndpoint(subscription.endpoint)) {
       throw new EvaError("config_invalid", "This push address is not a browser's push service.");
     }
-    const others = this.read().filter((each) => each.endpoint !== subscription.endpoint);
+    const all = this.read();
+    // The page sends its subscription again on each visit, so the kinds that the person picked stay.
+    const kinds = all.find((each) => each.endpoint === subscription.endpoint)?.kinds;
+    const others = all.filter((each) => each.endpoint !== subscription.endpoint);
     if (others.length >= maxDevices) {
       throw new EvaError(
         "config_invalid",
@@ -151,8 +176,45 @@ export class WebPush {
         auth: subscription.keys.auth,
         label,
         createdAt: this.options.now().toISOString(),
+        ...(kinds === undefined ? {} : { kinds }),
+        ...(deviceId === null ? {} : { deviceId }),
       },
     ]);
+  }
+
+  /** False when the device has no subscription. */
+  setKinds(endpoint: string, kinds: readonly NotificationKind[]): boolean {
+    const all = this.read();
+    if (!all.some((each) => each.endpoint === endpoint)) return false;
+    const picked = notificationKinds.filter((kind) => kinds.includes(kind));
+    this.write(all.map((each) => (each.endpoint === endpoint ? { ...each, kinds: picked } : each)));
+    return true;
+  }
+
+  /** The page of a device says that it is in view, or that it went out of view. */
+  markInView(endpoint: string, inView: boolean): void {
+    if (inView) this.inViewUntil.set(endpoint, this.options.now().getTime() + inViewMs);
+    else this.inViewUntil.delete(endpoint);
+  }
+
+  /** Ends the subscriptions of each device login that is gone. A subscription with no device login stays. */
+  keepDevices(deviceIds: ReadonlySet<string>): void {
+    const all = this.read();
+    const kept = all.filter((each) => each.deviceId === undefined || deviceIds.has(each.deviceId));
+    if (kept.length !== all.length) this.write(kept);
+  }
+
+  /**
+   * The devices that get a push of this kind: each one that picked it, and whose page is not in view.
+   * A test (null) goes to every device, also one in view: the person pressed its button there.
+   */
+  recipients(kind: NotificationKind | null): string[] {
+    if (kind === null) return this.read().map((each) => each.endpoint);
+    const now = this.options.now().getTime();
+    return this.read()
+      .filter((each) => (each.kinds ?? notificationKinds).includes(kind))
+      .filter((each) => (this.inViewUntil.get(each.endpoint) ?? 0) <= now)
+      .map((each) => each.endpoint);
   }
 
   /** False when the device had no subscription. */
@@ -164,10 +226,11 @@ export class WebPush {
     return true;
   }
 
-  /** Wakes each device. A device whose subscription ended is forgotten. It never throws. */
-  async notify(): Promise<void> {
+  /** Wakes each device of the list. A device whose subscription ended is forgotten. It never throws. */
+  async notify(endpoints: readonly string[]): Promise<void> {
+    if (endpoints.length === 0) return;
     try {
-      await this.notifyAll();
+      await this.notifyAll(new Set(endpoints));
     } catch (error) {
       // A damaged secrets.json must not reach the alert path.
       this.options.logger?.log("warn", "The pushes failed.", {
@@ -176,8 +239,8 @@ export class WebPush {
     }
   }
 
-  private async notifyAll(): Promise<void> {
-    const subscriptions = this.read();
+  private async notifyAll(endpoints: ReadonlySet<string>): Promise<void> {
+    const subscriptions = this.read().filter((each) => endpoints.has(each.endpoint));
     if (subscriptions.length === 0) return;
     const key = this.privateKey();
     const publicKey = this.publicKeyOf(key);

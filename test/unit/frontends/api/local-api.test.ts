@@ -1296,6 +1296,35 @@ describe("web routes", () => {
     expect((await call("/api/push/other")).status).toBe(404);
   });
 
+  test("push: a device picks its kinds, says that its page is in view, and reads only its own alerts", async () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/device-2";
+    const subscription = { endpoint, keys: { p256dh: "key", auth: "secret" } };
+    await call("/api/push/devices", { method: "POST", body: { subscription, label: "Phone" } });
+    const picked = await json<{ devices: { kinds: string[] }[] }>(
+      await call("/api/push/devices", { method: "PATCH", body: { endpoint, kinds: ["replies", "alerts"] } }),
+    );
+    expect(picked.devices.map((device) => device.kinds)).toEqual([["replies", "alerts"]]);
+    const unknown = await call("/api/push/devices", {
+      method: "PATCH",
+      body: { endpoint: "https://fcm.googleapis.com/fcm/send/none", kinds: [] },
+    });
+    expect(unknown.status).toBe(404);
+    expect((await call("/api/push/devices", { method: "PATCH", body: { endpoint, kinds: ["nope"] } })).status).toBe(
+      400,
+    );
+
+    expect((await call("/api/push/in-view", { method: "POST", body: { endpoint, inView: true } })).status).toBe(204);
+    eva.reportProblem("while_in_view", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await call("/api/push/in-view", { method: "POST", body: { endpoint, inView: false } });
+    eva.reportProblem("out_of_view", { level: "warn", message: "Broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toEqual([endpoint]);
+    const own = await json<{ alerts: { key: string }[] }>(
+      await call("/api/notifications/recent", { method: "POST", body: { endpoint } }),
+    );
+    expect(own.alerts.map((alert) => alert.key)).toEqual(["out_of_view"]);
+  });
+
   test("the service worker loads before the login, from the root", async () => {
     const response = await fetch(`${api.url}/sw.js`);
     expect(response.status).toBe(200);

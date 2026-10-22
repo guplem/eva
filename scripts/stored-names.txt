@@ -193,6 +193,7 @@ typed cli doctor
 typed cli help
 typed cli hub
 typed cli link
+typed cli open
 typed cli projects
 typed cli service install
 typed cli settings

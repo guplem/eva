@@ -28,14 +28,13 @@ export class TelegramRemoteAccess {
 
   /** The address, or the setup steps with a button for each step that Eva can do. */
   async show(chatId: number, topicId: number | null, access: RemoteAccess | null): Promise<void> {
-    const localUrl = this.options.eva.status().localUrl;
     const actions =
       access === null ? [] : setupSteps(access).flatMap((step) => (step.action === null ? [] : [step.action]));
     const buttons = actions.map((action) => ({ text: actionLabel(action), callback_data: `t:${action}` }));
     await this.options.sender.send(
       chatId,
       topicId,
-      describeAccess({ remoteAccess: access, localUrl }).join("\n"),
+      describeAccess({ remoteAccess: access }).join("\n"),
       buttons.length === 0 ? undefined : { inline_keyboard: [buttons] },
     );
   }

@@ -1,6 +1,6 @@
 /**
  * The Eva supervisor: it runs Eva as a child and starts her again after a crash. On Linux,
- * systemd does this job. On Windows, the logon task runs `eva supervise` (lesson 89).
+ * systemd does this job. On Windows, the start at logon runs `eva supervise` (lesson 89).
  */
 import { exitCodes } from "../../shared/exit-codes.ts";
 import type { LongProcess, LongProcessStarter } from "../../shared/long-process.ts";

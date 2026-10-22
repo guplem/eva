@@ -131,6 +131,8 @@ const chatNameRulesSchema = z.object({ rules: z.string().max(4_000) });
 /** Eva sends the rules with every Assistant turn, so a huge text would make each turn slow and costly. */
 const assistantRulesSchema = z.object({ version: z.string().min(1).max(100), text: z.string().max(50_000) });
 const restoreRulesSchema = z.object({ version: z.string().min(1).max(100), backup: z.boolean() });
+/** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
+const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -684,6 +686,7 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {
     return assistantRulesRoute(request, method, parts[2], eva);
   }
+  if (url.pathname === "/api/template-parts") return templatePartsRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "schedules") return schedulesRoute(request, method, parts[2], eva);
   if (parts[0] === "api" && parts[1] === "schedule-cards") return scheduleCardsRoute(request, method, parts[2], eva);
   if (method === "POST" && parts[0] === "api" && parts[1] === "approvals" && parts[2] !== undefined) {
@@ -726,6 +729,16 @@ async function assistantRulesRoute(
     return json(rules.restoreDefault(version, backup));
   }
   return json({ error: "Not found." }, 404);
+}
+
+/** The vault's template parts, such as the skills: their states, and the person's choice for one that differs. */
+async function templatePartsRoute(request: Request, method: string, eva: Eva): Promise<Response> {
+  if (method !== "GET" && method !== "POST") return json({ error: "Not found." }, 404);
+  const listed = eva.templateParts();
+  if (listed === null) return json({ error: "No vault is configured." }, 409);
+  if (method === "GET") return json(listed);
+  const { path, choice } = templateChoiceSchema.parse(await request.json());
+  return json({ parts: eva.chooseTemplateVersion(path, choice), canChoose: true });
 }
 
 /** The schedules of `.eva/schedules.json`: list, add or replace, turn off or on, remove. */

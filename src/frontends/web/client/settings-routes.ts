@@ -139,6 +139,12 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },
   {
+    item: "template-alignment",
+    section: "vault",
+    title: "Template alignment",
+    words: "skills update template version merge",
+  },
+  {
     item: "github",
     section: "connections",
     title: "GitHub login",

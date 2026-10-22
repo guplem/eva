@@ -24,6 +24,7 @@ import { sessionSchema, storeSchema } from "../src/core/sessions/session-store.t
 import { configSchema, secretsSchema } from "../src/core/settings/home.ts";
 import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
+import { templateRecordFormatVersion, type RecordedPart } from "../src/core/vault/template-alignment.ts";
 import { cliCommands, switches, valueOptions } from "../src/frontends/cli/arguments.ts";
 import { commands as telegramCommands } from "../src/frontends/telegram/telegram-bot.ts";
 
@@ -104,6 +105,10 @@ const leafTypes = new Set([
 // These files have no zod schema. `satisfies` makes the typecheck fail until a new field is listed.
 const hubFields = Object.keys({ machine: true, since: true } satisfies Record<keyof HubClaim, true>);
 const favoritesFields = Object.keys({ version: true, paths: true } satisfies Record<keyof StoredFavorites, true>);
+const templatePartFields = Object.keys({ installed: true, kept: true, updatedAt: true } satisfies Record<
+  keyof RecordedPart,
+  true
+>);
 const deviceFields = Object.keys({ hash: true, label: true, createdAt: true } satisfies Record<
   keyof StoredDevice,
   true
@@ -142,6 +147,13 @@ export function currentNames(): string[] {
     ...[...favoritesFields, `version=${String(favoritesFormatVersion)}`].map(
       (name) => `vault .eva/favorites.json ${name}`,
     ),
+    ...[
+      "version",
+      `version=${String(templateRecordFormatVersion)}`,
+      "eva",
+      "parts",
+      ...templatePartFields.map((field) => `parts{}.${field}`),
+    ].map((name) => `vault .eva/template.json ${name}`),
     ...[...cliCommands, ...switches, ...valueOptions].map((name) => `typed cli ${name}`),
     ...telegramCommands.map((entry) => `typed telegram /${entry.command}`),
     ...migrations.map((migration) => `migration ${migration.store} ${migration.id}`),

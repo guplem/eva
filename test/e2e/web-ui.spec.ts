@@ -2723,13 +2723,19 @@ test("Settings: the vault step lists the repositories and clones the picked one,
     .getByRole("region", { name: "Progress list" })
     .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
+  // The page asks for one path first and shows only its form.
+  await expect(page.getByRole("button", { name: "I have a vault on GitHub" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toHaveCount(0);
   const clone = page.getByRole("button", { name: "Clone this vault" });
   await expect(clone).toBeDisabled();
   await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
   await clone.click();
   await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
-  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+  // The other path stays off after a clone, so a second click never starts a second vault.
+  await page.getByRole("button", { name: "Start a new vault" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
 test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
@@ -2756,6 +2762,7 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await page.getByRole("button", { name: "Start a new vault" }).click();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
 });

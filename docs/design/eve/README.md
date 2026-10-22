@@ -156,7 +156,7 @@ All of them are in `reference.html`. The class names there are short; pick clear
 | Chip              | `.chip`                                              | For filters, engine and model pickers. `.on` is selected.                                                                                                                                                                           |
 | Status pill       | `.st.ok`, `.warn`, `.bad`, `.idle`, `.live`          | A dot and a word. `.live` has a glowing dot.                                                                                                                                                                                        |
 | Card              | `.card`                                              | `--panel` fill and the card shadow.                                                                                                                                                                                                 |
-| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill.                                                                                                                                                                              |
+| Chat list item    | `.ci`                                                | Title, last line of the chat, time, and a status pill: "Needs you", "Working" or "Unread". An unread chat shows its last line in `--ink`. On a phone, a dot on the list button tells of an unread chat.                             |
 | Message bubbles   | `.msg`, `.bub`                                       | Eva's bubble is a card with the visor at its side. The user's bubble is `--soft`.                                                                                                                                                   |
 | Folded steps      | `.steps`                                             | One line: step count, time, the last step, and an arrow that opens the list.                                                                                                                                                        |
 | Step list         | `.stl`                                               | Monospace lines with an icon each. Edits show `+N` in green and `−N` in red.                                                                                                                                                        |
@@ -330,21 +330,21 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 The reference shows some things that the web client does not have today. Each implementation issue decides how to close its gap.
 
-| Reference                                                                           | Today                                                                                                        |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Nav rail and bottom tab bar with four destinations                                  | A top bar with a Mode switch and a Settings button. Schedules opens only from an icon in the assistant list. |
-| Chat list with preview, time, working and "Needs you" states, search and day groups | Title and source only.                                                                                       |
-| Engine and model chips in the composer                                              | The model is picked once, before the chat starts. The engine is a setting for new chats.                     |
-| Folded step line with the last step                                                 | A row of small shapes that opens a list.                                                                     |
-| Copy action on answers                                                              | None.                                                                                                        |
-| Context ring with a share of the limit                                              | A token count only.                                                                                          |
-| Permission card inside the chat, with "Allow in this chat"                          | A global dialog with Allow and Deny, which does not say which chat asks.                                     |
-| Settings with a section list                                                        | One long page.                                                                                               |
-| Messages that wait while offline                                                    | A failed send puts the text back in the composer.                                                            |
-| Toast with an action button                                                         | A toast with text only.                                                                                      |
-| Seed colour picker                                                                  | Theme and density only.                                                                                      |
-| Line icons                                                                          | Emoji.                                                                                                       |
-| No part for a wait, apart from the working dots of a chat                           | A progress bar inside a card, and skeletons for content that fills a large area.                             |
+| Reference                                                                                     | Today                                                                                                        |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Nav rail and bottom tab bar with four destinations                                            | A top bar with a Mode switch and a Settings button. Schedules opens only from an icon in the assistant list. |
+| Chat list with preview, time, working, "Needs you" and "Unread" states, search and day groups | Title and source only.                                                                                       |
+| Engine and model chips in the composer                                                        | The model is picked once, before the chat starts. The engine is a setting for new chats.                     |
+| Folded step line with the last step                                                           | A row of small shapes that opens a list.                                                                     |
+| Copy action on answers                                                                        | None.                                                                                                        |
+| Context ring with a share of the limit                                                        | A token count only.                                                                                          |
+| Permission card inside the chat, with "Allow in this chat"                                    | A global dialog with Allow and Deny, which does not say which chat asks.                                     |
+| Settings with a section list                                                                  | One long page.                                                                                               |
+| Messages that wait while offline                                                              | A failed send puts the text back in the composer.                                                            |
+| Toast with an action button                                                                   | A toast with text only.                                                                                      |
+| Seed colour picker                                                                            | Theme and density only.                                                                                      |
+| Line icons                                                                                    | Emoji.                                                                                                       |
+| No part for a wait, apart from the working dots of a chat                                     | A progress bar inside a card, and skeletons for content that fills a large area.                             |
 
 ## Captures
 

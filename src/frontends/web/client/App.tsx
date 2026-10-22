@@ -333,6 +333,9 @@ function EvaApp(): ReactElement {
       } else if (event.kind === "session_renamed") {
         // A rename can come from Telegram or the terminal.
         void refreshSessions();
+      } else if (event.kind === "session_seen") {
+        // The person read the chat here or on another device: the list drops its unread mark.
+        void refreshSessions();
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         void refreshSessions();
       } else if (event.kind === "message_received") {

@@ -12,10 +12,10 @@ import {
   syncPills,
   type Pill,
 } from "./project-format.ts";
-import { chatTime } from "./chat-list.ts";
+import { chatTime, type ChatState } from "./chat-list.ts";
 import { CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { Dialog } from "./ChatPanel.tsx";
-import { chatListItems, type ChatAction } from "./ChatHeader.tsx";
+import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 
 interface ProjectPageProps {
@@ -24,8 +24,8 @@ interface ProjectPageProps {
   readonly clones: readonly CloneDetails[] | null;
   /** The root chats of each clone, by clone path. */
   readonly chatsOf: (clone: CloneDetails) => readonly SessionRecord[];
-  /** Whether a chat waits for a yes or a no from the person. */
-  readonly needsYou: (chat: SessionRecord) => boolean;
+  /** Whether a chat needs the person, works, or has an answer that the person did not see. */
+  readonly stateOf: (chat: SessionRecord) => ChatState;
   /** Whether Eva runs a turn now in a chat or one of its forks. */
   readonly isWorking: (chat: SessionRecord) => boolean;
   readonly error: string | null;
@@ -52,7 +52,7 @@ export function ProjectPage({
   project,
   clones,
   chatsOf,
-  needsYou,
+  stateOf,
   isWorking,
   error,
   onBackToList,
@@ -139,7 +139,7 @@ export function ProjectPage({
                   key={clone.path}
                   clone={clone}
                   chats={chatsOf(clone)}
-                  needsYou={needsYou}
+                  stateOf={stateOf}
                   isWorking={isWorking}
                   now={now}
                   onOpenChat={(chat, action) => onOpenChat(clone, chat, action)}
@@ -163,7 +163,7 @@ interface CloneCardProps {
   readonly clone: CloneDetails;
   readonly chats: readonly SessionRecord[];
   readonly now: Date;
-  readonly needsYou: (chat: SessionRecord) => boolean;
+  readonly stateOf: (chat: SessionRecord) => ChatState;
   readonly isWorking: (chat: SessionRecord) => boolean;
   readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
   readonly onNewChat: () => void;
@@ -179,7 +179,7 @@ function CloneCard({
   clone,
   chats,
   now,
-  needsYou,
+  stateOf,
   isWorking,
   onOpenChat,
   onNewChat,
@@ -229,7 +229,7 @@ function CloneCard({
           key={chat.id}
           chat={chat}
           time={chatTime(new Date(chat.lastTurnAt ?? chat.createdAt), now)}
-          needsYou={needsYou(chat)}
+          state={stateOf(chat)}
           onOpen={(action) => onOpenChat(chat, action)}
         />
       ))}
@@ -336,12 +336,12 @@ function ignore(): void {
 function CloneChat({
   chat,
   time,
-  needsYou,
+  state,
   onOpen,
 }: {
   readonly chat: SessionRecord;
   readonly time: string;
-  readonly needsYou: boolean;
+  readonly state: ChatState;
   readonly onOpen: (action?: ChatAction) => void;
 }): ReactElement {
   const { props, menu } = useContextMenu(
@@ -353,7 +353,7 @@ function CloneChat({
       <button className="clone-chat" onClick={() => onOpen()} {...props}>
         <Icon name="chat" />
         <span className="clone-chat-title">{chat.title}</span>
-        {needsYou && <span className="status-pill needs-you">Needs you</span>}
+        <ChatStatePill state={state} />
         <span className="muted">{time}</span>
       </button>
       {menu}

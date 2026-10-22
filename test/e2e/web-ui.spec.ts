@@ -2378,6 +2378,19 @@ test("an attached file reaches the agent as its vault path, and a removed one do
   await expect(page.locator(".message.answer").first()).toContainText("Scratch/received/receipt-");
 });
 
+test("a refused file leaves the box and says why (issue 409)", async ({ page }) => {
+  await page.route("**/api/files/received*", async (route) => {
+    await route.fulfill({ status: 413, json: { error: "Eva takes files up to 25 MB only." } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page
+    .locator(".composer input[type=file]")
+    .setInputFiles({ name: "video.mp4", mimeType: "video/mp4", buffer: Buffer.from("too big") });
+  await expect(page.getByRole("alert")).toContainText("Eva takes files up to 25 MB only.");
+  await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
+});
+
 test("without voice notes, the microphone leads to the button that installs them", async ({ page }) => {
   let installs = 0;
   await page.route("**/api/voice-notes/install", async (route) => {

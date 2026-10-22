@@ -88,7 +88,8 @@ jobs:
           # The signed file names its version, so an old build cannot come back under a new tag.
           cd dist && { sha256sum eva-*; echo "# version $VERSION"; } > SHA256SUMS
           # The one-command install scripts download the executables of this same release.
-          cp ../install/install.sh ../install/install.ps1 .
+          # Each release also publishes the uninstall scripts, so that they keep a fixed address.
+          cp ../install/install.sh ../install/install.ps1 ../install/uninstall.sh ../install/uninstall.ps1 .
       - name: Sign the checksums
         if: steps.next.outputs.version != ''
         env:

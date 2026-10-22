@@ -1,5 +1,6 @@
 # Checks install/install.ps1 the way a new person runs it: `irm ... | iex` in Windows PowerShell,
 # from a fake release that a local web server serves, with the given executable.
+# Then it checks install/uninstall.ps1.
 # Usage: powershell -File scripts/smoke-install.ps1 <path to the Windows executable>
 param([Parameter(Mandatory)] [string] $Executable)
 $ErrorActionPreference = 'Stop'
@@ -10,6 +11,7 @@ $bad = Join-Path $root 'bad'
 New-Item -ItemType Directory -Path $release, $bad | Out-Null
 Copy-Item $Executable (Join-Path $release 'eva-windows-x64.exe')
 Copy-Item 'install/install.ps1' (Join-Path $release 'install.ps1')
+Copy-Item 'install/uninstall.ps1' (Join-Path $release 'uninstall.ps1')
 $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $release 'eva-windows-x64.exe')).Hash.ToLower()
 Set-Content -Path (Join-Path $release 'SHA256SUMS') -Value "$hash  eva-windows-x64.exe"
 # A release whose checksum does not match its executable.
@@ -17,6 +19,7 @@ Copy-Item (Join-Path $release 'eva-windows-x64.exe'), (Join-Path $release 'insta
 Set-Content -Path (Join-Path $bad 'SHA256SUMS') -Value ('0' * 64 + '  eva-windows-x64.exe')
 
 $target = Join-Path $root 'local\Programs\Eva\eva.exe'
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
 $originalPath = $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
 $originalKind = if ($null -ne $originalPath) { $key.GetValueKind('Path') } else { $null }
@@ -80,9 +83,27 @@ try {
     if ($userInstallFails -and $global:wingetCalls[1] -match '--scope') { throw "The second winget call was: $($global:wingetCalls[1])" }
   }
   $env:Path = $fullPath
-  Write-Host 'The install script passed the smoke test.'
+
+  # The uninstall stops an Eva and deletes her folder, then the program and its PATH entry.
+  # A stand-in gives the answers, as for winget above. Enter keeps each safe answer.
+  $env:APPDATA = Join-Path $root 'roaming'
+  $smokeHome = Join-Path $env:APPDATA 'eva-smoke'
+  New-Item -ItemType Directory -Path $smokeHome | Out-Null
+  Set-Content -Path (Join-Path $smokeHome 'config.json') -Value '{}'
+  New-ItemProperty -Path $runKey -Name 'Eva-smoke' -Value 'smoke' -Force | Out-Null
+  $global:answers = [Collections.Queue]::new([string[]]@('', 'y', ''))
+  function global:Read-Host { if ($global:answers.Count -gt 0) { $global:answers.Dequeue() } else { '' } }
+  $output = irm 'http://127.0.0.1:8765/release/uninstall.ps1' | iex 6>&1 | Out-String
+  Remove-Item function:global:Read-Host
+  if ($output -match 'uninstall stopped') { throw "The uninstall stopped: $output" }
+  if (Test-Path $smokeHome) { throw 'The uninstall kept the folder of the Eva.' }
+  if (Test-Path (Split-Path $target)) { throw 'The uninstall kept the eva program.' }
+  if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains (Split-Path $target)) { throw 'The user PATH still holds the Eva folder.' }
+  if ($null -ne (Get-ItemProperty -Path $runKey -Name 'Eva-smoke' -ErrorAction SilentlyContinue)) { throw 'The uninstall kept the start at logon.' }
+  Write-Host 'The install and uninstall scripts passed the smoke test.'
 } finally {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+  Remove-ItemProperty -Path $runKey -Name 'Eva-smoke' -ErrorAction SilentlyContinue
   # A local run gives back the user PATH exactly as it was, with its registry kind.
   $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
   if ($null -eq $originalPath) { $key.DeleteValue('Path', $false) } else { $key.SetValue('Path', $originalPath, $originalKind) }

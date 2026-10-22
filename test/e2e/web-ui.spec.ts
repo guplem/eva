@@ -1035,6 +1035,15 @@ test("the project page shows the facts, the quick links and a clones section", a
   await expect(page.getByRole("link", { name: /AGENTS\.md/ }).first()).toBeVisible();
 });
 
+test("a failed read of the clones does not say that the project has none", async ({ page }) => {
+  await logIn(page);
+  await page.route("**/api/projects/*/clones", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await openExampleApp(page);
+  const clones = page.getByRole("region", { name: "Clones" });
+  await expect(clones.getByText(/^A new clone is another copy/)).toBeVisible();
+  await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
+});
+
 test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
   const title = `Forked project work (${test.info().project.name})`;
   await logIn(page);

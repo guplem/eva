@@ -28,6 +28,8 @@ interface ProjectPageProps {
   readonly project: Project;
   /** Null while they load. */
   readonly clones: readonly CloneDetails[] | null;
+  /** The read of the clones failed, so an empty list does not mean that the project has none. */
+  readonly clonesFailed: boolean;
   /** The root chats of each clone, by clone path. */
   readonly chatsOf: (clone: CloneDetails) => readonly SessionRecord[];
   /** Whether a chat needs the person, works, or has an answer that the person did not see. */
@@ -57,6 +59,7 @@ interface ProjectPageProps {
 export function ProjectPage({
   project,
   clones,
+  clonesFailed,
   chatsOf,
   stateOf,
   isWorking,
@@ -123,7 +126,8 @@ export function ProjectPage({
                   )}
                 </div>
               )}
-              {syncWork !== null && <ProgressBar label={syncWork} />}
+              {/* Each open checks the remotes, but a project with no clone has none to check. */}
+              {syncWork !== null && clones.length > 0 && <ProgressBar label={syncWork} />}
               <div className="clone-grid">
                 {clones.map((clone) => (
                   <CloneCard
@@ -142,8 +146,8 @@ export function ProjectPage({
                     onPush={() => onPush(clone)}
                   />
                 ))}
-                {/* A failed read leaves no clones, but the project may have some, so the card does not say "none". */}
-                <NewCloneCard first={clones.length === 0 && error === null} onNewClone={onNewClone} />
+
+                <NewCloneCard first={clones.length === 0 && !clonesFailed} onNewClone={onNewClone} />
               </div>
             </>
           )}

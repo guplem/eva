@@ -27,19 +27,29 @@ export interface PresencePage {
 export function startPushPresence(page: PresencePage): () => void {
   // Kept at hand: a page that hides may freeze before an await ends, so a claim goes out in the same tick.
   let endpoint: string | null = null;
+  /**
+   * The last claim that went out. A blur and a hide often come together, and two requests can
+   * arrive in either order, so the page sends only a change. Only the timer renews a claim.
+   */
+  let lastSent: boolean | null = null;
   const report = (inView: boolean): void => {
     if (endpoint === null) return;
+    lastSent = inView;
     // A missed claim only means one notification that the person did not need.
     page.send(endpoint, page.pageId, inView).catch(() => undefined);
   };
+  const reportChange = (inView: boolean): void => {
+    if (inView !== lastSent) report(inView);
+  };
   const reportView = (): void => {
-    report(page.isInView());
+    reportChange(page.isInView());
   };
   const refresh = (): void => {
     page
       .readEndpoint()
       .then((found) => {
         endpoint = found;
+        lastSent = null;
         reportView();
       })
       .catch(() => undefined);
@@ -48,7 +58,7 @@ export function startPushPresence(page: PresencePage): () => void {
   const stops = [
     page.onViewChange(reportView),
     page.onLeave(() => {
-      report(false);
+      reportChange(false);
     }),
     page.onDeviceChange(refresh),
     page.setInterval(() => {
@@ -57,5 +67,7 @@ export function startPushPresence(page: PresencePage): () => void {
   ];
   return () => {
     for (const stop of stops) stop();
+    // After a logout, an old claim would hold back the pushes for up to 90 seconds.
+    reportChange(false);
   };
 }

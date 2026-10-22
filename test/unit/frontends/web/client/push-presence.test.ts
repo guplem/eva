@@ -48,7 +48,7 @@ const settle = (): Promise<void> => Bun.sleep(0);
 describe("the page's claim that it is in view", () => {
   test("goes out at the start, on each change, on each renewal in view, and when the page closes", async () => {
     const fake = fakePage();
-    const stop = startPushPresence(fake.page);
+    startPushPresence(fake.page);
     await settle();
     fake.fire("timer");
     fake.inView = false;
@@ -56,15 +56,35 @@ describe("the page's claim that it is in view", () => {
     // Out of view, the renewal sends nothing: the claim must end.
     fake.fire("timer");
     fake.inView = true;
+    fake.fire("view");
     fake.fire("leave");
     const endpoint = fake.endpoint ?? "";
     expect(fake.sent).toEqual([
       [endpoint, "tab-1", true],
       [endpoint, "tab-1", true],
       [endpoint, "tab-1", false],
+      [endpoint, "tab-1", true],
       [endpoint, "tab-1", false],
     ]);
+  });
+
+  test("sends only a change: a blur and a hide together send one claim", async () => {
+    const fake = fakePage();
+    startPushPresence(fake.page);
+    await settle();
+    fake.inView = false;
+    fake.fire("view");
+    fake.fire("view");
+    fake.fire("leave");
+    expect(fake.sent.map(([, , inView]) => inView)).toEqual([true, false]);
+  });
+
+  test("ends its claim when it stops, as after a logout", async () => {
+    const fake = fakePage();
+    const stop = startPushPresence(fake.page);
+    await settle();
     stop();
+    expect(fake.sent.map(([, , inView]) => inView)).toEqual([true, false]);
     expect(fake.listening()).toBe(0);
   });
 

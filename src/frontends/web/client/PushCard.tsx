@@ -46,8 +46,14 @@ export function browserPresencePage(): PresencePage {
       const timer = window.setInterval(callback, ms);
       return () => window.clearInterval(timer);
     },
-    pageId: crypto.randomUUID(),
+    pageId: newPageId(),
   };
+}
+
+/** `crypto.randomUUID` exists only on HTTPS, and a page on plain HTTP must still open. */
+function newPageId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function currentSupport(): PushSupport {
@@ -212,7 +218,7 @@ export function PushCard({ context }: { readonly context: SettingsContext }): Re
     <Card
       item="notifications"
       title="Notifications on this device"
-      description="Eva tells this device when she answers, when a schedule finishes, when she waits for your approval and when something breaks. This works also when the app is closed. While this page is in view, she sends none."
+      description={`Eva tells this device when she answers, when a schedule finishes${isHub ? ", when she waits for your approval and when something breaks" : " and when she waits for your approval"}. This works also when the app is closed. While this page is in view, she sends none.`}
     >
       {support !== "ready" ? (
         <div className="field-hint">{supportWords[support]}</div>

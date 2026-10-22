@@ -142,7 +142,8 @@ export function ProjectPage({
                     onPush={() => onPush(clone)}
                   />
                 ))}
-                <NewCloneCard first={clones.length === 0} onNewClone={onNewClone} />
+                {/* A failed read leaves no clones, but the project may have some, so the card does not say "none". */}
+                <NewCloneCard first={clones.length === 0 && error === null} onNewClone={onNewClone} />
               </div>
             </>
           )}
@@ -156,12 +157,15 @@ export function ProjectPage({
  * What the front matter says, and the quick links: each repository's web page and the project folder
  * in Files. A repository with no web page, such as a local remote, stays plain text.
  */
-function ProjectFacts({ project }: { readonly project: Project }): ReactElement {
+function ProjectFacts({ project }: { readonly project: Project }): ReactElement | null {
   const { created, tags, repos } = project.frontMatter;
+  const hasFacts = created !== null || tags.length > 0;
+  const hasLinks = repos.length > 0 || project.vaultFolder !== null;
+  if (project.description === null && !hasFacts && !hasLinks) return null;
   return (
     <section className="card project-facts" aria-label="Project facts">
       {project.description !== null && <p>{project.description}</p>}
-      {(created !== null || tags.length > 0) && (
+      {hasFacts && (
         <dl className="chat-facts">
           {created !== null && (
             <>
@@ -183,25 +187,28 @@ function ProjectFacts({ project }: { readonly project: Project }): ReactElement 
           )}
         </dl>
       )}
-      <div className="tags">
-        {repos.map((repo) => {
-          const url = repositoryWebUrl(repo);
-          return url === null ? (
-            <span key={repo} className="mode-chip">
-              <Icon name="globe" /> {repositoryLabel(repo)}
-            </span>
-          ) : (
-            <a key={repo} className="mode-chip link-chip" href={url} target="_blank" rel="noreferrer">
-              <Icon name="globe" /> {repositoryLabel(repo)}
+      {hasLinks && (
+        <div className="tags">
+          {repos.map((repo) => {
+            const url = repositoryWebUrl(repo);
+            return url === null ? (
+              <span key={repo} className="mode-chip">
+                <Icon name="globe" /> {repositoryLabel(repo)}
+              </span>
+            ) : (
+              // The arrow icon, not only the colour, tells a link from a plain chip.
+              <a key={repo} className="mode-chip link-chip" href={url} target="_blank" rel="noreferrer">
+                <Icon name="external" /> {repositoryLabel(repo)}
+              </a>
+            );
+          })}
+          {project.vaultFolder !== null && (
+            <a className="mode-chip link-chip" href={fileAddressOf(project.vaultFolder)}>
+              <Icon name="folder" /> Open in Files
             </a>
-          );
-        })}
-        {project.vaultFolder !== null && (
-          <a className="mode-chip link-chip" href={fileAddressOf(project.vaultFolder)}>
-            <Icon name="folder" /> Open in Files
-          </a>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

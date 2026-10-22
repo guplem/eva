@@ -3046,8 +3046,14 @@ button.small {
   gap: var(--space-3);
 }
 
-.project-facts dd.tags {
-  justify-content: flex-end;
+/* The chat panel is narrow, so its facts sit at the right edge. Here the card is wide: each value stays by its name. */
+.project-facts .chat-facts {
+  justify-content: start;
+}
+
+.project-facts .chat-facts dd {
+  justify-self: start;
+  text-align: start;
 }
 
 /* A quick link looks like the chip of a plain fact, with the link colour, so the person sees it opens. */

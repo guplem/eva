@@ -19,6 +19,8 @@ const token = "local-api-token-for-tests";
 let sandbox: GitSandbox;
 let home: string;
 let eva: Eva;
+/** The push addresses that Eva sent to. */
+let pushed: string[] = [];
 let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
@@ -56,6 +58,7 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 beforeEach(() => {
+  pushed = [];
   sandbox = createGitSandbox();
   const vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
@@ -84,6 +87,10 @@ beforeEach(() => {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     gatherMs: 5,
+    pushSender: (request) => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    },
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
     // No test reaches the real releases.
     toolInstall: {
@@ -1249,6 +1256,43 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "PUT", body: { rules: "x".repeat(5_000) } })).status).toBe(400);
     expect((await call("/api/chat-names", { method: "PUT", body: {} })).status).toBe(400);
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
+  });
+
+  test("push: a device subscribes, gets each alert as a push, reads the newest alert, and leaves", async () => {
+    const key = await json<{ publicKey: string; devices: unknown[] }>(await call("/api/push"));
+    expect(Buffer.from(key.publicKey, "base64url")).toHaveLength(65);
+    expect(key.devices).toEqual([]);
+    const endpoint = "https://fcm.googleapis.com/fcm/send/device-1";
+    const added = await json<{ devices: { endpoint: string; label: string }[] }>(
+      await call("/api/push/devices", {
+        method: "POST",
+        body: { subscription: { endpoint, keys: { p256dh: "key", auth: "secret" } }, label: "Phone" },
+      }),
+    );
+    expect(added.devices.map((device) => [device.endpoint, device.label])).toEqual([[endpoint, "Phone"]]);
+
+    expect((await call("/api/push/test", { method: "POST" })).status).toBe(204);
+    expect(pushed).toEqual([endpoint]);
+    const recent = await json<{ alerts: { key: string; message: string }[] }>(await call("/api/notifications/recent"));
+    expect(recent.alerts[0]).toMatchObject({ key: "push_test", message: "This is a test notification from Eva." });
+
+    const bad = await call("/api/push/devices", {
+      method: "POST",
+      body: { subscription: { endpoint: "https://example.com/x", keys: { p256dh: "k", auth: "a" } }, label: "X" },
+    });
+    expect(bad.status).toBe(400);
+    const removed = await json<{ devices: unknown[] }>(
+      await call("/api/push/devices", { method: "DELETE", body: { endpoint } }),
+    );
+    expect(removed.devices).toEqual([]);
+    expect((await call("/api/push/other")).status).toBe(404);
+  });
+
+  test("the service worker loads before the login, from the root", async () => {
+    const response = await fetch(`${api.url}/sw.js`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("javascript");
+    expect(await response.text()).toContain('addEventListener("push"');
   });
 
   test("assistant rules: read with the built-in prompt, save by version, and restore the default after a backup", async () => {

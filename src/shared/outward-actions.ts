@@ -13,6 +13,16 @@ const outwardMcpPattern = /^mcp__.*(send|share|invite|post|reply|forward|permiss
 /** A calendar event reaches other people only when it has guests or sends updates. */
 const calendarEventToolPattern = /^mcp__.*manage_event$/;
 
+/** The patterns above in plain words, for Settings. Change both together. */
+export const outwardActionWords: readonly string[] = [
+  "Push commits with git push",
+  "Create, comment on, edit, close or merge a GitHub issue, pull request, release or gist",
+  "Change GitHub through gh api",
+  "Send data to a web address with curl",
+  "A tool that sends, shares, invites, posts, replies, forwards, comments, reacts or changes access",
+  "A calendar event with guests or updates, and an answer to an invitation",
+];
+
 export function reachesOtherPeople(toolName: string, input: Readonly<Record<string, unknown>>): boolean {
   const command = typeof input["command"] === "string" ? input["command"] : "";
   return (

@@ -6,7 +6,8 @@ import { googleClientIdProblem } from "./google/google-client.ts";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import type { EnginePort, McpServerSpec } from "../shared/engine-port.ts";
+import type { EngineName, EnginePort, McpServerSpec } from "../shared/engine-port.ts";
+import type { EnginePermissions } from "../shared/permissions.ts";
 import {
   baseEnvironmentAllowlist,
   buildChildEnvironment,
@@ -326,6 +327,9 @@ export interface EvaSetupState extends SetupState {
 }
 
 /** Whose repositories Eva trusts, for the Trusted repositories section. */
+/** Each engine's permissions, with its name. */
+export type PermissionsOverview = readonly (EnginePermissions & { readonly engine: EngineName })[];
+
 export interface TrustOverview {
   /** The login of this Eva's GitHub account, or null when Eva has no record of it. */
   readonly githubAccount: string | null;
@@ -1545,6 +1549,17 @@ export class Eva {
       owners: this.settings.config.trust.trustedRepositoryOwners,
       answers: this.trustStore.answers(),
     };
+  }
+
+  /**
+   * What each engine may do, and the person's own rules, for Settings. The engines read the
+   * config folder of their own runs, which holds no token.
+   */
+  permissions(): PermissionsOverview {
+    const context = { vaultFolder: this.options.config.vaultPath, environment: engineToolEnvironment(this.facts) };
+    return this.options.engines.flatMap((engine) =>
+      engine.describePermissions === undefined ? [] : [{ engine: engine.name, ...engine.describePermissions(context) }],
+    );
   }
 
   /** Removes a saved answer, so the next project chat on that repository asks again. */

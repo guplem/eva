@@ -1202,6 +1202,10 @@ describe("web routes", () => {
     expect((await call("/api/trust/answers", { method: "DELETE", body: {} })).status).toBe(400);
   });
 
+  test("permissions: the fake engine describes no rules", async () => {
+    expect(await json<unknown>(await call("/api/permissions"))).toEqual([]);
+  });
+
   test("the Google login waits for a client, then gives Google's consent address", async () => {
     const early = await call("/api/google/login", { method: "POST", body: {} });
     expect(early.status).toBe(409);

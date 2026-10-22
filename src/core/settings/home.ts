@@ -99,6 +99,8 @@ export interface HomePaths {
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
+  /** The person's last known location, from their phone. Never in the vault. */
+  readonly location: string;
   /** The GitHub account of the saved token, which gives the commit name and email. */
   readonly githubAccount: string;
   readonly logsFolder: string;
@@ -123,6 +125,7 @@ export function homePaths(root: string): HomePaths {
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
+    location: join(stateFolder, "location.json"),
     githubAccount: join(stateFolder, "github-account.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),

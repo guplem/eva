@@ -1961,3 +1961,14 @@ describe("machine reports (#126)", () => {
     expect(instance.status().problems).toEqual([]);
   });
 });
+
+describe("the person's place (#371)", () => {
+  test("a phone's point counts for a day, then the home place of About me", () => {
+    const instance = start(new FakeEngine());
+    sandbox.write(vault, "Life/About me.md", "---\nplaces:\n  home: { lat: 41.39, lon: 2.17 }\n---\n");
+    expect(instance.saveLocation({ lat: 40.4, lon: -3.7, accuracy: null }, "telegram")).toBe(true);
+    expect(instance.currentPlace()).toMatchObject({ lat: 40.4, source: "telegram" });
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    expect(instance.currentPlace()).toEqual({ lat: 41.39, lon: 2.17, source: "home", at: null });
+  });
+});

@@ -205,3 +205,25 @@ export async function firstCommitDay(
   // A vault can have more than one root commit, such as after a merge of two histories.
   return result.stdout.split(/\r?\n/).filter(isRealDate).sort()[0] ?? null;
 }
+
+/**
+ * The person's home as a point, from `places.home` in the header, or null. Scripts use it when
+ * the phone sent no recent location.
+ */
+export function readHomePlace(vaultPath: string): { readonly lat: number; readonly lon: number } | null {
+  const text = readTextTolerant(join(vaultPath, aboutMeFile));
+  const match = frontMatterPattern.exec((text ?? "").replace(/^\uFEFF/, ""));
+  if (match === null) return null;
+  let header: unknown;
+  try {
+    header = parseYaml(match[1] ?? "", { schema: "failsafe" });
+  } catch {
+    return null;
+  }
+  const places = isMap(header) ? header["places"] : undefined;
+  const home = isMap(places) ? places["home"] : undefined;
+  if (!isMap(home)) return null;
+  const [lat, lon] = [Number(home["lat"]), Number(home["lon"])];
+  const onEarth = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+  return onEarth && home["lat"] !== undefined && home["lon"] !== undefined ? { lat, lon } : null;
+}

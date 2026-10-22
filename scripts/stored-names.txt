@@ -96,6 +96,13 @@ machine state/devices.json devices
 machine state/devices.json devices[].createdAt
 machine state/devices.json devices[].hash
 machine state/devices.json devices[].label
+machine state/location.json accuracy
+machine state/location.json at
+machine state/location.json lat
+machine state/location.json lon
+machine state/location.json source
+machine state/location.json source=telegram
+machine state/location.json source=web
 machine state/sessions.json sessions
 machine state/sessions.json sessions[].clone
 machine state/sessions.json sessions[].createdAt

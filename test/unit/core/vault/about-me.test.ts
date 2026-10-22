@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { aboutMeProblemNote, firstCommitDay, installedOn, readAboutMe } from "../../../../src/core/vault/about-me.ts";
+import {
+  aboutMeProblemNote,
+  firstCommitDay,
+  installedOn,
+  readAboutMe,
+  readHomePlace,
+} from "../../../../src/core/vault/about-me.ts";
 import type { ProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { vaultTemplateFiles } from "../../../../src/core/vault/vault-template.ts";
 
@@ -195,5 +201,24 @@ describe("firstCommitDay", () => {
   test("is null when git fails or gives nothing", async () => {
     expect(await firstCommitDay(vault, runner(128, ""), {})).toBeNull();
     expect(await firstCommitDay(vault, runner(0, ""), {})).toBeNull();
+  });
+});
+
+describe("readHomePlace", () => {
+  test("reads the point of the home place", () => {
+    note("places:\n  home: { city: Barcelona, lat: 41.39, lon: 2.17 }");
+    expect(readHomePlace(vault)).toEqual({ lat: 41.39, lon: 2.17 });
+  });
+
+  test("is null with no point, a bad point, broken YAML or no header", () => {
+    expect(readHomePlace(vault)).toBeNull();
+    note("places:\n  home: { city: Barcelona }");
+    expect(readHomePlace(vault)).toBeNull();
+    note("places:\n  home: { lat: 141, lon: 2 }");
+    expect(readHomePlace(vault)).toBeNull();
+    note("places: [home");
+    expect(readHomePlace(vault)).toBeNull();
+    writeFileSync(join(vault, "Life", "About me.md"), "# About Alex\n");
+    expect(readHomePlace(vault)).toBeNull();
   });
 });

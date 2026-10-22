@@ -133,6 +133,12 @@ const assistantRulesSchema = z.object({ version: z.string().min(1).max(100), tex
 const restoreRulesSchema = z.object({ version: z.string().min(1).max(100), backup: z.boolean() });
 /** A template part is a path from the vault root, such as `.eva/skills/schedule/SKILL.md`. */
 const templateChoiceSchema = z.object({ path: z.string().min(1).max(500), choice: z.enum(["new", "mine"]) });
+/** A point from the web app's location, with the radius of its error in meters. */
+const locationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).nullable().default(null),
+});
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
 const logsQuerySchema = z.object({
@@ -681,6 +687,10 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     const name = checkNames.find((candidate) => candidate === parts[2]);
     if (name === undefined) return json({ error: "No such check." }, 404);
     return json(await eva.runCheck(name));
+  }
+  if (url.pathname === "/api/location") {
+    if (method === "GET") return json({ place: eva.currentPlace() });
+    if (method === "POST") return json({ saved: eva.saveLocation(locationSchema.parse(await request.json()), "web") });
   }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {

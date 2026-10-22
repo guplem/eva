@@ -127,7 +127,8 @@ import {
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
-import { firstCommitDay, installedOn, readAboutMe, type AboutMe } from "./vault/about-me.ts";
+import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
+import { LocationStore, type LastLocation, type LocationInput, type LocationSource } from "./location/last-location.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -159,6 +160,19 @@ export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
   /** The facts that Eva still needs, the most useful first. */
   readonly missing: readonly ("birthDate" | "region")[];
 }
+
+/** Where the person is, for scripts such as a weather forecast. */
+export interface CurrentPlace {
+  readonly lat: number;
+  readonly lon: number;
+  /** A phone's recent location, or the home place of `Life/About me.md`. */
+  readonly source: LocationSource | "home";
+  /** When the phone sent it; null for the home place. */
+  readonly at: string | null;
+}
+
+/** A location older than this says little about where the person is now, so the home place wins. */
+const locationFreshMs = 24 * 60 * 60_000;
 
 export interface EvaOptions {
   readonly paths: HomePaths;
@@ -348,6 +362,7 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
+  private readonly locations: LocationStore;
   /** The day of the vault's first commit, read once. */
   private vaultFirstCommit: Promise<string | null> | null;
   /** The git environment of this instance, for reads of the vault's history. */
@@ -398,6 +413,7 @@ export class Eva {
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     this.redactor = redactor;
+    this.locations = new LocationStore({ path: options.paths.location, now: options.now });
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -806,6 +822,25 @@ export class Eva {
   /** Calls the listener with each alert. Returns an unsubscribe. */
   onAlert(listener: (alert: Alert) => Promise<void> | void): () => void {
     return this.alerts.onAlert(listener);
+  }
+
+  /** Keeps a location from the phone. Eva keeps one every 15 minutes; true when it kept this one. */
+  saveLocation(input: LocationInput, source: LocationSource): boolean {
+    return this.locations.save(input, source);
+  }
+
+  /**
+   * Where the person is: the phone's location from the last 24 hours, or else the home place of
+   * `Life/About me.md`. Null when Eva knows neither.
+   */
+  currentPlace(): CurrentPlace | null {
+    const last: LastLocation | null = this.locations.read();
+    if (last !== null && this.options.now().getTime() - Date.parse(last.at) < locationFreshMs) {
+      return { lat: last.lat, lon: last.lon, source: last.source, at: last.at };
+    }
+    const vaultPath = this.options.config.vaultPath;
+    const home = vaultPath === null ? null : readHomePlace(vaultPath);
+    return home === null ? null : { ...home, source: "home", at: null };
   }
 
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */

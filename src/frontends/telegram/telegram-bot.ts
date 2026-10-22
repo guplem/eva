@@ -347,13 +347,17 @@ export class TelegramBot {
    * Keeps a shared location of the paired person, for scripts such as a weather forecast. False
    * for a message from anyone else: the location of a stranger must never count as the person's.
    */
-  private keepLocation(message: TelegramMessage): boolean {
+  private keepLocation(message: TelegramMessage, shared: boolean): boolean {
     const location = message.location;
     if (location === undefined) return false;
     if (message.chat.id !== this.allowedChatId || !this.isAllowedSender(message.from?.id)) return false;
+    // The time of the move, not of its arrival: a backlog after a restart must not look new.
+    const sentAt = message.edit_date ?? message.date;
     this.options.eva.saveLocation(
       { lat: location.latitude, lon: location.longitude, accuracy: location.horizontal_accuracy ?? null },
       "telegram",
+      sentAt === undefined ? new Date() : new Date(sentAt * 1000),
+      shared,
     );
     return true;
   }
@@ -364,14 +368,14 @@ export class TelegramBot {
       return;
     }
     if (update.edited_message?.location !== undefined) {
-      this.keepLocation(update.edited_message);
+      this.keepLocation(update.edited_message, false);
       return;
     }
     const message = update.message;
     if (message === undefined) return;
     const chatId = message.chat.id;
-    // A location from anyone else goes on to the reply that says the bot is private.
-    if (message.location !== undefined && !("venue" in message) && this.keepLocation(message)) {
+    // A location from anyone else gets no reply, as any other message with no text.
+    if (message.location !== undefined && !("venue" in message) && this.keepLocation(message, true)) {
       await this.send(chatId, topicOf(message), locationThanks(message));
       return;
     }

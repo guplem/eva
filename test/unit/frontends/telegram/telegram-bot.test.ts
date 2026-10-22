@@ -1997,6 +1997,17 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(engine.requests).toEqual([]);
   });
 
+  test("a new shared point counts at once, and a venue never counts", async () => {
+    const bot = createBot();
+    telegram.sendMessageWith(owner, { location: { latitude: 41.39, longitude: 2.17 } });
+    await settle(bot, () => telegram.sentTexts().length === 1);
+    telegram.sendMessageWith(owner, { venue: { title: "Cafe" }, location: { latitude: 1, longitude: 1 } });
+    telegram.sendMessageWith(owner, { location: { latitude: 40.4, longitude: -3.7 } });
+    await settle(bot, () => telegram.sentTexts().length === 3);
+    expect(telegram.sentTexts()[1]).toBe("Eva cannot read places yet.");
+    expect(eva.currentPlace()).toMatchObject({ lat: 40.4, source: "telegram" });
+  });
+
   test("a location from a stranger never counts as the person's", async () => {
     const bot = createBot();
     telegram.sendMessageWith(9999, { location: { latitude: 1, longitude: 1 } });

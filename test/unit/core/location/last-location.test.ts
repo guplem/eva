@@ -24,26 +24,41 @@ function store(): LocationStore {
 
 const here = { lat: 41.39, lon: 2.17, accuracy: 20 };
 
+function minutes(count: number): Date {
+  return new Date(Date.parse("2026-10-22T08:00:00.000Z") + count * 60_000);
+}
+
 describe("LocationStore", () => {
-  test("keeps the newest location with its time and source", () => {
-    expect(store().save(here, "telegram")).toBe(true);
-    expect(store().read()).toEqual({ ...here, at: "2026-10-22T08:00:00.000Z", source: "telegram" });
+  test("keeps the location with the time when the phone took it, and its source", () => {
+    expect(store().save(here, "telegram", minutes(-2), true)).toBe(true);
+    expect(store().read()).toEqual({ ...here, at: minutes(-2).toISOString(), source: "telegram" });
   });
 
-  test("writes at most every 15 minutes", () => {
-    store().save(here, "telegram");
-    clock = new Date("2026-10-22T08:10:00.000Z");
-    expect(store().save({ ...here, lat: 41.4 }, "telegram")).toBe(false);
+  test("keeps a live stream at most once a minute, and a shared point always", () => {
+    store().save(here, "telegram", minutes(-5), true);
+    expect(store().save({ ...here, lat: 41.4 }, "telegram", minutes(-4.5), false)).toBe(false);
+    expect(store().save({ ...here, lat: 41.41 }, "telegram", minutes(-4), false)).toBe(true);
+    expect(store().save({ ...here, lat: 40.4 }, "web", minutes(-3.9), true)).toBe(true);
+    expect(store().read()).toMatchObject({ lat: 40.4, source: "web" });
+  });
+
+  test("drops a point older than the kept one, such as a backlog after a restart", () => {
+    store().save(here, "telegram", minutes(-1), true);
+    expect(store().save({ ...here, lat: 1 }, "telegram", minutes(-60), true)).toBe(false);
     expect(store().read()?.lat).toBe(41.39);
-    clock = new Date("2026-10-22T08:15:00.000Z");
-    expect(store().save({ ...here, lat: 41.4 }, "web")).toBe(true);
-    expect(store().read()).toMatchObject({ lat: 41.4, source: "web" });
+  });
+
+  test("takes a time in the future as now, so a fast phone clock blocks nothing", () => {
+    store().save(here, "web", minutes(30), true);
+    expect(store().read()?.at).toBe(clock.toISOString());
+    clock = minutes(2);
+    expect(store().save({ ...here, lat: 1 }, "web", minutes(2), false)).toBe(true);
   });
 
   test("refuses a point that is not on the Earth", () => {
-    expect(store().save({ lat: 91, lon: 0, accuracy: null }, "web")).toBe(false);
-    expect(store().save({ lat: 0, lon: 181, accuracy: null }, "web")).toBe(false);
-    expect(store().save({ lat: Number.NaN, lon: 0, accuracy: null }, "web")).toBe(false);
+    expect(store().save({ lat: 91, lon: 0, accuracy: null }, "web", clock, true)).toBe(false);
+    expect(store().save({ lat: 0, lon: 181, accuracy: null }, "web", clock, true)).toBe(false);
+    expect(store().save({ lat: Number.NaN, lon: 0, accuracy: null }, "web", clock, true)).toBe(false);
     expect(store().read()).toBeNull();
   });
 

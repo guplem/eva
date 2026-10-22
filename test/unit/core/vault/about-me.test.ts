@@ -216,6 +216,10 @@ describe("readHomePlace", () => {
     expect(readHomePlace(vault)).toBeNull();
     note("places:\n  home: { lat: 141, lon: 2 }");
     expect(readHomePlace(vault)).toBeNull();
+    note("places:\n  home: { city: Barcelona, lat: , lon: '' }");
+    expect(readHomePlace(vault)).toBeNull();
+    note("places:\n  home: { lat: 0x10, lon: [5] }");
+    expect(readHomePlace(vault)).toBeNull();
     note("places: [home");
     expect(readHomePlace(vault)).toBeNull();
     writeFileSync(join(vault, "Life", "About me.md"), "# About Alex\n");

@@ -26,6 +26,9 @@ export interface TelegramMessage {
   readonly audio?: TelegramFile;
   /** One photo in several sizes. */
   readonly photo?: readonly TelegramPhotoSize[];
+  /** When the message was sent, and when it was last edited, in seconds since 1970. */
+  readonly date?: number;
+  readonly edit_date?: number;
   /** A shared point. A live location comes back as edits of the same message while it lasts. */
   readonly location?: {
     readonly latitude: number;
@@ -105,5 +108,5 @@ export function unreadableContentOf(message: TelegramMessage): string | null {
 export function locationThanks(message: TelegramMessage): string {
   return message.location?.live_period === undefined
     ? "Saved. Eva uses this location until your phone sends a new one."
-    : "Thanks. Eva keeps your location while you share it. She keeps a new point every 15 minutes at most.";
+    : "Thanks. Eva keeps your location while you share it.";
 }

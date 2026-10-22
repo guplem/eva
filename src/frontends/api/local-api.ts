@@ -138,6 +138,8 @@ const locationSchema = z.object({
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   accuracy: z.number().min(0).nullable().default(null),
+  /** When the device took the point, in milliseconds since 1970, as the browser gives it. */
+  takenAt: z.number().int().positive(),
 });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
@@ -689,8 +691,11 @@ async function route(request: Request, url: URL, eva: Eva): Promise<Response> {
     return json(await eva.runCheck(name));
   }
   if (url.pathname === "/api/location") {
-    if (method === "GET") return json({ place: eva.currentPlace() });
-    if (method === "POST") return json({ saved: eva.saveLocation(locationSchema.parse(await request.json()), "web") });
+    if (method === "GET") return json({ place: eva.currentPlace(), isHub: eva.role() === "hub" });
+    if (method === "POST") {
+      const { takenAt, ...point } = locationSchema.parse(await request.json());
+      return json({ saved: eva.saveLocation(point, "web", new Date(takenAt), false) });
+    }
   }
   if (url.pathname === "/api/chat-names") return chatNamesRoute(request, method, eva);
   if (parts[0] === "api" && parts[1] === "assistant-rules" && parts.length <= 3) {

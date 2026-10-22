@@ -1288,7 +1288,7 @@ describe("web routes", () => {
     interface Place {
       place: { lat: number; lon: number; source: string; at: string | null } | null;
     }
-    expect(await json<Place>(await call("/api/location"))).toEqual({ place: null });
+    expect((await json<Place>(await call("/api/location"))).place).toBeNull();
     const vaultPath = eva.status().vaultPath ?? "";
     mkdirSync(join(vaultPath, "Life"), { recursive: true });
     writeFileSync(
@@ -1301,10 +1301,14 @@ describe("web routes", () => {
       source: "home",
       at: null,
     });
-    const sent = await call("/api/location", { method: "POST", body: { lat: 40.4, lon: -3.7, accuracy: 30 } });
+    expect((await json<{ isHub: boolean }>(await call("/api/location"))).isHub).toBe(true);
+    const sent = await call("/api/location", {
+      method: "POST",
+      body: { lat: 40.4, lon: -3.7, accuracy: 30, takenAt: Date.parse("2026-10-14T10:29:00Z") },
+    });
     expect(await json(sent)).toEqual({ saved: true });
     expect((await json<Place>(await call("/api/location"))).place).toMatchObject({ lat: 40.4, source: "web" });
-    expect((await call("/api/location", { method: "POST", body: { lat: 100, lon: 0 } })).status).toBe(400);
+    expect((await call("/api/location", { method: "POST", body: { lat: 100, lon: 0, takenAt: 1 } })).status).toBe(400);
   });
 
   test("about me: the person's facts, and the facts that Eva still needs", async () => {

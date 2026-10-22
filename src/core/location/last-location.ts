@@ -26,8 +26,11 @@ export const storedLocationSchema = z.object({
 
 export type LastLocation = z.infer<typeof storedLocationSchema>;
 
-/** A phone sends a live location every few seconds; Eva keeps one every 15 minutes. */
-const saveEveryMs = 15 * 60_000;
+/**
+ * A live location sends a move every few seconds. Eva writes at most one a minute, so the point
+ * that scripts read is never more than a minute behind the phone.
+ */
+const streamEveryMs = 60_000;
 
 export interface LocationStoreOptions {
   readonly path: string;
@@ -47,13 +50,22 @@ export class LocationStore {
     return parsed?.success === true ? parsed.data : null;
   }
 
-  /** Keeps the location, unless the last one is younger than 15 minutes. True when it saved. */
-  save(input: LocationInput, source: LocationSource): boolean {
-    const now = this.options.now();
-    const location = { ...input, at: now.toISOString(), source };
+  /**
+   * Keeps the location, with the time when the phone took it. An older point than the kept one is
+   * dropped, such as a backlog that comes after a restart. A point of a live stream waits a minute
+   * after the last one. A point that the person shared on purpose is always kept. True when it saved.
+   */
+  save(input: LocationInput, source: LocationSource, takenAt: Date, shared: boolean): boolean {
+    const now = this.options.now().getTime();
+    // A phone with a clock ahead of this computer would block every later point.
+    const at = Math.min(takenAt.getTime(), now);
+    const location = { ...input, at: new Date(at).toISOString(), source };
     if (!storedLocationSchema.safeParse(location).success) return false;
     const last = this.read();
-    if (last !== null && now.getTime() - Date.parse(last.at) < saveEveryMs) return false;
+    const lastAt = last === null ? null : Date.parse(last.at);
+    // At the same time, the later message wins: Telegram gives the time in whole seconds.
+    if (lastAt !== null && at < lastAt) return false;
+    if (lastAt !== null && !shared && at - lastAt < streamEveryMs) return false;
     writeFileAtomic(this.options.path, JSON.stringify(location, null, 2) + "\n");
     return true;
   }

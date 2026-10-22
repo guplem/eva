@@ -824,9 +824,16 @@ export class Eva {
     return this.alerts.onAlert(listener);
   }
 
-  /** Keeps a location from the phone. Eva keeps one every 15 minutes; true when it kept this one. */
-  saveLocation(input: LocationInput, source: LocationSource): boolean {
-    return this.locations.save(input, source);
+  /**
+   * Keeps a location from the phone, with the time when the phone took it. True when Eva kept it:
+   * she drops an older point, and keeps a live stream at most once a minute. Only the hub keeps it,
+   * because only the hub runs the schedules and Telegram.
+   */
+  saveLocation(input: LocationInput, source: LocationSource, takenAt: Date, shared: boolean): boolean {
+    if (this.role() !== "hub") {
+      throw new EvaError("setting_forbidden", "Only the hub computer keeps your location. Open its page to send it.");
+    }
+    return this.locations.save(input, source, takenAt, shared);
   }
 
   /**

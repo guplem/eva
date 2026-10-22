@@ -103,8 +103,16 @@ describe("buildQueryOptions", () => {
     expect(options.settings).toEqual({
       disableAllHooks: true,
       autoMemoryEnabled: false,
-      permissions: { ask: ["Bash", "mcp__google"] },
+      permissions: { ask: ["Bash", "Edit(./.eva/**)", "mcp__google"] },
     });
+  });
+
+  test("Assistant mode: a write in .eva/ reaches Eva's approval, not the auto mode classifier (issue #428)", () => {
+    const options = buildQueryOptions(request(), "/bin/claude");
+    // The classifier skipped a Write to .eva/schedules.json and auto mode failed it, so no schedule existed.
+    // An Edit rule also covers Write.
+    const settings = options.settings as { permissions: { ask: string[] } };
+    expect(settings.permissions.ask).toContain("Edit(./.eva/**)");
   });
 
   test("Assistant mode: Claude Code's auto-memory is off, so a fact lands in the vault (issue #68)", () => {
@@ -891,6 +899,7 @@ describe("ClaudeCodeEngine", () => {
     });
     await drain(engine.runTurn(turnRequest));
     expect(await canUseTool?.("Edit", { file_path: "Methods/A.md" })).toMatchObject({ behavior: "allow" });
+    expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });

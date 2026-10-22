@@ -99,6 +99,8 @@ export interface HomePaths {
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
   readonly runningMarker: string;
   readonly devices: string;
+  /** The devices that get Eva's alerts as web push notifications. */
+  readonly pushSubscriptions: string;
   /** The GitHub account of the saved token, which gives the commit name and email. */
   readonly githubAccount: string;
   readonly logsFolder: string;
@@ -123,6 +125,7 @@ export function homePaths(root: string): HomePaths {
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),
+    pushSubscriptions: join(stateFolder, "push-subscriptions.json"),
     githubAccount: join(stateFolder, "github-account.json"),
     logsFolder: join(root, "logs"),
     enginesFolder: join(root, "engines"),
@@ -371,6 +374,8 @@ export const secretsSchema = z
     localApiToken: z.string().min(1),
     googleOauthClientId: z.string().min(1),
     googleOauthClientSecret: z.string().min(1),
+    /** The private key that signs web push requests (VAPID), as base64 PKCS #8. Eva makes it. */
+    webPushPrivateKey: z.string().min(1),
   })
   .partial();
 

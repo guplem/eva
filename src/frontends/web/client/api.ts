@@ -262,6 +262,11 @@ export const api = {
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
   trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
   forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
+  pushKey: (): Promise<{ publicKey: string; isHub: boolean }> => request("GET", "/api/push"),
+  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<unknown> =>
+    request("POST", "/api/push/devices", { subscription, label }),
+  removePushDevice: (endpoint: string): Promise<unknown> => request("DELETE", "/api/push/devices", { endpoint }),
+  testPush: (): Promise<void> => request("POST", "/api/push/test"),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),

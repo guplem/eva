@@ -558,6 +558,34 @@ describe("mapSdkMessages", () => {
       { kind: "usage_limit", status: "rejected", window: "other", usedPercent: null, resetsAt: null },
     ]);
   });
+
+  /** A refused turn as Claude Code ends it: its own line in UTC, an error result, then the SDK's throw. */
+  function refusedTurn(): CapturedLine[] {
+    const lines = loadCapture("new-turn-with-tool").filter(isMessage);
+    const assistant = lines.find((line) => line.type === "assistant")!;
+    const result = resultOf("new-turn-with-tool");
+    const engineLine = "You've hit your session limit · resets 6:50pm (UTC)";
+    return [
+      rateLimitLine({ status: "rejected", utilization: 1 }),
+      {
+        ...assistant,
+        message: { ...assistant.message, model: "<synthetic>", content: [{ type: "text", text: engineLine }] },
+      } as SDKMessage,
+      { ...result, is_error: true, result: engineLine } as SDKMessage,
+      { type: "eva_capture_error", message: `Claude Code returned an error result: ${engineLine}` },
+    ];
+  }
+
+  test("a refused turn shows Eva's line only, never the engine's line with its UTC time", async () => {
+    const events = await drain(
+      new ClaudeCodeEngine({ executable: "/bin/claude", query: () => replay(refusedTurn()) }).runTurn(request()),
+    );
+    expect(events).toMatchObject([
+      { kind: "usage_limit", status: "rejected" },
+      { kind: "turn_failed", reason: "Claude Code refused the turn at the usage limit." },
+    ]);
+    expect(events).toHaveLength(2);
+  });
 });
 
 describe("the start of Eva's MCP servers", () => {

@@ -233,6 +233,8 @@ describe("a conversation", () => {
       "message one",
       "text",
       "turn_finished",
+      // Telegram showed the first answer.
+      "session_seen",
       "message two",
       "text",
       "turn_finished",
@@ -554,6 +556,64 @@ describe("renames (issue 46)", () => {
     expect(isEvaError(caught, "title_invalid")).toBe(true);
     expect(manager.get(sessionId).title).toBe("New chat");
     expect(events).toEqual([]);
+  });
+});
+
+describe("seen turns (issue 381)", () => {
+  test("a new chat has no unseen turn, and an answer is unseen until the person sees it", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    expect(manager.get(sessionId).seenTurns).toBe(0);
+    await manager.send(sessionId, "Hello there, Eva");
+    expect(manager.get(sessionId)).toMatchObject({ seenTurns: 0, turns: [{}] });
+    expect(manager.markSeen(sessionId, 1).seenTurns).toBe(1);
+    expect(events.filter((event) => event.kind === "session_seen")).toMatchObject([
+      { kind: "session_seen", sessionId, seenTurns: 1 },
+    ]);
+    expect(createManager(new FakeEngine()).get(sessionId).seenTurns).toBe(1);
+  });
+
+  test("the count never goes back, and never past the stored turns", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    manager.markSeen(sessionId, 2);
+    // A page that loaded before the second answer sends an old count.
+    expect(manager.markSeen(sessionId, 1).seenTurns).toBe(2);
+    // A count from the future cannot hide a turn that ends later.
+    expect(manager.markSeen(sessionId, 9).seenTurns).toBe(2);
+  });
+
+  test("a count that changes nothing tells no front end", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    events = [];
+    manager.markSeen(sessionId, 0);
+    manager.markSeen(sessionId, 1);
+    manager.markSeen(sessionId, 1);
+    expect(events.filter((event) => event.kind === "session_seen")).toHaveLength(1);
+  });
+
+  test("an answer to a Telegram message is seen, because Telegram showed it", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "from the phone", "telegram");
+    expect(manager.get(sessionId).seenTurns).toBe(1);
+    await manager.send(sessionId, "from the web app", "api");
+    expect(manager.get(sessionId).seenTurns).toBe(1);
+  });
+
+  test("a missing chat is refused", () => {
+    const manager = createManager(new FakeEngine());
+    let caught: unknown;
+    try {
+      manager.markSeen("missing", 1);
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "session_not_found")).toBe(true);
   });
 });
 

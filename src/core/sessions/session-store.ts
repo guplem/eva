@@ -40,28 +40,35 @@ const turnSchema = z.object({
   at: z.string(),
 });
 
-export const sessionSchema = z.object({
-  id: z.string(),
-  engineSessionId: z.string(),
-  engine: z.enum(["claude-code", "pi"]),
-  mode: z.enum(["assistant", "project"]),
-  modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
-  startFolder: z.string(),
-  projectId: z.string().nullable(),
-  clone: z.string().nullable(),
-  parentId: z.string().nullable(),
-  forkAtMessageId: z.string().nullable(),
-  /** Set until the fork's first turn has run; the engine then gives the fork its own id. */
-  forkFromEngineSessionId: z.string().nullable(),
-  title: z.string(),
-  createdAt: z.string(),
-  lastTurnAt: z.string().nullable(),
-  source: z.enum(["cli", "telegram", "web", "schedule"]),
-  telegramTopicId: z.number().int().nullable(),
-  /** True after the engine lost the history: the next turn starts a new engine session (lesson 46). */
-  historyLost: z.boolean().default(false),
-  turns: z.array(turnSchema),
-});
+export const sessionSchema = z
+  .object({
+    id: z.string(),
+    engineSessionId: z.string(),
+    engine: z.enum(["claude-code", "pi"]),
+    mode: z.enum(["assistant", "project"]),
+    modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]),
+    startFolder: z.string(),
+    projectId: z.string().nullable(),
+    clone: z.string().nullable(),
+    parentId: z.string().nullable(),
+    forkAtMessageId: z.string().nullable(),
+    /** Set until the fork's first turn has run; the engine then gives the fork its own id. */
+    forkFromEngineSessionId: z.string().nullable(),
+    title: z.string(),
+    createdAt: z.string(),
+    lastTurnAt: z.string().nullable(),
+    source: z.enum(["cli", "telegram", "web", "schedule"]),
+    telegramTopicId: z.number().int().nullable(),
+    /** True after the engine lost the history: the next turn starts a new engine session (lesson 46). */
+    historyLost: z.boolean().default(false),
+    turns: z.array(turnSchema),
+    /**
+     * How many turns the person saw in the web app (issue 381). A record from before the field, or a
+     * bad value, counts every turn as seen: an old chat never shows as unread.
+     */
+    seenTurns: z.number().int().min(0).optional().catch(undefined),
+  })
+  .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 
 export type SessionRecord = z.infer<typeof sessionSchema>;
 

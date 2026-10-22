@@ -40,6 +40,7 @@ function session(turns: Turn[]): SessionRecord {
     source: "web",
     telegramTopicId: null,
     historyLost: false,
+    seenTurns: 0,
     turns,
   };
 }

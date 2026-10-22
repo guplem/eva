@@ -547,6 +547,37 @@ test("a chat gets a new title in the header and the list, and Escape keeps the o
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Rome in May");
 });
 
+test("a chat that answers while another chat is open shows as unread until the person opens it (issue 381)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  // Both screen sizes share one demo server, so each size has its own chat.
+  const message = `a slow answer on the ${test.info().project.name}`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(message);
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await clickNewChat(page);
+  // A phone hides the list behind its button, so the button tells that a chat waits.
+  if (test.info().project.name === "phone") {
+    await expect(page.getByRole("button", { name: "Show the list (unread)" })).toBeVisible();
+  }
+  await openList(page);
+  const slow = page.locator(".sidebar .list-item", { hasText: message });
+  await expect(slow.locator(".status-pill")).toHaveText("Unread");
+  const marked = page.waitForResponse((response) => response.url().endsWith("/seen") && response.ok());
+  await slow.click();
+  await expect(page.locator(".message.answer").first()).toContainText(message);
+  await marked;
+  // The open chat hides its own mark at once. Another open chat shows what the core stored.
+  await openList(page);
+  await page.locator(".sidebar .list-item", { hasNotText: message }).first().click();
+  await openList(page);
+  await expect(slow).toBeVisible();
+  await expect(slow.locator(".status-pill")).toHaveCount(0);
+});
+
 test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);

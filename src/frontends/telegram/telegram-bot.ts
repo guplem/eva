@@ -726,6 +726,8 @@ export class TelegramBot {
     // Telegram sends finished blocks only. A growing message would hit the edit limits and show
     // half-written Markdown. A piece must also never release a held block (issue 117).
     if (event.kind === "text_delta") return;
+    // Only the web app shows unread chats. The mark can come during a turn, and must not release a held block.
+    if (event.kind === "session_seen") return;
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));

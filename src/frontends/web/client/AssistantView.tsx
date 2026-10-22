@@ -3,12 +3,13 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "
 import { api, type ChatBlocker, type ListedSession, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
+import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { chatTree, Conversation, rootChats, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ChatHeader, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
+import { ChatHeader, ChatStatePill, chatListItems, useChatActionRequest, type ChatAction } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
 import { ChatPanel, tasksOf, useChatPanelShown } from "./ChatPanel.tsx";
 import { NewChatDraft } from "./NewChatDraft.tsx";
@@ -74,6 +75,13 @@ export function AssistantView({
     approvals.onShowChat,
     tree.map((session) => session.id),
   );
+  // On a phone, the open list covers the chat.
+  useMarkSeen(tree, !sidebarOpen);
+  const stateOf = (candidate: SessionRecord): ChatState => {
+    const state = chatState(chatTree(candidate, sessions), isRunning, approvalSessionIds);
+    // The person reads the open chat now. Its mark reaches the core a moment later.
+    return state === "unread" && candidate.id === selected?.id && !sidebarOpen ? null : state;
+  };
   const linkedId = linkedChat?.mode === "assistant" ? linkedChat.id : null;
   const actionRequest = useChatActionRequest();
   const clearAction = actionRequest.clear;
@@ -141,11 +149,7 @@ export function AssistantView({
                   key={chat.id}
                   chat={chat}
                   time={chatTime(timeOf(chat), now)}
-                  state={chatState(
-                    chatTree(chat, sessions).map((session) => session.id),
-                    isRunning,
-                    approvalSessionIds,
-                  )}
+                  state={stateOf(chat)}
                   isSelected={chat.id === selected?.id}
                   onSelect={() => select(chat.id)}
                   onAction={(action) => select(chat.id, action)}
@@ -178,6 +182,7 @@ export function AssistantView({
                 tree.some((session) => isRunning(session.id)),
               )}
               onShowList={onShowList}
+              listHasUnread={chats.some((candidate) => stateOf(candidate) === "unread")}
               panelShown={panelShown}
               onTogglePanel={togglePanel}
               onChanged={onChanged}
@@ -206,8 +211,6 @@ function timeOf(chat: SessionRecord): Date {
   return new Date(chat.lastTurnAt ?? chat.createdAt);
 }
 
-const stateLabels: Record<NonNullable<ChatState>, string> = { "needs-you": "Needs you", working: "Working" };
-
 /** One chat in the list: the title, the time, one line of the last message, and its state. */
 function ChatItem({
   chat,
@@ -227,14 +230,19 @@ function ChatItem({
   const { props, menu } = useContextMenu(chatListItems(onSelect, onAction), `Actions of “${chat.title}”`);
   return (
     <>
-      <button className="list-item chat-item" aria-current={isSelected} onClick={onSelect} {...props}>
+      <button
+        className={`list-item chat-item${state === "unread" ? " unread" : ""}`}
+        aria-current={isSelected}
+        onClick={onSelect}
+        {...props}
+      >
         <span className="chat-item-title">
           {chat.source === "schedule" && <Icon name="clock" label="Schedule" />}
           {chat.title}
         </span>
         <span className="chat-item-time">{time}</span>
         <span className="chat-item-preview">{chatPreview(chat, state)}</span>
-        {state !== null && <span className={`status-pill ${state}`}>{stateLabels[state]}</span>}
+        <ChatStatePill state={state} />
       </button>
       {menu}
     </>

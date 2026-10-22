@@ -1639,6 +1639,8 @@ test("login link: the link of `eva open` logs in this browser once, and leaves t
   await fresh.goto(`/#login=${secret}`);
   await expect(fresh.getByText("This login link was used, or it expired.")).toBeVisible();
   expect(fresh.url()).not.toContain(secret);
+  // The link allowed a real device. Later tests expect the demo to have none.
+  await request.delete("/api/devices", { headers: { authorization: `Bearer ${token}` } });
 });
 
 test("device login: the page lists only the ways that can allow the code", async ({ page }) => {

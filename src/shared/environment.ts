@@ -50,21 +50,28 @@ export const proxyEnvironmentAllowlist: readonly string[] = [
 
 export type EnvironmentMap = Readonly<Record<string, string | undefined>>;
 
-/** The allowlisted variables of `source`, plus `extra`, which wins on a clash. */
+/**
+ * The allowlisted variables of `source`, plus `extra`, which wins on a clash.
+ * On Windows, a name is case-insensitive, so the child gets one key for each name (#430).
+ */
 export function buildChildEnvironment(
   source: EnvironmentMap,
   allowlist: readonly string[],
   extra: EnvironmentMap = {},
+  platform: NodeJS.Platform = process.platform,
 ): Record<string, string> {
-  const environment: Record<string, string> = {};
+  // Bun's process.env on Windows gives the value of `Path` for `PATH` too. Two keys for one
+  // variable keep git from finding sh.exe, and git then fails with no message.
+  const keyOf = (name: string): string => (platform === "win32" ? name.toLowerCase() : name);
+  const variables = new Map<string, readonly [string, string]>();
   for (const name of allowlist) {
     const value = source[name];
-    if (value !== undefined) environment[name] = value;
+    if (value !== undefined && !variables.has(keyOf(name))) variables.set(keyOf(name), [name, value]);
   }
   for (const [name, value] of Object.entries(extra)) {
-    if (value !== undefined) environment[name] = value;
+    if (value !== undefined) variables.set(keyOf(name), [name, value]);
   }
-  return environment;
+  return Object.fromEntries(variables.values());
 }
 
 /** The desktop session's variables, for a child that opens a window, such as the default browser. */

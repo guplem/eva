@@ -56,6 +56,44 @@ describe("buildChildEnvironment", () => {
   test("an extra value wins over the inherited one", () => {
     expect(buildChildEnvironment({ HOME: "/old" }, ["HOME"], { HOME: "/new" })).toEqual({ HOME: "/new" });
   });
+
+  // Bun's process.env on Windows finds `Path` under every case, as Windows does.
+  const windowsEnvironment = (values: Record<string, string>): Record<string, string | undefined> =>
+    new Proxy(values, {
+      get: (target, name) => {
+        const key = Object.keys(target).find((each) => each.toLowerCase() === String(name).toLowerCase());
+        return key === undefined ? undefined : target[key];
+      },
+    });
+
+  test("on Windows, a child gets one PATH, not both PATH and Path (#430)", () => {
+    // Two keys keep git from finding sh.exe for the credential helper: it then ends with 128 and no message.
+    const environment = buildChildEnvironment(
+      windowsEnvironment({ Path: "C:\\Git\\cmd" }),
+      ["PATH", "Path"],
+      {},
+      "win32",
+    );
+    expect(Object.keys(environment).filter((name) => name.toLowerCase() === "path")).toHaveLength(1);
+    expect(Object.values(environment)).toEqual(["C:\\Git\\cmd"]);
+  });
+
+  test("on Windows, an extra value replaces the inherited one in another case", () => {
+    const environment = buildChildEnvironment(
+      windowsEnvironment({ Path: "C:\\Git\\cmd", SystemRoot: "C:\\Windows" }),
+      ["PATH", "Path", "SYSTEMROOT", "SystemRoot"],
+      { PATH: "C:\\eva\\bin;C:\\Git\\cmd" },
+      "win32",
+    );
+    expect(environment).toEqual({ PATH: "C:\\eva\\bin;C:\\Git\\cmd", SYSTEMROOT: "C:\\Windows" });
+  });
+
+  test("on Linux, PATH and Path stay two variables", () => {
+    expect(buildChildEnvironment({ PATH: "/bin", Path: "/other" }, ["PATH", "Path"], {}, "linux")).toEqual({
+      PATH: "/bin",
+      Path: "/other",
+    });
+  });
 });
 
 describe("Redactor", () => {

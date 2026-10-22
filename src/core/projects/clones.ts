@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 
 const gitTimeoutMs = 20_000;
 
@@ -99,7 +99,7 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
     },
   );
   if (result.exitCode !== 0) {
-    throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${result.stderr.trim()}`);
+    throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${failureReason(result, "git")}`);
   }
   options.origins.recordClone(path, options.repositoryUrl);
   return { name, path, repository, index: Number(name.slice(repository.length + 1)) };

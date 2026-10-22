@@ -112,6 +112,17 @@ describe("clone folders", () => {
     expect(existsSync(join(sandbox.root, "clone-origins.json"))).toBe(false);
   });
 
+  test("a clone that fails with no error output still gives a reason (#430)", async () => {
+    const error: unknown = await createClone({
+      projectPath: project,
+      repositoryUrl: "https://github.com/example/example-app",
+      runner: { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "" }) },
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    }).catch((caught: unknown) => caught);
+    expect(String(error)).toContain("git ended with exit code 128 and wrote no error.");
+  });
+
   test("refuses a repository URL that git would read as an option, and runs nothing", async () => {
     const commands: (readonly string[])[] = [];
     const error: unknown = await createClone({

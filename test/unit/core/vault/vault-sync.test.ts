@@ -169,7 +169,26 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, "note.md", "kept\n");
     const state = await createSync(vault).save();
     expect(state.status).toBe("offline");
+    expect(state.lastError).toContain("The notes are committed here, but Eva could not reach the remote:");
+    expect(state.lastError).toContain("missing.git");
     expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
+  });
+
+  test("a fetch or a push that fails with no error output still gives a reason (#430)", async () => {
+    const silentOn =
+      (step: string): ProcessRunner["run"] =>
+      (command, options) =>
+        command[1] === step
+          ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "" })
+          : systemProcessRunner.run(command, options);
+    const pulled = await createSync(vault, { runner: { run: silentOn("fetch") } }).pull();
+    expect(pulled.status).toBe("offline");
+    expect(pulled.lastError).toContain("git ended with exit code 128 and wrote no error.");
+    sandbox.write(vault, "note.md", "kept\n");
+    const committed = await createSync(vault, { runner: { run: silentOn("commit") } }).save();
+    expect(committed.lastError).toBe("git commit failed: git ended with exit code 128 and wrote no error.");
+    const saved = await createSync(vault, { runner: { run: silentOn("push") } }).save();
+    expect(saved.lastError).toContain("git ended with exit code 128 and wrote no error.");
   });
 
   test("stays out of a branch that is not the default branch", async () => {

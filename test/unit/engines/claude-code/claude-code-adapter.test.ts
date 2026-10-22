@@ -870,7 +870,7 @@ describe("ClaudeCodeEngine", () => {
     expect(seen).toEqual(["text, closed: 1"]);
   });
 
-  test("Assistant mode asks for approval only for actions that reach other people", async () => {
+  test("Assistant mode asks for approval only for outward actions and schedule changes", async () => {
     const asked: string[] = [];
     let canUseTool: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | undefined;
     const engine = new ClaudeCodeEngine({
@@ -891,11 +891,15 @@ describe("ClaudeCodeEngine", () => {
     });
     await drain(engine.runTurn(turnRequest));
     expect(await canUseTool?.("Edit", { file_path: "Methods/A.md" })).toMatchObject({ behavior: "allow" });
-    expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "allow" });
+    expect(await canUseTool?.("Write", { file_path: ".eva/schedules.json" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("Bash", { command: "git status" })).toMatchObject({ behavior: "allow" });
     expect(await canUseTool?.("Bash", { command: "gh issue create --title x" })).toMatchObject({ behavior: "deny" });
     expect(await canUseTool?.("mcp__google__send_email", { to: "a@b.c" })).toMatchObject({ behavior: "deny" });
-    expect(asked).toEqual(["Bash: gh issue create --title x", 'mcp__google__send_email: {"to":"a@b.c"}']);
+    expect(asked).toEqual([
+      "Write: Write .eva/schedules.json",
+      "Bash: gh issue create --title x",
+      'mcp__google__send_email: {"to":"a@b.c"}',
+    ]);
   });
 
   test("Project mode sends every permission ask to the person", async () => {

@@ -336,6 +336,21 @@ describe("PiEngine", () => {
     expect(outward.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
   });
 
+  test("Assistant mode asks the person before a command that changes the schedules (issue #440)", async () => {
+    const asked: ApprovalRequest[] = [];
+    const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {
+      asked.push(approval);
+      return Promise.resolve("deny");
+    };
+    const command = "echo '{}' > .eva/schedules.json";
+    const fake = new FakePi([
+      { records: withCommand(loadPiFixture("approval-denied"), "rm -rf ./scratch-dir", command) },
+    ]);
+    await drain(engine(fake).runTurn(request({ requestApproval: ask })));
+    expect(asked).toEqual([{ requestId: "", toolName: "bash", summary: command }]);
+    expect(fake.runs[0]?.sent[1]).toMatchObject({ type: "extension_ui_response", confirmed: false });
+  });
+
   test("Project mode runs pi's tools without a question, as pi itself does", async () => {
     const asked: string[] = [];
     const fake = new FakePi([{ records: loadPiFixture("approval-allowed") }]);

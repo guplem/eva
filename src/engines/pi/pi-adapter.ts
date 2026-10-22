@@ -27,7 +27,7 @@ import { dirname, join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
-import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
@@ -360,7 +360,7 @@ function decide(request: TurnRequest, toolName: string, input: Record<string, un
   // A model call has no tools, and nobody waits for a question.
   if (request.mode === "model-call") return Promise.resolve("deny");
   // Project mode is pi exactly as the person runs it, and pi itself asks nothing.
-  if (request.mode === "project" || !reachesOtherPeople(toolName, input)) return Promise.resolve("allow");
+  if (request.mode === "project" || !asksThePerson(toolName, input)) return Promise.resolve("allow");
   return request.requestApproval({ requestId: "", toolName, summary: summarizeToolCall(toolName, input) });
 }
 

@@ -11,7 +11,7 @@ import {
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
-import { reachesOtherPeople, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 
 /** The SDK's query, with the one control request that Eva uses. */
@@ -481,7 +481,7 @@ async function decidePermission(
   // A model call has no tools; a tool that still appears gets no question, because nobody waits for one.
   if (request.mode === "model-call") return "deny";
   const summary = summarizeToolCall(toolName, input);
-  if (request.mode === "project" || reachesOtherPeople(toolName, input)) {
+  if (request.mode === "project" || asksThePerson(toolName, input)) {
     return request.requestApproval({ requestId: "", toolName, summary });
   }
   return "allow";

@@ -11,6 +11,15 @@ When you connect Eva to your Google account, Eva reads and, when you allow it, c
 - **Sharing:** Eva gives your Google data to nobody else, and never sells or uses it for ads.
 - **Removal:** remove Eva's access at any time in your Google account, under [Third-party connections](https://myaccount.google.com/connections).
 
+## Location
+
+When you share your location, Eva keeps the last one, so that scripts on your computer, such as a weather forecast, can use it.
+
+- **Sources:** a location that you share with Eva's bot in Telegram, or the location of a device where you turn it on in Eva's web page.
+- **Storage:** Eva keeps only the last location, in `state/location.json` in her home folder on the hub computer. It never goes into your notebook or its history.
+- **Sharing:** Eva sends your location to nobody. A script that you run decides what it does with it.
+- **Removal:** stop the sharing in Telegram, or turn it off on the device. Delete `state/location.json` to remove the last location.
+
 ## Contact
 
 Open an issue in [this repository](https://github.com/guplem/eva/issues).

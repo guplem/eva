@@ -15,6 +15,7 @@
 
 .files-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
@@ -25,9 +26,10 @@
   color: var(--ink);
 }
 
+/* The page breaks a word anywhere, so the path needs a floor, or a button squeezes it to one letter. */
 .files-crumbs {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 8rem;
+  min-width: 8rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -492,6 +494,11 @@ a.files-entry[aria-current="true"] {
 
   .files-crumbs {
     font-size: var(--text-sm);
+  }
+
+  /* The label takes the room of the path, which then breaks after each letter. */
+  .files-download-label {
+    display: none;
   }
 
   .files-crumbs h1 {

@@ -19,6 +19,8 @@ const token = "local-api-token-for-tests";
 let sandbox: GitSandbox;
 let home: string;
 let eva: Eva;
+/** The push addresses that Eva sent to. */
+let pushed: string[] = [];
 let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
@@ -56,6 +58,7 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 beforeEach(() => {
+  pushed = [];
   sandbox = createGitSandbox();
   const vault = sandbox.clone("vault");
   sandbox.write(vault, ".eva/assistant.md", "# You are Eva\n");
@@ -84,6 +87,10 @@ beforeEach(() => {
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
     gatherMs: 5,
+    pushSender: (request) => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    },
     githubApiBaseUrl: `http://127.0.0.1:${String(githubApi.port)}`,
     // No test reaches the real releases.
     toolInstall: {
@@ -950,6 +957,79 @@ describe("web routes", () => {
     expect(await json<unknown[]>(await call("/api/projects/2025-03-02-1015-example-app/clones"))).toEqual([]);
     const missing = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST", body: {} });
     expect(missing.status).toBe(404);
+    const clonePath = join(eva.status().vaultPath ?? "", "Projects", "2025-03-02-1015-example-app", "repos", "app-0");
+    mkdirSync(clonePath, { recursive: true });
+    const deleted = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    expect(await json(deleted)).toEqual({ deletedChats: [] });
+    expect(existsSync(clonePath)).toBe(false);
+    const gone = await call("/api/projects/2025-03-02-1015-example-app/clones/app-0", { method: "DELETE" });
+    expect(gone.status).toBe(404);
+  });
+
+  test("a clone fetches, pulls and pushes, and a model writes the message of an empty note", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    const vault = join(sandbox.root, "vault");
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    const other = sandbox.clone("other");
+    sandbox.write(other, "remote.txt", "remote\n");
+    sandbox.git(other, "add", "-A");
+    sandbox.git(other, "commit", "-q", "-m", "remote work");
+    sandbox.git(other, "push", "-q", "origin", "main");
+
+    const fetched = await json<{ clones: { behind: number }[]; problems: string[] }>(
+      await call(`${path}/clones/fetch`, { method: "POST", body: {} }),
+    );
+    expect(fetched).toMatchObject({ clones: [{ behind: 1 }], problems: [] });
+    const pulled = await json<{ clones: { behind: number }[]; problems: string[] }>(
+      await call(`${path}/clones/pull`, { method: "POST", body: {} }),
+    );
+    expect(pulled).toMatchObject({ clones: [{ behind: 0 }], problems: [] });
+
+    sandbox.write(clonePath, "README.md", "# Example\n");
+    turnScript = (request) => FakeEngine.answer(request, "```\nAdd the readme\n```");
+    const pushed = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "  " } });
+    expect(await json<{ message: string }>(pushed)).toEqual({ message: "Add the readme" });
+    expect(engine.requests.at(-1)?.prompt).toContain("README.md");
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Add the readme");
+
+    const nothing = await call(`${path}/clones/${name}/push`, { method: "POST", body: { note: "x" } });
+    expect(nothing.status).toBe(409);
+    expect((await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} })).status).toBe(200);
+    expect((await call(`${path}/clones/missing-0/pull`, { method: "POST", body: {} })).status).toBe(404);
+  });
+
+  test("a second pull or push of a clone is refused while the first runs", async () => {
+    const path = "/api/projects/2025-03-02-1015-example-app";
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    const { name, path: clonePath } = await json<{ name: string; path: string }>(
+      await call(`${path}/clones`, { method: "POST", body: {} }),
+    );
+    sandbox.write(clonePath, "README.md", "# Example\n");
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    turnScript = async function* (request) {
+      await held;
+      yield* FakeEngine.answer(request, "Add the readme");
+    };
+    const first = call(`${path}/clones/${name}/push`, { method: "POST", body: {} });
+    while (engine.requests.length === 0) await Bun.sleep(10);
+    const second = await call(`${path}/clones/${name}/pull`, { method: "POST", body: {} });
+    expect(second.status).toBe(409);
+    release();
+    expect(await json<{ message: string }>(await first)).toEqual({ message: "Add the readme" });
   });
 
   test("a project's AGENTS.md: read it, save its details, save it whole", async () => {
@@ -1018,6 +1098,17 @@ describe("web routes", () => {
     expect((await call("/api/settings", { method: "PUT", body: { port: 5 } })).status).toBe(400);
     const setup = await json<{ engines: string[]; telegram: { paired: boolean } }>(await call("/api/settings/setup"));
     expect(setup).toMatchObject({ engines: ["claude-code"], telegram: { paired: false } });
+  });
+
+  test("trust: the overview, and the removal of a saved answer", async () => {
+    expect(await json<unknown>(await call("/api/trust"))).toMatchObject({
+      githubAccount: null,
+      owners: [],
+      answers: [],
+    });
+    const removed = await call("/api/trust/answers", { method: "DELETE", body: { url: "https://github.com/x/y" } });
+    expect(await json<{ answers: unknown[] }>(removed)).toMatchObject({ answers: [] });
+    expect((await call("/api/trust/answers", { method: "DELETE", body: {} })).status).toBe(400);
   });
 
   test("the Google login waits for a client, then gives Google's consent address", async () => {
@@ -1167,6 +1258,51 @@ describe("web routes", () => {
     expect((await call("/api/chat-names", { method: "DELETE" })).status).toBe(404);
   });
 
+  test("push: a device subscribes, gets each alert as a push, reads the newest alert, and leaves", async () => {
+    const key = await json<{ publicKey: string; isHub: boolean; devices: unknown[] }>(await call("/api/push"));
+    expect(key.isHub).toBe(true);
+    expect(Buffer.from(key.publicKey, "base64url")).toHaveLength(65);
+    expect(key.devices).toEqual([]);
+    const endpoint = "https://fcm.googleapis.com/fcm/send/device-1";
+    const added = await json<{ devices: { endpoint: string; label: string }[] }>(
+      await call("/api/push/devices", {
+        method: "POST",
+        body: { subscription: { endpoint, keys: { p256dh: "key", auth: "secret" } }, label: "Phone" },
+      }),
+    );
+    expect(added.devices.map((device) => [device.endpoint, device.label])).toEqual([[endpoint, "Phone"]]);
+
+    expect((await call("/api/push/test", { method: "POST" })).status).toBe(204);
+    expect(pushed).toEqual([endpoint]);
+    // A real alert goes to the device too, with a number that the device uses to show it once.
+    eva.reportProblem("example_problem", { level: "warn", message: "Something broke.", resolvedMessage: "Fixed." });
+    await Bun.sleep(10);
+    expect(pushed).toEqual([endpoint, endpoint]);
+    const recent = await json<{ alerts: { key: string; seq: number }[] }>(await call("/api/notifications/recent"));
+    expect(recent.alerts.map((alert) => [alert.key, alert.seq])).toEqual([
+      ["example_problem", 2],
+      ["push_test", 1],
+    ]);
+
+    const bad = await call("/api/push/devices", {
+      method: "POST",
+      body: { subscription: { endpoint: "https://example.com/x", keys: { p256dh: "k", auth: "a" } }, label: "X" },
+    });
+    expect(bad.status).toBe(400);
+    const removed = await json<{ devices: unknown[] }>(
+      await call("/api/push/devices", { method: "DELETE", body: { endpoint } }),
+    );
+    expect(removed.devices).toEqual([]);
+    expect((await call("/api/push/other")).status).toBe(404);
+  });
+
+  test("the service worker loads before the login, from the root", async () => {
+    const response = await fetch(`${api.url}/sw.js`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("javascript");
+    expect(await response.text()).toContain('addEventListener("push"');
+  });
+
   test("assistant rules: read with the built-in prompt, save by version, and restore the default after a backup", async () => {
     interface Rules {
       text: string;
@@ -1198,6 +1334,85 @@ describe("web routes", () => {
 
     expect((await call("/api/assistant-rules", { method: "PUT", body: { text: "# No version\n" } })).status).toBe(400);
     expect((await call("/api/assistant-rules/other", { method: "POST", body: {} })).status).toBe(404);
+  });
+
+  test("location: the web app sends a point, and the place falls back to the home of About me", async () => {
+    interface Place {
+      place: { lat: number; lon: number; source: string; at: string | null } | null;
+    }
+    expect((await json<Place>(await call("/api/location"))).place).toBeNull();
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Life"), { recursive: true });
+    writeFileSync(
+      join(vaultPath, "Life", "About me.md"),
+      "---\nplaces:\n  home: { city: Barcelona, lat: 41.39, lon: 2.17 }\n---\n",
+    );
+    expect((await json<Place>(await call("/api/location"))).place).toEqual({
+      lat: 41.39,
+      lon: 2.17,
+      source: "home",
+      at: null,
+    });
+    expect((await json<{ isHub: boolean }>(await call("/api/location"))).isHub).toBe(true);
+    const sent = await call("/api/location", {
+      method: "POST",
+      body: { lat: 40.4, lon: -3.7, accuracy: 30, takenAt: Date.parse("2026-10-14T10:29:00Z") },
+    });
+    expect(await json(sent)).toEqual({ saved: true });
+    expect((await json<Place>(await call("/api/location"))).place).toMatchObject({ lat: 40.4, source: "web" });
+    expect((await call("/api/location", { method: "POST", body: { lat: 100, lon: 0, takenAt: 1 } })).status).toBe(400);
+  });
+
+  test("about me: the person's facts, and the facts that Eva still needs", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, "Life"), { recursive: true });
+    writeFileSync(
+      join(vaultPath, "Life", "About me.md"),
+      "---\nname: Alex\nbirthDate: 1990-05-14\n---\n\n# About Alex\n",
+    );
+    const facts = await json<{ installedOn: string | null }>(await call("/api/about-me"));
+    expect(facts).toMatchObject({
+      name: "Alex",
+      birthDate: "1990-05-14",
+      region: null,
+      hemisphere: null,
+      missing: ["region"],
+    });
+    // The day of the test vault's first commit.
+    expect(facts.installedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test("template parts: list their states, and keep the person's version of one", async () => {
+    interface Parts {
+      parts: { path: string; name: string; state: string; updatedAt: string | null; newText: string | null }[];
+    }
+    const vaultPath = eva.status().vaultPath ?? "";
+    mkdirSync(join(vaultPath, ".eva", "skills", "schedule"), { recursive: true });
+    writeFileSync(join(vaultPath, ".eva", "skills", "schedule", "SKILL.md"), "# My own skill\n");
+    const listed = await json<Parts>(await call("/api/template-parts"));
+    const schedule = listed.parts.find((part) => part.name === "schedule");
+    expect([schedule?.path, schedule?.state, schedule?.updatedAt]).toEqual([
+      ".eva/skills/schedule/SKILL.md",
+      "differs",
+      null,
+    ]);
+    expect(schedule?.newText).toContain("# Schedule a message");
+    const kept = await json<Parts>(
+      await call("/api/template-parts", {
+        method: "POST",
+        body: { path: ".eva/skills/schedule/SKILL.md", choice: "mine" },
+      }),
+    );
+    expect(kept.parts.find((part) => part.name === "schedule")?.state).toBe("kept");
+    const unknown = await call("/api/template-parts", {
+      method: "POST",
+      body: { path: ".eva/assistant.md", choice: "new" },
+    });
+    expect(unknown.status).toBe(404);
+    expect((await call("/api/template-parts", { method: "POST", body: { path: "x", choice: "both" } })).status).toBe(
+      400,
+    );
+    expect((await call("/api/template-parts", { method: "DELETE" })).status).toBe(404);
   });
 
   test("files: the vault root lists, a text file shows, and a path out of the vault is not found (issue 253)", async () => {

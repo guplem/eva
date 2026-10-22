@@ -22,6 +22,7 @@ import type { TurnUsage } from "../shared/events.ts";
 import { Redactor } from "../shared/redaction.ts";
 import { evaVersion } from "../shared/version.ts";
 import { AlertCenter, type Alert, type AlertProblem, type ProblemDetail } from "./alerts/alert-center.ts";
+import { WebPush, type PushDevice, type PushSender, type PushSubscriptionInput } from "./alerts/web-push.ts";
 import {
   scheduleCardProblem,
   engineUpdateProblem,
@@ -73,9 +74,17 @@ import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instanc
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
-import { CloneOriginStore, readOriginUrl, TrustStore, type Clone, type CloneDetails } from "./projects/clones.ts";
+import {
+  CloneOriginStore,
+  readOriginUrl,
+  TrustStore,
+  type Clone,
+  type CloneDetails,
+  type TrustAnswer,
+} from "./projects/clones.ts";
 import {
   ProjectWork,
+  type CloneFetch,
   type NewChatInput,
   type NewProjectChatInput,
   type ProjectWorkInput,
@@ -117,6 +126,10 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
+import { templateParts } from "./vault/vault-template.ts";
+import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
+import { LocationStore, type LastLocation, type LocationInput, type LocationSource } from "./location/last-location.ts";
 import { GitHubBrowserLogin, type DeviceLogin } from "./vault/github-browser-login.ts";
 import { logInGitHubCli, logOutGitHubCli } from "./vault/github-cli-login.ts";
 import { githubClientId, githubDeviceLogin } from "./vault/github-login.ts";
@@ -141,6 +154,32 @@ import { EngineUpdater, type EngineUpdateStatus } from "./updates/engine-update.
 import { isNewerVersion } from "./updates/version-order.ts";
 import { Updater, type UpdateChannel, type UpdateStatus } from "./updates/updater.ts";
 
+/** The person's facts as the web page reads them. */
+export interface PersonalFactsView extends Omit<AboutMe, "problems"> {
+  /** The day that Eva started on the vault, as `YYYY-MM-DD`. */
+  readonly installedOn: string | null;
+  /** The facts that Eva still needs, the most useful first. */
+  readonly missing: readonly ("birthDate" | "region")[];
+}
+
+/** Where the person is, for scripts such as a weather forecast. */
+export interface CurrentPlace {
+  readonly lat: number;
+  readonly lon: number;
+  /** A phone's recent location, or the home place of `Life/About me.md`. */
+  readonly source: LocationSource | "home";
+  /** When the phone sent it; null for the home place. */
+  readonly at: string | null;
+}
+
+/** A location older than this says little about where the person is now, so the home place wins. */
+const locationFreshMs = 24 * 60 * 60_000;
+
+/** An alert as a device reads it after a push. The number lets the device show each alert once. */
+export interface PushedAlert extends Alert {
+  readonly seq: number;
+}
+
 export interface EvaOptions {
   readonly paths: HomePaths;
   readonly config: EvaConfig;
@@ -154,6 +193,8 @@ export interface EvaOptions {
   readonly gatherMs?: number;
   /** The claude program, for the engine update. Null: no engine update. */
   readonly claudeExecutable?: string | null;
+  /** Sends a web push. Tests pass their own; the default posts to the push service. */
+  readonly pushSender?: PushSender;
   /** Where background failures and sync problems go (lessons 16, 50). */
   readonly logger?: Logger;
   /** Deletes the log files past their retention; the background tick calls it once a day. */
@@ -274,10 +315,22 @@ export interface EvaSetupState extends SetupState {
   readonly vaultNeedsPush: boolean;
 }
 
+/** Whose repositories Eva trusts, for the Trusted repositories section. */
+export interface TrustOverview {
+  /** The login of this Eva's GitHub account, or null when Eva has no record of it. */
+  readonly githubAccount: string | null;
+  /** True when a GitHub token is saved. A token from before Eva kept the account has no record until a Test. */
+  readonly githubLoggedIn: boolean;
+  readonly owners: readonly string[];
+  readonly answers: readonly TrustAnswer[];
+}
+
 const approvalTimeoutMs = 10 * 60_000;
 /** A turn may run long (a big refactor), but never for ever. */
 const turnTimeoutMs = 2 * 60 * 60_000;
 const scheduleTickMs = 30_000;
+/** How many alerts a device can read after a push: the newest is the one it shows. */
+const recentAlertCount = 10;
 /** A cold start of an engine and one short answer. */
 const modelCallTimeoutMs = 90_000;
 const backgroundTickMs = 60_000;
@@ -297,6 +350,8 @@ export class Eva {
   readonly chatNames: ChatNamer | null;
   /** The person's rules for Eva, in `.eva/assistant.md`. Null when no vault is configured. */
   readonly assistantRules: AssistantRules | null;
+  /** The vault's template parts, such as the skills. Null when no vault is configured. */
+  readonly templateAlignment: TemplateAlignment | null;
   /** One question to a model with one answer, for any feature that needs a short text. */
   readonly modelCalls: ModelCalls;
   /** Null until a whisper model is configured. */
@@ -317,9 +372,15 @@ export class Eva {
   private readonly checkResults: Map<CheckName, CheckRecord>;
   private readonly facts: InstanceFacts;
   private readonly vault: VaultUpkeep;
+  private readonly locations: LocationStore;
+  /** The day of the vault's first commit, read once. */
+  private vaultFirstCommit: Promise<string | null> | null;
+  /** The git environment of this instance, for reads of the vault's history. */
+  private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
   private readonly vaultSetup: VaultSetup;
+  private readonly trustStore: TrustStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
@@ -334,6 +395,12 @@ export class Eva {
   private backgroundTicking: boolean;
   private lastHousekeepingAt: Date | null;
   private readonly alerts: AlertCenter;
+  /** Eva's alerts as notifications on the person's devices. */
+  private readonly webPush: WebPush;
+  /** The newest alerts, newest first, which a device's service worker reads after a push. */
+  private readonly recentAlerts: PushedAlert[];
+  /** The number of the last alert that went to the devices. */
+  private pushedCount: number;
   /** The keys of the problems that this hub relays now, by report file. */
   private relayed = new Map<string, ReadonlySet<string>>();
   private reportNameTaken = false;
@@ -351,6 +418,8 @@ export class Eva {
       commitIdentity: commitIdentity(options.paths, options.config),
     };
     const ownGitEnvironment = gitEnvironment(this.facts, options.secrets);
+    this.gitEnvironmentForReads = ownGitEnvironment;
+    this.vaultFirstCommit = null;
 
     const redactor = new Redactor();
     for (const secret of Object.values(options.secrets)) redactor.addSecret(secret);
@@ -360,6 +429,18 @@ export class Eva {
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
     this.redactor = redactor;
+    this.locations = new LocationStore({ path: options.paths.location, now: options.now });
+    this.webPush = new WebPush({
+      paths: options.paths,
+      now: options.now,
+      ...(options.pushSender === undefined ? {} : { send: options.pushSender }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+    this.recentAlerts = [];
+    this.pushedCount = 0;
+    // Only the hub pushes, as only the hub runs Telegram: it relays the problems of the other
+    // machines, so a device that also subscribed on a satellite would get each one twice.
+    this.alerts.onAlert((alert) => (this.role() === "hub" ? this.pushAlert(alert) : undefined));
     this.vault = new VaultUpkeep({
       vaultSync:
         vaultPath === null
@@ -380,6 +461,7 @@ export class Eva {
       },
       afterSync: () => {
         this.noticeVaultAhead();
+        this.noticeTemplateParts();
         // A full disk or a reserved file name must not stop the sync step.
         try {
           this.exchangeMachineReports();
@@ -425,6 +507,7 @@ export class Eva {
     });
     const agentEnvironment = engineEnvironment(this.facts, options.secrets);
     const cloneOrigins = new CloneOriginStore(options.paths.cloneOrigins);
+    this.trustStore = new TrustStore(options.paths.trust);
     this.modelCalls = new ModelCalls({
       engines: options.engines,
       environment: agentEnvironment,
@@ -449,6 +532,16 @@ export class Eva {
             now: options.now,
             timeZone: options.config.timeZone ?? "UTC",
           });
+    this.templateAlignment =
+      vaultPath === null
+        ? null
+        : new TemplateAlignment({
+            vaultPath,
+            parts: templateParts,
+            history: templateHistory,
+            evaVersion,
+            now: options.now,
+          });
 
     this.sessions = new SessionManager({
       ...(chatNamer === null ? {} : { nameChat: (turn: FirstTurn) => chatNamer.name(turn) }),
@@ -470,9 +563,9 @@ export class Eva {
           ...(options.logger === undefined ? {} : { logger: options.logger }),
         }),
         project: new ProjectPreparer({
-          trustStore: new TrustStore(options.paths.trust),
+          trustStore: this.trustStore,
           cloneOrigins,
-          trustedOwners: options.config.trust.trustedRepositoryOwners,
+          trustedOwners: () => this.trustedOwners(),
           environment: agentEnvironment,
           readRemote: (folder) => readOriginUrl(folder, options.runner, ownGitEnvironment),
         }),
@@ -494,6 +587,7 @@ export class Eva {
       inBackground: (what, task) => {
         this.inBackground(what, task);
       },
+      modelCalls: this.modelCalls,
       ...(options.githubRequest === undefined ? {} : { githubRequest: options.githubRequest }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -757,6 +851,71 @@ export class Eva {
     return this.alerts.onAlert(listener);
   }
 
+  /**
+   * Keeps a location from the phone, with the time when the phone took it. True when Eva kept it:
+   * she drops an older point, and keeps a live stream at most once a minute. Only the hub keeps it,
+   * because only the hub runs the schedules and Telegram.
+   */
+  saveLocation(input: LocationInput, source: LocationSource, takenAt: Date, shared: boolean): boolean {
+    if (this.role() !== "hub") {
+      throw new EvaError("setting_forbidden", "Only the hub computer keeps your location. Open its page to send it.");
+    }
+    return this.locations.save(input, source, takenAt, shared);
+  }
+
+  /**
+   * Where the person is: the phone's location from the last 24 hours, or else the home place of
+   * `Life/About me.md`. Null when Eva knows neither.
+   */
+  currentPlace(): CurrentPlace | null {
+    const last: LastLocation | null = this.locations.read();
+    if (last !== null && this.options.now().getTime() - Date.parse(last.at) < locationFreshMs) {
+      return { lat: last.lat, lon: last.lon, source: last.source, at: last.at };
+    }
+    const vaultPath = this.options.config.vaultPath;
+    const home = vaultPath === null ? null : readHomePlace(vaultPath);
+    return home === null ? null : { ...home, source: "home", at: null };
+  }
+
+  /** The public key that a device needs to subscribe, and whether this machine sends the alerts. */
+  pushKey(): { readonly publicKey: string; readonly isHub: boolean } {
+    return { publicKey: this.webPush.publicKey(), isHub: this.role() === "hub" };
+  }
+
+  pushDevices(): PushDevice[] {
+    return this.webPush.devices();
+  }
+
+  subscribePush(subscription: PushSubscriptionInput, label: string): void {
+    this.webPush.subscribe(subscription, label);
+  }
+
+  unsubscribePush(endpoint: string): boolean {
+    return this.webPush.unsubscribe(endpoint);
+  }
+
+  /** Sends a test notification to the devices only, not to Telegram. */
+  async testPush(): Promise<void> {
+    await this.pushAlert({
+      key: "push_test",
+      level: "news",
+      message: "This is a test notification from Eva.",
+      at: this.options.now().toISOString(),
+    });
+  }
+
+  /** The newest alerts, newest first: a device shows the first one after a push. */
+  recentNotifications(): readonly PushedAlert[] {
+    return this.recentAlerts;
+  }
+
+  private async pushAlert(alert: Alert): Promise<void> {
+    this.pushedCount += 1;
+    this.recentAlerts.unshift({ ...alert, seq: this.pushedCount });
+    this.recentAlerts.splice(recentAlertCount);
+    await this.webPush.notify();
+  }
+
   /** A front end reports a problem that only it can see, such as a Telegram poll that fails. */
   reportProblem(key: string, problem: AlertProblem | null): void {
     this.alerts.report(key, problem);
@@ -769,7 +928,83 @@ export class Eva {
   reportStartMigrations(result: StartMigrations): void {
     this.reportMigrationRun("machine", result.machine);
     if (result.vault !== null) this.reportMigrationRun("vault", result.vault);
+    if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
+  }
+
+  /**
+   * The person's facts that the web page uses, from `Life/About me.md`, and the facts that Eva
+   * still needs. Null when no vault is configured.
+   */
+  async personalFacts(): Promise<PersonalFactsView | null> {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return null;
+    // The first commit never changes, so one git call serves every read.
+    this.vaultFirstCommit ??= firstCommitDay(vaultPath, this.options.runner, this.gitEnvironmentForReads);
+    const firstCommit = await this.vaultFirstCommit;
+    const about = readAboutMe(vaultPath);
+    // The most useful fact first: the new chat page asks for one at a time.
+    const missing = (["birthDate", "region"] as const).filter((key) => about[key] === null);
+    return {
+      name: about.name,
+      birthDate: about.birthDate,
+      region: about.region,
+      hemisphere: about.hemisphere,
+      installedOn: installedOn(vaultPath, firstCommit),
+      missing,
+    };
+  }
+
+  /**
+   * The state of each template part of the vault, with no change, and whether this machine takes
+   * the person's choice. Null when no vault is configured.
+   */
+  templateParts(): { readonly parts: TemplatePart[]; readonly canChoose: boolean } | null {
+    const parts = this.templateAlignment?.list();
+    return parts === undefined ? null : { parts, canChoose: this.role() === "hub" };
+  }
+
+  /** The person's choice for a part that differs: this Eva's version, or their own. */
+  chooseTemplateVersion(path: string, choice: "new" | "mine"): TemplatePart[] {
+    const alignment = this.templateAlignment;
+    if (alignment === null) throw new EvaError("vault_not_found", "No vault is configured.");
+    // Only the hub writes the template parts, so two machines never race on one file.
+    if (this.role() !== "hub") {
+      throw new EvaError(
+        "setting_forbidden",
+        "Only the hub computer changes the template parts. Open its page to choose.",
+      );
+    }
+    const parts = choice === "new" ? alignment.useNew(path) : alignment.keepMine(path);
+    this.alerts.report("template_alignment", alignmentProblem(parts));
+    return parts;
+  }
+
+  /**
+   * Brings the vault's template parts up to date on the hub, after the vault migrations. Only the
+   * hub writes them, so two machines never race on one file. A part that the person changed raises an alert.
+   */
+  private alignTemplate(): void {
+    const alignment = this.templateAlignment;
+    const vaultPath = this.options.config.vaultPath;
+    if (alignment === null || vaultPath === null || !existsSync(vaultPath) || this.role() !== "hub") return;
+    try {
+      this.alerts.report("template_alignment", alignmentProblem(alignment.align()));
+    } catch (caught) {
+      // A vault from a newer Eva refuses the write, and its own alert already says so.
+      this.options.logger?.log("warn", "The template alignment did not run.", { error: String(caught) });
+    }
+  }
+
+  /**
+   * Checks the template parts again after a sync: a pull can bring a choice or a fix that the
+   * person made by hand. Only the hub raises the alert, so it never shows twice.
+   */
+  private noticeTemplateParts(): void {
+    const alignment = this.templateAlignment;
+    const vaultPath = this.options.config.vaultPath;
+    if (alignment === null || vaultPath === null || !existsSync(vaultPath)) return;
+    this.alerts.report("template_alignment", this.role() === "hub" ? alignmentProblem(alignment.list()) : null);
   }
 
   /** The start found the marker of a run that never stopped cleanly. */
@@ -1042,9 +1277,34 @@ export class Eva {
     return this.projectWork.clones(projectId);
   }
 
+  /** Fetches each clone of a project, for the counts of commits to pull. */
+  fetchClones(projectId: string): Promise<CloneFetch> {
+    return this.projectWork.fetchClones(projectId);
+  }
+
+  /** A fast-forward pull of one clone. */
+  pullClone(projectId: string, cloneName: string): Promise<void> {
+    return this.projectWork.pullClone(projectId, cloneName);
+  }
+
+  /** Pulls each clone of a project that is behind its remote. */
+  pullClones(projectId: string): Promise<CloneFetch> {
+    return this.projectWork.pullClones(projectId);
+  }
+
+  /** Commits every change of a clone and pushes it. An empty note lets a model write the message. */
+  pushClone(projectId: string, cloneName: string, note: string): Promise<{ readonly message: string }> {
+    return this.projectWork.pushClone(projectId, cloneName, note);
+  }
+
   /** Clones a project's repository into its next free folder (the "New clone" button). */
   newClone(projectId: string, repositoryUrl?: string): Promise<Clone> {
     return this.projectWork.newClone(projectId, repositoryUrl);
+  }
+
+  /** Deletes a clone folder and its chats, unless Eva works there now. */
+  deleteClone(projectId: string, cloneName: string): Promise<{ deletedChats: string[] }> {
+    return this.projectWork.deleteClone(projectId, cloneName);
   }
 
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
@@ -1154,6 +1414,30 @@ export class Eva {
   /** Checks and saves a settings change; see `LiveSettings.update`. */
   updateSettings(patch: Readonly<Record<string, unknown>>): { saved: true; restartNeeded: boolean } {
     return this.settings.update(patch);
+  }
+
+  /** Whose repositories Eva trusts, and the person's saved answers, for Settings. */
+  trust(): TrustOverview {
+    return {
+      githubAccount: loadGitHubAccount(this.options.paths)?.login ?? null,
+      githubLoggedIn: this.settings.secrets.githubToken !== undefined,
+      owners: this.settings.config.trust.trustedRepositoryOwners,
+      answers: this.trustStore.answers(),
+    };
+  }
+
+  /** Removes a saved answer, so the next project chat on that repository asks again. */
+  forgetTrustAnswer(url: string): TrustOverview {
+    this.trustStore.forget(url);
+    return this.trust();
+  }
+
+  /** The owners in the settings, and the account of this Eva's GitHub login: she trusts her own work. */
+  private trustedOwners(): readonly string[] {
+    const login = loadGitHubAccount(this.options.paths)?.login;
+    // From memory, not the file: only a save through Eva changes whom she trusts while she runs.
+    const owners = this.settings.config.trust.trustedRepositoryOwners;
+    return login === undefined ? owners : [...owners, login];
   }
 
   async setupState(): Promise<EvaSetupState> {
@@ -1465,14 +1749,18 @@ export class Eva {
       role === "hub" ? "This machine became the hub." : "Another machine is now the hub.",
     );
     // The start ran only the machine migrations on a satellite, and the new hub runs those of the vault.
-    if (role === "hub") this.runVaultMigrations();
+    if (role === "hub") {
+      if (this.runVaultMigrations()?.kind === "done") this.alignTemplate();
+    } else {
+      this.alerts.report("template_alignment", null);
+    }
     for (const listener of this.roleListeners) listener(role);
   }
 
-  private runVaultMigrations(): void {
+  private runVaultMigrations(): MigrationRun | null {
     const vaultPath = this.options.config.vaultPath;
     // A vault folder that is not cloned yet has no hub file, so this machine reads as the hub.
-    if (vaultPath === null || !existsSync(vaultPath)) return;
+    if (vaultPath === null || !existsSync(vaultPath)) return null;
     const run = runMigrations({
       store: "vault",
       migrations,
@@ -1482,6 +1770,7 @@ export class Eva {
       now: this.options.now,
     });
     this.reportMigrationRun("vault", run);
+    return run;
   }
 
   private reportMigrationRun(store: MigrationStore, run: MigrationRun): void {

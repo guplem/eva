@@ -16,7 +16,7 @@ interface TelegramPhotoSize extends TelegramFile {
   readonly height: number;
 }
 
-interface TelegramMessage {
+export interface TelegramMessage {
   readonly chat: TelegramChat;
   readonly from?: { readonly id: number };
   readonly text?: string;
@@ -26,6 +26,16 @@ interface TelegramMessage {
   readonly audio?: TelegramFile;
   /** One photo in several sizes. */
   readonly photo?: readonly TelegramPhotoSize[];
+  /** When the message was sent, and when it was last edited, in seconds since 1970. */
+  readonly date?: number;
+  readonly edit_date?: number;
+  /** A shared point. A live location comes back as edits of the same message while it lasts. */
+  readonly location?: {
+    readonly latitude: number;
+    readonly longitude: number;
+    readonly horizontal_accuracy?: number;
+    readonly live_period?: number;
+  };
   readonly message_thread_id?: number;
   readonly is_topic_message?: boolean;
 }
@@ -33,6 +43,8 @@ interface TelegramMessage {
 export interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: TelegramMessage;
+  /** Telegram sends each move of a live location as an edit of its message. */
+  readonly edited_message?: TelegramMessage;
   readonly callback_query?: {
     readonly id: string;
     readonly from?: { readonly id: number };
@@ -43,7 +55,7 @@ export interface TelegramUpdate {
 
 /**
  * Message contents that Eva cannot read yet: the Telegram field, then its name in the reply.
- * A venue also carries a location, so it comes first. A service message (a new topic, a pin) gets no reply.
+ * A venue also carries a location, which Eva does not keep: a venue is a place to talk about, not where the person is. A service message (a new topic, a pin) gets no reply.
  */
 const unreadableContents: readonly (readonly [string, string])[] = [
   ["sticker", "stickers"],
@@ -51,7 +63,6 @@ const unreadableContents: readonly (readonly [string, string])[] = [
   ["video_note", "video notes"],
   ["animation", "GIFs"],
   ["venue", "places"],
-  ["location", "locations"],
   ["contact", "contacts"],
   ["poll", "polls"],
   ["dice", "dice"],
@@ -91,4 +102,11 @@ export function receivedFileOf(message: TelegramMessage): TelegramFile | null {
 /** The name of the content that Eva cannot read yet, or null. */
 export function unreadableContentOf(message: TelegramMessage): string | null {
   return unreadableContents.find(([field]) => field in message)?.[1] ?? null;
+}
+
+/** The reply to a shared location. A live location moves on as edits, which get no reply. */
+export function locationThanks(message: TelegramMessage): string {
+  return message.location?.live_period === undefined
+    ? "Saved. Eva uses this location until your phone sends a new one."
+    : "Thanks. Eva keeps your location while you share it.";
 }

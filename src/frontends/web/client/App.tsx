@@ -38,6 +38,7 @@ import { MainNav } from "./MainNav.tsx";
 import { addressOf, destinationOf, linkedChatIdOf, type Destination } from "./navigation.ts";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
+import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import type { ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
@@ -47,6 +48,9 @@ import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
 import { AppSkeleton } from "./Loading.tsx";
+import { SpecialDayProvider } from "./FestiveDay.tsx";
+import { useLocationSharing } from "./LocationCard.tsx";
+import { settingsHash } from "./settings-routes.ts";
 
 /** Problems come with the status, not over the socket, so the page asks for them, and for the cards, again this often. */
 const problemPollMs = 60_000;
@@ -58,7 +62,9 @@ const allowedFaceMs = 1_500;
 export function App(): ReactElement {
   return (
     <ErrorToastProvider>
-      <EvaApp />
+      <SpecialDayProvider>
+        <EvaApp />
+      </SpecialDayProvider>
       <TooltipLayer />
     </ErrorToastProvider>
   );
@@ -66,6 +72,8 @@ export function App(): ReactElement {
 
 function EvaApp(): ReactElement {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  // A device that chose to share its location sends it while the person is logged in.
+  useLocationSharing(authenticated === true);
   /** Why this Tailscale account cannot open this Eva, or null (#322). */
   const [refusal, setRefusal] = useState<string | null>(null);
   /** The server sends "settled" before its answer, so the notice keeps this request until the answer comes. */
@@ -227,8 +235,11 @@ function EvaApp(): ReactElement {
    * waits, with no event here. Read the state again, with the steps and drafts of the running turns, so
    * the answer that the person already read stays (#118).
    * A note goes: a lost event can hide the turn start that clears it.
+   * A reconnect also follows a restart, such as after an update: a page with old code reloads.
    */
   const recover = useCallback(async (): Promise<void> => {
+    // Not awaited: a slow answer must not hold the recovery.
+    void reloadIfStale(browserPage());
     lastRecovery.current += 1;
     const id = lastRecovery.current;
     setLive((state) => startRecovery({ ...forgetTaskEvents(state), notes: {} }, id));
@@ -415,6 +426,8 @@ function EvaApp(): ReactElement {
 
   const runProblemAction = (action: ProblemAction): void => {
     if (action === "pick_version") setConflictsOpen(true);
+    else if (action === "choose_template_version")
+      window.location.hash = settingsHash({ section: "vault", item: "template-alignment" });
     else openDestination(action === "open_schedules" ? "schedules" : "settings");
   };
   const notices = (

@@ -133,8 +133,9 @@ function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["
   // The core's own events are no step of a turn: the list shows their effect after a reload.
   if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
     return steps;
-  // A turn whose first event is a piece runs too.
-  if (event.kind === "text_delta") return event.sessionId in steps ? steps : { ...steps, [event.sessionId]: [] };
+  // A turn whose first event is a piece runs too. So does a turn that waits for another chat in its clone.
+  if (event.kind === "text_delta" || event.kind === "notice")
+    return event.sessionId in steps ? steps : { ...steps, [event.sessionId]: [] };
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     if (!(event.sessionId in steps)) return steps;
     const rest = { ...steps };

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assistantBasePrompt } from "../../../../src/core/modes/assistant-base-prompt.ts";
 import { defaultAssistantRules } from "../../../../src/core/vault/vault-template.ts";
+import { evaRepository } from "../../../../src/shared/version.ts";
 
 describe("assistantBasePrompt", () => {
   test("holds the rules every person needs", () => {
@@ -30,6 +31,13 @@ describe("assistantBasePrompt", () => {
 
   test("says where the rules for chat names go, so the person can change them in a chat (issue 50)", () => {
     expect(assistantBasePrompt).toContain("`.eva/chat-names.md`");
+  });
+
+  test("offers to open a detailed issue in Eva's own repository when the person reports a problem with Eva", () => {
+    expect(assistantBasePrompt).toContain("## Problems with Eva herself");
+    expect(assistantBasePrompt).toContain(`gh issue create --repo ${evaRepository}`);
+    expect(assistantBasePrompt).toContain("Done when");
+    expect(assistantBasePrompt).not.toContain("{{");
   });
 
   test("names no person: the person's rules come from their vault", () => {

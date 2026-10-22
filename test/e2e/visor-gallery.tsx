@@ -1,7 +1,9 @@
-/** A test page: each of EVE's faces at each size, and the login rotation. */
+/** A test page: each of EVE's faces at each size, the login rotation, and the festive eyes of each special day. */
 import { useState, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { Visor } from "../../src/frontends/web/client/Visor.tsx";
+import { festiveArt } from "../../src/frontends/web/client/festive-art.ts";
+import type { SpecialDayId } from "../../src/frontends/web/client/special-days.ts";
 import { faces, type Face, type VisorSize } from "../../src/frontends/web/client/visor-faces.ts";
 
 const sizes: readonly VisorSize[] = [28, 36, 76, 128];
@@ -30,6 +32,14 @@ function Gallery(): ReactElement {
         <Visor size={128} rotate />
         <figcaption>rotate</figcaption>
       </figure>
+      {(Object.keys(festiveArt) as SpecialDayId[]).map((id) => (
+        <figure key={id} aria-label={`festive ${id}`}>
+          {sizes.map((size) => (
+            <Visor key={size} size={size} festive={id} />
+          ))}
+          <figcaption>{id}</figcaption>
+        </figure>
+      ))}
     </main>
   );
 }

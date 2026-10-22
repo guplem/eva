@@ -216,6 +216,10 @@ The login page rotates faces while it waits: searching (5 s), thinking (3 s), ha
 
 With `prefers-reduced-motion`, no face moves and no eye blinks. The waits stand still too: a skeleton loses its shimmer, and a running bar shows a still part of its fill.
 
+### Festive eyes
+
+On a special day, such as a holiday or a solstice, the welcome places show that day's eyes: the new chat greeting, the login code page, the nav visor at rest and the tab icon. `client/special-days.ts` picks the day, and `client/festive-art.ts` draws its eyes. A festive visor has the class `festive`, a motion class `f-*`, and its own hue. The 76 px and 128 px visors also show a hat or a small scene. State faces never change, because they inform. The days are a surprise, so no page lists them. The reference page has no festive eyes.
+
 ## Pages
 
 Each page has a computer and a phone capture, in light and dark. The light captures are below.

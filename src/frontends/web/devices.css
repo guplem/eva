@@ -276,3 +276,29 @@ button.device-log-out {
     flex: none;
   }
 }
+
+/* A saved trust answer: a long repository address wraps on a phone, instead of pushing Remove out. */
+.trust-answers .device-text b {
+  overflow-wrap: anywhere;
+}
+
+/*
+ * A template part: the name, its path and its state on one line, and the choices on a line of
+ * their own below. Three buttons beside the name left it one letter wide on a phone.
+ */
+.template-parts li {
+  flex-wrap: wrap;
+}
+
+.template-parts .device-detail {
+  overflow-wrap: anywhere;
+}
+
+.template-parts .pill {
+  flex: none;
+}
+
+.template-parts .button-row {
+  flex-basis: 100%;
+  padding-left: calc(40px + var(--space-3));
+}

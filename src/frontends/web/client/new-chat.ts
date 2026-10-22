@@ -79,3 +79,45 @@ export function setupBlock(blocker: ChatBlocker): SetupBlock {
   const block = blocks[blocker];
   return { ...block, composerLine: `${block.action} to send a message.` };
 }
+
+/** The kind of answer that a fact question takes. */
+export type FactAnswer = "date" | "text";
+
+/**
+ * A special suggestion that asks the person for a fact that Eva still needs. A tap opens a small
+ * form, and the answer goes to Eva in a message, so Eva saves it with her `about-me` skill.
+ */
+export interface FactQuestion {
+  readonly title: string;
+  readonly detail: string;
+  readonly answer: FactAnswer;
+  /** The label of the form's field. */
+  readonly label: string;
+  /** The message to Eva, with the person's answer in it. */
+  readonly message: (answer: string) => string;
+}
+
+const factQuestions: Readonly<Record<"birthDate" | "region", FactQuestion>> = {
+  birthDate: {
+    title: "Hey Eva! I was born on…",
+    detail: "Tell Eva your birthday",
+    answer: "date",
+    label: "Your birthday",
+    message: (answer) =>
+      `Hey Eva, I was born on ${answer}. Save it as my birthDate in Life/About me.md with the about-me skill.`,
+  },
+  region: {
+    title: "Hey Eva! I live in…",
+    detail: "Tell Eva where you live",
+    answer: "text",
+    label: "Your city and country",
+    message: (answer) =>
+      `Hey Eva, I live in ${answer}. Save my region, hemisphere and home place in Life/About me.md with the about-me skill.`,
+  },
+};
+
+/** The question for the most useful fact that Eva still needs, or null when she has them all. */
+export function factQuestion(missing: readonly string[]): FactQuestion | null {
+  const first = missing.find((key): key is "birthDate" | "region" => key === "birthDate" || key === "region");
+  return first === undefined ? null : factQuestions[first];
+}

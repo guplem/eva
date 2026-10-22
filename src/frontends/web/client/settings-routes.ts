@@ -5,7 +5,7 @@
 import type { ProgressStep } from "./api.ts";
 
 export type SectionId =
-  "setup" | "engines" | "vault" | "connections" | "access" | "personalize" | "updates" | "developer";
+  "setup" | "engines" | "vault" | "connections" | "trust" | "access" | "personalize" | "updates" | "developer";
 
 export interface SettingsSection {
   readonly id: SectionId;
@@ -35,6 +35,12 @@ export const settingsSections: readonly SettingsSection[] = [
     title: "Connections",
     summary: "GitHub, Telegram and Google.",
     steps: ["github", "telegram", "google"],
+  },
+  {
+    id: "trust",
+    title: "Trusted repositories",
+    summary: "The GitHub accounts and repositories whose hooks may run.",
+    steps: [],
   },
   {
     id: "access",
@@ -125,13 +131,19 @@ export const searchEntries: readonly SearchEntry[] = [
   { item: "device", section: "setup", title: "Allow your devices", words: "step phone code login" },
   { item: "github", section: "setup", title: "Connect GitHub", words: "step login browser token git code" },
   { item: "telegram", section: "setup", title: "Connect Telegram", words: "step bot chat" },
-  { item: "google", section: "setup", title: "Connect Google", words: "step calendar drive" },
+  { item: "google", section: "setup", title: "Connect Google", words: "step calendar drive gmail mail" },
   { item: "default-engine", section: "engines", title: "Engine for new chats", words: "default claude pi model" },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token model opus sonnet" },
   { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },
   { item: "vault-sync", section: "vault", title: "Vault sync", words: "fetch pull push conflict interval save" },
   { item: "project-folders", section: "vault", title: "Project folders", words: "roots projects extra" },
+  {
+    item: "template-alignment",
+    section: "vault",
+    title: "Template alignment",
+    words: "skills update template version merge",
+  },
   {
     item: "github",
     section: "connections",
@@ -145,9 +157,39 @@ export const searchEntries: readonly SearchEntry[] = [
     words: "git author signature user",
   },
   { item: "telegram", section: "connections", title: "Telegram bot", words: "token botfather pairing chat" },
-  { item: "google", section: "connections", title: "Google", words: "calendar drive contacts tasks oauth client" },
+  {
+    item: "google",
+    section: "connections",
+    title: "Google",
+    words: "calendar drive contacts tasks gmail mail oauth client",
+  },
+  {
+    item: "own-account",
+    section: "trust",
+    title: "Your GitHub account",
+    words: "trust hooks login own repositories",
+  },
+  {
+    item: "trusted-owners",
+    section: "trust",
+    title: "Trusted repository owners",
+    words: "trust hooks settings mcp github accounts organizations allowlist",
+  },
+  {
+    item: "trust-answers",
+    section: "trust",
+    title: "Saved trust answers",
+    words: "trust hooks ask again allow deny forget repositories",
+  },
   { item: "remote-access", section: "access", title: "Phone access", words: "tailscale address qr phone url" },
   { item: "devices", section: "access", title: "Devices", words: "browsers log out this browser remove lost phone" },
+  { item: "location", section: "access", title: "Your location", words: "weather place gps telegram live home" },
+  {
+    item: "notifications",
+    section: "access",
+    title: "Notifications on this device",
+    words: "push alerts notify phone closed telegram",
+  },
   { item: "machine", section: "access", title: "This machine", words: "hub satellite telegram schedules" },
   { item: "accounts", section: "access", title: "Allowed Tailscale accounts", words: "identities device login" },
   {
@@ -276,7 +318,13 @@ export const settingPlaces: readonly SettingPlace[] = [
     keys: ["remoteAccess.allowedTailscaleIdentities"],
     link: { section: "access", item: "accounts" },
   },
-  { title: "Trusted repository owners", home: "machine", keys: ["trust.trustedRepositoryOwners"], link: null },
+  {
+    title: "Trusted repository owners",
+    home: "machine",
+    keys: ["trust.trustedRepositoryOwners"],
+    link: { section: "trust", item: "trusted-owners" },
+  },
+  { title: "Saved trust answers", home: "machine", keys: [], link: { section: "trust", item: "trust-answers" } },
   { title: "Appearance", home: "browser", keys: [], link: { section: "personalize", item: "appearance" } },
   { title: "Sounds and vibration", home: "browser", keys: [], link: { section: "personalize", item: "sounds" } },
 ];

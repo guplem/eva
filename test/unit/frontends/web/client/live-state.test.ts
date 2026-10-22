@@ -96,6 +96,17 @@ describe("applyEvent", () => {
     expect(state.notes["s1"]).toEqual([notice]);
   });
 
+  test("a turn whose first event is a notice runs, so the page shows Stop while it waits (issue 356)", () => {
+    const state = run([{ kind: "notice", text: "Another chat runs a turn in this clone." }]);
+    expect(state.steps["s1"]).toEqual([]);
+    expect(
+      run([
+        { kind: "text", text: "Hi.", messageId: "m1" },
+        { kind: "notice", text: "x" },
+      ]).steps["s1"],
+    ).toHaveLength(1);
+  });
+
   test("the same notice of a follow-up turn shows once", () => {
     const state = run([
       { kind: "notice", text: "one" },

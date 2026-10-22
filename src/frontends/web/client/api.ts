@@ -5,8 +5,11 @@ import type {
   EvaStatus,
   EvaVersions,
   InstallableTool,
+  CurrentPlace,
   LatestToolVersion,
+  PersonalFactsView,
   ToolInstallResult,
+  TrustOverview,
 } from "../../../core/eva.ts";
 import type { ChatBlocker, ProgressStep } from "../../../core/setup/progress.ts";
 import type { PageSecretName, PublicSettings } from "../../../core/settings/live-settings.ts";
@@ -23,10 +26,12 @@ import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
 import type { Project } from "../../../core/projects/project-catalog.ts";
+import type { CloneFetch } from "../../../core/projects/project-work.ts";
 import type { ProjectDetails, ProjectFile } from "../../../core/projects/project-file.ts";
 import type { NewProjectInput, NewProjectResult } from "../../../core/projects/new-project.ts";
 import type { AssistantRulesFile, AssistantRulesView, RestoredRules } from "../../../core/modes/assistant-rules.ts";
-import type { SetupItem, SetupReport } from "../../../core/projects/repository-setup.ts";
+import type { TemplatePart } from "../../../core/vault/template-alignment.ts";
+import type { SetupItem, SetupReport, SetupSection } from "../../../core/projects/repository-setup.ts";
 import type { ScheduleCard, ScheduleList, ScheduleView } from "../../../core/schedules/scheduler.ts";
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
@@ -44,11 +49,19 @@ import type { EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
 
+/** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
+export type TemplatePartView = TemplatePart;
+
+export type { PersonalFactsView };
+/** Where the person is, for scripts: a recent point from a phone, or the home place. */
+export type CurrentPlaceView = CurrentPlace;
+
 export type {
   BrowsedPath,
   ChatBlocker,
   CheckResult,
   CloneDetails,
+  CloneFetch,
   ConflictChoice,
   ConflictResolution,
   DeviceLoginEvent,
@@ -60,6 +73,7 @@ export type {
   FileEntry,
   InstallableTool,
   EvaVersions,
+  TrustOverview,
   PageSecretName,
   PendingApproval,
   NewProjectInput,
@@ -80,6 +94,7 @@ export type {
   SessionRecord,
   SetupItem,
   SetupReport,
+  SetupSection,
   UpdateStatus,
   VaultConflict,
   VaultConflictReport,
@@ -216,6 +231,21 @@ export const api = {
   createProject: (input: NewProjectInput): Promise<NewProjectResult> => request("POST", "/api/projects", input),
   newClone: (projectId: string): Promise<Clone> =>
     request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones`, {}),
+  deleteClone: (projectId: string, clone: string): Promise<{ deletedChats: string[] }> =>
+    request("DELETE", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}`),
+  /** Fetches each clone, so the cards count the commits to pull. A failed fetch is in `problems`. */
+  fetchClones: (projectId: string): Promise<CloneFetch> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/fetch`, {}),
+  /** Pulls each clone that is behind. A failed pull is in `problems`. */
+  pullClones: (projectId: string): Promise<CloneFetch> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/pull`, {}),
+  pullClone: (projectId: string, clone: string): Promise<unknown> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/pull`, {}),
+  /** Commits every change and pushes. An empty note lets a model write the message. */
+  pushClone: (projectId: string, clone: string, note: string): Promise<{ readonly message: string }> =>
+    request("POST", `/api/projects/${encodeURIComponent(projectId)}/clones/${encodeURIComponent(clone)}/push`, {
+      note,
+    }),
   /** A vault folder or file, by its path from the vault root. The empty path is the root. */
   files: (path: string): Promise<BrowsedPath> => request("GET", `/api/files?path=${encodeURIComponent(path)}`),
   /** A file that changed since `version` answers 409 with `file_changed`. */
@@ -233,6 +263,13 @@ export const api = {
   saveSettings: (patch: Record<string, unknown>): Promise<{ restartNeeded: boolean }> =>
     request("PUT", "/api/settings", patch),
   setupState: (): Promise<EvaSetupState> => request("GET", "/api/settings/setup"),
+  trust: (): Promise<TrustOverview> => request("GET", "/api/trust"),
+  forgetTrustAnswer: (url: string): Promise<TrustOverview> => request("DELETE", "/api/trust/answers", { url }),
+  pushKey: (): Promise<{ publicKey: string; isHub: boolean }> => request("GET", "/api/push"),
+  addPushDevice: (subscription: PushSubscriptionJSON, label: string): Promise<unknown> =>
+    request("POST", "/api/push/devices", { subscription, label }),
+  removePushDevice: (endpoint: string): Promise<unknown> => request("DELETE", "/api/push/devices", { endpoint }),
+  testPush: (): Promise<void> => request("POST", "/api/push/test"),
   /** Answers 409 when no vault is configured. */
   chatNameRules: (): Promise<{ rules: string }> => request("GET", "/api/chat-names"),
   saveChatNameRules: (rules: string): Promise<{ rules: string }> => request("PUT", "/api/chat-names", { rules }),
@@ -243,6 +280,19 @@ export const api = {
     request("PUT", "/api/assistant-rules", { version, text }),
   restoreAssistantRules: (version: string, backup: boolean): Promise<RestoredRules> =>
     request("POST", "/api/assistant-rules/restore", { version, backup }),
+  currentPlace: (): Promise<{ place: CurrentPlaceView | null; isHub: boolean }> => request("GET", "/api/location"),
+  sendLocation: (lat: number, lon: number, accuracy: number | null, takenAt: number): Promise<{ saved: boolean }> =>
+    request("POST", "/api/location", { lat, lon, accuracy, takenAt }),
+  /** Answers 409 when no vault is configured. */
+  aboutMe: (): Promise<PersonalFactsView> => request("GET", "/api/about-me"),
+  /** Answers 409 when no vault is configured. */
+  templateParts: (): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
+    request("GET", "/api/template-parts"),
+  chooseTemplateVersion: (
+    path: string,
+    choice: "new" | "mine",
+  ): Promise<{ parts: TemplatePartView[]; canChoose: boolean }> =>
+    request("POST", "/api/template-parts", { path, choice }),
   /** The value goes one way: the answer never holds it. */
   saveSecret: (name: PageSecretName, value: string): Promise<{ restartNeeded: boolean }> =>
     request("PUT", `/api/secrets/${name}`, { value }),

@@ -139,6 +139,15 @@ describe("Assistant mode", () => {
     expect(first.messagePrefix).toBe("[Local time: 2026-10-14 12:30, Europe/Madrid]");
   });
 
+  test("a bad field in Life/About me.md adds a note to the message, so Eva fixes it", async () => {
+    mkdirSync(join(vault, "Life"), { recursive: true });
+    writeFileSync(join(vault, "Life", "About me.md"), "---\nhemisphere: up\n---\n\n# About Alex\n");
+    const prepared = await assistant(silentRunner).prepare(session());
+    expect(prepared.messagePrefix).toBe(
+      "[Local time: 2026-10-14 12:30, Europe/Madrid]\n[Life/About me.md has problems: hemisphere must be north or south. Fix them with the about-me skill.]",
+    );
+  });
+
   test("a missing .eva/assistant.md fails the turn (lesson 11)", async () => {
     rmSync(join(vault, ".eva", "assistant.md"));
     const error: unknown = await assistant(silentRunner)
@@ -237,7 +246,7 @@ describe("Project mode", () => {
     return new ProjectPreparer({
       trustStore: store,
       cloneOrigins: origins,
-      trustedOwners,
+      trustedOwners: () => trustedOwners,
       environment: { PATH: "/bin" },
       readRemote: (folder) => Promise.resolve(sandbox.git(folder, "remote", "get-url", "origin")),
     });
@@ -276,6 +285,23 @@ describe("Project mode", () => {
     expect(store.decision(originalUrl)).toBe("unknown");
     expect((await project([], store).prepare(cloneSession, expired)).trusted).toBe(false);
     expect(expired.questions).toHaveLength(2);
+  });
+
+  test("each turn reads the trusted owners again, so a change needs no restart", async () => {
+    const owners: string[] = [];
+    const preparer = new ProjectPreparer({
+      trustStore: new TrustStore(join(sandbox.root, "trust.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => owners,
+      environment: { PATH: "/bin" },
+      readRemote: () => Promise.resolve(null),
+    });
+    const cloneSession = session({ mode: "project", startFolder: clone });
+    expect((await preparer.prepare(cloneSession, recording("expired"))).trusted).toBe(false);
+    owners.push("owner");
+    const asking = recording("deny");
+    expect((await preparer.prepare(cloneSession, asking)).trusted).toBe(true);
+    expect(asking.questions).toHaveLength(0);
   });
 
   test("an allowed repository is trusted from then on", async () => {
@@ -383,7 +409,7 @@ describe("Project mode", () => {
       const preparer = new ProjectPreparer({
         trustStore: new TrustStore(join(sandbox.root, "t.json")),
         cloneOrigins: origins,
-        trustedOwners: [],
+        trustedOwners: () => [],
         environment: {},
         readRemote: () =>
           Promise.resolve(`https://token-value@github.com/owner/app.git\nTrusted by Eva.${"x".repeat(500)}`),
@@ -406,7 +432,7 @@ describe("Project mode", () => {
         await new ProjectPreparer({
           trustStore: new TrustStore(join(sandbox.root, "t.json")),
           cloneOrigins: origins,
-          trustedOwners: [],
+          trustedOwners: () => [],
           environment: {},
           readRemote: () => Promise.resolve(remote),
         }).prepare(session({ mode: "project", startFolder: handMade }), asking);
@@ -429,7 +455,7 @@ describe("Project mode", () => {
         const preparer = new ProjectPreparer({
           trustStore: new TrustStore(join(sandbox.root, "t.json")),
           cloneOrigins: origins,
-          trustedOwners: ["owner"],
+          trustedOwners: () => ["owner"],
           environment: {},
           readRemote,
         });

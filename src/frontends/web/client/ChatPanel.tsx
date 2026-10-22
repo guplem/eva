@@ -14,6 +14,7 @@ import {
   taskStatus,
   titleCase,
 } from "./chat-details.ts";
+import { answeredModel, effortName, modelLabel } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
@@ -123,7 +124,10 @@ function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
             <dt>Engine</dt>
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
-            <dd>{titleCase(root.modelAlias)}</dd>
+            <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
+            <dt>Effort</dt>
+            {/* Each branch has its own composer, so a fork can have its own effort. */}
+            <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>
             <dt>Mode</dt>
             <dd>{titleCase(root.mode)}</dd>
             <dt>Answers</dt>

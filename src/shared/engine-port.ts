@@ -12,6 +12,9 @@ export type SessionMode = "assistant" | "project";
  */
 export type TurnMode = SessionMode | "model-call";
 export type ModelAlias = "default" | "opus" | "sonnet" | "haiku";
+/** How much the model reasons before it answers. `default` keeps the engine's own level. */
+export const effortLevels = ["default", "low", "medium", "high", "xhigh", "max"] as const;
+export type EffortLevel = (typeof effortLevels)[number];
 
 /** Where the turn's history comes from. */
 export type TurnHistory =
@@ -44,6 +47,7 @@ export interface TurnRequest {
   readonly startFolder: string;
   readonly prompt: string;
   readonly model: ModelAlias;
+  readonly effort: EffortLevel;
   /**
    * Assistant mode: Eva's prompt. Claude Code uses it in place of its own system prompt; pi appends it.
    * Byte-identical every turn (lesson 40). A model call: the caller's prompt, in place of each engine's own.

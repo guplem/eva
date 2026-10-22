@@ -335,13 +335,16 @@ function EvaUpdatesCard({
   /** Only an answer from the new Eva proves the install, so only then does the card look happy. */
   const [restarted, setRestarted] = useState(false);
 
-  // A fresh status says again what waits, so the happy face of an older install ends.
+  // A fresh status says again what waits, so the happy face of an older install ends. The
+  // automatic check can be a week old or off, so a check follows, as each tool row asks for its
+  // newest version. It comes after the status, so the older answer never replaces it.
   useEffect(() => {
     api
       .updateStatus()
-      .then((status) => {
+      .then(async (status) => {
         setUpdate(status);
         setRestarted(false);
+        if (status !== null) setUpdate(await api.checkForUpdate(true));
       })
       .catch((error: unknown) => setNote(errorText(error)));
   }, [config.updates.frequency, config.updates.install]);

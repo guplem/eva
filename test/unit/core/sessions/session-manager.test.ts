@@ -111,6 +111,7 @@ describe("a conversation", () => {
         omittedSteps: 0,
         contextTokens: 15,
         contextWindow: 200_000,
+        model: "claude-opus-5-5",
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -325,6 +326,18 @@ describe("models (lesson 41)", () => {
     await manager.send(sessionId, "hi");
     expect(engine.requests[0]?.model).toBe("haiku");
     expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+  });
+
+  test("a chat's effort goes to each turn, and changes between turns (#419)", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(manager.get(sessionId).effort).toBe("default");
+    expect(manager.setEffort(sessionId, "low").effort).toBe("low");
+    await manager.send(sessionId, "one");
+    expect(manager.setEffort(sessionId, "max").effort).toBe("max");
+    await manager.send(sessionId, "two");
+    expect(engine.requests.map((request) => request.effort)).toEqual(["low", "max"]);
   });
 
   test("a chat's engine is chosen before its first message, and fixed after it", async () => {

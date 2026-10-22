@@ -706,9 +706,22 @@ button.ghost .icon {
     border-radius: var(--radius-bubble);
   }
 
-  /* The phone shows only the model, as in the reference. */
-  .chip-engine {
+  /* The phone shows only the model, as in the reference. The menu shows the effort. */
+  .chip-engine,
+  .chip-effort {
     display: none;
+  }
+
+  /* The chip starts mid-row, so its menu takes the width of the message box and stays on the screen. */
+  .chip-picker {
+    position: static;
+  }
+
+  .chip-menu {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
   }
 
   .send {

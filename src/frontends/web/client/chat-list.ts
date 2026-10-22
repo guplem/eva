@@ -12,7 +12,7 @@ export type ChatState = "needs-you" | "working" | "unread" | null;
 const dayMs = 24 * 60 * 60 * 1000;
 // Fixed English names: the rest of the page is in English, whatever the browser's language.
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const previewLength = 140;
 
 /** Whole local days from `at` to `now`. A clock change makes one day 23 or 25 hours, so the count rounds. */

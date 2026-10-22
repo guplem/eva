@@ -21,6 +21,7 @@ const finished: EngineEventPayload = {
   costUsd: null,
   contextTokens: null,
   contextWindow: null,
+  model: null,
 };
 
 describe("createEventPrinter", () => {

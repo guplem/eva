@@ -962,6 +962,42 @@ describe("Eva", () => {
     expect(checks).toBe(1);
   });
 
+  test("a stale check asks the update channel again at most once an hour, and after a failure every 10 minutes", async () => {
+    let checks = 0;
+    let offline = false;
+    eva = new Eva({
+      paths: homePaths(home),
+      config: config({ sync: syncOn }),
+      secrets: {},
+      engines: [new FakeEngine()],
+      runner: systemProcessRunner,
+      processEnvironment: gitEnvironment,
+      now: () => clock,
+      basePrompt: "Base.",
+      updateChannel: {
+        kind: "executable",
+        check: () => {
+          checks += 1;
+          if (offline) return Promise.reject(new Error("offline"));
+          return Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: true, releases: [] });
+        },
+        apply: () => Promise.resolve({ current: "0.1.0", latest: "0.2.0", available: false, releases: [] }),
+      },
+    });
+    // The frequency can be off, so the first look of a page asks the channel.
+    expect((await eva.checkForUpdateIfStale())?.latest).toBe("0.2.0");
+    await eva.checkForUpdateIfStale();
+    expect(checks).toBe(1);
+    clock = new Date(clock.getTime() + 61 * 60_000);
+    offline = true;
+    expect((await eva.checkForUpdateIfStale())?.lastError).toBe("offline");
+    await eva.checkForUpdateIfStale();
+    expect(checks).toBe(2);
+    clock = new Date(clock.getTime() + 11 * 60_000);
+    await eva.checkForUpdateIfStale();
+    expect(checks).toBe(3);
+  });
+
   test("an update waits for a message that is still gathering, then installs (lesson 92)", async () => {
     const restarts: string[] = [];
     eva = new Eva({

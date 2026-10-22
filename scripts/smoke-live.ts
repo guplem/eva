@@ -42,6 +42,7 @@ async function turn(prompt: string, history: TurnHistory): Promise<EngineEventPa
     startFolder: vault,
     prompt,
     model: "haiku",
+    effort: "default",
     appendSystemPrompt: "Answer in one short sentence.",
     pluginFolders: [],
     mcpServers: {},

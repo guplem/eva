@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
+import { effortLevels } from "../../shared/engine-port.ts";
 import { notificationKinds } from "../../core/alerts/chat-notifications.ts";
 import { checkNames } from "../../core/checks.ts";
 import { installableTools, type Eva } from "../../core/eva.ts";
@@ -65,6 +66,7 @@ const engineSchema = z.enum(["claude-code", "pi"]);
 const newSessionSchema = z.object({
   mode: z.enum(["assistant", "project"]),
   model: modelSchema,
+  effort: z.enum(effortLevels).optional(),
   engine: engineSchema.optional(),
   projectId: z.string().min(1).optional(),
   clone: z.string().min(1).optional(),
@@ -90,6 +92,8 @@ const updateSchema = z.object({
     .regex(/^\d+\.\d+\.\d+$/)
     .optional(),
 });
+/** `ifStale` reuses a recent check, as the Versions page does on each open. */
+const updateCheckSchema = z.object({ ifStale: z.boolean().optional() });
 const toolInstallSchema = z.object({ program: z.enum(installableTools) });
 const projectWorkSchema = z.object({ request: z.string().min(1), reportToSessionId: z.string().min(1).optional() });
 /** A project file is a note: 1 MB is far more than one needs. */
@@ -501,7 +505,8 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const input = newSessionSchema.parse(await request.json());
     const engine = input.engine === undefined ? {} : { engine: input.engine };
     if (input.mode === "assistant") {
-      return json(eva.createAssistantSession({ source: "web", model: input.model, ...engine }), 201);
+      const effort = input.effort === undefined ? {} : { effort: input.effort };
+      return json(eva.createAssistantSession({ source: "web", model: input.model, ...effort, ...engine }), 201);
     }
     if (input.projectId === undefined) return json({ error: "A Project chat needs a projectId." }, 400);
     const session = await eva.createProjectSession({
@@ -558,6 +563,10 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (action === "model") {
       const { model } = z.object({ model: modelSchema.unwrap() }).parse(await request.json());
       return json(eva.sessions.setModel(sessionId, model));
+    }
+    if (action === "effort") {
+      const { effort } = z.object({ effort: z.enum(effortLevels) }).parse(await request.json());
+      return json(eva.sessions.setEffort(sessionId, effort));
     }
     if (action === "engine") {
       const { engine } = z.object({ engine: engineSchema }).parse(await request.json());
@@ -738,7 +747,9 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const status =
         url.pathname === "/api/update"
           ? await eva.updateNow(updateSchema.parse(await optionalJson(request)).version)
-          : await eva.checkForUpdate();
+          : updateCheckSchema.parse(await optionalJson(request)).ifStale === true
+            ? await eva.checkForUpdateIfStale()
+            : await eva.checkForUpdate();
       return status === null ? json({ error: "This Eva has no update channel." }, 409) : json(status);
     }
   }

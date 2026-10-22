@@ -783,23 +783,48 @@ test("the composer's chip picks the model before the first message, and is fixed
   await newChat(page);
   const chip = page.getByRole("button", { name: /Default model/ });
   await chip.click();
-  const menu = page.getByRole("dialog", { name: "Engine and model" });
+  const menu = page.getByRole("dialog", { name: "Engine, model and effort" });
   await expect(
     menu.getByRole("group", { name: "Engine" }).getByRole("button", { name: "Claude Code" }),
   ).toHaveAttribute("aria-pressed", "true");
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Haiku" }).click();
+  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Low" }).click();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   // The chip is the one place that shows the model.
-  await expect(page.locator(".chip-picker").getByRole("button", { name: /Haiku/ })).toBeVisible();
+  const picker = page.locator(".chip-picker > .chip");
+  await expect(picker).toContainText("Haiku");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
   await composer.press("Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await page.getByRole("button", { name: /Haiku/ }).click();
+  // The chip names the model that answered (#419).
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
+  await picker.click();
   await expect(menu).toContainText("fixed after the first message");
-  await expect(menu.getByRole("button")).toHaveCount(0);
+  // The chip starts mid-row on a phone, and its menu still fits the screen.
+  await expect(menu).toBeInViewport({ ratio: 1 });
+  await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
+  // The effort changes no history, so it changes after the first message too.
+  await menu.getByRole("group", { name: "Effort" }).getByRole("button", { name: "Max" }).click();
+  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
+});
+
+test("a chat on the default model names the model that answered (#419)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const picker = page.locator(".chip-picker > .chip");
+  await expect(picker).toContainText("Default model");
+  await expect(picker.locator(".chip-effort")).toHaveText("· Default effort");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  await expect(picker).toContainText("Default · Opus 5.5");
 });
 
 test("a new schedule's setup card waits in a dialog, and Got it lets it run (lesson 66)", async ({ page }, info) => {
@@ -2000,7 +2025,9 @@ test("the Settings home page lists where each setting lives, and a row opens its
   expect(new URL(page.url()).hash).toBe("#/settings/personalize/appearance");
 });
 
-test("the New chat button sits in the list header, and the list has no model menu", async ({ page }) => {
+test("the New chat button sits in the list header on a computer and at its foot on a phone, and the list has no model menu", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   await newChat(page);
@@ -2015,13 +2042,33 @@ test("the New chat button sits in the list header, and the list has no model men
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("combobox")).toHaveCount(0);
   const buttonBox = await button.boundingBox();
   const firstChatBox = await page.locator(".sidebar .list-item").first().boundingBox();
-  if (buttonBox === null || firstChatBox === null) throw new Error("A sidebar part is not on the screen.");
-  expect(buttonBox.y).toBeLessThan(firstChatBox.y);
+  const listBox = await page.locator(".sidebar-list").boundingBox();
+  if (buttonBox === null || firstChatBox === null || listBox === null)
+    throw new Error("A sidebar part is not on the screen.");
+  // A thumb reaches the foot of a phone screen, not its top. The list scrolls above the button.
+  if (test.info().project.name === "phone") expect(buttonBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height);
+  else expect(buttonBox.y).toBeLessThan(firstChatBox.y);
   // A long list scrolls. It never squeezes a chat until its text is cut.
   const cut = await page
     .locator(".sidebar .list-item")
     .evaluateAll((items) => items.filter((item) => item.scrollHeight > item.clientHeight).length);
   expect(cut).toBe(0);
+});
+
+test("a tap on Chats while a chat is open shows the list on a phone and a new chat on a computer", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const chats = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats", exact: true });
+  await chats.click();
+  if (test.info().project.name === "phone") {
+    await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+    return;
+  }
+  // The new chat page selects no chat in the list. The first message makes the chat.
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(0);
+  await page.locator(".sidebar .list-item").first().click();
+  await expect(page.locator(".sidebar .list-item[aria-current='true']")).toHaveCount(1);
 });
 
 test("the chat list header does not cover the search field", async ({ page }) => {
@@ -2723,13 +2770,19 @@ test("Settings: the vault step lists the repositories and clones the picked one,
     .getByRole("region", { name: "Progress list" })
     .getByRole("button", { name: /Step \d+ Your vault/ })
     .click();
+  // The page asks for one path first and shows only its form.
+  await expect(page.getByRole("button", { name: "I have a vault on GitHub" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toHaveCount(0);
   const clone = page.getByRole("button", { name: "Clone this vault" });
   await expect(clone).toBeDisabled();
   await page.getByLabel("Your vault's repository").selectOption({ label: "you/vault (private)" });
   await clone.click();
   await expect(page.getByText("Cloned the vault into /eva-home/vault.")).toBeVisible();
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
-  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeVisible();
+  // The other path stays off after a clone, so a second click never starts a second vault.
+  await page.getByRole("button", { name: "Start a new vault" }).click();
+  await expect(page.getByLabel("Your vault's repository")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
 test("Settings: a token saved in the vault step lists the repositories at once", async ({ page }) => {
@@ -2756,6 +2809,7 @@ test("Settings: a token saved in the vault step lists the repositories at once",
   await page.getByLabel("GitHub token", { exact: true }).fill("ghp_e2e-vault-step-token");
   await page.getByRole("button", { name: "Save the GitHub token" }).click();
   await expect(page.getByLabel("Your vault's repository")).toBeVisible();
+  await page.getByRole("button", { name: "Start a new vault" }).click();
   await expect(page.getByLabel("Name of the new private repository")).toHaveValue("vault");
   await page.request.delete("/api/secrets/githubToken");
 });
@@ -3016,6 +3070,49 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
   await expect(dialog).toHaveCount(0);
   // Focus goes back to the button that opened the dialog.
   await expect(update).toBeFocused();
+});
+
+test("Settings: the Versions card looks for a newer Eva when it opens, as for each tool", async ({ page }) => {
+  // The automatic check is off, so Eva has never looked.
+  const unchecked = {
+    kind: "executable",
+    frequency: "off",
+    install: "minor",
+    phase: "idle",
+    current: null,
+    latest: null,
+    available: false,
+    target: null,
+    heldBack: null,
+    releases: [],
+    lastCheckAt: null,
+    lastError: null,
+    failedStep: null,
+  };
+  const checked = {
+    ...unchecked,
+    current: "0.2.0",
+    latest: "0.3.0",
+    available: true,
+    target: "0.3.0",
+    releases: [
+      { version: "0.3.0", notes: "", level: "minor", summary: "", headline: "Voice notes.", publishedAt: null },
+    ],
+    lastCheckAt: "2026-10-22T10:00:00Z",
+  };
+  const checks: unknown[] = [];
+  await page.route("**/api/update/check", async (route) => {
+    checks.push(route.request().postDataJSON());
+    await route.fulfill({ json: checked });
+  });
+  await page.route("**/api/update", async (route) => {
+    await route.fulfill({ json: unchecked });
+  });
+  await logIn(page);
+  await openSettings(page, "Updates");
+  await expect(page.getByRole("region", { name: "Versions" })).toContainText("(0.3.0 available)");
+  // A recent check answers at once, so each page open does not ask GitHub.
+  expect(checks).toEqual([{ ifStale: true }]);
 });
 
 test("Settings: the changelog lists each release with its own changes", async ({ page }) => {
@@ -4108,9 +4205,9 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await page.getByRole("button", { name: "Files", exact: true }).click();
   const list = (name: string): Locator => page.getByRole("list", { name: `Contents of ${name}` });
   await list("Vault").getByRole("link", { name: "Projects" }).click();
-  await list("Projects").getByRole("link", { name: "2025-03-02-1015-example-app" }).click();
+  await list("Projects").getByRole("link", { name: "Example app" }).click();
   await list("2025-03-02-1015-example-app")
-    .getByRole("link", { name: /AGENTS\.md/ })
+    .getByRole("link", { name: /AGENTS/ })
     .click();
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Example app" })).toBeVisible();
@@ -4121,7 +4218,7 @@ test("Files: folders open, a Markdown file shows formatted or plain, and Back re
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "AGENTS.md" })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   await page.getByRole("navigation", { name: "Folder path" }).getByRole("link", { name: "Vault" }).click();
   await expect(list("Vault").getByRole("link", { name: ".eva" })).toBeVisible();
   await expect(list("Vault").getByRole("link", { name: ".git" })).toHaveCount(0);
@@ -4167,11 +4264,15 @@ test("Files: a file shows its type in colour, and a long name loses the part tha
   );
   await logIn(page);
   await page.goto("/#/files/Docs");
-  const row = page.getByRole("list", { name: "Contents of Docs" }).getByRole("link", { name });
+  // The badge shows the type, so a smart name drops the extension.
+  const row = page
+    .getByRole("list", { name: "Contents of Docs" })
+    .getByRole("link", { name: name.replace(/\.pdf$/, "") });
+  await expect(row).toHaveAttribute("data-tooltip", name);
   await expect(row.locator(".files-badge.type-red")).toHaveText("PDF");
-  // The middle gives way by default, so the start and the extension stay.
+  // The middle gives way by default, so the start and the end stay.
   await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "middle");
-  await expect(row.locator(".files-name-tail")).toHaveText(/version\.pdf$/);
+  await expect(row.locator(".files-name-tail")).toHaveText(/version$/);
   const headIsCut = await row
     .locator(".files-name-head")
     .evaluate((element) => element.scrollWidth > element.clientWidth);
@@ -4324,7 +4425,7 @@ test("Files: an edit stays while the person goes to another folder or page, and 
   await page.getByRole("list", { name: "Contents of Vault" }).getByRole("link", { name: "Notes" }).click();
   await page
     .getByRole("list", { name: "Contents of Notes" })
-    .getByRole("link", { name: /settings\.json/ })
+    .getByRole("link", { name: /settings/ })
     .click();
   await expect(file.getByRole("textbox")).toHaveValue('{"theme":"light"}');
   await file.getByRole("button", { name: "Save" }).dblclick();
@@ -4349,7 +4450,35 @@ test("Files: a path that the core tidies still shows its folder (issue 253)", as
   // The page keeps `Projects\`, and the core answers for `Projects`.
   await page.goto("/#/files/Projects%5C");
   await expect(page.getByRole("list", { name: "Contents of Projects\\" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Example app/ })).toBeVisible();
+});
+
+test("Files: smart names show a project title and a date pill, and Real shows the real names (issue 429)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/#/files/Journal");
+  const row = page.getByRole("list", { name: "Contents of Journal" }).getByRole("link", { name: /trips/ });
+  await expect(row.locator(".files-name-text")).toHaveText("trips");
+  await expect(row.locator(".files-date")).toHaveText("2027");
+  await expect(row.locator(".files-badge")).toHaveText("MD");
+  await expect(row).toHaveAttribute("data-tooltip", "2027-trips.md");
+
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  const path = page.getByRole("navigation", { name: "Folder path" });
+  await expect(path.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
+  await expect(path.locator(".files-date")).toHaveText("2 Mar 2025, 10:15");
+  // A phone shows no tooltip, so the real name stays in view.
+  await expect(path.locator(".files-real-name")).toHaveText("Real name: 2025-03-02-1015-example-app");
+
+  await openSettings(page, "Personalize");
+  await page.getByRole("group", { name: "File names" }).getByRole("button", { name: "Real" }).click();
+  await page.goto("/#/files/Journal");
+  await expect(page.getByRole("link", { name: "2027-trips.md" })).toBeVisible();
+  await expect(page.locator(".files-date")).toHaveCount(0);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app");
+  await expect(page.getByRole("heading", { level: 1, name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.locator(".files-real-name")).toHaveCount(0);
 });
 
 test("Files: Try again reads a folder again after a failed read (issue 253)", async ({ page }) => {
@@ -4363,7 +4492,7 @@ test("Files: Try again reads a folder again after a failed read (issue 253)", as
   await page.goto("/#/files/Projects");
   await expect(page.getByRole("alert").filter({ hasText: "Eva failed to handle the request." })).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("link", { name: "2025-03-02-1015-example-app" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Example app/ })).toBeVisible();
 });
 
 test("Files: the person stars a note, it shows first on the page, and a tap opens it (issue 349)", async ({

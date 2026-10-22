@@ -129,6 +129,7 @@ export function buildQueryOptions(
     );
   }
   if (request.model !== "default") options.model = request.model;
+  if (request.effort !== "default") options.effort = request.effort;
   // The pieces only change what the SDK reports to Eva, so Project mode stays a transparent wrapper.
   if (request.mode !== "model-call") options.includePartialMessages = true;
 
@@ -162,7 +163,9 @@ export function buildQueryOptions(
     // A person's own allow rule, such as `Bash(git push:*)`, would skip canUseTool and so Eva's
     // approval. An ask rule always beats an allow rule, so every shell call and every call of
     // Eva's own tools reaches canUseTool, which lets local actions through at once (issue #51).
-    const ask = ["Bash", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
+    // Auto mode's classifier can skip a write in `.eva/`, Eva's own files, and auto mode then fails
+    // it with no question. So such a write also reaches canUseTool (issue #428). An Edit rule also covers Write.
+    const ask = ["Bash", "Edit(./.eva/**)", ...Object.keys(request.mcpServers).map((name) => `mcp__${name}`)];
     // Claude Code's memory folder stays on one machine, outside the vault, so a fact stored there
     // never reaches the person's other machines (issue #68).
     options.settings = { disableAllHooks: true, autoMemoryEnabled: false, permissions: { ask } };
@@ -230,6 +233,8 @@ async function* mapEachTurn(
   let contextTokens: number | null = null;
   let answeringModel: string | null = null;
   let usage: TurnUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  // After a refusal, the engine repeats the limit in its own words with a UTC time. Eva's line says it in local time.
+  let refused = false;
   for await (const message of messages) {
     switch (message.type) {
       case "assistant": {
@@ -242,6 +247,7 @@ async function* mapEachTurn(
           contextTokens = callContext;
           answeringModel = message.message.model;
         }
+        if (refused && message.message.model === syntheticModel) break;
         for (const block of message.message.content) {
           if (block.type === "text" && block.text.length > 0) {
             lastMessageId = message.uuid;
@@ -293,6 +299,7 @@ async function* mapEachTurn(
       case "rate_limit_event": {
         const limit = usageLimitEvent(message.rate_limit_info);
         if (limit !== null) yield limit;
+        if (limit?.kind === "usage_limit" && limit.status === "rejected") refused = true;
         break;
       }
       case "result": {
@@ -307,6 +314,10 @@ async function* mapEachTurn(
               text: `Eva could not start the MCP server "${server.name}": it was still starting when the model answered.`,
             };
           }
+        }
+        if (refused && (message.subtype !== "success" || message.is_error)) {
+          yield { kind: "turn_failed", reason: "Claude Code refused the turn at the usage limit." };
+          return;
         }
         if (message.subtype !== "success") {
           // The SDK throws after an error result, and the lost-history retry needs the failure now.
@@ -323,6 +334,7 @@ async function* mapEachTurn(
           costUsd: message.total_cost_usd,
           contextTokens,
           contextWindow: contextWindowOf(message.modelUsage, answeringModel),
+          model: answeringModel,
         };
         break;
       }
@@ -377,6 +389,9 @@ function taskEvent(message: Extract<SDKMessage, { type: "system" }>): EngineEven
   }
   return null;
 }
+
+/** The model name of a message that the engine writes itself, with no model call. */
+const syntheticModel = "<synthetic>";
 
 const knownWindows: readonly UsageWindow[] = [
   "five_hour",

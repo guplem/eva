@@ -89,7 +89,7 @@ export function ChatStatePill({ state }: { readonly state: ChatState }): ReactEl
 /** The phone breakpoint of `styles.css`. */
 const phoneQuery = "(max-width: 760px)";
 
-function useIsPhone(): boolean {
+export function useIsPhone(): boolean {
   const [isPhone, setIsPhone] = useState(() => window.matchMedia(phoneQuery).matches);
   useEffect(() => {
     const query = window.matchMedia(phoneQuery);

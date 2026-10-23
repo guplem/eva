@@ -556,3 +556,57 @@ a.files-entry[aria-current="true"] {
   font-size: var(--text-xs);
   color: var(--muted);
 }
+
+/* The search sits under the path, and its check box wraps under the field on a phone. */
+.files-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.files-search .search-field {
+  flex: 1 1 260px;
+  max-width: 480px;
+}
+
+.files-search-inside {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.files-search-results {
+  overflow-y: auto;
+}
+
+/* The name, its folder and the line that holds the text, each on its own line. */
+.files-search-match {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.files-search-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.files-search-path,
+.files-search-line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.files-search-line {
+  font-family: var(--mono);
+}

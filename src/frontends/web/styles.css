@@ -2720,7 +2720,7 @@ button.link-button {
     font-size: var(--text-lg);
   }
 
-  .search-field {
+  .settings-header .search-field {
     flex: 1 1 100%;
     order: 3;
   }

@@ -25,6 +25,7 @@ import type {
 import type { RemoteAccess } from "../../../core/remote-access/remote-access.ts";
 import type { BrowsedPath, FileEntry } from "../../../core/files/file-browser.ts";
 import type { Favorite } from "../../../core/files/vault-favorites.ts";
+import type { SearchResult } from "../../../core/files/vault-search.ts";
 import type { Clone, CloneDetails } from "../../../core/projects/clones.ts";
 import type { GitHubRepository } from "../../../core/vault/github-repositories.ts";
 import type { NewVaultAnswers, VaultSetupResult } from "../../../core/vault/vault-setup.ts";
@@ -75,6 +76,7 @@ export type {
   EngineUpdateStatus,
   EvaStatus,
   Favorite,
+  SearchResult,
   FileEntry,
   InstallableTool,
   EvaVersions,
@@ -286,6 +288,9 @@ export const api = {
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
+  /** The vault entries whose name holds `query`. With `contents`, the files whose text holds it too. */
+  searchFiles: (query: string, contents: boolean): Promise<SearchResult> =>
+    request("GET", `/api/files/search?query=${encodeURIComponent(query)}${contents ? "&contents=true" : ""}`),
   downloadFile: download,
   favorites: (): Promise<Favorite[]> => request("GET", "/api/files/favorites"),
   /** A missing path answers 404 with `file_not_found`. */

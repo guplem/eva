@@ -3,10 +3,11 @@
  * and file is a link, so the back button and a reload work as they do on any page. A wide screen
  * shows each folder of the path as a column and the open file at the right, as a Finder does. A
  * phone, or the "One folder" files view, shows the last one alone. The person can edit a text file
- * and save it in the vault, and rename a file or a folder (issue 343).
+ * and save it in the vault, and rename a file or a folder (issue 343). A search finds a file or a
+ * folder by its name, or by the text inside a file.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
-import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry } from "./api.ts";
+import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
@@ -46,6 +47,9 @@ export function FilesView(): ReactElement {
   const [favorites, setFavorites] = useState<readonly Favorite[] | null>(null);
   /** The Appearance setting changes on the Settings page, so the page reads it once, as it opens. */
   const [smart] = useState(() => readAppearance().fileNames === "smart");
+  /** The search field's text. A path that opens closes the search, so the folders show again. */
+  const [query, setQuery] = useState("");
+  const [inside, setInside] = useState(false);
   /** The answers of the last render, so the read below does not run again for each new answer. */
   const known = useRef(answers);
   known.current = answers;
@@ -54,6 +58,7 @@ export function FilesView(): ReactElement {
     const onHashChange = (): void => {
       const next = filePathOf(window.location.hash);
       if (next !== null) setPath(next);
+      setQuery("");
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -194,32 +199,147 @@ export function FilesView(): ReactElement {
             <DownloadButton key={path} path={path} folder={true} />
           )}
         </div>
-        <FavoriteBar favorites={favorites} openPath={shownPath} smart={smart} onChange={setFavorites} />
-        <div className="files-columns" ref={columns}>
-          {crumbs.map((crumb, index) => (
-            <Column
-              key={crumb.path}
-              path={crumb.path}
-              name={crumb.name}
-              answer={answers.get(crumb.path)}
-              // Only the open path is the person's choice: a parent that is not a folder shows nothing.
-              isLast={index === crumbs.length - 1}
-              openChild={crumbs[index + 1]?.name ?? null}
-              smart={smart}
-              large={large}
-              onLarge={setLarge}
-              onSaved={onSaved}
-              onTryAgain={() => setAttempt((count) => count + 1)}
+        <div className="files-search">
+          <label className="search-field">
+            <Icon name="search" />
+            <input
+              type="search"
+              aria-label="Search the vault"
+              placeholder="Search the vault"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
             />
-          ))}
-          {!fileIsOpen && (
-            <div className="files-pane files-placeholder" aria-hidden="true">
-              <Icon name="file" />
-              Open a file to see it here.
-            </div>
-          )}
+          </label>
+          <label className="files-search-inside">
+            <input type="checkbox" checked={inside} onChange={(event) => setInside(event.target.checked)} />
+            Search inside files
+          </label>
         </div>
+        {query.trim() !== "" ? (
+          <SearchResults query={query.trim()} inside={inside} smart={smart} />
+        ) : (
+          <>
+            <FavoriteBar favorites={favorites} openPath={shownPath} smart={smart} onChange={setFavorites} />
+            <div className="files-columns" ref={columns}>
+              {crumbs.map((crumb, index) => (
+                <Column
+                  key={crumb.path}
+                  path={crumb.path}
+                  name={crumb.name}
+                  answer={answers.get(crumb.path)}
+                  // Only the open path is the person's choice: a parent that is not a folder shows nothing.
+                  isLast={index === crumbs.length - 1}
+                  openChild={crumbs[index + 1]?.name ?? null}
+                  smart={smart}
+                  large={large}
+                  onLarge={setLarge}
+                  onSaved={onSaved}
+                  onTryAgain={() => setAttempt((count) => count + 1)}
+                />
+              ))}
+              {!fileIsOpen && (
+                <div className="files-pane files-placeholder" aria-hidden="true">
+                  <Icon name="file" />
+                  Open a file to see it here.
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+type Search =
+  | { readonly state: "waiting" }
+  | { readonly state: "shown"; readonly result: SearchResult }
+  | { readonly state: "failed"; readonly reason: string };
+
+/** The wait after the last key, so a search runs once per word and not once per letter. */
+const searchPause = 300;
+
+/** The matches of the search, each a link that opens the file or the folder. */
+function SearchResults({
+  query,
+  inside,
+  smart,
+}: {
+  readonly query: string;
+  readonly inside: boolean;
+  readonly smart: boolean;
+}): ReactElement {
+  const [search, setSearch] = useState<Search>({ state: "waiting" });
+  useEffect(() => {
+    setSearch({ state: "waiting" });
+    // A slow answer for an old query never replaces the answer for the new one.
+    let current = true;
+    const timer = setTimeout(() => {
+      api.searchFiles(query, inside).then(
+        (result) => current && setSearch({ state: "shown", result }),
+        (error: unknown) =>
+          current && setSearch({ state: "failed", reason: error instanceof Error ? error.message : String(error) }),
+      );
+    }, searchPause);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [query, inside]);
+  if (search.state === "waiting")
+    return (
+      <div className="files-pane">
+        <ListSkeleton label="Searching the vault…" rows={6} />
+      </div>
+    );
+  if (search.state === "failed")
+    return (
+      <div role="alert" className="callout danger">
+        {search.reason}
+      </div>
+    );
+  const { matches, complete } = search.result;
+  return (
+    <div className="files-pane files-search-results">
+      {matches.length === 0 ? (
+        <div className="empty">
+          {inside
+            ? "No file or folder holds this text."
+            : "No file or folder has this name. Try a search inside files."}
+        </div>
+      ) : (
+        <ul className="files-list" aria-label="Search results">
+          {matches.map((match) => {
+            const shown = shownNameOf(match.name, smart, { title: match.title, badge: match.kind === "file" });
+            const spoken = shownNameOf(match.name, smart, { title: match.title }).name;
+            const folder = parentOf(match.path) ?? "";
+            return (
+              <li key={match.path}>
+                <a className="files-entry" href={fileAddressOf(match.path)} data-tooltip={match.path}>
+                  {match.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={match.name} />}
+                  <span className="files-search-match">
+                    <span className="files-search-name">
+                      <FileName shown={shown} spoken={spoken} />
+                    </span>
+                    {folder !== "" && <span className="files-search-path">{folder}</span>}
+                    {match.line !== undefined && (
+                      <span className="files-search-line">
+                        <span className="visually-hidden">Line {match.line.number}: </span>
+                        {match.line.text}
+                      </span>
+                    )}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!complete && (
+        <div role="status" className="callout">
+          Eva stopped at the first matches. Type more words to find fewer.
+        </div>
+      )}
     </div>
   );
 }

@@ -502,7 +502,8 @@ describe("chats", () => {
 
   test("an update is handled once: the offset moves on and is kept on disk", async () => {
     const bot = createBot();
-    telegram.sendText(owner, "/status");
+    // /help, not /status: /status starts each tool for its version, which can outlast the wait on Windows.
+    telegram.sendText(owner, "/help");
     await settle(bot, () => telegram.sentTexts().length >= 1);
     await bot.pollOnce();
     await bot.pollOnce();

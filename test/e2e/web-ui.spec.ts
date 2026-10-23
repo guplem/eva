@@ -208,6 +208,18 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
       .click();
   }
   await expect(start).toContainText("Fork 1 · 2 of 2");
+
+  // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
+  if (test.info().project.name !== "phone") {
+    await page
+      .getByRole("navigation", { name: "Branch map" })
+      .getByRole("button", { name: /Fork 1 · answer 1/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Delete fork" }).click();
+    await page.getByRole("dialog", { name: "Delete Fork 1?" }).getByRole("button", { name: "Delete" }).click();
+    await expect(start).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Branch map" })).toHaveCount(0);
+  }
 });
 
 test("a fork continues under its answer, in the same column, and the switcher goes back", async ({ page }) => {

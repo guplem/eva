@@ -163,6 +163,11 @@ describe("branchMap", () => {
     expect(map.rows[4]?.lines).toContainEqual({ lane: 1, up: "hot", down: "none" });
   });
 
+  test("only the first row of each fork is its head, so its menu can delete it", () => {
+    const map = branchMap(tree, "fork1");
+    expect(map.rows.map((row) => row.forkHead)).toEqual([false, false, false, true, false, true]);
+  });
+
   test("a fork from the start bends from the first row", () => {
     const map = branchMap(tree, "main");
     expect(map.rows[0]?.bends).toContainEqual({ to: 2, hot: false });

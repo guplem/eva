@@ -8,6 +8,8 @@ import {
   engineLabel,
   foldSteps,
   liveFace,
+  missingDetail,
+  stepState,
   modelLabel,
   shownPending,
   stepIcon,
@@ -153,5 +155,23 @@ describe("composerPlaceholder", () => {
 
   test("addresses the project in a project chat, because there the harness answers, not the assistant", () => {
     expect(composerPlaceholder("Example App")).toBe("Message Example App");
+  });
+});
+
+describe("step dialog", () => {
+  const tool: TurnStep = { kind: "tool", text: "Read x", isError: false, id: "t1", input: "{}" };
+
+  test("a live tool with no output yet still runs, and a failed step says so in a word", () => {
+    expect(stepState(tool, true)).toBe("Running");
+    expect(stepState({ ...tool, output: "x" }, true)).toBe("Done");
+    expect(stepState(tool, false)).toBe("Done");
+    expect(stepState({ ...tool, isError: true }, true)).toBe("Failed");
+    expect(stepState({ kind: "message", text: "Hi", isError: false, id: "m1" }, true)).toBe("Done");
+  });
+
+  test("a missing part says why it is missing", () => {
+    expect(missingDetail("output", true)).toBe("The tool still runs.");
+    expect(missingDetail("output", false)).toBe("Eva kept no output for this step.");
+    expect(missingDetail("input", true)).toBe("Eva kept no input for this step.");
   });
 });

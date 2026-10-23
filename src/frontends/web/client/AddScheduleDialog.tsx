@@ -1,37 +1,31 @@
-/** The "Add schedule" form, in a dialog on a computer and a bottom sheet on a phone. */
+/**
+ * The "Add schedule" form, in a dialog on a computer and a bottom sheet on a phone. With a
+ * `schedule`, the same form edits that schedule.
+ */
 import { useEffect, useState, type ReactElement } from "react";
+import type { Schedule } from "../../../core/schedules/schedule-definitions.ts";
 import { api } from "./api.ts";
-import { intervalUnits, nextHourSlot } from "./schedule-words.ts";
+import { emptyScheduleForm, entryOf, fieldsOf, formOf, weekDays, type Unit } from "./schedule-form.ts";
+import { intervalUnits } from "./schedule-words.ts";
 import { ChoiceChips } from "./SettingsParts.tsx";
-
-const emptyForm = { id: "", name: "", at: "", text: "", prompt: "", count: "1", from: "" };
-
-type Repeat = "days" | "every";
-type Unit = (typeof intervalUnits)[number][0];
-
-/** The day codes of `.eva/schedules.json`, from Monday, with the names that the buttons show. */
-const days = [
-  ["mon", "Mon"],
-  ["tue", "Tue"],
-  ["wed", "Wed"],
-  ["thu", "Thu"],
-  ["fri", "Fri"],
-  ["sat", "Sat"],
-  ["sun", "Sun"],
-] as const;
 
 /** `now` is the instance's wall clock, so the first run that the form offers is in the instance's time zone. */
 export function AddScheduleDialog(props: {
   now: string | null;
+  schedule?: Schedule;
   onClose: () => void;
-  onSaved: () => void;
+  /** Gets the saved schedule: the file may have changed while the form was open. */
+  onSaved: (saved: Schedule) => void;
 }): ReactElement {
-  const [form, setForm] = useState({ ...emptyForm, from: props.now === null ? "" : nextHourSlot(props.now) });
-  const [picked, setPicked] = useState<readonly string[]>([]);
-  const [repeat, setRepeat] = useState<Repeat>("days");
-  const [unit, setUnit] = useState<Unit>("d");
+  const original = props.schedule ?? null;
+  const [form, setForm] = useState(() =>
+    original === null ? emptyScheduleForm(props.now) : formOf(original, props.now),
+  );
   const [error, setError] = useState<string | null>(null);
   const { onClose } = props;
+  const title = original === null ? "Add schedule" : "Edit schedule";
+  const picked = form.days;
+  const repeat = form.repeat;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -42,31 +36,22 @@ export function AddScheduleDialog(props: {
   }, [onClose]);
 
   const save = async (): Promise<void> => {
-    const entry: Record<string, unknown> = { id: form.id.trim(), name: form.name.trim() };
-    if (repeat === "every") {
-      entry["every"] = `${form.count.trim()}${unit}`;
-      entry["from"] = form.from;
-    } else {
-      entry["at"] = form.at.trim();
-      // No day picked means every day, as a schedule without days.
-      if (picked.length > 0) entry["days"] = days.map(([code]) => code).filter((code) => picked.includes(code));
-    }
-    if (form.text.trim() !== "") entry["text"] = form.text.trim();
-    if (form.prompt.trim() !== "") entry["prompt"] = form.prompt.trim();
     try {
-      await api.saveSchedule(entry);
-      props.onSaved();
+      props.onSaved(
+        original === null ? await api.saveSchedule(entryOf(form)) : await api.editSchedule(original.id, fieldsOf(form)),
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
 
-  const field = (name: "id" | "name" | "at" | "text", label: string, placeholder: string): ReactElement => (
+  const field = (name: "id" | "name" | "at", label: string, placeholder: string, readOnly = false): ReactElement => (
     <label>
       {label}
       <input
         value={form[name]}
         placeholder={placeholder}
+        readOnly={readOnly}
         onChange={(event) => setForm({ ...form, [name]: event.target.value })}
       />
     </label>
@@ -75,8 +60,8 @@ export function AddScheduleDialog(props: {
   return (
     // A tap beside the sheet does not close it, so a slip never loses a half-written schedule.
     <div className="dialog-backdrop schedule-backdrop">
-      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label="Add schedule">
-        <h2>Add schedule</h2>
+      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <h2>{title}</h2>
         <form
           className="schedule-form"
           onSubmit={(event) => {
@@ -84,7 +69,10 @@ export function AddScheduleDialog(props: {
             void save();
           }}
         >
-          {field("id", "Id (never change it later)", "morning")}
+          {/* The state of a schedule is keyed by its id (lesson 65), so an edit keeps it. */}
+          {original === null
+            ? field("id", "Id (never change it later)", "morning")
+            : field("id", "Id (it cannot change)", "", true)}
           {field("name", "Name", "Morning")}
           <ChoiceChips
             label="Repeat"
@@ -93,7 +81,7 @@ export function AddScheduleDialog(props: {
               { value: "days", label: "On days" },
               { value: "every", label: "At an interval" },
             ]}
-            onChange={setRepeat}
+            onChange={(value) => setForm({ ...form, repeat: value })}
           />
           {repeat === "days" && (
             <>
@@ -101,13 +89,16 @@ export function AddScheduleDialog(props: {
               <fieldset>
                 <legend>Days (none for every day)</legend>
                 <div className="schedule-days">
-                  {days.map(([code, name]) => (
+                  {weekDays.map(([code, name]) => (
                     <button
                       key={code}
                       type="button"
                       aria-pressed={picked.includes(code)}
                       onClick={() =>
-                        setPicked(picked.includes(code) ? picked.filter((day) => day !== code) : [...picked, code])
+                        setForm({
+                          ...form,
+                          days: picked.includes(code) ? picked.filter((day) => day !== code) : [...picked, code],
+                        })
                       }
                     >
                       {name}
@@ -133,7 +124,10 @@ export function AddScheduleDialog(props: {
                 </label>
                 <label>
                   Unit
-                  <select value={unit} onChange={(event) => setUnit(event.target.value as Unit)}>
+                  <select
+                    value={form.unit}
+                    onChange={(event) => setForm({ ...form, unit: event.target.value as Unit })}
+                  >
                     {intervalUnits.map(([code, , plural]) => (
                       <option key={code} value={code}>
                         {plural}
@@ -152,7 +146,16 @@ export function AddScheduleDialog(props: {
               </label>
             </>
           )}
-          {field("text", "Fixed text", "Drink water.")}
+          {/* A text in the file may hold line breaks, and a one-line input would drop them. */}
+          <label>
+            Fixed text
+            <textarea
+              rows={2}
+              value={form.text}
+              placeholder="Drink water."
+              onChange={(event) => setForm({ ...form, text: event.target.value })}
+            />
+          </label>
           <label>
             Prompt for Eva
             <textarea
@@ -167,7 +170,11 @@ export function AddScheduleDialog(props: {
               {error}
             </div>
           )}
-          <p className="schedule-small">Eva asks you to confirm each new schedule before its first run.</p>
+          <p className="schedule-small">
+            {original === null
+              ? "Eva asks you to confirm each new schedule before its first run."
+              : "Eva asks you to confirm each change before the next run."}
+          </p>
           <div className="schedule-sheet-actions">
             <button type="submit" className="primary">
               Save schedule

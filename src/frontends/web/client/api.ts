@@ -194,6 +194,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
+  /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
+  stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
   /** With no engine, Eva starts the chat on her default engine. */
   newAssistantChat: (model: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
     request("POST", "/api/sessions", {
@@ -377,7 +380,10 @@ export const api = {
   finishGitHubLogin: (): Promise<{ restartNeeded: boolean }> => request("POST", "/api/github/login/finish", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
-  saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
+  saveSchedule: (entry: Record<string, unknown>): Promise<ScheduleView["schedule"]> =>
+    request("POST", "/api/schedules", entry),
+  editSchedule: (scheduleId: string, fields: Record<string, unknown>): Promise<ScheduleView["schedule"]> =>
+    request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { fields }),
   setScheduleEnabled: (scheduleId: string, enabled: boolean): Promise<void> =>
     request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>

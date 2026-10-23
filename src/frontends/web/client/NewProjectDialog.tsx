@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import { api, type NewProjectResult, type ProjectDetails, type PublicSettings } from "./api.ts";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { stepProblems, unavailableSteps } from "./new-project-form.ts";
 import { splitWords, statusChoices, statusOf } from "./ProjectDetailsEditor.tsx";
 
@@ -174,7 +174,8 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps):
               </div>
             )}
             <div className="schedule-sheet-actions">
-              <button type="submit" className="primary" disabled={busy || name.trim() === ""}>
+              <button type="submit" className="primary" disabled={busy || name.trim() === ""} aria-busy={busy}>
+                {busy && <ButtonSpinner />}
                 {busy ? "Creating…" : "Create project"}
               </button>
               <span className="spacer" />

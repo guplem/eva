@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, type ReactElement } from "react";
 import type { CloneDetails } from "./api.ts";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { countOf } from "./project-format.ts";
 
 interface PushCloneDialogProps {
@@ -80,7 +80,8 @@ export function PushCloneDialog({ clone, onClose, onPush }: PushCloneDialogProps
             </div>
           )}
           <div className="schedule-sheet-actions">
-            <button type="submit" className="primary" disabled={busy}>
+            <button type="submit" className="primary" disabled={busy} aria-busy={busy}>
+              {busy && <ButtonSpinner />}
               {busy ? "Pushing…" : changes > 0 ? "Commit and push" : "Push"}
             </button>
             <span className="spacer" />

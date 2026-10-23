@@ -22,6 +22,7 @@ import {
   scheduleFieldOrder,
 } from "../src/core/schedules/schedule-definitions.ts";
 import { sessionSchema, storeSchema } from "../src/core/sessions/session-store.ts";
+import { stepDetailsFileSchema } from "../src/core/sessions/step-details-store.ts";
 import { configSchema, secretsSchema } from "../src/core/settings/home.ts";
 import { isSharedSettingKey } from "../src/core/settings/settings.ts";
 import { commitChange } from "../src/core/updates/release-version.ts";
@@ -131,6 +132,7 @@ export function currentNames(): string[] {
     ...[...schemaNames(storeSchema), ...schemaNames(sessionSchema).map((name) => `sessions[].${name}`)].map(
       (name) => `machine state/sessions.json ${name}`,
     ),
+    ...schemaNames(stepDetailsFileSchema).map((name) => `machine state/step-details/*.json ${name}`),
     ...["devices", ...deviceFields.map((field) => `devices[].${field}`)].map(
       (name) => `machine state/devices.json ${name}`,
     ),

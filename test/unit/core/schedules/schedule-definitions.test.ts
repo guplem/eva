@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   announcedFields,
   changedFields,
+  editScheduleDefinition,
   parseScheduleEntry,
   readScheduleDefinitions,
   removeScheduleDefinition,
@@ -209,6 +210,56 @@ describe("saving and removing", () => {
     file = JSON.parse(readFileSync(path, "utf8")) as { schedules: unknown[] };
     expect(file.schedules[0]).toEqual({ ...morning, extra: 1 });
     expect(setScheduleEnabled(path, "nobody", false)).toBe(false);
+  });
+
+  test("editScheduleDefinition changes the form's keys and keeps every other key", () => {
+    writeFile({
+      version: 1,
+      schedules: [
+        { ...morning, file: "Notes/daily.md", model: "sonnet", enabled: false, extra: 1 },
+        { ...morning, id: "evening" },
+      ],
+    });
+    const edited = editScheduleDefinition(path, "morning", { name: "Early", at: "06:00", days: ["mon"] });
+    expect(edited?.at).toBe("06:00");
+    const file = JSON.parse(readFileSync(path, "utf8")) as { schedules: unknown[] };
+    expect(file.schedules).toEqual([
+      {
+        id: "morning",
+        name: "Early",
+        at: "06:00",
+        file: "Notes/daily.md",
+        model: "sonnet",
+        enabled: false,
+        extra: 1,
+        days: ["mon"],
+      },
+      { ...morning, id: "evening" },
+    ]);
+  });
+
+  test("editScheduleDefinition drops a form key that the edit leaves out, such as the old repeat", () => {
+    writeFile({ version: 1, schedules: [{ ...morning, days: ["mon"], text: "Hi." }] });
+    editScheduleDefinition(path, "morning", { name: "Morning", every: "1d", from: "2026-10-22T07:30", prompt: "P." });
+    const file = JSON.parse(readFileSync(path, "utf8")) as { schedules: unknown[] };
+    expect(file.schedules).toEqual([
+      { id: "morning", name: "Morning", every: "1d", from: "2026-10-22T07:30", prompt: "P." },
+    ]);
+  });
+
+  test("editScheduleDefinition keeps the id, refuses an invalid result, and knows no other id", () => {
+    writeFile({ version: 1, schedules: [morning] });
+    editScheduleDefinition(path, "morning", { ...morning, id: "other", name: "Renamed" });
+    expect(readScheduleDefinitions(path).schedules.map((schedule) => schedule.id)).toEqual(["morning"]);
+    let caught: unknown;
+    try {
+      editScheduleDefinition(path, "morning", { name: "Morning", at: "7" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isEvaError(caught, "schedule_invalid")).toBe(true);
+    expect(readScheduleDefinitions(path).schedules[0]?.name).toBe("Renamed");
+    expect(editScheduleDefinition(path, "nobody", morning)).toBeNull();
   });
 
   test("a broken file is never replaced by a guess", () => {

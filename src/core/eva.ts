@@ -120,6 +120,7 @@ import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
+import { StepDetailsStore } from "./sessions/step-details-store.ts";
 import {
   type ConflictChoice,
   type ConflictResolution,
@@ -579,6 +580,7 @@ export class Eva {
         now: options.now,
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       }),
+      stepDetails: new StepDetailsStore(options.paths.stepDetails),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",

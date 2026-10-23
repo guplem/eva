@@ -231,7 +231,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, or every few hours, days or weeks from a first run. Eva keeps them in `.eva/schedules.json` in the notebook, and only the hub runs them. When a conversation adds or changes a schedule, Eva asks you first.
   - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
   - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
-  - The Schedules page shows what runs today, when each schedule repeats, and how its last run went.
+  - The Schedules page shows what runs today, when each schedule repeats, and how its last run went. Tap the pen on a schedule to change it: its history stays.
 - **Eva's rules.** Your rules for Eva set her personality, how she answers and how she stores what she learns. Read and change them in **Settings** > **Eva's rules**, or ask Eva to change them. They live in `.eva/assistant.md` in the notebook.
   - They apply to each chat with Eva, in Telegram, on the web page and from a schedule, from the next new chat. A project chat never uses them: it uses the harness's own prompt and the project's `AGENTS.md` or `CLAUDE.md`.
   - Eva's built-in rules come first and say how Eva works, such as how she gives work to a project. The page shows them, but only an update of Eva changes them. Where the two disagree, your rules win.

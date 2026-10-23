@@ -48,6 +48,21 @@ export function stepParts(step: TurnStep): { action: string; detail: string } {
   return { action: name.split("__").at(-1) ?? name, detail };
 }
 
+/** Only a tool or a command has an input and an output for the step dialog. */
+export function hasToolDetails(step: TurnStep): boolean {
+  return step.kind === "tool" || step.kind === "command";
+}
+
+/** The state word of the step dialog. A word, so a failed step shows by more than colour. */
+export function stepState(step: TurnStep, live: boolean): "Running" | "Done" | "Failed" {
+  if (step.isError) return "Failed";
+  return live && hasToolDetails(step) && step.output === undefined ? "Running" : "Done";
+}
+
+export function missingDetail(part: "input" | "output", live: boolean): string {
+  return part === "output" && live ? "The tool still runs." : `Eva kept no ${part} for this step.`;
+}
+
 /** "8 s", "2 min 5 s": the time of a running turn. */
 export function elapsedText(ms: number): string {
   const seconds = Math.floor(ms / 1000);

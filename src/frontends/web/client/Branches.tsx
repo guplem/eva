@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from "rea
 import type { SessionRecord } from "./api.ts";
 import {
   branchMap,
+  branchNames,
   branchStates,
   firstShownBranch,
   pickedBranch,
@@ -14,10 +15,11 @@ import {
   type MapLine,
   type MapRow,
 } from "./branch-path.ts";
-import { useIsPhone } from "./ChatHeader.tsx";
+import { DeleteQuestion, useIsPhone } from "./ChatHeader.tsx";
 import { Dialog } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
+import { useContextMenu } from "./Menu.tsx";
 
 /** The branch that the page shows, and the turn to bring into view after a pick. */
 export interface ShownBranch {
@@ -178,31 +180,79 @@ export function BranchMap({
   const map = branchMap(tree, shownId);
   const lastRows = new Map(map.rows.map((row) => [row.sessionId, row.key]));
   const width = laneX(Math.max(map.lanes - 1, 0)) + 9;
+  const names = branchNames(tree);
   return (
     <ol className="branch-map" aria-label="Branches">
-      {map.rows.map((row) => {
-        const state = lastRows.get(row.sessionId) === row.key ? states.get(row.sessionId) : undefined;
-        return (
-          <li key={row.key}>
-            <button
-              className={row.onPath ? "branch-row on-path" : "branch-row"}
-              aria-current={row.current ? "true" : undefined}
-              data-tooltip={`${row.text} · ${row.label}`}
-              onClick={() => onPick(row)}
-            >
-              <MapLanes row={row} width={width} />
-              <span className="branch-row-text">
-                <span className="branch-row-message">{row.text}</span>
-                <span className="branch-row-label">{row.label}</span>
-              </span>
-              {state !== undefined && (
-                <span className={`pill dot ${state === "waiting" ? "warn" : "idle"}`}>{stateTags[state]}</span>
-              )}
-            </button>
-          </li>
-        );
-      })}
+      {map.rows.map((row) => (
+        <BranchRow
+          key={row.key}
+          row={row}
+          width={width}
+          fork={row.forkHead ? tree.find((session) => session.id === row.sessionId) : undefined}
+          forkName={names.get(row.sessionId) ?? "the fork"}
+          state={lastRows.get(row.sessionId) === row.key ? states.get(row.sessionId) : undefined}
+          onPick={onPick}
+        />
+      ))}
     </ol>
+  );
+}
+
+/** One row of the map. The first row of a fork has a menu that deletes the fork. */
+function BranchRow({
+  row,
+  width,
+  fork,
+  forkName,
+  state,
+  onPick,
+}: {
+  readonly row: MapRow;
+  readonly width: number;
+  readonly fork: SessionRecord | undefined;
+  readonly forkName: string;
+  readonly state: BranchState | undefined;
+  readonly onPick: (row: MapRow) => void;
+}): ReactElement {
+  const [deleting, setDeleting] = useState(false);
+  const { props, menu } = useContextMenu(
+    [{ label: "Delete fork", icon: "trash", danger: true, onChoose: () => setDeleting(true) }],
+    `Actions of ${forkName}`,
+  );
+  // Only a fork head blocks the browser's menu: another row has no Eva action.
+  const menuProps = fork === undefined ? {} : props;
+  return (
+    <li>
+      {menu}
+      {deleting && fork !== undefined && (
+        <DeleteQuestion
+          chat={fork}
+          fork={forkName}
+          onKeep={() => setDeleting(false)}
+          // The session_deleted event reloads the tree, and the page then shows another branch.
+          onChanged={() => {
+            setDeleting(false);
+            return Promise.resolve();
+          }}
+        />
+      )}
+      <button
+        className={row.onPath ? "branch-row on-path" : "branch-row"}
+        aria-current={row.current ? "true" : undefined}
+        data-tooltip={`${row.text} · ${row.label}`}
+        onClick={() => onPick(row)}
+        {...menuProps}
+      >
+        <MapLanes row={row} width={width} />
+        <span className="branch-row-text">
+          <span className="branch-row-message">{row.text}</span>
+          <span className="branch-row-label">{row.label}</span>
+        </span>
+        {state !== undefined && (
+          <span className={`pill dot ${state === "waiting" ? "warn" : "idle"}`}>{stateTags[state]}</span>
+        )}
+      </button>
+    </li>
   );
 }
 

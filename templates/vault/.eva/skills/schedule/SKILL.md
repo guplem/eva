@@ -53,7 +53,7 @@ Keep every other entry and key as it is. Write the file as JSON with two spaces 
 
 Eva asks the person to approve each change to this file. If they deny it, tell them that nothing changed, and stop.
 
-If the write fails for another reason, do not try a second way, such as a shell command. Tell the person the reason that the tool gave. Then tell them to add the schedule on the **Schedules** page of the web app, and give each field that you would have written.
+If the write fails for another reason, do not try a second way, such as a shell command. Tell the person the reason that the tool gave. Then tell them to add or edit the schedule on the **Schedules** page of the web app, and give each field that you would have written.
 
 ## 3. Check what you wrote
 

@@ -280,6 +280,22 @@ describe("Scheduler", () => {
     expect(events.filter((event) => event.kind === "schedule_card")).toHaveLength(2);
   });
 
+  test("an edit needs a card that names the change, and an edit of a paused schedule keeps it off", async () => {
+    writeSchedules([morning, { ...morning, id: "evening", enabled: false }]);
+    clock = new Date("2026-07-01T05:20:00Z");
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    expect(scheduler.edit("morning", { name: "Morning", at: "08:00", prompt: "Plan my day." })?.at).toBe("08:00");
+    expect(scheduler.edit("evening", { name: "Evening", at: "20:00", text: "Rest." })?.enabled).toBe(false);
+    expect(scheduler.edit("nobody", { name: "Nobody", at: "20:00", text: "Rest." })).toBeNull();
+    await scheduler.tick();
+    const cards = events.filter((event) => event.kind === "schedule_card");
+    expect(cards.map((card) => [card.scheduleId, card.changed])).toEqual([
+      ["morning", []],
+      ["morning", ["at", "text"]],
+    ]);
+  });
+
   test("a schedule that is off never fires, and turning it off needs no card", async () => {
     writeSchedules([morning]);
     clock = new Date("2026-07-01T05:20:00Z");

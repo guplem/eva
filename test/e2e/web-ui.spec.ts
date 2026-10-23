@@ -208,6 +208,18 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
       .click();
   }
   await expect(start).toContainText("Fork 1 · 2 of 2");
+
+  // A right click on the head of a fork deletes it. The chat then has no fork, so the switcher goes.
+  if (test.info().project.name !== "phone") {
+    await page
+      .getByRole("navigation", { name: "Branch map" })
+      .getByRole("button", { name: /Fork 1 · answer 1/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Delete fork" }).click();
+    await page.getByRole("dialog", { name: "Delete Fork 1?" }).getByRole("button", { name: "Delete" }).click();
+    await expect(start).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Branch map" })).toHaveCount(0);
+  }
 });
 
 test("a fork continues under its answer, in the same column, and the switcher goes back", async ({ page }) => {
@@ -2011,6 +2023,45 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await page.request.delete(`/api/schedules/${id}`);
 });
 
+test("Schedules page: edit a schedule in the same form, and keep the keys that the form does not show (#467)", async ({
+  page,
+}, testInfo) => {
+  const id = `read-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  const name = `Read ${id}`;
+  await logIn(page);
+  await page.request.post("/api/schedules", {
+    data: {
+      id,
+      name,
+      at: "21:00",
+      days: ["mon"],
+      text: "Read a chapter.\nThen sleep.",
+      model: "sonnet",
+      enabled: false,
+    },
+  });
+  await page.getByRole("button", { name: "Schedules" }).click();
+  const row = page.getByRole("listitem", { name });
+  await row.getByRole("button", { name: `Edit ${name}` }).click();
+  const form = page.getByRole("dialog", { name: "Edit schedule" });
+  await expect(form.getByLabel(/^Id/)).toHaveValue(id);
+  await expect(form.getByLabel(/^Id/)).not.toBeEditable();
+  await expect(form.getByLabel("Time (HH:MM)")).toHaveValue("21:00");
+  await expect(form.getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByLabel("Fixed text")).toHaveValue("Read a chapter.\nThen sleep.");
+  await form.getByLabel("Time (HH:MM)").fill("22:15");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(`${name} stays off`);
+  await expect(row).toContainText("Mondays at 22:15 · off");
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string; text: string | null; model: string | null; enabled: boolean } }[];
+  };
+  const saved = listed.schedules.find((view) => view.schedule.id === id)?.schedule;
+  expect(saved).toMatchObject({ text: "Read a chapter.\nThen sleep.", model: "sonnet", enabled: false });
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("the main navigation opens each destination at its own address, and the back button returns", async ({ page }) => {
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });
@@ -2349,6 +2400,34 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(steps.getByRole("listitem")).toHaveText([/Task\s+Search the notes/, /Grep\s+notes/, /Command\s+ls/]);
   await answer.getByRole("button", { name: "Hide 3 steps" }).click();
   await expect(steps).toHaveCount(0);
+});
+
+test("a tap on a stored step opens its whole input and output, each in a fold", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await answer.getByRole("button", { name: "Show 3 steps" }).click();
+  const step = answer.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Command\s+ls/ });
+  if (test.info().project.name === "phone") {
+    const box = await step.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  await step.click();
+  // A stored answer keeps no details in the session list, so the dialog fetches them.
+  const dialog = page.getByRole("dialog", { name: "Step: Command" });
+  await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  await expect(dialog.locator(".step-detail pre")).toHaveText(['{\n  "command": "ls"\n}', "Journal\nNotes"]);
+  // The output opens at once. The input waits in its fold.
+  await expect(dialog.locator(".step-detail").nth(0)).not.toHaveAttribute("open");
+  await expect(dialog.locator(".step-detail").nth(1)).toHaveAttribute("open");
+  await dialog.getByText("Output").click();
+  await expect(dialog.locator(".step-detail").nth(1)).not.toHaveAttribute("open");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("the chat panel shows the context ring, the engine and the model, and a phone opens it from the title or the menu", async ({

@@ -13,7 +13,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
 import { SaveButton } from "./SaveButton.tsx";
@@ -188,7 +188,13 @@ export function CheckRow({ name, label }: { name: string; label: string }): Reac
   return (
     <div className="check-row">
       <span className="check-label">{label}</span>
-      <button aria-label={label} disabled={result === "running"} onClick={() => void run()}>
+      <button
+        aria-label={label}
+        disabled={result === "running"}
+        aria-busy={result === "running"}
+        onClick={() => void run()}
+      >
+        {result === "running" && <ButtonSpinner />}
         {result === "running" ? "Testing…" : "Test"}
       </button>
       {result === "running" && (

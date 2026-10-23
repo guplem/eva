@@ -255,6 +255,7 @@ function Branch({
             <EvaMessage face={stateFaces.idle}>
               <AnswerBody
                 steps={turn.steps}
+                sessionId={owner.id}
                 omitted={turn.omittedSteps}
                 wholeAnswer={turn.answerText}
                 summary={activityOf(turn)}
@@ -425,6 +426,7 @@ function EvaMessage({
  */
 function AnswerBody({
   steps,
+  sessionId,
   omitted,
   wholeAnswer,
   summary,
@@ -434,6 +436,8 @@ function AnswerBody({
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted: number;
+  /** The chat of a stored answer, so a step's dialog can fetch its details. */
+  readonly sessionId?: string;
   /** Every message in full. A step keeps only 200 characters, so this is the way to read an earlier message. */
   readonly wholeAnswer: string;
   readonly summary?: string;
@@ -449,7 +453,13 @@ function AnswerBody({
   const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
   return (
     <>
-      <StepFold steps={listed} omitted={omitted} live={live} {...(summary === undefined ? {} : { summary })} />
+      <StepFold
+        steps={listed}
+        omitted={omitted}
+        live={live}
+        {...(summary === undefined ? {} : { summary })}
+        {...(sessionId === undefined ? {} : { sessionId })}
+      />
       {body !== "" && (
         // toWebHtml escapes all text and adds only its own tags, so the HTML is safe.
         <div

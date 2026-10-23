@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type GitHubRepository, type VaultSetupResult } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { ChoiceChips, errorText, SecretField, type SettingsContext } from "./SettingsParts.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
 type Path = "existing" | "new";
 
@@ -160,7 +160,13 @@ function PickRepository({
         />
       </label>
       <div className="button-row">
-        <button className="primary" disabled={repository === "" || busy !== null} onClick={() => onClone(repository)}>
+        <button
+          className="primary"
+          disabled={repository === "" || busy !== null}
+          aria-busy={busy === "clone"}
+          onClick={() => onClone(repository)}
+        >
+          {busy === "clone" && <ButtonSpinner />}
           {busy === "clone" ? "Cloning…" : "Clone this vault"}
         </button>
       </div>
@@ -222,7 +228,13 @@ function NewVault({
         </label>
       )}
       <div className="button-row">
-        <button className="primary" disabled={busy !== null || (hasToken && repository.trim() === "")} onClick={create}>
+        <button
+          className="primary"
+          disabled={busy !== null || (hasToken && repository.trim() === "")}
+          aria-busy={busy === "create"}
+          onClick={create}
+        >
+          {busy === "create" && <ButtonSpinner />}
           {busy === "create" ? "Creating…" : "Create a new vault"}
         </button>
       </div>
@@ -268,7 +280,13 @@ export function VaultPush({ context }: { readonly context: SettingsContext }): R
           <span className="field-label">Name of the new private repository</span>
           <input autoComplete="off" value={repository} onChange={(event) => setRepository(event.target.value)} />
         </label>
-        <button className="primary" disabled={pushing || repository.trim() === ""} onClick={() => void push()}>
+        <button
+          className="primary"
+          disabled={pushing || repository.trim() === ""}
+          aria-busy={pushing}
+          onClick={() => void push()}
+        >
+          {pushing && <ButtonSpinner />}
           {pushing ? "Pushing…" : "Push the vault"}
         </button>
       </div>

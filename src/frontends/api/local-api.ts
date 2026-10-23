@@ -164,7 +164,11 @@ const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
 const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
 const pushInViewSchema = pushEndpointSchema.extend({ pageId: z.string().min(1).max(100), inView: z.boolean() });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
-const scheduleEnabledSchema = z.object({ enabled: z.boolean() });
+/** A PATCH turns a schedule off or on, or edits the fields that the schedule form shows. */
+const scheduleChangeSchema = z.union([
+  z.strictObject({ enabled: z.boolean() }),
+  z.strictObject({ fields: scheduleEntrySchema }),
+]);
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -517,6 +521,18 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       ...(input.clone === undefined ? {} : { cloneName: input.clone }),
     });
     return json(session, 201);
+  }
+  if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === "steps" &&
+    parts[4] !== undefined &&
+    parts[5] === undefined
+  ) {
+    const detail = eva.sessions.stepDetail(decodeURIComponent(parts[2]), decodeURIComponent(parts[4]));
+    return json({ input: detail?.input ?? null, output: detail?.output ?? null });
   }
   if (
     method === "DELETE" &&
@@ -893,7 +909,7 @@ async function templatePartsRoute(request: Request, method: string, eva: Eva): P
   return json({ parts: eva.chooseTemplateVersion(path, choice), canChoose: true });
 }
 
-/** The schedules of `.eva/schedules.json`: list, add or replace, turn off or on, remove. */
+/** The schedules of `.eva/schedules.json`: list, add or replace, edit, turn off or on, remove. */
 async function schedulesRoute(
   request: Request,
   method: string,
@@ -907,8 +923,12 @@ async function schedulesRoute(
     return json(schedules.save(scheduleEntrySchema.parse(await request.json())), 201);
   }
   if (method === "PATCH" && scheduleId !== undefined) {
-    const { enabled } = scheduleEnabledSchema.parse(await request.json());
-    return schedules.setEnabled(decodeURIComponent(scheduleId), enabled)
+    const change = scheduleChangeSchema.parse(await request.json());
+    if ("fields" in change) {
+      const edited = schedules.edit(decodeURIComponent(scheduleId), change.fields);
+      return edited === null ? json({ error: "No such schedule." }, 404) : json(edited);
+    }
+    return schedules.setEnabled(decodeURIComponent(scheduleId), change.enabled)
       ? new Response(null, { status: 204 })
       : json({ error: "No such schedule." }, 404);
   }

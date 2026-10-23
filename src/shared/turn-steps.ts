@@ -15,6 +15,20 @@ export interface TurnStep {
   readonly isError: boolean;
   /** The message, tool use or task id, so a later event can find its step. */
   readonly id: string | null;
+  /** The whole input of a tool, for the step dialog. The session record keeps it in its own file. */
+  readonly input?: string;
+  /** The whole output of a tool, for the step dialog. */
+  readonly output?: string;
+}
+
+/** The input and output of a step. */
+export interface StepDetail {
+  readonly input?: string | undefined;
+  readonly output?: string | undefined;
+}
+
+export interface StepDetailWithId extends StepDetail {
+  readonly id: string;
 }
 
 /** Long enough for a hover. The web app fetches the steps of the recent turns after each turn. */
@@ -22,9 +36,9 @@ const stepTextLength = 200;
 const maxStoredSteps = 100;
 
 /**
- * Adds the step of one event. Every step but a message is cut at once, so a tool with a huge
- * input never fills the memory of a long turn. Call it with redacted payloads only: a cut
- * before the redaction could split a secret that the redactor then misses (lesson 95).
+ * Adds the step of one event. The text of every step but a message is cut at once. A tool's
+ * input and output stay whole, because the core already bounds them. Call it with redacted
+ * payloads only: a cut before the redaction could split a secret that the redactor then misses (lesson 95).
  */
 export function addStep(steps: readonly TurnStep[], payload: EngineEventPayload): readonly TurnStep[] {
   switch (payload.kind) {
@@ -33,11 +47,21 @@ export function addStep(steps: readonly TurnStep[], payload: EngineEventPayload)
     case "tool_started": {
       // A summary in JSON has no tool name, and the step list shows the name as its action.
       const text = payload.summary.startsWith("{") ? `${payload.name} ${payload.summary}` : payload.summary;
-      const step = { kind: payload.category, text: shortened(text), isError: false, id: payload.toolUseId };
+      const step = {
+        kind: payload.category,
+        text: shortened(text),
+        isError: false,
+        id: payload.toolUseId,
+        ...(payload.input === undefined ? {} : { input: payload.input }),
+      };
       return [...steps, step];
     }
-    case "tool_finished":
-      return payload.isError ? markError(steps, payload.toolUseId, ["command", "tool"]) : steps;
+    case "tool_finished": {
+      const { output } = payload;
+      const withOutput =
+        output === undefined ? steps : changeStep(steps, payload.toolUseId, ["command", "tool"], { output });
+      return payload.isError ? markError(withOutput, payload.toolUseId, ["command", "tool"]) : withOutput;
+    }
     case "task_changed": {
       // A task sends an event at each state change, but it is one step.
       const known = steps.some((step) => step.kind === "task" && step.id === payload.taskId);
@@ -76,10 +100,34 @@ export function storedSteps(steps: readonly TurnStep[]): { steps: TurnStep[]; om
   return { steps: kept, omittedSteps: steps.length - kept.length };
 }
 
+/** A step without its details: the session list stays small, and the details file keeps them. */
+export function withoutDetails(step: TurnStep): TurnStep {
+  const { input: _input, output: _output, ...rest } = step;
+  return rest;
+}
+
+/** The details of each step that has some, with its id. */
+export function stepDetails(steps: readonly TurnStep[]): StepDetailWithId[] {
+  return steps.flatMap(({ id, input, output }) =>
+    id === null || (input === undefined && output === undefined)
+      ? []
+      : [{ id, ...(input === undefined ? {} : { input }), ...(output === undefined ? {} : { output }) }],
+  );
+}
+
 function markError(steps: readonly TurnStep[], id: string, kinds: readonly StepKind[]): readonly TurnStep[] {
+  return changeStep(steps, id, kinds, { isError: true });
+}
+
+function changeStep(
+  steps: readonly TurnStep[],
+  id: string,
+  kinds: readonly StepKind[],
+  change: Partial<TurnStep>,
+): readonly TurnStep[] {
   const matches = (step: TurnStep): boolean => step.id === id && kinds.includes(step.kind);
   if (!steps.some(matches)) return steps;
-  return steps.map((step) => (matches(step) ? { ...step, isError: true } : step));
+  return steps.map((step) => (matches(step) ? { ...step, ...change } : step));
 }
 
 /** Cuts by characters, not UTF-16 units, so an emoji is never split. */

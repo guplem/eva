@@ -24,8 +24,17 @@ import {
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
-import { addStep, storedSteps, type TurnStep } from "../../shared/turn-steps.ts";
+import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
+import {
+  addStep,
+  stepDetails,
+  storedSteps,
+  withoutDetails,
+  type StepDetail,
+  type TurnStep,
+} from "../../shared/turn-steps.ts";
 import type { SessionRecord, SessionStore } from "./session-store.ts";
+import type { StepDetailsStore } from "./step-details-store.ts";
 
 export interface PreparedTurn {
   readonly startFolder: string;
@@ -92,6 +101,8 @@ export interface SessionManagerOptions {
   readonly nameChat?: (turn: FirstTurn) => Promise<string | null>;
   readonly engines: readonly EnginePort[];
   readonly store: SessionStore;
+  /** Keeps the whole input and output of each tool step. Without it, Eva keeps none. */
+  readonly stepDetails?: StepDetailsStore;
   readonly preparers: Readonly<Record<SessionMode, TurnPreparer>>;
   readonly now: () => Date;
   readonly newId: () => string;
@@ -426,6 +437,7 @@ export class SessionManager {
       throw new EvaError("session_busy", "Eva is still working in this chat. Try again when she finishes.");
     for (const id of ids) {
       this.options.store.delete(id);
+      this.options.stepDetails?.delete(id);
       this.runtimes.delete(id);
       this.lastFailure.delete(id);
       this.lastActivity.delete(id);
@@ -620,6 +632,8 @@ export class SessionManager {
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
+    // The characters of tool details that the turn kept so far.
+    let detailLength = 0;
     const draft = new TextStreamRedactor(this.options.redactor);
     let blockStarts = false;
 
@@ -703,7 +717,9 @@ ${prompt}`,
         if (raw.kind === "text") this.turnDrafts.delete(sessionId);
         // A final text does not reset the stream: the next block can start before it comes.
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
-        const payload = redactPayload(raw, this.options.redactor);
+        const redacted = redactPayload(raw, this.options.redactor);
+        const payload = withinDetailBudget(redacted, detailLength);
+        detailLength += detailLengthOf(payload);
         if (payload.kind === "history_lost") {
           historyLost = true;
           if (isContinueAfterFailure) continue;
@@ -737,7 +753,7 @@ ${prompt}`,
             {
               ...recorded,
               ...activity,
-              ...storedSteps(steps),
+              ...this.keptSteps(sessionId, steps),
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
               model: payload.model,
@@ -766,7 +782,13 @@ ${prompt}`,
       this.forgetRunningTurn(sessionId);
     }
     if (finished === null)
-      this.recordFailure(session.id, prompt, answerParts, { ...activity, ...storedSteps(steps) }, historyLost);
+      this.recordFailure(
+        session.id,
+        prompt,
+        answerParts,
+        { ...activity, ...this.keptSteps(sessionId, steps) },
+        historyLost,
+      );
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
   }
@@ -863,6 +885,23 @@ ${prompt}`,
       turns: [...current.turns, { ...turn, failure: null, lastMessageId: finished.lastMessageId ?? lastText, at }],
     });
     return firstLineTitle;
+  }
+
+  /** The steps for the session record. Their details go to their own file, so the session list stays small. */
+  private keptSteps(sessionId: string, steps: readonly TurnStep[]): { steps: TurnStep[]; omittedSteps: number } {
+    const kept = storedSteps(steps);
+    try {
+      this.options.stepDetails?.addTurn(sessionId, stepDetails(kept.steps));
+    } catch {
+      // The details only serve the step dialog, so a failed write must not lose the turn. The dialog then says Eva kept none.
+    }
+    return { ...kept, steps: kept.steps.map(withoutDetails) };
+  }
+
+  /** The whole input and output of one step, or null when Eva kept none. */
+  stepDetail(sessionId: string, stepId: string): StepDetail | null {
+    this.get(sessionId);
+    return this.options.stepDetails?.get(sessionId, stepId) ?? null;
   }
 
   /** Keeps a failed turn, with its reason, so the person sees it after a reload. */
@@ -976,14 +1015,28 @@ function redactPayload(
       return { ...payload, text: redactor.redact(payload.text) };
     case "turn_failed":
       return { ...payload, reason: redactor.redact(payload.reason) };
-    case "tool_started":
+    case "tool_started": {
+      const { input } = payload;
+      return {
+        ...payload,
+        summary: redactor.redact(payload.summary),
+        ...(input === undefined
+          ? {}
+          : { input: boundedDetail(redactedJsonText(input, (text) => redactor.redact(text))) }),
+      };
+    }
     case "approval_needed":
       return { ...payload, summary: redactor.redact(payload.summary) };
     case "task_changed":
       return { ...payload, description: redactor.redact(payload.description) };
     case "session_renamed":
       return { ...payload, title: redactor.redact(payload.title) };
-    case "tool_finished":
+    case "tool_finished": {
+      const { output } = payload;
+      return output === undefined
+        ? payload
+        : { ...payload, output: boundedDetail(redactedJsonText(output, (text) => redactor.redact(text))) };
+    }
     case "history_lost":
     case "usage_limit":
     case "approval_resolved":
@@ -995,4 +1048,24 @@ function redactPayload(
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };
   }
+}
+
+function detailLengthOf(payload: EngineEventPayload): number {
+  if (payload.kind === "tool_started") return payload.input?.length ?? 0;
+  if (payload.kind === "tool_finished") return payload.output?.length ?? 0;
+  return 0;
+}
+
+/** Past the turn's budget, a tool event loses its details, and its step keeps only its summary. */
+function withinDetailBudget(payload: EngineEventPayload, used: number): EngineEventPayload {
+  if (used + detailLengthOf(payload) <= maxTurnDetailLength) return payload;
+  if (payload.kind === "tool_started") {
+    const { input: _input, ...rest } = payload;
+    return rest;
+  }
+  if (payload.kind === "tool_finished") {
+    const { output: _output, ...rest } = payload;
+    return rest;
+  }
+  return payload;
 }

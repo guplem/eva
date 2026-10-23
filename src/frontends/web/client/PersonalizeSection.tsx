@@ -11,12 +11,16 @@ import {
   cues,
   playCue,
   readCueLevels,
+  readCuePalette,
   saveCueLevels,
+  saveCuePalette,
   type Cue,
   type CueLevels,
+  type PaletteId,
   type SoundLevel,
   type VibrationLevel,
 } from "./cues.ts";
+import { palettes } from "./cue-palettes.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { SeedColourPicker } from "./SeedColourPicker.tsx";
 import { Card, ChoiceChips, errorText, SelectField, type SettingsContext } from "./SettingsParts.tsx";
@@ -232,21 +236,40 @@ const cueLabels: Record<Cue, string> = {
   problem: "Problem",
 };
 
-/** A change plays the answer cue at the new levels, so the person hears and feels the choice. */
+const paletteChoices: readonly { value: PaletteId; label: string; icon: IconName }[] = palettes.map((palette) => ({
+  value: palette.id,
+  label: palette.label,
+  icon: palette.icon,
+}));
+
+/** A change plays the answer cue at the new levels or style, so the person hears and feels the choice. */
 function CuesCard(): ReactElement {
   const [levels, setLevels] = useState<CueLevels>(readCueLevels);
+  const [palette, setPalette] = useState<PaletteId>(readCuePalette);
   const change = (next: Partial<CueLevels>): void => {
     const merged = { ...levels, ...next };
     setLevels(merged);
     saveCueLevels(merged);
     playCue("answer", merged);
   };
+  const pick = (next: PaletteId): void => {
+    setPalette(next);
+    saveCuePalette(next);
+    playCue("answer");
+  };
   return (
     <Card
       item="sounds"
       title="Sounds and vibration"
-      description="EVE chirps and the phone vibrates when you tap, send and save, and when Eva answers, asks or hits a problem. This browser keeps its own levels."
+      description="Eva plays a sound and the phone vibrates when you tap, send and save, and when Eva answers, asks or hits a problem. This browser keeps its own style and levels."
     >
+      <ChoiceChips
+        label="Style"
+        value={palette}
+        choices={paletteChoices}
+        hint={palettes.find((candidate) => candidate.id === palette)?.sound ?? ""}
+        onChange={pick}
+      />
       <ChoiceChips label="Sounds" value={levels.sound} choices={soundChoices} onChange={(sound) => change({ sound })} />
       <ChoiceChips
         label="Vibration"

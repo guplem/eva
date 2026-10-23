@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
-import { summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
+import { asksThePerson, summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
 
 describe("EvaError", () => {
@@ -22,6 +22,29 @@ describe("toolCategory", () => {
     expect(toolCategory("bash")).toBe("command");
     expect(toolCategory("Read")).toBe("tool");
     expect(toolCategory("Agent")).toBe("tool");
+  });
+});
+
+describe("asksThePerson", () => {
+  test("a change to the schedules asks, with the file tools of each engine and the shell (issue #440)", () => {
+    expect(asksThePerson("Write", { file_path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("Edit", { file_path: "/demo-vault/.eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("MultiEdit", { file_path: "C:\\demo-vault\\.eva\\schedules.json" })).toBe(true);
+    expect(asksThePerson("write", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("edit", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("Bash", { command: "echo '{}' > .eva/schedules.json" })).toBe(true);
+  });
+
+  test("reading the schedules, or writing another file, runs with no question", () => {
+    expect(asksThePerson("Read", { file_path: ".eva/schedules.json" })).toBe(false);
+    expect(asksThePerson("read", { path: ".eva/schedules.json" })).toBe(false);
+    expect(asksThePerson("Write", { file_path: ".eva/chat-names.md" })).toBe(false);
+    expect(asksThePerson("Write", { file_path: "Notes/schedules.json" })).toBe(false);
+  });
+
+  test("an action that reaches other people still asks", () => {
+    expect(asksThePerson("Bash", { command: "git push" })).toBe(true);
+    expect(asksThePerson("Bash", { command: "git status" })).toBe(false);
   });
 });
 
@@ -55,6 +78,44 @@ describe("buildChildEnvironment", () => {
 
   test("an extra value wins over the inherited one", () => {
     expect(buildChildEnvironment({ HOME: "/old" }, ["HOME"], { HOME: "/new" })).toEqual({ HOME: "/new" });
+  });
+
+  // Bun's process.env on Windows finds `Path` under every case, as Windows does.
+  const windowsEnvironment = (values: Record<string, string>): Record<string, string | undefined> =>
+    new Proxy(values, {
+      get: (target, name) => {
+        const key = Object.keys(target).find((each) => each.toLowerCase() === String(name).toLowerCase());
+        return key === undefined ? undefined : target[key];
+      },
+    });
+
+  test("on Windows, a child gets one PATH, not both PATH and Path (#430)", () => {
+    // Two keys keep git from finding sh.exe for the credential helper: it then ends with 128 and no message.
+    const environment = buildChildEnvironment(
+      windowsEnvironment({ Path: "C:\\Git\\cmd" }),
+      ["PATH", "Path"],
+      {},
+      "win32",
+    );
+    expect(Object.keys(environment).filter((name) => name.toLowerCase() === "path")).toHaveLength(1);
+    expect(Object.values(environment)).toEqual(["C:\\Git\\cmd"]);
+  });
+
+  test("on Windows, an extra value replaces the inherited one in another case", () => {
+    const environment = buildChildEnvironment(
+      windowsEnvironment({ Path: "C:\\Git\\cmd", SystemRoot: "C:\\Windows" }),
+      ["PATH", "Path", "SYSTEMROOT", "SystemRoot"],
+      { PATH: "C:\\eva\\bin;C:\\Git\\cmd" },
+      "win32",
+    );
+    expect(environment).toEqual({ PATH: "C:\\eva\\bin;C:\\Git\\cmd", SYSTEMROOT: "C:\\Windows" });
+  });
+
+  test("on Linux, PATH and Path stay two variables", () => {
+    expect(buildChildEnvironment({ PATH: "/bin", Path: "/other" }, ["PATH", "Path"], {}, "linux")).toEqual({
+      PATH: "/bin",
+      Path: "/other",
+    });
   });
 });
 

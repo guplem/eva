@@ -2145,9 +2145,24 @@ button.link-button {
   gap: var(--space-2);
 }
 
-/* A phone makes the button 44 px high, so the name of the fact centres on it. */
+/* The name of the fact centres on its button. */
 .facts dt:has(+ dd.fact-with-action) {
   align-self: center;
+}
+
+/* A 44 px pill dwarfs the small text of a fact. The pill stays small, and an invisible margin
+   keeps the tap target at 44 px. */
+@media (max-width: 760px) {
+  .facts dd.fact-with-action button.small {
+    position: relative;
+    min-height: 30px;
+  }
+
+  .facts dd.fact-with-action button.small::after {
+    content: "";
+    position: absolute;
+    inset: -7px 0;
+  }
 }
 
 .save-bar {

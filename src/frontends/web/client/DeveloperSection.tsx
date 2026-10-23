@@ -4,7 +4,7 @@
  */
 import type { ReactElement } from "react";
 import { Icon } from "./icons.tsx";
-import { problemReportUrl, type ReportKind } from "./report-problem.ts";
+import { accessFrom, deviceKind, problemReportUrl, type ReportKind } from "./report-problem.ts";
 import { designReferenceItem } from "./settings-routes.ts";
 import { Card, type SettingsContext } from "./SettingsParts.tsx";
 
@@ -15,6 +15,10 @@ export function DeveloperSection({ context }: { readonly context: SettingsContex
       install: context.status?.update?.kind ?? null,
       role: context.status?.role ?? null,
       browser: navigator.userAgent,
+      device: deviceKind(navigator.userAgent, navigator.maxTouchPoints),
+      screen: `${String(screen.width)}x${String(screen.height)} at ${String(devicePixelRatio)}x`,
+      window: `${String(innerWidth)}x${String(innerHeight)}`,
+      access: accessFrom(location.hostname),
     });
   return (
     <>

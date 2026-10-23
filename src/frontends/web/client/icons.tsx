@@ -221,6 +221,72 @@ const drawings = {
       <path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9M10 13h4" />
     </>
   ),
+  /* The icons of the sound palettes: each one shows what inspired its palette. */
+  /** Coin: the bubbles of a payment app. */
+  bubbles: (
+    <>
+      <circle cx="9" cy="14.5" r="5.5" />
+      <circle cx="17" cy="7" r="3" />
+      <circle cx="18" cy="16" r="1.8" />
+      <path d="M6.3 12.6a3 3 0 0 1 2-1.9" />
+    </>
+  ),
+  /** Orbit: a planet and its ring. */
+  orbit: (
+    <>
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M7.6 9.4C4 9.9 2 11 2.4 12.4c.6 2 5.6 2.6 11.2 1.4s9.4-3.6 8.9-5.6c-.3-1.1-2.1-1.6-4.6-1.5" />
+    </>
+  ),
+  /** Fluent: the four panes of a window. */
+  panes: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  /** Kalimba: metal tines over a sound hole, the middle one longest. */
+  kalimba: (
+    <>
+      <path d="M4.5 5h15l-1.6 14a1.5 1.5 0 0 1-1.5 1.3H7.6a1.5 1.5 0 0 1-1.5-1.3z" />
+      <path d="M8.5 5v5M12 5v7.5M15.5 5v5" />
+      <circle cx="12" cy="16.5" r="1.4" />
+    </>
+  ),
+  /** Halo: a light that spreads out, as the sound of the palette. */
+  halo: (
+    <>
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M8 8a5.7 5.7 0 0 0 0 8M16 8a5.7 5.7 0 0 1 0 8M5 5a9.9 9.9 0 0 0 0 14M19 5a9.9 9.9 0 0 1 0 14" />
+    </>
+  ),
+  /** Aurora: waves of light in the sky. */
+  aurora: <path d="M3 8c3-3 6 3 9 0s6-3 9 0M3 13c3-3 6 3 9 0s6-3 9 0M3 18c3-3 6 3 9 0s6-3 9 0" />,
+  /** Crystal: a cut gem, as glass bells. */
+  gem: (
+    <>
+      <path d="M7 4h10l4 5-9 11L3 9z" />
+      <path d="M3 9h18M9.5 4L8 9l4 11 4-11-1.5-5" />
+    </>
+  ),
+  /** Pulse: one short beat on a flat line. */
+  pulse: <path d="M3 12h4l2-5 3 10 2.5-7 1.5 2h5" />,
+  /** Blocks: one block of a block game. */
+  cube: (
+    <>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+      <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
+    </>
+  ),
+  /** EVE: the round head and the visor of the robot. */
+  eve: (
+    <>
+      <path d="M12 3c4.2 0 7 4 7 9s-3 8.5-7 8.5S5 17 5 12s2.8-9 7-9z" />
+      <path d="M7.4 10.6c1.6-1.4 7.6-1.4 9.2 0 .5 1.7-.2 3.3-1.1 3.8-1.6.8-5.4.8-7 0-.9-.5-1.6-2.1-1.1-3.8z" />
+    </>
+  ),
 } satisfies Record<string, ReactElement>;
 
 export type IconName = keyof typeof drawings;

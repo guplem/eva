@@ -308,6 +308,16 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   shrink: "Make the file preview small again",
   star: "A favorite file or folder: filled when it is one",
   archive: "Archive a chat, the archived chats",
+  bubbles: "The Coin sound palette",
+  orbit: "The Orbit sound palette",
+  panes: "The Fluent sound palette",
+  kalimba: "The Kalimba sound palette",
+  halo: "The Halo sound palette",
+  aurora: "The Aurora sound palette",
+  gem: "The Crystal sound palette",
+  pulse: "The Pulse sound palette",
+  cube: "The Blocks sound palette",
+  eve: "The EVE sound palette",
 };
 
 export interface ArchitectureLayer {

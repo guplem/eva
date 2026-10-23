@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { readJsonTolerant } from "../../shared/files.ts";
-import { outwardActionWords } from "../../shared/outward-actions.ts";
+import { askedActionWords } from "../../shared/outward-actions.ts";
 import type {
   ChatPermissions,
   EnginePermissions,
@@ -48,11 +48,11 @@ function assistantChat(mode: ClaudePermissionMode): ChatPermissions {
     runs: [
       "Reading and searching files",
       "Shell commands that stay on this computer",
-      "Changes to Eva's own files in .eva/",
+      "Changes to Eva's own files in .eva/, except the schedules",
       "Eva's own tools, such as Google, when the action stays with you",
       "Each other action that the safety check of Claude Code allows",
     ],
-    asks: outwardActionWords,
+    asks: askedActionWords,
     blocks: [safetyCheckRefusals, denyRules],
     note: null,
   };

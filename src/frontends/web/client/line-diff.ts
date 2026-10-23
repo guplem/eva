@@ -1,12 +1,15 @@
 /**
- * A line diff for the two versions of a note conflict. Each side shows its own lines, and the
- * lines that the other side does not have stand out. Line endings do not count: CRLF and LF read the same.
+ * Line diffs of two texts. `compareVersions` shows each side of a note conflict on its own, and the
+ * lines that the other side does not have stand out. `diffLines` shows one list, as git does: the
+ * removed lines, then the added lines. Line endings do not count: CRLF and LF read the same.
  */
 
 export type DiffRow =
-  | { readonly kind: "same" | "changed"; readonly text: string }
+  | { readonly kind: "same" | "changed" | "added" | "removed"; readonly text: string }
   /** Shared lines far from any change, hidden so a phone shows the change itself. */
   | { readonly kind: "gap"; readonly count: number };
+
+type LineRow = Exclude<DiffRow, { readonly kind: "gap" }>;
 
 export interface VersionComparison {
   readonly mine: readonly DiffRow[];
@@ -26,9 +29,43 @@ export function compareVersions(mine: string | null, theirs: string | null): Ver
   return { mine: rowsOf(mineLines, mineShared), theirs: rowsOf(theirLines, theirShared) };
 }
 
+/** The changes from `before` to `after`, in one list. */
+export function diffLines(before: string, after: string): DiffRow[] {
+  const beforeLines = linesOf(before);
+  const afterLines = linesOf(after);
+  const [beforeShared, afterShared] = sharedLines(beforeLines, afterLines);
+  const rows: LineRow[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < beforeLines.length || j < afterLines.length) {
+    const removed = beforeLines[i];
+    const added = afterLines[j];
+    if (removed !== undefined && removed === added && beforeShared[i] === true && afterShared[j] === true) {
+      rows.push({ kind: "same", text: removed });
+      i += 1;
+      j += 1;
+    } else if (removed !== undefined && (beforeShared[i] !== true || added === undefined)) {
+      rows.push({ kind: "removed", text: removed });
+      i += 1;
+    } else if (added !== undefined && afterShared[j] !== true) {
+      rows.push({ kind: "added", text: added });
+      j += 1;
+    } else if (removed !== undefined) {
+      // The quick comparison of long texts marks shared lines out of order, so the two do not pair up.
+      rows.push({ kind: "removed", text: removed });
+      i += 1;
+    } else if (added !== undefined) {
+      rows.push({ kind: "added", text: added });
+      j += 1;
+    }
+  }
+  return folded(rows);
+}
+
 function linesOf(text: string | null): string[] {
   if (text === null || text === "") return [];
-  const lines = text.split(/\r?\n/);
+  // A byte order mark is invisible: without this, a file that starts with one differs on its first line.
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
   return lines;
 }
@@ -91,8 +128,13 @@ function sharedLines(left: readonly string[], right: readonly string[]): [boolea
 }
 
 function rowsOf(lines: readonly string[], shared: readonly boolean[]): DiffRow[] {
-  const changed = lines.map((_, index) => shared[index] !== true);
-  if (!changed.includes(true)) return lines.map((text) => ({ kind: "same", text }));
+  return folded(lines.map((text, index) => ({ kind: shared[index] === true ? "same" : "changed", text })));
+}
+
+/** Hides the shared lines far from any change. */
+function folded(lines: readonly LineRow[]): DiffRow[] {
+  const changed = lines.map((row) => row.kind !== "same");
+  if (!changed.includes(true)) return [...lines];
   // The distance from each line to the nearest change, in two passes.
   const distance: number[] = [];
   let sinceChange = Infinity;
@@ -106,20 +148,20 @@ function rowsOf(lines: readonly string[], shared: readonly boolean[]): DiffRow[]
     distance[index] = Math.min(distance[index] ?? Infinity, untilChange);
   }
   const rows: DiffRow[] = [];
-  let hidden: string[] = [];
+  let hidden: LineRow[] = [];
   const closeGap = (): void => {
     // A gap of one line takes as much room as the line itself.
-    if (hidden.length === 1) rows.push({ kind: "same", text: hidden.join("") });
+    if (hidden.length === 1) rows.push(...hidden);
     else if (hidden.length > 1) rows.push({ kind: "gap", count: hidden.length });
     hidden = [];
   };
-  lines.forEach((text, index) => {
+  lines.forEach((row, index) => {
     if ((distance[index] ?? 0) > contextLines) {
-      hidden.push(text);
+      hidden.push(row);
       return;
     }
     closeGap();
-    rows.push({ kind: changed[index] === true ? "changed" : "same", text });
+    rows.push(row);
   });
   closeGap();
   return rows;

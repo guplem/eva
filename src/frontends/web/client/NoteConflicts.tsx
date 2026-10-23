@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { api, type ConflictChoice, type VaultConflict, type VaultSyncState } from "./api.ts";
+import { DiffLines } from "./DiffLines.tsx";
 import { compareVersions, type DiffRow } from "./line-diff.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces } from "./visor-faces.ts";
@@ -163,19 +164,7 @@ function Version({
       {text === null ? (
         <div className="field-hint">No text to show: this side deleted the note, or it is not a short text file.</div>
       ) : (
-        <div className="diff">
-          {rows.map((row, index) =>
-            row.kind === "gap" ? (
-              <div key={index} className="gap">
-                {row.count} lines that did not change
-              </div>
-            ) : (
-              <div key={index} className={row.kind === "changed" ? "a" : undefined}>
-                {row.text === "" ? " " : row.text}
-              </div>
-            ),
-          )}
-        </div>
+        <DiffLines rows={rows} />
       )}
     </div>
   );

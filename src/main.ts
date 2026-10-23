@@ -63,6 +63,7 @@ const host: CliHost = {
   write: (text) => process.stdout.write(text),
   writeError: (text) => process.stderr.write(text),
   interactive: process.stdin.isTTY,
+  outputIsTerminal: process.stdout.isTTY,
   withPrompt: (work) => withLinePrompt(createInterface({ input: process.stdin, output: process.stdout }), work),
   sleep: (ms) => Bun.sleep(ms),
   // A `bun build --compile` executable runs its code from Bun's embedded file system.

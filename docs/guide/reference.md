@@ -6,33 +6,33 @@ Every command and setting, for when the [README](../../README.md) is not enough.
 
 Run these on the computer where Eva runs. `eva status`, `eva link`, `eva open`, `eva chat`, `eva projects`, `eva work` and `eva devices allow` need Eva to run. The other commands also work when Eva is stopped.
 
-| Command                           | What it does                                                                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `eva setup`                       | Asks each question again. Enter keeps the current answer.                                                                           |
-| `eva setup --non-interactive`     | Reads each answer from an `EVA_*` variable, for scripts.                                                                            |
-| `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                                                         |
-| `eva`                             | Runs Eva in this terminal (the service does this for you).                                                                          |
-| `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                                                           |
-| `eva supervise`                   | Runs Eva, and starts her again after a crash (the start at logon on Windows does this for you).                                     |
-| `eva status`                      | Starts with "All good" or the problems, then the sync, updates, phone address, tool versions and Telegram pairing code.             |
-| `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                                                 |
-| `eva open`                        | Opens Eva in this computer's browser, already logged in, with no code or token.                                                     |
-| `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                      |
-| `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                           |
-| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                                                     |
-| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                                                            |
-| `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                            |
-| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                 |
-| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                                                         |
-| `eva sync`                        | Brings in other computers' notes, then saves and pushes this computer's notes.                                                      |
-| `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                        |
-| `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                                                 |
-| `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                                                       |
-| `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                                                     |
-| `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                                                           |
-| `eva version`                     | Shows Eva's version.                                                                                                                |
-| `eva help`                        | Shows every command.                                                                                                                |
-| `eva --instance <name> <command>` | Runs the command for the Eva with this name, as `EVA_INSTANCE=<name>` does. Without it, `eva` asks which Eva, or uses the only one. |
+| Command                           | What it does                                                                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eva setup`                       | Asks each question again. Enter keeps the current answer.                                                                                                                           |
+| `eva setup --non-interactive`     | Reads each answer from an `EVA_*` variable, for scripts.                                                                                                                            |
+| `eva doctor`                      | Checks the tools that each feature needs, and says how to install each one.                                                                                                         |
+| `eva`                             | Runs Eva in this terminal (the service does this for you).                                                                                                                          |
+| `eva service install`             | Starts Eva now, by herself each time you log in, and again after a crash.                                                                                                           |
+| `eva supervise`                   | Runs Eva, and starts her again after a crash (the start at logon on Windows does this for you).                                                                                     |
+| `eva status`                      | Starts with "All good" or the problems, then the running process, sync, updates, local page, phone address, tool versions and Telegram pairing code. Says so when Eva does not run. |
+| `eva link`                        | Shows the address that opens Eva on your phone and other computers.                                                                                                                 |
+| `eva open`                        | Opens Eva in this computer's browser, already logged in, with no code or token.                                                                                                     |
+| `eva devices allow <code>`        | Lets in the device whose page shows this code.                                                                                                                                      |
+| `eva chat`                        | Talks to Eva in this terminal. Type `/rename <title>` to name the chat, `/exit` to leave.                                                                                           |
+| `eva chat --project <id>`         | Talks to a project's coding agent. `--clone <name>` picks the copy of the code.                                                                                                     |
+| `eva chat --model <model>`        | Picks the model: `default`, `opus`, `sonnet` or `haiku`.                                                                                                                            |
+| `eva chat --engine <engine>`      | Picks the engine: `claude-code` or `pi`.                                                                                                                                            |
+| `eva projects [words]`            | Searches your projects. `status:active` and `tag:work` filter them.                                                                                                                 |
+| `eva work <project> <request>`    | Gives work to a project; a coding agent does it in a free copy of the code.                                                                                                         |
+| `eva sync`                        | Brings in other computers' notes, then saves and pushes this computer's notes.                                                                                                      |
+| `eva update [version] [--check]`  | Installs what the policy allows, or the version given. `--check` only looks.                                                                                                        |
+| `eva hub`                         | Makes this computer the hub, which runs Telegram and the reminders.                                                                                                                 |
+| `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                                                                                                       |
+| `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                                                                                                     |
+| `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                                                                                                           |
+| `eva version`                     | Shows Eva's version.                                                                                                                                                                |
+| `eva help`                        | Shows every command.                                                                                                                                                                |
+| `eva --instance <name> <command>` | Runs the command for the Eva with this name, as `EVA_INSTANCE=<name>` does. Without it, `eva` asks which Eva, or uses the only one.                                                 |
 
 ## Settings
 

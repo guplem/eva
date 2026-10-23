@@ -47,6 +47,7 @@ export function fakeHost(overrides: Partial<CliHost> = {}, answers: string[] = [
     write: (text) => output.push(text),
     writeError: (text) => errors.push(text),
     interactive: false,
+    outputIsTerminal: false,
     withPrompt: (work) =>
       work((question) => {
         questions.push(question);

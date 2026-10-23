@@ -167,6 +167,13 @@ describe("branchMap", () => {
     expect(map.rows[0]?.lines).toContainEqual({ lane: 0, up: "none", down: "hot" });
   });
 
+  test("a shown fork from the start shares no line with its parent", () => {
+    const map = branchMap(tree, "fork2");
+    expect(map.rows[0]?.bends).toContainEqual({ to: 2, hot: false });
+    expect(map.rows[1]?.lines).toContainEqual({ lane: 2, up: "plain", down: "plain" });
+    expect(map.rows.at(-1)?.lines).toContainEqual({ lane: 2, up: "plain", down: "none" });
+  });
+
   test("a new fork with no turn gets one row, so a click can show it", () => {
     const fresh = session("fresh", [], { parentId: "main", at: "m3" });
     const map = branchMap([main, fresh], "fresh");

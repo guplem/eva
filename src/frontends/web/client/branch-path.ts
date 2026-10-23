@@ -160,7 +160,10 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
   const names = branchNames(tree);
   const path = pathOf(shown, tree);
   const onPath = new Set(path.map((step) => stepKey(step.session.id, step.index)));
-  const shownLine = new Set(lineOf(shown, tree).map((session) => session.id));
+  // A fork from the beginning shares no turn, so the shown path stops there and never reaches its parent.
+  const line = lineOf(shown, tree);
+  const start = line.findIndex((session) => session.forkAtMessageId === null);
+  const shownLine = new Set(line.slice(0, start === -1 ? undefined : start + 1).map((session) => session.id));
 
   const drafts = tree.flatMap((session, lane) => {
     const before = sharedSteps(session, tree, new Set([session.id])).length;
@@ -195,7 +198,8 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
     for (const span of spans) {
       const first = span.own[0] ?? position;
       const last = span.own.at(-1) ?? position;
-      const hot = shownLine.has(span.session.id);
+      // Only a fork that shares turns joins its parent on the shown path.
+      const hot = shownLine.has(span.session.id) && span.session.forkAtMessageId !== null;
       if (span.anchor === position) bends.push({ to: span.lane, hot });
       if (span.session.id === row.session.id) {
         const next = drafts[position + 1];

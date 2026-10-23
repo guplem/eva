@@ -10,6 +10,7 @@ import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
+import { fakeGh } from "../../support/fake-gh.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../support/git-sandbox.ts";
 
@@ -34,7 +35,9 @@ function start(engine: FakeEngine, overrides: Partial<EvaConfig> = {}, options: 
     config: config(overrides),
     secrets: options.secrets ?? { claudeOauthToken: "oauth-token-value-for-tests" },
     engines: [engine],
-    runner: options.runner ?? systemProcessRunner,
+    // A real gh asks GitHub about the local test remote. On a slow runner, the project work report
+    // waited up to its 20-second timeout, so the test that waits for the report failed.
+    runner: options.runner ?? fakeGh(systemProcessRunner),
     processEnvironment: gitEnvironment,
     now: () => clock,
     basePrompt: "Base.",

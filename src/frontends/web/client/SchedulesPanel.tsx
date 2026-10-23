@@ -149,13 +149,13 @@ export function SchedulesPanel(): ReactElement {
           now={list?.now ?? null}
           schedule={editing}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={(saved) => {
             setEditing(null);
             // A save with no change makes no card, so the notice promises none.
             setNotice(
-              editing.enabled
+              saved.enabled
                 ? "Saved. If a field changed, Eva shows a setup card first. It runs only after you confirm it."
-                : `Saved. ${editing.name} stays off. Turn it on to get its setup card.`,
+                : `Saved. ${saved.name} stays off. Turn it on to get its setup card.`,
             );
             reload();
           }}

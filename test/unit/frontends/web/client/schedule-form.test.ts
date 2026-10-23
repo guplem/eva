@@ -58,8 +58,15 @@ describe("formOf", () => {
     expect(formOf({ ...morning, days: [0, 1, 2, 3, 4, 5, 6] }).days).toEqual([]);
   });
 
+  test("offers the next whole hour as the first run, for a switch to an interval", () => {
+    expect(formOf(morning, "2026-10-23T08:46").from).toBe("2026-10-23T09:00");
+  });
+
   test("fills the form with an interval schedule", () => {
-    const form = formOf({ ...morning, at: null, days: null, every: "12h", from: "2026-10-23T09:00" });
+    const form = formOf(
+      { ...morning, at: null, days: null, every: "12h", from: "2026-10-23T09:00" },
+      "2026-10-23T08:46",
+    );
     expect(form).toMatchObject({ repeat: "every", count: "12", unit: "h", from: "2026-10-23T09:00" });
   });
 

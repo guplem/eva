@@ -49,7 +49,8 @@ export function emptyScheduleForm(now: string | null): ScheduleForm {
   };
 }
 
-export function formOf(schedule: Schedule): ScheduleForm {
+/** `now` gives the first run that the form offers when the person switches a schedule on days to an interval. */
+export function formOf(schedule: Schedule, now: string | null = null): ScheduleForm {
   const every = schedule.every ?? "";
   const unit = intervalUnits.find(([code]) => code === every.slice(-1))?.[0] ?? "d";
   const days = schedule.days ?? [];
@@ -63,7 +64,7 @@ export function formOf(schedule: Schedule): ScheduleForm {
       days.length === 7 ? [] : weekDays.map(([code]) => code).filter((code) => days.includes(dayCodes.indexOf(code))),
     count: every === "" ? "1" : every.slice(0, -1),
     unit,
-    from: schedule.from ?? "",
+    from: schedule.from ?? emptyScheduleForm(now).from,
     text: schedule.text ?? "",
     prompt: schedule.prompt ?? "",
   };

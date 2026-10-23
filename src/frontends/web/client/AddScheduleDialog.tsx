@@ -14,10 +14,13 @@ export function AddScheduleDialog(props: {
   now: string | null;
   schedule?: Schedule;
   onClose: () => void;
-  onSaved: () => void;
+  /** Gets the saved schedule: the file may have changed while the form was open. */
+  onSaved: (saved: Schedule) => void;
 }): ReactElement {
   const original = props.schedule ?? null;
-  const [form, setForm] = useState(() => (original === null ? emptyScheduleForm(props.now) : formOf(original)));
+  const [form, setForm] = useState(() =>
+    original === null ? emptyScheduleForm(props.now) : formOf(original, props.now),
+  );
   const [error, setError] = useState<string | null>(null);
   const { onClose } = props;
   const title = original === null ? "Add schedule" : "Edit schedule";
@@ -34,9 +37,9 @@ export function AddScheduleDialog(props: {
 
   const save = async (): Promise<void> => {
     try {
-      if (original === null) await api.saveSchedule(entryOf(form));
-      else await api.editSchedule(original.id, fieldsOf(form));
-      props.onSaved();
+      props.onSaved(
+        original === null ? await api.saveSchedule(entryOf(form)) : await api.editSchedule(original.id, fieldsOf(form)),
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }

@@ -4531,6 +4531,24 @@ test("Files: the person stars a note, it shows first on the page, and a tap open
   await expect(favorites.getByRole("link", { name })).toHaveCount(0);
 });
 
+test("Files: a folder column scrolls to the open entry, deep in a long list", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone shows only the last column.");
+  const names = Array.from({ length: 60 }, (_, index) => `folder-${String(index).padStart(2, "0")}`);
+  await page.route("**/api/files?path=Docs", (route) =>
+    route.fulfill({
+      json: { kind: "folder", path: "Docs", entries: names.map((name) => ({ name, kind: "folder", size: null })) },
+    }),
+  );
+  await page.route("**/api/files?path=Docs%2Ffolder-55", (route) =>
+    route.fulfill({ json: { kind: "folder", path: "Docs/folder-55", entries: [] } }),
+  );
+  await logIn(page);
+  await page.goto("/#/files/Docs/folder-55");
+  const open = page.getByRole("list", { name: "Contents of Docs" }).getByRole("link", { name: "folder-55" });
+  await expect(open).toHaveAttribute("aria-current", "true");
+  await expect(open).toBeInViewport();
+});
+
 test("Files: a favorite that is gone shows as missing, and the person removes it (issue 349)", async ({ page }) => {
   await logIn(page);
   const stored = [{ path: "Old/gone.md", name: "gone.md", kind: "missing" }];

@@ -20,7 +20,7 @@ import {
 } from "./api.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { cueOfEvent, playCue } from "./cues.ts";
-import { approvalPlace, approvalsOutside, rootChatId } from "./approvals.ts";
+import { approvalPlace, approvalsOutside } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
@@ -404,7 +404,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     requestId: approval.requestId,
     place: approvalPlace(sessions.find((session) => session.id === approval.sessionId)),
     open: () => {
-      window.location.hash = `#/chat/${encodeURIComponent(rootChatId(approval.sessionId, sessions))}`;
+      // The link names the session itself, so the chat opens on the branch that asks.
+      window.location.hash = `#/chat/${encodeURIComponent(approval.sessionId)}`;
     },
   }));
 

@@ -463,9 +463,21 @@ function FolderList({
   readonly openChild: string | null;
   readonly smart: boolean;
 }): ReactElement {
+  const list = useRef<HTMLUListElement>(null);
+  // A link from a favorite or another page can open an entry far down a long folder, so its row scrolls into sight.
+  useEffect(() => {
+    const element = list.current;
+    const open = element?.querySelector('[aria-current="true"]');
+    if (element === null || open === null || open === undefined) return;
+    const box = element.getBoundingClientRect();
+    const row = open.getBoundingClientRect();
+    if (row.top >= box.top && row.bottom <= box.bottom) return;
+    // Only the list scrolls: scrollIntoView would also move the page and the row of columns.
+    element.scrollTop += row.top - box.top - (box.height - row.height) / 2;
+  }, [openChild, entries]);
   if (entries.length === 0) return <div className="empty">This folder is empty.</div>;
   return (
-    <ul className="files-list" aria-label={`Contents of ${name}`}>
+    <ul className="files-list" ref={list} aria-label={`Contents of ${name}`}>
       {entries.map((entry) => {
         // Only a file row shows a type badge, so only a file can drop its extension.
         const shown = shownNameOf(entry.name, smart, { title: entry.title, badge: entry.kind === "file" });

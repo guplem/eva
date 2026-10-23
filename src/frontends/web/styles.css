@@ -948,6 +948,11 @@ textarea {
   background: var(--accent);
 }
 
+/* A request that waits, such as on the Branches button of a phone. */
+.unread-dot.warn {
+  background: var(--warn);
+}
+
 .main {
   min-width: 0;
   overflow: auto;
@@ -1505,6 +1510,39 @@ textarea {
     background: color-mix(in oklch, var(--side) 90%, transparent);
     box-shadow: inset 0 1px 0 var(--line);
     overflow: visible;
+  }
+
+  /* A focused text field on a touch screen means the keyboard is up. The tab bar then only takes room from the text. */
+  @media (pointer: coarse) {
+    /*
+     * A tap on Send blurs the text first. A tab bar that came back at once would push Send away from the finger.
+     * A transition cannot start from display: none, so the bar leaves the flow with position and visibility.
+     */
+    .main-nav {
+      transition:
+        position 0s 250ms allow-discrete,
+        visibility 0s 250ms allow-discrete;
+    }
+
+    .app:has(
+        textarea:focus,
+        [contenteditable]:focus,
+        input:focus:not(
+            [type="checkbox"],
+            [type="radio"],
+            [type="range"],
+            [type="color"],
+            [type="file"],
+            [type="button"],
+            [type="submit"],
+            [type="reset"]
+          )
+      )
+      .main-nav {
+      position: fixed;
+      visibility: hidden;
+      transition: none;
+    }
   }
 
   /* The visor stays on the rail. On a phone, the "Reconnecting…" banner says when Eva is offline. */

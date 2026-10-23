@@ -2,20 +2,6 @@
 import type { PendingApproval, SessionRecord } from "./api.ts";
 import { toolCategory } from "../../../shared/outward-actions.ts";
 
-/** The chat that starts the tree of a session, so a link to a fork opens its chat. */
-export function rootChatId(sessionId: string, sessions: readonly Pick<SessionRecord, "id" | "parentId">[]): string {
-  let id = sessionId;
-  const seen = new Set<string>();
-  // A bad record can name a parent in a loop. The walk stops there.
-  while (!seen.has(id)) {
-    seen.add(id);
-    const parentId = sessions.find((session) => session.id === id)?.parentId ?? null;
-    if (parentId === null) return id;
-    id = parentId;
-  }
-  return id;
-}
-
 /** The approvals of the sessions that the page does not show now. They get a notice instead of a card. */
 export function approvalsOutside(
   approvals: readonly PendingApproval[],

@@ -11,6 +11,8 @@ import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
+import { seenPart } from "./branch-path.ts";
+import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatHeader, useChatActionRequest } from "./ChatHeader.tsx";
@@ -334,21 +336,22 @@ export function ProjectView({
   }, [chatIsGone]);
 
   const tree = chat === undefined ? [] : chatTree(chat, sessions);
+  const branch = useShownBranch(tree, linkedChat?.id ?? null);
+  const branchStates = useBranchStates(tree, branch.id, approvals.pending, live);
   // Only the chat page shows a conversation: on the other pages the tree is empty, so no chat is on screen.
-  useShownChat(
-    approvals.onShowChat,
-    tree.map((session) => session.id),
-  );
+  // Only the shown branch shows its requests as cards, so a hidden branch gets the notice.
+  useShownChat(approvals.onShowChat, branch.id === null ? [] : [branch.id]);
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const isWorking = (candidate: SessionRecord): boolean =>
     chatTree(candidate, sessions).some((session) => live.steps[session.id] !== undefined);
   const stateOf = (candidate: SessionRecord): ChatState =>
     chatState(chatTree(candidate, sessions), (sessionId) => live.steps[sessionId] !== undefined, approvalSessionIds);
   // On a phone, the open list covers the chat.
-  useMarkSeen(tree, !sidebarOpen);
+  useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
   const [panelShown, togglePanel] = useChatPanelShown();
   const chatDetails = {
     tree,
+    shownId: branch.id,
     onChanged,
     tasks: tasksOf(
       live.tasks,
@@ -486,6 +489,7 @@ export function ProjectView({
                   <span className="mode-chip soft">
                     <Icon name="briefcase" /> <span className="mode-chip-label">Project mode</span>
                   </span>
+                  <BranchesButton tree={tree} shown={branch} states={branchStates} />
                 </>
               }
               onShowList={onShowList}
@@ -495,6 +499,7 @@ export function ProjectView({
             />
             <Conversation
               root={chat}
+              shown={branch}
               sessions={sessions}
               live={live}
               onChanged={onChanged}

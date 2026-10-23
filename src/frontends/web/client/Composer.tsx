@@ -32,6 +32,9 @@ const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 /** What the composer shows of a chat. A new chat has no record until its first message. */
 type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mode" | "parentId" | "turns">;
 
+/** The unsent text of each chat in this tab, by its draft key. */
+const unsentTexts = new Map<string, string>();
+
 /** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
 export interface ChatChoices {
   readonly setEngine: (engine: EngineName) => Promise<unknown>;
@@ -65,6 +68,8 @@ interface ComposerProps {
   readonly voiceNotes: boolean;
   /** The text of the empty box. It names who answers. */
   readonly placeholder?: string;
+  /** The chat whose unsent text the box keeps, so a switch of branch and back does not lose it. */
+  readonly draftKey?: string;
 }
 
 export function Composer({
@@ -77,8 +82,16 @@ export function Composer({
   blocker,
   voiceNotes,
   placeholder = composerPlaceholder(null),
+  draftKey,
 }: ComposerProps): ReactElement {
-  const [text, setText] = useState("");
+  const [text, setTypedText] = useState(() => (draftKey === undefined ? "" : (unsentTexts.get(draftKey) ?? "")));
+  const setText = (value: string): void => {
+    if (draftKey !== undefined) {
+      if (value === "") unsentTexts.delete(draftKey);
+      else unsentTexts.set(draftKey, value);
+    }
+    setTypedText(value);
+  };
   const [sending, setSending] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);

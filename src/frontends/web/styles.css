@@ -3334,3 +3334,28 @@ a.link-chip:hover {
     animation: none;
   }
 }
+
+.chat-forks-toggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 0 0 4px 12px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.chat-forks-toggle[aria-expanded="true"] .icon:last-child {
+  transform: rotate(180deg);
+}
+
+.chat-forks {
+  margin: 0 0 6px 16px;
+  padding: 0 0 0 8px;
+  list-style: none;
+  border-left: 2px solid var(--line);
+}
+
+.chat-fork .chat-item-title {
+  font-size: 12.5px;
+}

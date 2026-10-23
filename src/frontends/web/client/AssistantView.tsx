@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type ChatBlocker, type ListedSession, type SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
-import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
+import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
@@ -92,7 +92,20 @@ export function AssistantView({
   const selected = drafting ? undefined : (roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0]);
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
-  const branch = useShownBranch(tree, linkedChat?.id ?? null);
+  // A fork that the person picks in the list opens like a link to it.
+  const [pickedBranchId, setPickedBranchId] = useState<string | null>(null);
+  const branch = useShownBranch(tree, linkedChat?.id ?? pickedBranchId);
+  useEffect(() => {
+    // Cleared once shown, so the same fork can be picked again later.
+    if (pickedBranchId !== null && branch.id === pickedBranchId) setPickedBranchId(null);
+  }, [branch.id, pickedBranchId]);
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set());
+  const toggleForks = (chatId: string): void =>
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(chatId)) next.add(chatId);
+      return next;
+    });
   const states = useBranchStates(tree, branch.id, approvals.pending, live);
   const [panelShown, togglePanel] = useChatPanelShown();
   const chat = {
@@ -128,6 +141,13 @@ export function AssistantView({
     if (action === undefined) clearAction();
     else actionRequest.ask(chatId, action);
     onNavigate();
+  };
+
+  /** Opens one branch of a chat from the list. */
+  const selectBranch = (chatId: string, branchId: string): void => {
+    if (chatId === selected?.id) branch.show(branchId);
+    else setPickedBranchId(branchId);
+    select(chatId);
   };
 
   useEffect(() => {
@@ -214,6 +234,19 @@ export function AssistantView({
                   onSelect={() => select(chat.id)}
                   onAction={(action) => select(chat.id, action)}
                   archiveItem={archiveItem(chat)}
+                  forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
+                    const state = chatState([session], isRunning, approvalSessionIds);
+                    return {
+                      id: session.id,
+                      name,
+                      preview: chatPreview(session, state),
+                      state,
+                      isShown: chat.id === selected?.id && session.id === branch.id,
+                    };
+                  })}
+                  forksOpen={expandedIds.has(chat.id)}
+                  onToggleForks={() => toggleForks(chat.id)}
+                  onSelectFork={(branchId) => selectBranch(chat.id, branchId)}
                 />
               ))}
             </section>
@@ -289,6 +322,15 @@ function timeOf(chat: SessionRecord): Date {
   return new Date(chat.lastTurnAt ?? chat.createdAt);
 }
 
+/** One branch of a chat in the list. */
+interface ForkItem {
+  readonly id: string;
+  readonly name: string;
+  readonly preview: string;
+  readonly state: ChatState;
+  readonly isShown: boolean;
+}
+
 /** One chat in the list: the title, the time, one line of the last message, and its state. */
 function ChatItem({
   chat,
@@ -298,6 +340,10 @@ function ChatItem({
   onSelect,
   onAction,
   archiveItem,
+  forks,
+  forksOpen,
+  onToggleForks,
+  onSelectFork,
 }: {
   readonly chat: SessionRecord;
   readonly time: string;
@@ -306,6 +352,11 @@ function ChatItem({
   readonly onSelect: () => void;
   readonly onAction: (action: ChatAction) => void;
   readonly archiveItem: MenuItem;
+  /** Each branch of a chat that has forks, the main line first. Empty for a chat with no fork. */
+  readonly forks: readonly ForkItem[];
+  readonly forksOpen: boolean;
+  readonly onToggleForks: () => void;
+  readonly onSelectFork: (branchId: string) => void;
 }): ReactElement {
   const { props, menu } = useContextMenu(chatListItems(onSelect, onAction, archiveItem), `Actions of “${chat.title}”`);
   return (
@@ -324,6 +375,29 @@ function ChatItem({
         <span className="chat-item-preview">{chatPreview(chat, state)}</span>
         <ChatStatePill state={state} />
       </button>
+      {/* A sibling of the row, not a child: a button cannot hold a button. */}
+      {forks.length > 0 && (
+        <button className="ghost chat-forks-toggle" aria-expanded={forksOpen} onClick={onToggleForks}>
+          <Icon name="branch" /> {forks.length} branches <Icon name="down" />
+        </button>
+      )}
+      {forksOpen && forks.length > 0 && (
+        <ul className="chat-forks" aria-label={`Branches of “${chat.title}”`}>
+          {forks.map((fork) => (
+            <li key={fork.id}>
+              <button
+                className={`list-item chat-item chat-fork${fork.state === "unread" ? " unread" : ""}`}
+                aria-current={fork.isShown}
+                onClick={() => onSelectFork(fork.id)}
+              >
+                <span className="chat-item-title">{fork.name}</span>
+                <span className="chat-item-preview">{fork.preview}</span>
+                <ChatStatePill state={fork.state} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {menu}
     </>
   );

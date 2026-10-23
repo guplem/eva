@@ -1,5 +1,6 @@
 /** The parts of the chat list that need no page: groups, times, previews, states and the search. */
 import type { SessionRecord } from "./api.ts";
+import { branchNames, type BranchSession } from "./branch-path.ts";
 
 export type ChatGroup = "Today" | "This week" | "Older";
 
@@ -118,3 +119,12 @@ export const chatStateLabels: Record<NonNullable<ChatState>, string> = {
   working: "Working",
   unread: "Unread",
 };
+
+/** The branches that a chat lists under its row, by name. A chat with no fork lists none. */
+export function chatForks<S extends BranchSession>(
+  tree: readonly S[],
+): { readonly session: S; readonly name: string }[] {
+  if (tree.length < 2) return [];
+  const names = branchNames(tree);
+  return tree.map((session) => ({ session, name: names.get(session.id) ?? "" }));
+}

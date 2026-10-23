@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import type { Clone, SyncState } from "./clones.ts";
 
@@ -57,7 +57,7 @@ export async function fetchClone(
       [...githubCredentialArguments, ...noHooks(), "fetch", "-q", "--no-tags"],
       networkTimeoutMs,
     );
-    return result.exitCode === 0 ? null : reasonOf(result.stderr);
+    return result.exitCode === 0 ? null : failureReason(result, "git");
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -73,7 +73,7 @@ export async function pullClone(clone: Clone, runner: ProcessRunner, environment
     networkTimeoutMs,
   );
   if (result.exitCode !== 0)
-    throw new EvaError("git_failed", `Could not pull ${clone.name}: ${reasonOf(result.stderr)}`);
+    throw new EvaError("git_failed", `Could not pull ${clone.name}: ${failureReason(result, "git")}`);
 }
 
 /**
@@ -134,7 +134,7 @@ export async function commitAndPush(
   if (result.exitCode !== 0) {
     throw new EvaError(
       "git_failed",
-      `Could not push ${clone.name}. The commit stays in the clone. ${reasonOf(result.stderr)}`,
+      `Could not push ${clone.name}. The commit stays in the clone. ${failureReason(result, "git")}`,
     );
   }
 }
@@ -196,7 +196,7 @@ async function statusEntries(clone: Clone, runner: ProcessRunner, environment: E
     "--untracked-files=all",
   ]);
   if (result.exitCode !== 0)
-    throw new EvaError("git_failed", `Could not read ${clone.name}: ${reasonOf(result.stderr)}`);
+    throw new EvaError("git_failed", `Could not read ${clone.name}: ${failureReason(result, "git")}`);
   const fields = result.stdout.split("\0");
   const entries: StatusEntry[] = [];
   for (let index = 0; index < fields.length; index += 1) {
@@ -238,7 +238,7 @@ async function mustRun(
 ): Promise<void> {
   const result = await git(clone, runner, environment, arguments_, localTimeoutMs, stdin);
   if (result.exitCode !== 0)
-    throw new EvaError("git_failed", `Could not ${what} ${clone.name}: ${reasonOf(result.stderr)}`);
+    throw new EvaError("git_failed", `Could not ${what} ${clone.name}: ${failureReason(result, "git")}`);
 }
 
 function git(
@@ -255,8 +255,4 @@ function git(
     timeoutMs,
     ...(stdin === undefined ? {} : { stdin }),
   });
-}
-
-function reasonOf(stderr: string): string {
-  return stderr.trim() || "git gave no reason.";
 }

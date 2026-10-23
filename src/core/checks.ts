@@ -3,7 +3,7 @@
  * part Eva depends on. A check never shows a secret, even in its error text.
  */
 import type { EngineName, EnginePort } from "../shared/engine-port.ts";
-import type { ProcessRunner } from "../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../shared/process-runner.ts";
 import { checkGoogle, type GoogleCheckInputs } from "./google/google-check.ts";
 import { engineLabels, ModelCalls } from "./model-calls/model-calls.ts";
 import { ghTooOld } from "./engine-install/engine-install.ts";
@@ -99,7 +99,7 @@ async function runProgram(
     const output = (result.stdout.trim() || result.stderr.trim()).split(/\r?\n/)[0] ?? "";
     return result.exitCode === 0
       ? { ok: true, detail: inputs.redact(okDetail ?? output) }
-      : { ok: false, detail: inputs.redact(result.stderr.trim().split(/\r?\n/)[0] ?? "failed") };
+      : { ok: false, detail: inputs.redact(failureReason(result, command[0] ?? "The check").split(/\r?\n/)[0] ?? "") };
   } catch (error) {
     return { ok: false, detail: inputs.redact(error instanceof Error ? error.message : "failed") };
   }

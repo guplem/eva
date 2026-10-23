@@ -6,7 +6,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
-import type { ProcessResult, ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessResult, type ProcessRunner } from "../../shared/process-runner.ts";
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import type { UpdateChannel, UpdateCheck } from "./updater.ts";
 
@@ -52,7 +52,7 @@ async function check(options: SourceCheckoutOptions): Promise<UpdateCheck> {
     timeoutMs: networkTimeoutMs,
   });
   if (fetched.exitCode !== 0)
-    throw new EvaError("update_failed", `Eva's repository could not be reached: ${fetched.stderr.trim()}`);
+    throw new EvaError("update_failed", `Eva's repository could not be reached: ${failureReason(fetched, "git")}`);
   const behind = await git(options, ["rev-list", "--count", `HEAD..origin/${branch}`]);
   return {
     current: await git(options, ["rev-parse", "--short", "HEAD"]),
@@ -98,14 +98,14 @@ async function install(options: SourceCheckoutOptions, previous: string): Promis
   await run(options, command, installTimeoutMs);
   throw new EvaError(
     "update_failed",
-    `bun install failed, so Eva went back to ${previous}: ${installed.stderr.trim()}`,
+    `bun install failed, so Eva went back to ${previous}: ${failureReason(installed, "bun install")}`,
   );
 }
 
 async function git(options: SourceCheckoutOptions, arguments_: readonly string[]): Promise<string> {
   const result = await run(options, ["git", ...arguments_], localTimeoutMs);
   if (result.exitCode !== 0)
-    throw new EvaError("update_failed", `git ${arguments_.join(" ")} failed: ${result.stderr.trim()}`);
+    throw new EvaError("update_failed", `git ${arguments_.join(" ")} failed: ${failureReason(result, "git")}`);
   return result.stdout.trim();
 }
 

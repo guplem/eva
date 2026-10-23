@@ -76,6 +76,35 @@ describe("cloneVault", () => {
     );
     expect(String(failed)).toContain("git could not clone https://github.com/example/vault: not found");
   });
+
+  test("a clone that fails with no error output still gives a reason (#430)", async () => {
+    const silent: ProcessRunner = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "" }) };
+    const failed = await failure(
+      cloneVault({
+        repository: "https://github.com/example/vault",
+        folder: join(sandbox.root, "silent"),
+        runner: silent,
+        environment: {},
+      }),
+    );
+    expect(String(failed)).toContain(
+      "git could not clone https://github.com/example/vault: git ended with exit code 128 and wrote no error.",
+    );
+  });
+
+  test("a remote or a push that fails with no error output still gives a reason", async () => {
+    const failsOn = (step: string): ProcessRunner => ({
+      run: (command) =>
+        Promise.resolve(
+          command.includes(step) ? { exitCode: 1, stdout: "", stderr: "" } : { exitCode: 0, stdout: "", stderr: "" },
+        ),
+    });
+    const inputs = { repository: "https://github.com/example/vault", folder: sandbox.root, environment: {} };
+    for (const step of ["set-url", "push"]) {
+      const failed = await failure(pushNewVault({ ...inputs, runner: failsOn(step) }));
+      expect(String(failed)).toContain("git ended with exit code 1 and wrote no error.");
+    }
+  });
 });
 
 describe("an address that looks like an option", () => {
@@ -141,7 +170,7 @@ describe("checkVaultRepository", () => {
       "https://github.com/example/vault",
       "HEAD",
     ]);
-    expect(reason).toBe("git ended with exit code 128.");
+    expect(reason).toBe("git ended with exit code 128 and wrote no error.");
   });
 });
 

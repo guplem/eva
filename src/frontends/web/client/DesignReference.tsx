@@ -15,7 +15,7 @@ import {
   type ComponentId,
 } from "./design-reference.ts";
 import { Icon, iconNames } from "./icons.tsx";
-import { FactsSkeleton, ListSkeleton, ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, FactsSkeleton, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { AppearanceCard } from "./PersonalizeSection.tsx";
 import { Card, ChoiceChips, CommandLine, StatusIcon, StatusPill, Steps } from "./SettingsParts.tsx";
 import { useContextMenu } from "./Menu.tsx";
@@ -233,6 +233,19 @@ function Sample({ id }: { readonly id: ComponentId }): ReactElement {
         <div className="design-stack">
           <ProgressBar label="Installing 1.4.0…" share={0.42} />
           <ProgressBar label="Looking for a new version…" />
+        </div>
+      );
+    case "button-spinner":
+      return (
+        <div className="button-row">
+          <button className="primary small" disabled aria-busy="true">
+            <ButtonSpinner share={0.42} />
+            Updating…
+          </button>
+          <button disabled aria-busy="true">
+            <ButtonSpinner />
+            Testing…
+          </button>
         </div>
       );
     case "tooltip":

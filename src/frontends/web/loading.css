@@ -87,6 +87,45 @@
   }
 }
 
+/* Button spinner: a ring in the colour of the label, one text line high, so the button keeps its height. */
+.button-spinner {
+  width: 1em;
+  height: 1em;
+  margin-right: var(--space-2);
+  vertical-align: -0.15em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+}
+
+.button-spinner-track {
+  opacity: 0.25;
+}
+
+/* The arc starts at the top, as a clock does, and fills clockwise. */
+.button-spinner-arc {
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dasharray 0.4s ease-out;
+}
+
+.button-spinner.running {
+  animation: button-spin 0.9s linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A waiting button is disabled, but its spinner must stay clear: the dim look says "not now", not "working". */
+button[aria-busy="true"]:disabled {
+  opacity: 1;
+}
+
 /* Skeletons */
 .skeleton-shapes {
   display: contents;
@@ -320,6 +359,14 @@
 
   .progress-track.running::after {
     display: none;
+  }
+
+  .button-spinner.running {
+    animation: none;
+  }
+
+  .button-spinner-arc {
+    transition: none;
   }
 
   /* Each selector matches the strongest shimmer rule above, so it wins. */

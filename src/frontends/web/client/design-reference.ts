@@ -99,6 +99,7 @@ export type ComponentId =
   | "guide-steps"
   | "section-card"
   | "progress"
+  | "button-spinner"
   | "tooltip"
   | "context-menu"
   | "toasts"
@@ -195,6 +196,13 @@ export const componentSamples: readonly ComponentSample[] = [
     classes: ["progress", "progress-track", "running", "progress-fill"],
     part: "ProgressBar",
     use: "A wait inside a card, with its sentence. A known share fills the bar and shows the percentage. An unknown share runs lines across it.",
+  },
+  {
+    id: "button-spinner",
+    title: "Button spinner",
+    classes: ["button-spinner", "running", "button-spinner-track", "button-spinner-arc"],
+    part: "ButtonSpinner",
+    use: "A button that waits, such as an Update button, before its label. A known share fills the ring. An unknown share turns an arc. Show a progress bar below the button too.",
   },
   {
     id: "tooltip",

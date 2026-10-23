@@ -44,9 +44,10 @@ describe("the design reference", () => {
     for (const name of classes) expect(styles, name).toMatch(new RegExp(`\\.${name}(?![\\w-])`));
   });
 
-  test("it shows the standard waits: the progress bar and the skeletons", () => {
+  test("it shows the standard waits: the progress bar, the button spinner and the skeletons", () => {
     const parts = componentSamples.map((sample) => sample.part);
     expect(parts).toContain("ProgressBar");
+    expect(parts).toContain("ButtonSpinner");
     expect(parts.some((part) => part?.includes("Skeleton") === true)).toBe(true);
   });
 

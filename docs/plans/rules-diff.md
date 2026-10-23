@@ -21,4 +21,7 @@ The "Eva's rules" card shows the person's rules and offers "Restore the default"
 
 ## Decisions
 
-Filled in after the gap research.
+1. **A closed `<details>` frame,** like the built-in rules and `PermissionsCard`. It sits above the buttons, so it is next to "Restore the default". It shows only when the person does not edit, because it compares the saved text. It gets its own class, `rules-diff`: the e2e test finds the built-in rules with `details.rules-box`, which must stay one element.
+2. **Default to the person's rules.** A hint says what `+` and `-` mean. When the rules have no line that differs, the frame says that the rules are the same as the default. When the person has no rules, the frame does not show: the card already says so, and a diff of only red lines helps nobody. The equal check uses the diff rows, so CRLF and a byte order mark do not count.
+3. **One shared component,** `DiffLines.tsx`, renders the rows of both views (`AGENTS.md`: reuse a shared component). The note conflict view keeps its look. The `+` and `-` marks are `aria-hidden`, and a visually hidden word says "Added" or "Removed" for a screen reader. The diff runs in `useMemo`, because the page renders often while a chat streams.
+4. **Colours** come from the EVE guide's Diff row: added lines on `--ok-bg`, removed lines on `--bad-bg`.

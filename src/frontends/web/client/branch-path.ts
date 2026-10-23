@@ -260,3 +260,33 @@ function anchorRow(
 export function stepKey(sessionId: string, index: number | null): string {
   return `${sessionId}:${index === null ? "new" : String(index)}`;
 }
+
+/** What a branch that the page does not show is doing, so the person can find a question or an answer. */
+export type BranchState = "waiting" | "running" | "unread";
+
+/**
+ * The state of each branch that waits for the person, runs a turn, or has an answer that the
+ * person did not see. A request comes first, as it stops the turn. The shown branch is never
+ * unread: the page shows its answers.
+ */
+export function branchStates(
+  tree: readonly (BranchSession & { readonly seenTurns: number })[],
+  shownId: string | null,
+  waitingIds: ReadonlySet<string>,
+  runningIds: ReadonlySet<string>,
+): Map<string, BranchState> {
+  return new Map(
+    tree.flatMap((session): [string, BranchState][] => {
+      if (waitingIds.has(session.id)) return [[session.id, "waiting"]];
+      if (runningIds.has(session.id)) return [[session.id, "running"]];
+      // The same test as hasUnseenTurns of the chat list: more turns than the person saw.
+      if (session.id !== shownId && session.turns.length > session.seenTurns) return [[session.id, "unread"]];
+      return [];
+    }),
+  );
+}
+
+/** The branch that a pick of a map row shows: a row on the shown path keeps it, and the page only scrolls. */
+export function pickedBranch(shownId: string, row: Pick<MapRow, "sessionId" | "onPath">): string {
+  return row.onPath ? shownId : row.sessionId;
+}

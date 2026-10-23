@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   branchMap,
   branchNames,
+  branchStates,
   branchesAfter,
   branchesAtStart,
   firstShownBranch,
   pathOf,
+  pickedBranch,
   seenPart,
   type BranchSession,
 } from "../../../../../src/frontends/web/client/branch-path.ts";
@@ -205,5 +207,40 @@ describe("seenPart", () => {
 
   test("a fork from the start shows none of its parent", () => {
     expect(seenPart(tree, "fork2").map((part) => part.id)).toEqual(["fork2"]);
+  });
+});
+
+describe("branchStates", () => {
+  const seen = (shown: BranchSession, seenTurns: number): BranchSession & { seenTurns: number } => ({
+    ...shown,
+    seenTurns,
+  });
+
+  test("a request beats a running turn, and a running turn beats a new answer", () => {
+    const states = branchStates(
+      [seen(main, 0), seen(fork1, 0), seen(fork2, 0)],
+      "none",
+      new Set(["main"]),
+      new Set(["main", "fork1"]),
+    );
+    expect(states).toEqual(
+      new Map([
+        ["main", "waiting"],
+        ["fork1", "running"],
+        ["fork2", "unread"],
+      ]),
+    );
+  });
+
+  test("the shown branch is never unread, and a seen branch has no state", () => {
+    const states = branchStates([seen(main, 0), seen(fork1, 2)], "main", new Set(), new Set());
+    expect(states.size).toBe(0);
+  });
+});
+
+describe("pickedBranch", () => {
+  test("a row on the shown path keeps the branch, and another row shows its own", () => {
+    expect(pickedBranch("fork1", { sessionId: "main", onPath: true })).toBe("fork1");
+    expect(pickedBranch("fork1", { sessionId: "fork2", onPath: false })).toBe("fork2");
   });
 });

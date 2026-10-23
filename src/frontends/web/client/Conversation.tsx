@@ -7,15 +7,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
-import { branchesAfter, branchesAtStart, branchNames, pathOf, stepKey, type PathStep } from "./branch-path.ts";
 import {
-  BranchMapColumn,
-  BranchSwitcher,
-  pickRow,
-  useBranchStates,
+  branchesAfter,
+  branchesAtStart,
+  branchNames,
+  pathOf,
+  stepKey,
   type BranchState,
-  type ShownBranch,
-} from "./Branches.tsx";
+  type PathStep,
+} from "./branch-path.ts";
+import { BranchMapColumn, BranchSwitcher, pickRow, useBranchStates, type ShownBranch } from "./Branches.tsx";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {

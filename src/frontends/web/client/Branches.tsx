@@ -4,15 +4,20 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import type { SessionRecord } from "./api.ts";
-import { branchMap, firstShownBranch, type ForkPoint, type MapLine, type MapRow } from "./branch-path.ts";
-import { hasUnseenTurns } from "./chat-list.ts";
+import {
+  branchMap,
+  branchStates,
+  firstShownBranch,
+  pickedBranch,
+  type BranchState,
+  type ForkPoint,
+  type MapLine,
+  type MapRow,
+} from "./branch-path.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { Dialog } from "./ChatPanel.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
-
-/** What a branch that the page does not show is doing, so the person can find a question or an answer. */
-export type BranchState = "waiting" | "running" | "unread";
 
 /** The branch that the page shows, and the turn to bring into view after a pick. */
 export interface ShownBranch {
@@ -32,6 +37,8 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
   const rootId = tree[0]?.id ?? null;
   const [choice, setChoice] = useState<{ rootId: string; id: string } | null>(null);
   const [focus, setFocus] = useState<ShownBranch["focus"]>(null);
+  // The count only grows, also across chats, so a new pick never looks like one that the view handled.
+  const picks = useRef(0);
   const known = useRef<{ rootId: string | null; ids: ReadonlySet<string> }>({ rootId: null, ids: new Set() });
   // The view clears the link in the same render that opens its chat, so the hook keeps it until the tree has it.
   const link = useRef<string | null>(null);
@@ -59,7 +66,10 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
   const show = useCallback(
     (sessionId: string, turnKey?: string) => {
       if (rootId !== null) setChoice({ rootId, id: sessionId });
-      if (turnKey !== undefined) setFocus((current) => ({ key: turnKey, count: (current?.count ?? 0) + 1 }));
+      if (turnKey !== undefined) {
+        picks.current += 1;
+        setFocus({ key: turnKey, count: picks.current });
+      }
     },
     [rootId],
   );
@@ -80,14 +90,11 @@ export function useBranchStates(
   approvals: readonly { readonly sessionId: string }[],
   live: LiveState,
 ): ReadonlyMap<string, BranchState> {
-  const waiting = new Set(approvals.map((approval) => approval.sessionId));
-  return new Map(
-    tree.flatMap((session): [string, BranchState][] => {
-      if (waiting.has(session.id)) return [[session.id, "waiting"]];
-      if (live.steps[session.id] !== undefined) return [[session.id, "running"]];
-      if (session.id !== shownId && hasUnseenTurns(session)) return [[session.id, "unread"]];
-      return [];
-    }),
+  return branchStates(
+    tree,
+    shownId,
+    new Set(approvals.map((approval) => approval.sessionId)),
+    new Set(Object.keys(live.steps)),
   );
 }
 
@@ -265,12 +272,13 @@ export function BranchesButton({
     <>
       <button
         ref={button}
-        className={waiting ? "icon-button branches-button waiting" : "icon-button branches-button"}
+        className="icon-button branches-button"
         aria-label={`Branches, ${String(tree.length)}${waiting ? ", one waits for you" : ""}`}
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
         <Icon name="fork" />
+        {waiting && <span className="unread-dot warn" />}
       </button>
       {open && (
         <Dialog label="Branches" onClose={close} sheet>
@@ -295,5 +303,5 @@ export function BranchesButton({
 
 /** A row on the shown path only scrolls to its turn. Another row shows its branch too. */
 export function pickRow(shown: ShownBranch, shownId: string, row: MapRow): void {
-  shown.show(row.onPath ? shownId : row.sessionId, row.key);
+  shown.show(pickedBranch(shownId, row), row.key);
 }

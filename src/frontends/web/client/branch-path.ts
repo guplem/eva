@@ -137,6 +137,8 @@ export interface MapRow {
   /** The lane of the row's own dot. */
   readonly lane: number;
   readonly onPath: boolean;
+  /** The first row of a fork. Its menu deletes the fork. */
+  readonly forkHead: boolean;
   /** The last row of the shown branch. */
   readonly current: boolean;
   /** The line of each lane above and below the middle of the row. */
@@ -226,6 +228,7 @@ export function branchMap(tree: readonly BranchSession[], shownId: string): Bran
       label: row.label,
       lane: row.lane,
       onPath: row.onPath,
+      forkHead: row.session.parentId !== null && position === rowsOf(row.session.id)[0],
       current: row.session.id === shown.id && position === rowsOf(shown.id).at(-1),
       lines,
       bends,

@@ -7,6 +7,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
+import { branchesAfter, branchesAtStart, branchNames, pathOf, stepKey, type PathStep } from "./branch-path.ts";
+import {
+  BranchMapColumn,
+  BranchSwitcher,
+  pickRow,
+  useBranchStates,
+  type BranchState,
+  type ShownBranch,
+} from "./Branches.tsx";
 import { tasksOfTurn } from "./chat-details.ts";
 import { Composer, storedChoices } from "./Composer.tsx";
 import {
@@ -40,6 +49,8 @@ const recordings = new RecordingShelf((url) => URL.revokeObjectURL(url));
 interface ConversationProps {
   readonly root: SessionRecord;
   readonly sessions: readonly SessionRecord[];
+  /** The branch of the chat that the page shows, from `useShownBranch`. */
+  readonly shown: ShownBranch;
   readonly live: LiveState;
   readonly onChanged: () => Promise<void>;
   /** A branch shows its own requests, so a fork that waits shows the card in its own column. */
@@ -63,6 +74,7 @@ export interface SentMessage {
 export function Conversation({
   root,
   sessions,
+  shown,
   live,
   onChanged,
   approvals,
@@ -71,19 +83,30 @@ export function Conversation({
   firstMessage = null,
   projectTitle = null,
 }: ConversationProps): ReactElement {
-  const branches = chatTree(root, sessions);
+  const tree = chatTree(root, sessions);
+  const branch = tree.find((session) => session.id === shown.id) ?? root;
+  const states = useBranchStates(tree, branch.id, approvals.pending, live);
   const scroller = useRef<HTMLDivElement>(null);
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
 
   useEffect(() => {
     isAtBottom.current = true;
-  }, [root.id]);
+  }, [root.id, branch.id]);
 
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element !== null && isAtBottom.current) element.scrollTop = element.scrollHeight;
   });
+
+  // A pick in the map brings its turn into view, after the branch of the pick renders.
+  useLayoutEffect(() => {
+    if (shown.focus === null) return;
+    const turn = scroller.current?.querySelector(`[data-turn="${CSS.escape(shown.focus.key)}"]`);
+    if (turn === null || turn === undefined) return;
+    isAtBottom.current = false;
+    turn.scrollIntoView({ block: "start" });
+  }, [shown.focus]);
 
   return (
     <div
@@ -94,27 +117,37 @@ export function Conversation({
         isAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < stickToBottomPx;
       }}
     >
-      {branches.map((branch) => (
-        <Branch
-          key={branch.id}
-          session={branch}
-          parent={sessions.find((candidate) => candidate.id === branch.parentId)}
-          live={live}
-          onChanged={onChanged}
-          approvals={approvals}
-          blocker={blocker}
-          voiceNotes={voiceNotes}
-          firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
-          projectTitle={projectTitle}
+      {tree.length > 1 && (
+        <BranchMapColumn
+          tree={tree}
+          shownId={branch.id}
+          states={states}
+          onPick={(row) => pickRow(shown, branch.id, row)}
         />
-      ))}
+      )}
+      <Branch
+        key={branch.id}
+        session={branch}
+        tree={tree}
+        states={states}
+        onShow={shown.show}
+        live={live}
+        onChanged={onChanged}
+        approvals={approvals}
+        blocker={blocker}
+        voiceNotes={voiceNotes}
+        firstMessage={firstMessage?.sessionId === branch.id ? firstMessage.text : null}
+        projectTitle={projectTitle}
+      />
     </div>
   );
 }
 
 function Branch({
   session,
-  parent,
+  tree,
+  states,
+  onShow,
   live,
   onChanged,
   approvals,
@@ -124,7 +157,10 @@ function Branch({
   projectTitle,
 }: {
   session: SessionRecord;
-  parent: SessionRecord | undefined;
+  /** The chat and its forks, the chat first. */
+  tree: readonly SessionRecord[];
+  states: ReadonlyMap<string, BranchState>;
+  onShow: (sessionId: string) => void;
   live: LiveState;
   onChanged: () => Promise<void>;
   approvals: ConversationProps["approvals"];
@@ -140,7 +176,10 @@ function Branch({
     firstMessage === null ? null : { text: firstMessage, turnCount: 0 },
   );
   /** The answer whose tasks the dialog shows, or "running" for the tasks of the running turn. */
-  const [shownTasks, setShownTasks] = useState<number | "running" | null>(null);
+  const [shownTasks, setShownTasks] = useState<PathStep<SessionRecord> | "running" | null>(null);
+  const path = pathOf(session, tree);
+  const names = branchNames(tree);
+  const start = branchesAtStart(session, tree);
   const closeTasks = useCallback(() => setShownTasks(null), []);
   const tasks = tasksOf(live.tasks, [session.id]);
   // The side panel hides on a phone, so a running task also shows here.
@@ -168,7 +207,6 @@ function Branch({
   }, [liveSteps]);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
-  const forkTurn = parent?.turns.findIndex((turn) => turn.lastMessageId === session.forkAtMessageId) ?? -1;
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
@@ -195,50 +233,65 @@ function Branch({
 
   return (
     <section className="branch" aria-label={`Branch ${session.title}`}>
-      {parent !== undefined && (
-        <div className="branch-title">
-          <Icon name="fork" />
-          Branch after answer {forkTurn + 1} of “{parent.title}”
-        </div>
+      {start !== null && (
+        <BranchSwitcher point={start} names={names} states={states} label="Branches from the start" onShow={onShow} />
       )}
-      {session.turns.map((turn, index) => (
-        <div key={`${session.id}-${String(index)}`} style={{ display: "contents" }}>
-          <UserMessage text={turn.userText} recording={recordings.find(session.id, turn.userText)} />
-          <EvaMessage face={stateFaces.idle}>
-            <AnswerBody
-              steps={turn.steps}
-              omitted={turn.omittedSteps}
-              wholeAnswer={turn.answerText}
-              summary={activityOf(turn)}
-              actions={(shown) => (
-                <div className="answer-actions">
-                  {turn.taskCount > 0 && (
-                    <button className="ghost" onClick={() => setShownTasks(index)}>
-                      <Icon name="sync" />
-                      {counted(turn.taskCount, "background task")}
-                    </button>
-                  )}
-                  <button className="ghost" onClick={() => runAction(() => api.retry(session.id, index))}>
-                    <Icon name="restart" />
-                    Retry
-                  </button>
-                  {turn.lastMessageId !== null && turn.failure === null && (
-                    <button
-                      className="ghost"
-                      onClick={() => runAction(() => api.fork(session.id, turn.lastMessageId ?? ""))}
-                    >
-                      <Icon name="fork" />
-                      Fork
-                    </button>
-                  )}
-                  {shown !== "" && <CopyButton text={shown} />}
-                </div>
-              )}
-              failure={turn.failure}
+      {path.map((step, position) => {
+        const { turn, index } = step;
+        const owner = step.session;
+        const point = branchesAfter(path, position, session, tree);
+        return (
+          <div key={stepKey(owner.id, index)} style={{ display: "contents" }}>
+            <UserMessage
+              text={turn.userText}
+              recording={recordings.find(owner.id, turn.userText)}
+              turnKey={stepKey(owner.id, index)}
             />
-          </EvaMessage>
-        </div>
-      ))}
+            <EvaMessage face={stateFaces.idle}>
+              <AnswerBody
+                steps={turn.steps}
+                omitted={turn.omittedSteps}
+                wholeAnswer={turn.answerText}
+                summary={activityOf(turn)}
+                actions={(shown) => (
+                  <div className="answer-actions">
+                    {turn.taskCount > 0 && (
+                      <button className="ghost" onClick={() => setShownTasks(step)}>
+                        <Icon name="sync" />
+                        {counted(turn.taskCount, "background task")}
+                      </button>
+                    )}
+                    <button className="ghost" onClick={() => runAction(() => api.retry(owner.id, index))}>
+                      <Icon name="restart" />
+                      Retry
+                    </button>
+                    {turn.lastMessageId !== null && turn.failure === null && (
+                      <button
+                        className="ghost"
+                        onClick={() => runAction(() => api.fork(owner.id, turn.lastMessageId ?? ""))}
+                      >
+                        <Icon name="fork" />
+                        Fork
+                      </button>
+                    )}
+                    {shown !== "" && <CopyButton text={shown} />}
+                  </div>
+                )}
+                failure={turn.failure}
+              />
+            </EvaMessage>
+            {point !== null && (
+              <BranchSwitcher
+                point={point}
+                names={names}
+                states={states}
+                label={`Branches after answer ${String(position + 1)}`}
+                onShow={onShow}
+              />
+            )}
+          </div>
+        );
+      })}
       {pending !== null && <UserMessage text={pending} recording={recordings.find(session.id, pending)} />}
       {working && (
         <LiveAnswer steps={liveSteps ?? []} draft={live.drafts[session.id]} mode={session.mode} startedAt={startedAt} />
@@ -253,10 +306,10 @@ function Branch({
         </button>
       )}
       {shownTasks === "running" && <TasksDialog tasks={tasks} empty="No task runs now." onClose={closeTasks} />}
-      {typeof shownTasks === "number" && (
+      {shownTasks !== null && shownTasks !== "running" && (
         <TasksDialog
-          tasks={tasksOfTurn(session.turns[shownTasks]?.steps ?? [], session.id)}
-          total={session.turns[shownTasks]?.taskCount ?? 0}
+          tasks={tasksOfTurn(shownTasks.turn.steps, shownTasks.session.id)}
+          total={shownTasks.turn.taskCount}
           // An older answer comes with no steps, to keep the session list small.
           empty="Eva no longer keeps the details of these tasks."
           onClose={closeTasks}
@@ -272,7 +325,7 @@ function Branch({
           {describeUsageLimit(usageLimit, new Date())}
         </div>
       )}
-      {parent === undefined &&
+      {session.parentId === null &&
         turnCount === 0 &&
         pending === null &&
         !working &&
@@ -302,10 +355,19 @@ function Branch({
  * The person's message. A voice note shows what Eva heard, since that is what she answers.
  * While this tab still holds the recording, a switch plays what the person said.
  */
-function UserMessage({ text, recording }: { readonly text: string; readonly recording: string | null }): ReactElement {
+function UserMessage({
+  text,
+  recording,
+  turnKey,
+}: {
+  readonly text: string;
+  readonly recording: string | null;
+  /** The key of its turn, so a pick in the branch map can scroll to it. */
+  readonly turnKey?: string;
+}): ReactElement {
   const [showRecording, setShowRecording] = useState(false);
   return (
-    <div className="msg me">
+    <div className="msg me" data-turn={turnKey}>
       <div className="message user">
         <div className="who">You</div>
         {recording !== null && showRecording ? <audio className="voice-note" controls src={recording} /> : text}

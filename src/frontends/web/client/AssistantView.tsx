@@ -6,6 +6,8 @@ import { chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatS
 import { useMarkSeen } from "./seen-chats.ts";
 import type { LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
+import { seenPart } from "./branch-path.ts";
+import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf, type SentMessage } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
@@ -90,9 +92,12 @@ export function AssistantView({
   const selected = drafting ? undefined : (roots.find((chat) => chat.id === selectedId) ?? active[0] ?? chats[0]);
   const showError = useShowError();
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
+  const branch = useShownBranch(tree, linkedChat?.id ?? null);
+  const states = useBranchStates(tree, branch.id, approvals.pending, live);
   const [panelShown, togglePanel] = useChatPanelShown();
   const chat = {
     tree,
+    shownId: branch.id,
     onChanged,
     tasks: tasksOf(
       live.tasks,
@@ -105,7 +110,7 @@ export function AssistantView({
     tree.map((session) => session.id),
   );
   // On a phone, the open list covers the chat.
-  useMarkSeen(tree, !sidebarOpen);
+  useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
   const stateOf = (candidate: SessionRecord): ChatState => {
     const state = chatState(chatTree(candidate, sessions), isRunning, approvalSessionIds);
     // The person reads the open chat now. Its mark reaches the core a moment later.
@@ -257,11 +262,13 @@ export function AssistantView({
               listHasUnread={active.some((candidate) => stateOf(candidate) === "unread")}
               onArchived={afterArchive}
               panelShown={panelShown}
+              extra={<BranchesButton tree={tree} shown={branch} states={states} />}
               onTogglePanel={togglePanel}
               onChanged={onChanged}
             />
             <Conversation
               root={selected}
+              shown={branch}
               sessions={sessions}
               live={live}
               onChanged={onChanged}

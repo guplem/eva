@@ -185,8 +185,50 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expectBackgroundTasks(page);
 
   await page.getByRole("button", { name: "Retry" }).first().click();
-  await expect(page.locator(".branch")).toHaveCount(2);
-  await expect(page.getByText(/Branch after answer/)).toBeVisible();
+  // A retry of the first answer starts from the beginning: the page shows the new branch, and the start gets a switcher.
+  const start = page.getByRole("group", { name: "Branches from the start" });
+  await expect(start).toContainText("Fork 1 · 2 of 2");
+  await expect(page.locator(".branch")).toHaveCount(1);
+  await start.getByRole("button", { name: "Previous branch" }).click();
+  await expect(start).toContainText("Main line · 1 of 2");
+
+  // A computer shows the branch map beside the chat. A phone opens it from the header.
+  if (test.info().project.name === "phone") {
+    await expect(page.getByRole("navigation", { name: "Branch map" })).toBeHidden();
+    await page.getByRole("button", { name: /^Branches, 2/ }).click();
+    await page
+      .getByRole("dialog", { name: "Branches" })
+      .getByRole("button", { name: /Fork 1 · answer 1/ })
+      .click();
+    await expect(page.getByRole("dialog", { name: "Branches" })).toBeHidden();
+  } else {
+    await page
+      .getByRole("navigation", { name: "Branch map" })
+      .getByRole("button", { name: /Fork 1 · answer 1/ })
+      .click();
+  }
+  await expect(start).toContainText("Fork 1 · 2 of 2");
+});
+
+test("a fork continues under its answer, in the same column, and the switcher goes back", async ({ page }) => {
+  await logIn(page);
+  const chatId = await newAnsweredChat(page, "Fork in place");
+  await waitUntilIdle(page, chatId);
+  await page.getByRole("button", { name: "Fork", exact: true }).first().click();
+  const point = page.getByRole("group", { name: "Branches after answer 1" });
+  await expect(point).toContainText("Fork 1 · 2 of 2");
+
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("A question for the fork");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").nth(1)).toContainText("A question for the fork");
+  // The fork shows the shared answer once, then its own turn: one column, one composer.
+  await expect(page.locator(".message.user")).toHaveCount(2);
+  await expect(page.getByLabel("Message")).toHaveCount(1);
+
+  await point.getByRole("button", { name: "Next branch" }).click();
+  await expect(point).toContainText("Main line · 1 of 2");
+  await expect(page.locator(".message.user")).toHaveCount(1);
 });
 
 test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
@@ -1136,7 +1178,7 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Retry" }).first().click();
-  await expect(page.locator(".branch")).toHaveCount(2);
+  await expect(page.getByRole("group", { name: "Branches from the start" })).toContainText("Fork 1");
   let forkId: string | undefined;
   await expect
     .poll(async () => {

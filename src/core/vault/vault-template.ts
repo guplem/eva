@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { EvaError } from "../../shared/errors.ts";
-import type { ProcessRunner } from "../../shared/process-runner.ts";
+import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import agentsFile from "../../../templates/vault/AGENTS.md" with { type: "text" };
 import readmeFile from "../../../templates/vault/README.md" with { type: "text" };
 import gitignoreFile from "../../../templates/vault/.gitignore" with { type: "text" };
@@ -113,5 +113,6 @@ async function git(inputs: NewVaultInputs, args: readonly string[]): Promise<voi
     environment: inputs.environment,
     timeoutMs: gitTimeoutMs,
   });
-  if (result.exitCode !== 0) throw new EvaError("git_failed", `git ${args.join(" ")} failed: ${result.stderr.trim()}`);
+  if (result.exitCode !== 0)
+    throw new EvaError("git_failed", `git ${args.join(" ")} failed: ${failureReason(result, "git")}`);
 }

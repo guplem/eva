@@ -57,6 +57,16 @@ const designIcons: readonly IconName[] = [
   "panel",
   "star",
   "archive",
+  "bubbles",
+  "orbit",
+  "panes",
+  "kalimba",
+  "halo",
+  "aurora",
+  "gem",
+  "pulse",
+  "cube",
+  "eve",
 ];
 
 function render(name: IconName, label?: string): string {

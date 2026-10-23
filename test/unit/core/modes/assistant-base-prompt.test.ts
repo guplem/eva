@@ -40,6 +40,16 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).not.toContain("{{");
   });
 
+  test("puts the device facts in an issue, and scrubs the personal data out of its log lines", () => {
+    for (const fact of ["screen size", "phone, tablet or computer", "through Tailscale", "operating system"]) {
+      expect(assistantBasePrompt).toContain(fact);
+    }
+    for (const placeholder of ["`<vault>`", "`<home>`", "`<machine>`", "`<person>`"]) {
+      expect(assistantBasePrompt).toContain(placeholder);
+    }
+    expect(assistantBasePrompt).toContain("Report a bug");
+  });
+
   test("installs missing programs without administrator rights: a service has no terminal for a sudo password", () => {
     expect(assistantBasePrompt).toContain("## Installing programs");
     expect(assistantBasePrompt).toContain("sudo");

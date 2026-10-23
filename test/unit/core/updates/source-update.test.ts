@@ -126,6 +126,22 @@ describe("source update channel", () => {
     expect(await failure(channel().check())).toContain("could not be reached");
   });
 
+  test("a fetch that fails with no error output still gives a reason (#430)", async () => {
+    const silent: ProcessRunner = {
+      run: (command, options) =>
+        command.includes("fetch")
+          ? Promise.resolve({ exitCode: 128, stdout: "", stderr: "" })
+          : systemProcessRunner.run(command, options),
+    };
+    const quiet = sourceUpdateChannel({
+      folder: checkout,
+      runner: silent,
+      environment: gitEnvironment,
+      bunExecutable: fakeBun,
+    });
+    expect(await failure(quiet.check())).toContain("git ended with exit code 128 and wrote no error.");
+  });
+
   test("a folder that is not a checkout is a failed check", async () => {
     const folder = join(sandbox.root, "plain");
     mkdirSync(folder);

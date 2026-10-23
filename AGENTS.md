@@ -67,6 +67,7 @@ A change to one of these goals needs the owner.
 ## Windows
 
 Read lessons 76 to 83 in `docs/lessons-from-v1.md` before you spawn a process, build a path, or order events.
+Bun's `process.env` is case-insensitive on Windows. Never give a child both `PATH` and `Path`: git then fails with no message (#430).
 
 ## Test-driven development
 

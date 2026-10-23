@@ -5,7 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";
 import { VaultChooser, VaultPush } from "./VaultChooser.tsx";
@@ -127,7 +127,8 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
             ))}
           </select>
         </label>
-        <button disabled={syncing} onClick={() => void syncNow()}>
+        <button disabled={syncing} aria-busy={syncing} onClick={() => void syncNow()}>
+          {syncing && <ButtonSpinner />}
           {syncing ? "Syncing…" : "Sync now"}
         </button>
       </div>

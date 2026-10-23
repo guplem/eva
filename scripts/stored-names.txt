@@ -184,6 +184,13 @@ machine state/sessions.json sessions[].turns[].toolCount
 machine state/sessions.json sessions[].turns[].userText
 machine state/sessions.json version
 machine state/sessions.json version=1
+machine state/step-details/*.json turns
+machine state/step-details/*.json turns[].steps
+machine state/step-details/*.json turns[].steps[].id
+machine state/step-details/*.json turns[].steps[].input
+machine state/step-details/*.json turns[].steps[].output
+machine state/step-details/*.json version
+machine state/step-details/*.json version=1
 migration machine 2026-10-18-copy-security-settings-from-vault
 migration machine 2026-10-18-move-shared-settings-to-vault
 migration machine 2026-10-20-google-access-per-service

@@ -9,7 +9,9 @@ import {
   type TurnPreparer,
 } from "../../../../src/core/sessions/session-manager.ts";
 import { SessionStore } from "../../../../src/core/sessions/session-store.ts";
-import type { SessionEvent } from "../../../../src/shared/events.ts";
+import { StepDetailsStore } from "../../../../src/core/sessions/step-details-store.ts";
+import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/events.ts";
+import { maxDetailLength, maxTurnDetailLength } from "../../../../src/shared/tool-details.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
 import { FakeEngine } from "../../../support/fake-engine.ts";
@@ -46,6 +48,7 @@ function createManager(
     engines: [engine],
     store: new SessionStore(join(folder, "sessions.json"), { now: () => new Date("2026-10-14T12:00:00Z") }),
     preparers: { assistant: preparer, project: preparer },
+    stepDetails: new StepDetailsStore(join(folder, "step-details")),
     now: () => new Date("2026-10-14T12:00:00Z"),
     newId: () => {
       nextId += 1;
@@ -139,6 +142,78 @@ describe("a conversation", () => {
       ["task", 4, false],
       ["message", 300, false],
     ]);
+  });
+
+  test("a tool step's whole input and output are redacted, sent, and kept apart from the session list", async () => {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const output = `token the-secret-value-123 ${"z".repeat(5000)}`;
+    const manager = createManager(
+      new FakeEngine((request) => [
+        {
+          kind: "tool_started",
+          toolUseId: "t1",
+          name: "Read",
+          category: "tool",
+          summary: "Read x",
+          input: '{\n  "x": 1\n}',
+        },
+        { kind: "tool_finished", toolUseId: "t1", isError: false, output },
+        ...FakeEngine.answer(request, "Done."),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Read it.");
+    const redacted = output.replace("the-secret-value-123", "[redacted]");
+    expect(events.find((event) => event.kind === "tool_finished")).toMatchObject({ output: redacted });
+    expect(manager.get(sessionId).turns[0]?.steps[0]).toEqual({
+      kind: "tool",
+      text: "Read x",
+      isError: false,
+      id: "t1",
+    });
+    expect(manager.stepDetail(sessionId, "t1")).toEqual({ input: '{\n  "x": 1\n}', output: redacted });
+    manager.delete(sessionId);
+    expect(new StepDetailsStore(join(folder, "step-details")).get(sessionId, "t1")).toBeNull();
+  });
+
+  test("a secret with a quote or a new line is redacted in a tool's JSON input too", async () => {
+    const redactor = new Redactor();
+    const secret = 'line-one-of-the-key\nline "two" of the key';
+    redactor.addSecret(secret);
+    const manager = createManager(
+      new FakeEngine((request) => [
+        {
+          kind: "tool_started",
+          toolUseId: "t1",
+          name: "Write",
+          category: "tool",
+          summary: "Write key.pem",
+          input: JSON.stringify({ file_path: "key.pem", content: secret }, null, 2),
+        },
+        ...FakeEngine.answer(request, "Done."),
+      ]),
+      { redactor },
+    );
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Write the key.");
+    const sent = events.find((event) => event.kind === "tool_started");
+    expect(sent).toMatchObject({ input: JSON.stringify({ file_path: "key.pem", content: "[redacted]" }, null, 2) });
+  });
+
+  test("a turn keeps whole details only up to its budget, so a long turn cannot fill the memory", async () => {
+    const big = "b".repeat(maxDetailLength);
+    const tools = Array.from({ length: 8 }, (_, index) => [
+      { kind: "tool_started", toolUseId: `t${String(index)}`, name: "Read", category: "tool", summary: "Read x" },
+      { kind: "tool_finished", toolUseId: `t${String(index)}`, isError: false, output: big },
+    ]).flat() as EngineEventPayload[];
+    const manager = createManager(new FakeEngine((request) => [...tools, ...FakeEngine.answer(request, "Done.")]));
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "Read them all.");
+    const kept = events.filter((event) => event.kind === "tool_finished" && event.output !== undefined);
+    expect(kept).toHaveLength(maxTurnDetailLength / maxDetailLength);
+    expect(manager.stepDetail(sessionId, "t7")).toBeNull();
   });
 
   test("a turn keeps its activity: every tool, the commands among them, and its background tasks", async () => {

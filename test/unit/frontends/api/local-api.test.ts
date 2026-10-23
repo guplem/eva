@@ -827,6 +827,24 @@ describe("routes", () => {
     expect(retry.status).toBe(200);
   });
 
+  test("gives the whole input and output of a step, null for an unknown step, and a 404 for an unknown chat", async () => {
+    turnScript = (request) => [
+      { kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "Read x", input: "{}" },
+      { kind: "tool_finished", toolUseId: "t1", isError: false, output: "the file" },
+      ...FakeEngine.answer(request, "done"),
+    ];
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "read it");
+    expect(await json(await call(`/api/sessions/${session.id}/steps/t1`))).toEqual({
+      input: "{}",
+      output: "the file",
+    });
+    expect(await json(await call(`/api/sessions/${session.id}/steps/t9`))).toEqual({ input: null, output: null });
+    expect((await call("/api/sessions/unknown/steps/t1")).status).toBe(404);
+  });
+
   test("a delete removes the chat and its forks, and an unknown chat is a 404", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),

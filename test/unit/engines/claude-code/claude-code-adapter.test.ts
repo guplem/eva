@@ -228,8 +228,14 @@ describe("mapSdkMessages", () => {
         name: "Read",
         category: "tool",
         summary: "Read /demo-vault\\Methods\\Morning Routine.md",
+        input: JSON.stringify({ file_path: "/demo-vault\\Methods\\Morning Routine.md" }, null, 2),
       },
-      { kind: "tool_finished", toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83", isError: false },
+      {
+        kind: "tool_finished",
+        toolUseId: "toolu_01NPDs4NS42mRQR6bQNg4M83",
+        isError: false,
+        output: "1\t# Morning Routine\n2\t\n3\t1. Drink water.\n4\t2. Stretch.\n5\t",
+      },
       { kind: "text", text: "The first step is: **Drink water.**", messageId: "9b600d45-5cf5-4963-b739-36803a54eb85" },
       {
         kind: "turn_finished",
@@ -328,6 +334,7 @@ describe("mapSdkMessages", () => {
         name: "Agent",
         category: "tool",
         summary: "Agent Read file and report title",
+        input: expect.any(String) as string,
       },
       {
         kind: "task_changed",
@@ -342,7 +349,7 @@ describe("mapSdkMessages", () => {
           "The title of the document is **Morning Routine**. It appears as the main heading (H1) at the top of the file.",
         state: "done",
       },
-      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false },
+      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false, output: expect.any(String) as string },
       {
         kind: "text",
         text: "The title of the document is **Morning Routine**.",
@@ -373,6 +380,7 @@ describe("mapSdkMessages", () => {
         name: "Agent",
         category: "tool",
         summary: "Agent Read morning routine title",
+        input: expect.any(String) as string,
       },
       {
         kind: "task_changed",
@@ -380,7 +388,7 @@ describe("mapSdkMessages", () => {
         description: "Read morning routine title",
         state: "running",
       },
-      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false },
+      { kind: "tool_finished", toolUseId: agentToolUseId, isError: false, output: expect.any(String) as string },
       {
         kind: "text",
         text: "I started a background subagent to read `Methods/Morning Routine.md` and report its title; I'll share the result when it arrives.",

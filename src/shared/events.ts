@@ -40,8 +40,16 @@ export type EngineEventPayload =
       readonly name: string;
       readonly category: ToolCategory;
       readonly summary: string;
+      /** The whole input as JSON text, for the step dialog. An older Eva sends none. */
+      readonly input?: string;
     }
-  | { readonly kind: "tool_finished"; readonly toolUseId: string; readonly isError: boolean }
+  | {
+      readonly kind: "tool_finished";
+      readonly toolUseId: string;
+      readonly isError: boolean;
+      /** The whole output as text, for the step dialog. An older Eva sends none. */
+      readonly output?: string;
+    }
   | { readonly kind: "task_changed"; readonly taskId: string; readonly description: string; readonly state: TaskState }
   | {
       readonly kind: "approval_needed";

@@ -3,6 +3,7 @@ import {
   chatGroup,
   chatPreview,
   chatState,
+  chatForks,
   chatTime,
   groupChats,
   matchesSearch,
@@ -175,5 +176,29 @@ describe("chatPreview on realistic Markdown", () => {
   test("shows the text of a link and of strong emphasis, and leaves out a code block", () => {
     expect(preview("***Both*** in [the docs](https://example.com/x)")).toBe("Both in the docs");
     expect(preview("Run this:\n```ts\nconst a = 1;\n```\nThen reload.")).toBe("Run this: Then reload.");
+  });
+});
+
+describe("chatForks", () => {
+  const session = (id: string, parentId: string | null): Parameters<typeof chatForks>[0][number] => ({
+    id,
+    parentId,
+    forkAtMessageId: null,
+    turns: [],
+    createdAt: "2026-10-19T10:00:00Z",
+    lastTurnAt: null,
+  });
+
+  test("a chat with no fork lists no branch", () => {
+    expect(chatForks([session("a", null)])).toEqual([]);
+  });
+
+  test("a chat with forks lists each branch by name, the main line first", () => {
+    const tree = [session("a", null), session("b", "a"), session("c", "a")];
+    expect(chatForks(tree).map(({ session: branch, name }) => [branch.id, name])).toEqual([
+      ["a", "Main line"],
+      ["b", "Fork 1"],
+      ["c", "Fork 2"],
+    ]);
   });
 });

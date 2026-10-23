@@ -15,7 +15,7 @@
   background: var(--main-gradient);
 }
 
-/* One branch is the column of the guide. Forks stand side by side, each with its own composer. */
+/* The column of the shown branch: its path, its switchers and its composer. */
 .branch {
   min-width: 320px;
   max-width: 760px;
@@ -208,20 +208,9 @@
   color: var(--muted);
 }
 
-/* A dot on the header button says that a hidden branch waits for the person. */
+/* The dot of a hidden branch that waits sits on the corner of the button. */
 .branches-button {
   position: relative;
-}
-
-.branches-button.waiting::after {
-  content: "";
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--warn);
 }
 
 .visually-hidden {

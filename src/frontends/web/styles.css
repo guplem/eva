@@ -948,6 +948,11 @@ textarea {
   background: var(--accent);
 }
 
+/* A request that waits, such as on the Branches button of a phone. */
+.unread-dot.warn {
+  background: var(--warn);
+}
+
 .main {
   min-width: 0;
   overflow: auto;

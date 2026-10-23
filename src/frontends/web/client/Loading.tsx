@@ -1,6 +1,7 @@
 /**
- * The standard waits of the web page. A wait inside a card shows a `ProgressBar`. A wait for
- * content that fills a large area shows a skeleton with the shape of that content.
+ * The standard waits of the web page. A wait inside a card shows a `ProgressBar`. A button that
+ * waits also shows a `ButtonSpinner`. A wait for content that fills a large area shows a
+ * skeleton with the shape of that content.
  */
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { destinations } from "./navigation.ts";
@@ -39,6 +40,33 @@ export function ProgressBar({
         <span className="progress-fill" style={percent === null ? undefined : { width: `${String(percent)}%` }} />
       </div>
     </div>
+  );
+}
+
+/**
+ * The wait inside a button, before its label. A known share (0 to 1) fills the ring, as a
+ * `ProgressBar` fills its track. With no share, an arc turns. The label of the button and the
+ * `ProgressBar` below it give the words, so a screen reader skips the ring.
+ */
+export function ButtonSpinner({ share = null }: { readonly share?: number | null }): ReactElement {
+  const percent = share === null ? null : Math.round(Math.min(1, Math.max(0, share)) * 100);
+  return (
+    <svg
+      className={percent === null ? "button-spinner running" : "button-spinner"}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <circle className="button-spinner-track" cx="8" cy="8" r="6" />
+      {/* A path length of 100 makes the dash of the arc equal to the percentage. */}
+      <circle
+        className="button-spinner-arc"
+        cx="8"
+        cy="8"
+        r="6"
+        pathLength={100}
+        strokeDasharray={`${String(percent ?? 28)} 100`}
+      />
+    </svg>
   );
 }
 

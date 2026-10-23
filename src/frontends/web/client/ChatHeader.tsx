@@ -294,13 +294,16 @@ function RenameDialog({
   );
 }
 
-/** Deletes the chat and its forks in every front end, after the person says yes in a dialog. */
-function DeleteQuestion({
+/** Deletes a chat or a fork, with its forks, in every front end, after the person says yes in a dialog. */
+export function DeleteQuestion({
   chat,
+  fork = false,
   onKeep,
   onChanged,
 }: {
   readonly chat: SessionRecord;
+  /** The question names a fork, such as "Fork 1", and not the whole chat. */
+  readonly fork?: string | false;
   readonly onKeep: () => void;
   readonly onChanged: () => Promise<void>;
 }): ReactElement {
@@ -324,9 +327,18 @@ function DeleteQuestion({
       // A click inside the dialog also reaches the scrim, so only a click on the scrim itself keeps the chat.
       onClick={(event) => event.target === event.currentTarget && !deleting && onKeep()}
     >
-      <div className="schedule-sheet" role="dialog" aria-modal="true" aria-label={`Delete “${chat.title}”?`}>
-        <h2>Delete “{chat.title}”?</h2>
-        <p>Eva deletes the chat and its forks everywhere.</p>
+      <div
+        className="schedule-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={fork === false ? `Delete “${chat.title}”?` : `Delete ${fork}?`}
+      >
+        <h2>{fork === false ? `Delete “${chat.title}”?` : `Delete ${fork}?`}</h2>
+        <p>
+          {fork === false
+            ? "Eva deletes the chat and its forks everywhere."
+            : "Eva deletes this fork and its forks everywhere."}
+        </p>
         <div className="schedule-sheet-actions">
           {/* Not disabled: a disabled button drops the focus, and a failed delete must leave it here. */}
           <button className="danger" aria-disabled={deleting} onClick={() => void remove()}>
@@ -338,7 +350,7 @@ function DeleteQuestion({
             Keep
           </button>
         </div>
-        {deleting && <ProgressBar label="Eva deletes the chat." />}
+        {deleting && <ProgressBar label={fork === false ? "Eva deletes the chat." : "Eva deletes the fork."} />}
       </div>
     </div>
   );

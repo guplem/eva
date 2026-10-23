@@ -194,6 +194,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status"),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
+  /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
+  stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
   /** With no engine, Eva starts the chat on her default engine. */
   newAssistantChat: (model: ModelAlias, engine?: EngineName, effort?: EffortLevel): Promise<SessionRecord> =>
     request("POST", "/api/sessions", {

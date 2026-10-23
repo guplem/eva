@@ -1,12 +1,17 @@
 /**
  * The steps of an answer, folded into one line: the count, the last step and an arrow. A tap
  * opens the list, one line for each message, command, tool and task: a pill says what the step
- * did, and plain text says what it did it to, such as the file that it read.
+ * did, and plain text says what it did it to, such as the file that it read. A tap on a step
+ * opens a dialog with all of it: a tool's whole input and output, each in a fold.
  */
-import { useId, useState, type ReactElement } from "react";
-import type { TurnStep } from "../../../shared/turn-steps.ts";
-import { stepIcon, stepParts } from "./conversation-parts.ts";
+import { useEffect, useId, useState, type ReactElement } from "react";
+import type { StepDetail, TurnStep } from "../../../shared/turn-steps.ts";
+import { api } from "./api.ts";
+import { Dialog } from "./ChatPanel.tsx";
+import { hasToolDetails, missingDetail, stepIcon, stepParts, stepState } from "./conversation-parts.ts";
 import { Icon } from "./icons.tsx";
+import { ProgressBar } from "./Loading.tsx";
+import { errorText } from "./SettingsParts.tsx";
 
 function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
@@ -31,6 +36,7 @@ export function StepFold({
   omitted = 0,
   live = false,
   summary,
+  sessionId,
 }: {
   readonly steps: readonly TurnStep[];
   readonly omitted?: number;
@@ -38,13 +44,18 @@ export function StepFold({
   readonly live?: boolean;
   /** What the turn did, such as "1 command, 1 tool", as the line's hover text. */
   readonly summary?: string;
+  /** The chat of a stored answer. Its steps carry no details, so the dialog fetches them. */
+  readonly sessionId?: string;
 }): ReactElement | null {
   const [open, setOpen] = useState(live);
+  const [shown, setShown] = useState<TurnStep | null>(null);
   const listId = useId();
   const total = steps.length + omitted;
   if (total === 0) return null;
   const last = steps.at(-1);
   const failed = steps.some((step) => step.isError);
+  // A live step changes as its output arrives, so the dialog follows the newest copy of the shown step.
+  const current = shown === null ? null : (steps.find((step) => step.id !== null && step.id === shown.id) ?? shown);
   return (
     <div className="step-fold">
       <button
@@ -73,12 +84,111 @@ export function StepFold({
           {omitted > 0 && <li className="muted">{counted(omitted, "step")} not kept.</li>}
           {steps.map((step, index) => (
             <li key={`${step.id ?? ""}-${String(index)}`} className={step.isError ? "failed" : undefined}>
-              <Icon name={stepIcon(step)} />
-              <StepParts step={step} />
+              <button className="step-row" aria-haspopup="dialog" onClick={() => setShown(step)}>
+                <Icon name={stepIcon(step)} />
+                <StepParts step={step} />
+              </button>
             </li>
           ))}
         </ol>
       )}
+      {current !== null && (
+        <StepDialog
+          step={current}
+          live={live}
+          {...(sessionId === undefined ? {} : { sessionId })}
+          onClose={() => setShown(null)}
+        />
+      )}
     </div>
+  );
+}
+
+type Details = StepDetail | "loading" | { readonly failed: string };
+
+/**
+ * Everything about one step. A live step carries its input and output. A stored one does not,
+ * because the session list stays small, so the dialog fetches them.
+ */
+function StepDialog({
+  step,
+  live,
+  sessionId,
+  onClose,
+}: {
+  readonly step: TurnStep;
+  readonly live: boolean;
+  readonly sessionId?: string;
+  readonly onClose: () => void;
+}): ReactElement {
+  const carried = step.input !== undefined || step.output !== undefined;
+  const fetches = hasToolDetails(step) && !carried && !live && sessionId !== undefined && step.id !== null;
+  const [fetched, setFetched] = useState<Details>(fetches ? "loading" : {});
+  useEffect(() => {
+    if (!fetches) return;
+    let current = true;
+    api.stepDetail(sessionId, step.id).then(
+      ({ input, output }) => {
+        if (current) setFetched({ ...(input === null ? {} : { input }), ...(output === null ? {} : { output }) });
+      },
+      (error: unknown) => {
+        if (current) setFetched({ failed: errorText(error) });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [fetches, sessionId, step.id]);
+
+  const { action, detail } = stepParts(step);
+  const state = stepState(step, live);
+  const details: Details = carried ? { input: step.input, output: step.output } : fetched;
+  return (
+    <Dialog label={`Step: ${action}`} onClose={onClose} sheet>
+      <div className="step-dialog-title">
+        <span className={`pill step-pill${step.isError ? " failed" : ""}`}>{action}</span>
+        <span className={`status-pill ${state === "Failed" ? "bad" : state === "Running" ? "live" : "ok"}`}>
+          {state}
+        </span>
+      </div>
+      {detail !== "" && <p className="step-dialog-text">{detail}</p>}
+      {hasToolDetails(step) &&
+        (details === "loading" ? (
+          <ProgressBar label="Eva reads the details of the step." />
+        ) : "failed" in details ? (
+          <div role="status" className="callout warning">
+            Eva could not read the details: {details.failed}
+          </div>
+        ) : (
+          <>
+            <DetailFold title="Input" text={details.input} missing={missingDetail("input", live)} />
+            <DetailFold title="Output" text={details.output} missing={missingDetail("output", live)} open />
+          </>
+        ))}
+    </Dialog>
+  );
+}
+
+function DetailFold({
+  title,
+  text,
+  missing,
+  open = false,
+}: {
+  readonly title: string;
+  readonly text: string | undefined;
+  /** Why the part has no text. */
+  readonly missing: string;
+  readonly open?: boolean;
+}): ReactElement {
+  return (
+    <details className="step-detail" open={open}>
+      <summary>{title}</summary>
+      {text === undefined || text === "" ? (
+        <p className="muted">{text === "" ? "Empty." : missing}</p>
+      ) : (
+        <pre>{text}</pre>
+      )}
+    </details>
   );
 }

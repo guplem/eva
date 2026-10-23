@@ -402,6 +402,26 @@
   color: var(--ink);
 }
 
+/* Each step is a button that opens its dialog, so it fills its line. */
+.step-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-row:hover .step-text {
+  text-decoration: underline;
+}
+
 .step-list li .icon {
   width: 14px;
   height: 14px;
@@ -958,4 +978,42 @@ button.ghost .icon {
   box-shadow:
     var(--shadow),
     0 0 0 2px var(--accent);
+}
+
+/* The step dialog: the step's pill and state, its text, then its input and output, each in a fold. */
+.step-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.step-dialog-text {
+  margin: 0;
+  font: 400 var(--text-sm) / 1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.step-detail summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+/* A long output scrolls inside its fold, so the close button stays in reach. */
+.step-detail pre {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  max-height: 50dvh;
+  overflow: auto;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-detail p {
+  margin: var(--space-2) 0 0;
 }

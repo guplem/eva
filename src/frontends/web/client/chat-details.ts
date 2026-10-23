@@ -1,6 +1,7 @@
 /** The figures of the chat panel. */
 import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { SessionRecord } from "./api.ts";
+import { pathOf, type BranchSession } from "./branch-path.ts";
 import type { LiveState } from "./live-state.ts";
 
 /** How full the context is, and the size of the window when the engine said it. */
@@ -79,13 +80,19 @@ export function taskStatus(state: string): { label: string; tone: StatusTone } {
   return statuses[state] ?? { label: state, tone: "idle" };
 }
 
-/** Where "Fork this chat" forks: the newest answer that has a message and did not fail. */
-export function forkPoint(
-  chat: Pick<SessionRecord, "id" | "turns"> | undefined,
+/** Where "Fork this chat" forks a branch: the newest answer on its path, which can be a shared one. */
+export function branchForkPoint(
+  tree: readonly (BranchSession & Pick<SessionRecord, "turns">)[],
+  shownId: string | null,
 ): { sessionId: string; messageId: string } | null {
-  const turn = chat?.turns.findLast((candidate) => candidate.lastMessageId !== null && candidate.failure === null);
-  if (chat === undefined || turn === undefined || turn.lastMessageId === null) return null;
-  return { sessionId: chat.id, messageId: turn.lastMessageId };
+  const shown = tree.find((session) => session.id === shownId) ?? tree[0];
+  if (shown === undefined) return null;
+  // An answer with no message id, or one that failed, cannot be forked.
+  const step = pathOf(shown, tree).findLast(
+    (candidate) => candidate.turn.lastMessageId !== null && candidate.turn.failure === null,
+  );
+  if (step === undefined || step.turn.lastMessageId === null) return null;
+  return { sessionId: step.session.id, messageId: step.turn.lastMessageId };
 }
 
 /**

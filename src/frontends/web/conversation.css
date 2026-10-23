@@ -13,9 +13,11 @@
   flex: 1;
   min-height: 0;
   background: var(--main-gradient);
+  /* The map column sizes itself to the chat area, which the list and the inspector make narrow. */
+  container-type: inline-size;
 }
 
-/* One branch is the column of the guide. Forks stand side by side, each with its own composer. */
+/* The column of the shown branch: its path, its switchers and its composer. */
 .branch {
   min-width: 320px;
   max-width: 760px;
@@ -26,22 +28,214 @@
   gap: 16px;
 }
 
-.branch-title {
-  display: inline-flex;
-  align-self: flex-start;
+/* The switcher at a fork point sits under its answer, in line with the card. */
+.branch-switch {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 4px 11px;
+  gap: var(--space-2) var(--space-3);
+  /* The width of the visor and its gap, so the switcher lines up with the card. */
+  padding-left: calc(var(--space-8) + var(--space-2));
+}
+
+.branch-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border-radius: var(--radius-pill);
-  background: var(--chip);
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.branch-switcher .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
   color: var(--muted);
 }
 
-.branch-title .icon {
-  width: 14px;
-  height: 14px;
+.branch-switcher-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--soft);
+  color: var(--soft-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.branch-switcher .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The branch map of a computer: the tree as a small graph. It stays in view while the chat scrolls. */
+.branch-map-column {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: none;
+  width: 260px;
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--side);
+  box-shadow: var(--shadow);
+}
+
+.branch-map-column h2,
+.branches-sheet h2 {
+  margin: 0 var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.branch-map {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.branch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--space-3) 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.branch-row:hover {
+  background: var(--chip);
+}
+
+.branch-row[aria-current="true"] {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.branch-lanes {
+  flex: none;
+  align-self: stretch;
+  height: 52px;
+}
+
+.branch-lanes line,
+.branch-lanes path {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.branch-lanes .plain {
+  stroke: color-mix(in oklch, var(--muted) 45%, transparent);
+}
+
+.branch-lanes .hot {
+  stroke: var(--accent);
+}
+
+.branch-lanes circle {
+  stroke-width: 3;
+}
+
+.branch-lanes circle.plain {
+  fill: var(--side);
+}
+
+.branch-lanes circle.hot,
+.branch-lanes circle.current {
+  fill: var(--accent);
+}
+
+.branch-lanes circle.current {
+  filter: drop-shadow(0 0 4px var(--glow));
+}
+
+.branch-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.branch-row-message {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.branch-row-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+/* A narrow chat area keeps only the lanes of the map. The text stays for screen readers and the tooltip. */
+@container (max-width: 820px) {
+  .branch-map-column {
+    width: auto;
+    padding-inline: var(--space-1);
+  }
+
+  .branch-map-column h2,
+  .branch-map-column .branch-row-text,
+  .branch-map-column .pill {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .branch-map-column .branch-row {
+    padding-inline: var(--space-1);
+  }
+}
+
+.branches-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.branches-sheet h2 {
+  margin: 0;
+}
+
+.branches-sheet-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+/* The dot of a hidden branch that waits sits on the corner of the button. */
+.branches-button {
+  position: relative;
 }
 
 .visually-hidden {
@@ -662,6 +856,28 @@ button.ghost .icon {
 
   .branch {
     min-width: calc(100vw - 28px);
+  }
+
+  /* A phone opens the map from the chat header, so the chat keeps the whole width. */
+  .branch-map-column {
+    display: none;
+  }
+
+  .branch-switch {
+    padding-left: 0;
+  }
+
+  .branch-switcher {
+    flex: 1;
+  }
+
+  .branch-switcher-name {
+    flex: 1;
+  }
+
+  .branch-switcher .icon-button {
+    min-width: 44px;
+    height: 44px;
   }
 
   /* The reference hides the visor on a phone, so the cards get the whole width. */

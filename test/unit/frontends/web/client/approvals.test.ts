@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  approvalPlace,
-  approvalTitle,
-  approvalsOutside,
-  rootChatId,
-} from "../../../../../src/frontends/web/client/approvals.ts";
+import { approvalPlace, approvalTitle, approvalsOutside } from "../../../../../src/frontends/web/client/approvals.ts";
 import type { PendingApproval } from "../../../../../src/frontends/web/client/api.ts";
 
 function approval(sessionId: string, toolName = "Bash"): PendingApproval {
@@ -17,25 +12,6 @@ const sessions = [
   { id: "fork-of-fork", parentId: "fork", mode: "assistant" as const, title: "Plan the week", clone: null },
   { id: "work", parentId: null, mode: "project" as const, title: "Ship the login", clone: "example-app-1" },
 ];
-
-describe("rootChatId", () => {
-  test("follows the parents to the chat that starts the tree", () => {
-    expect(rootChatId("fork-of-fork", sessions)).toBe("chat");
-    expect(rootChatId("chat", sessions)).toBe("chat");
-  });
-
-  test("keeps the id of a session that is not in the list", () => {
-    expect(rootChatId("unknown", sessions)).toBe("unknown");
-  });
-
-  test("stops at a loop of parents", () => {
-    const loop = [
-      { id: "a", parentId: "b" },
-      { id: "b", parentId: "a" },
-    ];
-    expect(["a", "b"]).toContain(rootChatId("a", loop));
-  });
-});
 
 describe("approvalsOutside", () => {
   test("keeps only the approvals of the sessions that are not on screen, in order", () => {

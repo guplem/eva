@@ -32,6 +32,8 @@ export interface CliHost {
   readonly writeError: (text: string) => void;
   /** True when a person types at this terminal, so a command may ask a question. */
   readonly interactive: boolean;
+  /** True when the output goes to a terminal, not to a file or a pipe. */
+  readonly outputIsTerminal: boolean;
   /** Lends a prompt on the console to the work, and closes it after. */
   readonly withPrompt: (work: (ask: (question: string) => Promise<string>) => Promise<void>) => Promise<void>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -94,6 +96,12 @@ function isClosedPrompt(error: unknown): boolean {
     error instanceof Error &&
     (error.name === "AbortError" || (error as { readonly code?: unknown }).code === "ERR_USE_AFTER_CLOSE")
   );
+}
+
+/** True when the output may have colors. NO_COLOR (no-color.org) and TERM=dumb turn them off. */
+export function wantsColor(host: CliHost): boolean {
+  const noColor = host.environment["NO_COLOR"];
+  return host.outputIsTerminal && (noColor === undefined || noColor === "") && host.environment["TERM"] !== "dumb";
 }
 
 export function writeLine(host: CliHost, text: string): void {

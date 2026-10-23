@@ -2042,6 +2042,30 @@ describe("describeStatusLines", () => {
     // With no vault there is nothing to sync.
     expect(describeStatusLines({ ...status, vaultPath: null, vaultAutoSync: false })).not.toContain(off);
   });
+
+  test("in a terminal, says that Eva runs and gives her local page", () => {
+    const terminal = { pid: 4242, localUrl: "http://127.0.0.1:7420", color: false };
+    const lines = statusText(status, [], null, terminal).split("\n");
+    expect(lines.slice(0, 3)).toEqual([
+      "All good",
+      "Eva 1.2.3, hub: this machine (server)",
+      "Running: yes, process 4242",
+    ]);
+    expect(lines).toContain("Local page: http://127.0.0.1:7420");
+    // Telegram reaches only a running Eva, and the phone cannot open a local page.
+    expect(describeStatusLines(status).join("\n")).not.toMatch(/Running:|Local page:/);
+  });
+
+  test("colors the terminal text only when asked", () => {
+    const terminal = { pid: 4242, localUrl: "http://127.0.0.1:7420", color: true };
+    const good = statusText(status, [], null, terminal);
+    expect(good.split("\n")[0]).toBe("\u001b[1;32mAll good\u001b[0m");
+    expect(good).toContain("\u001b[1mLocal page:\u001b[0m \u001b[36mhttp://127.0.0.1:7420\u001b[0m");
+    const bad = statusText({ ...status, problems: ["The vault sync failed."] }, [], null, terminal).split("\n");
+    expect(bad[0]).toBe("\u001b[1;31m1 problem\u001b[0m");
+    expect(bad[1]).toBe("\u001b[33m• The vault sync failed.\u001b[0m");
+    expect(statusText(status, [], null, { ...terminal, color: false })).not.toContain("\u001b[");
+  });
 });
 
 describe("describeToolVersions", () => {

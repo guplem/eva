@@ -301,6 +301,16 @@ describe("the client commands", () => {
     expect(await run(host, "projects")).toBe(exitCodes.crash);
     expect(host.errors.join("")).toContain("Is Eva running?");
   });
+
+  test("status says plainly that Eva does not run", async () => {
+    saveSecrets(paths, { localApiToken: "token" });
+    saveConfig(paths, { ...defaultConfig, port: 1025 });
+    const host = fakeHost();
+    expect(await run(host, "status")).toBe(exitCodes.crash);
+    expect(printed(host)).toBe(
+      "Eva is not running. Start her with `eva service install`, or run `eva` in another terminal.\n",
+    );
+  });
 });
 
 describe("with a running Eva", () => {
@@ -339,6 +349,10 @@ describe("with a running Eva", () => {
   test("status, projects and work go to the running Eva", async () => {
     expect(await run(host, "status")).toBe(exitCodes.clean);
     expect(printed(host)).toContain("Vault sync");
+    expect(printed(host)).toContain(`Running: yes, process ${String(process.pid)}`);
+    expect(printed(host)).toContain(`Local page: ${api.url}`);
+    // The fake host is no color terminal.
+    expect(printed(host)).not.toContain("\u001b[");
     expect(await run(host, "projects")).toBe(exitCodes.clean);
     expect(await run(host, "work", "missing-project", "do it")).toBe(exitCodes.crash);
   });

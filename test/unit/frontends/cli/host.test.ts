@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   installEnvironment,
   remoteAccessWatcher,
+  wantsColor,
   withLinePrompt,
   type LinePrompt,
 } from "../../../../src/frontends/cli/host.ts";
@@ -128,5 +129,18 @@ describe("withLinePrompt", () => {
     const done = withLinePrompt(prompt, () => Promise.reject(new Error("disk full")));
     expect(await done.catch((error: unknown) => (error as Error).message)).toBe("disk full");
     expect(prompt.closed).toBe(true);
+  });
+});
+
+describe("wantsColor", () => {
+  test("colors a terminal, never a file or a pipe", () => {
+    expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: {} }))).toBe(true);
+    expect(wantsColor(fakeHost({ outputIsTerminal: false, environment: {} }))).toBe(false);
+  });
+
+  test("NO_COLOR and TERM=dumb turn the colors off", () => {
+    expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { NO_COLOR: "1" } }))).toBe(false);
+    expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { NO_COLOR: "" } }))).toBe(true);
+    expect(wantsColor(fakeHost({ outputIsTerminal: true, environment: { TERM: "dumb" } }))).toBe(false);
   });
 });

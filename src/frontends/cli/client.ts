@@ -21,31 +21,57 @@ interface ProjectBody {
   readonly warnings: readonly string[];
 }
 
-export async function describeStatus(options: ClientOptions, pairingCode: string | null = null): Promise<string> {
+/** What only the terminal shows: the running process, the local page and the colors. */
+export interface StatusTerminal {
+  /** The pid that holds the instance lock, or null when the lock names none. */
+  readonly pid: number | null;
+  readonly localUrl: string;
+  readonly color: boolean;
+}
+
+export async function describeStatus(
+  options: ClientOptions,
+  pairingCode: string | null = null,
+  terminal: StatusTerminal | null = null,
+): Promise<string> {
   const status = await getJson<EvaStatus>(options, "/api/status");
   const versions = await getJson<EvaVersions>(options, "/api/versions");
-  return statusText(status, versions.tools, pairingCode);
+  return statusText(status, versions.tools, pairingCode, terminal);
 }
 
 /** The text of `eva status`. */
-export function statusText(status: EvaStatus, tools: readonly ToolVersion[], pairingCode: string | null): string {
+export function statusText(
+  status: EvaStatus,
+  tools: readonly ToolVersion[],
+  pairingCode: string | null,
+  terminal: StatusTerminal | null = null,
+): string {
   const url = status.remoteAccess?.url ?? null;
-  return [
-    ...describeStatusLines(status),
+  const lines = [
+    ...describeStatusLines(status, terminal),
     describeToolVersions(tools),
     ...(pairingCode === null ? [] : [`Telegram pairing code: send ${pairingCode} to your bot`]),
+  ];
+  return [
+    ...(terminal?.color === true ? colorStatusLines(lines) : lines),
     // Only the terminal gets the code: Telegram does not keep the shape of the blocks.
     ...(url === null ? [] : scanCodeLines(url)),
   ].join("\n");
 }
 
-/** The status for `eva status` and Telegram /status: a verdict first, then the problems, then the details. */
-export function describeStatusLines(status: EvaStatus): string[] {
+/**
+ * The status for `eva status` and Telegram /status: a verdict first, then the problems, then the details.
+ * Telegram gets no terminal: only a running Eva answers there, and a phone cannot open the local page.
+ */
+export function describeStatusLines(status: EvaStatus, terminal: StatusTerminal | null = null): string[] {
   const count = status.problems.length;
   return [
     count === 0 ? "All good" : `${String(count)} ${count === 1 ? "problem" : "problems"}`,
     ...status.problems.map((problem) => `• ${problem}`),
     `Eva ${status.version}, ${describeRole(status)}`,
+    ...(terminal === null
+      ? []
+      : [terminal.pid === null ? "Running: yes" : `Running: yes, process ${String(terminal.pid)}`]),
     ...(status.setupMissing > 0
       ? [
           `Setup: ${String(status.setupMissing)} ${status.setupMissing === 1 ? "step" : "steps"} left. Open Settings on Eva's page to see them.`,
@@ -63,8 +89,28 @@ export function describeStatusLines(status: EvaStatus): string[] {
     `Chats: ${String(status.sessionCount)}, running now: ${String(status.busySessionIds.length)}`,
     describeLastTurn(status.lastTurn),
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
+    ...(terminal === null ? [] : [`Local page: ${terminal.localUrl}`]),
     ...describeRemoteAccess(status.remoteAccess),
   ];
+}
+
+const ansi = {
+  reset: "\u001b[0m",
+  bold: "\u001b[1m",
+  good: "\u001b[1;32m",
+  bad: "\u001b[1;31m",
+  warn: "\u001b[33m",
+  link: "\u001b[36m",
+};
+
+/** The status lines with ANSI colors: a green or red verdict, yellow problems, bold labels and cyan addresses. */
+export function colorStatusLines(lines: readonly string[]): string[] {
+  return lines.map((line, index) => {
+    if (index === 0) return `${line === "All good" ? ansi.good : ansi.bad}${line}${ansi.reset}`;
+    if (line.startsWith("• ")) return `${ansi.warn}${line}${ansi.reset}`;
+    const linked = line.replace(/https?:\/\/\S+/g, (address) => `${ansi.link}${address}${ansi.reset}`);
+    return linked.replace(/^([A-Z][A-Za-z ]*:)(?= )/, `${ansi.bold}$1${ansi.reset}`);
+  });
 }
 
 /** One line with the version of each tool that is there. `eva doctor` names the missing ones. */

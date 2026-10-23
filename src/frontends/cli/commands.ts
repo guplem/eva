@@ -16,6 +16,7 @@ import {
 import type { CheckResult } from "../../core/checks.ts";
 import { checkGoogle } from "../../core/google/google-check.ts";
 import { googleCredentialsFolder } from "../../core/google/google-login.ts";
+import { runningInstancePid } from "../../core/instance/instance-lock.ts";
 import { changeSettings, loadSettings } from "../../core/settings/settings.ts";
 import { githubClientId, githubDeviceLogin } from "../../core/vault/github-login.ts";
 import { systemClock } from "../../shared/clock.ts";
@@ -44,6 +45,7 @@ import {
   installEnvironment,
   remoteAccessWatcher,
   tailnetAccounts,
+  wantsColor,
   writeLine,
   type CliHost,
 } from "./host.ts";
@@ -339,7 +341,21 @@ async function runClientCommand(
   const client = { baseUrl: `http://127.0.0.1:${String(config.port)}`, token };
   try {
     if (command.command === "status") {
-      writeLine(host, await describeStatus(client, readTextTolerant(paths.telegramPairingCode)?.trim() ?? null));
+      const pid = runningInstancePid(paths.lock, { bootId: host.bootId, isProcessAlive: host.isProcessAlive });
+      // The lock can be gone while an Eva of an older version still answers, so only no answer says she is off.
+      const status = await describeStatus(client, readTextTolerant(paths.telegramPairingCode)?.trim() ?? null, {
+        pid,
+        localUrl: client.baseUrl,
+        color: wantsColor(host),
+      }).catch((error: unknown) => {
+        if (pid !== null) throw error;
+        return null;
+      });
+      if (status === null) {
+        writeLine(host, "Eva is not running. Start her with `eva service install`, or run `eva` in another terminal.");
+        return exitCodes.crash;
+      }
+      writeLine(host, status);
     } else if (command.command === "projects") {
       writeLine(host, await describeProjects(client, command.query));
     } else if (command.command === "work") {

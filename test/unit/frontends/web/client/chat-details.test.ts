@@ -4,7 +4,7 @@ import {
   contextShare,
   contextFigure,
   engineLabel,
-  forkPoint,
+  branchForkPoint,
   formatTokenCount,
   latestContext,
   taskStatus,
@@ -110,19 +110,37 @@ describe("taskStatus", () => {
   });
 });
 
-describe("forkPoint", () => {
-  test("the chat forks at its newest answer that has a message and did not fail", () => {
-    const root = session([
-      turn("2026-10-18T10:00:00.000Z", null, { lastMessageId: "m1" }),
-      turn("2026-10-18T11:00:00.000Z", null, { lastMessageId: "m2" }),
-      turn("2026-10-18T12:00:00.000Z", null, { failure: "stopped" }),
-    ]);
-    expect(forkPoint(root)).toEqual({ sessionId: "s1", messageId: "m2" });
+describe("branchForkPoint", () => {
+  const root = {
+    ...session([turn("2026-10-18T10:00:00.000Z", null, { lastMessageId: "m1" })]),
+    parentId: null,
+    forkAtMessageId: null,
+    createdAt: "2026-10-18T09:00:00.000Z",
+    lastTurnAt: null,
+  };
+  const fork = {
+    ...session([], "s2"),
+    parentId: "s1",
+    forkAtMessageId: "m1",
+    createdAt: "2026-10-18T11:00:00.000Z",
+    lastTurnAt: null,
+  };
+
+  test("a branch forks at the newest answer on its path, even one that it shares", () => {
+    expect(branchForkPoint([root, fork], "s2")).toEqual({ sessionId: "s1", messageId: "m1" });
   });
 
-  test("a chat with no answer to fork from gives null", () => {
-    expect(forkPoint(session([turn("2026-10-18T10:00:00.000Z", null)]))).toBeNull();
-    expect(forkPoint(undefined)).toBeNull();
+  test("an answer that failed or has no message id is no fork point", () => {
+    const failed = turn("2026-10-18T12:00:00.000Z", null, { lastMessageId: "m2", failure: "stopped" });
+    const bare = turn("2026-10-18T13:00:00.000Z", null);
+    const chat = { ...root, turns: [...root.turns, failed, bare] };
+    expect(branchForkPoint([chat], "s1")).toEqual({ sessionId: "s1", messageId: "m1" });
+    expect(branchForkPoint([{ ...root, turns: [bare] }], "s1")).toBeNull();
+  });
+
+  test("an unknown branch forks the first chat", () => {
+    expect(branchForkPoint([root, fork], "gone")).toEqual({ sessionId: "s1", messageId: "m1" });
+    expect(branchForkPoint([], null)).toBeNull();
   });
 });
 

@@ -9,7 +9,7 @@ import {
   contextFigure,
   contextShare,
   engineLabel,
-  forkPoint,
+  branchForkPoint,
   latestContext,
   taskStatus,
   titleCase,
@@ -98,7 +98,7 @@ function ForkButton({
 }: Pick<ChatProps, "tree" | "onChanged" | "shownId">): ReactElement | null {
   const showError = useShowError();
   const [forking, setForking] = useState(false);
-  const point = forkPoint(tree.find((session) => session.id === shownId) ?? tree[0]);
+  const point = branchForkPoint(tree, shownId);
   if (point === null) return null;
   const fork = async (): Promise<void> => {
     setForking(true);

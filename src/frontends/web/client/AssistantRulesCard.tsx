@@ -1,12 +1,15 @@
 /**
  * The person's rules for Eva, from the vault's `.eva/assistant.md`: shown as formatted text, edited
- * as plain text, and restored to the default after a warning. Eva's built-in rules show below,
- * read only, so the person sees what the rules add to.
+ * as plain text, and restored to the default after a warning. A diff shows how they differ from the
+ * default, so the person sees what a restore removes. Eva's built-in rules show below, read only,
+ * so the person sees what the rules add to.
  */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import type { AssistantRulesView } from "../../../core/modes/assistant-rules.ts";
 import { api, ApiError } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
+import { DiffLines } from "./DiffLines.tsx";
+import { diffLines, type DiffRow } from "./line-diff.ts";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 import { nestedWebHtml } from "./web-format.ts";
@@ -41,6 +44,8 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
   useEffect(load, [load]);
   // A new function at each render would make the dialog move the focus back to Cancel.
   const closeRestore = useCallback((): void => setRestoring(false), []);
+  // The diff is slow on long rules, and the page renders often while a chat streams.
+  const changes = useMemo(() => (typeof rules === "string" ? [] : diffLines(rules.defaultText, rules.text)), [rules]);
 
   if (rules === "none") return null;
   if (rules === "loading") {
@@ -107,6 +112,7 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
               />
             )}
           </section>
+          {rules.text.trim() !== "" && <RulesDiff rows={changes} />}
           <div className="button-row">
             <button className="primary" disabled={busy} onClick={() => setDraft(rules.text)}>
               Edit
@@ -152,6 +158,27 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
       </details>
       {restoring && <RestoreDialog busy={busy} onRestore={(backup) => void restore(backup)} onClose={closeRestore} />}
     </Card>
+  );
+}
+
+/** Compares the saved rules with the default, so the person sees what "Restore the default" removes. */
+function RulesDiff({ rows }: { readonly rows: readonly DiffRow[] }): ReactElement {
+  const same = rows.every((row) => row.kind === "same" || row.kind === "gap");
+  return (
+    // Its own class keeps `details.rules-box.built-in` the one frame of the built-in rules.
+    <details className="rules-box rules-diff">
+      <summary className="field-label">How your rules differ from the default</summary>
+      {same ? (
+        <p className="field-hint">Your rules are the same as the default.</p>
+      ) : (
+        <>
+          <p className="field-hint">
+            A line with + is only in your rules. A line with - is only in the default: a restore brings it back.
+          </p>
+          <DiffLines rows={rows} />
+        </>
+      )}
+    </details>
   );
 }
 

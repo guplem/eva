@@ -1406,7 +1406,13 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
   const own = card.getByRole("region", { name: "Your rules" });
   await expect(own.getByRole("heading", { name: "You are Eva" })).toBeVisible();
   await expect(own).not.toContainText("Eva's built-in rules");
-  await expect(card.locator("details.rules-box")).toContainText("Eva's built-in rules");
+  await expect(card.locator("details.rules-box.built-in")).toContainText("Eva's built-in rules");
+  // The diff reads from the default to the person's rules: the demo keeps one line and drops the rest.
+  const diff = card.locator("details.rules-diff");
+  await diff.getByText("How your rules differ from the default").click();
+  await expect(diff.locator(".diff .added")).toContainText("You are Eva");
+  await expect(diff.locator(".diff .removed").first()).toContainText("Your rules for Eva");
+  await expect(diff.locator(".diff .added .visually-hidden")).toHaveText("Added:");
   try {
     await card.getByRole("button", { name: "Edit" }).click();
     await card.getByLabel("Rules in Markdown").fill("# Be brief\n\nAnswer in one sentence.\n");
@@ -1422,6 +1428,8 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
       page.getByRole("status").filter({ hasText: "Your old rules are in .eva/assistant.backup-" }),
     ).toBeVisible();
     await expect(card.getByRole("heading", { name: "Learning" })).toBeVisible();
+    await expect(diff).toContainText("Your rules are the same as the default.");
+    await expect(diff.locator(".diff")).toHaveCount(0);
   } finally {
     // Later tests expect the demo vault's own rules.
     await page.evaluate(async () => {

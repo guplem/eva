@@ -264,6 +264,22 @@ function screenOf(output: string, from: number): Screen {
         case "G":
           column = count - 1;
           break;
+        case "H":
+        case "f": {
+          // The Windows terminal (ConPTY) moves to a row and column instead of a line break.
+          const [top, left] = parameter.split(";").map((part) => Math.max(1, Number.parseInt(part, 10) || 1));
+          row = (top ?? 1) - 1;
+          column = (left ?? 1) - 1;
+          break;
+        }
+        case "J":
+          // Erase in display: 2 or 3 the whole screen, else from the cursor to the end.
+          if (parameter === "2" || parameter === "3") rows.length = 0;
+          else if (parameter === "" || parameter === "0") {
+            rows.length = Math.min(rows.length, row + 1);
+            line.length = Math.min(line.length, column);
+          }
+          break;
         case "K":
           // Erase in line: 0 or none to the end, 1 from the start, 2 the whole line.
           if (parameter === "2") line.length = 0;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compareVersions } from "../../../../../src/frontends/web/client/line-diff.ts";
+import { compareVersions, diffLines } from "../../../../../src/frontends/web/client/line-diff.ts";
 
 describe("compareVersions", () => {
   test("marks the lines that only one side has", () => {
@@ -71,5 +71,55 @@ describe("compareVersions", () => {
     const result = compareVersions(mine, theirs);
     expect(result.mine).toHaveLength(3000);
     expect(result.mine.every((row) => row.kind === "changed")).toBe(true);
+  });
+});
+
+describe("diffLines", () => {
+  test("lists the removed lines, then the added lines, in place", () => {
+    expect(diffLines("a\nb\nc\n", "a\nx\nc\nd\n")).toEqual([
+      { kind: "same", text: "a" },
+      { kind: "removed", text: "b" },
+      { kind: "added", text: "x" },
+      { kind: "same", text: "c" },
+      { kind: "added", text: "d" },
+    ]);
+  });
+
+  test("shows equal texts as plain lines, whatever their line endings", () => {
+    expect(diffLines("a\r\nb\r\n", "a\nb\n")).toEqual([
+      { kind: "same", text: "a" },
+      { kind: "same", text: "b" },
+    ]);
+  });
+
+  test("ignores a byte order mark", () => {
+    expect(diffLines("a\n", "\uFEFFa\n")).toEqual([{ kind: "same", text: "a" }]);
+  });
+
+  test("shows an empty text as all removed", () => {
+    expect(diffLines("a\nb\n", "")).toEqual([
+      { kind: "removed", text: "a" },
+      { kind: "removed", text: "b" },
+    ]);
+  });
+
+  test("hides long runs of shared lines, so a phone shows the change", () => {
+    const shared = Array.from({ length: 20 }, (_, index) => `line ${String(index)}`);
+    expect(diffLines(shared.join("\n"), ["new", ...shared].join("\n"))).toEqual([
+      { kind: "added", text: "new" },
+      { kind: "same", text: "line 0" },
+      { kind: "same", text: "line 1" },
+      { kind: "gap", count: 18 },
+    ]);
+  });
+
+  test("on two long texts, still keeps every line once", () => {
+    const before = Array.from({ length: 3000 }, (_, index) => `b${String(index)}`);
+    const after = [...before.slice(1000), ...before.slice(0, 1000)];
+    const rows = diffLines(before.join("\n"), after.join("\n"));
+    const removed = rows.filter((row) => row.kind === "removed").length;
+    const added = rows.filter((row) => row.kind === "added").length;
+    expect(removed).toBe(added);
+    expect(removed).toBeGreaterThan(0);
   });
 });

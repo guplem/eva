@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
-import { summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
+import { asksThePerson, summarizeToolCall, toolCategory } from "../../../src/shared/outward-actions.ts";
 import { containsSecretPattern, Redactor } from "../../../src/shared/redaction.ts";
 
 describe("EvaError", () => {
@@ -22,6 +22,29 @@ describe("toolCategory", () => {
     expect(toolCategory("bash")).toBe("command");
     expect(toolCategory("Read")).toBe("tool");
     expect(toolCategory("Agent")).toBe("tool");
+  });
+});
+
+describe("asksThePerson", () => {
+  test("a change to the schedules asks, with the file tools of each engine and the shell (issue #440)", () => {
+    expect(asksThePerson("Write", { file_path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("Edit", { file_path: "/demo-vault/.eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("MultiEdit", { file_path: "C:\\demo-vault\\.eva\\schedules.json" })).toBe(true);
+    expect(asksThePerson("write", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("edit", { path: ".eva/schedules.json" })).toBe(true);
+    expect(asksThePerson("Bash", { command: "echo '{}' > .eva/schedules.json" })).toBe(true);
+  });
+
+  test("reading the schedules, or writing another file, runs with no question", () => {
+    expect(asksThePerson("Read", { file_path: ".eva/schedules.json" })).toBe(false);
+    expect(asksThePerson("read", { path: ".eva/schedules.json" })).toBe(false);
+    expect(asksThePerson("Write", { file_path: ".eva/chat-names.md" })).toBe(false);
+    expect(asksThePerson("Write", { file_path: "Notes/schedules.json" })).toBe(false);
+  });
+
+  test("an action that reaches other people still asks", () => {
+    expect(asksThePerson("Bash", { command: "git push" })).toBe(true);
+    expect(asksThePerson("Bash", { command: "git status" })).toBe(false);
   });
 });
 

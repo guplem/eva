@@ -409,6 +409,21 @@ describe("ClaudeLogin with the real screens of claude 2.1", () => {
     expect(await login.finish("example-code")).toEqual({ token: drawnToken ?? "" });
   });
 
+  test("reads a token that the Windows terminal places with cursor moves, not line breaks", async () => {
+    // ConPTY puts each line at its row and column (ESC [ row ; column H). Without the move,
+    // the next line "Store this token securely" joins the end of the token.
+    const { login } = makeLogin({
+      onStart: showAddress,
+      onWrite: (terminal, text) => {
+        if (text !== "\r") return;
+        terminal.print(`${escape}[2J${escape}[H${escape}[3;1H${token}${escape}[4;1HStore this token securely.`);
+        terminal.exit(0);
+      },
+    });
+    await login.start();
+    expect(await login.finish("example-code")).toEqual({ token });
+  });
+
   test("waits for the end of a token that comes in pieces over the old screen", async () => {
     const { login, terminals } = makeLogin({ onStart: showRealAddress });
     await login.start();

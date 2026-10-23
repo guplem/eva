@@ -227,7 +227,7 @@ A request from Eva's own computer can come from any program there, so only the t
 
 Each feature stays off until you set it up. `eva doctor` shows which tools are missing.
 
-- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, or every few hours, days or weeks from a first run. Eva keeps them in `.eva/schedules.json` in the notebook, and only the hub runs them.
+- **Reminders and repeated tasks.** Ask Eva for a reminder or a daily summary, or open **Schedules** in the web app. A schedule runs at a time on some days of the week, or every few hours, days or weeks from a first run. Eva keeps them in `.eva/schedules.json` in the notebook, and only the hub runs them. When a conversation adds or changes a schedule, Eva asks you first.
   - Before a new or changed schedule runs, Eva shows a card with every detail, in Telegram or in the web app. Check it, and tap **Got it**. If you did not make it, tap **Remove schedule**.
   - A schedule waits until a card reaches you, and Eva sends an alert meanwhile.
   - The Schedules page shows what runs today, when each schedule repeats, and how its last run went.

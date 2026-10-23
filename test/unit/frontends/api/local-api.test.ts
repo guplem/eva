@@ -1343,6 +1343,22 @@ describe("web routes", () => {
     expect((await call("/api/schedules/nobody", { method: "PATCH", body: { enabled: true } })).status).toBe(404);
   });
 
+  test("schedules: edit the form's fields of one, keep its other keys, and refuse a bad edit (#467)", async () => {
+    const entry = { id: "morning", name: "Morning", at: "07:30", text: "Drink water.", model: "sonnet" };
+    await call("/api/schedules", { method: "POST", body: entry });
+    const fields = { name: "Early", at: "06:00", text: "Drink water." };
+    const edited = await call("/api/schedules/morning", { method: "PATCH", body: { fields } });
+    expect(edited.status).toBe(200);
+    expect(await json(edited)).toMatchObject({ id: "morning", name: "Early", at: "06:00", model: "sonnet" });
+    const bad = await call("/api/schedules/morning", { method: "PATCH", body: { fields: { name: "Early" } } });
+    expect(bad.status).toBe(400);
+    const nobody = await call("/api/schedules/nobody", { method: "PATCH", body: { fields } });
+    expect(nobody.status).toBe(404);
+    // One change per call, so a body with both never drops the edit and answers 204.
+    const both = await call("/api/schedules/morning", { method: "PATCH", body: { enabled: false, fields } });
+    expect(both.status).toBe(400);
+  });
+
   test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {
     expect(await json(await call("/api/chat-names"))).toEqual({ rules: "" });
     const saved = await call("/api/chat-names", { method: "PUT", body: { rules: "Lead with an emoji." } });

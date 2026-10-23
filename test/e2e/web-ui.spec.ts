@@ -2023,6 +2023,45 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await page.request.delete(`/api/schedules/${id}`);
 });
 
+test("Schedules page: edit a schedule in the same form, and keep the keys that the form does not show (#467)", async ({
+  page,
+}, testInfo) => {
+  const id = `read-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
+  const name = `Read ${id}`;
+  await logIn(page);
+  await page.request.post("/api/schedules", {
+    data: {
+      id,
+      name,
+      at: "21:00",
+      days: ["mon"],
+      text: "Read a chapter.\nThen sleep.",
+      model: "sonnet",
+      enabled: false,
+    },
+  });
+  await page.getByRole("button", { name: "Schedules" }).click();
+  const row = page.getByRole("listitem", { name });
+  await row.getByRole("button", { name: `Edit ${name}` }).click();
+  const form = page.getByRole("dialog", { name: "Edit schedule" });
+  await expect(form.getByLabel(/^Id/)).toHaveValue(id);
+  await expect(form.getByLabel(/^Id/)).not.toBeEditable();
+  await expect(form.getByLabel("Time (HH:MM)")).toHaveValue("21:00");
+  await expect(form.getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByLabel("Fixed text")).toHaveValue("Read a chapter.\nThen sleep.");
+  await form.getByLabel("Time (HH:MM)").fill("22:15");
+  await form.getByRole("button", { name: "Save schedule" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(`${name} stays off`);
+  await expect(row).toContainText("Mondays at 22:15 · off");
+  const listed = (await (await page.request.get("/api/schedules")).json()) as {
+    schedules: { schedule: { id: string; text: string | null; model: string | null; enabled: boolean } }[];
+  };
+  const saved = listed.schedules.find((view) => view.schedule.id === id)?.schedule;
+  expect(saved).toMatchObject({ text: "Read a chapter.\nThen sleep.", model: "sonnet", enabled: false });
+  await page.request.delete(`/api/schedules/${id}`);
+});
+
 test("the main navigation opens each destination at its own address, and the back button returns", async ({ page }) => {
   await logIn(page);
   const nav = page.getByRole("navigation", { name: "Main" });

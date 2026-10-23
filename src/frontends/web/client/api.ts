@@ -377,7 +377,10 @@ export const api = {
   finishGitHubLogin: (): Promise<{ restartNeeded: boolean }> => request("POST", "/api/github/login/finish", {}),
   check: (name: string): Promise<CheckResult> => request("POST", `/api/checks/${name}`, {}),
   schedules: (): Promise<ScheduleList> => request("GET", "/api/schedules"),
-  saveSchedule: (entry: Record<string, unknown>): Promise<void> => request("POST", "/api/schedules", entry),
+  saveSchedule: (entry: Record<string, unknown>): Promise<ScheduleView["schedule"]> =>
+    request("POST", "/api/schedules", entry),
+  editSchedule: (scheduleId: string, fields: Record<string, unknown>): Promise<ScheduleView["schedule"]> =>
+    request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { fields }),
   setScheduleEnabled: (scheduleId: string, enabled: boolean): Promise<void> =>
     request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>

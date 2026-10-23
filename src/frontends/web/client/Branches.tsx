@@ -187,6 +187,7 @@ export function BranchMap({
             <button
               className={row.onPath ? "branch-row on-path" : "branch-row"}
               aria-current={row.current ? "true" : undefined}
+              data-tooltip={`${row.text} · ${row.label}`}
               onClick={() => onPick(row)}
             >
               <MapLanes row={row} width={width} />

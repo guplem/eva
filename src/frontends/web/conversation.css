@@ -13,6 +13,8 @@
   flex: 1;
   min-height: 0;
   background: var(--main-gradient);
+  /* The map column sizes itself to the chat area, which the list and the inspector make narrow. */
+  container-type: inline-size;
 }
 
 /* The column of the shown branch: its path, its switchers and its composer. */
@@ -190,6 +192,29 @@
   font-size: var(--text-xs);
   font-weight: 600;
   opacity: 0.75;
+}
+
+/* A narrow chat area keeps only the lanes of the map. The text stays for screen readers and the tooltip. */
+@container (max-width: 820px) {
+  .branch-map-column {
+    width: auto;
+    padding-inline: var(--space-1);
+  }
+
+  .branch-map-column h2,
+  .branch-map-column .branch-row-text,
+  .branch-map-column .pill {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .branch-map-column .branch-row {
+    padding-inline: var(--space-1);
+  }
 }
 
 .branches-sheet {

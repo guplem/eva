@@ -3683,6 +3683,17 @@ test.describe("on a touch screen", () => {
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
   });
+
+  test("the tab bar hides while the keyboard is up, and comes back after", async ({ page }) => {
+    await logIn(page);
+    await newChat(page);
+    const tabs = page.getByRole("navigation", { name: "Main" });
+    await expect(tabs).toBeVisible();
+    await page.getByLabel("Message").first().focus();
+    await expect(tabs).toBeHidden();
+    await page.getByLabel("Message").first().blur();
+    await expect(tabs).toBeVisible();
+  });
 });
 
 test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {

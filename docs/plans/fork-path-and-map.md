@@ -36,7 +36,7 @@ The design canvas chose option B for a phone and option C for a computer.
 - **Which branch shows first?** The session of the tree with the newest activity (`lastTurnAt`, else `createdAt`). The choice then stays, so an answer in another branch does not move the page.
 - **What shows after Fork or Retry?** The new session. The page shows each session that appears in the tree after the page opened it. A fork from another front end also opens, which is rare and harmless.
 - **What does a tap on a map row do?** When the turn is on the shown path, the page scrolls to it. Otherwise the page shows that row's branch and scrolls to the turn.
-- **Where do the approvals of a hidden branch show?** The switcher and the map mark a branch that waits for an approval or runs a turn, so the person can open it. `ApprovalRequests` still shows the requests of the shown branch only.
+- **Where do the approvals of a hidden branch show?** The page notice shows them, as for another chat: the views tell the page that only the shown branch is on screen. The notice opens the branch that asks. The switcher and the map also mark a branch that waits, runs a turn or has a new answer.
 - **The old `branch-title` pill** ("Branch after answer N of …") goes. The switcher says the same at the fork point.
-- **Icons.** `back` is the previous arrow. A new `next` icon is the next arrow.
+- **Icons.** `back` is the previous arrow. The next arrow is `back` with the shared `flip` class, as on the other pages.
 - **Stored or sent names.** None change. The change is in the web client only.

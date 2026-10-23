@@ -27,6 +27,13 @@
   filter: drop-shadow(0 0 0.05em var(--eye)) drop-shadow(0 0 0.14em var(--glow));
 }
 
+/* Not in the reference: the gaze of client/visor-gaze.ts. It uses transform, so it adds to the
+   `translate` of the idle motions instead of stopping them. */
+.mk .eyes {
+  transform: translate(var(--gaze-x, 0), var(--gaze-y, 0));
+  transition: transform 0.3s ease-out;
+}
+
 .mk i {
   display: block;
   position: relative;

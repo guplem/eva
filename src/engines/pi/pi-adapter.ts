@@ -26,9 +26,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import type { ApprovalAnswer, EnginePort, ModelAlias, TurnRequest } from "../../shared/engine-port.ts";
 import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
+import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
+import { describePiPermissions } from "./pi-permissions.ts";
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
@@ -74,6 +76,10 @@ export class PiEngine implements EnginePort {
 
   constructor(options: PiEngineOptions) {
     this.options = options;
+  }
+
+  describePermissions(): EnginePermissions {
+    return describePiPermissions();
   }
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {

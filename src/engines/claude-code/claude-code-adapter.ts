@@ -13,6 +13,8 @@ import {
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
+import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
+import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
 
 /** The SDK's query, with the one control request that Eva uses. */
 type QueryRun = AsyncIterable<SDKMessage> & { mcpServerStatus?: () => Promise<McpServerStatus[]> };
@@ -29,9 +31,6 @@ export interface McpStartCheck {
 
 /** The SDK's control request has no time bound of its own, so a slow answer must not hold the turn. */
 const mcpStatusWaitMs = 5_000;
-
-/** The two modes that a person may pick for Claude Code chats. */
-export type ClaudePermissionMode = "auto" | "bypassPermissions";
 
 export interface ClaudeCodeEngineOptions {
   /** Absolute path of the person's `claude` program. Eva never embeds one. */
@@ -57,6 +56,10 @@ export class ClaudeCodeEngine implements EnginePort {
 
   constructor(options: ClaudeCodeEngineOptions) {
     this.options = options;
+  }
+
+  describePermissions(context: PermissionContext): EnginePermissions {
+    return describeClaudePermissions(this.options.permissionMode ?? "auto", context);
   }
 
   async *runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload> {

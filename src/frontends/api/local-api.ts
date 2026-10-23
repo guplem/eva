@@ -682,6 +682,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json(eva.updateSettings(settingsPatchSchema.parse(await request.json())));
   }
   if (method === "GET" && url.pathname === "/api/trust") return json(eva.trust());
+  if (method === "GET" && url.pathname === "/api/permissions") return json(eva.permissions());
   if (method === "DELETE" && url.pathname === "/api/trust/answers") {
     return json(eva.forgetTrustAnswer(trustAnswerSchema.parse(await request.json()).url));
   }

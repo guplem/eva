@@ -3,6 +3,7 @@
  * never imports an adapter; `src/main.ts` passes the adapters in.
  */
 import type { EngineEventPayload } from "./events.ts";
+import type { EnginePermissions, PermissionContext } from "./permissions.ts";
 
 export type EngineName = "claude-code" | "pi";
 export type SessionMode = "assistant" | "project";
@@ -69,4 +70,6 @@ export interface EnginePort {
   readonly name: EngineName;
   /** Runs one turn. The stream ends with exactly one `turn_finished` or `turn_failed`. */
   runTurn(request: TurnRequest): AsyncIterable<EngineEventPayload>;
+  /** What this engine may do in each kind of chat, for Settings. Without it, Settings shows no rules. */
+  describePermissions?(context: PermissionContext): EnginePermissions;
 }

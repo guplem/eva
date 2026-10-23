@@ -11,6 +11,8 @@ import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.
 import { startLocalApi } from "../../src/frontends/api/local-api.ts";
 import { systemProcessRunner, type ProcessRunner } from "../../src/shared/process-runner.ts";
 import { evaRepository } from "../../src/shared/version.ts";
+import type { PermissionContext } from "../../src/shared/permissions.ts";
+import { describeClaudePermissions } from "../../src/engines/claude-code/claude-code-permissions.ts";
 import { FakeEngine } from "../support/fake-engine.ts";
 import { fakeGithub } from "../support/fake-github.ts";
 import { fakeGh } from "../support/fake-gh.ts";
@@ -156,12 +158,20 @@ const home = mkdtempSync(join(tmpdir(), "eva-e2e-home-"));
 // The demo engine counts as logged in, so the chats can answer (issue 214).
 mkdirSync(join(home, "engines", "claude"), { recursive: true });
 writeFileSync(join(home, "engines", "claude", ".credentials.json"), "{}");
+// The Engines page lists the real words of Claude Code's permissions, and rules of the person's own.
+writeFileSync(
+  join(home, "engines", "claude", "settings.json"),
+  JSON.stringify({ permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./.env)"] } }),
+);
+const demoEngine = Object.assign(engine, {
+  describePermissions: (context: PermissionContext) => describeClaudePermissions("auto", context),
+});
 const eva = new Eva({
   remoteAccess: demoRemoteAccess,
   paths: homePaths(home),
   config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
   secrets: { localApiToken: demoToken },
-  engines: [engine],
+  engines: [demoEngine],
   runner: demoRunner,
   processEnvironment: gitEnvironment,
   now: () => new Date(),

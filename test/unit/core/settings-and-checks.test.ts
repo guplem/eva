@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runCheck, type CheckInputs } from "../../../src/core/checks.ts";
 import { Eva } from "../../../src/core/eva.ts";
-import { defaultConfig, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
+import { defaultConfig, engineFolders, homePaths, loadSecrets } from "../../../src/core/settings/home.ts";
 import { changeSettings, loadSettings, vaultSettingsPath } from "../../../src/core/settings/settings.ts";
 import { claimHub, hubFilePath } from "../../../src/core/instance/hub.ts";
 import { loadGitHubAccount, saveGitHubAccount } from "../../../src/core/instance/commit-identity.ts";
@@ -12,6 +12,7 @@ import { systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 import type { EnginePort } from "../../../src/shared/engine-port.ts";
+import type { PermissionContext } from "../../../src/shared/permissions.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
@@ -658,6 +659,37 @@ describe("live settings, the vault fetch and updates", () => {
       expect(instance.trust().answers).toEqual([{ url: "https://github.com/stranger/app.git", decision: "untrusted" }]);
       expect(instance.forgetTrustAnswer("https://github.com/stranger/app.git").answers).toEqual([]);
       expect(readFileSync(homePaths(home).trust, "utf8")).not.toContain("stranger");
+    } finally {
+      instance.stop();
+    }
+  });
+
+  test("the permissions overview names each engine, and gives it the vault and the engine folder, never a token", () => {
+    const contexts: PermissionContext[] = [];
+    const describing: EnginePort = {
+      name: "pi",
+      runTurn: (request) => engine.runTurn(request),
+      describePermissions: (context) => {
+        contexts.push(context);
+        return { mode: null, chats: [], personRules: null };
+      },
+    };
+    const instance = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC" },
+      secrets: { claudeOauthToken: "sk-ant-oat-example" },
+      engines: [engine, describing],
+      runner: fakeGh(systemProcessRunner),
+      processEnvironment: gitEnvironment,
+      now: () => new Date(),
+      basePrompt: "Base.",
+    });
+    try {
+      // The fake Claude Code engine describes nothing, so only pi shows.
+      expect(instance.permissions()).toEqual([{ engine: "pi", mode: null, chats: [], personRules: null }]);
+      expect(contexts[0]?.vaultFolder).toBe(vault);
+      expect(contexts[0]?.environment["CLAUDE_CONFIG_DIR"]).toBe(engineFolders(homePaths(home)).claude);
+      expect(JSON.stringify(contexts)).not.toContain("sk-ant-oat-example");
     } finally {
       instance.stop();
     }

@@ -72,8 +72,9 @@ describe("settings search", () => {
     expect(searchSettings("telegram banana")).toEqual([]);
   });
 
-  test("the search finds the permission mode of Claude Code chats", () => {
-    expect(searchSettings("bypass permissions").map((entry) => entry.item)).toEqual(["default-engine"]);
+  test("the search finds the permission mode and the permission lists", () => {
+    expect(searchSettings("bypass permissions").map((entry) => entry.item)).toEqual(["default-engine", "permissions"]);
+    expect(searchSettings("deny rules").map((entry) => entry.item)).toEqual(["permissions"]);
   });
 
   test("a section's title finds its entries", () => {

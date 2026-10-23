@@ -1958,6 +1958,20 @@ test("the main navigation opens each destination at its own address, and the bac
   await expect(nav.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
 });
 
+test("the AI engines page lists what Eva may do, with the person's own rules apart (#445)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/settings/engines");
+  const card = page.getByRole("region", { name: "What Eva may do" });
+  await card.getByText("Claude Code, Auto mode").click();
+  const assistant = card.getByRole("region", { name: "Assistant chats", exact: true });
+  await expect(assistant).toContainText("Asks you first");
+  await expect(assistant).toContainText("Push commits with git push");
+  await expect(card.getByRole("heading", { name: "Your own rules" })).toBeVisible();
+  await expect(card.locator("code", { hasText: "Bash(npm test:*)" })).toBeVisible();
+  await expect(card.locator("code", { hasText: "Read(./.env)" })).toBeVisible();
+  await expect(card).toContainText("This file does not exist.");
+});
+
 test("the Chats badge counts the approvals that wait, and Settings sits at the foot of the rail", async ({ page }) => {
   await page.route("**/api/approvals", (route) =>
     route.fulfill({ json: [{ requestId: "r1", sessionId: "s1", toolName: "Bash", summary: "ls" }] }),

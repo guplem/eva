@@ -138,6 +138,12 @@ export const searchEntries: readonly SearchEntry[] = [
     title: "Engine for new chats",
     words: "default claude pi model permissions mode auto bypass",
   },
+  {
+    item: "permissions",
+    section: "engines",
+    title: "What Eva may do",
+    words: "permissions advanced allow ask deny block rules approval auto bypass safety",
+  },
   { item: "claude-code", section: "engines", title: "Claude Code", words: "token login setup-token model opus sonnet" },
   { item: "pi", section: "engines", title: "pi", words: "model openai gpt provider login" },
   { item: "vault-folder", section: "vault", title: "Vault folder and repository", words: "notes remote git test" },

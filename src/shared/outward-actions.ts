@@ -16,6 +16,17 @@ const calendarEventToolPattern = /^mcp__.*manage_event$/;
 const fileChangeToolPattern = /^(write|edit|multiedit)$/i;
 const schedulesFilePattern = /\.eva[\\/]schedules\.json/i;
 
+/** The actions that `asksThePerson` asks about, in plain words for Settings. Change both together. */
+export const askedActionWords: readonly string[] = [
+  "Push commits with git push",
+  "Create, comment on, edit, close or merge a GitHub issue, pull request, release or gist",
+  "Change GitHub with gh api -X POST, PATCH, PUT or DELETE",
+  "Send data with curl -X POST, PUT, PATCH or DELETE",
+  "A tool that sends, shares, invites, posts, replies, forwards, comments, reacts or changes access",
+  "A calendar event with guests or updates, and an answer to an invitation",
+  "A change to the schedules in .eva/schedules.json, also a shell command that names that file",
+];
+
 /**
  * A schedule with a `prompt` runs a full turn later, on its own. So a message with hidden
  * instructions must not add one without the person (issue #440).

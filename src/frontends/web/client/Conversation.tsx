@@ -1,6 +1,6 @@
 /**
- * A conversation as a tree: the chat and each of its forks in a column of its own, each with
- * its own composer. Eva's answers are cards with her visor beside them, with the steps folded
+ * A conversation as a tree, one branch at a time: the turns that the branch shares with its parents,
+ * then its own, with a switcher at each answer that has a fork and a map of the tree beside them. Eva's answers are cards with her visor beside them, with the steps folded
  * into one line, and Retry, Fork and Copy under each answer.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -53,7 +53,7 @@ interface ConversationProps {
   readonly shown: ShownBranch;
   readonly live: LiveState;
   readonly onChanged: () => Promise<void>;
-  /** A branch shows its own requests, so a fork that waits shows the card in its own column. */
+  /** The shown branch shows its own requests. The page gives a request of a hidden branch a notice. */
   readonly approvals: Pick<ChatApprovals, "pending" | "onAnswer">;
   /** The missing setup step that stops every chat, or null. */
   readonly blocker: ChatBlocker | null;
@@ -90,7 +90,8 @@ export function Conversation({
   // The view follows the newest message, until the person scrolls up to read.
   const isAtBottom = useRef(true);
 
-  useEffect(() => {
+  // A layout effect, so it runs before the scroll to a picked turn in the same commit.
+  useLayoutEffect(() => {
     isAtBottom.current = true;
   }, [root.id, branch.id]);
 
@@ -99,9 +100,12 @@ export function Conversation({
     if (element !== null && isAtBottom.current) element.scrollTop = element.scrollHeight;
   });
 
-  // A pick in the map brings its turn into view, after the branch of the pick renders.
+  // A pick brings its turn into view, after the branch of the pick renders. A pick from before
+  // this view opened, such as on another page, is done.
+  const handledFocus = useRef(shown.focus?.count ?? 0);
   useLayoutEffect(() => {
-    if (shown.focus === null) return;
+    if (shown.focus === null || shown.focus.count === handledFocus.current) return;
+    handledFocus.current = shown.focus.count;
     const turn = scroller.current?.querySelector(`[data-turn="${CSS.escape(shown.focus.key)}"]`);
     if (turn === null || turn === undefined) return;
     isAtBottom.current = false;
@@ -160,7 +164,7 @@ function Branch({
   /** The chat and its forks, the chat first. */
   tree: readonly SessionRecord[];
   states: ReadonlyMap<string, BranchState>;
-  onShow: (sessionId: string) => void;
+  onShow: ShownBranch["show"];
   live: LiveState;
   onChanged: () => Promise<void>;
   approvals: ConversationProps["approvals"];
@@ -286,7 +290,8 @@ function Branch({
                 names={names}
                 states={states}
                 label={`Branches after answer ${String(position + 1)}`}
-                onShow={onShow}
+                // The page keeps the fork point in view, so the person sees what changed below it.
+                onShow={(id) => onShow(id, stepKey(owner.id, index))}
               />
             )}
           </div>
@@ -338,6 +343,7 @@ function Branch({
         ))}
       <Composer
         session={session}
+        draftKey={session.id}
         choices={storedChoices(session.id)}
         running={working}
         onSend={send}

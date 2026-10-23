@@ -105,10 +105,8 @@ export function AssistantView({
     ),
   };
   const listRef = useRef<HTMLDivElement>(null);
-  useShownChat(
-    approvals.onShowChat,
-    tree.map((session) => session.id),
-  );
+  // Only the shown branch shows its requests as cards, so a hidden branch gets the notice.
+  useShownChat(approvals.onShowChat, branch.id === null ? [] : [branch.id]);
   // On a phone, the open list covers the chat.
   useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
   const stateOf = (candidate: SessionRecord): ChatState => {

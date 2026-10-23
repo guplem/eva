@@ -33,26 +33,28 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
   const [choice, setChoice] = useState<{ rootId: string; id: string } | null>(null);
   const [focus, setFocus] = useState<ShownBranch["focus"]>(null);
   const known = useRef<{ rootId: string | null; ids: ReadonlySet<string> }>({ rootId: null, ids: new Set() });
+  // The view clears the link in the same render that opens its chat, so the hook keeps it until the tree has it.
+  const link = useRef<string | null>(null);
   const idsKey = tree.map((session) => session.id).join(" ");
-  const linked = linkedId !== null && tree.some((session) => session.id === linkedId) ? linkedId : null;
 
   useEffect(() => {
+    if (linkedId !== null) link.current = linkedId;
     const [root, ...rest] = tree;
     if (root === undefined) return;
-    if (known.current.rootId === root.id) {
+    const linked = link.current !== null && tree.some((session) => session.id === link.current) ? link.current : null;
+    if (linked !== null) {
+      link.current = null;
+      setChoice({ rootId: root.id, id: linked });
+    } else if (known.current.rootId === root.id) {
       const [first, ...others] = tree.filter((session) => !known.current.ids.has(session.id));
       if (first !== undefined) setChoice({ rootId: root.id, id: firstShownBranch([first, ...others]).id });
     } else {
-      setChoice({ rootId: root.id, id: linked ?? firstShownBranch([root, ...rest]).id });
+      setChoice({ rootId: root.id, id: firstShownBranch([root, ...rest]).id });
     }
+    if (known.current.rootId !== root.id) setFocus(null);
     known.current = { rootId: root.id, ids: new Set(tree.map((session) => session.id)) };
-    // Only a change of the ids runs it: a new turn in a branch must not move the choice.
-  }, [idsKey]);
-
-  // A new link to a fork of the open chat shows that fork.
-  useEffect(() => {
-    if (linked !== null && rootId !== null) setChoice({ rootId, id: linked });
-  }, [linked]);
+    // Only a new link or a change of the ids runs it: a new turn in a branch must not move the choice.
+  }, [idsKey, linkedId]);
 
   const show = useCallback(
     (sessionId: string, turnKey?: string) => {
@@ -64,7 +66,7 @@ export function useShownBranch(tree: readonly SessionRecord[], linkedId: string 
 
   const [root, ...rest] = tree;
   const chosen = choice !== null && choice.rootId === rootId && tree.some((session) => session.id === choice.id);
-  const id = chosen ? choice.id : root === undefined ? null : (linked ?? firstShownBranch([root, ...rest]).id);
+  const id = chosen ? choice.id : root === undefined ? null : firstShownBranch([root, ...rest]).id;
   return { id, show, focus };
 }
 
@@ -281,7 +283,7 @@ export function BranchesButton({
               states={states}
               onPick={(row) => {
                 pickRow(shown, shownId, row);
-                setOpen(false);
+                close();
               }}
             />
           </div>

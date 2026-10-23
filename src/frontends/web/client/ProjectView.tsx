@@ -339,10 +339,8 @@ export function ProjectView({
   const branch = useShownBranch(tree, linkedChat?.id ?? null);
   const branchStates = useBranchStates(tree, branch.id, approvals.pending, live);
   // Only the chat page shows a conversation: on the other pages the tree is empty, so no chat is on screen.
-  useShownChat(
-    approvals.onShowChat,
-    tree.map((session) => session.id),
-  );
+  // Only the shown branch shows its requests as cards, so a hidden branch gets the notice.
+  useShownChat(approvals.onShowChat, branch.id === null ? [] : [branch.id]);
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const isWorking = (candidate: SessionRecord): boolean =>
     chatTree(candidate, sessions).some((session) => live.steps[session.id] !== undefined);

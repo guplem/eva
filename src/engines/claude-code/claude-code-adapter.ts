@@ -12,6 +12,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
@@ -262,6 +263,7 @@ async function* mapEachTurn(
               name: block.name,
               category: toolCategory(block.name),
               summary: summarizeToolCall(block.name, block.input),
+              input: toolInputText(block.input),
             };
           }
         }
@@ -282,7 +284,12 @@ async function* mapEachTurn(
         if (message.parent_tool_use_id !== null || typeof message.message.content === "string") break;
         for (const block of message.message.content) {
           if (block.type === "tool_result") {
-            yield { kind: "tool_finished", toolUseId: block.tool_use_id, isError: block.is_error === true };
+            yield {
+              kind: "tool_finished",
+              toolUseId: block.tool_use_id,
+              isError: block.is_error === true,
+              output: toolOutputText(block.content),
+            };
           }
         }
         break;

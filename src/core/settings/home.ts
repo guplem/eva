@@ -88,6 +88,8 @@ export interface HomePaths {
   readonly lock: string;
   readonly stateFolder: string;
   readonly sessions: string;
+  /** The whole input and output of the tool steps, one file per chat. */
+  readonly stepDetails: string;
   readonly trust: string;
   readonly cloneOrigins: string;
   readonly schedulesState: string;
@@ -119,6 +121,7 @@ export function homePaths(root: string): HomePaths {
     lock: join(root, "eva.lock"),
     stateFolder,
     sessions: join(stateFolder, "sessions.json"),
+    stepDetails: join(stateFolder, "step-details"),
     trust: join(stateFolder, "trust.json"),
     cloneOrigins: join(stateFolder, "clone-origins.json"),
     schedulesState: join(stateFolder, "schedules-state.json"),

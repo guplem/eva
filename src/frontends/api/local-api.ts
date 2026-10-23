@@ -519,6 +519,18 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     return json(session, 201);
   }
   if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === "steps" &&
+    parts[4] !== undefined &&
+    parts[5] === undefined
+  ) {
+    const detail = eva.sessions.stepDetail(decodeURIComponent(parts[2]), decodeURIComponent(parts[4]));
+    return json({ input: detail?.input ?? null, output: detail?.output ?? null });
+  }
+  if (
     method === "DELETE" &&
     parts[0] === "api" &&
     parts[1] === "sessions" &&

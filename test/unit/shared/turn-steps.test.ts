@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineEventPayload } from "../../../src/shared/events.ts";
-import { addStep, splitSteps, storedSteps, type TurnStep } from "../../../src/shared/turn-steps.ts";
+import {
+  addStep,
+  splitSteps,
+  stepDetails,
+  storedSteps,
+  withoutDetails,
+  type TurnStep,
+} from "../../../src/shared/turn-steps.ts";
 
 function stepsOf(payloads: readonly EngineEventPayload[]): readonly TurnStep[] {
   return payloads.reduce<readonly TurnStep[]>(addStep, []);
@@ -152,5 +159,42 @@ describe("storedSteps", () => {
     expect(steps).toHaveLength(100);
     expect(steps[0]?.text).toBe("Read 30");
     expect(omittedSteps).toBe(30);
+  });
+});
+
+describe("step details", () => {
+  const payloads: readonly EngineEventPayload[] = [
+    {
+      kind: "tool_started",
+      toolUseId: "t1",
+      name: "Bash",
+      category: "command",
+      summary: "ls",
+      input: '{"command":"ls"}',
+    },
+    { kind: "tool_finished", toolUseId: "t1", isError: false, output: "Notes.md\n" },
+    { kind: "tool_started", toolUseId: "t2", name: "Read", category: "tool", summary: "Read x" },
+    { kind: "text", text: "Done.", messageId: "m1" },
+  ];
+
+  test("a tool step keeps its whole input and output, uncut", () => {
+    const long = "a".repeat(5000);
+    const steps = stepsOf([
+      { kind: "tool_started", toolUseId: "t1", name: "Read", category: "tool", summary: "Read x", input: long },
+      { kind: "tool_finished", toolUseId: "t1", isError: true, output: long },
+    ]);
+    expect(steps).toEqual([{ kind: "tool", text: "Read x", isError: true, id: "t1", input: long, output: long }]);
+  });
+
+  test("storedSteps keeps the details, so a running answer shows them", () => {
+    expect(storedSteps(stepsOf(payloads)).steps[0]).toMatchObject({ input: '{"command":"ls"}', output: "Notes.md\n" });
+  });
+
+  test("withoutDetails drops them, for the session record", () => {
+    expect(stepsOf(payloads).map(withoutDetails)[0]).toEqual({ kind: "command", text: "ls", isError: false, id: "t1" });
+  });
+
+  test("stepDetails gives the details of each step that has some, by id", () => {
+    expect(stepDetails(stepsOf(payloads))).toEqual([{ id: "t1", input: '{"command":"ls"}', output: "Notes.md\n" }]);
   });
 });

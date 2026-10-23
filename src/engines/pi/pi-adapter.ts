@@ -29,6 +29,7 @@ import type { EngineEventPayload, TurnUsage } from "../../shared/events.ts";
 import type { EnginePermissions } from "../../shared/permissions.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
+import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import { approvalExtensionSource, approvalTitle } from "./pi-approval-extension.ts";
 import { describePiPermissions } from "./pi-permissions.ts";
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
@@ -236,9 +237,16 @@ export class PiEngine implements EnginePort {
           name,
           category: toolCategory(name),
           summary: summarizeToolCall(name, record["args"]),
+          input: toolInputText(record["args"]),
         };
       } else if (type === "tool_execution_end") {
-        yield { kind: "tool_finished", toolUseId: String(record["toolCallId"]), isError: record["isError"] === true };
+        const result = record["result"] as { content?: unknown } | undefined;
+        yield {
+          kind: "tool_finished",
+          toolUseId: String(record["toolCallId"]),
+          isError: record["isError"] === true,
+          output: toolOutputText(result?.content ?? result),
+        };
       } else if (type === "extension_ui_request") {
         const notice = bridgeNotice(record);
         if (notice !== null) yield { kind: "notice", text: notice };

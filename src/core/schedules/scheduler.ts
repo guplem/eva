@@ -10,6 +10,7 @@ import type { Logger } from "../../shared/logger.ts";
 import {
   announcedFields,
   changedFields,
+  editScheduleDefinition,
   readScheduleDefinitions,
   removeScheduleDefinition,
   saveScheduleDefinition,
@@ -143,6 +144,12 @@ export class Scheduler {
   save(entry: Readonly<Record<string, unknown>>): Schedule {
     assertVaultWritable(this.options.vaultPath);
     return saveScheduleDefinition(this.definitionsPath, entry);
+  }
+
+  /** Changes the form's fields of one schedule. The next check shows a card for each changed field. */
+  edit(scheduleId: string, fields: Readonly<Record<string, unknown>>): Schedule | null {
+    assertVaultWritable(this.options.vaultPath);
+    return editScheduleDefinition(this.definitionsPath, scheduleId, fields);
   }
 
   remove(scheduleId: string): boolean {

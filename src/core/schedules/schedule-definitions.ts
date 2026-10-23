@@ -212,6 +212,38 @@ export function removeScheduleDefinition(path: string, scheduleId: string): bool
   return true;
 }
 
+/** The keys that the schedule form shows: an edit owns them, and keeps every other key. */
+const formKeys = new Set(["name", "at", "days", "every", "from", "text", "prompt"]);
+
+/**
+ * Changes the form's keys of one schedule and keeps every other key, such as `file`, `model` and
+ * `enabled`. The id never changes (lesson 65). Null when no valid entry has the id.
+ */
+export function editScheduleDefinition(
+  path: string,
+  scheduleId: string,
+  fields: Readonly<Record<string, unknown>>,
+): Schedule | null {
+  const file = readWritableFile(path);
+  const index = file.schedules.findIndex(
+    (entry) => isEntryWithId(entry, scheduleId) && typeof parseScheduleEntry(entry, 1) !== "string",
+  );
+  const entry = file.schedules[index] as Record<string, unknown> | undefined;
+  if (entry === undefined) return null;
+  // Each key keeps its place, so the autosave commit shows only the changed lines.
+  const edited: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entry)) {
+    if (!formKeys.has(key)) edited[key] = value;
+    else if (fields[key] !== undefined) edited[key] = fields[key];
+  }
+  for (const key of formKeys) if (fields[key] !== undefined) edited[key] = fields[key];
+  const parsed = parseScheduleEntry(edited, index + 1);
+  if (typeof parsed === "string") throw new EvaError("schedule_invalid", parsed);
+  file.schedules[index] = edited;
+  writeScheduleFile(path, file);
+  return parsed;
+}
+
 /** Turns one schedule off or on, and keeps every other key. False when no valid entry has the id. */
 export function setScheduleEnabled(path: string, scheduleId: string, enabled: boolean): boolean {
   const file = readWritableFile(path);

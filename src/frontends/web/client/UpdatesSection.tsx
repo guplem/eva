@@ -13,7 +13,7 @@ import {
 } from "./api.ts";
 import { ChangelogDialog } from "./ChangelogDialog.tsx";
 import { Card, ChoiceChips, errorText, type SettingsContext } from "./SettingsParts.tsx";
-import { FactsSkeleton, ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, FactsSkeleton, ProgressBar } from "./Loading.tsx";
 import { evaNewest, restartWait, updateCallout, updatesFace, updateWait } from "./update-words.ts";
 import { UpdateVersionDialog } from "./UpdateVersionDialog.tsx";
 import { Visor } from "./Visor.tsx";
@@ -101,6 +101,9 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
   /** True while the Eva row checks for the releases before the version dialog opens. */
   const [openingVersions, setOpeningVersions] = useState(false);
   const newestEva = evaNewest(eva.update);
+  /** The download of a new Eva, also one that she started by herself, turns the spinner of her row. */
+  const evaWait = updateWait(eva.update, null);
+  const evaWorking = openingVersions || eva.posting || evaWait !== null;
 
   const readVersions = (): void => {
     api.versions().then(setVersions, () => {
@@ -214,10 +217,12 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
             {newestEva !== null && (
               <button
                 className="primary small"
-                disabled={eva.posting || eva.update?.phase !== "idle"}
+                disabled={eva.posting || eva.update?.phase !== "idle" || openingVersions}
+                aria-busy={evaWorking}
                 onClick={() => void openVersions()}
               >
-                {openingVersions ? "Checking…" : "Update"}
+                {evaWorking && <ButtonSpinner share={openingVersions ? null : (evaWait?.share ?? null)} />}
+                {eva.posting || eva.update?.phase === "updating" ? "Updating…" : evaWorking ? "Checking…" : "Update"}
               </button>
             )}
           </dd>
@@ -240,8 +245,11 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
                           : "ghost small"
                       }
                       disabled={installing !== null || engineRuns || engineStarting || waitsForLatest}
+                      aria-busy={working}
                       onClick={() => void (viaEngine ? updateEngine() : install(tool.program as InstallableTool))}
                     >
+                      {/* An install and `claude update` say nothing until they end, so their share is unknown. */}
+                      {working && <ButtonSpinner />}
                       {working ? (action === "Update" ? "Updating…" : "Installing…") : action}
                     </button>
                   )}
@@ -256,8 +264,10 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
               <button
                 className="primary small"
                 disabled={installing !== null || engineRuns || engineStarting}
+                aria-busy={installing === "voice notes"}
                 onClick={() => void install("voice notes")}
               >
+                {installing === "voice notes" && <ButtonSpinner />}
                 {installing === "voice notes" ? "Installing…" : "Install"}
               </button>
             )}
@@ -464,6 +474,8 @@ function EvaUpdatesCard({
 
   const wait = updateWait(update, work);
   const callout = updateCallout(update, wait);
+  /** A second tap during an install would ask for a second install. */
+  const installs = posting || isBusy;
 
   return (
     <Card
@@ -491,7 +503,13 @@ function EvaUpdatesCard({
         </div>
       )}
       <div className="button-row">
-        <button className="primary" disabled={update === null} onClick={() => void updateNow()}>
+        <button
+          className="primary"
+          disabled={update === null || installs}
+          aria-busy={installs}
+          onClick={() => void updateNow()}
+        >
+          {installs && <ButtonSpinner share={wait?.share ?? null} />}
           Check and install
         </button>
         <button disabled={update === null || update.kind === "source"} onClick={() => void pickVersion()}>

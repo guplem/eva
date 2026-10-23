@@ -217,7 +217,7 @@ function VersionsCard({ eva }: { readonly eva: EvaUpdate }): ReactElement {
             {newestEva !== null && (
               <button
                 className="primary small"
-                disabled={eva.posting || eva.update?.phase !== "idle" || openingVersions}
+                disabled={eva.posting || eva.update?.phase !== "idle"}
                 aria-busy={evaWorking}
                 onClick={() => void openVersions()}
               >

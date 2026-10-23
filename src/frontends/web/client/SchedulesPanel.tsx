@@ -1,6 +1,6 @@
 /**
  * The schedules of `.eva/schedules.json`: a day line of today, one row per schedule with its
- * repeat, next run and last result, and "Add schedule".
+ * repeat, next run and last result, and "Add schedule". Each row opens the same form to edit its schedule.
  */
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { AddScheduleDialog } from "./AddScheduleDialog.tsx";
@@ -20,6 +20,8 @@ const reloadMs = 60_000;
 export function SchedulesPanel(): ReactElement {
   const [list, setList] = useState<ScheduleList | null>(null);
   const [adding, setAdding] = useState(false);
+  /** The schedule that the form edits, or null. */
+  const [editing, setEditing] = useState<ScheduleView["schedule"] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** The schedules whose switch waits for its change and the new list. */
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
@@ -124,6 +126,7 @@ export function SchedulesPanel(): ReactElement {
                 now={list.now}
                 busy={pending.has(view.schedule.id)}
                 onToggle={() => void setEnabled(view, !view.schedule.enabled)}
+                onEdit={() => setEditing(view.schedule)}
                 onRemove={() => void remove(view.schedule.id)}
               />
             ))}
@@ -137,6 +140,23 @@ export function SchedulesPanel(): ReactElement {
           onSaved={() => {
             setAdding(false);
             setNotice("Saved. Eva shows its setup card. The schedule runs only after you confirm it.");
+            reload();
+          }}
+        />
+      )}
+      {editing !== null && (
+        <AddScheduleDialog
+          now={list?.now ?? null}
+          schedule={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            // A save with no change makes no card, so the notice promises none.
+            setNotice(
+              editing.enabled
+                ? "Saved. If a field changed, Eva shows a setup card first. It runs only after you confirm it."
+                : `Saved. ${editing.name} stays off. Turn it on to get its setup card.`,
+            );
             reload();
           }}
         />
@@ -220,6 +240,7 @@ function ScheduleRow(props: {
   now: string;
   busy: boolean;
   onToggle: () => void;
+  onEdit: () => void;
   onRemove: () => void;
 }): ReactElement {
   const { schedule, nextRun, lastRun } = props.view;
@@ -247,9 +268,14 @@ function ScheduleRow(props: {
           onClick={props.onToggle}
         />
         {!asking && (
-          <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
-            <Icon name="x" />
-          </button>
+          <>
+            <button className="quiet" aria-label={`Edit ${schedule.name}`} onClick={props.onEdit}>
+              <Icon name="pen" />
+            </button>
+            <button className="quiet" aria-label={`Remove ${schedule.name}`} onClick={() => setAsking(true)}>
+              <Icon name="x" />
+            </button>
+          </>
         )}
       </div>
       <div className="schedule-row-result">

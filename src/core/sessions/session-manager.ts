@@ -24,7 +24,7 @@ import {
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
-import { boundedDetail } from "../../shared/tool-details.ts";
+import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
 import {
   addStep,
   stepDetails,
@@ -632,6 +632,8 @@ export class SessionManager {
     // A task sends several events as its state changes, so each task counts once.
     const taskIds = new Set<string>();
     let steps: readonly TurnStep[] = [];
+    // The characters of tool details that the turn kept so far.
+    let detailLength = 0;
     const draft = new TextStreamRedactor(this.options.redactor);
     let blockStarts = false;
 
@@ -715,7 +717,9 @@ ${prompt}`,
         if (raw.kind === "text") this.turnDrafts.delete(sessionId);
         // A final text does not reset the stream: the next block can start before it comes.
         // Redact before anything is kept, not only before it is sent: the history is shown again later (lesson 95).
-        const payload = redactPayload(raw, this.options.redactor);
+        const redacted = redactPayload(raw, this.options.redactor);
+        const payload = withinDetailBudget(redacted, detailLength);
+        detailLength += detailLengthOf(payload);
         if (payload.kind === "history_lost") {
           historyLost = true;
           if (isContinueAfterFailure) continue;
@@ -1016,7 +1020,9 @@ function redactPayload(
       return {
         ...payload,
         summary: redactor.redact(payload.summary),
-        ...(input === undefined ? {} : { input: boundedDetail(redactor.redact(input)) }),
+        ...(input === undefined
+          ? {}
+          : { input: boundedDetail(redactedJsonText(input, (text) => redactor.redact(text))) }),
       };
     }
     case "approval_needed":
@@ -1027,7 +1033,9 @@ function redactPayload(
       return { ...payload, title: redactor.redact(payload.title) };
     case "tool_finished": {
       const { output } = payload;
-      return output === undefined ? payload : { ...payload, output: boundedDetail(redactor.redact(output)) };
+      return output === undefined
+        ? payload
+        : { ...payload, output: boundedDetail(redactedJsonText(output, (text) => redactor.redact(text))) };
     }
     case "history_lost":
     case "usage_limit":
@@ -1040,4 +1048,24 @@ function redactPayload(
     case "project_work_started":
       return { ...payload, request: redactor.redact(payload.request) };
   }
+}
+
+function detailLengthOf(payload: EngineEventPayload): number {
+  if (payload.kind === "tool_started") return payload.input?.length ?? 0;
+  if (payload.kind === "tool_finished") return payload.output?.length ?? 0;
+  return 0;
+}
+
+/** Past the turn's budget, a tool event loses its details, and its step keeps only its summary. */
+function withinDetailBudget(payload: EngineEventPayload, used: number): EngineEventPayload {
+  if (used + detailLengthOf(payload) <= maxTurnDetailLength) return payload;
+  if (payload.kind === "tool_started") {
+    const { input: _input, ...rest } = payload;
+    return rest;
+  }
+  if (payload.kind === "tool_finished") {
+    const { output: _output, ...rest } = payload;
+    return rest;
+  }
+  return payload;
 }

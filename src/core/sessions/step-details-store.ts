@@ -48,7 +48,11 @@ export class StepDetailsStore {
 
   delete(sessionId: string): void {
     if (!safeId.test(sessionId)) return;
-    rmSync(this.pathOf(sessionId), { force: true });
+    try {
+      rmSync(this.pathOf(sessionId), { force: true });
+    } catch {
+      // On Windows a locked file, such as one that an antivirus reads, refuses the delete. The chat still goes.
+    }
   }
 
   private turns(sessionId: string): { steps: StepDetailWithId[] }[] {

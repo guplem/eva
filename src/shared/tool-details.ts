@@ -26,6 +26,37 @@ function partText(part: unknown): string {
   return JSON.stringify(part);
 }
 
+/**
+ * The details that one turn keeps in all. A turn of many big outputs then cannot fill the memory,
+ * the reconnect of a phone, or the details file. Past it, a step keeps only its summary.
+ */
+export const maxTurnDetailLength = 5 * maxDetailLength;
+
+/**
+ * Redacts a text that can be JSON. JSON escapes a quote or a new line inside a secret, so the
+ * redactor would miss it. So each string in the JSON is redacted before the JSON is written again.
+ */
+export function redactedJsonText(text: string, redact: (text: string) => string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return redact(text);
+  }
+  // Only an object or a list can hold an escaped string. A plain output keeps its own shape.
+  if (typeof parsed !== "object" || parsed === null) return redact(text);
+  return redact(JSON.stringify(redactedValue(parsed, redact), null, 2));
+}
+
+function redactedValue(value: unknown, redact: (text: string) => string): unknown {
+  if (typeof value === "string") return redact(value);
+  if (Array.isArray(value)) return value.map((item) => redactedValue(item, redact));
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [redact(key), redactedValue(item, redact)]));
+  }
+  return value;
+}
+
 /** Cut only after the redaction, so a cut never splits a secret that the redactor then misses (lesson 95). */
 export function boundedDetail(text: string): string {
   if (text.length <= maxDetailLength) return text;

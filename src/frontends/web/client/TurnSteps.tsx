@@ -94,6 +94,8 @@ export function StepFold({
       )}
       {current !== null && (
         <StepDialog
+          // The dialog reads its details once. A new step, or the end of the turn, starts a new read.
+          key={`${current.id ?? ""}-${String(live)}`}
           step={current}
           live={live}
           {...(sessionId === undefined ? {} : { sessionId })}

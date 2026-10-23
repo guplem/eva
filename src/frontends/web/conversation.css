@@ -405,7 +405,7 @@
 /* Each step is a button that opens its dialog, so it fills its line. */
 .step-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
@@ -968,6 +968,11 @@ button.ghost .icon {
   .composer .chip {
     min-height: 44px;
     padding: 4px 14px;
+  }
+
+  /* Each step opens its dialog, so a finger needs a full target. */
+  .step-row {
+    min-height: 44px;
   }
 }
 

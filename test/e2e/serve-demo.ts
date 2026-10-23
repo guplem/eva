@@ -80,16 +80,28 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     name: "Grep",
     category: "tool",
     summary: "Grep notes",
+    input: '{\n  "pattern": "notes"\n}',
   };
-  yield { kind: "tool_finished", toolUseId: `tool-${String(turnNumber)}`, isError: false };
+  yield {
+    kind: "tool_finished",
+    toolUseId: `tool-${String(turnNumber)}`,
+    isError: false,
+    output: "Notes/ideas.md\nNotes/settings.json",
+  };
   yield {
     kind: "tool_started",
     toolUseId: `command-${String(turnNumber)}`,
     name: "Bash",
     category: "command",
     summary: "ls",
+    input: '{\n  "command": "ls"\n}',
   };
-  yield { kind: "tool_finished", toolUseId: `command-${String(turnNumber)}`, isError: false };
+  yield {
+    kind: "tool_finished",
+    toolUseId: `command-${String(turnNumber)}`,
+    isError: false,
+    output: "Journal\nNotes",
+  };
   if (lastLine.includes("stream")) {
     // The approval holds the turn, so the page shows the draft for as long as the test needs.
     const words = "Streaming the words of this answer while the engine writes them. ".repeat(3);

@@ -2351,6 +2351,34 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(steps).toHaveCount(0);
 });
 
+test("a tap on a stored step opens its whole input and output, each in a fold", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
+  await answer.getByRole("button", { name: "Show 3 steps" }).click();
+  const step = answer.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Command\s+ls/ });
+  if (test.info().project.name === "phone") {
+    const box = await step.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  await step.click();
+  // A stored answer keeps no details in the session list, so the dialog fetches them.
+  const dialog = page.getByRole("dialog", { name: "Step: Command" });
+  await expect(dialog.locator(".status-pill")).toHaveText("Done");
+  await expect(dialog.locator(".step-detail pre")).toHaveText(['{\n  "command": "ls"\n}', "Journal\nNotes"]);
+  // The output opens at once. The input waits in its fold.
+  await expect(dialog.locator(".step-detail").nth(0)).not.toHaveAttribute("open");
+  await expect(dialog.locator(".step-detail").nth(1)).toHaveAttribute("open");
+  await dialog.getByText("Output").click();
+  await expect(dialog.locator(".step-detail").nth(1)).not.toHaveAttribute("open");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 test("the chat panel shows the context ring, the engine and the model, and a phone opens it from the title or the menu", async ({
   page,
 }) => {

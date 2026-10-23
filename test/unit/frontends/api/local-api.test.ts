@@ -1636,6 +1636,22 @@ describe("web routes", () => {
     expect((await call("/api/files", { method: "POST", body: {} })).status).toBe(404);
   });
 
+  test("files: the search finds a name, and the text only when the page asks for it", async () => {
+    interface Found {
+      matches: { path: string; name: string; kind: string; line?: { number: number } }[];
+      complete: boolean;
+    }
+    const byName = await json<Found>(await call(`/api/files/search?query=${encodeURIComponent("assistant")}`));
+    expect(byName).toEqual({
+      matches: [{ path: ".eva/assistant.md", name: "assistant.md", kind: "file" }],
+      complete: true,
+    });
+    const byText = await json<Found>(await call("/api/files/search?query=You%20are%20Eva"));
+    expect(byText.matches).toEqual([]);
+    const inside = await json<Found>(await call("/api/files/search?query=You%20are%20Eva&contents=true"));
+    expect(inside.matches.map((match) => [match.path, match.line?.number])).toEqual([[".eva/assistant.md", 1]]);
+  });
+
   test("files: a file downloads as itself, a folder as a zip, and a secrets file does not", async () => {
     const file = await call(`/api/files/download?path=${encodeURIComponent(".eva/assistant.md")}`);
     expect(file.status).toBe(200);

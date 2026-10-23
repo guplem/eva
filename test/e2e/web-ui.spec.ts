@@ -4469,6 +4469,25 @@ test("Files: a file shows its type in colour, and a long name loses the part tha
   await expect(page.locator("html")).toHaveAttribute("data-file-name-cut", "end");
 });
 
+test("Files: the search finds a name, then the text inside a file, and a match opens", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files");
+  const field = page.getByRole("searchbox", { name: "Search the vault" });
+  await field.fill("trips");
+  const results = page.getByRole("list", { name: "Search results" });
+  await expect(results.getByRole("link")).toHaveCount(1);
+  await expect(results.getByRole("link")).toContainText("Journal");
+  await field.fill("Shopping");
+  await expect(page.getByText("No file or folder has this name.")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Search inside files" }).check();
+  const match = results.getByRole("link").filter({ hasText: "# Shopping" }).first();
+  await expect(match).toContainText("Line 1:");
+  await match.click();
+  await expect(page).toHaveURL(/#\/files\/Notes\/.+-list\.md$/);
+  await expect(field).toHaveValue("");
+  await expect(page.getByRole("region", { name: "File text" })).toBeVisible();
+});
+
 test("Files: a wide column takes at least a quarter of the row", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone shows the last column alone.");
   await logIn(page);

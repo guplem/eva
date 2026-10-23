@@ -101,6 +101,7 @@ import {
   type BrowsedPath,
 } from "./files/file-browser.ts";
 import { downloadVaultPath, type VaultDownload } from "./files/file-download.ts";
+import { searchVault, type SearchResult } from "./files/vault-search.ts";
 import { cleanScratch, receivedFileNote, saveReceivedFile } from "./files/vault-files.ts";
 import { googleMcpServer } from "./google/google-mcp.ts";
 import { GoogleLogin, googleCredentialsFolder } from "./google/google-login.ts";
@@ -1431,6 +1432,11 @@ export class Eva {
   /** A vault folder's entries, or a text file, for the file explorer of the web page. */
   browseFiles(path: string): BrowsedPath {
     return browseVault(this.browsedVault(), path, (text) => this.redactor.redact(text));
+  }
+
+  /** The vault files and folders whose name holds `query`, and with `contents` the files whose text holds it. */
+  searchFiles(query: string, contents: boolean): SearchResult {
+    return searchVault(this.browsedVault(), query, { contents }, (text) => this.redactor.redact(text));
   }
 
   /** A vault file, or a folder as one zip, for the Download button of the file explorer. */

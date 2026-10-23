@@ -6,11 +6,14 @@ import type { ReactElement } from "react";
 import type { DiffRow } from "./line-diff.ts";
 
 const marks = {
-  added: { sign: "+", word: "Added:" },
-  removed: { sign: "-", word: "Removed:" },
+  // The space keeps a screen reader from reading the word and the line as one word.
+  added: { sign: "+", word: "Added: " },
+  removed: { sign: "-", word: "Removed: " },
 } as const;
 
 export function DiffLines({ rows }: { readonly rows: readonly DiffRow[] }): ReactElement {
+  // With marks, a shared line gets an empty mark too, so all text starts in the same column, as in git.
+  const marked = rows.some((row) => row.kind === "added" || row.kind === "removed");
   return (
     <div className="diff">
       {rows.map((row, index) => {
@@ -31,6 +34,14 @@ export function DiffLines({ rows }: { readonly rows: readonly DiffRow[] }): Reac
                 {mark.sign}
               </span>
               <span className="visually-hidden">{mark.word}</span>
+              {text}
+            </div>
+          );
+        }
+        if (marked) {
+          return (
+            <div key={index} className="same">
+              <span className="mark" aria-hidden="true" />
               {text}
             </div>
           );

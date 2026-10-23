@@ -1419,6 +1419,8 @@ test("Settings: Eva's rules show formatted, save from the plain text, and restor
     await card.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "New chats with Eva use the new rules." })).toBeVisible();
     await expect(card.getByRole("heading", { name: "Be brief" })).toBeVisible();
+    // The new rules share an empty line with the default. Its row keeps the mark column, so the text lines up.
+    await expect(diff.locator(".diff .same .mark").first()).toBeAttached();
 
     await card.getByRole("button", { name: "Restore the default" }).click();
     const dialog = page.getByRole("dialog", { name: "Restore the default rules" });

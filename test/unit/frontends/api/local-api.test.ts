@@ -1354,6 +1354,9 @@ describe("web routes", () => {
     expect(bad.status).toBe(400);
     const nobody = await call("/api/schedules/nobody", { method: "PATCH", body: { fields } });
     expect(nobody.status).toBe(404);
+    // One change per call, so a body with both never drops the edit and answers 204.
+    const both = await call("/api/schedules/morning", { method: "PATCH", body: { enabled: false, fields } });
+    expect(both.status).toBe(400);
   });
 
   test("chat names: the rules read back as saved, and a long or bad body is refused (issue 50)", async () => {

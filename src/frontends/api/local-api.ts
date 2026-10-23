@@ -165,7 +165,10 @@ const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notifi
 const pushInViewSchema = pushEndpointSchema.extend({ pageId: z.string().min(1).max(100), inView: z.boolean() });
 const cardSeenSchema = z.object({ fields: z.record(z.string(), z.string()) });
 /** A PATCH turns a schedule off or on, or edits the fields that the schedule form shows. */
-const scheduleChangeSchema = z.union([z.object({ enabled: z.boolean() }), z.object({ fields: scheduleEntrySchema })]);
+const scheduleChangeSchema = z.union([
+  z.strictObject({ enabled: z.boolean() }),
+  z.strictObject({ fields: scheduleEntrySchema }),
+]);
 const logsQuerySchema = z.object({
   level: z.enum(["warn", "error"]).default("warn"),
   limit: z.coerce.number().int().min(1).max(100).default(20),

@@ -57,6 +57,8 @@ export interface ChatProps {
   readonly tasks: Tasks;
   /** Reloads the chat list, so a new fork shows in it. */
   readonly onChanged: () => Promise<void>;
+  /** The branch that the page shows. "Fork this chat" forks it. */
+  readonly shownId?: string | null;
 }
 
 /** A conic gradient fills the ring with the share. Only a known window gives a share, so the ring is never a guess. */
@@ -89,10 +91,14 @@ function ContextUse({ tree }: { readonly tree: readonly SessionRecord[] }): Reac
   );
 }
 
-function ForkButton({ tree, onChanged }: Pick<ChatProps, "tree" | "onChanged">): ReactElement | null {
+function ForkButton({
+  tree,
+  onChanged,
+  shownId = null,
+}: Pick<ChatProps, "tree" | "onChanged" | "shownId">): ReactElement | null {
   const showError = useShowError();
   const [forking, setForking] = useState(false);
-  const point = forkPoint(tree[0]);
+  const point = forkPoint(tree.find((session) => session.id === shownId) ?? tree[0]);
   if (point === null) return null;
   const fork = async (): Promise<void> => {
     setForking(true);
@@ -112,7 +118,7 @@ function ForkButton({ tree, onChanged }: Pick<ChatProps, "tree" | "onChanged">):
   );
 }
 
-function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
+function ChatDetails({ tree, tasks, onChanged, shownId = null }: ChatProps): ReactElement {
   const root = tree[0];
   return (
     <>
@@ -143,7 +149,7 @@ function ChatDetails({ tree, tasks, onChanged }: ChatProps): ReactElement {
         tasks={tasks}
         empty={root?.engine === "pi" ? "pi does not report background tasks." : "Nothing runs in the background."}
       />
-      <ForkButton tree={tree} onChanged={onChanged} />
+      <ForkButton tree={tree} onChanged={onChanged} shownId={shownId} />
     </>
   );
 }

@@ -1444,8 +1444,20 @@ textarea {
   min-width: 100%;
 }
 
-.diff .a {
+.diff .a,
+.diff .added {
   background: var(--ok-bg);
+}
+
+.diff .removed {
+  background: var(--bad-bg);
+}
+
+/* The mark of an added or removed line, in its own column, as git shows it. */
+.diff .mark {
+  display: inline-block;
+  width: 2ch;
+  color: var(--muted);
 }
 
 .diff .gap {

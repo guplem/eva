@@ -45,12 +45,7 @@ export function AddScheduleDialog(props: {
     }
   };
 
-  const field = (
-    name: "id" | "name" | "at" | "text",
-    label: string,
-    placeholder: string,
-    readOnly = false,
-  ): ReactElement => (
+  const field = (name: "id" | "name" | "at", label: string, placeholder: string, readOnly = false): ReactElement => (
     <label>
       {label}
       <input
@@ -151,7 +146,16 @@ export function AddScheduleDialog(props: {
               </label>
             </>
           )}
-          {field("text", "Fixed text", "Drink water.")}
+          {/* A text in the file may hold line breaks, and a one-line input would drop them. */}
+          <label>
+            Fixed text
+            <textarea
+              rows={2}
+              value={form.text}
+              placeholder="Drink water."
+              onChange={(event) => setForm({ ...form, text: event.target.value })}
+            />
+          </label>
           <label>
             Prompt for Eva
             <textarea

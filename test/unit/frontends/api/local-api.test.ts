@@ -1880,6 +1880,49 @@ describe("without a vault", () => {
   });
 });
 
+describe("an unexpected error", () => {
+  test("answers a plain 500, and logs the redacted message and stack for the person to read", async () => {
+    const logged: { level: string; message: string; details: Readonly<Record<string, unknown>> | undefined }[] = [];
+    const brokenVault = join(home, "broken-vault");
+    mkdirSync(brokenVault);
+    const broken = new Eva({
+      paths: homePaths(home),
+      config: { ...defaultConfig, vaultPath: brokenVault, sync: { ...defaultConfig.sync, enabled: false } },
+      secrets: {},
+      engines: [engine],
+      // A runner that fails as no EvaError does, so the setup progress fails as a bug would.
+      runner: { run: () => Promise.reject(new Error("token ghp_abcdefghijklmnopqrstuvwxyz0123456789 leaked")) },
+      processEnvironment: gitEnvironment,
+      now: () => new Date("2026-10-14T10:30:00Z"),
+      basePrompt: "Base.",
+    });
+    const brokenApi = startLocalApi({
+      eva: broken,
+      port: 0,
+      token,
+      extraHosts: [],
+      allowedTailscaleIdentities: [],
+      logger: { log: (level, message, details) => logged.push({ level, message, details }) },
+    });
+    try {
+      const response = await fetch(`${brokenApi.url}/api/settings/setup`, { headers: headers() });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Eva failed to handle the request." });
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.level).toBe("error");
+      expect(logged[0]?.message).toBe("A request failed: GET /api/settings/setup");
+      const reason = String(logged[0]?.details?.["reason"]);
+      expect(reason).toContain("leaked");
+      // The stack, so the log shows where it failed.
+      expect(reason).toMatch(/\n\s+at /);
+      expect(reason).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    } finally {
+      brokenApi.stop();
+      broken.stop();
+    }
+  });
+});
+
 describe("updates and the vault sync", () => {
   test("without an update channel, the status is null and an update is refused", async () => {
     expect(await json<unknown>(await call("/api/update"))).toBeNull();

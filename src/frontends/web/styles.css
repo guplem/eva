@@ -142,6 +142,8 @@
   --radius-card: 22px;
   --radius-bubble: 24px;
   --radius-bubble-tail: 8px;
+  --bubble-padding-block: 13px;
+  --bubble-padding-inline: 16px;
   --radius-composer: 28px;
   --radius-dialog: 28px;
   --radius-sheet: 30px;
@@ -245,9 +247,11 @@ samp {
 /* Compact: smaller text and less space, so more fits on a small screen. */
 :root[data-density="compact"] {
   font-size: 13px;
+  /* The line height adds about 3 px above and below the text, so the text gets about the same space on each side. */
+  --bubble-padding-block: var(--space-2);
+  --bubble-padding-inline: var(--space-4);
 }
 
-:root[data-density="compact"] .message,
 :root[data-density="compact"] .list-item {
   padding-top: 4px;
   padding-bottom: 4px;

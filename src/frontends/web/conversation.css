@@ -284,7 +284,7 @@
 .message.answer {
   background: var(--panel);
   border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail);
-  padding: 13px 16px;
+  padding: var(--bubble-padding-block) var(--bubble-padding-inline);
   box-shadow: var(--shadow);
   max-width: 86%;
 }
@@ -293,7 +293,7 @@
   background: var(--soft);
   color: var(--soft-ink);
   border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble-tail) var(--radius-bubble);
-  padding: 13px 16px;
+  padding: var(--bubble-padding-block) var(--bubble-padding-inline);
   max-width: 72%;
   white-space: pre-wrap;
 }
@@ -506,11 +506,13 @@
 }
 
 /* Actions: ghost buttons, with no menu */
+/* The row moves left by the 12 px side space of a ghost button, so its first icon lines up with the text. */
 .answer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
+  margin-left: -12px;
 }
 
 button.ghost {
@@ -907,6 +909,11 @@ button.ghost .icon {
 
   .message.answer {
     max-width: 100%;
+  }
+
+  /* A phone button is 44 px tall for the finger. Its empty lower half fills the card's padding, but never goes past the card. */
+  .answer-actions {
+    margin-bottom: calc(-1 * var(--bubble-padding-block));
   }
 
   .message.user {

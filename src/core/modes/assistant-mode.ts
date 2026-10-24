@@ -92,8 +92,10 @@ export class AssistantPreparer implements TurnPreparer {
     return migrated ? text : (withMovedSections(text) ?? text);
   }
 
-  async afterTurn(session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
+  async afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null> {
     await this.options.vaultSync.save();
+    // A stopped or failed turn must end the work: a usage limit would fail each follow-up again.
+    if (!outcome.finished) return null;
     return this.pskillFollowUp(session);
   }
 

@@ -1295,6 +1295,26 @@ describe("after a turn", () => {
     expect(engine.requests[1]?.history.kind).toBe("continue");
   });
 
+  test("a stopped turn gets no follow-up from the mode", async () => {
+    followUps = ["continue the skill run"];
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => {
+        request.signal.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      yield { kind: "turn_failed", reason: "The turn was stopped." };
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "start the skill");
+    await waitUntil(() => manager.isTurnRunning(sessionId) && engine.requests.length === 1);
+    manager.stop(sessionId);
+    await turn;
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill"]);
+    expect(manager.isActive(sessionId)).toBe(false);
+  });
+
   test("the idle listener hears once, after the follow-ups, and hears whether the person stopped a turn", async () => {
     followUps = ["continue the skill run", null];
     const manager = createManager(new FakeEngine());

@@ -596,7 +596,8 @@ export class SessionManager {
           batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
         const recorded = this.options.store.get(sessionId);
         if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
-        if (followUp !== null && followUps < maxFollowUps) {
+        // After a stop, the person wants Eva to end the work, not to go on with the mode's next step.
+        if (followUp !== null && !runtime.stopped && followUps < maxFollowUps) {
           followUps += 1;
           runtime.pending ??= createBatch();
           runtime.pending.texts.unshift(followUp);

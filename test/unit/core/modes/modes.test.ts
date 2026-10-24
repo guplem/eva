@@ -208,6 +208,19 @@ describe("Assistant mode", () => {
     expect(failures[0]).toContain("pskill could not run");
   });
 
+  test("a turn that did not finish saves the vault but asks pskill for no follow-up", async () => {
+    sandbox.write(vault, ".pskill/pskill.py", "# runner\n");
+    const runner = new FakeRunner(() => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: "Continue run r1." } }),
+      stderr: "",
+    }));
+    const sync = new FakeSync();
+    expect(await assistant(runner, sync).afterTurn(session(), { finished: false })).toBeNull();
+    expect(sync.calls).toEqual(["save"]);
+    expect(runner.runs).toEqual([]);
+  });
+
   test("a vault with no pskill runs no check", async () => {
     const runner = new FakeRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
     await assistant(runner).afterTurn(session(), { finished: true });

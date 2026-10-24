@@ -5,7 +5,7 @@
  */
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
@@ -89,20 +89,40 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   const name = cloneFolderName(options.projectPath, repository);
   const reposFolder = join(options.projectPath, "repos");
   const path = join(reposFolder, name);
-  // Eva's credential helper, so a private project repository clones with the GitHub token too.
-  const result = await options.runner.run(
-    ["git", ...githubCredentialArguments, "clone", "-q", "--", options.repositoryUrl, path],
-    {
-      cwd: options.projectPath,
-      environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
-      timeoutMs: cloneTimeoutMs,
-    },
-  );
+  const existed = existsSync(path);
+  let result: Awaited<ReturnType<ProcessRunner["run"]>>;
+  try {
+    // Eva's credential helper, so a private project repository clones with the GitHub token too.
+    result = await options.runner.run(
+      ["git", ...githubCredentialArguments, "clone", "-q", "--", options.repositoryUrl, path],
+      {
+        cwd: options.projectPath,
+        environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
+        timeoutMs: cloneTimeoutMs,
+      },
+    );
+  } catch (error) {
+    if (!existed) removeFailedClone(path);
+    throw error;
+  }
   if (result.exitCode !== 0) {
+    if (!existed) removeFailedClone(path);
     throw new EvaError("git_failed", `Could not clone ${options.repositoryUrl}: ${failureReason(result, "git")}`);
   }
   options.origins.recordClone(path, options.repositoryUrl);
   return { name, path, repository, index: Number(name.slice(repository.length + 1)) };
+}
+
+/**
+ * A clone that a timeout or a kill stopped leaves a half-filled folder, and the next clone choice
+ * could reuse it. The folder is new, so it holds none of the person's files.
+ */
+function removeFailedClone(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // A file that Windows still holds stays. The clone error matters more than this one.
+  }
 }
 
 export interface CloneBranch extends Clone {

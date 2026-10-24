@@ -711,18 +711,12 @@ export class VaultSync {
     await this.git(["remote", "set-head", "origin", "--auto"], networkTimeoutMs);
     const asked = await this.originHead();
     if (asked !== null) return asked;
-    // A vault made with git init and a first push -u has no origin/HEAD, and can use master (#505).
-    // The remote's main or master comes first: the upstream of a second branch would pass any branch.
+    // Offline, the remote's main, then its master. Never the upstream of the current branch: any
+    // branch with an upstream would then pass the check.
     for (const candidate of ["main", "master"]) {
       const found = await this.git(["rev-parse", "--verify", "-q", `refs/remotes/origin/${candidate}`], localTimeoutMs);
       if (found.exitCode === 0) return candidate;
     }
-    const upstream = await this.git(
-      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-      localTimeoutMs,
-    );
-    const tracked = upstream.stdout.trim();
-    if (upstream.exitCode === 0 && tracked.startsWith("origin/")) return tracked.slice("origin/".length);
     // With no remote, nothing tells main from master, and a skip would ask for a main that does not exist.
     const remote = await this.git(["remote", "get-url", "origin"], localTimeoutMs);
     if (remote.exitCode !== 0 && (current === "main" || current === "master")) return current;

@@ -296,7 +296,7 @@ describe("VaultSync.save", () => {
     expect(logged).toContainEqual({ level: "warn", message: "Eva removed a stale index.lock from the vault." });
   });
 
-  test("syncs a vault on master with no origin/HEAD, through the branch's upstream (#505)", async () => {
+  test("syncs a vault on master with no origin/HEAD, when the remote has only master (#505)", async () => {
     sandbox.git(vault, "switch", "-q", "-c", "master");
     sandbox.git(vault, "push", "-q", "-u", "origin", "master");
     // The remote has only master, as after git init and a first push -u.
@@ -319,6 +319,17 @@ describe("VaultSync.save", () => {
     expect(state.status).toBe("ok");
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "master")).toContain("note.md");
     expect(remoteFiles()).not.toContain("note.md");
+  });
+
+  test("offline with no origin/HEAD, never takes a branch's upstream as the default (#505)", async () => {
+    sandbox.git(vault, "switch", "-q", "-c", "trunk");
+    sandbox.git(vault, "push", "-q", "-u", "origin", "trunk");
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/trunk");
+    sandbox.git(vault, "push", "-q", "origin", "--delete", "main");
+    sandbox.git(vault, "remote", "set-head", "origin", "-d");
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    sandbox.write(vault, "note.md", "kept\n");
+    expect((await createSync(vault).save()).status).toBe("skipped");
   });
 
   test("with no origin/HEAD and an unreachable remote, falls back to the remote's main (#505)", async () => {

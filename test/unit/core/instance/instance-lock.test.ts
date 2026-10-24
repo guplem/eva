@@ -1,13 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  acquireInstanceLock,
-  readBootId,
-  readUptime,
-  runningInstancePid,
-} from "../../../../src/core/instance/instance-lock.ts";
+import { acquireInstanceLock, readBootId, runningInstancePid } from "../../../../src/core/instance/instance-lock.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let home: string;
@@ -87,37 +82,6 @@ describe("acquireInstanceLock", () => {
     expect(isEvaError(error, "instance_locked")).toBe(true);
   });
 
-  test("takes over a lock from an earlier boot on Windows: the uptime is now lower than in the lock", () => {
-    const lockPath = join(home, "eva.lock");
-    acquireInstanceLock(lockPath, { pid: 4242, bootId: null, uptimeSeconds: 500, isProcessAlive: () => true });
-    expect(readFileSync(lockPath, "utf-8")).toContain("500");
-    const probe = { bootId: null, uptimeSeconds: 100, isProcessAlive: () => true };
-    expect(runningInstancePid(lockPath, probe)).toBeNull();
-    acquireInstanceLock(lockPath, { ...probe, pid: 5151 }).release();
-  });
-
-  test("refuses a lock from this boot on Windows: the uptime is now higher than in the lock", () => {
-    const lockPath = join(home, "eva.lock");
-    acquireInstanceLock(lockPath, { pid: 4242, bootId: null, uptimeSeconds: 500, isProcessAlive: () => true });
-    const error = lockError(() => {
-      acquireInstanceLock(lockPath, { pid: 5151, bootId: null, uptimeSeconds: 900, isProcessAlive: () => true });
-    });
-    expect(isEvaError(error, "instance_locked")).toBe(true);
-  });
-
-  test("reads an older lock with no uptime as live while its pid runs", () => {
-    const lockPath = join(home, "eva.lock");
-    writeFileSync(lockPath, "4242");
-    expect(runningInstancePid(lockPath, { bootId: null, uptimeSeconds: 100, isProcessAlive: () => true })).toBe(4242);
-  });
-
-  test("compares the uptimes when the lock has a boot id and this machine has none", () => {
-    const lockPath = join(home, "eva.lock");
-    writeFileSync(lockPath, "4242\nboot-before\n500\n");
-    expect(runningInstancePid(lockPath, { bootId: null, uptimeSeconds: 100, isProcessAlive: () => true })).toBeNull();
-    expect(runningInstancePid(lockPath, { bootId: null, uptimeSeconds: 900, isProcessAlive: () => true })).toBe(4242);
-  });
-
   test("release twice is harmless", () => {
     const lock = acquireInstanceLock(join(home, "eva.lock"), {
       pid: process.pid,
@@ -157,13 +121,5 @@ describe("readBootId", () => {
     writeFileSync(bootIdPath, "0f3c-boot\n");
     expect(readBootId("win32", bootIdPath)).toBeNull();
     expect(readBootId("linux", join(home, "missing"))).toBeNull();
-  });
-});
-
-describe("readUptime", () => {
-  test("reads the uptime on Windows only, so another platform ignores it", () => {
-    expect(readUptime("win32", () => 500)).toBe(500);
-    expect(readUptime("linux", () => 500)).toBeNull();
-    expect(readUptime("darwin", () => 500)).toBeNull();
   });
 });

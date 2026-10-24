@@ -404,6 +404,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       } else if (event.kind === "session_archived") {
         // An archive on another device, or a new message that brought the chat back.
         void refreshSessions();
+      } else if (event.kind === "session_closed") {
+        // Eva reused the chat's clone: its page swaps the message box for a note.
+        void refreshSessions();
       } else if (event.kind === "turn_finished" || event.kind === "turn_failed") {
         void refreshSessions();
       } else if (event.kind === "message_received") {

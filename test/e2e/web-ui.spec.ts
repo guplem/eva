@@ -76,7 +76,22 @@ async function openExampleApp(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
 }
 
-/** Clones the project's repository with "New clone", and gives the card of the new clone. */
+/**
+ * Starts a Project chat with "New chat" on the project page, and gives the name of its clone. Eva
+ * picks the clone: a free one, or a new one (issue 521).
+ */
+async function newProjectChat(page: Page): Promise<string> {
+  const created = page.waitForResponse(
+    (response) => response.url().endsWith("/api/sessions") && response.request().method() === "POST",
+  );
+  // A direct child: the title of an open chat is a "New chat" button inside the heading.
+  await page.locator(".main-header > button").filter({ hasText: "New chat" }).click();
+  const clone = ((await (await created).json()) as { clone: string }).clone;
+  await expect(page.getByText("Project mode")).toBeVisible();
+  return clone;
+}
+
+/** Clones every repository of the project with "New clone", and gives the card of the new clone. */
 async function newCloneCard(page: Page): Promise<Locator> {
   const cards = page.locator(".clone-card");
   // The clones load after the page opens, so wait for the cards or for the empty text first.
@@ -648,7 +663,7 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   const title = `Linked project work (${test.info().project.name})`;
   await logIn(page);
   await openExampleApp(page);
-  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  await newProjectChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
@@ -1075,18 +1090,29 @@ test("the day line shows the time of a run and of now on hover", async ({ page }
   await page.request.delete(`/api/schedules/${id}`);
 });
 
-test("Project mode: search, a new clone with its branch, and a chat in it", async ({ page }) => {
+test("Project mode: search, a new clone with each repository and its branch, and a chat in a clone", async ({
+  page,
+}) => {
   await logIn(page);
   await openExampleApp(page);
   await expect(page.getByText("Projects/2025-03-02-1015-example-app")).toBeVisible();
   await expect(page.getByText("A web app for the client portal.")).toBeVisible();
   const card = await newCloneCard(page);
-  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
-  await expect(card).toContainText("main");
-  await expect(card.locator(".pill", { hasText: "Clean" })).toBeVisible();
-  await card.getByRole("button", { name: "New chat here" }).click();
-  await expect(page.locator(".main-header .sub")).toHaveText(`Example app › ${cloneName} · main`);
-  await expect(page.getByText("Project mode")).toBeVisible();
+  // A clone holds every repository of the project, each with its own branch and state (issue 521).
+  for (const repository of ["example-app", "remote"]) {
+    const row = card.getByLabel(`Repository ${repository}`);
+    await expect(row).toContainText("main");
+    await expect(row.locator(".pill", { hasText: "Clean" })).toBeVisible();
+  }
+  // The card has no "New chat here": Eva picks the clone of a new chat.
+  await expect(card.getByRole("button", { name: "New chat here" })).toHaveCount(0);
+  await rightClickInView(card.locator(".clone-head").first());
+  await expect(page.getByRole("menuitem", { name: "New chat here" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const cloneName = await newProjectChat(page);
+  await expect(page.locator(".main-header .sub")).toHaveText(
+    `Example app › ${cloneName} · example-app: main · remote: main`,
+  );
   // A received file lands in the vault, which a clone's agent does not reach (issue 409).
   await expect(page.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
   const composer = page.getByLabel("Message").first();
@@ -1102,11 +1128,7 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
 
   // Another chat's tasks stay out of view. A project chat keeps the Assistant chat list unchanged.
   await page.getByRole("button", { name: "Example app", exact: true }).click();
-  await page
-    .getByRole("region", { name: `Clone ${cloneName}` })
-    .getByRole("button", { name: "New chat here" })
-    .click();
-  await expect(page.getByText("Project mode")).toBeVisible();
+  await newProjectChat(page);
   if (test.info().project.name === "desktop") {
     await expect(page.getByRole("complementary", { name: "This chat" })).toContainText(
       "Nothing runs in the background.",
@@ -1114,30 +1136,25 @@ test("Project mode: search, a new clone with its branch, and a chat in it", asyn
   }
 });
 
-test("a clone card lists all its chats, and a new chat starts in a clone that has one", async ({ page }) => {
+test("a clone has one chat, so a second new chat starts in another clone", async ({ page }) => {
   await logIn(page);
   await openExampleApp(page);
-  const card = await newCloneCard(page);
-  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
-  await card.getByRole("button", { name: "New chat here" }).click();
-  await expect(page.getByText("Project mode")).toBeVisible();
+  const first = await newProjectChat(page);
   await page.getByRole("button", { name: "Example app", exact: true }).click();
-  const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
-  await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
-  await sameCard.getByRole("button", { name: "New chat here" }).click();
+  // The first chat has no message yet, so it keeps its clone.
+  const second = await newProjectChat(page);
+  expect(second).not.toBe(first);
   await page.getByRole("button", { name: "Example app", exact: true }).click();
-  await expect(sameCard.locator(".clone-chat")).toHaveCount(2);
-  await sameCard.locator(".clone-chat").last().click();
-  await expect(page.locator(".main-header .sub")).toContainText(cloneName);
+  const firstCard = page.getByRole("region", { name: `Clone ${first}` });
+  await expect(firstCard.locator(".clone-chat")).toHaveCount(1);
+  await firstCard.locator(".clone-chat").click();
+  await expect(page.locator(".main-header .sub")).toContainText(first);
 });
 
 test("a right click on a clone deletes it, after a strong warning about its chats", async ({ page }) => {
   await logIn(page);
   await openExampleApp(page);
-  const card = await newCloneCard(page);
-  const cloneName = ((await card.getAttribute("aria-label")) ?? "").replace("Clone ", "");
-  await card.getByRole("button", { name: "New chat here" }).click();
-  await expect(page.getByText("Project mode")).toBeVisible();
+  const cloneName = await newProjectChat(page);
   await page.getByRole("button", { name: "Example app", exact: true }).click();
   const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
   await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
@@ -1162,7 +1179,7 @@ test("a right click on a clone deletes it, after a strong warning about its chat
 test("a deleted project chat shows its project page again", async ({ page }) => {
   await logIn(page);
   await openExampleApp(page);
-  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  await newProjectChat(page);
   await expect(page.getByText("Project mode")).toBeVisible();
   if (test.info().project.name === "phone") {
     // The crumbs and the mode chip leave the title room to read, on one row.
@@ -1316,7 +1333,7 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   const title = `Forked project work (${test.info().project.name})`;
   await logIn(page);
   await openExampleApp(page);
-  await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+  await newProjectChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
   await composer.press("Enter");
@@ -3957,7 +3974,7 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeVisible();
     // With a chat open, the list stays one tap away in its drawer.
     await openExampleApp(page);
-    await (await newCloneCard(page)).getByRole("button", { name: "New chat here" }).click();
+    await newProjectChat(page);
     await expect(page.getByRole("navigation", { name: "Projects" })).toBeHidden();
     const menu = page.getByRole("button", { name: "Show the list" });
     await expect(menu).toBeVisible();

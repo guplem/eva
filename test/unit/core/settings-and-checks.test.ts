@@ -60,11 +60,12 @@ afterEach(() => {
 }, gitHookTimeoutMs);
 
 describe("clones of a project", () => {
-  test("each clone shows its branch, and no pull request when gh finds none", async () => {
+  test("each repository of a clone shows its branch, and no pull request when gh finds none", async () => {
     await eva.newClone("2025-03-02-1015-example-app");
     const clones = await eva.clones("2025-03-02-1015-example-app");
     expect(clones).toHaveLength(1);
-    expect(clones[0]).toMatchObject({ name: "remote-0", branch: "main", pullRequest: null });
+    expect(clones[0]?.name).toBe("clone-0");
+    expect(clones[0]?.repositories).toMatchObject([{ name: "remote", branch: "main", pullRequest: null }]);
   });
 });
 

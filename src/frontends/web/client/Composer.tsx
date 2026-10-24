@@ -18,12 +18,15 @@ import {
   effortName,
   engineLabel,
   modelLabel,
+  restoredText,
+  sendsOnEnter,
 } from "./conversation-parts.ts";
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
+import { UnsentTexts } from "./unsent-texts.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
 
@@ -34,7 +37,7 @@ type ComposerChat = Pick<SessionRecord, "engine" | "modelAlias" | "effort" | "mo
   Partial<Pick<SessionRecord, "firstMessageDraft">>;
 
 /** The unsent text of each chat in this tab, by its draft key. */
-const unsentTexts = new Map<string, string>();
+const unsentTexts = new UnsentTexts(() => window.sessionStorage);
 
 /** How the chip changes the engine and the model of a chat that has no turn yet, and the effort of any chat. */
 export interface ChatChoices {
@@ -86,25 +89,41 @@ export function Composer({
   draftKey,
 }: ComposerProps): ReactElement {
   // A chat that goes on from a summary starts with it, so the person reads it before it goes (issue 522).
+  const summary = session.turns.length === 0 ? (session.firstMessageDraft ?? null) : null;
   const [text, setTypedText] = useState(
-    () =>
-      (draftKey === undefined ? undefined : unsentTexts.get(draftKey)) ??
-      (session.turns.length === 0 ? (session.firstMessageDraft ?? "") : ""),
+    () => (draftKey === undefined ? undefined : unsentTexts.find(draftKey)) ?? summary ?? "",
   );
+  // A send awaits the core, so its failure reads the text typed since then here, not from its closure.
+  const typed = useRef(text);
   const setText = (value: string): void => {
-    if (draftKey !== undefined) {
-      // A cleared summary stays cleared: without the entry, the box would start with the summary again.
-      if (value === "" && (session.firstMessageDraft ?? null) === null) unsentTexts.delete(draftKey);
-      else unsentTexts.set(draftKey, value);
-    }
+    // A cleared summary stays cleared: without the entry, the box would start with the summary again.
+    if (draftKey !== undefined) unsentTexts.set(draftKey, value, summary !== null);
+    typed.current = value;
     setTypedText(value);
   };
+  /**
+   * Puts the message of a failed send back. A chat's box can mount again during the send, so the
+   * stored draft of the chat is newer than this box's text.
+   */
+  const restore = (failed: string): void =>
+    setText(draftKey === undefined ? restoredText(failed, typed.current) : unsentTexts.restore(draftKey, failed));
+  // A failed send of a box that is gone restores its text to the store, so this box follows the store.
+  useEffect(() => {
+    if (draftKey === undefined) return;
+    const follow = (): void => {
+      const stored = unsentTexts.find(draftKey) ?? summary ?? "";
+      typed.current = stored;
+      setTypedText(stored);
+    };
+    follow();
+    return unsentTexts.subscribe(draftKey, follow);
+  }, [draftKey, summary]);
   const [sending, setSending] = useState(false);
   const files = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
   const voice = useVoiceNote(async (heard, recording) => {
     // The person must not lose what they said.
-    if (!(await onSend(heard, recording))) setText(heard);
+    if (!(await onSend(heard, recording))) restore(heard);
   });
 
   const uploading = files.attachments.some((attachment) => attachment.note === null);
@@ -121,7 +140,7 @@ export function Composer({
     files.set([]);
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
-      setText(text);
+      restore(text);
       files.set(attached);
     }
     setSending(false);
@@ -177,8 +196,14 @@ export function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
-            // On a touch screen, Enter starts a new line; the Send button sends.
-            if (event.key === "Enter" && !event.shiftKey && !isTouchScreen()) {
+            const press = {
+              key: event.key,
+              shiftKey: event.shiftKey,
+              isComposing: event.nativeEvent.isComposing,
+              // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
+              keyCode: event.keyCode,
+            };
+            if (sendsOnEnter(press, isTouchScreen())) {
               event.preventDefault();
               void send();
             }

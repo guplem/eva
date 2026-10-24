@@ -124,6 +124,7 @@ machine state/push-subscriptions.json version=1
 machine state/sessions.json sessions
 machine state/sessions.json sessions[].archived
 machine state/sessions.json sessions[].clone
+machine state/sessions.json sessions[].closed
 machine state/sessions.json sessions[].continuedFrom
 machine state/sessions.json sessions[].createdAt
 machine state/sessions.json sessions[].effort
@@ -197,6 +198,7 @@ machine state/step-details/*.json version=1
 migration machine 2026-10-18-copy-security-settings-from-vault
 migration machine 2026-10-18-move-shared-settings-to-vault
 migration machine 2026-10-20-google-access-per-service
+migration machine 2026-10-24-delete-old-clone-folders
 migration vault 2026-10-18-drop-security-settings-from-vault
 migration vault 2026-10-18-start-vault-settings
 migration vault 2026-10-20-move-assistant-personality

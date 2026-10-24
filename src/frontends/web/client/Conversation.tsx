@@ -477,6 +477,8 @@ function AnswerBody({
   const { listed, lastMessage } = foldSteps(steps);
   const canShowWhole = lastMessage !== undefined && wholeAnswer !== lastMessage.text;
   const body = lastMessage === undefined || (canShowWhole && showWhole) ? wholeAnswer : lastMessage.text;
+  // Each streamed token and each clock tick render every answer, so parse only a changed text.
+  const html = useMemo(() => toWebHtml(body), [body]);
   return (
     <>
       <StepFold
@@ -491,7 +493,7 @@ function AnswerBody({
         <div
           className="answer-body"
           aria-live={live ? "polite" : undefined}
-          dangerouslySetInnerHTML={{ __html: toWebHtml(body) }}
+          dangerouslySetInnerHTML={{ __html: html }}
         />
       )}
       {canShowWhole && (

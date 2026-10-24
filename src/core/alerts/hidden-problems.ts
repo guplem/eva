@@ -1,5 +1,5 @@
 /**
- * The problems whose notice the person closed, in the machine's state folder. The file keeps
+ * The problems whose notice the person hid, in the machine's state folder. The file keeps
  * them across a restart, such as after an update. Each machine hides its own notices.
  */
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";

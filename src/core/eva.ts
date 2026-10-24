@@ -1105,7 +1105,7 @@ export class Eva {
   }
 
   /**
-   * The person closed the notice of an open problem. It stays in the status, and the web page
+   * The person hid the notice of an open problem. It stays in the status, and the web page
    * shows no notice for it until it rises to an error or clears. False when no such problem is open.
    */
   hideProblem(key: string): boolean {

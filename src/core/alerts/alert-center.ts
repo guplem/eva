@@ -30,7 +30,7 @@ export interface OpenAlert extends AlertProblem {
 
 /**
  * An open problem as the status shows it: the key tells a front end which button fixes it.
- * A hidden problem is one that the person closed; the web page shows no notice for it.
+ * A hidden problem is one whose notice the person hid; the web page shows no notice for it.
  */
 export interface ProblemDetail extends Pick<OpenAlert, "key" | "level" | "message"> {
   readonly hidden: boolean;
@@ -113,7 +113,7 @@ export class AlertCenter {
   }
 
   /**
-   * The person closed the notice of an open problem: no reminder, and no notice on the web page,
+   * The person hid the notice of an open problem: no reminder, and no notice on the web page,
    * until the problem rises to an error or clears. False when no such problem is open.
    */
   hide(key: string): boolean {

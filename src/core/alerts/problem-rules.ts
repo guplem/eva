@@ -214,7 +214,7 @@ export function relayedProblem(machine: string, hub: string, reportFile: string,
     level: problem.level,
     message: [
       named(problem.message),
-      `Fix it in Eva on ${machine}. Telegram commands act on ${hub} only.`,
+      `Fix it in Eva on ${machine}, not on ${hub}.`,
       `If ${machine} no longer runs Eva, ask the Assistant to delete ${reportFile}.`,
     ].join(" "),
     resolvedMessage:

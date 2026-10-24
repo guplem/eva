@@ -184,7 +184,7 @@ describe("relayedProblem", () => {
     });
     expect(relayed.level).toBe("error");
     expect(relayed.message).toBe(
-      "On laptop: The update install failed. Fix it in Eva on laptop. Telegram commands act on desktop only. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+      "On laptop: The update install failed. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
     );
     expect(relayed.resolvedMessage).toBe("On laptop: Updates work again.");
   });
@@ -243,4 +243,19 @@ describe("engineRestartProblem", () => {
       "The pi program is installed now, but chats use it only after a restart. Press Restart now in Settings, Updates.",
     );
   });
+});
+
+test("the relayed update check warning reads as one clear notice (#541)", () => {
+  const status: UpdateStatus = {
+    ...idleUpdate,
+    lastError: "GitHub could not be reached.",
+    failedStep: "check",
+    failingSince: "2026-10-17T10:00:00.000Z",
+    lastCheckAt: "2026-10-17T12:00:00.000Z",
+  };
+  const problem = updateProblem(status);
+  if (problem === null || problem === "keep") throw new Error("A warning was expected.");
+  expect(relayedProblem("laptop", "desktop", ".eva/machines/laptop.json", { key: "update", ...problem }).message).toBe(
+    "On laptop: Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates. Fix it in Eva on laptop, not on desktop. If laptop no longer runs Eva, ask the Assistant to delete .eva/machines/laptop.json.",
+  );
 });

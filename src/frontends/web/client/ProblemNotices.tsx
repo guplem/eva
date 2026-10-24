@@ -76,7 +76,7 @@ export function ProblemNotices({
                 <button
                   className="icon-button"
                   aria-label="Hide this notice"
-                  data-tooltip="Hide until it changes"
+                  data-tooltip="Hide until it gets worse or ends"
                   onClick={() => onHide(problem.key)}
                 >
                   <Icon name="x" />

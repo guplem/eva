@@ -19,4 +19,9 @@ The chip menu of the composer shows six effort buttons. They wrap over two lines
 
 ## Decisions
 
-(Filled after the gap search.)
+No `AGENTS.md` rule settles a gap. The web client has no range input yet. Three searches agreed on each answer.
+
+1. **Commit on the native `change` event.** A local `shown` level follows each React `onChange`, so the name changes during a drag. A native `change` listener on a ref sends one request: on release, or on each key press. `ChatHeader.tsx` listens to a native event in the same way. The slider is not `disabled` while it saves: a disabled element loses the drag and the keyboard focus. `shown` follows `session.effort` again after each save, so a failed save shows the old level.
+2. **Set `aria-valuetext` to the level name.** The visible name is `aria-hidden`, so a screen reader does not read it twice.
+3. **Style the slider like the progress bar:** a `--chip` track and an `--accent` thumb, with the shared focus ring. The slider takes the free width. The name gets the width of the longest name, so the slider does not move. On a phone, the slider is 44px high, as the composer chips are.
+4. **Move the slider with the keyboard in the e2e test.** Keys fire real events. `fill()` sets the value directly, so React can miss the change.

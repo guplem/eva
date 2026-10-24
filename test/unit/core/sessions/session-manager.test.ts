@@ -1456,7 +1456,7 @@ describe("after a turn", () => {
     expect(logged.join("\n")).toContain("The vault save broke.");
   });
 
-  test("a listener that throws never leaves a message that waits without a turn", async () => {
+  test("a listener that throws breaks no turn: each message still gets its turn", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
@@ -1470,7 +1470,7 @@ describe("after a turn", () => {
     });
     await manager.send(sessionId, "one");
     await waitUntil(() => !manager.isActive(sessionId));
-    expect(engine.requests.map((request) => request.prompt)).toEqual(["two"]);
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["one", "two"]);
     expect(logged.join("\n")).toContain("A front end broke.");
   });
 

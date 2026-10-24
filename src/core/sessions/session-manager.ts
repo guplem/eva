@@ -1028,7 +1028,18 @@ ${prompt}`,
       seq: this.sequence.next(),
       at: this.options.now().toISOString(),
     };
-    for (const listener of this.listeners) listener(stamped);
+    for (const listener of this.listeners) {
+      // One broken front end must not break a turn, or keep the event from the other front ends.
+      try {
+        listener(stamped);
+      } catch (error) {
+        this.options.logger?.log("error", "A front end failed on a chat event.", {
+          sessionId,
+          kind: stamped.kind,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   private runtimeOf(sessionId: string): SessionRuntime {

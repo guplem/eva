@@ -51,8 +51,13 @@ import type {
   VaultSyncState,
 } from "../../../core/vault/vault-sync.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
-import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
+import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
+import { failureOf, quickRead, quickSend, request } from "./request.ts";
+
+export { ApiError } from "./request.ts";
+
+export type { EventSubscription };
 
 /** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
@@ -110,51 +115,6 @@ export type {
   VaultSyncState,
 };
 
-export class ApiError extends Error {
-  readonly status: number;
-  /** The `EvaErrorCode` of the failure, or null when the answer has none. */
-  readonly code: EvaErrorCode | null;
-
-  constructor(status: number, message: string, code: EvaErrorCode | null = null) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-/** `keepalive`: the request still goes out while the browser hides or closes the page. */
-async function request<Body>(
-  method: string,
-  path: string,
-  body?: unknown,
-  options: { readonly keepalive?: boolean } = {},
-): Promise<Body> {
-  // A Blob, such as a voice note, goes as it is.
-  const sent =
-    body === undefined
-      ? {}
-      : body instanceof Blob
-        ? { headers: { "content-type": body.type }, body }
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
-  const response = await fetch(path, { method, credentials: "same-origin", headers: {}, ...sent, ...options });
-  if (!response.ok) throw await failureOf(response);
-  return response.status === 204 ? (undefined as Body) : ((await response.json()) as Body);
-}
-
-async function failureOf(response: Response): Promise<ApiError> {
-  const text = await response.text();
-  let message = text;
-  let code: EvaErrorCode | null = null;
-  try {
-    const parsed = JSON.parse(text) as { error?: string; code?: EvaErrorCode };
-    message = parsed.error ?? text;
-    code = parsed.code ?? null;
-  } catch {
-    // Not JSON: keep the text.
-  }
-  return new ApiError(response.status, message, code);
-}
-
 /**
  * A vault file, or a folder as a zip, with the name that the core gives it. The page reads it
  * before the save, so a failure shows on the page instead of as a broken file. `onShare` gets
@@ -191,11 +151,12 @@ export const api = {
   /** Logs out one device. A browser that removes its own device is logged out too. */
   removeDevice: (id: string): Promise<void> => request("DELETE", `/api/devices/${encodeURIComponent(id)}`),
   /** The device requests that this page may answer, as the event socket sends them. */
-  deviceRequests: (): Promise<DeviceLoginRequest[]> => request("GET", "/api/devices/requests"),
+  deviceRequests: (): Promise<DeviceLoginRequest[]> =>
+    request("GET", "/api/devices/requests", undefined, { limit: quickRead }),
   answerDeviceRequest: (id: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
-  status: (): Promise<EvaStatus> => request("GET", "/api/status"),
-  sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions"),
+  status: (): Promise<EvaStatus> => request("GET", "/api/status", undefined, { limit: quickRead }),
+  sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions", undefined, { limit: quickRead }),
   /** The whole input and output of one step of a stored answer. Null when Eva kept none. */
   stepDetail: (sessionId: string, stepId: string): Promise<{ input: string | null; output: string | null }> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}`),
@@ -223,7 +184,7 @@ export const api = {
   attachFile: (file: File): Promise<{ path: string; note: string }> =>
     request("POST", `/api/files/received?name=${encodeURIComponent(file.name)}`, file),
   send: (sessionId: string, text: string): Promise<void> =>
-    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }),
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }, { limit: quickSend }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId }),
   stop: (sessionId: string): Promise<{ stopped: boolean }> =>
@@ -238,9 +199,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/archive`, { archived }),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/seen`, { turnCount }),
-  pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals"),
-  backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks"),
-  runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns"),
+  pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
+  backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks", undefined, { limit: quickRead }),
+  runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns", undefined, { limit: quickRead }),
   answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
     request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
@@ -393,60 +354,35 @@ export const api = {
     request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
-  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards"),
+  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards", undefined, { limit: quickRead }),
   /** Says that the person saw the card with these fields. A card that changed meanwhile answers 409. */
   confirmScheduleCard: (card: ScheduleCard): Promise<void> =>
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
 };
 
-export interface EventSubscription {
-  readonly close: () => void;
-  /** Tries to connect at once, instead of at the next timed try. */
-  readonly retryNow: () => void;
-}
+/** The browser's socket to Eva's event route, and its timers. */
+const browserStream: StreamPlace = {
+  open: (handlers) => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
+    socket.addEventListener("open", handlers.onOpen);
+    socket.addEventListener("message", (message) => handlers.onMessage(String(message.data)));
+    socket.addEventListener("close", handlers.onClose);
+    return { isOpen: () => socket.readyState === WebSocket.OPEN, close: () => socket.close() };
+  },
+  setTimer: (run, ms) => setTimeout(run, ms),
+  clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout> | undefined),
+};
 
 /** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
   onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): EventSubscription {
-  let socket: WebSocket | null = null;
-  let closed = false;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  const connect = (): void => {
-    retryTimer = undefined;
-    // A retry that the timer started can run after the page closed the stream, such as at a logout.
-    if (closed) return;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const opened = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
-    socket = opened;
-    opened.addEventListener("open", () => {
-      onConnectionChange(true);
-    });
-    opened.addEventListener("message", (message) => {
-      onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard | DeviceLoginEvent);
-    });
-    opened.addEventListener("close", () => {
-      // A socket that Try now replaced closes late, and must not start a second retry.
-      if (closed || socket !== opened) return;
-      onConnectionChange(false);
-      retryTimer = setTimeout(connect, 2_000);
-    });
-  };
-  connect();
-  return {
-    close: () => {
-      closed = true;
-      clearTimeout(retryTimer);
-      socket?.close();
-    },
-    retryNow: () => {
-      if (socket?.readyState === WebSocket.OPEN) return;
-      // An address that left the network can hang while it opens: start again instead of waiting.
-      const stale = socket;
-      clearTimeout(retryTimer);
-      connect();
-      stale?.close();
-    },
-  };
+  // Eva sends only these kinds on the event route.
+  return openEventStream(
+    browserStream,
+    (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent),
+    onConnectionChange,
+  );
 }

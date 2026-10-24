@@ -97,6 +97,30 @@ export function withRunningTurns(state: LiveState, id: number, snapshot: TurnSna
   };
 }
 
+/**
+ * Why the read of the running turns gave no snapshot. `no_route`: an older Eva has no such route.
+ * `failed`: the network failed or was slow. `running` lists the chats that a fresh chat list says
+ * still run, or is null when that list failed too.
+ */
+export type TurnsReadFailure =
+  { readonly kind: "no_route" } | { readonly kind: "failed"; readonly running: readonly string[] | null };
+
+/**
+ * Ends the read with this id when it gave no snapshot. A failed read says nothing about the turns,
+ * so the page keeps the steps that it applied event by event. But the page can have missed the
+ * end of a turn while it slept: a chat that no longer runs drops its steps, or it shows as working
+ * for good.
+ */
+export function afterFailedTurnsRead(state: LiveState, id: number, failure: TurnsReadFailure): LiveState {
+  if (failure.kind === "no_route") return withRunningTurns(state, id, null);
+  if (state.recovery?.id !== id) return state;
+  const { running } = failure;
+  if (running === null) return { ...state, recovery: null };
+  const stillRuns = <Value>(entries: Record<string, Value>): Record<string, Value> =>
+    Object.fromEntries(Object.entries(entries).filter(([sessionId]) => running.includes(sessionId)));
+  return { ...state, steps: stillRuns(state.steps), drafts: stillRuns(state.drafts), recovery: null };
+}
+
 /** The state after one event. An event that changes nothing returns the same state, so React skips a render. */
 export function applyEvent(state: LiveState, event: SessionEvent): LiveState {
   const drafts = draftsAfter(state.drafts, event);

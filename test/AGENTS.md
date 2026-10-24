@@ -8,3 +8,4 @@
 - The test scripts run the files in parallel worker processes. Keep each test file independent of the others. Listen on port 0. Write only in the file's own temporary folder.
 - Turn the vault sync off in a test that runs Assistant turns but does not check the sync: each turn runs git, which is slow on Windows.
 - Coverage is per file (90% lines, 80% functions). Set fields in the constructor, not in initializers. An `AbortSignal.timeout` that never runs zeroes the file: use a base-URL seam, as `src/core/checks.ts` does.
+- To run `bun run test:e2e` in two checkouts at once, set `EVA_E2E_PORT=auto` and `EVA_E2E_GALLERY_PORT=auto` in each.

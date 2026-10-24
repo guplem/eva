@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { locateEngineProgram, pathWithOwnGh } from "./core/engine-install/engine-install.ts";
+import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
 import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voice-install.ts";
 import { Eva } from "./core/eva.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
@@ -29,7 +29,7 @@ import { evaCommand, remoteAccessWatcher, withLinePrompt, writeLine, type CliHos
 import { updateChannel } from "./frontends/cli/local-commands.ts";
 import { restartMethodNow } from "./frontends/cli/service.ts";
 import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.ts";
-import type { EnginePort } from "./shared/engine-port.ts";
+import type { EngineName, EnginePort } from "./shared/engine-port.ts";
 import { FileLogger, type Logger } from "./shared/logger.ts";
 import { systemLongProcessStarter } from "./shared/long-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
@@ -40,12 +40,9 @@ import { evaVersion } from "./shared/version.ts";
 /** Within the minute that the person waits for the address; `tailscale status` is a cheap read. */
 const tailscaleReadMs = 30_000;
 
-// Before anything reads the environment: every child, the agents' too, finds the gh that Eva installs.
-process.env[process.env["PATH"] === undefined && process.env["Path"] !== undefined ? "Path" : "PATH"] = pathWithOwnGh(
-  process.env,
-  process.platform,
-  homedir(),
-);
+// Before anything reads the environment: every child, the agents' too, finds the gh and the uv that Eva installs.
+process.env[process.env["PATH"] === undefined && process.env["Path"] !== undefined ? "Path" : "PATH"] =
+  pathWithUvFolder({ PATH: pathWithOwnGh(process.env, process.platform, homedir()) }, process.platform, homedir());
 
 const host: CliHost = {
   environment: process.env,
@@ -79,6 +76,22 @@ const host: CliHost = {
   },
 };
 
+/** The engine's program: the one that the settings name, or one found on the disk now. */
+function locateEngine(config: EvaConfig, engine: EngineName): string | null {
+  const configured = engine === "claude-code" ? config.engines.claudeCode.executable : config.engines.pi.executable;
+  // A service keeps the PATH from its install, which can lack the folder of a later engine install.
+  return (
+    configured ??
+    locateEngineProgram(engine, {
+      platform: host.platform,
+      homeFolder: host.userHome,
+      environment: host.environment,
+      which: (name: string) => Bun.which(name),
+      exists: existsSync,
+    })
+  );
+}
+
 /** Only this file may name an engine adapter. Also gives the claude program, for the engine update. */
 function createEngines(
   config: EvaConfig,
@@ -86,22 +99,14 @@ function createEngines(
   logger: Logger,
 ): { engines: EnginePort[]; claudeExecutable: string | null } {
   const engines: EnginePort[] = [];
-  // A service keeps the PATH from its install, which can lack the folder of a later engine install.
-  const places = {
-    platform: host.platform,
-    homeFolder: host.userHome,
-    environment: host.environment,
-    which: (name: string) => Bun.which(name),
-    exists: existsSync,
-  };
-  const claudeExecutable = config.engines.claudeCode.executable ?? locateEngineProgram("claude-code", places);
+  const claudeExecutable = locateEngine(config, "claude-code");
   if (claudeExecutable === null)
     logger.log("warn", "No claude program found; Claude Code chats will fail. Run `eva doctor`.");
   else
     engines.push(
       new ClaudeCodeEngine({ executable: claudeExecutable, permissionMode: config.engines.claudeCode.permissionMode }),
     );
-  const piExecutable = config.engines.pi.executable ?? locateEngineProgram("pi", places);
+  const piExecutable = locateEngine(config, "pi");
   if (piExecutable !== null) {
     engines.push(
       new PiEngine({
@@ -197,6 +202,7 @@ async function serve(paths: HomePaths): Promise<number> {
       stop(exitCodes.update);
     },
     claudeExecutable,
+    locateEngine: (engine) => locateEngine(config, engine),
     remoteAccess,
     toolPlaces: { platform: host.platform, userHome: host.userHome, standalone: host.standalone },
   });
@@ -237,6 +243,7 @@ async function serve(paths: HomePaths): Promise<number> {
   // After the bot starts, so that the alert reaches Telegram too.
   if (startedAfterUncleanExit) eva.reportUncleanExit();
   eva.reportStartMigrations(migrations);
+  eva.noticeDefaultEngine();
   const stopEva = stopSequence({
     stopParts: async () => {
       remoteAccess?.stop();

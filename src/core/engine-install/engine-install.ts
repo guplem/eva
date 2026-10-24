@@ -141,12 +141,33 @@ const uvInstaller = {
   win32: "irm https://astral.sh/uv/install.ps1 | iex",
 } as const;
 
+/** The folder where uv's installer puts uv and uvx. */
+function uvProgramFolder(platform: NodeJS.Platform, homeFolder: string): string {
+  return (platform === "win32" ? win32 : posix).join(homeFolder, ".local", "bin");
+}
+
+/**
+ * The PATH with the folder of uv's installer last. A chat starts the Google tools with `uvx`, and
+ * a service keeps the PATH of its install, which may lack that folder. Last: the person's own uv wins.
+ */
+export function pathWithUvFolder(
+  environment: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+  homeFolder: string,
+): string {
+  const separator = platform === "win32" ? ";" : ":";
+  const path = environment["PATH"] ?? environment["Path"] ?? "";
+  const folder = uvProgramFolder(platform, homeFolder);
+  if (path.split(separator).includes(folder)) return path;
+  return path === "" ? folder : `${path}${separator}${folder}`;
+}
+
 /** uv on the PATH, then in the folder of its installer, which a running terminal may not have on its PATH yet. */
 export async function findUv(inputs: EngineInstallInputs): Promise<string | null> {
   const path = inputs.platform === "win32" ? win32 : posix;
   const candidates = [
     "uv",
-    path.join(inputs.homeFolder, ".local", "bin", inputs.platform === "win32" ? "uv.exe" : "uv"),
+    path.join(uvProgramFolder(inputs.platform, inputs.homeFolder), inputs.platform === "win32" ? "uv.exe" : "uv"),
   ];
   for (const program of candidates) {
     if (await answers([program, "--version"], inputs)) return program;

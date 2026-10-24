@@ -3,7 +3,7 @@
  * from pi 0.73.1 (test/fixtures/pi/) the way pi sends them: it starts on the `prompt` command,
  * pauses after an `extension_ui_request` until the answer comes, and pauses after an
  * `agent_end` (with the `auto_retry_*` records that pi emits in the same tick) until the next
- * command, such as `get_state`, which it answers.
+ * command, such as `get_state`, which it answers with the recorded state, or with no fields.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -96,6 +96,7 @@ class FakePiProcess implements PiProcess {
     const records = this.script.records.filter(
       (record) => record["type"] !== "response" || record["command"] === "prompt",
     );
+    const state = this.script.records.find((record) => record["command"] === "get_state")?.["data"] ?? {};
     for (let index = 0; index < records.length; index += 1) {
       const record = records[index] ?? {};
       yield record["type"] === "response" ? { ...record, id: prompt["id"] } : record;
@@ -108,7 +109,7 @@ class FakePiProcess implements PiProcess {
       const command = await this.nextCommand();
       if (command === null) return;
       if (command["type"] === "get_state") {
-        yield { id: command["id"], type: "response", command: "get_state", success: true, data: {} };
+        yield { id: command["id"], type: "response", command: "get_state", success: true, data: state };
       }
     }
   }

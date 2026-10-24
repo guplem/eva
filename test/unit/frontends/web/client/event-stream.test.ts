@@ -22,11 +22,23 @@ interface FakeTimer {
 }
 
 /** A place whose sockets and timers the test drives by hand. */
-function fakePlace(): { place: StreamPlace; sockets: FakeSocket[]; timers: FakeTimer[]; fire: (ms: number) => void } {
+function fakePlace(): {
+  place: StreamPlace;
+  sockets: FakeSocket[];
+  timers: FakeTimer[];
+  fire: (ms: number) => void;
+  failNextOpen: () => void;
+} {
   const sockets: FakeSocket[] = [];
   const timers: FakeTimer[] = [];
+  let failures = 0;
   const place: StreamPlace = {
     open: (handlers) => {
+      // The WebSocket constructor throws on an address that it refuses.
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error("The URL is not valid.");
+      }
       const socket: FakeSocket = { handlers, open: false, closed: false };
       sockets.push(socket);
       return {
@@ -52,7 +64,15 @@ function fakePlace(): { place: StreamPlace; sockets: FakeSocket[]; timers: FakeT
       timer.run();
     }
   };
-  return { place, sockets, timers, fire };
+  return {
+    place,
+    sockets,
+    timers,
+    fire,
+    failNextOpen: () => {
+      failures += 1;
+    },
+  };
 }
 
 function opened(socket: FakeSocket | undefined): void {
@@ -248,6 +268,59 @@ describe("openEventStream", () => {
     stream.close();
     stream.reconnect();
     expect(sockets).toHaveLength(1);
+  });
+
+  test("a new socket that hangs shows the page offline once, until a socket opens", () => {
+    const { place, sockets, fire } = fakePlace();
+    const changes: boolean[] = [];
+    const stream = openEventStream(
+      place,
+      () => undefined,
+      (connected) => changes.push(connected),
+    );
+    opened(sockets[0]);
+    stream.reconnect();
+    fire(openLimitMs);
+    expect(changes).toEqual([true, false]);
+    // The next try hangs too: the page already shows offline.
+    fire(openLimitMs);
+    expect(changes).toEqual([true, false]);
+    opened(sockets[3]);
+    expect(changes).toEqual([true, false, true]);
+  });
+
+  test("a first socket that hangs shows the page offline", () => {
+    const { place, fire } = fakePlace();
+    const changes: boolean[] = [];
+    openEventStream(
+      place,
+      () => undefined,
+      (connected) => changes.push(connected),
+    );
+    fire(openLimitMs);
+    expect(changes).toEqual([false]);
+  });
+
+  test("a socket that the browser refuses to make shows offline and tries again later", () => {
+    const { place, sockets, fire, failNextOpen } = fakePlace();
+    const changes: boolean[] = [];
+    failNextOpen();
+    const stream = openEventStream(
+      place,
+      () => undefined,
+      (connected) => changes.push(connected),
+    );
+    expect(changes).toEqual([false]);
+    expect(sockets).toHaveLength(0);
+    fire(retryDelayMs);
+    expect(sockets).toHaveLength(1);
+    opened(sockets[0]);
+    failNextOpen();
+    stream.reconnect();
+    expect(sockets[0]?.closed).toBe(true);
+    expect(changes).toEqual([false, true, false]);
+    fire(retryDelayMs);
+    expect(sockets).toHaveLength(2);
   });
 });
 

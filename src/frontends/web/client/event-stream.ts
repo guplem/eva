@@ -48,6 +48,12 @@ export function openEventStream(
   let closed = false;
   let retryTimer: unknown;
   let openTimer: unknown;
+  // What the page last heard, or null before the first word.
+  let shown: boolean | null = null;
+  const report = (isConnected: boolean): void => {
+    shown = isConnected;
+    onConnectionChange(isConnected);
+  };
 
   const reconnect = (): void => {
     const stale = socket;
@@ -66,34 +72,51 @@ export function openEventStream(
     // A retry that a timer started can run after the page closed the stream, such as at a logout.
     if (closed) return;
     // A socket that a new try replaced can still open, send or close late. It must change nothing.
-    const isCurrent = (): boolean => !closed && socket === opened;
-    const opened = place.open({
-      onOpen: () => {
-        if (!isCurrent()) return;
-        place.clearTimer(openTimer);
-        onConnectionChange(true);
-      },
-      onMessage: (data) => {
-        if (!isCurrent()) return;
-        let event: unknown;
-        try {
-          event = JSON.parse(data);
-        } catch {
-          // One bad frame must not break the page. The next recovery reads the state again.
-          return;
-        }
-        onEvent(event);
-      },
-      onClose: () => {
-        if (!isCurrent()) return;
-        place.clearTimer(openTimer);
-        onConnectionChange(false);
-        retryTimer = place.setTimer(connect, retryDelayMs);
-      },
-    });
+    let opened: StreamSocket | null = null;
+    const isCurrent = (): boolean => !closed && opened !== null && socket === opened;
+    try {
+      opened = place.open(handlersFor(isCurrent));
+    } catch {
+      // The browser refused to make the socket. Without a timer the stream would stay dead until a reload.
+      socket = null;
+      if (shown !== false) report(false);
+      retryTimer = place.setTimer(connect, retryDelayMs);
+      return;
+    }
     socket = opened;
-    openTimer = place.setTimer(retryNow, openLimitMs);
+    openTimer = place.setTimer(onOpenLimit, openLimitMs);
   };
+
+  // A socket that hangs while it opens can hang again and again, with no close: the page must still show offline.
+  const onOpenLimit = (): void => {
+    if (shown !== false) report(false);
+    reconnect();
+  };
+
+  const handlersFor = (isCurrent: () => boolean): SocketHandlers => ({
+    onOpen: () => {
+      if (!isCurrent()) return;
+      place.clearTimer(openTimer);
+      report(true);
+    },
+    onMessage: (data) => {
+      if (!isCurrent()) return;
+      let event: unknown;
+      try {
+        event = JSON.parse(data);
+      } catch {
+        // One bad frame must not break the page. The next recovery reads the state again.
+        return;
+      }
+      onEvent(event);
+    },
+    onClose: () => {
+      if (!isCurrent()) return;
+      place.clearTimer(openTimer);
+      report(false);
+      retryTimer = place.setTimer(connect, retryDelayMs);
+    },
+  });
 
   connect();
   return {

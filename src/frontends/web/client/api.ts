@@ -344,7 +344,8 @@ export const api = {
     request("POST", "/api/vault/conflicts", { path, choice }),
   becomeHub: (): Promise<EvaStatus> => request("POST", "/api/hub", {}),
   /** Hides the notice of an open problem, and answers with the new status. */
-  hideProblem: (key: string): Promise<EvaStatus> => request("POST", "/api/problems/hide", { key }),
+  hideProblem: (key: string): Promise<EvaStatus> =>
+    request("POST", "/api/problems/hide", { key }, { limit: quickRead }),
   startClaudeLogin: (): Promise<{ url: string }> => request("POST", "/api/engines/claude-code/login", {}),
   /** Takes the code that Claude's page shows after the login. */
   finishClaudeLogin: (code: string): Promise<{ restartNeeded: boolean }> =>

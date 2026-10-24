@@ -72,16 +72,14 @@ describe("shownProblems", () => {
 });
 
 describe("withPendingHides", () => {
-  const open = (key: string, hidden = false): { key: string; hidden: boolean } => ({ key, hidden });
-
-  test("an older list keeps a hide that Eva has not confirmed yet", () => {
-    const merged = withPendingHides([open("update"), open("vault_sync")], new Set(["update"]));
-    expect(merged.problems).toEqual([open("update", true), open("vault_sync")]);
-    expect([...merged.pending]).toEqual(["update"]);
-  });
-
-  test("a hide ends when Eva shows it, or when the problem is gone", () => {
-    expect([...withPendingHides([open("update", true)], new Set(["update"])).pending]).toEqual([]);
-    expect([...withPendingHides([], new Set(["update"])).pending]).toEqual([]);
+  test("marks a problem whose hide Eva has not answered yet, and leaves the others", () => {
+    const problems = [
+      { key: "update", hidden: false },
+      { key: "vault_sync", hidden: false },
+    ];
+    expect(withPendingHides(problems, new Set(["update"]))).toEqual([
+      { key: "update", hidden: true },
+      { key: "vault_sync", hidden: false },
+    ]);
   });
 });

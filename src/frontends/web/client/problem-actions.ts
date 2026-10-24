@@ -48,19 +48,10 @@ export function shownProblems<Problem extends { readonly hidden?: boolean }>(pro
   return problems.filter((problem) => problem.hidden !== true);
 }
 
-/**
- * Keeps a hide that the page sent until a list from Eva shows it. A status read that started
- * before the hide can answer after it, and must not bring the notice back.
- */
+/** Marks each problem whose hide the page sent and Eva has not answered yet, so its notice stays gone. */
 export function withPendingHides<Problem extends { readonly key: string; readonly hidden?: boolean }>(
   problems: readonly Problem[],
   pending: ReadonlySet<string>,
-): { problems: Problem[]; pending: Set<string> } {
-  const stillPending = new Set(
-    [...pending].filter((key) => problems.some((problem) => problem.key === key && problem.hidden !== true)),
-  );
-  return {
-    problems: problems.map((problem) => (stillPending.has(problem.key) ? { ...problem, hidden: true } : problem)),
-    pending: stillPending,
-  };
+): Problem[] {
+  return problems.map((problem) => (pending.has(problem.key) ? { ...problem, hidden: true } : problem));
 }

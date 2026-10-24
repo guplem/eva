@@ -518,6 +518,14 @@ describe("PiEngine", () => {
     expect(deaf.closeTimeouts[0]).toBe(0);
   });
 
+  test("a caller that leaves the stream early still stops pi", async () => {
+    const deaf = deafPi({ deltas: 20 });
+    for await (const event of engine(new FakePi([]), { start: deaf.start }).runTurn(request())) {
+      if (event.kind === "text_delta") break;
+    }
+    expect(deaf.closeTimeouts).toEqual([0]);
+  });
+
   test("a stopped turn that pi ends in time leaves no stop timer behind", async () => {
     const controller = new AbortController();
     const fake = new FakePi([{ records: loadPiFixture("abort") }]);

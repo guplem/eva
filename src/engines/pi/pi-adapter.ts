@@ -171,20 +171,37 @@ export class PiEngine implements EnginePort {
       return;
     }
 
+    const state = { closed: false };
+    const close = (timeoutMs: number): Promise<void> => {
+      state.closed = true;
+      return pi.close(timeoutMs);
+    };
     // A stuck pi never answers the abort and never ends its records, so only a hard stop ends the turn.
     let hardStop: ReturnType<typeof setTimeout> | undefined;
     const onAbort = (): void => {
       pi.send({ type: "abort" });
       hardStop ??= setTimeout(() => {
-        void pi.close(0);
+        void close(0);
       }, this.options.stopGraceMs ?? 15_000);
     };
     request.signal.addEventListener("abort", onAbort);
     if (request.signal.aborted) onAbort();
     try {
-      yield* this.streamTurn(pi, request, engineSessionId, sessionFile(engineSessionId));
+      // Not a spread: a process can be a class, whose methods a spread drops.
+      const tracked: PiProcess = {
+        send: (record) => {
+          pi.send(record);
+        },
+        records: pi.records,
+        close,
+        stderrTail: () => pi.stderrTail(),
+      };
+      yield* this.streamTurn(tracked, request, engineSessionId, sessionFile(engineSessionId));
     } finally {
       clearTimeout(hardStop);
+      // A caller that leaves the stream early, such as a model call at its deadline, ends it at a
+      // yield, before streamTurn closes pi. A pi left open waits on stdin for good.
+      if (!state.closed) void close(0);
       request.signal.removeEventListener("abort", onAbort);
       // The bridge deletes the file at start. This covers a pi that stopped before it.
       removeSpecs(specsFile);

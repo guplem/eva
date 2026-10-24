@@ -17,6 +17,12 @@ function calls(engines: readonly EnginePort[], timeoutMs = 5_000): ModelCalls {
   });
 }
 
+/** Polls, so a slow runner gets time; the cap keeps a failure short. */
+async function waitFor(condition: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition() && Date.now() < deadline) await Bun.sleep(10);
+}
+
 const question: ModelCallRequest = {
   engine: "claude-code",
   model: "haiku",
@@ -198,6 +204,25 @@ describe("a model call", () => {
       expect(await calls([pi]).ask({ ...question, engine: "pi", timeoutMs: 20 })).toMatchObject({ failure: "late" });
       await Bun.sleep(100);
       expect(deaf.closeTimeouts[0]).toBe(0);
+    } finally {
+      rmSync(workFolder, { recursive: true, force: true });
+    }
+  });
+
+  test("a call to a pi that still streams after the deadline, then stalls, still stops the pi process", async () => {
+    const slow = deafPi({ deltas: 20 });
+    const workFolder = mkdtempSync(join(tmpdir(), "eva-model-call-pi-"));
+    try {
+      const pi = new PiEngine({
+        command: ["pi"],
+        workFolder,
+        models: { default: null, opus: null, sonnet: null, haiku: null },
+        start: slow.start,
+        stopGraceMs: 20,
+      });
+      expect(await calls([pi]).ask({ ...question, engine: "pi", timeoutMs: 30 })).toMatchObject({ failure: "late" });
+      await waitFor(() => slow.closeTimeouts.length > 0);
+      expect(slow.closeTimeouts[0]).toBe(0);
     } finally {
       rmSync(workFolder, { recursive: true, force: true });
     }

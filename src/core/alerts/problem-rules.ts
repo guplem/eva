@@ -2,6 +2,7 @@
  * Which state is a problem worth an alert, and the words of each alert. Each message says what
  * happened and what the owner can do, from a phone.
  */
+import type { EngineName } from "../../shared/engine-port.ts";
 import type { EngineUpdateResult } from "../updates/engine-update.ts";
 import type { UpdateStatus } from "../updates/updater.ts";
 import type { VaultSyncState } from "../vault/vault-sync.ts";
@@ -69,6 +70,18 @@ export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | 
     level: "warn",
     message: `The Claude Code update failed: ${result.detail ?? "unknown reason."} Chats keep the old version; press Update next to claude in Settings, Updates, to try again.`,
     resolvedMessage: "The Claude Code update works again.",
+  };
+}
+
+const engineNames: Readonly<Record<EngineName, string>> = { "claude-code": "Claude Code", pi: "pi" };
+
+/** The engine refused a turn because its login no longer works. A turn that works clears it. */
+export function engineLoginProblem(engine: EngineName): AlertProblem {
+  const name = engineNames[engine];
+  return {
+    level: "error",
+    message: `The ${name} login expired, so chats with ${name} fail. On Eva's web page, open Settings, Engines, ${name}, and log in again.`,
+    resolvedMessage: `The ${name} login works again.`,
   };
 }
 

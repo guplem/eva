@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   scheduleCardProblem,
   scheduleFiringProblem,
+  engineLoginProblem,
   engineUpdateProblem,
   relayedProblem,
   updateProblem,
@@ -90,6 +91,17 @@ describe("scheduleCardProblem", () => {
     expect(problem.message).toContain("web app");
     expect(problem.message).toContain("Telegram");
     expect(problem.resolvedMessage).toContain("Lunch");
+  });
+});
+
+describe("engineLoginProblem", () => {
+  test("names the engine and the fix from a phone, never a terminal command", () => {
+    const problem = engineLoginProblem("claude-code");
+    expect(problem.level).toBe("error");
+    expect(problem.message).toContain("Claude Code login expired");
+    expect(problem.message).toContain("Settings, Engines, Claude Code");
+    expect(problem.message).not.toContain("/login");
+    expect(problem.resolvedMessage).toBe("The Claude Code login works again.");
   });
 });
 

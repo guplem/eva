@@ -1680,6 +1680,42 @@ describe("Eva alerts", () => {
     expect(instance.status().problemDetails).toEqual([]);
   });
 
+  test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1
+        ? [{ kind: "turn_failed", reason: "The login expired.", loginExpired: true }]
+        : FakeEngine.answer(request, "ok"),
+    );
+    const instance = start(engine);
+    const alerts = collectAlerts(instance);
+    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    await instance.idle();
+    expect(instance.status().problemDetails).toEqual([
+      {
+        key: "engine_login:claude-code",
+        level: "error",
+        message: expect.stringContaining("Claude Code login") as string,
+      },
+    ]);
+    await instance.sessions.send(chat.id, "hello again");
+    await instance.idle();
+    expect(instance.status().problemDetails).toEqual([]);
+    expect(alerts.map((alert) => [alert.key, alert.level])).toEqual([
+      ["engine_login:claude-code", "error"],
+      ["engine_login:claude-code", "resolved"],
+    ]);
+  });
+
+  test("a turn that fails for another reason leaves the login problem alone", async () => {
+    const engine = new FakeEngine(() => [{ kind: "turn_failed", reason: "The network is down." }]);
+    const instance = start(engine);
+    const chat = instance.createAssistantSession({ source: "cli", model: "default" });
+    await instance.sessions.send(chat.id, "hello");
+    await instance.idle();
+    expect(instance.status().problemDetails).toEqual([]);
+  });
+
   test("a start after an unclean exit sends one alert that stays out of the problems", () => {
     const instance = start(new FakeEngine());
     const alerts = collectAlerts(instance);

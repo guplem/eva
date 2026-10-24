@@ -191,8 +191,7 @@ a.files-favorite[aria-current="page"] {
 
 /* One folder: the open folder or file fills the row, as in Windows Explorer. The path above leads back. */
 :root[data-files-view="single"] .files-parent,
-:root[data-files-view="single"] .files-placeholder,
-:root[data-files-view="single"] .files-large-button {
+:root[data-files-view="single"] .files-placeholder {
   display: none;
 }
 
@@ -394,6 +393,18 @@ a.files-entry[aria-current="true"] {
   height: 16px;
 }
 
+/* The bar and the error of a download from the menu show under the file bar. */
+.files-wait {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) 0;
+}
+
+.files-wait:empty {
+  display: none;
+}
+
 .files-problem {
   margin: var(--space-3) var(--space-4) 0;
 }
@@ -445,7 +456,7 @@ a.files-entry[aria-current="true"] {
   font-weight: 600;
 }
 
-/* Code keeps its lines, so a long line scrolls inside the box and the page never scrolls sideways. */
+/* Without wrap, code keeps its lines: a long line scrolls inside the box and the page never scrolls sideways. */
 .files-text {
   margin: 0;
   padding: var(--space-4);
@@ -455,6 +466,12 @@ a.files-entry[aria-current="true"] {
   font-size: var(--text-sm);
   line-height: 1.5;
   tab-size: 4;
+}
+
+/* Wrap breaks a long line to fit the width, so a phone reads it with no sideways scroll. */
+.files-text.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .files-markdown {
@@ -469,8 +486,7 @@ a.files-entry[aria-current="true"] {
 
   /* A phone has no room for columns: it shows the last one, and the page scrolls. */
   .files-parent,
-  .files-placeholder,
-  .files-large-button {
+  .files-placeholder {
     display: none;
   }
 

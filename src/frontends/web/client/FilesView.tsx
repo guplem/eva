@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, ApiError, type BrowsedPath, type Favorite, type FileEntry, type SearchResult } from "./api.ts";
 import { readAppearance } from "./appearance.ts";
+import { useIsPhone } from "./ChatHeader.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
@@ -24,6 +25,7 @@ import {
 import { fileBadgeOf, nameEnds } from "./file-kinds.ts";
 import { Icon } from "./icons.tsx";
 import { ListSkeleton, ProgressBar } from "./Loading.tsx";
+import { MoreMenu, type MenuItem } from "./Menu.tsx";
 import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
@@ -38,6 +40,8 @@ export function FilesView(): ReactElement {
   /** The answer for each path that the page read, so a column stays while the person goes deeper. */
   const [answers, setAnswers] = useState<ReadonlyMap<string, Answer>>(new Map());
   const [large, setLarge] = useState(false);
+  /** Long lines break to fit the width. The choice stays while the person opens other files. */
+  const [wrap, setWrap] = useState(true);
   /** The new name in the rename field, or null when the field is closed. */
   const [naming, setNaming] = useState<string | null>(null);
   /** A tap on the same link changes no address, so a failed read needs its own way to run again. */
@@ -244,6 +248,8 @@ export function FilesView(): ReactElement {
                   smart={smart}
                   large={large}
                   onLarge={setLarge}
+                  wrap={wrap}
+                  onWrap={setWrap}
                   onSaved={onSaved}
                   onTryAgain={() => setAttempt((count) => count + 1)}
                 />
@@ -364,6 +370,8 @@ interface ColumnProps {
   readonly smart: boolean;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
+  readonly wrap: boolean;
+  readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
   readonly onTryAgain: () => void;
 }
@@ -378,6 +386,8 @@ function Column({
   smart,
   large,
   onLarge,
+  wrap,
+  onWrap,
   onSaved,
   onTryAgain,
 }: ColumnProps): ReactElement | null {
@@ -415,27 +425,38 @@ function Column({
       </div>
     );
   // A new file starts outside the editor, with its own view.
-  return <FilePreview key={path} file={shown} large={large} onLarge={onLarge} onSaved={onSaved} />;
+  return (
+    <FilePreview
+      key={path}
+      file={shown}
+      large={large}
+      onLarge={onLarge}
+      wrap={wrap}
+      onWrap={onWrap}
+      onSaved={onSaved}
+    />
+  );
+}
+
+interface Download {
+  readonly start: () => Promise<void>;
+  readonly busy: boolean;
+  /** The share of the bytes that arrived, or null when the size is not known yet. */
+  readonly share: number | null;
+  readonly problem: string | null;
 }
 
 /**
  * Saves a file, or a folder as one zip, on the person's device. A browser saves one file per
- * link, so a folder needs the zip. The zip has no compression, so Eva builds it fast.
+ * link, so a folder needs the zip. The zip has no compression, so Eva builds it fast. A menu
+ * closes as the download starts, so the state lives here and the caller shows `DownloadWait`.
  */
-function DownloadButton({
-  path,
-  folder,
-  iconOnly = false,
-}: {
-  readonly path: string;
-  readonly folder: boolean;
-  /** A full file bar has room for an icon only, as the size button beside it. */
-  readonly iconOnly?: boolean;
-}): ReactElement {
+function useDownload(path: string): Download {
   const [share, setShare] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const start = async (): Promise<void> => {
+    if (busy) return;
     setBusy(true);
     setShare(null);
     setProblem(null);
@@ -454,25 +475,37 @@ function DownloadButton({
       setBusy(false);
     }
   };
-  const label = folder ? "Download as zip" : "Download";
+  return { start, busy, share, problem };
+}
+
+/** The bar and the error of a download. */
+function DownloadWait({ download, folder }: { readonly download: Download; readonly folder: boolean }): ReactElement {
+  return (
+    <>
+      {download.busy && <ProgressBar label={folder ? "Packing the folder…" : "Downloading…"} share={download.share} />}
+      {download.problem !== null && (
+        <div role="alert" className="callout danger">
+          {download.problem}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DownloadButton({ path, folder }: { readonly path: string; readonly folder: boolean }): ReactElement {
+  const download = useDownload(path);
   return (
     <div className="files-download">
       <button
-        className={iconOnly ? "icon-button" : "ghost"}
-        onClick={() => void start()}
-        disabled={busy}
+        className="ghost"
+        onClick={() => void download.start()}
+        disabled={download.busy}
         aria-label={folder ? "Download this folder as a zip file" : "Download this file"}
-        data-tooltip={iconOnly ? label : undefined}
       >
         <Icon name="download" />
-        {!iconOnly && <span className="files-download-label">{label}</span>}
+        <span className="files-download-label">{folder ? "Download as zip" : "Download"}</span>
       </button>
-      {busy && <ProgressBar label={folder ? "Packing the folder…" : "Downloading…"} share={share} />}
-      {problem !== null && (
-        <div role="alert" className="callout danger">
-          {problem}
-        </div>
-      )}
+      <DownloadWait download={download} folder={folder} />
     </div>
   );
 }
@@ -721,10 +754,12 @@ interface FilePreviewProps {
   readonly file: ShownFile;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
+  readonly wrap: boolean;
+  readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
 }
 
-function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): ReactElement {
+function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved }: FilePreviewProps): ReactElement {
   const [plain, setPlain] = useState(false);
   /** The edit, or null outside the editor. */
   const [draft, setDraftState] = useState<Draft | null>(() => drafts.get(file.path) ?? null);
@@ -748,6 +783,34 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
   }, [large, onLarge]);
 
   const unsaved = draft !== null && !sameText(draft.text, file.text);
+
+  const download = useDownload(file.path);
+  const isPhone = useIsPhone();
+  /** The Appearance setting changes on the Settings page, so the file reads it once, as it opens. */
+  const [oneFolder] = useState(() => readAppearance().filesView === "single");
+  // Formatted Markdown flows as a page, so only its front matter keeps its lines.
+  const keepsLines = plain || view !== "markdown" || splitFrontMatter(file.text).frontMatter !== null;
+  const items: MenuItem[] = [];
+  if (draft === null && (view === "markdown" || view === "json")) {
+    items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "file", onChoose: () => setPlain(!plain) });
+  }
+  // A text area wraps by itself, so the editor needs no wrap item.
+  if (draft === null && keepsLines) {
+    items.push({
+      label: wrap ? "Do not wrap long lines" : "Wrap long lines",
+      icon: "wrap",
+      onChoose: () => onWrap(!wrap),
+    });
+  }
+  items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
+  // A phone and the one folder view show no folder columns, so the file fills the page already.
+  if (!isPhone && !oneFolder) {
+    items.push({
+      label: large ? "Make the file small" : "Make the file large",
+      icon: large ? "shrink" : "expand",
+      onChoose: () => onLarge(!large),
+    });
+  }
 
   const save = async (): Promise<boolean> => {
     if (draft === null) return false;
@@ -790,11 +853,6 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
                   <Icon name="check" /> Saved
                 </span>
               )}
-              {(view === "markdown" || view === "json") && (
-                <button className="ghost" onClick={() => setPlain(!plain)}>
-                  {plain ? "Show formatted" : "Show plain text"}
-                </button>
-              )}
               {file.editable ? (
                 <button
                   onClick={() => {
@@ -821,17 +879,11 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
               </SaveButton>
             </>
           )}
-          <DownloadButton path={file.path} folder={false} iconOnly={true} />
-          <button
-            className="files-large-button icon-button"
-            aria-label={large ? "Make the file small" : "Make the file large"}
-            aria-pressed={large}
-            data-tooltip={large ? "Make small" : "Make large"}
-            onClick={() => onLarge(!large)}
-          >
-            <Icon name={large ? "shrink" : "expand"} />
-          </button>
+          <MoreMenu items={items} label="File actions" />
         </div>
+      </div>
+      <div className="files-wait">
+        <DownloadWait download={download} folder={false} />
       </div>
       {problem !== null && (
         <div role="alert" className="callout danger callout-action files-problem">
@@ -849,7 +901,7 @@ function FilePreview({ file, large, onLarge, onSaved }: FilePreviewProps): React
           onChange={(event) => setDraft({ ...draft, text: event.target.value })}
         />
       ) : (
-        <FileText path={file.path} text={file.text} plain={plain} />
+        <FileText path={file.path} text={file.text} plain={plain} wrap={wrap} />
       )}
     </section>
   );
@@ -859,29 +911,40 @@ function FileText({
   path,
   text,
   plain,
+  wrap,
 }: {
   readonly path: string;
   readonly text: string;
   readonly plain: boolean;
+  readonly wrap: boolean;
 }): ReactElement {
   const view = viewOf(path);
-  if (plain || view === "plain") return <pre className="files-text">{text}</pre>;
+  const textClass = wrap ? "files-text wrap" : "files-text";
+  if (plain || view === "plain") return <pre className={textClass}>{text}</pre>;
   if (view === "markdown") {
     const { frontMatter, body } = splitFrontMatter(text);
     return (
       <>
-        {frontMatter !== null && <pre className="files-text files-front-matter">{frontMatter}</pre>}
+        {frontMatter !== null && <pre className={`${textClass} files-front-matter`}>{frontMatter}</pre>}
         {/* toWebHtml escapes all text and adds only its own tags, so the HTML is safe. */}
         <div className="answer-body files-markdown" dangerouslySetInnerHTML={{ __html: toWebHtml(body) }} />
       </>
     );
   }
-  return <CodeText path={path} text={view === "json" ? (prettyJson(text) ?? text) : text} />;
+  return <CodeText path={path} text={view === "json" ? (prettyJson(text) ?? text) : text} className={textClass} />;
 }
 
-function CodeText({ path, text }: { readonly path: string; readonly text: string }): ReactElement {
+function CodeText({
+  path,
+  text,
+  className,
+}: {
+  readonly path: string;
+  readonly text: string;
+  readonly className: string;
+}): ReactElement {
   return (
-    <pre className="files-text">
+    <pre className={className}>
       <code>
         {codeTokens(path, text).map((token, index) =>
           token.kind === "plain" ? (

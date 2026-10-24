@@ -155,7 +155,7 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show at the top of the web page, because Telegram itself can be the problem.
 
-Press the x on a notice to hide it. It stays hidden on every device until the problem becomes an error or ends. Eva sends no daily reminder for it, but `/status` still counts it.
+Press the x on a notice to hide it. It stays hidden on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you hide it on another computer. `/status` still counts it.
 
 | Alert                                   | When                                                                                                 |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |

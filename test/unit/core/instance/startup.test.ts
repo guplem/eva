@@ -99,7 +99,17 @@ describe("prepareStart with a vault", () => {
     const prepared = await start();
     expect(readHubClaim(vault)).toBeNull();
     expect(prepared.notes.find((note) => note.level === "warn")?.message).toBe(
-      "The vault pull did not work, so this machine did not claim the hub yet.",
+      "The vault pull could not reach the remote, so this machine did not claim the hub yet.",
+    );
+  });
+
+  test("claims no hub on a vault that is not on its default branch, and names that cause", async () => {
+    sandbox.git(vault, "checkout", "-q", "-b", "side");
+    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
+    const prepared = await start();
+    expect(readHubClaim(vault)).toBeNull();
+    expect(prepared.notes.find((note) => note.level === "warn")?.message).toBe(
+      "The vault is not on its default branch, so this machine did not claim the hub yet.",
     );
   });
 

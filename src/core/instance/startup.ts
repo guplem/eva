@@ -19,12 +19,21 @@ import { evaVersion } from "../../shared/version.ts";
 import { runStartMigrations, type StartMigrations } from "../migrations/migrations.ts";
 import { withMachineDefaults } from "../settings/machine-defaults.ts";
 import { loadSettings } from "../settings/settings.ts";
-import { VaultSync } from "../vault/vault-sync.ts";
+import { VaultSync, type VaultSyncStatus } from "../vault/vault-sync.ts";
 import { gitEnvironmentWithToken } from "./child-environments.ts";
 import { commitIdentity } from "./commit-identity.ts";
 import { claimHubIfUnclaimed, hubFilePath, machineRole } from "./hub.ts";
 
 const remoteListTimeoutMs = 20_000;
+
+/** Why a start did not claim the hub. "ok" never blocks a claim. */
+const pullProblems: Readonly<Record<VaultSyncStatus, string>> = {
+  ok: "The vault pull worked",
+  offline: "The vault pull could not reach the remote",
+  conflict: "The vault pull found a conflict",
+  error: "The vault pull failed",
+  skipped: "The vault is not on its default branch",
+};
 
 export interface StartNote {
   readonly level: LogLevel;
@@ -94,12 +103,13 @@ async function migrateAfterPull(
     );
     const pulled = await new VaultSync({ vaultPath, runner: options.runner, environment, now: options.now }).pull();
     // A failed pull may hide a claim that another machine pushed. A vault with no remote has no such claim.
+    // A vault with an unpushed merge commit skips the fetch, and "ok" is then the state before the pull.
     const canClaim = pulled.status === "ok" || (await hasNoOrigin(vaultPath, options.runner, environment));
     hubClaimPending = !canClaim && !existsSync(hubFilePath(vaultPath));
     if (!canClaim)
       notes.push({
         level: "warn",
-        message: "The vault pull did not work, so this machine did not claim the hub yet.",
+        message: `${pullProblems[pulled.status]}, so this machine did not claim the hub yet.`,
         fields: { status: pulled.status, error: pulled.lastError },
       });
     else if (claimHubIfUnclaimed(vaultPath, machine, options.now()))

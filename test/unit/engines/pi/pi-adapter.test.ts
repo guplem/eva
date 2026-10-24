@@ -518,6 +518,30 @@ describe("PiEngine", () => {
     expect(deaf.closeTimeouts[0]).toBe(0);
   });
 
+  test("a close that fails still ends the turn with one event", async () => {
+    const deaf = deafPi();
+    const failingClose: PiProcessStarter = (command, options) => {
+      const pi = deaf.start(command, options);
+      return {
+        send: (record) => {
+          pi.send(record);
+        },
+        records: pi.records,
+        close: async (timeoutMs) => {
+          await pi.close(timeoutMs);
+          throw new Error("taskkill failed");
+        },
+        stderrTail: () => pi.stderrTail(),
+      };
+    };
+    const controller = new AbortController();
+    controller.abort();
+    const events = await drain(
+      engine(new FakePi([]), { start: failingClose, stopGraceMs: 20 }).runTurn(request({ signal: controller.signal })),
+    );
+    expect(events).toEqual([{ kind: "turn_failed", reason: "The turn was stopped." }]);
+  });
+
   test("a caller that leaves the stream early still stops pi", async () => {
     const deaf = deafPi({ deltas: 20 });
     for await (const event of engine(new FakePi([]), { start: deaf.start }).runTurn(request())) {

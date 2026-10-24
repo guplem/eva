@@ -174,7 +174,8 @@ export class PiEngine implements EnginePort {
     const state = { closed: false };
     const close = (timeoutMs: number): Promise<void> => {
       state.closed = true;
-      return pi.close(timeoutMs);
+      // A failed stop must not replace the turn's one end event, or reject with nobody to catch it.
+      return pi.close(timeoutMs).catch(() => undefined);
     };
     // A stuck pi never answers the abort and never ends its records, so only a hard stop ends the turn.
     let hardStop: ReturnType<typeof setTimeout> | undefined;

@@ -48,6 +48,42 @@ export function stepParts(step: TurnStep): { action: string; detail: string } {
   return { action: name.split("__").at(-1) ?? name, detail };
 }
 
+/**
+ * Where a step comes from, for the step dialog: the whole tool name, and what gave the tool.
+ * A command keeps no tool name. A stored tool step that starts with JSON has no name either.
+ */
+export function stepOrigin(step: TurnStep): { tool: string | null; from: string } | null {
+  if (step.kind === "command") return { tool: null, from: "The shell" };
+  if (step.kind !== "tool" || step.text.startsWith("{")) return null;
+  const tool = step.text.split(" ", 1)[0] ?? step.text;
+  const server = /^mcp__(.+?)__/.exec(tool)?.[1];
+  return { tool, from: server === undefined ? "The engine" : `The MCP server ${server}` };
+}
+
+/**
+ * The input of a tool as named fields, so the dialog shows a command whole and once. The
+ * description goes on its own line. An input that is no JSON object gives null.
+ */
+export function inputFields(
+  input: string | undefined,
+): { description: string | null; fields: { key: string; value: string }[] } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input ?? "");
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  const description = entries.find(([key, value]) => key === "description" && typeof value === "string")?.[1];
+  return {
+    description: typeof description === "string" ? description : null,
+    fields: entries
+      .filter(([key, value]) => !(key === "description" && typeof value === "string"))
+      .map(([key, value]) => ({ key, value: typeof value === "string" ? value : JSON.stringify(value, null, 2) })),
+  };
+}
+
 /** Only a tool or a command has an input and an output for the step dialog. */
 export function hasToolDetails(step: TurnStep): boolean {
   return step.kind === "tool" || step.kind === "command";

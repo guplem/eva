@@ -189,6 +189,16 @@ describe("access (lessons 63, 127)", () => {
     expect(sleeps).toEqual([]);
     expect(telegram.callsTo("sendMessage")).toHaveLength(1);
   });
+
+  test("the reply to a failed message goes once even when Telegram asks for no wait", async () => {
+    eva.stop();
+    createEva(undefined, systemProcessRunner, {}, null);
+    const bot = createBot();
+    telegram.failNext("sendMessage", 429, "Too Many Requests: retry after 0", 3, 0);
+    telegram.sendText(owner, "hi");
+    await settle(bot, () => logs.some((log) => log.message.includes("Telegram call failed")));
+    expect(telegram.callsTo("sendMessage")).toHaveLength(1);
+  });
 });
 
 describe("device login", () => {

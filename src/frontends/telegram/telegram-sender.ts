@@ -27,12 +27,14 @@ interface RetryPolicy {
    * call may have worked: a second createForumTopic opens a second topic.
    */
   readonly retryNetworkErrors?: boolean;
+  /** The most retries after the first try; three when not set. */
+  readonly maxRetries?: number;
 }
 
 /** For a call that must not run twice, such as createForumTopic: only a 429 goes again. */
 export const noRepeatPolicy: RetryPolicy = { waitBudgetMs: sendWaitBudgetMs, retryNetworkErrors: false };
 /** For a best-effort call, such as the reply to a failure that may itself be a flood: one try. */
-export const noRetryPolicy: RetryPolicy = { waitBudgetMs: 0, retryNetworkErrors: false };
+export const noRetryPolicy: RetryPolicy = { waitBudgetMs: 0, maxRetries: 0 };
 
 export interface TelegramSenderOptions {
   readonly api: TelegramApi;
@@ -123,7 +125,8 @@ export class TelegramSender {
         return await this.options.api.call<Result>(method, params);
       } catch (error) {
         const waitMs = sendRetryMs(error, retry, policy);
-        if (waitMs === null || retry >= sendRetries || waitedMs + waitMs > policy.waitBudgetMs) throw error;
+        if (waitMs === null || retry >= (policy.maxRetries ?? sendRetries) || waitedMs + waitMs > policy.waitBudgetMs)
+          throw error;
         waitedMs += waitMs;
         await this.options.sleep(waitMs);
       }

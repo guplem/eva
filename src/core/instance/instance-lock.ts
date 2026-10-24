@@ -1,9 +1,10 @@
 /**
  * One core process for each instance home (lesson 20). The lock is a
- * file that holds the owner's pid and, on Linux, the boot id. It is created exclusively,
- * and a lock whose owner no longer runs is taken over, so a crash never blocks the next start.
+ * file that holds the owner's pid, the boot id on Linux, and a `heartbeat` line. It is created
+ * exclusively, and a lock whose owner no longer runs is taken over, so a crash never blocks the
+ * next start. The live core touches the file at each beat, so a start can tell her from a reused pid.
  */
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { EvaError } from "../../shared/errors.ts";
 
 export interface InstanceLock {
@@ -19,23 +20,46 @@ export interface LockProbe {
 
 export interface LockOwner extends LockProbe {
   readonly pid: number;
+  readonly sleep: (ms: number) => Promise<void>;
+  /** How often the live core touches its lock. */
+  readonly heartbeatMs?: number;
+  /** How long a lock with no touch must stay still before a start takes it over. */
+  readonly staleAfterMs?: number;
+  /** The timer seam; the default is the global `setInterval`. */
+  readonly setInterval?: (tick: () => void, ms: number) => { stop(): void };
+  /** Runs once when another core took this core's lock over. */
+  readonly onLost?: () => void;
 }
 
 interface LockHolder {
   readonly pid: number;
   readonly bootId: string | null;
+  /** False for a lock of an Eva from before the heartbeat, which never touches her lock. */
+  readonly beats: boolean;
 }
 
 const linuxBootIdPath = "/proc/sys/kernel/random/boot_id";
+const heartbeatLine = "heartbeat";
+const defaultHeartbeatMs = 5_000;
+const defaultStaleAfterMs = 60_000;
 
-export function acquireInstanceLock(lockPath: string, owner: LockOwner): InstanceLock {
+export async function acquireInstanceLock(lockPath: string, owner: LockOwner): Promise<InstanceLock> {
+  const heartbeatMs = owner.heartbeatMs ?? defaultHeartbeatMs;
   if (!tryCreate(lockPath, owner)) {
+    const before = lockState(lockPath);
     const holder = readHolder(lockPath);
     if (holder !== null && holder.pid !== owner.pid && isHolderRunning(holder, owner)) {
-      throw new EvaError(
-        "instance_locked",
-        `Another Eva (pid ${String(holder.pid)}) already runs with this home folder.`,
-      );
+      if (!holder.beats || bootIdDecides(holder, owner) || (await holderBeats(lockPath, before, owner, heartbeatMs))) {
+        throw new EvaError(
+          "instance_locked",
+          `Another Eva (pid ${String(holder.pid)}) already runs with this home folder.`,
+        );
+      }
+    }
+    // Two starts can watch the same stale lock. The one that comes second must not delete the new lock of the first.
+    const after = lockState(lockPath);
+    if (after !== null && after !== before) {
+      throw new EvaError("instance_locked", "Another Eva started with this home folder at the same moment.");
     }
     rmSync(lockPath, { force: true });
     if (!tryCreate(lockPath, owner)) {
@@ -43,12 +67,41 @@ export function acquireInstanceLock(lockPath: string, owner: LockOwner): Instanc
     }
   }
 
+  const heartbeat = (owner.setInterval ?? unrefInterval)(() => {
+    const holder = readHolder(lockPath);
+    if (holder !== null && holder.pid !== owner.pid) {
+      // A core that stalled for a whole watch lost its lock. Two cores must never run on one home.
+      heartbeat.stop();
+      owner.onLost?.();
+      return;
+    }
+    if (holder === null) return;
+    try {
+      const now = new Date();
+      utimesSync(lockPath, now, now);
+    } catch {
+      // A missing lock is no reason to stop Eva: the next start simply finds no holder.
+    }
+  }, heartbeatMs);
   let released = false;
   return {
     release() {
       if (released) return;
       released = true;
-      rmSync(lockPath, { force: true });
+      heartbeat.stop();
+      // A core that lost its lock to a takeover must not delete the lock of the new core.
+      if (readHolder(lockPath)?.pid === owner.pid) rmSync(lockPath, { force: true });
+    },
+  };
+}
+
+function unrefInterval(tick: () => void, ms: number): { stop(): void } {
+  const handle = setInterval(tick, ms);
+  // The heartbeat alone must not keep Eva running after her work ends.
+  handle.unref();
+  return {
+    stop() {
+      clearInterval(handle);
     },
   };
 }
@@ -89,10 +142,43 @@ function isHolderRunning(holder: LockHolder, probe: LockProbe): boolean {
   return probe.isProcessAlive(holder.pid);
 }
 
+function bootIdDecides(holder: LockHolder, probe: LockProbe): boolean {
+  return holder.bootId !== null && probe.bootId !== null;
+}
+
+/**
+ * Windows gives no boot id, so after a power loss another process can have the old pid (#528).
+ * Only a live Eva touches her lock. The watch compares one file time with the next, never with
+ * the clock: a clock step cannot make a live lock look stale (#509).
+ */
+async function holderBeats(
+  lockPath: string,
+  first: string | null,
+  owner: LockOwner,
+  heartbeatMs: number,
+): Promise<boolean> {
+  const beats = Math.ceil((owner.staleAfterMs ?? defaultStaleAfterMs) / heartbeatMs);
+  for (let beat = 0; beat < beats; beat += 1) {
+    await owner.sleep(heartbeatMs);
+    const now = lockState(lockPath);
+    if (now === null) return false;
+    if (now !== first) return true;
+  }
+  return false;
+}
+
+/** The lock's content and file time, or null when the lock is gone. */
+function lockState(lockPath: string): string | null {
+  try {
+    return `${String(statSync(lockPath).mtimeMs)}\n${readFileSync(lockPath, "utf-8")}`;
+  } catch {
+    return null;
+  }
+}
+
 function tryCreate(lockPath: string, owner: LockOwner): boolean {
   try {
-    const content = owner.bootId === null ? String(owner.pid) : `${String(owner.pid)}\n${owner.bootId}\n`;
-    writeFileSync(lockPath, content, { flag: "wx" });
+    writeFileSync(lockPath, `${String(owner.pid)}\n${owner.bootId ?? ""}\n${heartbeatLine}\n`, { flag: "wx" });
     return true;
   } catch {
     return false;
@@ -101,11 +187,11 @@ function tryCreate(lockPath: string, owner: LockOwner): boolean {
 
 function readHolder(lockPath: string): LockHolder | null {
   try {
-    const [pidLine = "", bootIdLine = ""] = readFileSync(lockPath, "utf-8").split("\n");
+    const [pidLine = "", bootIdLine = "", heartbeat = ""] = readFileSync(lockPath, "utf-8").split("\n");
     const pid = Number.parseInt(pidLine.trim(), 10);
     if (!Number.isSafeInteger(pid) || pid <= 0) return null;
     const bootId = bootIdLine.trim();
-    return { pid, bootId: bootId.length > 0 ? bootId : null };
+    return { pid, bootId: bootId.length > 0 ? bootId : null, beats: heartbeat.trim() === heartbeatLine };
   } catch {
     return null;
   }

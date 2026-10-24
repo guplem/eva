@@ -134,6 +134,8 @@ export class VaultUpkeep {
 
   /** What an undo of these answers would do now, for the question before a retry. */
   async undoPreview(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
+    // With sync off, Eva runs no git step of her own, so a retry asks nothing.
+    if (!this.options.syncEnabled()) return emptyUndo;
     return (await this.options.vaultSync?.undoPreview(answers)) ?? emptyUndo;
   }
 
@@ -144,7 +146,7 @@ export class VaultUpkeep {
    */
   async undo(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
     const vaultSync = this.options.vaultSync;
-    if (vaultSync === null) return emptyUndo;
+    if (vaultSync === null || !this.options.syncEnabled()) return emptyUndo;
     if (this.options.assistantBusy()) throw busyUndo();
     await this.pull();
     // A turn can start during the pull.

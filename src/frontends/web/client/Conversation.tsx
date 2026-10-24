@@ -4,7 +4,7 @@
  * into one line, and Retry, Fork and Copy under each answer.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { api, type ChatBlocker, type SessionRecord, type RetryUndoPreview } from "./api.ts";
+import { api, type ChatBlocker, type SessionRecord, type UndoPreview } from "./api.ts";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
 import { approvalPlace } from "./approvals.ts";
 import {
@@ -189,7 +189,7 @@ function Branch({
     readonly sessionId: string;
     readonly index: number;
     readonly title: string;
-    readonly preview: RetryUndoPreview;
+    readonly preview: UndoPreview;
   } | null>(null);
   const closeUndoAsk = useCallback(() => setUndoAsk(null), []);
   const path = pathOf(session, tree);

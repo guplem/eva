@@ -64,7 +64,7 @@ describe("VaultUpkeep undo of answers", () => {
     await upkeep.snapshot(answers[0]?.after ?? "");
     await upkeep.save();
 
-    expect(await upkeep.undoPreview(answers)).toEqual({ restore: ["plan.md"], changed: [], notKept: [] });
+    expect(await upkeep.undoPreview(answers)).toEqual({ restore: ["plan.md"], changed: [], notKept: [], answers: 1 });
     expect((await upkeep.undo(answers)).restore).toEqual(["plan.md"]);
     expect(sandbox.git(sandbox.remote, "show", "main:plan.md")).toBe("first");
     await upkeep.deleteSnapshots("chat");
@@ -88,8 +88,8 @@ describe("VaultUpkeep undo of answers", () => {
     });
     await upkeep.snapshot("refs/eva/turns/chat/0/before");
     await upkeep.deleteSnapshots("chat");
-    expect(await upkeep.undoPreview(answers)).toEqual({ restore: [], changed: [], notKept: [] });
-    expect(await upkeep.undo(answers)).toEqual({ restore: [], changed: [], notKept: [] });
+    expect(await upkeep.undoPreview(answers)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
+    expect(await upkeep.undo(answers)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
   });
 });
 
@@ -111,4 +111,28 @@ test("an undo refuses when an Assistant turn starts during its pull", async () =
     .undo([{ before: "refs/eva/turns/chat/0/before", after: "refs/eva/turns/chat/0/after" }])
     .catch((error: unknown) => error);
   expect(isEvaError(caught, "session_busy")).toBe(true);
+});
+
+test("with sync off, a retry asks nothing and undoes nothing", async () => {
+  let enabled = true;
+  const now = (): Date => new Date(2026, 9, 14, 12, 0);
+  const upkeep = new VaultUpkeep({
+    vaultSync: new VaultSync({ vaultPath: vault, runner: systemProcessRunner, environment: gitEnvironment, now }),
+    now,
+    syncEnabled: () => enabled,
+    assistantBusy: () => false,
+    reportProblem: () => undefined,
+  });
+  const answers = [{ before: "refs/eva/turns/chat/0/before", after: "refs/eva/turns/chat/0/after" }];
+  await upkeep.snapshot(answers[0]?.before ?? "");
+  sandbox.write(vault, "plan.md", "bad\n");
+  await upkeep.snapshot(answers[0]?.after ?? "");
+  enabled = false;
+  const none = { restore: [], changed: [], notKept: [], answers: 0 };
+  expect(await upkeep.undoPreview(answers)).toEqual(none);
+  expect(await upkeep.undo(answers)).toEqual(none);
+  expect(sandbox.git(vault, "status", "--porcelain")).toContain("plan.md");
+  // With sync off, no new snapshot either.
+  await upkeep.snapshot("refs/eva/turns/chat/1/before");
+  expect(sandbox.git(vault, "for-each-ref", "--format=%(refname)", "refs/eva/turns/chat/1")).toBe("");
 });

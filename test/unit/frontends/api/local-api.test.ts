@@ -832,7 +832,7 @@ describe("routes", () => {
     const retry = await call(`/api/sessions/${session.id}/retry`, { method: "POST", body: { turnIndex: 0 } });
     expect(retry.status).toBe(200);
     const preview = await call(`/api/sessions/${session.id}/retry-undo?turnIndex=0`);
-    expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 1 });
+    expect(await json(preview)).toEqual({ restore: [], changed: [], notKept: [], answers: 0 });
     const undone = await call(`/api/sessions/${session.id}/retry`, {
       method: "POST",
       body: { turnIndex: 0, undo: true },

@@ -3,7 +3,7 @@
  * Assistant turn, commit and push after it, and an idle sweep. Nothing here ever
  * discards a change; a conflict stops the pushes and asks a person.
  */
-import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { join, posix, sep } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
@@ -17,6 +17,7 @@ import {
   planUndo,
   previewOf,
   sessionRefPrefix,
+  snapshotRefRoot,
   snapshotMessage,
   unreadableOid,
   type AnswerChanges,
@@ -313,7 +314,14 @@ export class VaultSync {
           throw new EvaError("git_failed", `Eva could not restore the files: ${firstLine(restored)}`);
       }
       // Last: a failed restore above then leaves every new file in place.
-      for (const path of removed) rmSync(join(this.options.vaultPath, path), { force: true });
+      for (const path of removed) {
+        try {
+          rmSync(join(this.options.vaultPath, path), { force: true });
+        } catch (error) {
+          throw new EvaError("git_failed", `Eva could not delete ${path}: ${String(error)}`);
+        }
+        this.removeEmptyFolders(posix.dirname(path));
+      }
       return previewOf(plan);
     });
   }
@@ -334,10 +342,14 @@ export class VaultSync {
   /** The changes of each answer with both snapshots, and the plan from the files as they are now. */
   private async undoPlan(answers: readonly UndoAnswer[]): Promise<UndoPlan> {
     const changes: AnswerChanges[] = [];
+    // One listing first: a turn from before the snapshots, or one whose snapshot failed, adds
+    // nothing, and must cost no git process.
+    const listed = await this.git(["for-each-ref", "--format=%(refname)", snapshotRefRoot], localTimeoutMs);
+    const refs = new Set(listed.stdout.split("\n").map((line) => line.trim()));
     for (const { before, after } of answers) {
+      if (!refs.has(before) || !refs.has(after)) continue;
       const beforeCommit = await this.git(["cat-file", "commit", before], localTimeoutMs);
       const afterCommit = await this.git(["cat-file", "commit", after], localTimeoutMs);
-      // A turn from before the snapshots, or a turn whose snapshot failed, adds nothing.
       if (beforeCommit.exitCode !== 0 || afterCommit.exitCode !== 0) continue;
       const diff = await this.git(["diff-tree", "-r", "-z", "--no-renames", before, after], localTimeoutMs);
       if (diff.exitCode !== 0) throw new EvaError("git_failed", `git diff-tree failed: ${firstLine(diff)}`);
@@ -370,6 +382,18 @@ export class VaultSync {
     const oids = result.stdout.split("\n");
     for (const [index, path] of hashed.entries()) current.set(path, oids[index]?.trim() ?? unreadableOid);
     return current;
+  }
+
+  /** Removes the folders that an undone answer made and that are empty now, up to the vault root. */
+  private removeEmptyFolders(folder: string): void {
+    for (let current = folder; current !== "." && current !== "" && current !== "/"; current = posix.dirname(current)) {
+      try {
+        // rmdir removes only an empty folder.
+        rmdirSync(join(this.options.vaultPath, current));
+      } catch {
+        return;
+      }
+    }
   }
 
   private addLeftOut(leftOut: Map<string, LeftOutFile>, path: string): void {

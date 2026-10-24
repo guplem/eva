@@ -62,6 +62,16 @@ describe("answersToUndo", () => {
     expect(named(answersToUndo([orphan], "orphan", 0))).toEqual(["orphan/0", "orphan/1"]);
   });
 
+  test("on the same end time, the turn of the fork made later counts as later", () => {
+    const root = chat("root", ["10:01", "10:05"]);
+    const fork = chat("fork", ["10:05"], {
+      parentId: "root",
+      forkAtMessageId: "m0",
+      createdAt: "2026-10-24T09:30:00.000Z",
+    });
+    expect(named(answersToUndo([fork, root], "root", 1))).toEqual(["root/1", "fork/0"]);
+  });
+
   test("turns that ended at the same time keep their order, and an earlier turn of the chat stays", () => {
     const root = chat("root", ["10:01", "10:01"]);
     expect(named(answersToUndo([root], "root", 0))).toEqual(["root/0", "root/1"]);

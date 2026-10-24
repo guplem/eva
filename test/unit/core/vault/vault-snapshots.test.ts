@@ -74,6 +74,7 @@ describe("VaultSync undo of an answer", () => {
       restore: ["Notes/New.md", "Notes/Old.md", "Notes/Plan.md"],
       changed: [],
       notKept: [],
+      answers: 1,
     });
 
     const result = await sync.undo([answer("chat", 0)]);
@@ -100,7 +101,7 @@ describe("VaultSync undo of an answer", () => {
     sandbox.write(vault, "Notes/Plan.md", "The person's edit.\n");
 
     const result = await sync.undo([answer("chat", 0)]);
-    expect(result).toEqual({ restore: ["Notes/New.md"], changed: ["Notes/Plan.md"], notKept: [] });
+    expect(result).toEqual({ restore: ["Notes/New.md"], changed: ["Notes/Plan.md"], notKept: [], answers: 1 });
     expect(read("Notes/Plan.md")).toBe("The person's edit.\n");
   });
 
@@ -117,7 +118,7 @@ describe("VaultSync undo of an answer", () => {
     });
 
     const result = await sync.undo([answer("chat", 0), answer("chat", 1)]);
-    expect(result).toEqual({ restore: ["Notes/Extra.md", "Notes/Plan.md"], changed: [], notKept: [] });
+    expect(result).toEqual({ restore: ["Notes/Extra.md", "Notes/Plan.md"], changed: [], notKept: [], answers: 2 });
     expect(read("Notes/Plan.md")).toBe("The first plan.\n");
     expect(existsSync(join(vault, "Notes/Extra.md"))).toBe(false);
     expect(read("Notes/Mine.md")).toBe("My own note.\n");
@@ -135,6 +136,7 @@ describe("VaultSync undo of an answer", () => {
       restore: [],
       changed: [],
       notKept: ["Scratch/report.pdf", "Toolbox/keys.md"],
+      answers: 1,
     });
     const tree = sandbox.git(vault, "ls-tree", "-r", "--name-only", turnSnapshotRef("chat", 0, "after"));
     expect(tree).not.toContain("Toolbox/keys.md");
@@ -164,8 +166,25 @@ describe("VaultSync undo of an answer", () => {
     await runAnswer(sync, "chat", 0, () => {
       sandbox.write(vault, "Notes/keys.md", "The token is gone.\n");
     });
-    expect(await sync.undo([answer("chat", 0)])).toEqual({ restore: [], changed: [], notKept: ["Notes/keys.md"] });
+    expect(await sync.undo([answer("chat", 0)])).toEqual({
+      restore: [],
+      changed: [],
+      notKept: ["Notes/keys.md"],
+      answers: 1,
+    });
     expect(read("Notes/keys.md")).toBe("The token is gone.\n");
+  });
+
+  test("an undo removes the folders that the answer made and that are empty now", async () => {
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, "Trips/2027/Rome.md", "A trip.\n");
+      sandbox.write(vault, "Notes/Kept/Old.md", "kept\n");
+    });
+    sandbox.write(vault, "Notes/Kept/Mine.md", "mine\n");
+    await sync.undo([answer("chat", 0)]);
+    expect(existsSync(join(vault, "Trips"))).toBe(false);
+    expect(existsSync(join(vault, "Notes/Kept/Mine.md"))).toBe(true);
   });
 
   test("a symbolic link counts as changed, so it stays", async () => {
@@ -193,6 +212,7 @@ describe("VaultSync undo of an answer", () => {
       restore: [],
       changed: [],
       notKept: [],
+      answers: 0,
     });
   });
 
@@ -202,7 +222,7 @@ describe("VaultSync undo of an answer", () => {
       sandbox.write(vault, "Notes/Plan.md", "A bad plan.\n");
     });
     sandbox.write(vault, "Notes/Plan.md", "The first plan.\n");
-    expect(await sync.undoPreview([answer("chat", 0)])).toEqual({ restore: [], changed: [], notKept: [] });
+    expect(await sync.undoPreview([answer("chat", 0)])).toEqual({ restore: [], changed: [], notKept: [], answers: 1 });
   });
 
   test("a failed restore throws git_failed with the reason", async () => {
@@ -318,6 +338,7 @@ describe("snapshot helpers", () => {
       ],
       changed: [],
       notKept: ["s"],
+      answers: 2,
     });
   });
 });

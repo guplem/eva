@@ -123,7 +123,7 @@ import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
-import { answersToUndo, type RetryUndoPreview } from "./sessions/retry-undo.ts";
+import { answersToUndo } from "./sessions/retry-undo.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
 import { SessionStore, type SessionRecord } from "./sessions/session-store.ts";
 import { StepDetailsStore } from "./sessions/step-details-store.ts";
@@ -135,6 +135,7 @@ import {
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
 import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
+import type { UndoPreview } from "./vault/vault-snapshots.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
@@ -1443,10 +1444,9 @@ export class Eva {
   }
 
   /** What the undo before a retry of this turn would do now (#525). A Project chat has nothing to undo. */
-  async retryUndoPreview(sessionId: string, turnIndex: number): Promise<RetryUndoPreview> {
+  retryUndoPreview(sessionId: string, turnIndex: number): Promise<UndoPreview> {
     this.sessions.get(sessionId);
-    const answers = answersToUndo(this.sessions.list(), sessionId, turnIndex);
-    return { ...(await this.vault.undoPreview(answers)), answers: answers.length };
+    return this.vault.undoPreview(answersToUndo(this.sessions.list(), sessionId, turnIndex));
   }
 
   /**

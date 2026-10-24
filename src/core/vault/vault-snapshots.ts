@@ -6,7 +6,7 @@
 
 export type SnapshotMoment = "before" | "after";
 
-const snapshotRefRoot = "refs/eva/turns";
+export const snapshotRefRoot = "refs/eva/turns";
 
 /** The ref of one snapshot of one turn. */
 export function turnSnapshotRef(sessionId: string, turnIndex: number, moment: SnapshotMoment): string {
@@ -32,9 +32,11 @@ export interface UndoPreview {
   readonly restore: readonly string[];
   readonly changed: readonly string[];
   readonly notKept: readonly string[];
+  /** How many of the answers have snapshots, so the question can name the later ones. */
+  readonly answers: number;
 }
 
-export const emptyUndo: UndoPreview = { restore: [], changed: [], notKept: [] };
+export const emptyUndo: UndoPreview = { restore: [], changed: [], notKept: [], answers: 0 };
 
 /** A file that the snapshot leaves out, as the sync does: a Scratch file, a secret, a large file. */
 export interface LeftOutFile {
@@ -60,6 +62,7 @@ export interface AnswerChanges {
 }
 
 export interface UndoPlan {
+  readonly answers: number;
   /** Each file to restore. A null source: the file did not exist, so the undo deletes it. */
   readonly restore: readonly { readonly path: string; readonly source: string | null }[];
   readonly changed: readonly string[];
@@ -157,6 +160,7 @@ export function planUndo(answers: readonly AnswerChanges[], current: ReadonlyMap
   const notKept = [...leftOut];
   const byPath = (left: string, right: string): number => left.localeCompare(right);
   return {
+    answers: answers.length,
     restore: restore.sort((left, right) => byPath(left.path, right.path)),
     changed: changed.sort(byPath),
     notKept: notKept.sort(byPath),
@@ -165,5 +169,10 @@ export function planUndo(answers: readonly AnswerChanges[], current: ReadonlyMap
 
 /** The paths of a plan, for the question in the web app. */
 export function previewOf(plan: UndoPlan): UndoPreview {
-  return { restore: plan.restore.map((entry) => entry.path), changed: plan.changed, notKept: plan.notKept };
+  return {
+    restore: plan.restore.map((entry) => entry.path),
+    changed: plan.changed,
+    notKept: plan.notKept,
+    answers: plan.answers,
+  };
 }

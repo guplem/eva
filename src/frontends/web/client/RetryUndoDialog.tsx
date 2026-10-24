@@ -3,7 +3,7 @@
  * them (#525). Undo comes first, as the person who retries a bad answer usually wants it.
  */
 import { useState, type ReactElement } from "react";
-import type { RetryUndoPreview } from "./api.ts";
+import type { UndoPreview } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 
@@ -16,7 +16,7 @@ export function RetryUndoDialog({
   onClose,
 }: {
   readonly title: string;
-  readonly preview: RetryUndoPreview;
+  readonly preview: UndoPreview;
   /** Runs the retry, with or without the undo. The dialog closes when it ends. */
   readonly onRetry: (undo: boolean) => Promise<void>;
   readonly onClose: () => void;

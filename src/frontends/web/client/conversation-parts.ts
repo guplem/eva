@@ -202,6 +202,15 @@ export function runningSince(since: number | null, liveRunning: boolean, turnCou
 }
 
 /**
+ * Whether the view still counts the steps of a turn as seen after a send. A send with no running
+ * turn shows the working card until its own turn sends a step. A send during a turn keeps the mark:
+ * the running turn may send no more step, and its end would then leave the card and its clock on.
+ */
+export function sawStepsAfterSend(saw: boolean, turnRuns: boolean): boolean {
+  return turnRuns && saw;
+}
+
+/**
  * The sent messages whose stored turn has not come yet, so the view shows them. The stored turn
  * arrives one render before an effect can clear its message, so the turn count hides it in that render.
  */

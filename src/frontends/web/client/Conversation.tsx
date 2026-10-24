@@ -28,6 +28,7 @@ import {
   stopsFollowing,
   liveFace,
   runningSince,
+  sawStepsAfterSend,
   sentTurnCount,
   type PendingMessage,
 } from "./conversation-parts.ts";
@@ -243,7 +244,7 @@ function Branch({
     if (recording !== undefined) recordings.keep(session.id, message, recording);
     const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
     setSent((current) => [...current, entry]);
-    setSawLiveSteps(false);
+    setSawLiveSteps((saw) => sawStepsAfterSend(saw, turnRuns));
     try {
       await api.send(session.id, message);
       return true;

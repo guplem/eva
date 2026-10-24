@@ -16,6 +16,7 @@ import {
   keptPending,
   restoredText,
   runningSince,
+  sawStepsAfterSend,
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
@@ -236,6 +237,16 @@ describe("runningSince", () => {
 
   test("a message sent in the end gap waits for the turn after the ended one", () => {
     expect(sentTurnCount(2, runningSince(2, false, 2) !== null)).toBe(3);
+  });
+});
+
+describe("sawStepsAfterSend", () => {
+  test("a send with no running turn waits for the steps of its own turn", () => {
+    expect(sawStepsAfterSend(true, false)).toBe(false);
+  });
+
+  test("a send during a turn keeps the mark, so the next turn does not take the running turn's clock", () => {
+    expect(sawStepsAfterSend(true, true)).toBe(true);
   });
 });
 

@@ -107,9 +107,11 @@ export async function readyToPush(
     throw new EvaError("git_failed", `${clone.name} is in the middle of a ${operation}. End it in a chat, then push.`);
   }
   // Before any commit, so a clone on no branch gets no commit that Eva cannot push.
-  const branch = await git(clone, runner, environment, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (branch.exitCode !== 0 || branch.stdout.trim() === "HEAD")
-    throw new EvaError("git_failed", `${clone.name} is on no branch, so Eva cannot push it.`);
+  // `symbolic-ref` also names an unborn branch, as in a clone of an empty remote, where `rev-parse` fails.
+  const branch = await git(clone, runner, environment, ["symbolic-ref", "-q", "--short", "HEAD"]);
+  if (branch.exitCode === 1) throw new EvaError("git_failed", `${clone.name} is on no branch, so Eva cannot push it.`);
+  if (branch.exitCode !== 0)
+    throw new EvaError("git_failed", `Could not read ${clone.name}: ${failureReason(branch, "git")}`);
   return { files: entries.map((entry) => entry.path), branch: branch.stdout.trim() };
 }
 

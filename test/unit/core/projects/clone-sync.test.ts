@@ -197,6 +197,22 @@ describe("commit and push", () => {
     expect(sandbox.git(clone.path, "rev-parse", "HEAD")).toBe(before);
   });
 
+  test("a clone of an empty remote commits and pushes its first commit", async () => {
+    const empty = join(sandbox.root, "empty.git");
+    sandbox.git(sandbox.root, "init", "-q", "--bare", empty);
+    const first = await createClone({
+      projectPath: join(sandbox.root, "vault", "Projects", "2025-03-02-1015-example-app"),
+      repositoryUrl: empty,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    sandbox.write(first.path, "README.md", "# First\n");
+    await commitAndPush(first, "First commit", systemProcessRunner, gitEnvironment);
+    const branch = sandbox.git(first.path, "symbolic-ref", "--short", "HEAD");
+    expect(sandbox.git(empty, "log", "-1", "--format=%s", branch)).toBe("First commit");
+  });
+
   test("a clone on no branch is refused before the commit", async () => {
     sandbox.git(clone.path, "checkout", "-q", "--detach");
     sandbox.write(clone.path, "new.txt", "new\n");

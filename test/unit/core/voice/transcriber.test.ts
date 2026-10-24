@@ -130,6 +130,15 @@ describe("createTranscriber (lessons 71, 123)", () => {
     }
   });
 
+  test("a note removes the audio that an earlier note could not delete, and nothing else", async () => {
+    fs.mkdirSync(join(folder, "voice-old"));
+    fs.writeFileSync(join(folder, "voice-old", "note.ogg"), "audio");
+    fs.writeFileSync(join(folder, "sessions.json"), "{}");
+    const { runner } = fakeRunner(() => ok());
+    await createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder })(new Uint8Array([1]));
+    expect(readdirSync(folder)).toEqual(["sessions.json"]);
+  });
+
   test("a whisper-cli that lacks a system library says which one, and how to add it", async () => {
     const { runner } = fakeRunner((command) =>
       command[0] === "whisper-cli"

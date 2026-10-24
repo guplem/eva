@@ -4,9 +4,10 @@
  * binary transcribes it. One note runs at a time.
  *
  * Lesson 123 keeps audio in memory only. whisper.cpp reads a file, so the audio lives in a
- * private temporary folder for the run and is deleted right after, even on a failure.
+ * private temporary folder for the run and is deleted right after, even on a failure. A folder
+ * that Windows still holds is deleted at the start of the next note.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { missingLibraryHelp } from "../engine-install/voice-install.ts";
@@ -50,6 +51,7 @@ async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): P
   const { tools, runner, environment } = options;
   // A new instance has no state folder until it saves its first file.
   mkdirSync(options.temporaryRoot, { recursive: true });
+  removeLeftAudio(options.temporaryRoot);
   const folder = mkdtempSync(join(options.temporaryRoot, "voice-"));
   try {
     const input = join(folder, "note.ogg");
@@ -92,8 +94,19 @@ function removeFolder(folder: string): void {
   try {
     rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   } catch {
-    // A folder that stays is in this instance's private folder, and the next note does not use it.
+    // The next note deletes the folder (removeLeftAudio), so the audio does not stay for good.
   }
+}
+
+/** One note runs at a time, so every voice folder that exists now is left from an earlier note. */
+function removeLeftAudio(root: string): void {
+  let names: string[];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return;
+  }
+  for (const name of names) if (name.startsWith("voice-")) removeFolder(join(root, name));
 }
 
 /** The program's own last line says why it failed, so the person can act without a terminal. */

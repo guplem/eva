@@ -305,10 +305,19 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   useEffect(() => {
     if (authenticated !== true) return undefined;
     const onVisible = (): void => {
-      if (document.visibilityState === "visible") void recover();
+      if (document.visibilityState !== "visible") return;
+      void recover();
+      // A phone that woke has a dead socket, or one that hangs while it opens: do not wait for the timed try.
+      events.current?.retryNow();
     };
+    // The network came back, such as after flight mode or a change of Wi-Fi.
+    const onOnline = (): void => events.current?.retryNow();
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
   }, [authenticated, recover]);
 
   useEffect(() => (authenticated === true ? startPushPresence(browserPresencePage()) : undefined), [authenticated]);

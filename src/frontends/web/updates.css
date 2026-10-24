@@ -206,8 +206,8 @@ label.version-row {
   .update-changes summary {
     /* A list item keeps the arrow that a flex box drops. */
     display: list-item;
-    min-height: 44px;
-    line-height: 44px;
+    min-height: var(--touch-target);
+    line-height: var(--touch-target);
   }
 
   /* The sheet scrolls already. A second scroll area inside it traps a finger. */

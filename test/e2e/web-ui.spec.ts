@@ -1678,6 +1678,23 @@ test("Settings: in compact density on a narrow phone, the tab bar fits and butto
   expect(edit?.width ?? 0).toBeGreaterThan(edit?.height ?? 0);
 });
 
+test("Settings: compact density makes the phone buttons shorter, but keeps a finger's target", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await openSettings(page, "Personalize");
+  const heights = (): Promise<number[]> =>
+    page
+      .locator("main button:visible")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+  const comfortable = await page.getByRole("button", { name: "Restart Eva" }).boundingBox();
+  expect(comfortable?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await page.getByRole("group", { name: "Density" }).getByRole("button", { name: "Compact" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  const compact = await page.getByRole("button", { name: "Restart Eva" }).boundingBox();
+  expect(compact?.height ?? 0).toBeLessThan(44);
+  expect(Math.min(...(await heights()))).toBeGreaterThanOrEqual(36);
+});
+
 test("Settings: a seed colour changes the whole palette and stays in this browser", async ({ page }) => {
   await logIn(page);
   const accent = (): Promise<string> =>

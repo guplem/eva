@@ -898,8 +898,8 @@ button.ghost .icon {
   }
 
   .branch-switcher .icon-button {
-    min-width: 44px;
-    height: 44px;
+    min-width: var(--touch-target);
+    height: var(--touch-target);
   }
 
   /* The reference hides the visor on a phone, so the cards get the whole width. */
@@ -968,18 +968,18 @@ button.ghost .icon {
   }
 
   .send {
-    width: 44px;
-    height: 44px;
+    width: var(--touch-target);
+    height: var(--touch-target);
   }
 
   .composer .chip {
-    min-height: 44px;
+    min-height: var(--touch-target);
     padding: 4px 14px;
   }
 
   /* Each step opens its dialog, so a finger needs a full target. */
   .step-row {
-    min-height: 44px;
+    min-height: var(--touch-target);
   }
 }
 

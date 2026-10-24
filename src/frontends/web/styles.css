@@ -1653,27 +1653,27 @@ textarea {
     animation: fade-in 180ms ease-out;
   }
 
-  /* A finger needs a target of 44 px or more. */
+  /* A finger needs a target of --touch-target or more. */
   button,
   select,
   input {
-    min-height: 44px;
+    min-height: var(--touch-target);
   }
 
   .link-list a,
   a.button-link {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    min-height: var(--touch-target);
   }
 
   .icon-button {
-    min-width: 44px;
+    min-width: var(--touch-target);
   }
 
   .seed-swatch {
-    width: 44px;
-    height: 44px;
+    width: var(--touch-target);
+    height: var(--touch-target);
   }
 
   .menu-button {
@@ -1739,6 +1739,8 @@ textarea {
   --text-md: 15px;
   --text-lg: 18px;
   --text-xl: 24px;
+  /* The smallest side of a phone button, so a finger hits it. */
+  --touch-target: 44px;
 }
 
 :root[data-density="compact"] {
@@ -1746,8 +1748,10 @@ textarea {
   --space-4: 12px;
   --space-5: 14px;
   --space-6: 18px;
-  /* The sides stay: a phone button is 44 px tall at least, so narrow sides make a short label a circle. */
+  /* The sides stay: a phone button keeps its touch target, so narrow sides make a short label a circle. */
   --button-padding: 3px 12px;
+  /* The person picked compact to fit more on a small screen. 36 px is still far above the 24 px of WCAG 2.2 AA. */
+  --touch-target: 36px;
 }
 
 /* An icon sits beside the words of its button. */
@@ -2725,7 +2729,7 @@ button.link-button {
 
   .back-button {
     display: inline-flex;
-    min-width: 44px;
+    min-width: var(--touch-target);
   }
 
   .settings-header {
@@ -2758,8 +2762,8 @@ button.link-button {
   }
 
   .stepper-dot {
-    width: 44px;
-    height: 44px;
+    width: var(--touch-target);
+    height: var(--touch-target);
   }
 }
 

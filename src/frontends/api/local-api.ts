@@ -963,6 +963,12 @@ async function scheduleCardsRoute(
   return json({ error: "Not found." }, 404);
 }
 
+/** The path of a request for the log, without the id of a device login: that id lets a browser in. */
+export function loggedPath(pathname: string): string {
+  const devicePrefix = "/api/login/device/";
+  return pathname.startsWith(devicePrefix) ? `${devicePrefix}…` : pathname;
+}
+
 /** An EvaError message can hold a value from the request or from git, so it is redacted first (lesson 95). */
 function errorResponse(error: unknown, request: Request, options: LocalApiOptions): Response {
   const eva = options.eva;
@@ -971,8 +977,9 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return json({ error: "The request body is invalid." }, 400);
   if (!isEvaError(error)) {
-    // A bug: the answer stays generic, so only the log, which `/logs` shows on the phone, can say where it failed.
-    options.logger?.log("error", `A request failed: ${request.method} ${new URL(request.url).pathname}`, {
+    // A bug: the answer stays generic. `/logs` shows the route and the first line of the reason on
+    // the phone; the log file keeps the whole stack.
+    options.logger?.log("error", `A request failed: ${request.method} ${loggedPath(new URL(request.url).pathname)}`, {
       reason: eva.redact(error instanceof Error ? (error.stack ?? error.message) : String(error)),
     });
     return json({ error: "Eva failed to handle the request." }, 500);

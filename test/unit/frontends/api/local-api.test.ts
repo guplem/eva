@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import type { DeviceLoginEvent, DeviceLoginRequest } from "../../../../src/core/remote-access/device-logins.ts";
 import { defaultConfig, homePaths, loadSecrets } from "../../../../src/core/settings/home.ts";
-import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
+import { loggedPath, startLocalApi, type LocalApi } from "../../../../src/frontends/api/local-api.ts";
 import { recentTurnsWithSteps } from "../../../../src/frontends/api/session-list.ts";
 import type { SessionEvent } from "../../../../src/shared/events.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -1877,6 +1877,14 @@ describe("without a vault", () => {
     } finally {
       bareApi.stop();
     }
+  });
+});
+
+describe("loggedPath", () => {
+  test("keeps the route, and leaves out the id of a device login, which lets a browser in", () => {
+    expect(loggedPath("/api/settings/setup")).toBe("/api/settings/setup");
+    expect(loggedPath("/api/login/device/secret-id")).toBe("/api/login/device/…");
+    expect(loggedPath("/api/login/device")).toBe("/api/login/device");
   });
 });
 

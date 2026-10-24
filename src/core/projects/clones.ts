@@ -113,7 +113,10 @@ export async function createClone(options: CreateCloneOptions): Promise<Clone> {
   if (options.repositoryUrls.length === 0)
     throw new EvaError("project_invalid", "The project lists no repository to clone.");
   for (const url of options.repositoryUrls) checkRepositoryUrl(url);
-  const names = options.repositoryUrls.map(repositoryName);
+  // Windows folder names ignore case, so `App` and `app` would share one folder there.
+  const names = options.repositoryUrls.map((url) =>
+    process.platform === "win32" ? repositoryName(url).toLowerCase() : repositoryName(url),
+  );
   const twice = names.find((name, index) => names.indexOf(name) !== index);
   if (twice !== undefined)
     throw new EvaError("project_invalid", `Two repositories of the project have the same name: ${twice}.`);

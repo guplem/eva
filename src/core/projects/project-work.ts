@@ -34,10 +34,11 @@ import {
   describeChanges,
   fallbackCommitMessage,
   fetchClone,
+  fetchDefaultBranch,
   hasLocalWork,
   pullClone,
   readSyncState,
-  resetToDefaultBranch,
+  switchToBranch,
 } from "./clone-sync.ts";
 import type { Project } from "./project-catalog.ts";
 import {
@@ -548,29 +549,14 @@ export class ProjectWork {
   private async reuse(project: Project, clone: Clone): Promise<Clone | null> {
     const sessions = this.options.sessions;
     const isQuiet = (): boolean =>
-      !this.reservedClones.has(clone.path) &&
-      !this.isSyncing(clone) &&
-      !this.chatsIn(clone).some((chat) => sessions.isActive(chat.id));
-    if (!isQuiet() || (await this.holdsLocalWork(clone))) return null;
-    const open = this.chatsIn(clone).filter((chat) => !chat.closed);
-    if (open.length > 0) {
-      if (!(await this.hasFinished(open))) return null;
-      // The model call takes seconds: a turn or a new fork may have started meanwhile.
-      const stillOpen = this.chatsIn(clone).filter((chat) => !chat.closed);
-      if (!isQuiet() || stillOpen.some((chat) => !open.includes(chat))) return null;
-      for (const chat of open) sessions.close(chat.id);
-    }
+      !this.isSyncing(clone) && !this.chatsIn(clone).some((chat) => sessions.isActive(chat.id));
+    if (this.reservedClones.has(clone.path) || !isQuiet()) return null;
+    // From the first check on, so no pull, push or delete runs git in the clone at the same time.
     this.reservedClones.add(clone.path);
     try {
-      const { runner, gitEnvironment, cloneOrigins } = this.options;
-      for (const repository of clone.repositories) await resetToDefaultBranch(repository, runner, gitEnvironment);
-      const present = new Set(clone.repositories.map((repository) => repository.name));
-      for (const url of project.frontMatter.repos) {
-        if (present.has(repositoryName(url))) continue;
-        await cloneRepository(clone.path, url, { runner, environment: gitEnvironment, origins: cloneOrigins });
-      }
+      return await this.prepareForReuse(project, clone, isQuiet);
     } catch (error) {
-      // The chat stays closed, and a later choice tries the reset again.
+      // The chat stays as it was, or closed when only the last local step failed. A later choice tries again.
       if (!isEvaError(error)) throw error;
       this.options.logger?.log("warn", `Eva could not prepare ${clone.name} for a new chat: ${error.message}`, {
         project: project.id,
@@ -579,22 +565,58 @@ export class ProjectWork {
     } finally {
       this.reservedClones.delete(clone.path);
     }
-    return listClones(project.path).find((candidate) => candidate.path === clone.path) ?? null;
+  }
+
+  /** Call it only from `reuse`, which reserves the clone. */
+  private async prepareForReuse(project: Project, clone: Clone, isQuiet: () => boolean): Promise<Clone | null> {
+    const sessions = this.options.sessions;
+    const openChats = (): SessionRecord[] => this.chatsIn(clone).filter((chat) => !chat.closed);
+    // The ids and turn counts, so a later check sees a new fork or a turn that came and went.
+    const stateOf = (chats: readonly SessionRecord[]): string =>
+      chats
+        .map((chat) => `${chat.id}:${String(chat.turns.length)}`)
+        .sort()
+        .join(" ");
+    if (await this.holdsLocalWork(clone)) return null;
+    const open = openChats();
+    const before = stateOf(open);
+    if (open.length > 0 && !(await this.hasFinished(open))) return null;
+    // The network steps go first: when one fails, the chat stays open and nothing changed.
+    const { runner, gitEnvironment, cloneOrigins } = this.options;
+    const branches = new Map<string, string>();
+    for (const repository of clone.repositories)
+      branches.set(repository.path, await fetchDefaultBranch(repository, runner, gitEnvironment));
+    const present = new Set(clone.repositories.map((repository) => folderKey(repository.name)));
+    for (const url of project.frontMatter.repos) {
+      if (present.has(folderKey(repositoryName(url)))) continue;
+      await cloneRepository(clone.path, url, { runner, environment: gitEnvironment, origins: cloneOrigins });
+    }
+    const current = listClones(project.path).find((candidate) => candidate.path === clone.path);
+    if (current === undefined) return null;
+    // The model call and the network take seconds: a turn, a fork or a commit may have come meanwhile.
+    if (!isQuiet() || stateOf(openChats()) !== before || (await this.holdsLocalWork(current))) return null;
+    for (const chat of open) sessions.close(chat.id);
+    for (const repository of clone.repositories) {
+      const branch = branches.get(repository.path);
+      if (branch !== undefined) await switchToBranch(repository, branch, runner, gitEnvironment);
+    }
+    return current;
   }
 
   /**
    * True when the clone holds anything that is not on a remote. A file in the clone folder itself,
-   * outside every repository, is in no repository, so it counts too.
+   * outside every repository, is in no repository, so it counts too. A file that the operating system
+   * writes, such as `desktop.ini`, holds no work.
    */
   private async holdsLocalWork(clone: Clone): Promise<boolean> {
-    const repositoryNames = new Set(clone.repositories.map((repository) => repository.name));
+    const repositoryNames = new Set([...clone.repositories.map((repository) => repository.name), ...systemFiles]);
     let names: string[];
     try {
       names = readdirSync(clone.path);
     } catch {
       return true;
     }
-    if (names.some((name) => !repositoryNames.has(name))) return true;
+    if (names.some((name) => !repositoryNames.has(name) && !repositoryNames.has(folderKey(name)))) return true;
     const { runner, gitEnvironment } = this.options;
     const work = await Promise.all(
       clone.repositories.map((repository) => hasLocalWork(repository, runner, gitEnvironment)),
@@ -706,4 +728,12 @@ function chatText(chat: SessionRecord): string {
       return `Person: ${keepEnd(turn.userText)}\nAgent: ${keepEnd(answer)}`;
     })
     .join("\n\n");
+}
+
+/** Files that the operating system writes in a folder that the person opened. */
+const systemFiles = ["desktop.ini", "thumbs.db", ".DS_Store"];
+
+/** Windows folder names ignore case, so a repository folder matches its URL name in any case there. */
+function folderKey(name: string): string {
+  return process.platform === "win32" ? name.toLowerCase() : name;
 }

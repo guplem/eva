@@ -6,10 +6,11 @@ import {
   describeChanges,
   fallbackCommitMessage,
   fetchClone,
+  fetchDefaultBranch,
   hasLocalWork,
   pullClone,
   readSyncState,
-  resetToDefaultBranch,
+  switchToBranch,
 } from "../../../../src/core/projects/clone-sync.ts";
 import { CloneOriginStore, createClone, type CloneRepository } from "../../../../src/core/projects/clones.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -188,6 +189,12 @@ describe("commit message", () => {
   });
 });
 
+/** The two steps of a reuse: the fetch, then the switch. */
+async function resetToDefault(repository: CloneRepository): Promise<void> {
+  const branch = await fetchDefaultBranch(repository, systemProcessRunner, gitEnvironment);
+  await switchToBranch(repository, branch, systemProcessRunner, gitEnvironment);
+}
+
 describe("reuse (issue 521)", () => {
   test("a fresh repository has no work that only it holds", async () => {
     expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(false);
@@ -237,24 +244,43 @@ describe("reuse (issue 521)", () => {
     mkdirSync(join(clone.path, "node_modules"));
     writeFileSync(join(clone.path, "node_modules", "kept.js"), "kept\n");
     commitElsewhere("remote.txt");
-    await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment);
+    await resetToDefault(clone);
     expect(sandbox.git(clone.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(sandbox.git(clone.path, "log", "-1", "--format=%s")).toBe("add remote.txt");
     expect(existsSync(join(clone.path, "feature.txt"))).toBe(false);
     expect(existsSync(join(clone.path, "node_modules", "kept.js"))).toBe(true);
+    // The feature branch is on the remote, so its local copy goes.
+    expect(sandbox.git(clone.path, "branch", "--format=%(refname:short)")).toBe("main");
   });
 
   test("a reset finds the default branch when the clone does not know it", async () => {
     sandbox.git(clone.path, "remote", "set-head", "origin", "--delete");
-    await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment);
+    await resetToDefault(clone);
     expect(sandbox.git(clone.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+  });
+
+  test("a reset follows a default branch that the remote renamed", async () => {
+    sandbox.git(sandbox.remote, "branch", "-m", "main", "trunk");
+    sandbox.git(sandbox.remote, "symbolic-ref", "HEAD", "refs/heads/trunk");
+    await resetToDefault(clone);
+    expect(sandbox.git(clone.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("trunk");
+  });
+
+  test("a switch keeps a local branch with a commit that no remote has", async () => {
+    sandbox.git(clone.path, "checkout", "-q", "-b", "draft");
+    sandbox.write(clone.path, "draft.txt", "draft\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "draft");
+    await switchToBranch(clone, "main", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(clone.path, "branch", "--format=%(refname:short)").split("\n").sort()).toEqual([
+      "draft",
+      "main",
+    ]);
   });
 
   test("a reset that cannot reach the remote fails with git's reason", async () => {
     sandbox.git(clone.path, "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
-    const error: unknown = await resetToDefaultBranch(clone, systemProcessRunner, gitEnvironment).catch(
-      (caught: unknown) => caught,
-    );
+    const error: unknown = await resetToDefault(clone).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
   });
 });

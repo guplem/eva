@@ -880,6 +880,15 @@ describe("Eva", () => {
       expect(instance.sessions.get(first.id).closed).toBe(true);
     });
 
+    test("a fetch that fails keeps the chat open, and the new chat gets a new clone", async () => {
+      const instance = start(finishingEngine());
+      const first = await newChat(instance);
+      await instance.sessions.send(first.id, "fix it");
+      sandbox.git(join(first.startFolder, "remote"), "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
+      expect((await newChat(instance)).clone).toBe("clone-1");
+      expect(instance.sessions.get(first.id).closed).toBe(false);
+    });
+
     test("a named clone with an open chat is refused, and one with a closed chat is not", async () => {
       const instance = start(finishingEngine());
       const first = await newChat(instance);

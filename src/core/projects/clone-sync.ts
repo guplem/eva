@@ -128,38 +128,41 @@ export async function hasLocalWork(
 }
 
 /**
- * Puts the repository on its default branch, as the remote has it now, for a new chat. Call it only
- * when `hasLocalWork` is false: the old branch stays on the remote. Ignored files, such as the
- * installed dependencies, stay.
+ * Fetches the repository and gives the name of its default branch, as the remote has it now. This is
+ * the network part of a reuse, so a failure here changes nothing in the repository.
  */
-export async function resetToDefaultBranch(
+export async function fetchDefaultBranch(
   repository: CloneRepository,
   runner: ProcessRunner,
   environment: Environment,
+): Promise<string> {
+  const network = (arguments_: readonly string[]): ReturnType<ProcessRunner["run"]> =>
+    git(repository, runner, environment, [...githubCredentialArguments, ...noHooks(), ...arguments_], networkTimeoutMs);
+  const fetched = await network(["fetch", "-q", "--no-tags", "origin"]);
+  if (fetched.exitCode !== 0)
+    throw new EvaError("git_failed", `Could not fetch ${repository.name}: ${failureReason(fetched, "git")}`);
+  // The clone kept the default branch of its first day. The remote may have renamed it since.
+  // Without the network answer, the branch that the clone knows still serves.
+  await network(["remote", "set-head", "origin", "--auto"]);
+  const head = await git(repository, runner, environment, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  const name = head.stdout.trim();
+  if (head.exitCode !== 0 || !name.startsWith("origin/"))
+    throw new EvaError("git_failed", `Could not find the default branch of ${repository.name}.`);
+  return name.slice("origin/".length);
+}
+
+/**
+ * Puts the repository on the branch, as the last fetch saw it on the remote, for a new chat. Call it
+ * only when `hasLocalWork` is false. Ignored files, such as the installed dependencies, stay. Each
+ * other local branch whose commits are all on the remote goes: after a squash merge and a prune, its
+ * commits would look unpushed and keep the clone from the next reuse.
+ */
+export async function switchToBranch(
+  repository: CloneRepository,
+  branch: string,
+  runner: ProcessRunner,
+  environment: Environment,
 ): Promise<void> {
-  const network = async (arguments_: readonly string[], what: string): Promise<void> => {
-    const result = await git(
-      repository,
-      runner,
-      environment,
-      [...githubCredentialArguments, ...noHooks(), ...arguments_],
-      networkTimeoutMs,
-    );
-    if (result.exitCode !== 0)
-      throw new EvaError("git_failed", `Could not ${what} ${repository.name}: ${failureReason(result, "git")}`);
-  };
-  await network(["fetch", "-q", "--no-tags", "origin"], "fetch");
-  const readDefault = async (): Promise<string | null> => {
-    const result = await git(repository, runner, environment, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
-    const name = result.stdout.trim();
-    return result.exitCode === 0 && name.startsWith("origin/") ? name.slice("origin/".length) : null;
-  };
-  let branch = await readDefault();
-  if (branch === null) {
-    await network(["remote", "set-head", "origin", "--auto"], "find the default branch of");
-    branch = await readDefault();
-  }
-  if (branch === null) throw new EvaError("git_failed", `Could not find the default branch of ${repository.name}.`);
   await mustRun(
     repository,
     runner,
@@ -167,6 +170,14 @@ export async function resetToDefaultBranch(
     [...noHooks(), "checkout", "-q", "-B", branch, `origin/${branch}`],
     "switch to the default branch of",
   );
+  const listed = await git(repository, runner, environment, ["branch", "--format=%(refname:short)"]);
+  if (listed.exitCode !== 0) return;
+  for (const other of listed.stdout.split("\n").map((line) => line.trim())) {
+    if (other === "" || other === branch) continue;
+    const unpushed = await git(repository, runner, environment, ["rev-list", "--count", other, "--not", "--remotes"]);
+    if (unpushed.exitCode === 0 && unpushed.stdout.trim() === "0")
+      await git(repository, runner, environment, ["branch", "-q", "-D", other]);
+  }
 }
 /**
  * Commits every change with the message, then pushes the branch to the branch of the same name on

@@ -19,6 +19,29 @@ export type ToolCategory = "command" | "tool";
 /** A usage window of a subscription. `other` is a window that Eva does not know yet. */
 export type UsageWindow = "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage" | "other";
 
+/** A multiple-choice question of the model to the person, such as Claude Code's AskUserQuestion. */
+export interface ApprovalQuestion {
+  readonly question: string;
+  /** A short label for a chip, such as "Format". */
+  readonly header: string;
+  readonly options: readonly { readonly label: string; readonly description: string }[];
+  /** True when the person may pick more than one option. */
+  readonly multiSelect: boolean;
+}
+
+/**
+ * The person's answer to one question: the indexes of the picked options, or the person's own text.
+ * Indexes, not labels: the front ends see redacted labels, and the model must get the original ones.
+ */
+export interface QuestionAnswer {
+  readonly selected: readonly number[];
+  /** The person's own text. It wins over the selected options. */
+  readonly other?: string;
+}
+
+/** One answer for each question, in the same order. */
+export type QuestionAnswers = readonly QuestionAnswer[];
+
 export type EngineEventPayload =
   | { readonly kind: "text"; readonly text: string; readonly messageId: string }
   /**
@@ -56,6 +79,8 @@ export type EngineEventPayload =
       readonly requestId: string;
       readonly toolName: string;
       readonly summary: string;
+      /** The model's questions: the person answers them, and allows or denies nothing. An older Eva sends none. */
+      readonly questions?: readonly ApprovalQuestion[];
     }
   /** The first answer to an approval won; every other front end closes its question. */
   | {
@@ -64,6 +89,8 @@ export type EngineEventPayload =
       readonly answer: "allow" | "deny";
       /** True when nobody answered in time and the core denied it. */
       readonly timedOut: boolean;
+      /** The person's answers to the questions, so every front end shows them. */
+      readonly answers?: QuestionAnswers;
     }
   | { readonly kind: "history_lost" }
   /**

@@ -10,15 +10,18 @@ import type {
   EnginePort,
   McpServerSpec,
   ModelAlias,
+  QuestionsOutcome,
   SessionMode,
   TurnHistory,
 } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import {
   isTurnEnd,
+  type ApprovalQuestion,
   type CoreEventPayload,
   type EngineEventPayload,
   type MessageOrigin,
+  type QuestionAnswers,
   type SessionEvent,
   type TaskState,
 } from "../../shared/events.ts";
@@ -125,7 +128,12 @@ export interface PendingApproval {
   readonly sessionId: string;
   readonly toolName: string;
   readonly summary: string;
+  /** The model's questions, also redacted. The person answers them, and allows or denies nothing. */
+  readonly questions?: readonly ApprovalQuestion[];
 }
+
+/** How an approval ends: the person's answer, the answers to its questions, or no answer in time. */
+type ApprovalOutcome = PrepareAnswer | { readonly answers: QuestionAnswers };
 
 /** A background task of a running turn, in its last state. The description is already redacted. */
 export interface BackgroundTask {
@@ -215,7 +223,7 @@ export class SessionManager {
   private readonly runtimes = new Map<string, SessionRuntime>();
   private readonly approvals = new Map<
     string,
-    { readonly question: PendingApproval; readonly resolve: (answer: PrepareAnswer) => void }
+    { readonly question: PendingApproval; readonly resolve: (outcome: ApprovalOutcome) => void }
   >();
   /**
    * The tasks of each running turn, by session id and task id. A task cannot outlive its turn.
@@ -623,22 +631,43 @@ export class SessionManager {
     });
   }
 
-  answerApproval(requestId: string, answer: ApprovalAnswer): void {
-    this.resolveApproval(requestId, answer);
+  /**
+   * The first answer wins. An approval with questions takes "deny" as a skip, and "allow" only with
+   * one fitting answer for each question: a plain "allow" would give the model no answers (issue #544).
+   */
+  answerApproval(requestId: string, answer: ApprovalAnswer, answers?: QuestionAnswers): void {
+    const pending = this.approvals.get(requestId);
+    if (pending === undefined) return;
+    const questions = pending.question.questions;
+    if (questions === undefined) {
+      if (answers !== undefined) throw new EvaError("approval_invalid", "This approval has no questions to answer.");
+      this.resolveApproval(requestId, answer);
+      return;
+    }
+    if (answer === "deny") {
+      this.resolveApproval(requestId, "deny");
+      return;
+    }
+    if (answers === undefined || !answersFit(questions, answers)) {
+      throw new EvaError("approval_invalid", "Answer each question with one of its options or your own text.");
+    }
+    this.resolveApproval(requestId, { answers });
   }
 
   /** Front ends see an expired question as denied; only the asker learns that it expired. */
-  private resolveApproval(requestId: string, answer: PrepareAnswer): void {
+  private resolveApproval(requestId: string, outcome: ApprovalOutcome): void {
     const pending = this.approvals.get(requestId);
     if (pending === undefined) return;
     this.approvals.delete(requestId);
-    pending.resolve(answer);
+    pending.resolve(outcome);
+    const answered = typeof outcome === "object";
     this.emit(pending.question.sessionId, {
       kind: "approval_resolved",
       requestId,
-      answer: answer === "expired" ? "deny" : answer,
+      answer: answered ? "allow" : outcome === "expired" ? "deny" : outcome,
       // Nobody answered: the time ran out, or the turn stopped.
-      timedOut: answer === "expired",
+      timedOut: outcome === "expired",
+      ...(answered ? { answers: outcome.answers } : {}),
     });
   }
 
@@ -822,7 +851,11 @@ export class SessionManager {
       }, this.options.turnTimeoutMs);
       if (engine === undefined) throw new EvaError("engine_failed", `The engine ${session.engine} is not available.`);
       const prepared = await preparer.prepare(session, {
-        ask: (question, detail) => this.requestApproval(sessionId, question, detail, controller.signal),
+        ask: async (question, detail) => {
+          const outcome = await this.requestApproval(sessionId, question, detail, null, controller.signal);
+          // A mode's question has no questions of the model, so it never ends with answers.
+          return typeof outcome === "object" ? "allow" : outcome;
+        },
       });
       if (controller.signal.aborted) {
         // A stop of the person wins: after a time-out alone, nobody pressed Stop, so the reason must not say so.
@@ -855,9 +888,16 @@ ${prompt}`,
         trusted: prepared.trusted,
         environment: prepared.environment,
         requestApproval: async (request) =>
-          (await this.requestApproval(sessionId, request.toolName, request.summary, controller.signal)) === "allow"
+          (await this.requestApproval(sessionId, request.toolName, request.summary, null, controller.signal)) ===
+          "allow"
             ? "allow"
             : "deny",
+        askQuestions: async (toolName, questions): Promise<QuestionsOutcome> => {
+          const summary = questions[0]?.question ?? toolName;
+          const outcome = await this.requestApproval(sessionId, toolName, summary, questions, controller.signal);
+          if (typeof outcome === "object") return outcome.answers;
+          return outcome === "deny" ? "declined" : "expired";
+        },
         signal: controller.signal,
       });
       for await (const raw of stream) {
@@ -1113,23 +1153,37 @@ ${prompt}`,
     sessionId: string,
     toolName: string,
     summary: string,
+    questions: readonly ApprovalQuestion[] | null,
     signal: AbortSignal,
-  ): Promise<PrepareAnswer> {
+  ): Promise<ApprovalOutcome> {
     // The stop already expired the open questions, so a later one would wait for nobody.
     if (signal.aborted) return Promise.resolve("expired");
     const requestId = this.options.newId();
-    return new Promise<PrepareAnswer>((resolve) => {
+    const redactor = this.options.redactor;
+    return new Promise<ApprovalOutcome>((resolve) => {
       const timer = setTimeout(() => {
         this.resolveApproval(requestId, "expired");
       }, this.options.approvalTimeoutMs);
       this.approvals.set(requestId, {
-        question: { requestId, sessionId, toolName, summary: this.options.redactor.redact(summary) },
-        resolve: (answer) => {
+        question: {
+          requestId,
+          sessionId,
+          toolName,
+          summary: redactor.redact(summary),
+          ...(questions === null ? {} : { questions: redactedQuestions(questions, redactor) }),
+        },
+        resolve: (outcome) => {
           clearTimeout(timer);
-          resolve(answer);
+          resolve(outcome);
         },
       });
-      this.emit(sessionId, { kind: "approval_needed", requestId, toolName, summary });
+      this.emit(sessionId, {
+        kind: "approval_needed",
+        requestId,
+        toolName,
+        summary,
+        ...(questions === null ? {} : { questions }),
+      });
     });
   }
 
@@ -1189,6 +1243,33 @@ function cutTitle(title: string): string {
   return characters.length > titleLength ? `${characters.slice(0, titleLength - 1).join("")}…` : title;
 }
 
+function redactedQuestions(questions: readonly ApprovalQuestion[], redactor: Redactor): ApprovalQuestion[] {
+  return questions.map((question) => ({
+    ...question,
+    question: redactor.redact(question.question),
+    header: redactor.redact(question.header),
+    options: question.options.map((option) => ({
+      label: redactor.redact(option.label),
+      description: redactor.redact(option.description),
+    })),
+  }));
+}
+
+/** One answer for each question: own text, or options in range, and only one for a single-choice question. */
+function answersFit(questions: readonly ApprovalQuestion[], answers: QuestionAnswers): boolean {
+  return (
+    answers.length === questions.length &&
+    answers.every((answer, index) => {
+      const question = questions[index];
+      if (question === undefined) return false;
+      if ((answer.other?.trim() ?? "") !== "") return true;
+      const { selected } = answer;
+      if (selected.length === 0 || (!question.multiSelect && selected.length > 1)) return false;
+      return selected.every((option) => Number.isInteger(option) && option >= 0 && option < question.options.length);
+    })
+  );
+}
+
 function redactPayload(payload: EngineEventPayload, redactor: Redactor): EngineEventPayload;
 function redactPayload(
   payload: EngineEventPayload | CoreEventPayload,
@@ -1217,8 +1298,25 @@ function redactPayload(
           : { input: boundedDetail(redactedJsonText(input, (text) => redactor.redact(text))) }),
       };
     }
-    case "approval_needed":
-      return { ...payload, summary: redactor.redact(payload.summary) };
+    case "approval_needed": {
+      const { questions } = payload;
+      return {
+        ...payload,
+        summary: redactor.redact(payload.summary),
+        ...(questions === undefined ? {} : { questions: redactedQuestions(questions, redactor) }),
+      };
+    }
+    case "approval_resolved": {
+      const { answers } = payload;
+      if (answers === undefined) return payload;
+      // The person's own text can hold a secret. The option indexes cannot.
+      return {
+        ...payload,
+        answers: answers.map((answer) =>
+          answer.other === undefined ? answer : { ...answer, other: redactor.redact(answer.other) },
+        ),
+      };
+    }
     case "task_changed":
       return { ...payload, description: redactor.redact(payload.description) };
     case "session_renamed":
@@ -1231,7 +1329,6 @@ function redactPayload(
     }
     case "history_lost":
     case "usage_limit":
-    case "approval_resolved":
     case "turn_finished":
     case "session_deleted":
     case "session_seen":

@@ -95,6 +95,7 @@ export class ModelCalls {
         trusted: false,
         environment: this.options.environment,
         requestApproval: () => Promise.resolve("deny"),
+        askQuestions: () => Promise.resolve("declined"),
         signal: controller.signal,
       });
       events = stream[Symbol.asyncIterator]();

@@ -15,7 +15,14 @@ import type { ApprovalAnswer, EnginePort, TurnRequest } from "../../shared/engin
 import { readTextTolerant } from "../../shared/files.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
-import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
+import type {
+  ApprovalQuestion,
+  EngineEventPayload,
+  QuestionAnswer,
+  TaskState,
+  TurnUsage,
+  UsageWindow,
+} from "../../shared/events.ts";
 import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
 
@@ -52,13 +59,14 @@ const lostHistoryMarker = "No conversation found with session ID";
 
 /**
  * Claude Code's question form. Through the SDK, its answers come only from canUseTool, and an
- * allow with no answers tells the model that the person did not answer (issue #544). Eva has no
- * form, so the model asks in its reply, and every front end, also Telegram, shows the question.
+ * allow with no answers tells the model that the person did not answer (issue #544). So Eva
+ * shows the form herself, in every chat, as a terminal shows it with no permission question.
  */
 const askUserQuestionTool = "AskUserQuestion";
 
+/** For a form that Eva cannot read or that nobody answered: the question then reaches the person as a reply. */
 const askInTextMessage =
-  "Eva cannot show this question form, and the person did not see it. " +
+  "Eva could not show this question form, or nobody answered it in time. " +
   "Ask the same questions in your reply as plain text, with the options in a numbered list. " +
   "Then end your turn and wait for the person's answer in the chat.";
 
@@ -108,7 +116,8 @@ export class ClaudeCodeEngine implements EnginePort {
     const options: Options = {
       ...buildQueryOptions(request, this.options.executable, this.options.permissionMode),
       canUseTool: async (toolName, input) => {
-        if (toolName === askUserQuestionTool) return { behavior: "deny", message: askInTextMessage };
+        // A model call denies every tool, so its questions go to decidePermission and nobody sees them.
+        if (toolName === askUserQuestionTool && request.mode !== "model-call") return answerQuestions(request, input);
         const decision = await decidePermission(request, toolName, input);
         return decision === "allow"
           ? { behavior: "allow", updatedInput: input }
@@ -540,6 +549,65 @@ function addUsage(a: TurnUsage, b: TurnUsage): TurnUsage {
     cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
     cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
   };
+}
+
+type ToolDecision =
+  { behavior: "allow"; updatedInput: Record<string, unknown> } | { behavior: "deny"; message: string };
+
+async function answerQuestions(request: TurnRequest, input: Record<string, unknown>): Promise<ToolDecision> {
+  const questions = readQuestions(input);
+  if (questions === null) return { behavior: "deny", message: askInTextMessage };
+  const outcome = await request.askQuestions(askUserQuestionTool, questions);
+  if (outcome === "declined") return { behavior: "deny", message: "The person chose not to answer these questions." };
+  if (outcome === "expired" || outcome.length !== questions.length)
+    return { behavior: "deny", message: askInTextMessage };
+  const answers: Record<string, string> = {};
+  for (const [index, question] of questions.entries()) {
+    const text = answerText(question, outcome[index]);
+    if (text === null) return { behavior: "deny", message: askInTextMessage };
+    answers[question.question] = text;
+  }
+  return { behavior: "allow", updatedInput: { ...input, answers } };
+}
+
+/** Null for an input that Eva cannot show as a form. Eva keeps only the fields that she shows. */
+function readQuestions(input: Record<string, unknown>): ApprovalQuestion[] | null {
+  const raw = input["questions"];
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const questions: ApprovalQuestion[] = [];
+  for (const entry of raw as unknown[]) {
+    const question = recordOf(entry);
+    const options = question["options"];
+    if (typeof question["question"] !== "string" || !Array.isArray(options) || options.length === 0) return null;
+    const read = (options as unknown[]).map((option) => {
+      const fields = recordOf(option);
+      return { label: fields["label"], description: fields["description"] ?? "" };
+    });
+    if (read.some((option) => typeof option.label !== "string" || typeof option.description !== "string")) return null;
+    questions.push({
+      question: question["question"],
+      header: typeof question["header"] === "string" ? question["header"] : "",
+      options: read as { label: string; description: string }[],
+      multiSelect: question["multiSelect"] === true,
+    });
+  }
+  // The answers go back by question text, so two equal texts would lose one answer.
+  if (new Set(questions.map((question) => question.question)).size !== questions.length) return null;
+  return questions;
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** Claude Code's own form joins several labels with ", ". Null for an answer that does not fit the question. */
+function answerText(question: ApprovalQuestion, answer: QuestionAnswer | undefined): string | null {
+  const other = answer?.other?.trim() ?? "";
+  if (other.length > 0) return other;
+  const labels = (answer?.selected ?? []).map((index) => question.options[index]?.label);
+  if (labels.length === 0 || labels.some((label) => label === undefined)) return null;
+  if (!question.multiSelect && labels.length > 1) return null;
+  return labels.join(", ");
 }
 
 async function decidePermission(

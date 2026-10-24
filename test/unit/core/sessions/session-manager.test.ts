@@ -1377,6 +1377,120 @@ describe("approvals", () => {
   });
 });
 
+describe("questions of the model", () => {
+  const question = {
+    question: "Which format the-secret-value-123?",
+    header: "Format",
+    options: [
+      { label: "Talk", description: "One to one." },
+      { label: "Form the-secret-value-123", description: "With scores." },
+    ],
+    multiSelect: false,
+  };
+
+  function questionManager(outcomes: unknown[], overrides: { approvalTimeoutMs?: number } = {}): SessionManager {
+    const redactor = new Redactor();
+    redactor.addSecret("the-secret-value-123");
+    const engine = new FakeEngine(async function* (request) {
+      outcomes.push(await request.askQuestions("AskUserQuestion", [question]));
+      yield* FakeEngine.answer(request, "done");
+    });
+    return createManager(engine, { redactor, ...overrides });
+  }
+
+  test("the questions reach every front end redacted, and the answers reach the engine", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    const sessionId = newAssistantSession(manager);
+    const turn = manager.send(sessionId, "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const redactedQuestion = {
+      question: "Which format [redacted]?",
+      header: "Format",
+      options: [
+        { label: "Talk", description: "One to one." },
+        { label: "Form [redacted]", description: "With scores." },
+      ],
+      multiSelect: false,
+    };
+    const [pending] = manager.pendingApprovals();
+    expect(pending).toEqual({
+      requestId: expect.any(String) as string,
+      sessionId,
+      toolName: "AskUserQuestion",
+      summary: "Which format [redacted]?",
+      questions: [redactedQuestion],
+    });
+    expect(events.find((event) => event.kind === "approval_needed")).toMatchObject({
+      summary: "Which format [redacted]?",
+      questions: [redactedQuestion],
+    });
+    manager.answerApproval(pending?.requestId ?? "", "allow", [{ selected: [1], other: "my the-secret-value-123" }]);
+    await turn;
+    // The engine gets the person's own text; the front ends get it redacted.
+    expect(outcomes).toEqual([[{ selected: [1], other: "my the-secret-value-123" }]]);
+    expect(events.filter((event) => event.kind === "approval_resolved")).toMatchObject([
+      { answer: "allow", timedOut: false, answers: [{ selected: [1], other: "my [redacted]" }] },
+    ]);
+  });
+
+  test("a skip declines, and a question that nobody answers expires", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    manager.subscribe((event) => {
+      if (event.kind === "approval_needed") manager.answerApproval(event.requestId, "deny");
+    });
+    await manager.send(newAssistantSession(manager), "go");
+    const late: unknown[] = [];
+    const lateManager = questionManager(late, { approvalTimeoutMs: 20 });
+    await lateManager.send(newAssistantSession(lateManager), "go");
+    expect([...outcomes, ...late]).toEqual(["declined", "expired"]);
+  });
+
+  test("an answer that does not fit the questions is refused, and the question stays open", async () => {
+    const outcomes: unknown[] = [];
+    const manager = questionManager(outcomes);
+    const turn = manager.send(newAssistantSession(manager), "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const requestId = manager.pendingApprovals()[0]?.requestId ?? "";
+    const wrong = [
+      undefined,
+      [],
+      [{ selected: [0] }, { selected: [1] }],
+      [{ selected: [2] }],
+      [{ selected: [0, 1] }],
+      [{ selected: [] }],
+      [{ selected: [], other: "  " }],
+    ];
+    for (const answers of wrong) {
+      // A plain allow is how an old page answers: it must not bring back the empty answer of issue #544.
+      expect(() => manager.answerApproval(requestId, "allow", answers)).toThrow(
+        expect.objectContaining({ code: "approval_invalid" }) as unknown,
+      );
+    }
+    expect(manager.pendingApprovals()).toHaveLength(1);
+    manager.answerApproval(requestId, "allow", [{ selected: [0] }]);
+    await turn;
+    expect(outcomes).toEqual([[{ selected: [0] }]]);
+  });
+
+  test("answers for a plain approval are refused", async () => {
+    const engine = new FakeEngine(async function* (request) {
+      await request.requestApproval({ requestId: "x", toolName: "Bash", summary: "git push" });
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const turn = manager.send(newAssistantSession(manager), "go");
+    await waitUntil(() => manager.pendingApprovals().length === 1);
+    const requestId = manager.pendingApprovals()[0]?.requestId ?? "";
+    expect(() => manager.answerApproval(requestId, "allow", [{ selected: [0] }])).toThrow(
+      expect.objectContaining({ code: "approval_invalid" }) as unknown,
+    );
+    manager.answerApproval(requestId, "allow");
+    await turn;
+  });
+});
+
 describe("background tasks", () => {
   test("a front end that missed the events reads the tasks of a running turn, in their last state", async () => {
     const redactor = new Redactor();

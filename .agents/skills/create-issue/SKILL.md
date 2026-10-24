@@ -15,7 +15,7 @@ An issue says what the person wants. It also shows which parts the person decide
    - When the code, the docs or the project goals settle a choice with high confidence, decide it yourself. Do not spend the person's time on it. Write it as an assumption, and name its source, such as a rule in `AGENTS.md` or a pattern in the code.
    - For each choice that is left, interview the person when they are there. See [Interview the person](#interview-the-person).
    - When nobody is there, choose the most likely meaning, and write it as an assumption.
-4. **Split the work.** Make one issue for each result that a person can check alone. When an issue must wait for another one, write "Blocked by #N" near its top, and set a GitHub "blocked by" link. When no tool can set the link, tell the person.
+4. **Split the work.** Make one issue for each result that a person can check alone. When an issue must wait for another one, write "Blocked by #N" near its top, and set a GitHub "blocked by" link.
 5. **Write the title.** Start it with the type, then say the result in plain words:
    - `Bug:` something does not work as it should.
    - `Feature:` a new capability.

@@ -6,6 +6,7 @@ import { setupSteps } from "../../core/remote-access/steps.ts";
 import type { EngineUpdateStatus } from "../../core/updates/engine-update.ts";
 import type { UpdateStatus } from "../../core/updates/updater.ts";
 import type { VaultSyncState, WithheldFile, WithheldReason } from "../../core/vault/vault-sync.ts";
+import type { SyncNowState } from "../../core/vault/vault-upkeep.ts";
 import { EvaError, type EvaErrorCode } from "../../shared/errors.ts";
 import type { LogEntry } from "../../shared/logger.ts";
 import { scanCodeLines } from "./network-setup.ts";
@@ -304,8 +305,8 @@ export async function requestUpdate(
 }
 
 /** `eva sync` while Eva runs: her sync state after the sync. */
-export function requestSync(options: ClientOptions): Promise<VaultSyncState> {
-  return postJson<VaultSyncState>(options, "/api/vault/sync", {});
+export function requestSync(options: ClientOptions): Promise<SyncNowState> {
+  return postJson<SyncNowState>(options, "/api/vault/sync", {});
 }
 
 /** `eva settings set` while Eva runs, so the running Eva uses the change too. */

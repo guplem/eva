@@ -1509,6 +1509,25 @@ describe("Eva alerts", () => {
     await turn;
   });
 
+  test("a sync during an Assistant turn, or with no vault, says why it skipped, in a field a client can read", async () => {
+    let release: () => void = () => undefined;
+    const engine = new FakeEngine(async function* (request) {
+      await new Promise<void>((resolve) => (release = resolve));
+      yield* FakeEngine.answer(request, "ok");
+    });
+    const instance = start(engine);
+    const session = instance.createAssistantSession({ source: "cli", model: "default" });
+    const turn = instance.sessions.send(session.id, "go");
+    await waitFor(() => engine.requests.length >= 1);
+    const busy = await instance.syncVault();
+    expect([busy.status, busy.skipReason]).toEqual(["skipped", "assistant_busy"]);
+    release();
+    await turn;
+    expect((await instance.syncVault()).skipReason).toBeUndefined();
+    const bare = start(new FakeEngine(), { vaultPath: null });
+    expect((await bare.syncVault()).skipReason).toBe("no_vault");
+  });
+
   test("with no vault, there is no conflict to list or resolve", async () => {
     const instance = start(new FakeEngine(), { vaultPath: null });
     expect((await instance.vaultConflicts()).conflicts).toEqual([]);

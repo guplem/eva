@@ -22,7 +22,8 @@ import { startLocalApi, type LocalApi } from "../../../../src/frontends/api/loca
 import { describeFailure, runCli, type CliWiring } from "../../../../src/frontends/cli/commands.ts";
 import { terminalDeviceApprover } from "../../../../src/frontends/cli/devices.ts";
 import { evaCommand } from "../../../../src/frontends/cli/host.ts";
-import { updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
+import type { SyncNowState } from "../../../../src/core/vault/vault-upkeep.ts";
+import { syncExitCode, updateChannel } from "../../../../src/frontends/cli/local-commands.ts";
 import { restartMethodNow } from "../../../../src/frontends/cli/service.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 import { exitCodes } from "../../../../src/shared/exit-codes.ts";
@@ -481,6 +482,26 @@ describe("with a running Eva", () => {
     expect(described.exitCode).toBe(exitCodes.badConfig);
     expect(described.text).not.toContain("Eva stopped on an error");
     expect(described.text).not.toContain("{");
+  });
+});
+
+describe("syncExitCode", () => {
+  const state: SyncNowState = {
+    status: "ok",
+    lastCommitAt: null,
+    lastPushAt: null,
+    lastError: null,
+    withheldFiles: [],
+  };
+
+  test("a busy Eva postpones the sync, which is no failure; no vault is a bad config; other skips fail", () => {
+    expect(syncExitCode(state)).toBe(exitCodes.clean);
+    // The Assistant runs `eva sync` inside its own turn, where the sync always waits for the turn.
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "assistant_busy" })).toBe(exitCodes.clean);
+    expect(syncExitCode({ ...state, status: "skipped", skipReason: "no_vault" })).toBe(exitCodes.badConfig);
+    // A vault on another branch, or an older Eva that names no reason.
+    expect(syncExitCode({ ...state, status: "skipped" })).toBe(exitCodes.crash);
+    expect(syncExitCode({ ...state, status: "offline" })).toBe(exitCodes.crash);
   });
 });
 

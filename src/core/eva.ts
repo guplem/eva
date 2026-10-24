@@ -131,7 +131,7 @@ import {
   type VaultConflictReport,
   type VaultSyncState,
 } from "./vault/vault-sync.ts";
-import { VaultUpkeep } from "./vault/vault-upkeep.ts";
+import { VaultUpkeep, type SyncNowState } from "./vault/vault-upkeep.ts";
 import { alignmentProblem, TemplateAlignment, templateHistory, type TemplatePart } from "./vault/template-alignment.ts";
 import { templateParts } from "./vault/vault-template.ts";
 import { firstCommitDay, installedOn, readAboutMe, readHomePlace, type AboutMe } from "./vault/about-me.ts";
@@ -830,7 +830,7 @@ export class Eva {
   }
 
   /** "Sync now": brings the remote's changes in, then commits and pushes this machine's changes. */
-  syncVault(): Promise<VaultSyncState> {
+  syncVault(): Promise<SyncNowState> {
     return this.vault.syncNow();
   }
 

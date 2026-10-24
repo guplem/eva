@@ -18,6 +18,7 @@ import {
   settingChange,
 } from "../../core/settings/settings.ts";
 import { VaultSync } from "../../core/vault/vault-sync.ts";
+import { noVaultState, type SyncNowState } from "../../core/vault/vault-upkeep.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { evaVersion } from "../../shared/version.ts";
 import type { CliCommand } from "./arguments.ts";
@@ -77,13 +78,13 @@ export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
   if (client !== null) {
     const state = await requestSync(client);
     writeLine(host, describeSync(state));
-    return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
+    return syncExitCode(state);
   }
   const config = loadConfig(paths);
   const vaultPath = config.vaultPath;
   if (vaultPath === null) {
     writeLine(host, "No vault is configured. Run `eva setup` first.");
-    return exitCodes.badConfig;
+    return syncExitCode({ ...noVaultState, skipReason: "no_vault" });
   }
   const vaultSync = new VaultSync({
     vaultPath,
@@ -94,7 +95,17 @@ export async function sync(host: CliHost, paths: HomePaths): Promise<number> {
   await vaultSync.pull();
   const state = await vaultSync.save();
   writeLine(host, describeSync(state));
-  return state.status === "ok" ? exitCodes.clean : exitCodes.crash;
+  return syncExitCode(state);
+}
+
+/**
+ * The exit code of `eva sync`, the same with or without a running Eva. A sync that waits for an
+ * Assistant turn is postponed, not failed: the Assistant runs `eva sync` inside its own turn.
+ */
+export function syncExitCode(state: SyncNowState): number {
+  if (state.status === "ok" || state.skipReason === "assistant_busy") return exitCodes.clean;
+  if (state.skipReason === "no_vault") return exitCodes.badConfig;
+  return exitCodes.crash;
 }
 
 /** `eva link`: the address that opens Eva on the phone and other computers. */

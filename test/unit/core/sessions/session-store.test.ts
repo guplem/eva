@@ -44,6 +44,8 @@ function session(id: string): SessionRecord {
     closed: false,
     continuedFrom: null,
     firstMessageDraft: null,
+    pendingRestore: null,
+    forkedFrom: null,
   };
 }
 

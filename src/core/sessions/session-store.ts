@@ -43,6 +43,21 @@ const turnSchema = z.object({
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),
   at: z.string(),
+  /**
+   * The snapshot of the clone's files before and after the turn (issue 523), or null. A retry undoes
+   * the turn with the first, and a fork at its answer starts from the second. An older turn has none.
+   */
+  startSnapshot: z.string().nullable().default(null).catch(null),
+  endSnapshot: z.string().nullable().default(null).catch(null),
+});
+
+/** The chat that a chat in another clone branched from (issue 523), with the point of its history. */
+const forkedFromSchema = z.object({
+  sessionId: z.string(),
+  clone: z.string().nullable(),
+  /** The engine session and the message that the history goes on from, or null to start with none. */
+  engineSessionId: z.string().nullable(),
+  atMessageId: z.string().nullable(),
 });
 
 export const sessionSchema = z
@@ -85,6 +100,13 @@ export const sessionSchema = z
     continuedFrom: z.string().nullable().default(null).catch(null),
     /** The summary that the person reads and can change before the first turn, or null. */
     firstMessageDraft: z.string().nullable().default(null).catch(null),
+    /**
+     * A snapshot of the clone's files that the next turn brings back before it starts (issue 523), or
+     * null. An undo retry sets it, so the restore runs while the turn holds the clone.
+     */
+    pendingRestore: z.string().nullable().default(null).catch(null),
+    /** The chat in another clone that this chat branched from (issue 523), or null. It is not its parent. */
+    forkedFrom: forkedFromSchema.nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

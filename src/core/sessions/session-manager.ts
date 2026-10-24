@@ -5,6 +5,7 @@
  */
 import type {
   ApprovalAnswer,
+  CarryHistoryInput,
   EffortLevel,
   EngineName,
   EnginePort,
@@ -69,7 +70,23 @@ export interface TurnPreparer {
   prepare(session: SessionRecord, context: PrepareContext): Promise<PreparedTurn>;
   /** Returns a message to send to the same session as its next turn, or null. */
   afterTurn(session: SessionRecord, outcome: TurnOutcome): Promise<string | null>;
+  /**
+   * Keeps the files of the chat's folder under the id, and gives false when it cannot (issue 523).
+   * Eva calls it while the turn holds the folder, before and after the engine runs.
+   */
+  snapshot?(session: SessionRecord, id: string): Promise<boolean>;
+  /** Brings back the files of a snapshot. Eva calls it while the turn holds the folder. */
+  restore?(session: SessionRecord, id: string): Promise<void>;
 }
+
+/** Where a branch's history goes on from: a message of an engine session. */
+export interface HistoryPoint {
+  readonly engineSessionId: string;
+  readonly atMessageId: string;
+}
+
+/** What a retry does with the files of a Project chat's clone (issue 523). */
+export type RetryFiles = "keep" | "undo";
 
 export interface NewSessionInput {
   readonly mode: SessionMode;
@@ -263,6 +280,8 @@ export class SessionManager {
       closed: false,
       continuedFrom: null,
       firstMessageDraft: null,
+      pendingRestore: null,
+      forkedFrom: null,
     };
     this.options.store.save(record);
     return record;
@@ -303,7 +322,8 @@ export class SessionManager {
   setEngine(sessionId: string, engine: EngineName): SessionRecord {
     const session = this.get(sessionId);
     // The fork's first turn continues its parent's engine session, which only that engine knows.
-    if (session.parentId !== null) throw new EvaError("session_busy", "A fork keeps the engine of its chat.");
+    if (session.parentId !== null || session.forkedFrom !== null)
+      throw new EvaError("session_busy", "A fork keeps the engine of its chat.");
     if (session.turns.length > 0 || this.isBusy(sessionId)) {
       throw new EvaError("session_busy", "The engine of a chat is chosen before its first message.");
     }
@@ -608,19 +628,117 @@ export class SessionManager {
    * Runs a turn again on a new branch; the old answer stays in its own branch. It returns the
    * branch at once: a long turn must not hold the request past the idle time-out of the server.
    */
-  retry(sessionId: string, turnIndex: number): Promise<SessionRecord> {
+  retry(sessionId: string, turnIndex: number, files: RetryFiles = "keep"): Promise<SessionRecord> {
     // A refusal still comes as a rejection, as the caller awaits it.
     return Promise.resolve().then(() => {
       const session = this.get(sessionId);
       this.assertOpen(session);
-      const turn = session.turns[turnIndex];
-      if (turn === undefined)
-        throw new EvaError("session_not_found", `Session ${sessionId} has no turn ${String(turnIndex)}.`);
-      const branch = this.retryBranch(session, turnIndex);
+      const turn = this.turnOf(session, turnIndex);
+      // Only a Project chat has a clone whose files a snapshot keeps.
+      const restore = files === "undo" && session.mode === "project" ? this.startSnapshotOf(session, turnIndex) : null;
+      const created = this.retryBranch(session, turnIndex);
+      const branch = restore === null ? created : { ...created, pendingRestore: restore };
+      if (branch !== created) this.options.store.save(branch);
       // The send never rejects: a failure of the turn is its turn_failed event.
       void this.send(branch.id, turn.userText);
       return this.get(branch.id);
     });
+  }
+
+  private turnOf(session: SessionRecord, turnIndex: number): SessionRecord["turns"][number] {
+    const turn = session.turns[turnIndex];
+    if (turn === undefined)
+      throw new EvaError("session_not_found", `Session ${session.id} has no turn ${String(turnIndex)}.`);
+    return turn;
+  }
+
+  /** The snapshot of the files before a turn, for a retry that undoes it. */
+  startSnapshotOf(session: SessionRecord, turnIndex: number): string {
+    const snapshot = this.turnOf(session, turnIndex).startSnapshot;
+    if (snapshot === null)
+      throw new EvaError("snapshot_missing", "Eva kept no snapshot of the files before this answer.");
+    return snapshot;
+  }
+
+  /** The snapshot of the files after the answer with this message, for a fork at it. */
+  endSnapshotAt(sessionId: string, atMessageId: string): string {
+    const turn = this.get(sessionId).turns.find((candidate) => candidate.lastMessageId === atMessageId);
+    if (turn?.endSnapshot === null || turn?.endSnapshot === undefined)
+      throw new EvaError("snapshot_missing", "Eva kept no snapshot of the files at this answer.");
+    return turn.endSnapshot;
+  }
+
+  /**
+   * Where a retry of a turn goes on from: the newest answer before it in the branch, or the point
+   * that the branch itself started from. Null: the retry starts with no history.
+   */
+  retryPoint(sessionId: string, turnIndex: number): HistoryPoint | null {
+    const session = this.get(sessionId);
+    this.turnOf(session, turnIndex);
+    const earlier = session.turns.slice(0, turnIndex).findLast((turn) => turn.lastMessageId !== null)?.lastMessageId;
+    if (earlier !== undefined && earlier !== null)
+      return { engineSessionId: session.engineSessionId, atMessageId: earlier };
+    const parent = session.parentId === null ? undefined : this.options.store.get(session.parentId);
+    if (parent !== undefined && session.forkAtMessageId !== null)
+      return { engineSessionId: parent.engineSessionId, atMessageId: session.forkAtMessageId };
+    return this.movedPoint(session);
+  }
+
+  /** The history point of a chat that came from another clone, or of a branch of it that starts at the start. */
+  private movedPoint(session: SessionRecord): HistoryPoint | null {
+    const from = session.forkedFrom;
+    if (from?.engineSessionId === undefined || from.engineSessionId === null || from.atMessageId === null) return null;
+    return { engineSessionId: from.engineSessionId, atMessageId: from.atMessageId };
+  }
+
+  /**
+   * A new chat in another clone that goes on from a point of a chat (issue 523). It is the root of
+   * the chat tree of its clone, so closing or deleting the chat it came from leaves it.
+   */
+  createMovedBranch(
+    fromSessionId: string,
+    point: HistoryPoint | null,
+    place: { readonly startFolder: string; readonly clone: string },
+  ): SessionRecord {
+    const from = this.get(fromSessionId);
+    this.assertOpen(from);
+    const record: SessionRecord = {
+      ...this.createSession({
+        mode: from.mode,
+        engine: from.engine,
+        model: from.modelAlias,
+        effort: from.effort,
+        startFolder: place.startFolder,
+        source: from.source,
+        ...(from.projectId === null ? {} : { projectId: from.projectId }),
+        clone: place.clone,
+      }),
+      forkFromEngineSessionId: point?.engineSessionId ?? null,
+      title: from.title,
+      forkedFrom: {
+        sessionId: from.id,
+        clone: from.clone,
+        engineSessionId: point?.engineSessionId ?? null,
+        atMessageId: point?.atMessageId ?? null,
+      },
+    };
+    this.options.store.save(record);
+    return record;
+  }
+
+  /**
+   * Makes the history of an engine session readable from another folder, before a chat there goes on
+   * from it. False when the engine could not. An engine without the step needs none.
+   */
+  carryHistory(engineName: EngineName, input: CarryHistoryInput): boolean {
+    const engine = this.options.engines.find((candidate) => candidate.name === engineName);
+    if (engine === undefined) return false;
+    if (engine.carryHistory === undefined) return true;
+    try {
+      return engine.carryHistory(input);
+    } catch {
+      return false;
+    }
   }
 
   answerApproval(requestId: string, answer: ApprovalAnswer): void {
@@ -688,7 +806,9 @@ export class SessionManager {
     return this.retryFromStart(session);
   }
 
+  /** A chat that came from another clone keeps its history point, so its branch from the start keeps it too. */
   private retryFromStart(session: SessionRecord): SessionRecord {
+    const moved = this.movedPoint(session);
     const record: SessionRecord = {
       ...this.createSession({
         mode: session.mode,
@@ -702,6 +822,7 @@ export class SessionManager {
       clone: session.clone,
       parentId: session.id,
       title: session.title,
+      ...(moved === null ? {} : { forkFromEngineSessionId: moved.engineSessionId, forkedFrom: session.forkedFrom }),
     };
     this.options.store.save(record);
     return record;
@@ -812,6 +933,9 @@ export class SessionManager {
     const timeLimit = { reached: false };
     let releaseFolder = (): void => undefined;
     let historyLost = false;
+    let startSnapshot: string | null = null;
+    let endSnapshot: string | null = null;
+    let engineRan = false;
     try {
       releaseFolder = await this.takeFolder(session, controller.signal);
       this.lastActivity.set(sessionId, this.options.now().getTime());
@@ -832,6 +956,9 @@ export class SessionManager {
             : "The turn stopped before the engine started.",
         );
       }
+      await this.restorePending(session, preparer);
+      startSnapshot = await this.takeSnapshot(session, preparer);
+      engineRan = true;
       const history = this.historyOf(session);
       // A continue after failed turns only: the engine may never have created its session. Its
       // lost-history retry then starts one, and nothing was lost, so the person sees no notice.
@@ -906,6 +1033,8 @@ ${prompt}`,
         steps = addStep(steps, payload);
         this.turnSteps.set(sessionId, steps);
         if (payload.kind === "turn_finished") {
+          // Before the end event, so a front end that reloads the chat can fork at this answer at once.
+          endSnapshot = await this.takeSnapshot(session, preparer);
           const recorded = {
             userText: this.options.redactor.redact(prompt),
             answerText: answerParts.join("\n\n"),
@@ -921,6 +1050,8 @@ ${prompt}`,
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
               model: payload.model,
+              startSnapshot,
+              endSnapshot,
             },
             payload,
             lastText,
@@ -942,6 +1073,8 @@ ${prompt}`,
       emit({ kind: "turn_failed", reason: error instanceof Error ? error.message : String(error) });
     } finally {
       clearTimeout(timeout);
+      // While the turn still holds the folder, so no other turn changes the files first. A finished turn took it already.
+      if (engineRan && finished === null) endSnapshot = await this.takeSnapshot(session, preparer);
       releaseFolder();
       runtime.controller = null;
       runtime.turnRunning = false;
@@ -958,6 +1091,7 @@ ${prompt}`,
         answerParts,
         { ...activity, ...this.keptSteps(sessionId, steps), notes: [...notes] },
         historyLost,
+        { startSnapshot, endSnapshot },
       );
 
     return preparer.afterTurn(this.get(sessionId), { finished: finished !== null });
@@ -1007,18 +1141,47 @@ ${prompt}`,
     };
   }
 
+  /**
+   * Brings back the files that an undo retry asked for, while the turn holds the folder (issue 523).
+   * A failed restore fails the turn and keeps the request, so the next message tries again.
+   */
+  private async restorePending(session: SessionRecord, preparer: TurnPreparer): Promise<void> {
+    const snapshot = this.get(session.id).pendingRestore;
+    if (snapshot === null || preparer.restore === undefined) return;
+    try {
+      await preparer.restore(session, snapshot);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Eva could not bring back the files of this answer: ${reason}`, { cause: error });
+    }
+    this.options.store.save({ ...this.get(session.id), pendingRestore: null });
+  }
+
+  /** A new snapshot of the chat's folder, or null when the mode keeps none or it failed. The turn goes on. */
+  private async takeSnapshot(session: SessionRecord, preparer: TurnPreparer): Promise<string | null> {
+    if (preparer.snapshot === undefined) return null;
+    const id = this.options.newId();
+    try {
+      if (await preparer.snapshot(session, id)) return id;
+    } catch (error) {
+      this.options.logger?.log("warn", "Eva could not keep a snapshot of the files of a chat.", {
+        sessionId: session.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return null;
+  }
+
   private historyOf(session: SessionRecord): TurnHistory {
     if (session.historyLost) return { kind: "new", engineSessionId: session.engineSessionId };
     if (session.turns.some((turn) => turn.failure === null)) {
       return { kind: "continue", engineSessionId: session.engineSessionId };
     }
     // A fork learns its engine id only from a finished turn, so after a failed fork turn it forks again.
-    if (session.forkFromEngineSessionId !== null && session.forkAtMessageId !== null) {
-      return {
-        kind: "fork",
-        fromEngineSessionId: session.forkFromEngineSessionId,
-        atMessageId: session.forkAtMessageId,
-      };
+    // A chat from another clone keeps its point in `forkedFrom`: it is no branch of a chat here.
+    const forkAt = session.forkAtMessageId ?? session.forkedFrom?.atMessageId ?? null;
+    if (session.forkFromEngineSessionId !== null && forkAt !== null) {
+      return { kind: "fork", fromEngineSessionId: session.forkFromEngineSessionId, atMessageId: forkAt };
     }
     // A failed or stopped turn may have created the engine session already. A second "new"
     // with the same id would then fail on every later message.
@@ -1035,6 +1198,8 @@ ${prompt}`,
       contextTokens: number | null;
       contextWindow: number | null;
       model: string | null;
+      startSnapshot: string | null;
+      endSnapshot: string | null;
     } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
@@ -1081,6 +1246,7 @@ ${prompt}`,
     answerParts: readonly string[],
     activity: TurnActivity,
     historyLost: boolean,
+    snapshots: { readonly startSnapshot: string | null; readonly endSnapshot: string | null },
   ): void {
     const current = this.options.store.get(sessionId);
     if (current === undefined) return;
@@ -1104,6 +1270,7 @@ ${prompt}`,
           failure: last,
           lastMessageId: null,
           at,
+          ...snapshots,
         },
       ],
     });

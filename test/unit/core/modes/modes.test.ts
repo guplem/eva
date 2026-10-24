@@ -71,6 +71,8 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     closed: false,
     continuedFrom: null,
     firstMessageDraft: null,
+    pendingRestore: null,
+    forkedFrom: null,
     turns: [],
     ...overrides,
   };

@@ -32,6 +32,8 @@ function turn(at: string, contextTokens: number | null, extra: Partial<Turn> = {
     failure: null,
     lastMessageId: null,
     at,
+    startSnapshot: null,
+    endSnapshot: null,
     ...extra,
   };
 }

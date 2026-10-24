@@ -51,3 +51,22 @@ Rejected:
 - `CURL -d` does not match. Decision 5 keeps the programs case-sensitive. A Linux shell does not find `CURL`.
 - A command with thousands of `curl` words on one line takes about 2 seconds. The old pattern took 0.2 seconds. A real command of 50 KB with 50 `curl` words takes 8 ms.
 - A PowerShell tool is not checked. `isShellTool` matches only `bash`, and this change does not touch it.
+
+## Second review
+
+Three new reviewers checked the fixes.
+
+Fixed:
+
+- A continued line with no indent left no space before the flag. The flag now only has to follow a space.
+- A `|` inside `$(...)` or backticks ended the command.
+- `--expand-data` and the other `--expand-` forms of curl 8.3 sent data with no question.
+- `gh api --method=GET` and `curl -X=GET` asked: the pattern gave the `=` back to the method.
+- `--request-target` and `--follow` asked. They send nothing.
+- `>&>` had two ways to match, so the claim in the comment was false.
+- A new search from each `curl` word made a command with thousands of them take 16 seconds. The search now goes on after the end of each command. Thousands of `curl` words now take 34 ms. This also closes the speed finding that the first review rejected.
+- The card split its long lines into short ones, one action each.
+
+Rejected:
+
+- `--form-escape` and `-odata.json` ask. They fail safe and are rare.

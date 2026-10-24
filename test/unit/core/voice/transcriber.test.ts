@@ -47,6 +47,9 @@ function fakeRunner(answer: (command: readonly string[]) => ProcessResult | Prom
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 
+/** What Windows answers while a stopped program still holds a file. */
+const busy = (): Error => Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+
 describe("createTranscriber (lessons 71, 123)", () => {
   test("decodes with ffmpeg, transcribes with whisper, and leaves no audio behind", async () => {
     const { runner, runs } = fakeRunner((command) => ok(command[0] === "whisper-cli" ? " Buy milk.\n" : ""));
@@ -110,9 +113,9 @@ describe("createTranscriber (lessons 71, 123)", () => {
     expect(readdirSync(folder)).toEqual([]);
   });
 
-  test("a folder that Windows still holds keeps the real error, and the delete retries", async () => {
+  test("a folder that Windows still holds keeps the real error, after five tries to delete it", async () => {
     const remove = spyOn(fs, "rmSync").mockImplementation(() => {
-      throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      throw busy();
     });
     try {
       const { runner } = fakeRunner((command) =>
@@ -124,7 +127,27 @@ describe("createTranscriber (lessons 71, 123)", () => {
         (error: unknown) => error,
       );
       expect(String(failure)).toContain("whisper could not transcribe the voice note: timed out");
-      expect(remove.mock.calls[0]?.[1]).toMatchObject({ recursive: true, force: true, maxRetries: 5 });
+      expect(remove).toHaveBeenCalledTimes(5);
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  test("the delete tries again until a busy folder is free", async () => {
+    const realRemove = fs.rmSync;
+    let failures = 2;
+    const remove = spyOn(fs, "rmSync").mockImplementation((path, options) => {
+      if (failures > 0) {
+        failures -= 1;
+        throw busy();
+      }
+      realRemove(path, options);
+    });
+    try {
+      const { runner } = fakeRunner(() => ok());
+      await createTranscriber({ tools, runner, environment: {}, temporaryRoot: folder })(new Uint8Array([1]));
+      expect(remove).toHaveBeenCalledTimes(3);
+      expect(readdirSync(folder)).toEqual([]);
     } finally {
       remove.mockRestore();
     }

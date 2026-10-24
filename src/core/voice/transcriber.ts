@@ -82,23 +82,40 @@ async function transcribeOnce(options: TranscriberOptions, audio: Uint8Array): P
       throw failure("whisper-cli", "whisper could not transcribe the voice note", result.stderr);
     return result.stdout.replace(nonSpeechPattern, " ").replace(/\s+/g, " ").trim();
   } finally {
-    removeFolder(folder);
+    await removeNoteFolder(folder);
+  }
+}
+
+const removeTries = 5;
+const removeRetryDelayMs = 200;
+
+/**
+ * Never throws: an error here would hide the real one. On Windows, a program that a timeout
+ * stopped can still hold a file for a moment, so the delete tries again. Bun ignores the
+ * `maxRetries` option of `rmSync`, and a wait inside it would block the event loop.
+ */
+async function removeNoteFolder(folder: string): Promise<void> {
+  for (let attempt = 1; attempt <= removeTries; attempt += 1) {
+    if (removeFolder(folder)) return;
+    if (attempt < removeTries) await Bun.sleep(removeRetryDelayMs);
+  }
+  // The next note deletes the folder (removeLeftAudio), so the audio does not stay for good.
+}
+
+/** One try. Returns false when the folder is still there. */
+function removeFolder(folder: string): boolean {
+  try {
+    rmSync(folder, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
   }
 }
 
 /**
- * Never throws: an error here would hide the real one. On Windows, a program that a timeout
- * stopped can still hold a file for a moment, so the delete retries.
+ * One note runs at a time, so every voice folder that exists now is left from an earlier note.
+ * One try each: a folder that is still busy goes at a later note.
  */
-function removeFolder(folder: string): void {
-  try {
-    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  } catch {
-    // The next note deletes the folder (removeLeftAudio), so the audio does not stay for good.
-  }
-}
-
-/** One note runs at a time, so every voice folder that exists now is left from an earlier note. */
 function removeLeftAudio(root: string): void {
   let names: string[];
   try {

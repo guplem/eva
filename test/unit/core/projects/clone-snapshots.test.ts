@@ -104,6 +104,16 @@ describe("takeSnapshot and restoreSnapshot", () => {
     expect(sandbox.git(empty, "symbolic-ref", "--short", "HEAD")).toBe("start");
   });
 
+  test("snapshot a repository with no commit and no file, and bring back its empty state", async () => {
+    const bare = join(clone, "bare");
+    mkdirSync(bare);
+    sandbox.git(bare, "init", "-q", "--initial-branch=start");
+    expect(await takeSnapshot(clone, "nothing-yet", run)).toBe(true);
+    sandbox.write(bare, "later.txt", "later\n");
+    await restoreSnapshot(clone, "nothing-yet", run);
+    expect(read(join(bare, "later.txt"))).toBeNull();
+  });
+
   test("a snapshot that no repository has fails with snapshot_missing", async () => {
     const error: unknown = await restoreSnapshot(clone, "nothing", run).catch((caught: unknown) => caught);
     expect(isEvaError(error, "snapshot_missing")).toBe(true);

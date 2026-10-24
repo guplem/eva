@@ -4,8 +4,8 @@
  * `refs/eva/snapshots/<id>`. It holds the tracked and the untracked files, never the ignored ones.
  * The index, `HEAD` and the files do not change.
  */
-import { rmSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { noHooks } from "./clone-sync.ts";
@@ -38,15 +38,17 @@ export async function takeSnapshot(clonePath: string, id: string, run: SnapshotR
 async function snapshotRepository(repository: CloneRepository, id: string, run: SnapshotRun): Promise<boolean> {
   const gitFolder = await git(repository, run, ["rev-parse", "--absolute-git-dir"]);
   if (gitFolder.exitCode !== 0) return false;
-  // A copy of the real index keeps the stat cache, so git reads only the changed files again.
   const index = join(gitFolder.stdout.trim(), `eva-snapshot-index-${id}`);
   const withIndex = { ...run, environment: { ...run.environment, GIT_INDEX_FILE: index } };
   try {
     const head = await git(repository, run, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]);
     const parent = head.exitCode === 0 ? head.stdout.trim() : null;
-    // With no commit yet, the copy starts empty.
-    const read = await git(repository, withIndex, parent === null ? ["read-tree", "--empty"] : ["read-tree", parent]);
-    if (read.exitCode !== 0) return false;
+    // A copy of the real index keeps the stat cache, so git reads only the changed files again.
+    // With no index yet, the copy starts from the last commit, or empty.
+    if (!copyIndex(await git(repository, run, ["rev-parse", "--git-path", "index"]), repository, index)) {
+      const read = await git(repository, withIndex, parent === null ? ["read-tree", "--empty"] : ["read-tree", parent]);
+      if (read.exitCode !== 0) return false;
+    }
     const added = await git(repository, withIndex, ["add", "-A"]);
     if (added.exitCode !== 0) return false;
     const tree = await git(repository, withIndex, ["write-tree"]);
@@ -111,6 +113,9 @@ async function restoreRepository(repository: CloneRepository, id: string, run: S
   }
   // Not `-x`: ignored files, such as dependencies, stay.
   await mustRun(repository, run, ["clean", "-f", "-d", "-q"], "remove the later files of");
+  // A snapshot with no file has nothing to bring back, and git refuses a path that matches no file.
+  const files = await mustRun(repository, run, ["ls-tree", "--name-only", ref], "read the snapshot of");
+  if (files.trim() === "") return;
   await mustRun(repository, run, ["restore", `--source=${ref}`, "--worktree", "--", "."], "restore the files of");
 }
 
@@ -199,4 +204,17 @@ function git(
     timeoutMs,
     ...(stdin === undefined ? {} : { stdin }),
   });
+}
+
+/** Copies the repository's index to the temporary one. False when there is none to copy. */
+function copyIndex(
+  found: Awaited<ReturnType<ProcessRunner["run"]>>,
+  repository: CloneRepository,
+  target: string,
+): boolean {
+  if (found.exitCode !== 0) return false;
+  const source = resolve(repository.path, found.stdout.trim());
+  if (!existsSync(source)) return false;
+  copyFileSync(source, target);
+  return true;
 }

@@ -75,7 +75,7 @@ import {
   type CheckRecord,
   type ProgressStep,
 } from "./setup/progress.ts";
-import { claimHub, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
+import { claimHub, claimHubIfUnclaimed, machineRole, readHubClaim, type MachineRole } from "./instance/hub.ts";
 import type { RemoteAccess, RemoteAccessControl } from "./remote-access/remote-access.ts";
 import { AssistantPreparer } from "./modes/assistant-mode.ts";
 import { ProjectPreparer } from "./modes/project-mode.ts";
@@ -517,6 +517,9 @@ export class Eva {
             reason: error instanceof Error ? error.message : String(error),
           });
         }
+      },
+      afterFetch: () => {
+        this.claimHubAfterFetch();
       },
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
@@ -2000,6 +2003,25 @@ export class Eva {
     this.options.removeOldLogs?.();
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath !== null) cleanScratch(vaultPath, now);
+  }
+
+  /**
+   * Claims the hub when a start could not, such as before the network was up (#529). The fetch
+   * comes first, so the claim never hides one that another machine pushed. The role stays "hub":
+   * a vault with no claim reads as the hub, so the start already ran the vault migrations.
+   */
+  private claimHubAfterFetch(): void {
+    const vaultPath = this.options.config.vaultPath;
+    if (vaultPath === null) return;
+    // A full disk must not stop the sync step.
+    try {
+      if (claimHubIfUnclaimed(vaultPath, this.machine, this.options.now()))
+        this.options.logger?.log("info", "No machine was the hub yet, so this machine claimed it.");
+    } catch (error) {
+      this.options.logger?.log("warn", "The hub claim failed.", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private noticeRoleChange(): void {

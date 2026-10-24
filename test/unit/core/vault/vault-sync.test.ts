@@ -909,8 +909,20 @@ describe("VaultSync conflict review fixes", () => {
     pushFromOther("news.md", "news\n");
     sandbox.git(vault, "fetch", "-q", "origin");
     sandbox.write(vault, "news.md", "a draft here\n");
+    const freshPulls = sync.freshPulls;
     expect((await sync.pull()).status).not.toBe("error");
     expect(readFileSync(join(vault, "news.md"), "utf-8")).toBe("a draft here\n");
+    // An "ok" here is the state before the pull, so a hub claim must not trust it (#529).
+    expect(sync.freshPulls).toBe(freshPulls);
+  });
+
+  test("counts each pull that fetched, and no pull that could not", async () => {
+    const sync = createSync(vault);
+    await sync.pull();
+    expect(sync.freshPulls).toBe(1);
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "missing.git"));
+    await sync.pull();
+    expect(sync.freshPulls).toBe(1);
   });
 });
 
@@ -985,5 +997,7 @@ describe("VaultSync conflict second review fixes", () => {
     const sync = createSync(vault);
     expect((await sync.pull()).status).not.toBe("error");
     expect(readFileSync(join(vault, "AGENTS.md"), "utf-8")).toBe("# A draft here\n");
+    // The pull left the remote's commits out of the files, so a hub claim must not trust it (#529).
+    expect(sync.freshPulls).toBe(0);
   });
 });

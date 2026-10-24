@@ -132,8 +132,18 @@ describe("Eva", () => {
     await instance.sessions.send(session.id, "Write a plan.");
     await instance.sessions.send(session.id, "Change the plan.");
 
-    expect(await instance.retryUndoPreview(session.id, 1)).toEqual({ restore: ["Plan.md"], changed: [], notKept: [] });
-    expect(await instance.retryUndoPreview(session.id, 0)).toEqual({ restore: ["Plan.md"], changed: [], notKept: [] });
+    expect(await instance.retryUndoPreview(session.id, 1)).toEqual({
+      restore: ["Plan.md"],
+      changed: [],
+      notKept: [],
+      answers: 1,
+    });
+    expect(await instance.retryUndoPreview(session.id, 0)).toEqual({
+      restore: ["Plan.md"],
+      changed: [],
+      notKept: [],
+      answers: 2,
+    });
 
     const branch = await instance.retryTurn(session.id, 0, true);
     await instance.idle();

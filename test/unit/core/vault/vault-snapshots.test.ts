@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync, utimesSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, symlinkSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import {
   changedLeftOut,
@@ -155,6 +155,25 @@ describe("VaultSync undo of an answer", () => {
       utimesSync(join(vault, "Scratch/old.txt"), later, later);
     });
     expect((await sync.undoPreview([answer("chat", 1)])).notKept).toEqual(["Scratch/old.txt"]);
+  });
+
+  test("never touches a withheld file, even when the answer took its secret out (review of #525)", async () => {
+    const sync = createSync();
+    const secret = "token ghp_" + "b".repeat(36) + "\n";
+    sandbox.write(vault, "Notes/keys.md", secret);
+    await runAnswer(sync, "chat", 0, () => {
+      sandbox.write(vault, "Notes/keys.md", "The token is gone.\n");
+    });
+    expect(await sync.undo([answer("chat", 0)])).toEqual({ restore: [], changed: [], notKept: ["Notes/keys.md"] });
+    expect(read("Notes/keys.md")).toBe("The token is gone.\n");
+  });
+
+  test("a symbolic link counts as changed, so it stays", async () => {
+    const sync = createSync();
+    await runAnswer(sync, "chat", 0, () => {
+      symlinkSync("Plan.md", join(vault, "Notes/Link.md"));
+    });
+    expect((await sync.undoPreview([answer("chat", 0)])).changed).toEqual(["Notes/Link.md"]);
   });
 
   test("a snapshot leaves the real index as it is", async () => {

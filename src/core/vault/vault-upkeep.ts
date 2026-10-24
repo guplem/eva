@@ -145,9 +145,10 @@ export class VaultUpkeep {
   async undo(answers: readonly UndoAnswer[]): Promise<UndoPreview> {
     const vaultSync = this.options.vaultSync;
     if (vaultSync === null) return emptyUndo;
-    if (this.options.assistantBusy())
-      throw new EvaError("session_busy", "Eva is working in an Assistant chat. Retry again when it ends.");
+    if (this.options.assistantBusy()) throw busyUndo();
     await this.pull();
+    // A turn can start during the pull.
+    if (this.options.assistantBusy()) throw busyUndo();
     const result = await vaultSync.undo(answers);
     this.options.logger?.log("info", "A retry undid the file changes of its answers.", {
       restored: result.restore.length,
@@ -215,4 +216,8 @@ export class VaultUpkeep {
     }
     return state;
   }
+}
+
+function busyUndo(): EvaError {
+  return new EvaError("session_busy", "Eva is working in an Assistant chat. Retry again when it ends.");
 }

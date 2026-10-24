@@ -92,3 +92,23 @@ describe("VaultUpkeep undo of answers", () => {
     expect(await upkeep.undo(answers)).toEqual({ restore: [], changed: [], notKept: [] });
   });
 });
+
+test("an undo refuses when an Assistant turn starts during its pull", async () => {
+  let checks = 0;
+  const upkeep = new VaultUpkeep({
+    vaultSync: new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+    }),
+    now: () => new Date(2026, 9, 14, 12, 0),
+    syncEnabled: () => true,
+    assistantBusy: () => (checks += 1) > 1,
+    reportProblem: () => undefined,
+  });
+  const caught = await upkeep
+    .undo([{ before: "refs/eva/turns/chat/0/before", after: "refs/eva/turns/chat/0/after" }])
+    .catch((error: unknown) => error);
+  expect(isEvaError(caught, "session_busy")).toBe(true);
+});

@@ -296,12 +296,10 @@ export class VaultSync {
     return this.serialize(async () => {
       const plan = await this.undoPlan(answers);
       const bySource = new Map<string, string[]>();
+      const removed: string[] = [];
       for (const { path, source } of plan.restore) {
-        if (source === null) {
-          rmSync(join(this.options.vaultPath, path), { force: true });
-          continue;
-        }
-        bySource.set(source, [...(bySource.get(source) ?? []), path]);
+        if (source === null) removed.push(path);
+        else bySource.set(source, [...(bySource.get(source) ?? []), path]);
       }
       for (const [source, paths] of bySource) {
         // git writes each file through its filters, so line endings stay as on this machine.
@@ -314,6 +312,8 @@ export class VaultSync {
         if (restored.exitCode !== 0)
           throw new EvaError("git_failed", `Eva could not restore the files: ${firstLine(restored)}`);
       }
+      // Last: a failed restore above then leaves every new file in place.
+      for (const path of removed) rmSync(join(this.options.vaultPath, path), { force: true });
       return previewOf(plan);
     });
   }
@@ -1120,11 +1120,14 @@ function pathExists(path: string): boolean {
   }
 }
 
-/** What is at a path, without following a link: a link counts as a file, as git stores it. */
+/**
+ * What is at a path, without following a link. A link is "other": hash-object reads its target,
+ * not the link that git stores, so a link never matches and stays.
+ */
 function fileKind(path: string): "file" | "absent" | "other" {
   try {
     const info = lstatSync(path);
-    return info.isFile() || info.isSymbolicLink() ? "file" : "other";
+    return info.isFile() ? "file" : "other";
   } catch {
     return "absent";
   }

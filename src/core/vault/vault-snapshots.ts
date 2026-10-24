@@ -132,10 +132,14 @@ export function parseDiffTree(output: string): ChangedPath[] {
  * it stays. `current` holds the object id of each file now, or null when it is absent.
  */
 export function planUndo(answers: readonly AnswerChanges[], current: ReadonlyMap<string, string | null>): UndoPlan {
+  // A left-out file can be in a snapshot tree as an old committed version, or absent from it.
+  // Either one is not the file as it was, so a restore would lose the person's version.
+  const leftOut = new Set(answers.flatMap((answer) => answer.leftOutChanged));
   const first = new Map<string, { change: ChangedPath; beforeCommit: string }>();
   const last = new Map<string, ChangedPath>();
   for (const answer of answers) {
     for (const change of answer.changes) {
+      if (leftOut.has(change.path)) continue;
       if (!first.has(change.path)) first.set(change.path, { change, beforeCommit: answer.beforeCommit });
       last.set(change.path, change);
     }
@@ -150,8 +154,7 @@ export function planUndo(answers: readonly AnswerChanges[], current: ReadonlyMap
     if (now === expected) restore.push({ path, source: target === null ? null : beforeCommit });
     else changed.push(path);
   }
-  const tracked = new Set(first.keys());
-  const notKept = [...new Set(answers.flatMap((answer) => answer.leftOutChanged))].filter((path) => !tracked.has(path));
+  const notKept = [...leftOut];
   const byPath = (left: string, right: string): number => left.localeCompare(right);
   return {
     restore: restore.sort((left, right) => byPath(left.path, right.path)),

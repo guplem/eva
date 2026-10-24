@@ -62,8 +62,9 @@ describe("answersToUndo", () => {
     expect(named(answersToUndo([orphan], "orphan", 0))).toEqual(["orphan/0", "orphan/1"]);
   });
 
-  test("turns that ended at the same time keep their order", () => {
+  test("turns that ended at the same time keep their order, and an earlier turn of the chat stays", () => {
     const root = chat("root", ["10:01", "10:01"]);
     expect(named(answersToUndo([root], "root", 0))).toEqual(["root/0", "root/1"]);
+    expect(named(answersToUndo([root], "root", 1))).toEqual(["root/1"]);
   });
 });

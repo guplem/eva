@@ -547,7 +547,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     parts[3] === "retry-undo" &&
     parts[4] === undefined
   ) {
-    const turnIndex = z.coerce.number().int().min(0).parse(url.searchParams.get("turnIndex"));
+    const turnIndex = z.string().regex(/^\d+$/).transform(Number).parse(url.searchParams.get("turnIndex"));
     return json(await eva.retryUndoPreview(decodeURIComponent(parts[2]), turnIndex));
   }
   if (

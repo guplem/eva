@@ -69,8 +69,12 @@ async function apply(options: SourceCheckoutOptions): Promise<UpdateCheck> {
     throw new EvaError("update_failed", `${options.folder} has local changes, so Eva does not update it.`);
   const branch = await git(options, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const merged = await run(options, ["git", "merge", "-q", "--ff-only", `origin/${branch}`], localTimeoutMs);
-  if (merged.exitCode !== 0)
-    throw new EvaError("update_failed", `${options.folder} has its own commits. Update it by hand with git pull.`);
+  if (merged.exitCode !== 0) {
+    // A lock file or a timeout also stops the merge, and needs another fix than own commits.
+    if ((await git(options, ["rev-list", "--count", `origin/${branch}..HEAD`])) !== "0")
+      throw new EvaError("update_failed", `${options.folder} has its own commits. Update it by hand with git pull.`);
+    throw new EvaError("update_failed", `git could not move ${options.folder}: ${failureReason(merged, "git")}`);
+  }
   const changed = (await git(options, ["diff", "--name-only", found.current, "HEAD"])).split("\n");
   if (changed.some((file) => dependencyFiles.includes(file.trim()))) await install(options, found.current);
   return {

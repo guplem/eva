@@ -174,12 +174,13 @@ function cleanFolder(folder: string, now: Date): number {
     const path = join(folder, entry.name);
     if (entry.isDirectory()) {
       removed += cleanFolder(path, now);
-    } else if (entry.isFile() && now.getTime() - statSync(path).mtimeMs > scratchMaxAgeMs) {
+    } else if (entry.isFile()) {
       try {
+        if (now.getTime() - statSync(path).mtimeMs <= scratchMaxAgeMs) continue;
         rmSync(path, { force: true });
         removed += 1;
       } catch {
-        // A file that another program holds open goes at the next sweep.
+        // A file can go away after the folder read. A file that another program holds open goes at the next sweep.
       }
     }
   }

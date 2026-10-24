@@ -32,6 +32,7 @@ import { HubTelegram, startTelegram } from "./frontends/telegram/telegram-start.
 import type { EnginePort } from "./shared/engine-port.ts";
 import { FileLogger, type Logger } from "./shared/logger.ts";
 import { systemLongProcessStarter } from "./shared/long-process.ts";
+import { systemLineProcessStarter } from "./shared/line-process.ts";
 import { systemProcessRunner } from "./shared/process-runner.ts";
 import { Redactor } from "./shared/redaction.ts";
 import { exitCodes } from "./shared/exit-codes.ts";
@@ -269,7 +270,11 @@ async function serve(paths: HomePaths): Promise<number> {
   });
 }
 
-runCli(process.argv.slice(2), host, { serve, startLongProcess: systemLongProcessStarter })
+runCli(process.argv.slice(2), host, {
+  serve,
+  startLongProcess: systemLongProcessStarter,
+  startLineProcess: systemLineProcessStarter,
+})
   .then((code) => process.exit(code))
   .catch((error: unknown) => {
     const failure = describeFailure(error);

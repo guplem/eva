@@ -23,6 +23,7 @@ import { systemClock } from "../../shared/clock.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { exitCodes } from "../../shared/exit-codes.ts";
 import { readTextTolerant } from "../../shared/files.ts";
+import type { LineProcessStarter } from "../../shared/line-process.ts";
 import type { LongProcessStarter } from "../../shared/long-process.ts";
 import { Redactor } from "../../shared/redaction.ts";
 import { evaVersion } from "../../shared/version.ts";
@@ -61,6 +62,8 @@ export interface CliWiring {
   readonly serve: (paths: HomePaths) => Promise<number>;
   /** Starts Eva under `eva supervise`. */
   readonly startLongProcess: LongProcessStarter;
+  /** Starts the tray icon of `eva supervise` on Windows. */
+  readonly startLineProcess: LineProcessStarter;
 }
 
 /** Runs one `eva` command and gives the process's exit code. */
@@ -116,7 +119,7 @@ async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring)
     case "service-install":
       return installService(host, paths);
     case "supervise":
-      return supervise(host, paths, wiring.startLongProcess);
+      return supervise(host, paths, wiring);
     case "update":
       return update(host, paths, command.checkOnly, command.version);
     case "sync":

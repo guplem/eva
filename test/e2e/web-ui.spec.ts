@@ -1332,9 +1332,22 @@ test("on a phone, the project list is the page, and Back to the list returns to 
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Example app/ })).toBeVisible();
   const heights = await page
-    .locator("button:visible")
+    .locator("button:visible:not(.filter-chip)")
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  // A filter is a small pill, but an invisible margin keeps its tap target at 44 px.
+  const filters = await page.locator(".filter-chip:visible").evaluateAll((chips) =>
+    chips.map((chip) => {
+      const box = chip.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const middle = box.top + box.height / 2;
+      const hits = [middle - 20, middle + 20].map((y) => document.elementFromPoint(x, y)?.closest(".filter-chip"));
+      return { height: box.height, hit: hits.every((hit) => hit === chip) };
+    }),
+  );
+  expect(filters.length).toBeGreaterThan(0);
+  for (const filter of filters) expect(filter.hit).toBe(true);
+  expect(Math.max(...filters.map((filter) => filter.height))).toBeLessThan(44);
   await page.getByRole("button", { name: /Example app/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Example app" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);

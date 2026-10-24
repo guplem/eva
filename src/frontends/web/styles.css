@@ -2208,18 +2208,20 @@ button.link-button {
   align-self: center;
 }
 
-/* A 44 px pill dwarfs the small text of a fact. The pill stays small, and an invisible margin
-   keeps the tap target at 44 px. */
+/* A pill of the full touch target dwarfs small text, such as a fact or a filter. The pill stays small,
+   and an invisible margin keeps the tap target. */
 @media (max-width: 760px) {
-  .facts dd.fact-with-action button.small {
+  .facts dd.fact-with-action button.small,
+  .filter-chip {
     position: relative;
     min-height: 30px;
   }
 
-  .facts dd.fact-with-action button.small::after {
+  .facts dd.fact-with-action button.small::after,
+  .filter-chip::after {
     content: "";
     position: absolute;
-    inset: -7px 0;
+    inset: calc((30px - var(--touch-target)) / 2) 0;
   }
 }
 
@@ -2932,6 +2934,19 @@ button.small {
 .filter-chip[aria-pressed="true"] {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+/* A phone filter is a small pill with an invisible tap margin (see .facts). The margins of two wrapped rows
+   must not overlap, or a tap could hit the wrong filter. */
+@media (max-width: 760px) {
+  .filter-chips {
+    row-gap: calc(var(--touch-target) - 30px);
+  }
+
+  /* The status and the tag rows get the same space. The sidebar gap gives 8 px of it. */
+  .filter-chips + .filter-chips {
+    margin-top: calc(var(--touch-target) - 30px - 8px);
+  }
 }
 
 .project-card {

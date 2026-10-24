@@ -905,6 +905,46 @@ test("the composer's chip picks the model before the first message, and is fixed
   expect(saves).toHaveLength(1);
 });
 
+test("the effort slider saves one level at a time, and a failed save shows the chat's level again", async ({
+  page,
+}) => {
+  await logIn(page);
+  await newChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Hello Eva");
+  await composer.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
+  const picker = page.locator(".chip-picker > .chip");
+  await picker.click();
+  const effort = page.getByRole("dialog", { name: "Engine, model and effort" }).getByRole("group", { name: "Effort" });
+  const slider = effort.getByRole("slider", { name: "Effort" });
+  const name = effort.locator(".effort-name");
+
+  // A slow save: the keys that come during it send only the newest level, after it.
+  const sent: string[] = [];
+  await page.route("**/effort", async (route) => {
+    sent.push((route.request().postDataJSON() as { effort: string }).effort);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.continue();
+  });
+  await slider.press("ArrowRight");
+  await expect(effort).toHaveAttribute("aria-busy", "true");
+  await slider.press("ArrowRight");
+  await slider.press("ArrowRight");
+  await expect(name).toHaveText("High");
+  await expect(picker.locator(".chip-effort")).toHaveText("· High effort");
+  await expect(effort).toHaveAttribute("aria-busy", "false");
+  await expect(name).toHaveText("High");
+  expect(sent).toEqual(["low", "high"]);
+
+  await page.unroute("**/effort");
+  await page.route("**/effort", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await slider.press("ArrowRight");
+  await expect(effort).toHaveAttribute("aria-busy", "false");
+  await expect(name).toHaveText("High");
+  await expect(slider).toHaveAttribute("aria-valuetext", "High");
+});
+
 test("a chat on the default model names the model that answered (#419)", async ({ page }) => {
   await logIn(page);
   await newChat(page);

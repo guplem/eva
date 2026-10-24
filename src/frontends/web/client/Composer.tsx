@@ -22,7 +22,7 @@ import {
 import { playCue } from "./cues.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
-import { ProgressBar } from "./Loading.tsx";
+import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { setupBlock } from "./new-chat.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType } from "./voice-notes.ts";
@@ -386,7 +386,7 @@ function EngineChip({
               </div>
             </>
           )}
-          <EffortSlider effort={session.effort} onPick={(effort) => void choose(() => choices.setEffort(effort))} />
+          <EffortSlider effort={session.effort} onPick={(effort) => choose(() => choices.setEffort(effort))} />
         </div>
       )}
     </div>
@@ -403,22 +403,42 @@ function EffortSlider({
   onPick,
 }: {
   readonly effort: EffortLevel;
-  readonly onPick: (effort: EffortLevel) => void;
+  readonly onPick: (effort: EffortLevel) => Promise<void>;
 }): ReactElement {
   const [shown, setShown] = useState(effort);
+  const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const pick = useRef(onPick);
   pick.current = onPick;
+  // Saves that overlap can end in any order, so one save runs at a time. Keys pressed during it
+  // leave only the newest level, which the slider saves next.
+  const saving = useRef(false);
+  const waiting = useRef<EffortLevel | null>(null);
 
-  // After a save, or a failed one, the slider shows the chat's level again.
-  useEffect(() => setShown(effort), [effort]);
+  // A save that ends would pull the slider back to an older level, so the slider waits for the
+  // last one. A failed save leaves the chat's level as it was, and the slider shows it again.
+  useEffect(() => {
+    if (!busy) setShown(effort);
+  }, [effort, busy]);
 
   useEffect(() => {
     const slider = input.current;
     if (slider === null) return;
+    const save = async (): Promise<void> => {
+      saving.current = true;
+      setBusy(true);
+      for (let next = waiting.current; next !== null; next = waiting.current) {
+        waiting.current = null;
+        await pick.current(next);
+      }
+      saving.current = false;
+      setBusy(false);
+    };
     const onChange = (): void => {
       const picked = effortLevels[slider.valueAsNumber];
-      if (picked !== undefined) pick.current(picked);
+      if (picked === undefined) return;
+      waiting.current = picked;
+      if (!saving.current) void save();
     };
     slider.addEventListener("change", onChange);
     return () => slider.removeEventListener("change", onChange);
@@ -426,7 +446,7 @@ function EffortSlider({
 
   const index = effortLevels.indexOf(shown);
   return (
-    <div className="chip-group" role="group" aria-label="Effort">
+    <div className="chip-group" role="group" aria-label="Effort" aria-busy={busy}>
       <span className="chip-group-name">Effort</span>
       {/* The slider is never disabled while it saves: a disabled slider drops the drag and the focus. */}
       <input
@@ -444,6 +464,7 @@ function EffortSlider({
       />
       {/* The slider already gives its name to a screen reader. */}
       <span className="effort-name" aria-hidden="true">
+        {busy && <ButtonSpinner />}
         {effortName(shown)}
       </span>
     </div>

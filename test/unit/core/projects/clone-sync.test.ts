@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   commitAndPush,
@@ -43,14 +43,26 @@ function commitElsewhere(file: string): void {
 }
 
 /** A local commit and a remote commit that change AGENTS.md apart, then a merge or rebase that stops on it. */
-function startConflict(how: "merge" | "rebase" = "merge"): void {
+function startConflict(how: "merge" | "rebase" | "cherry-pick" = "merge"): void {
   commitElsewhere("AGENTS.md");
   sandbox.write(clone.path, "AGENTS.md", "# Local\n");
   sandbox.git(clone.path, "add", "-A");
   sandbox.git(clone.path, "commit", "-q", "-m", "local work");
   sandbox.git(clone.path, "fetch", "-q");
   // Git ends a stopped merge or rebase with a failure exit code.
-  expect(() => sandbox.git(clone.path, how, "-q", "origin/main")).toThrow();
+  expect(() => sandbox.git(clone.path, how, "origin/main")).toThrow();
+}
+
+/** Solves the conflict in AGENTS.md, then checks that a push is refused and makes no commit. */
+async function expectRefusedWithNoCommit(): Promise<void> {
+  sandbox.write(clone.path, "AGENTS.md", "# Solved\n");
+  sandbox.git(clone.path, "add", "-A");
+  const before = sandbox.git(clone.path, "rev-parse", "HEAD");
+  const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+    (error: unknown) => error,
+  );
+  expect(isEvaError(failure, "git_failed")).toBe(true);
+  expect(sandbox.git(clone.path, "rev-parse", "HEAD")).toBe(before);
 }
 
 describe("sync state", () => {
@@ -211,6 +223,20 @@ describe("commit and push", () => {
     await commitAndPush(first, "First commit", systemProcessRunner, gitEnvironment);
     const branch = sandbox.git(first.path, "symbolic-ref", "--short", "HEAD");
     expect(sandbox.git(empty, "log", "-1", "--format=%s", branch)).toBe("First commit");
+  });
+
+  test("a cherry-pick or a revert that is not ended yet is refused, and gets no commit", async () => {
+    startConflict("cherry-pick");
+    expect(existsSync(join(clone.path, ".git", "CHERRY_PICK_HEAD"))).toBe(true);
+    await expectRefusedWithNoCommit();
+    sandbox.git(clone.path, "cherry-pick", "--abort");
+
+    sandbox.write(clone.path, "AGENTS.md", "# Later\n");
+    sandbox.git(clone.path, "commit", "-q", "-am", "later work");
+    // Reverting "local work" conflicts with "later work", which changed the same line.
+    expect(() => sandbox.git(clone.path, "revert", "--no-edit", "HEAD~1")).toThrow();
+    expect(existsSync(join(clone.path, ".git", "REVERT_HEAD"))).toBe(true);
+    await expectRefusedWithNoCommit();
   });
 
   test("a clone on no branch is refused before the commit", async () => {

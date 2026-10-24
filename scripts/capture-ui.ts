@@ -6,13 +6,15 @@
  *   An address is a hash, such as `#/settings` or `#/settings/setup/engine`. The default is `#/chats`.
  *   Each address gives three files: <prefix>-<name>-computer-light.png, -computer-dark and -phone-light.
  *   Set EVA_CAPTURE_CHROMIUM to a Chromium program when Playwright has no browser of its own version.
+ *   Set EVA_E2E_PORT to the port of the demo when it does not use the default.
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
+import { e2ePorts } from "../test/e2e/e2e-ports.ts";
 
 // test/e2e/serve-demo.ts serves the demo vault on this port, with this token.
-const demoUrl = "http://127.0.0.1:7499/";
+const demoUrl = `http://127.0.0.1:${String(e2ePorts().demo)}/`;
 const demoToken = "e2e-demo-token";
 
 // A tall window shows a whole page: each page scrolls inside its own panel, so a full-page shot would cut it.

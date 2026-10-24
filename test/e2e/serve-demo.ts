@@ -1,6 +1,6 @@
 /**
- * Starts Eva for the Playwright tests: a neutral demo vault in a temporary folder, a local
- * bare remote, a scripted engine, and the local API on a fixed port. No real login is used.
+ * Starts Eva for the Playwright tests: a neutral demo vault in a temporary folder, a local bare
+ * remote, a scripted engine, and the local API on the ports of `e2e-ports.ts`. No real login is used.
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,10 +21,9 @@ import { googleScopes } from "../../src/core/google/google-scopes.ts";
 import { FakeTailscale, runningStatus } from "../support/fake-tailscale.ts";
 import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 import visorGallery from "./visor-gallery.html";
+import { e2ePorts } from "./e2e-ports.ts";
 
-export const demoPort = 7499;
-/** The test page of EVE's faces (`visor-gallery.html`). */
-export const galleryPort = 7498;
+const { demo: demoPort, gallery: galleryPort } = e2ePorts();
 export const demoToken = "e2e-demo-token";
 
 const sandbox = createGitSandbox();

@@ -25,6 +25,7 @@ import { ProjectPage, StatusPill } from "./ProjectPage.tsx";
 import { RepositorySetup } from "./RepositorySetup.tsx";
 import { countOf, projectSummary, shownTags, statusPill, tagsByUse } from "./project-format.ts";
 import { ListSkeleton } from "./Loading.tsx";
+import { askToLeave } from "./leave-guard.ts";
 
 interface ProjectViewProps {
   readonly sessions: readonly SessionRecord[];
@@ -208,13 +209,15 @@ export function ProjectView({
       (session) => session.projectId === project.id && session.clone !== null && project.clones.includes(session.clone),
     ).length;
 
-  const open = (next: Page | null): void => {
-    setError(null);
-    setPage(next);
-    // A chat may have changed files or the branch, so the clone cards ask git again.
-    if (next?.kind === "project") setCloneVersion((version) => version + 1);
-    onNavigate();
-  };
+  // The details page can hold unsaved changes, so each move away from it asks first.
+  const open = (next: Page | null): void =>
+    askToLeave(() => {
+      setError(null);
+      setPage(next);
+      // A chat may have changed files or the branch, so the clone cards ask git again.
+      if (next?.kind === "project") setCloneVersion((version) => version + 1);
+      onNavigate();
+    });
 
   const startChat = async (project: Project, clone: CloneDetails): Promise<void> => {
     try {
@@ -429,10 +432,12 @@ export function ProjectView({
               chatCount={chatCount(project)}
               isOpen={page?.project.id === project.id}
               onOpen={(kind) => open({ kind, project })}
-              onNewClone={() => {
-                open({ kind: "project", project });
-                void newClone(project);
-              }}
+              onNewClone={() =>
+                askToLeave(() => {
+                  open({ kind: "project", project });
+                  void newClone(project);
+                })
+              }
             />
           ))}
       </nav>

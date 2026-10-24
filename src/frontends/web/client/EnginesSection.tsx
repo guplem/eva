@@ -1,6 +1,7 @@
 /** The AI engines page: the engine for new chats, then Claude Code and pi, each with numbered login steps. */
 import { useState, type ReactElement, type ReactNode } from "react";
 import { api, type PublicSettings } from "./api.ts";
+import { useLeaveGuard } from "./leave-guard.ts";
 import { LoggedIn, reloadAfterSave } from "./LoggedIn.tsx";
 import { ProgressBar } from "./Loading.tsx";
 import { PermissionsCard } from "./PermissionsCard.tsx";
@@ -287,6 +288,7 @@ function PiCard({ context }: { readonly context: SettingsContext }): ReactElemen
     const trimmed = model.trim();
     return context.saveNow({ engines: { pi: { models: { default: trimmed === "" ? null : trimmed } } } });
   };
+  useLeaveGuard(model !== initial, save);
   return (
     <Card item="pi" title="pi" description="pi runs models of other providers, such as OpenAI. It is optional.">
       <div className="callout">

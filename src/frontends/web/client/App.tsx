@@ -48,6 +48,7 @@ import { schedulesChangedEvent } from "./SchedulesPanel.tsx";
 import { SchedulesView } from "./SchedulesView.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { TooltipLayer } from "./Tooltip.tsx";
+import { UnsavedChangesDialog } from "./UnsavedChangesDialog.tsx";
 import { AppSkeleton } from "./Loading.tsx";
 import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
@@ -540,6 +541,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
           </div>
         </div>
       )}
+      <UnsavedChangesDialog />
       {deviceRequest !== undefined && (
         <NewDeviceDialog
           request={deviceRequest}

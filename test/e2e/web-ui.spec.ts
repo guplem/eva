@@ -3948,6 +3948,56 @@ test("Project details: change, clear and save the fields, then the whole AGENTS.
   await expect(page.getByRole("button", { name: new RegExp(`Renamed ${run}`) })).toBeVisible();
 });
 
+test("a page with unsaved changes asks to save or discard them before the person leaves", async ({ page }) => {
+  const run = test.info().project.name;
+  const dialog = page.getByRole("dialog", { name: "Unsaved changes" });
+  const mainNav = page.getByRole("navigation", { name: "Main" });
+  await logIn(page);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  const title = page.getByLabel("Title");
+  await title.fill(`Unsaved ${run}`);
+  await title.blur();
+
+  // Back inside the page asks, and Stay keeps the change.
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(title).toHaveValue(`Unsaved ${run}`);
+
+  // The browser's back button asks too, and the address stays until the answer.
+  await page.goBack();
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(title).toHaveValue(`Unsaved ${run}`);
+
+  // The main navigation asks too, and Discard leaves without a save.
+  await mainNav.getByRole("button", { name: /^Files/ }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Discard and leave" }).click();
+  await expect(page).toHaveURL(/#\/files$/);
+  await openExampleApp(page);
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(page.getByLabel("Title")).toHaveValue("Example app");
+
+  // Save saves first, then leaves.
+  await openSettings(page, "AI engines");
+  const model = page.getByLabel(/^pi model/);
+  await model.fill("openai/e2e-model");
+  await model.blur();
+  await mainNav.getByRole("button", { name: /^Files/ }).click();
+  await dialog.getByRole("button", { name: "Save and leave" }).click();
+  await expect(page).toHaveURL(/#\/files$/);
+  await openSettings(page, "AI engines");
+  await expect(model).toHaveValue("openai/e2e-model");
+  await model.fill("");
+  await page.getByRole("button", { name: "Save the model" }).click();
+  await expect(page.getByRole("button", { name: "Save the model" })).toBeDisabled();
+});
+
 test("Settings: Google sets up from the page, with a pasted login and a Test", async ({ page }) => {
   await logIn(page);
   await openSettings(page, "Connections");

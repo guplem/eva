@@ -9,6 +9,7 @@ import type { AssistantRulesView } from "../../../core/modes/assistant-rules.ts"
 import { api, ApiError } from "./api.ts";
 import { Dialog } from "./ChatPanel.tsx";
 import { DiffLines } from "./DiffLines.tsx";
+import { useLeaveGuard } from "./leave-guard.ts";
 import { diffLines, type DiffRow } from "./line-diff.ts";
 import { ProgressBar } from "./Loading.tsx";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
@@ -46,6 +47,9 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
   const closeRestore = useCallback((): void => setRestoring(false), []);
   // The diff is slow on long rules, and the page renders often while a chat streams.
   const changes = useMemo(() => (typeof rules === "string" ? [] : diffLines(rules.defaultText, rules.text)), [rules]);
+  /** The save of the draft. A hook cannot wait for the load, so the render below sets it. */
+  let saveDraft = (): Promise<boolean> => Promise.resolve(false);
+  useLeaveGuard(typeof rules !== "string" && draft !== null && draft !== rules.text, () => saveDraft());
 
   if (rules === "none") return null;
   if (rules === "loading") {
@@ -56,11 +60,15 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
     );
   }
 
-  /** Eva can change the rules in a chat, so a save from an old version loads the new text instead. */
-  const run = async (action: () => Promise<string>): Promise<void> => {
+  /**
+   * Eva can change the rules in a chat, so a save from an old version loads the new text instead.
+   * True means that the action worked.
+   */
+  const run = async (action: () => Promise<string>): Promise<boolean> => {
     setBusy(true);
     try {
       notify(await action());
+      return true;
     } catch (error) {
       if (error instanceof ApiError && error.code === "rules_changed") {
         notify("Your rules changed in another place since you opened them. Eva loaded the new text.");
@@ -69,20 +77,22 @@ export function AssistantRulesCard({ context }: { readonly context: SettingsCont
       } else {
         notify(errorText(error));
       }
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const save = (text: string): Promise<void> =>
+  const save = (text: string): Promise<boolean> =>
     run(async () => {
       const saved = await api.saveAssistantRules(rules.version, text);
       setRules({ ...rules, ...saved });
       setDraft(null);
       return "Saved. New chats with Eva use the new rules.";
     });
+  if (draft !== null) saveDraft = () => save(draft);
 
-  const restore = (backup: boolean): Promise<void> =>
+  const restore = (backup: boolean): Promise<boolean> =>
     run(async () => {
       const restored = await api.restoreAssistantRules(rules.version, backup);
       setRules({ ...rules, text: restored.text, version: restored.version });

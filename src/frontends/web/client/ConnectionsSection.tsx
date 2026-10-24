@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { api } from "./api.ts";
 import { GitHubLogin } from "./GitHubLogin.tsx";
 import { GooglePanel } from "./GooglePanel.tsx";
+import { useLeaveGuard } from "./leave-guard.ts";
 import { LoggedIn, reloadAfterSave, type LoginWords } from "./LoggedIn.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { cardId, parseSettingsHash } from "./settings-routes.ts";
@@ -133,6 +134,7 @@ function CommitIdentity({ context }: { readonly context: SettingsContext }): Rea
     context.saveNow({
       git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
     });
+  useLeaveGuard(name !== (git.name ?? "") || email !== (git.email ?? ""), save);
   if (!open)
     return (
       <div id={cardId(commitIdentityItem)}>

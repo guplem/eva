@@ -13,6 +13,7 @@ import {
   type VaultSyncState,
 } from "./api.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { useLeaveGuard } from "./leave-guard.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { restartNote, type Note } from "./notes.ts";
@@ -259,6 +260,7 @@ export function SecretField({ name, label, saved, help, check, onChanged, onSave
       return false;
     }
   };
+  useLeaveGuard(value.trim() !== "", save);
   const remove = async (): Promise<void> => {
     if (!window.confirm(`Remove the ${label}?`)) return;
     try {

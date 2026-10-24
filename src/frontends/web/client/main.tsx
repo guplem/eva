@@ -3,11 +3,14 @@ import { api } from "./api.ts";
 import { App } from "./App.tsx";
 import { applyAppearance, readAppearance } from "./appearance.ts";
 import { startCues } from "./cues.ts";
+import { watchLeaving } from "./leave-guard.ts";
 import { logInWithLink, loginLinkOf } from "./login-link.ts";
 
 // Before the first render, so the page never flashes the other theme.
 applyAppearance(readAppearance());
 startCues();
+// Before the first render, so its listener runs before the listeners of the views.
+watchLeaving(window);
 
 const link = loginLinkOf(window.location.hash);
 // Out of the address at once, so the history, a bookmark or a shared address never keeps the secret.

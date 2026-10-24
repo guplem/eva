@@ -5,6 +5,7 @@
 import { useState, type ReactElement } from "react";
 import { api, type EvaStatus, type VaultSyncState } from "./api.ts";
 import { Card, CheckRow, errorText, RichText, VaultSyncView, type SettingsContext } from "./SettingsParts.tsx";
+import { useLeaveGuard } from "./leave-guard.ts";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { TemplateAlignmentCard } from "./TemplateAlignmentCard.tsx";
@@ -95,6 +96,7 @@ function VaultSyncCard({ context }: { readonly context: SettingsContext }): Reac
     }
     return context.saveNow({ sync: { sweepSeconds: seconds } });
   };
+  useLeaveGuard(sweepSeconds !== savedSeconds, saveInterval);
 
   return (
     <Card item="vault-sync" title="Sync" description="Eva saves your notes and fetches the changes of other machines.">

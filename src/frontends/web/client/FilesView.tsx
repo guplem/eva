@@ -40,7 +40,7 @@ export function FilesView(): ReactElement {
   /** The answer for each path that the page read, so a column stays while the person goes deeper. */
   const [answers, setAnswers] = useState<ReadonlyMap<string, Answer>>(new Map());
   const [large, setLarge] = useState(false);
-  /** Long lines break to fit the width. The choice stays while the person opens other files. */
+  /** The wrap stays on or off while the person opens other files. It starts on: a phone has no room for long lines. */
   const [wrap, setWrap] = useState(true);
   /** The new name in the rename field, or null when the field is closed. */
   const [naming, setNaming] = useState<string | null>(null);
@@ -478,7 +478,6 @@ function useDownload(path: string): Download {
   return { start, busy, share, problem };
 }
 
-/** The bar and the error of a download. */
 function DownloadWait({ download, folder }: { readonly download: Download; readonly folder: boolean }): ReactElement {
   return (
     <>

@@ -42,7 +42,7 @@ import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
 import { NoteConflicts } from "./NoteConflicts.tsx";
 import { browserPage, reloadIfStale } from "./page-freshness.ts";
 import { isLongHide } from "./event-stream.ts";
-import type { ProblemAction } from "./problem-actions.ts";
+import { withPendingHides, type ProblemAction } from "./problem-actions.ts";
 import { ProblemNotices } from "./ProblemNotices.tsx";
 import { ProjectView } from "./ProjectView.tsx";
 import { ScheduleCardDialog } from "./ScheduleCardDialog.tsx";
@@ -101,6 +101,13 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const isPhone = useIsPhone();
   const [isConnected, setIsConnected] = useState(true);
   const [problems, setProblems] = useState<EvaStatus["problemDetails"]>([]);
+  /** The hides that this page sent and Eva has not shown yet. */
+  const pendingHides = useRef<ReadonlySet<string>>(new Set());
+  const showProblems = useCallback((list: EvaStatus["problemDetails"]): void => {
+    const merged = withPendingHides(list, pendingHides.current);
+    pendingHides.current = merged.pending;
+    setProblems(merged.problems);
+  }, []);
   const [syncState, setSyncState] = useState<VaultSyncState | null>(null);
   const [conflictsOpen, setConflictsOpen] = useState(false);
   const events = useRef<EventSubscription | null>(null);
@@ -167,7 +174,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     try {
       const status = await api.status();
       // An older Eva sends only the texts: show nothing rather than break the page.
-      setProblems((status as Partial<EvaStatus>).problemDetails ?? []);
+      showProblems((status as Partial<EvaStatus>).problemDetails ?? []);
       setSyncState(status.vaultSync);
       setSetupMissing(status.setupMissing);
       // An older Eva sends no blocker: the chats work as before.
@@ -182,7 +189,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     } catch {
       // The next poll or the next reconnect tries again.
     }
-  }, []);
+  }, [showProblems]);
 
   // Reads overlap: one starts at a turn start and one at its end. Only the newest read may set the list,
   // or an older answer brings back a running state that already ended.
@@ -506,11 +513,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   };
   const hideProblem = (key: string): void => {
     // The notice goes at once; the answer brings the true list.
-    setProblems((current) => current.map((problem) => (problem.key === key ? { ...problem, hidden: true } : problem)));
+    pendingHides.current = new Set([...pendingHides.current, key]);
+    setProblems((current) => withPendingHides(current, pendingHides.current).problems);
     api.hideProblem(key).then(
-      (status) => setProblems(status.problemDetails),
-      // A 404 means that the problem cleared meanwhile: the fresh list says so.
-      () => void refreshProblems(),
+      (status) => showProblems(status.problemDetails),
+      (caught: unknown) => {
+        pendingHides.current = new Set([...pendingHides.current].filter((pending) => pending !== key));
+        // A 404 means that the problem cleared meanwhile: the fresh list says so.
+        if (!(caught instanceof ApiError && caught.status === 404)) showError(caught);
+        void refreshProblems();
+      },
     );
   };
   const notices = (

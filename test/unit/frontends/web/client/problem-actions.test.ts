@@ -4,6 +4,7 @@ import {
   isOtherMachineProblem,
   problemAction,
   shownProblems,
+  withPendingHides,
 } from "../../../../../src/frontends/web/client/problem-actions.ts";
 
 describe("problemAction", () => {
@@ -67,5 +68,20 @@ describe("shownProblems", () => {
       { key: "telegram_poll", level: "warn", message: "Older Eva." },
     ];
     expect(shownProblems(problems).map((problem) => problem.key)).toEqual(["vault_sync", "telegram_poll"]);
+  });
+});
+
+describe("withPendingHides", () => {
+  const open = (key: string, hidden = false): { key: string; hidden: boolean } => ({ key, hidden });
+
+  test("an older list keeps a hide that Eva has not confirmed yet", () => {
+    const merged = withPendingHides([open("update"), open("vault_sync")], new Set(["update"]));
+    expect(merged.problems).toEqual([open("update", true), open("vault_sync")]);
+    expect([...merged.pending]).toEqual(["update"]);
+  });
+
+  test("a hide ends when Eva shows it, or when the problem is gone", () => {
+    expect([...withPendingHides([open("update", true)], new Set(["update"])).pending]).toEqual([]);
+    expect([...withPendingHides([], new Set(["update"])).pending]).toEqual([]);
   });
 });

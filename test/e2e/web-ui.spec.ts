@@ -2928,6 +2928,20 @@ test("the person hides a notice, and the problems that are hidden get none (#541
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("a hide that fails brings the notice back and says why", async ({ page }) => {
+  await routeProblems(page, [{ key: "update", level: "warn", message: "Eva could not check for updates." }]);
+  await page.route("**/api/problems/hide", (route) =>
+    route.fulfill({ status: 500, json: { error: "Eva could not save the hidden problems." } }),
+  );
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("alert")).toContainText("Eva could not save the hidden problems.");
+  await expect(page.getByRole("region", { name: "Problems" })).toContainText("Eva could not check for updates.");
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",

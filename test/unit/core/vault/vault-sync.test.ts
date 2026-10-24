@@ -348,7 +348,9 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, "note.md", "kept\n");
     const state = await createSync(vault).save();
     expect(state.status).toBe("skipped");
-    expect(state.lastError).toBe("The vault is on ideas, not on main.");
+    expect(state.lastError).toBe(
+      "Eva syncs main, but the vault is on ideas. If main is right, ask the Assistant to switch the vault back to it.",
+    );
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "ideas")).not.toContain("note.md");
   });
 

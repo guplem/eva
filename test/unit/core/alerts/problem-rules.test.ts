@@ -62,11 +62,11 @@ describe("vaultSyncProblem", () => {
   });
 
   test("a skip on the wrong branch warns, with the reason and a fix from a phone (#505)", () => {
-    const problem = vaultSyncProblem(syncState("skipped", "The vault is on feat/work, not on main."), 0);
+    const reason =
+      "Eva syncs main, but the vault is on feat/work. If main is right, ask the Assistant to switch the vault back to it.";
+    const problem = vaultSyncProblem(syncState("skipped", reason), 0);
     expect(problem).toMatchObject({ level: "warn" });
-    const message = problem === "keep" ? "" : (problem?.message ?? "");
-    expect(message).toContain("The vault is on feat/work, not on main.");
-    expect(message).toContain("/sync");
+    expect(problem === "keep" ? "" : problem?.message).toBe(`The vault sync is paused. ${reason} Then send /sync.`);
   });
 });
 

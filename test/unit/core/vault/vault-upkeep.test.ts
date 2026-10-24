@@ -37,7 +37,7 @@ describe("VaultUpkeep alerts for a skipped sync", () => {
     expect(await upkeep.sweep()).toBe("skipped");
     expect(state.reports).toHaveLength(1);
     expect(state.reports[0]).toMatchObject({ level: "warn" });
-    expect(state.reports[0]?.message).toContain("The vault is on ideas, not on main.");
+    expect(state.reports[0]?.message).toContain("Eva syncs main, but the vault is on ideas.");
 
     state.busy = true;
     expect((await upkeep.syncNow()).status).toBe("skipped");

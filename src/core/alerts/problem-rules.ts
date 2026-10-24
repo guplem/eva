@@ -27,7 +27,7 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
       if (state.lastError === null) return "keep";
       return {
         level: "warn",
-        message: `The vault sync is paused: ${state.lastError} Ask the Assistant to switch the vault back to its main branch, then send /sync.`,
+        message: `The vault sync is paused. ${state.lastError} Then send /sync.`,
         resolvedMessage,
       };
     case "offline":

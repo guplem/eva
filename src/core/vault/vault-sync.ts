@@ -497,7 +497,11 @@ export class VaultSync {
     const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
     const defaultBranch = await this.defaultBranch(current);
     if (current !== defaultBranch) {
-      this.update({ status: "skipped", lastError: `The vault is on ${current}, not on ${defaultBranch}.` });
+      // The person may have meant the switch, so the text names both branches and asks, not orders.
+      this.update({
+        status: "skipped",
+        lastError: `Eva syncs ${defaultBranch}, but the vault is on ${current}. If ${defaultBranch} is right, ask the Assistant to switch the vault back to it.`,
+      });
       return null;
     }
     return defaultBranch;

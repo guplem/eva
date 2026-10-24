@@ -20,15 +20,15 @@ afterEach(() => {
  * A contract test: Claude Code keeps a chat in `<config>/projects/<folder name>/<id>.jsonl`, and the
  * folder name is the start folder with each character that is no letter or digit made a `-`. This
  * is no public format, so a change in Claude Code must fail here. Seen with Claude Code 2: a chat
- * started in `/home/user/eva` lives in `projects/-home-user-eva/`.
+ * started in `/srv/eva` lives in `projects/-srv-eva/`.
  */
 describe("claudeProjectFolder", () => {
   test("turns each character that is no letter or digit into a dash", () => {
-    expect(claudeProjectFolder("/home/user/eva")).toBe("-home-user-eva");
+    expect(claudeProjectFolder("/srv/eva")).toBe("-srv-eva");
     expect(claudeProjectFolder("/vault/Projects/2026-10-24-1015-example-app/repos/clone-1")).toBe(
       "-vault-Projects-2026-10-24-1015-example-app-repos-clone-1",
     );
-    expect(claudeProjectFolder("C:\\Users\\example\\vault\\clone_1")).toBe("C--Users-example-vault-clone-1");
+    expect(claudeProjectFolder("D:\\vault\\clone_1")).toBe("D--vault-clone-1");
   });
 
   test("gives null for a name that Claude Code shortens with a hash", () => {

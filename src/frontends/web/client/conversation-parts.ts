@@ -262,17 +262,12 @@ export function followsBottom(
   return following || distance < stickToBottomPx;
 }
 
-/** A wheel turn or a finger drag, before the scroll that it makes. */
-export type ScrollGesture =
-  | { readonly kind: "wheel"; readonly deltaY: number }
-  | { readonly kind: "touch"; readonly fromY: number; readonly toY: number };
-
 /**
- * True when a gesture moves the view up. A render can come between the gesture and its scroll
- * event and snap the view down again, so the gesture itself stops the follow.
+ * True when a render scrolls the view to the newest message. A render can come between a drag and
+ * its scroll event, so a finger on the chat pauses the snap. The scroll itself then decides the follow.
  */
-export function stopsFollowing(gesture: ScrollGesture): boolean {
-  return gesture.kind === "wheel" ? gesture.deltaY < 0 : gesture.toY > gesture.fromY;
+export function snapsToBottom(following: boolean, fingerDown: boolean): boolean {
+  return following && !fingerDown;
 }
 
 /** The parts of a key press in the message box that decide a send. */

@@ -25,7 +25,7 @@ import {
   foldSteps,
   followsBottom,
   keptPending,
-  stopsFollowing,
+  snapsToBottom,
   liveFace,
   runningUntil,
   isWorking,
@@ -96,8 +96,8 @@ export function Conversation({
   const isAtBottom = useRef(true);
   // Each render scrolls down while the view follows, so only a move up tells that the person reads.
   const lastScroll = useRef({ top: 0, height: 0 });
-  // Where the finger was at the last touch event, to tell a drag down from a drag up.
-  const touchY = useRef<number | null>(null);
+  // True while a finger is on the chat, so a render does not pull back its drag.
+  const fingerDown = useRef(false);
 
   // A layout effect, so it runs before the scroll to a picked turn in the same commit.
   useLayoutEffect(() => {
@@ -106,7 +106,9 @@ export function Conversation({
 
   useLayoutEffect(() => {
     const element = scroller.current;
-    if (element !== null && isAtBottom.current) element.scrollTop = element.scrollHeight;
+    if (element !== null && snapsToBottom(isAtBottom.current, fingerDown.current)) {
+      element.scrollTop = element.scrollHeight;
+    }
   });
 
   // A pick brings its turn into view, after the branch of the pick renders. A pick from before
@@ -134,18 +136,16 @@ export function Conversation({
         });
         lastScroll.current = { top: element.scrollTop, height: element.scrollHeight };
       }}
-      onWheel={(event) => {
-        if (stopsFollowing({ kind: "wheel", deltaY: event.deltaY })) isAtBottom.current = false;
-      }}
       onTouchStart={(event) => {
-        touchY.current = event.touches[0]?.clientY ?? null;
+        // A drag in the message box moves no chat.
+        const target = event.target;
+        fingerDown.current = !(target instanceof Element && target.closest(".composer") !== null);
       }}
-      onTouchMove={(event) => {
-        const toY = event.touches[0]?.clientY;
-        if (toY === undefined) return;
-        const fromY = touchY.current;
-        touchY.current = toY;
-        if (fromY !== null && stopsFollowing({ kind: "touch", fromY, toY })) isAtBottom.current = false;
+      onTouchEnd={() => {
+        fingerDown.current = false;
+      }}
+      onTouchCancel={() => {
+        fingerDown.current = false;
       }}
     >
       {tree.length > 1 && (

@@ -20,7 +20,7 @@ import {
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
-  stopsFollowing,
+  snapsToBottom,
   stepOrigin,
   stepParts,
   turnEndNotice,
@@ -332,15 +332,17 @@ describe("followsBottom", () => {
   });
 });
 
-describe("stopsFollowing", () => {
-  test("a wheel turn up stops the follow before its scroll comes", () => {
-    expect(stopsFollowing({ kind: "wheel", deltaY: -40 })).toBe(true);
-    expect(stopsFollowing({ kind: "wheel", deltaY: 40 })).toBe(false);
+describe("snapsToBottom", () => {
+  test("a view that follows snaps to the newest message", () => {
+    expect(snapsToBottom(true, false)).toBe(true);
   });
 
-  test("a finger that drags the content down stops the follow", () => {
-    expect(stopsFollowing({ kind: "touch", fromY: 100, toY: 140 })).toBe(true);
-    expect(stopsFollowing({ kind: "touch", fromY: 140, toY: 100 })).toBe(false);
+  test("a finger on the chat pauses the snap, so a render cannot pull back its drag", () => {
+    expect(snapsToBottom(true, true)).toBe(false);
+  });
+
+  test("a view that does not follow never snaps", () => {
+    expect(snapsToBottom(false, false)).toBe(false);
   });
 });
 

@@ -192,6 +192,16 @@ export function sentTurnCount(turnCount: number, turnRunning: boolean): number {
 }
 
 /**
+ * The stored turn count when the running turn started, or null when no turn runs. The live steps
+ * end a moment before the list brings the stored turn, so the turn runs until its stored turn arrives.
+ */
+export function runningSince(since: number | null, liveRunning: boolean, turnCount: number): number | null {
+  if (since !== null && turnCount > since) return liveRunning ? turnCount : null;
+  if (since === null && liveRunning) return turnCount;
+  return since;
+}
+
+/**
  * The sent messages whose stored turn has not come yet, so the view shows them. The stored turn
  * arrives one render before an effect can clear its message, so the turn count hides it in that render.
  */

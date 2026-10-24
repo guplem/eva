@@ -26,6 +26,7 @@ import {
   followsBottom,
   keptPending,
   liveFace,
+  runningSince,
   sentTurnCount,
   type PendingMessage,
 } from "./conversation-parts.ts";
@@ -199,6 +200,7 @@ function Branch({
   const showError = useShowError();
   const pending = keptPending(sent, turnCount);
   const liveSteps = live.steps[session.id];
+  const turnRuns = useTurnRuns(liveSteps !== undefined, turnCount);
   /**
    * True once this send's turn sent a step. Its end removes the live steps before the list
    * brings the stored answer, so the working card must not come back in that gap.
@@ -223,7 +225,7 @@ function Branch({
 
   const send = async (message: string, recording?: string): Promise<boolean> => {
     if (recording !== undefined) recordings.keep(session.id, message, recording);
-    const entry = { text: message, turnCount: sentTurnCount(turnCount, liveSteps !== undefined) };
+    const entry = { text: message, turnCount: sentTurnCount(turnCount, turnRuns) };
     setSent((current) => [...current, entry]);
     setSawLiveSteps(false);
     try {
@@ -561,6 +563,15 @@ function useTurnEndNotice(turnRunning: boolean): string {
     setNotice(turnRunning ? "" : "The turn ended.");
   }, [turnRunning]);
   return notice;
+}
+
+/** True from the start of a turn until its stored turn arrives. */
+function useTurnRuns(liveRunning: boolean, turnCount: number): boolean {
+  const [since, setSince] = useState(() => runningSince(null, liveRunning, turnCount));
+  const next = runningSince(since, liveRunning, turnCount);
+  // Set during the render, so a send in this frame already sees the new state.
+  if (next !== since) setSince(next);
+  return next !== null;
 }
 
 /** When the page first saw the running turn, with a render each second while it runs. */

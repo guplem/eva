@@ -15,6 +15,7 @@ import {
   modelLabel,
   keptPending,
   restoredText,
+  runningSince,
   sendsOnEnter,
   sentTurnCount,
   stepIcon,
@@ -210,6 +211,30 @@ describe("keptPending", () => {
     expect(texts(keptPending(running, 2))).toEqual(["First", "Queued"]);
     expect(texts(keptPending(running, 3))).toEqual(["Queued"]);
     expect(keptPending(running, 4)).toEqual([]);
+  });
+});
+
+describe("runningSince", () => {
+  test("a turn that starts records the stored turn count of its start", () => {
+    expect(runningSince(null, true, 2)).toBe(2);
+  });
+
+  test("stays running after the live steps end, until the stored turn arrives", () => {
+    // The live steps go away at the turn end, a moment before the list brings the stored turn.
+    expect(runningSince(2, false, 2)).toBe(2);
+    expect(runningSince(2, false, 3)).toBeNull();
+  });
+
+  test("a turn that runs when the stored turn arrives is the next one", () => {
+    expect(runningSince(2, true, 3)).toBe(3);
+  });
+
+  test("nothing runs while no turn started", () => {
+    expect(runningSince(null, false, 2)).toBeNull();
+  });
+
+  test("a message sent in the end gap waits for the turn after the ended one", () => {
+    expect(sentTurnCount(2, runningSince(2, false, 2) !== null)).toBe(3);
   });
 });
 

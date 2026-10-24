@@ -71,6 +71,8 @@ export interface VaultSyncOptions {
   readonly environment: Readonly<Record<string, string>>;
   readonly now: () => Date;
   readonly logger?: Logger;
+  /** Hides secrets in `lastError`: git names the remote, and a remote address can hold a token. */
+  readonly redact?: (text: string) => string;
 }
 
 const networkTimeoutMs = 60_000;
@@ -775,7 +777,15 @@ export class VaultSync {
   }
 
   private update(changes: Partial<VaultSyncState>): VaultSyncState {
-    this.state = { ...this.state, ...changes };
+    const redact = this.options.redact;
+    const lastError = changes.lastError;
+    this.state = {
+      ...this.state,
+      ...changes,
+      ...(redact === undefined || lastError === undefined || lastError === null
+        ? {}
+        : { lastError: redact(lastError) }),
+    };
     return this.state;
   }
 }

@@ -476,6 +476,7 @@ export class Eva {
               runner: options.runner,
               environment: ownGitEnvironment,
               now: options.now,
+              redact: (text) => redactor.redact(text),
               ...(options.logger === undefined ? {} : { logger: options.logger }),
             }),
       now: options.now,

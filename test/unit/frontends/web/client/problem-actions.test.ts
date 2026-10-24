@@ -34,6 +34,11 @@ describe("problemAction", () => {
     expect(problemAction("update", "ok", "schedules")).toBe("open_settings");
   });
 
+  test("an expired Claude Code login opens its card, where the person logs in again", () => {
+    expect(problemAction("engine_login:claude-code", "ok")).toBe("open_claude_login");
+    expect(problemAction("engine_login:claude-code", "ok", "settings")).toBeNull();
+  });
+
   test("every other problem opens Settings", () => {
     expect(problemAction("update", "ok")).toBe("open_settings");
     expect(problemAction("telegram_poll", "ok")).toBe("open_settings");

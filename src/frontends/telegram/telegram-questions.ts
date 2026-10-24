@@ -5,6 +5,7 @@
 import type { Eva } from "../../core/eva.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import type { ApprovalQuestion, QuestionAnswer, QuestionAnswers, SessionEvent } from "../../shared/events.ts";
+import { answerText, pickOption } from "../../shared/questions.ts";
 import { telegramMessageLimit, type TelegramSender } from "./telegram-sender.ts";
 
 /** A button shows a short label. Telegram cuts a longer one itself, with no sign. */
@@ -65,11 +66,11 @@ export class TelegramQuestions {
     const form = this.forms.get(requestId);
     if (form === undefined) return "This question is closed.";
     if (step === "skip") {
-      this.answer(requestId, "deny");
+      await this.answer(requestId, form, "deny");
       return "Skipped";
     }
     // A button of an earlier question stays on screen until the edit lands.
-    if (step !== String(form.answers.length)) return null;
+    if (step !== String(form.answers.length)) return "This question has moved on.";
     const question = form.questions[form.answers.length];
     if (question === undefined) return null;
     if (choice === "done") {
@@ -83,9 +84,7 @@ export class TelegramQuestions {
       await this.next(requestId, form, { selected: [option] });
       return null;
     }
-    form.picked = form.picked.includes(option)
-      ? form.picked.filter((index) => index !== option)
-      : [...form.picked, option].sort((a, b) => a - b);
+    form.picked = pickOption(form.picked, option, true);
     await this.edit(requestId, form);
     return null;
   }
@@ -95,6 +94,8 @@ export class TelegramQuestions {
     const found = [...this.forms].find(([, form]) => form.chatId === chatId && form.messageId === messageId);
     if (found === undefined) return false;
     const [requestId, form] = found;
+    // Every question has its answer, and the close is on its way: the text is a message of the chat.
+    if (form.answers.length >= form.questions.length) return false;
     await this.next(requestId, form, { selected: [], other: text });
     return true;
   }
@@ -125,17 +126,24 @@ export class TelegramQuestions {
       await this.edit(requestId, form);
       return;
     }
-    this.answer(requestId, "allow", form.answers);
+    await this.answer(requestId, form, "allow", form.answers);
   }
 
   /** The close comes with the approval_resolved event, which every front end gets. */
-  private answer(requestId: string, answer: "allow" | "deny", answers?: QuestionAnswers): void {
+  private async answer(
+    requestId: string,
+    form: QuestionForm,
+    answer: "allow" | "deny",
+    answers?: QuestionAnswers,
+  ): Promise<void> {
     try {
       this.eva.sessions.answerApproval(requestId, answer, answers);
     } catch (error) {
-      // The form builds only fitting answers, so a refusal means that the question changed under it.
       if (!isEvaError(error, "approval_invalid")) throw error;
-      this.forms.delete(requestId);
+      // The question is still open in the core, so the person starts again from the first question.
+      form.answers.length = 0;
+      form.picked = [];
+      await this.edit(requestId, form);
     }
   }
 
@@ -178,7 +186,10 @@ function keyboard(requestId: string, form: FormView): unknown {
     const mark = question.multiSelect && form.picked.includes(at) ? "✓ " : "";
     return [
       {
-        text: `${mark}${option.label}`.slice(0, buttonLabelLimit),
+        // Telegram refuses a button with no text. A cut by code point never splits an emoji.
+        text: Array.from(`${mark}${option.label || String(at + 1)}`)
+          .slice(0, buttonLabelLimit)
+          .join(""),
         callback_data: `q:${requestId}:${String(index)}:${String(at)}`,
       },
     ];
@@ -192,9 +203,8 @@ function answerLines(questions: readonly ApprovalQuestion[], answers: QuestionAn
   return questions
     .map((question, index) => {
       const answer = answers[index];
-      const own = answer?.other?.trim() ?? "";
-      const labels = (answer?.selected ?? []).map((option) => question.options[option]?.label ?? "?");
-      return `• ${question.question} ${own === "" ? labels.join(", ") : own}`;
+      const text = answer === undefined ? null : answerText(question, answer);
+      return `• ${question.question}\n  ${text ?? "?"}`;
     })
     .join("\n");
 }

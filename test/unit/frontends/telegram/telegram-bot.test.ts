@@ -1400,8 +1400,11 @@ describe("the model's questions (#544)", () => {
     // A single choice answers its question at once, and the message shows the next one.
     telegram.pressButton(owner, `q:${shown.requestId}:0:1`);
     await settle(bot, () => editText().includes("Question 2 of 2"));
-    // A stale button of the first question answers nothing.
+    // A stale button of the first question answers nothing, and says so.
     telegram.pressButton(owner, `q:${shown.requestId}:0:0`);
+    await settle(bot, () =>
+      telegram.callsTo("answerCallbackQuery").some((call) => call.params["text"] === "This question has moved on."),
+    );
     // A multiple choice toggles, then Done answers.
     telegram.pressButton(owner, `q:${shown.requestId}:1:1`);
     await settle(bot, () => JSON.stringify(lastEdit()?.["reply_markup"] ?? "").includes("✓ Ideas"));
@@ -1410,8 +1413,8 @@ describe("the model's questions (#544)", () => {
     expect(outcomes).toEqual([[{ selected: [1] }, { selected: [1] }]]);
     // The message keeps the answers, and loses its buttons.
     await settle(bot, () => editText().includes("Answered"));
-    expect(editText()).toContain("Which format? Form");
-    expect(editText()).toContain("Which notes? Ideas");
+    expect(editText()).toContain("Which format?\n  Form");
+    expect(editText()).toContain("Which notes?\n  Ideas");
     expect(lastEdit()?.["reply_markup"]).toBeUndefined();
   });
 
@@ -1465,7 +1468,7 @@ describe("the model's questions (#544)", () => {
     const { requestId } = questionMessage();
     eva.sessions.answerApproval(requestId, "allow", [{ selected: [0] }, { selected: [0, 1] }]);
     await settle(bot, () => editText().includes("Answered"));
-    expect(editText()).toContain("Which notes? Journal, Ideas");
+    expect(editText()).toContain("Which notes?\n  Journal, Ideas");
     // The form is gone: a late press answers nothing and says so.
     telegram.pressButton(owner, `q:${requestId}:0:1`);
     await settle(bot, () =>

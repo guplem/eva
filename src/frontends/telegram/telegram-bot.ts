@@ -723,12 +723,16 @@ export class TelegramBot {
     const isAllowed = chatId !== undefined && chatId === this.allowedChatId && this.isAllowedSender(query.from?.id);
     const [kind, first, second, third] = (query.data ?? "").split(":");
     if (kind === "q" && first !== undefined) {
-      // The note depends on the press, so the answer to the press waits for it.
-      const note = isAllowed ? await this.questions.press(first, second, third) : null;
-      await this.sender.quietCall("answerCallbackQuery", {
-        callback_query_id: query.id,
-        ...(note === null ? {} : { text: note }),
-      });
+      // The note depends on the press, so the answer to the press waits for it. A throw still stops the spinner.
+      let note: string | null = null;
+      try {
+        if (isAllowed) note = await this.questions.press(first, second, third);
+      } finally {
+        await this.sender.quietCall("answerCallbackQuery", {
+          callback_query_id: query.id,
+          ...(note === null ? {} : { text: note }),
+        });
+      }
       return;
     }
     const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");

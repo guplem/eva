@@ -16,8 +16,9 @@ export async function withinTime<Answer>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      controller.abort();
+      // Reject first: the abort makes the work fail too, and the person must read this message.
       reject(new Error(message));
+      controller.abort();
     }, ms);
   });
   try {

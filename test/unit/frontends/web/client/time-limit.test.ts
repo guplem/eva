@@ -17,6 +17,18 @@ describe("withinTime", () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  test("gives the message, not the abort, of work that stops at the abort", async () => {
+    const error: unknown = await withinTime(
+      10,
+      "Eva did not answer.",
+      (signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
+        }),
+    ).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe("Eva did not answer.");
+  });
+
   test("passes on the failure of work that fails in time", async () => {
     const failure = new TypeError("offline");
     const error: unknown = await withinTime(1_000, "too slow", () => Promise.reject(failure)).catch(

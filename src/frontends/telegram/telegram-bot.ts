@@ -492,7 +492,7 @@ export class TelegramBot {
     const name = (rawName ?? "").split("@")[0];
     switch (name) {
       case "new":
-        await this.openChat(chatId);
+        await this.openChat(chatId, topicId);
         return;
       case "delete":
         if (topicId === null) {
@@ -621,7 +621,7 @@ export class TelegramBot {
   }
 
   /** /new: a topic with its own chat, and the model picker first (lessons 41, 61). */
-  private async openChat(chatId: number): Promise<void> {
+  private async openChat(chatId: number, fromTopicId: number | null): Promise<void> {
     let topicId: number | null = null;
     try {
       const topic = await this.sender.callWithRetry<{ message_thread_id: number }>(
@@ -636,7 +636,11 @@ export class TelegramBot {
     } catch (error) {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
       if (!(error instanceof TelegramError && error.code === 400)) {
-        await this.send(chatId, null, `Telegram did not open the topic: ${this.describeError(error)} Send /new again.`);
+        await this.send(
+          chatId,
+          fromTopicId,
+          `Telegram did not open the topic: ${this.describeError(error)} Send /new again.`,
+        );
         return;
       }
       await this.send(

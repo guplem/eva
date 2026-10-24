@@ -733,6 +733,14 @@ describe("topics", () => {
     expect(eva.sessions.list()).toEqual([]);
   });
 
+  test("/new from a topic tells that topic when Telegram fails", async () => {
+    const bot = createBot();
+    telegram.failNext("createForumTopic", 500, "Internal Server Error");
+    telegram.sendText(owner, "/new", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(500);
+  });
+
   test("/new retries a topic that Telegram rate-limits", async () => {
     const bot = createBot();
     telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 3", 1, 3);

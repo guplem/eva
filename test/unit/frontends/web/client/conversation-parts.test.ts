@@ -209,10 +209,10 @@ describe("engineLock", () => {
 });
 
 describe("modelNote", () => {
-  test("warns about the cache only when the chat has a history, and waits for a running turn (#545)", () => {
+  test("warns about the cost only when the chat has a history, and waits for a running turn (#545)", () => {
     expect(modelNote({ parentId: null, turns: [] }, false)).toBeNull();
-    expect(modelNote({ parentId: null, turns: [{}] }, false)).toContain("cache");
-    expect(modelNote({ parentId: "chat-1", turns: [] }, false)).toContain("cache");
+    expect(modelNote({ parentId: null, turns: [{}] }, false)).toContain("costs more");
+    expect(modelNote({ parentId: "chat-1", turns: [] }, false)).toContain("costs more");
     expect(modelNote({ parentId: null, turns: [{}] }, true)).toContain("answer ends");
     expect(modelNote({ parentId: null, turns: [] }, true)).toContain("answer ends");
   });

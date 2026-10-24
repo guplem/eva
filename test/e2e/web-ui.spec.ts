@@ -977,7 +977,7 @@ test("the composer's chip picks the engine before the first message, and the mod
   await expect(menu).toContainText("The engine is fixed after the first message");
   await expect(menu.getByRole("group", { name: "Engine" })).toHaveCount(0);
   // A new model loses the cache, so the menu says what the change costs (lesson 41, #545).
-  await expect(menu).toContainText("without the cache");
+  await expect(menu).toContainText("reads the whole chat again");
   // The chip starts mid-row on a phone, and its menu still fits the screen.
   await expect(menu).toBeInViewport({ ratio: 1 });
   await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Sonnet" }).click();

@@ -194,7 +194,7 @@ export function modelNote(
 ): string | null {
   if (busy) return "Change the model when this answer ends.";
   if (session.turns.length > 0 || session.parentId !== null)
-    return "A new model reads the whole chat again without the cache, so the next answer costs more.";
+    return "A new model reads the whole chat again, so the next answer is slower and costs more.";
   return null;
 }
 

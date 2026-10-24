@@ -182,7 +182,7 @@ export const api = {
   /** Only a chat with no turn takes a new engine. A fork keeps its chat's engine. */
   setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
-  /** A chat takes a new model between turns. The next turn reads the chat again without the cache (lesson 41). */
+  /** A chat takes a new model between turns. The next turn reads the whole chat again (lesson 41). */
   setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   /** The effort changes no history, so a chat takes a new one at any time. The next turn uses it. */

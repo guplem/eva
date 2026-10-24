@@ -294,8 +294,8 @@ export class SessionManager {
   }
 
   /**
-   * Chooses how much the model of a chat reasons. Unlike the model, it can change between turns:
-   * it changes no history. A running turn keeps the effort it started with.
+   * Chooses how much the model of a chat reasons. It changes no history and costs no cache, so it
+   * can change at any time. A running turn keeps the effort it started with.
    */
   setEffort(sessionId: string, effort: EffortLevel): SessionRecord {
     const updated = { ...this.get(sessionId), effort };

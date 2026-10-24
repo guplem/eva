@@ -639,10 +639,15 @@ describe("topics", () => {
     await settle(bot, () => eva.sessions.get(session.id).turns.length === 1 && !eva.sessions.isBusy(session.id));
 
     telegram.pressButton(owner, `m:${session.id}:opus`, 500);
-    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("without the cache")));
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("whole chat again")));
     expect(eva.sessions.get(session.id).modelAlias).toBe("opus");
     const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("opus"));
     expect(notice?.params["message_thread_id"]).toBe(500);
+
+    // The same model keeps the cache, so a second press warns about no cost.
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses opus")));
+    expect(telegram.sentTexts().filter((text) => text.includes("whole chat again"))).toHaveLength(1);
   });
 
   test("a model button of an earlier chat changes nothing, so the phone never hears a wrong model (#545)", async () => {

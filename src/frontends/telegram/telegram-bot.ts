@@ -699,12 +699,16 @@ export class TelegramBot {
       return;
     }
     try {
+      if (this.options.eva.sessions.get(sessionId).modelAlias === model) {
+        await this.send(chatId, topicId, `This chat already uses ${model}.`);
+        return;
+      }
       const session = this.options.eva.sessions.setModel(sessionId, model);
       if (session.turns.length === 0) return;
       await this.send(
         chatId,
         topicId,
-        `The next answer uses ${model}. It reads the whole chat again without the cache, so it costs more.`,
+        `The next answer uses ${model}. It reads the whole chat again, so it is slower and costs more.`,
       );
     } catch (error) {
       if (!isEvaError(error, "session_busy")) throw error;

@@ -120,6 +120,7 @@ An agent that picks the next issue by itself skips each issue with one of these 
 - **The title starts with the type:** `Bug:`, `Feature:`, `Improvement:` or `Task:`. For example: `Bug: the web view loses the chat after a reload`.
 - **The body starts with a one-line summary.** Then the context and the acceptance criteria, as behavior that a person can see.
 - **A proposed solution** appears only when the reporter proposed one.
+- **The body separates what the reporter decided from the assumptions of the agent that wrote it,** so a reviewer can trace each rule to its source.
 
 ## Agent permissions
 

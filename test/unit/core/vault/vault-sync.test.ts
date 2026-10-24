@@ -250,6 +250,25 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).toContain("note.md");
   });
 
+  test("keeps an index.lock just under 30 minutes old, and removes one just over, with a warning (#505)", async () => {
+    const lock = join(vault, ".git", "index.lock");
+    const logged: { level: string; message: string }[] = [];
+    const logger: Logger = { log: (level, message) => logged.push({ level, message }) };
+    sandbox.write(vault, "note.md", "kept\n");
+    writeFileSync(lock, "");
+    // A person's git commit holds the lock while its editor is open.
+    const underLimit = new Date(Date.now() - 29 * 60_000);
+    utimesSync(lock, underLimit, underLimit);
+    expect((await createSync(vault, { logger }).save()).status).toBe("error");
+    expect(existsSync(lock)).toBe(true);
+    expect(logged.some(({ message }) => message.includes("index.lock"))).toBe(false);
+    const overLimit = new Date(Date.now() - 31 * 60_000);
+    utimesSync(lock, overLimit, overLimit);
+    expect((await createSync(vault, { logger }).save()).status).toBe("ok");
+    expect(existsSync(lock)).toBe(false);
+    expect(logged).toContainEqual({ level: "warn", message: "Eva removed a stale index.lock from the vault." });
+  });
+
   test("syncs a vault on master with no origin/HEAD, through the branch's upstream (#505)", async () => {
     sandbox.git(vault, "switch", "-q", "-c", "master");
     sandbox.git(vault, "push", "-q", "-u", "origin", "master");

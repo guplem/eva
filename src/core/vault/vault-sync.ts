@@ -101,7 +101,7 @@ const unmergedCodes: ReadonlySet<string> = new Set(["DD", "AU", "UD", "UA", "DU"
  * characters, so a save of some hundred files would fail each time (#505).
  */
 /** An index.lock older than this is left over from a git that was stopped (#505). */
-const staleIndexLockMs = 10 * 60_000;
+const staleIndexLockMs = 30 * 60_000;
 const pathsOnStdin: readonly string[] = ["--pathspec-from-file=-", "--pathspec-file-nul"];
 
 interface GitResult {
@@ -781,7 +781,9 @@ export class VaultSync {
   /**
    * A git that a timeout or a power loss stopped leaves `.git/index.lock` behind (lesson 81).
    * Each later step that writes the index then fails, and /sync cannot fix it from a phone.
-   * No git step holds the lock for minutes, so an old lock has no owner.
+   * The age alone tells an old lock from a live one. A person's `git commit` holds the lock while
+   * its editor is open, so an editor left open for 30 minutes loses the lock, and that commit fails.
+   * The person can commit again. A lock that stays for good stops each sync with no fix from a phone.
    */
   private removeStaleIndexLock(): void {
     const lock = join(this.options.vaultPath, ".git", "index.lock");

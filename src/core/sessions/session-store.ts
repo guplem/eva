@@ -76,6 +76,10 @@ export const sessionSchema = z
     seenTurns: z.number().int().min(0).optional().catch(undefined),
     /** True when the person archived the chat (issue 388). The web app lists it apart. */
     archived: z.boolean().default(false).catch(false),
+    /** The chat that this chat continues from a summary (issue 522), or null. The old chat finds its successors in the list. */
+    continuedFrom: z.string().nullable().default(null).catch(null),
+    /** The summary that the person reads and can change before the first turn, or null. */
+    firstMessageDraft: z.string().nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

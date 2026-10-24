@@ -120,6 +120,7 @@ import type { GithubRequest } from "./projects/repository-facts.ts";
 import type { SetupReport } from "./projects/repository-setup.ts";
 import type { ProjectDetails, ProjectFile } from "./projects/project-file.ts";
 import { ChatNamer } from "./sessions/chat-namer.ts";
+import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
 import { SessionManager, type FirstTurn } from "./sessions/session-manager.ts";
 import { ModelCalls } from "./model-calls/model-calls.ts";
@@ -420,6 +421,7 @@ export class Eva {
   private readonly gitEnvironmentForReads: Readonly<Record<string, string>>;
   private readonly settings: LiveSettings;
   private readonly projectWork: ProjectWork;
+  private readonly chatSummaries: ChatSummarizer;
   private readonly vaultSetup: VaultSetup;
   private readonly trustStore: TrustStore;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -575,6 +577,10 @@ export class Eva {
             ...(options.logger === undefined ? {} : { logger: options.logger }),
           });
     this.chatNames = chatNamer;
+    this.chatSummaries = new ChatSummarizer({
+      modelCalls: this.modelCalls,
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
     this.assistantRules =
       vaultPath === null
         ? null
@@ -1432,6 +1438,36 @@ export class Eva {
   /** A Project chat in the named clone, or in a free clone, or in a new clone. */
   createProjectSession(input: NewProjectChatInput): Promise<SessionRecord> {
     return this.projectWork.createSession(input);
+  }
+
+  /**
+   * Opens a new chat that goes on from a summary of another chat (issue 522). An Assistant chat
+   * goes on in the vault, and a Project chat in a clone that the usual choice picks. A failed
+   * summary still opens the chat, with no draft, and gives the reason.
+   */
+  async continueFromSummary(
+    sessionId: string,
+    source: SessionRecord["source"],
+  ): Promise<{ readonly session: SessionRecord; readonly summaryFailure: string | null }> {
+    const old = this.sessions.get(sessionId);
+    const gitState = old.mode === "project" ? await this.projectWork.gitState(old.startFolder) : null;
+    const summary = await this.chatSummaries.summarize({
+      engine: old.engine,
+      model: old.modelAlias,
+      turns: this.sessions.branchTurns(old.id),
+      gitState,
+    });
+    // The summary takes long, and the person may delete the old chat meanwhile: then no new chat opens.
+    this.sessions.get(old.id);
+    const input = { source, model: old.modelAlias, effort: old.effort, engine: old.engine };
+    let created: SessionRecord;
+    if (old.mode === "assistant") created = this.createAssistantSession(input);
+    else if (old.projectId === null) throw new EvaError("project_not_found", "This Project chat names no project.");
+    else created = await this.createProjectSession({ ...input, projectId: old.projectId });
+    return {
+      session: this.sessions.continueFrom(created.id, old.id, summary.ok ? summary.text : null),
+      summaryFailure: summary.ok ? null : summary.reason,
+    };
   }
 
   /**

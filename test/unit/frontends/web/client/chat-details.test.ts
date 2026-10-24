@@ -5,6 +5,7 @@ import {
   contextFigure,
   engineLabel,
   branchForkPoint,
+  chatLinks,
   formatTokenCount,
   latestContext,
   taskStatus,
@@ -167,5 +168,26 @@ describe("chatSubtitle", () => {
 
   test("starts with Working while a turn runs", () => {
     expect(chatSubtitle({ engine: "claude-code", mode: "assistant" }, true)).toBe("Working · Claude Code · Assistant");
+  });
+});
+
+describe("chatLinks (#522)", () => {
+  const chat = (id: string, continuedFrom: string | null = null): Pick<SessionRecord, "id" | "continuedFrom"> => ({
+    id,
+    continuedFrom,
+  });
+
+  test("a chat links to the chat that it continues, and to each chat that continues one of its branches", () => {
+    const old = chat("old");
+    const fork = chat("fork");
+    const next = chat("next", "fork");
+    const later = chat("later", "old");
+    const sessions = [old, fork, next, later, chat("other")];
+    expect(chatLinks([old, fork], sessions)).toEqual({ from: null, next: [next, later] });
+    expect(chatLinks([next], sessions)).toEqual({ from: fork, next: [] });
+  });
+
+  test("a chat whose old chat is gone links to nothing", () => {
+    expect(chatLinks([chat("next", "deleted")], [])).toEqual({ from: null, next: [] });
   });
 });

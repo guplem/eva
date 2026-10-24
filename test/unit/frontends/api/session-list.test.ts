@@ -45,6 +45,8 @@ function session(turns: Turn[]): SessionRecord {
     historyLost: false,
     seenTurns: 0,
     archived: false,
+    continuedFrom: null,
+    firstMessageDraft: null,
     turns,
   };
 }

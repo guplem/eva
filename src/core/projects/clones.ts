@@ -188,6 +188,30 @@ export async function countChanges(
   }
 }
 
+/**
+ * The branch, the changed files and the last commits of a folder, as git prints them, for a chat
+ * summary (issue 522). Null when git fails, such as for a deleted clone.
+ */
+export async function readGitState(
+  folder: string,
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  const options = { cwd: folder, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: gitTimeoutMs };
+  try {
+    // No index refresh, so no index.lock (lesson 81).
+    const status = await runner.run(["git", "--no-optional-locks", "status", "--porcelain=v1", "--branch"], options);
+    if (status.exitCode !== 0) return null;
+    const log = await runner.run(["git", "log", "--oneline", "-10"], options);
+    const commits = log.exitCode === 0 ? log.stdout.trim() : "";
+    return [status.stdout.trim(), commits.length === 0 ? "" : `Last commits:\n${commits}`]
+      .filter((part) => part.length > 0)
+      .join("\n\n");
+  } catch {
+    return null;
+  }
+}
+
 function gitOptions(
   clone: Clone,
   environment: Readonly<Record<string, string>>,

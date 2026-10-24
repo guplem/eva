@@ -8,6 +8,7 @@ import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths, type EvaConfig } from "../../../src/core/settings/home.ts";
 import { templateParts } from "../../../src/core/vault/vault-template.ts";
 import type { SessionEvent } from "../../../src/shared/events.ts";
+import { isEvaError } from "../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { fakeGh } from "../../support/fake-gh.ts";
@@ -813,6 +814,85 @@ describe("Eva", () => {
       reportToSessionId: null,
     });
     expect(later.clone).toBe("remote-0");
+  });
+
+  test("an Assistant chat goes on in a new Assistant chat that starts from a summary (#522)", async () => {
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "Goal: plan a trip." : "Rome is lovely."),
+    );
+    const instance = start(engine);
+    const old = instance.createAssistantSession({ source: "web", model: "opus", effort: "high" });
+    await instance.sessions.send(old.id, "Plan a trip to Rome");
+    const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
+    expect(summaryFailure).toBeNull();
+    expect(session).toMatchObject({
+      mode: "assistant",
+      engine: "claude-code",
+      modelAlias: "opus",
+      effort: "high",
+      startFolder: vault,
+      continuedFrom: old.id,
+      turns: [],
+    });
+    expect(session.firstMessageDraft).toContain("Goal: plan a trip.");
+    const call = engine.requests.find((request) => request.mode === "model-call");
+    expect(call?.prompt).toContain("Person: Plan a trip to Rome\n\nAgent: Rome is lovely.");
+    expect(call?.prompt).not.toContain("<git-state>");
+  });
+
+  test("a Project chat goes on in another clone, with the git state in the summary call (#522)", async () => {
+    sandbox.write(
+      vault,
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n`,
+    );
+    const engine = new FakeEngine((request) =>
+      FakeEngine.answer(request, request.mode === "model-call" ? "Goal: fix login." : "Fixed."),
+    );
+    const instance = start(engine);
+    const old = await instance.createProjectSession({
+      projectId: "2025-03-02-1015-example-app",
+      source: "web",
+      model: "default",
+    });
+    await instance.sessions.send(old.id, "fix login");
+    const { session } = await instance.continueFromSummary(old.id, "web");
+    expect(session).toMatchObject({
+      mode: "project",
+      projectId: "2025-03-02-1015-example-app",
+      clone: "remote-1",
+      continuedFrom: old.id,
+    });
+    const call = engine.requests.find((request) => request.mode === "model-call");
+    expect(call?.prompt).toContain("<git-state>\n## main...origin/main");
+  });
+
+  test("a chat deleted while its summary is written opens no new chat (#522)", async () => {
+    let oldId = "";
+    const engine = new FakeEngine((request) => {
+      if (request.mode === "model-call") eva?.sessions.delete(oldId);
+      return FakeEngine.answer(request, "Goal: something.");
+    });
+    const instance = start(engine);
+    oldId = instance.createAssistantSession({ source: "web", model: "default" }).id;
+    await instance.sessions.send(oldId, "Hello");
+    const error: unknown = await instance.continueFromSummary(oldId, "web").catch((caught: unknown) => caught);
+    expect(isEvaError(error, "session_not_found")).toBe(true);
+    expect(instance.sessions.list()).toHaveLength(0);
+  });
+
+  test("a failed summary still opens the new chat, with the link, no draft and the reason (#522)", async () => {
+    const engine = new FakeEngine((request) =>
+      request.mode === "model-call"
+        ? [{ kind: "turn_failed", reason: "Rate limited." }]
+        : FakeEngine.answer(request, "Sure."),
+    );
+    const instance = start(engine);
+    const old = instance.createAssistantSession({ source: "web", model: "default" });
+    await instance.sessions.send(old.id, "Hello");
+    const { session, summaryFailure } = await instance.continueFromSummary(old.id, "web");
+    expect(summaryFailure).toBe("Rate limited.");
+    expect(session).toMatchObject({ continuedFrom: old.id, firstMessageDraft: null });
   });
 
   test("an unknown project is an EvaError", async () => {

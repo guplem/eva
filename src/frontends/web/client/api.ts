@@ -187,6 +187,9 @@ export const api = {
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }, { limit: quickSend }),
   fork: (sessionId: string, atMessageId: string): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/fork`, { atMessageId }),
+  /** A new chat that goes on from a summary of this chat. A failed summary gives no draft and its reason. */
+  summaryChat: (sessionId: string): Promise<{ session: SessionRecord; summaryFailure: string | null }> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/summary-chat`, {}),
   stop: (sessionId: string): Promise<{ stopped: boolean }> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/stop`, {}),
   retry: (sessionId: string, turnIndex: number): Promise<SessionRecord> =>

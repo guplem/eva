@@ -10,7 +10,9 @@ import {
   type SDKMessage,
   type SDKRateLimitInfo,
 } from "@anthropic-ai/claude-agent-sdk";
+import { dirname, join, resolve } from "node:path";
 import type { ApprovalAnswer, CarryHistoryInput, EnginePort, TurnRequest } from "../../shared/engine-port.ts";
+import { readTextTolerant } from "../../shared/files.ts";
 import { carryClaudeHistory } from "./claude-code-history.ts";
 import { asksThePerson, summarizeToolCall, toolCategory } from "../../shared/outward-actions.ts";
 import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
@@ -186,6 +188,9 @@ export function buildQueryOptions(
     if (!request.trusted) {
       // An untrusted clone's own settings could allow every tool and skip the person's approval.
       options.settingSources = ["user"];
+      // Without the `project` source, Claude Code reads no instruction file, so Eva gives it the same files (issue #535).
+      const instructions = instructionFilesText(request.startFolder);
+      if (instructions !== null) options.systemPrompt = { type: "preset", preset: "claude_code", append: instructions };
       options.settings = { disableAllHooks: true };
       options.strictMcpConfig = true;
     }
@@ -193,6 +198,34 @@ export function buildQueryOptions(
     setPermissionMode(options, request.trusted ? permissionMode : "auto");
   }
   return options;
+}
+
+/**
+ * The instruction files that Claude Code reads with the `project` source, outermost first, so
+ * the nearest file comes last and wins. Claude Code reads each `CLAUDE.md` from the start folder
+ * up to the root, and each `AGENTS.md` only when none of those folders has a `CLAUDE.md`.
+ * Eva does not follow `@` imports: an untrusted file could import a secret from outside the clone.
+ */
+function instructionFilesText(startFolder: string): string | null {
+  const folders: string[] = [];
+  for (let folder = resolve(startFolder); ; folder = dirname(folder)) {
+    folders.unshift(folder);
+    if (dirname(folder) === folder) break;
+  }
+  const read = (names: readonly string[]): { path: string; text: string }[] =>
+    folders.flatMap((folder) =>
+      names.flatMap((name) => {
+        const path = join(folder, name);
+        const text = readTextTolerant(path)?.trim() ?? "";
+        return text.length > 0 ? [{ path, text }] : [];
+      }),
+    );
+  const claudeFiles = read(["CLAUDE.md", join(".claude", "CLAUDE.md")]);
+  const files = claudeFiles.length > 0 ? claudeFiles : read(["AGENTS.md"]);
+  if (files.length === 0) return null;
+  return files
+    .map(({ path, text }) => `Contents of ${path} (project instructions, checked into the codebase):\n\n${text}`)
+    .join("\n\n");
 }
 
 function setPermissionMode(options: Options, mode: ClaudePermissionMode): void {

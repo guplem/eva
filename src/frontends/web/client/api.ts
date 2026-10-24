@@ -53,6 +53,9 @@ import type {
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
 import type { EvaErrorCode } from "../../../shared/errors.ts";
 import type { SessionEvent } from "../../../shared/events.ts";
+import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
+
+export type { EventSubscription };
 
 /** A template part of the vault, such as a skill, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
@@ -399,54 +402,29 @@ export const api = {
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
 };
 
-export interface EventSubscription {
-  readonly close: () => void;
-  /** Tries to connect at once, instead of at the next timed try. */
-  readonly retryNow: () => void;
-}
+/** The browser's socket to Eva's event route, and its timers. */
+const browserStream: StreamPlace = {
+  open: (handlers) => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
+    socket.addEventListener("open", handlers.onOpen);
+    socket.addEventListener("message", (message) => handlers.onMessage(String(message.data)));
+    socket.addEventListener("close", handlers.onClose);
+    return { isOpen: () => socket.readyState === WebSocket.OPEN, close: () => socket.close() };
+  },
+  setTimer: (run, ms) => setTimeout(run, ms),
+  clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout> | undefined),
+};
 
 /** Opens the event stream, and opens it again after a drop. */
 export function subscribeToEvents(
   onEvent: (event: SessionEvent | ScheduleCard | DeviceLoginEvent) => void,
   onConnectionChange: (isConnected: boolean) => void,
 ): EventSubscription {
-  let socket: WebSocket | null = null;
-  let closed = false;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  const connect = (): void => {
-    retryTimer = undefined;
-    // A retry that the timer started can run after the page closed the stream, such as at a logout.
-    if (closed) return;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const opened = new WebSocket(`${protocol}//${window.location.host}/api/events?devices`);
-    socket = opened;
-    opened.addEventListener("open", () => {
-      onConnectionChange(true);
-    });
-    opened.addEventListener("message", (message) => {
-      onEvent(JSON.parse(String(message.data)) as SessionEvent | ScheduleCard | DeviceLoginEvent);
-    });
-    opened.addEventListener("close", () => {
-      // A socket that Try now replaced closes late, and must not start a second retry.
-      if (closed || socket !== opened) return;
-      onConnectionChange(false);
-      retryTimer = setTimeout(connect, 2_000);
-    });
-  };
-  connect();
-  return {
-    close: () => {
-      closed = true;
-      clearTimeout(retryTimer);
-      socket?.close();
-    },
-    retryNow: () => {
-      if (socket?.readyState === WebSocket.OPEN) return;
-      // An address that left the network can hang while it opens: start again instead of waiting.
-      const stale = socket;
-      clearTimeout(retryTimer);
-      connect();
-      stale?.close();
-    },
-  };
+  // Eva sends only these kinds on the event route.
+  return openEventStream(
+    browserStream,
+    (event) => onEvent(event as SessionEvent | ScheduleCard | DeviceLoginEvent),
+    onConnectionChange,
+  );
 }

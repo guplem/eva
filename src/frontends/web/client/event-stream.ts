@@ -1,0 +1,97 @@
+/**
+ * The event stream of the page: one socket to Eva that opens again after each drop. A phone
+ * drops it when it sleeps or changes networks, so the stream must come back without a tap.
+ */
+
+/** An address that left the network can hang while it opens, with no close: try again after this time. */
+export const openLimitMs = 10_000;
+
+/** The wait before the next try after a drop. */
+export const retryDelayMs = 2_000;
+
+export interface SocketHandlers {
+  readonly onOpen: () => void;
+  readonly onMessage: (data: string) => void;
+  readonly onClose: () => void;
+}
+
+export interface StreamSocket {
+  readonly isOpen: () => boolean;
+  readonly close: () => void;
+}
+
+/** The browser parts that the stream uses: a socket to Eva and the timers. */
+export interface StreamPlace {
+  readonly open: (handlers: SocketHandlers) => StreamSocket;
+  readonly setTimer: (run: () => void, ms: number) => unknown;
+  readonly clearTimer: (timer: unknown) => void;
+}
+
+export interface EventSubscription {
+  readonly close: () => void;
+  /** Tries to connect at once, instead of at the next timed try. */
+  readonly retryNow: () => void;
+}
+
+/** Opens the event stream, and opens it again after a drop or a hung open. */
+export function openEventStream(
+  place: StreamPlace,
+  onEvent: (event: unknown) => void,
+  onConnectionChange: (isConnected: boolean) => void,
+): EventSubscription {
+  let socket: StreamSocket | null = null;
+  let closed = false;
+  let retryTimer: unknown;
+  let openTimer: unknown;
+
+  const retryNow = (): void => {
+    if (socket?.isOpen() === true) return;
+    const stale = socket;
+    place.clearTimer(retryTimer);
+    connect();
+    stale?.close();
+  };
+
+  const connect = (): void => {
+    retryTimer = undefined;
+    place.clearTimer(openTimer);
+    // A retry that a timer started can run after the page closed the stream, such as at a logout.
+    if (closed) return;
+    const opened = place.open({
+      onOpen: () => {
+        place.clearTimer(openTimer);
+        onConnectionChange(true);
+      },
+      onMessage: (data) => {
+        let event: unknown;
+        try {
+          event = JSON.parse(data);
+        } catch {
+          // One bad frame must not break the page. The next recovery reads the state again.
+          return;
+        }
+        onEvent(event);
+      },
+      onClose: () => {
+        // A socket that a new try replaced closes late, and must not start a second retry.
+        if (closed || socket !== opened) return;
+        place.clearTimer(openTimer);
+        onConnectionChange(false);
+        retryTimer = place.setTimer(connect, retryDelayMs);
+      },
+    });
+    socket = opened;
+    openTimer = place.setTimer(retryNow, openLimitMs);
+  };
+
+  connect();
+  return {
+    close: () => {
+      closed = true;
+      place.clearTimer(retryTimer);
+      place.clearTimer(openTimer);
+      socket?.close();
+    },
+    retryNow,
+  };
+}

@@ -1760,7 +1760,9 @@ describe("Eva alerts", () => {
     expect(alerts).toEqual([]);
     clock = new Date(clock.getTime() + 2 * 60 * 60_000);
     await instance.checkForUpdate();
-    expect(alerts.at(-1)?.message).toStartWith("Eva could not check for updates for 2 hours: no network.");
+    expect(alerts.at(-1)?.message).toStartWith(
+      "Eva could not check for updates for 2 hours or more. The last error: no network.",
+    );
     failCheck = false;
     await instance.checkForUpdate();
     expect(alerts.at(-1)?.level).toBe("resolved");

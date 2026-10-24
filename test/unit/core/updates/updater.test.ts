@@ -122,6 +122,14 @@ describe("Updater", () => {
     expect((await run.updater.check()).failingSince).toBeNull();
   });
 
+  test("a failed check long after the last one starts a new failure, so two short losses are not one long one", async () => {
+    const run = harness();
+    run.setFound(new Error("offline"));
+    await run.updater.check();
+    run.advanceHours(24);
+    expect((await run.updater.check()).failingSince).toBe("2026-10-18T10:00:00.000Z");
+  });
+
   test("a failed install keeps the frequency of the checks", async () => {
     const run = harness();
     run.setApplyError(new Error("bun install failed"));

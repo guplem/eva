@@ -75,42 +75,45 @@ describe("vaultSyncProblem", () => {
 });
 
 describe("updateProblem", () => {
-  const now = new Date("2026-10-17T12:00:00.000Z");
-  const failing = (since: string): UpdateStatus => ({
+  /** A check that fails since `since`, and failed again at `last`. */
+  const failing = (since: string, last = "2026-10-17T12:00:00.000Z"): UpdateStatus => ({
     ...idleUpdate,
     lastError: "GitHub could not be reached.",
     failedStep: "check",
     failingSince: since,
+    lastCheckAt: last,
   });
 
   test("no error is no problem", () => {
-    expect(updateProblem(idleUpdate, now)).toBeNull();
+    expect(updateProblem(idleUpdate)).toBeNull();
   });
 
-  test("a check that fails for less than 2 hours keeps whatever was there (#541)", () => {
-    expect(updateProblem(failing("2026-10-17T10:00:00.001Z"), now)).toBe("keep");
+  test("checks that fail for less than 2 hours keep whatever was there (#541)", () => {
+    expect(updateProblem(failing("2026-10-17T10:00:00.001Z"))).toBe("keep");
   });
 
-  test("a check that fails for 2 hours warns, with one period after the reason and no slash command", () => {
-    const problem = updateProblem(failing("2026-10-17T10:00:00.000Z"), now);
-    expect(problem).toEqual({
+  test("one failed check stays quiet however long ago it was: no check since then failed", () => {
+    expect(updateProblem(failing("2026-10-17T12:00:00.000Z"))).toBe("keep");
+  });
+
+  test("checks that fail for 2 hours warn, with one period after the reason and no slash command", () => {
+    expect(updateProblem(failing("2026-10-17T10:00:00.000Z"))).toEqual({
       level: "warn",
       message:
-        "Eva could not check for updates for 2 hours: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates.",
+        "Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. She tries again within an hour. To try now, open Settings, Updates.",
       resolvedMessage: "Updates work again.",
     });
   });
 
   test("with the checks off, the warning does not say that Eva tries again", () => {
-    const problem = updateProblem({ ...failing("2026-10-17T09:00:00.000Z"), frequency: "off" }, now);
+    const problem = updateProblem({ ...failing("2026-10-17T09:00:00.000Z"), frequency: "off" });
     expect(problem === "keep" ? "" : problem?.message).toBe(
-      "Eva could not check for updates for 2 hours: GitHub could not be reached. To try now, open Settings, Updates.",
+      "Eva could not check for updates for 2 hours or more. The last error: GitHub could not be reached. To try now, open Settings, Updates.",
     );
   });
 
   test("a failed install is an error at once", () => {
-    const problem = updateProblem({ ...idleUpdate, lastError: "bun install failed.", failedStep: "install" }, now);
-    expect(problem).toEqual({
+    expect(updateProblem({ ...idleUpdate, lastError: "bun install failed.", failedStep: "install" })).toEqual({
       level: "error",
       message:
         "Eva could not install the update: bun install failed. She still runs the old version. To try again, open Settings, Updates.",

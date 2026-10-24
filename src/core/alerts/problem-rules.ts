@@ -57,11 +57,12 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
 export const updateCheckAlertMs = 2 * 60 * 60_000;
 
 /**
- * The update problem of a status: a failed install, a check that fails for 2 hours, or null.
- * "keep" leaves the open problem as it is. The words name no slash command: on a relayed
- * alert, a Telegram command acts on the hub.
+ * The update problem of a status: a failed install, checks that fail for 2 hours, or null.
+ * "keep" leaves the open problem as it is. The time runs from check to check, never from the
+ * clock: with the checks off, one failed check must not turn into an alert later. The words
+ * name no slash command: on a relayed alert, a Telegram command acts on the hub.
  */
-export function updateProblem(status: UpdateStatus, now: Date): AlertProblem | null | "keep" {
+export function updateProblem(status: UpdateStatus): AlertProblem | null | "keep" {
   if (status.lastError === null) return null;
   const reason = withoutFinalPeriod(status.lastError);
   const resolvedMessage = "Updates work again.";
@@ -72,12 +73,12 @@ export function updateProblem(status: UpdateStatus, now: Date): AlertProblem | n
       resolvedMessage,
     };
   }
-  const since = status.failingSince === null ? now.getTime() : Date.parse(status.failingSince);
-  if (now.getTime() - since < updateCheckAlertMs) return "keep";
+  if (status.failingSince === null || status.lastCheckAt === null) return "keep";
+  if (Date.parse(status.lastCheckAt) - Date.parse(status.failingSince) < updateCheckAlertMs) return "keep";
   const retry = status.frequency === "off" ? "" : " She tries again within an hour.";
   return {
     level: "warn",
-    message: `Eva could not check for updates for 2 hours: ${reason}.${retry} To try now, open Settings, Updates.`,
+    message: `Eva could not check for updates for 2 hours or more. The last error: ${reason}.${retry} To try now, open Settings, Updates.`,
     resolvedMessage,
   };
 }

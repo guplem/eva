@@ -78,6 +78,8 @@ export interface UpdaterOptions {
 }
 
 const hourMs = 60 * 60_000;
+/** The longest time between two failed checks of one failure. */
+const failureGapMs = 2 * hourMs;
 const frequencyMs: Readonly<Record<Exclude<UpdateFrequency, "off">, number>> = {
   hourly: hourMs,
   daily: 24 * hourMs,
@@ -160,9 +162,16 @@ export class Updater {
       this.failedStep = null;
       this.failingSince = null;
     } catch (error) {
+      const now = this.options.now();
+      // The checks after a failure come within an hour. A longer gap, such as with the checks off,
+      // means two short losses, not one long failure.
+      const goesOn =
+        this.failedStep === "check" &&
+        this.lastCheckAt !== null &&
+        now.getTime() - this.lastCheckAt.getTime() <= failureGapMs;
+      if (!goesOn) this.failingSince = now;
       this.lastError = errorText(error);
       this.failedStep = "check";
-      this.failingSince ??= this.options.now();
     } finally {
       this.lastCheckAt = this.options.now();
       this.phase = "idle";

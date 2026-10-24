@@ -24,4 +24,9 @@ Each turn already sends the model to the engine, so the lock is a choice, not a 
 
 ## Decisions
 
-(Filled in after the gap research.)
+1. **Yes.** The core reads the record at each turn start and sends `model` every turn. Claude Code sets `options.model` next to `resume`. pi gets `--model` next to `--session`. Known gap: on pi, an alias that maps to no pi model sends no `--model`, so a continued pi session can keep its last model. Eva never sends RPC `set_model`, because it writes the person's global pi settings.
+2. **Yes.** `setModel` never checked `parentId`. Only the engine ties a fork to its parent's engine session.
+3. **Each turn stores the alias it ran with** (`turns[].modelAlias`, optional, read tolerantly, so no migration). The chip names the answered model only when the newest answered turn ran with the chat's current alias. A turn from before the field counts as a match.
+4. **A message in the topic.** `answerCallbackQuery` goes out before the action, and a toast goes away in seconds. A refusal while a turn runs also gets a message.
+5. **A muted `<p>` under the Model group**, the existing `.chip-menu p` pattern. It shows only when the chat has history: turns, or a fork.
+6. **`session_busy`,** with a new text. Refuse only while `isBusy`: a change during the 1-second gather goes to the gathered turn.

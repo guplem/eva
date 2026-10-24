@@ -278,11 +278,15 @@ export class SessionManager {
     return this.options.store.list();
   }
 
-  /** Chooses the model of a chat before its first turn. A model belongs to a conversation (lesson 41). */
+  /**
+   * Chooses the model of a chat's next turns. The engine session continues, so a change keeps the
+   * history, but the next turn reads it again without the cache (lesson 41). A running turn keeps
+   * the model it started with.
+   */
   setModel(sessionId: string, model: ModelAlias): SessionRecord {
     const session = this.get(sessionId);
-    if (session.turns.length > 0 || this.isBusy(sessionId)) {
-      throw new EvaError("session_busy", "The model of a chat is chosen before its first message.");
+    if (this.isBusy(sessionId)) {
+      throw new EvaError("session_busy", "The model of a chat cannot change while a turn runs.");
     }
     const updated = { ...session, modelAlias: model };
     this.options.store.save(updated);
@@ -921,6 +925,7 @@ ${prompt}`,
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
               model: payload.model,
+              modelAlias: session.modelAlias,
             },
             payload,
             lastText,
@@ -1035,6 +1040,7 @@ ${prompt}`,
       contextTokens: number | null;
       contextWindow: number | null;
       model: string | null;
+      modelAlias: ModelAlias;
     } & TurnActivity,
     finished: Extract<EngineEventPayload, { kind: "turn_finished" }>,
     lastText: string | null,
@@ -1101,6 +1107,7 @@ ${prompt}`,
           contextTokens: null,
           contextWindow: null,
           model: null,
+          modelAlias: current.modelAlias,
           failure: last,
           lastMessageId: null,
           at,

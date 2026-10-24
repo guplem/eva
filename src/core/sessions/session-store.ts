@@ -39,6 +39,12 @@ const turnSchema = z.object({
   contextWindow: z.number().int().positive().nullable().catch(null),
   /** The id of the model that answered, so a chat on the default model can name it. Null when the engine did not say. */
   model: z.string().nullable().catch(null),
+  /**
+   * The model that the chat chose for the turn (issue 545). The chat can change it between turns,
+   * so a front end names an answered model only for the model that the chat has now. A turn from
+   * before the field has none.
+   */
+  modelAlias: z.enum(["default", "opus", "sonnet", "haiku"]).optional().catch(undefined),
   /** Why the turn failed, or null. A failed turn stays in the history, so the person sees what happened. */
   failure: z.string().nullable().default(null),
   lastMessageId: z.string().nullable(),

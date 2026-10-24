@@ -2965,6 +2965,48 @@ test("open problems show in a banner at the top, each with the button that fixes
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("the person hides a notice, and the problems that are hidden get none (#541)", async ({ page }) => {
+  let hidden = false;
+  const problems = (): { key: string; level: "warn" | "error"; message: string; hidden: boolean }[] => [
+    { key: "update", level: "warn", message: "Eva could not check for updates for 2 hours.", hidden },
+    { key: "schedule:lunch", level: "warn", message: "The schedule Lunch failed.", hidden: true },
+  ];
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, problemDetails: problems() } });
+  });
+  await page.route("**/api/problems/hide", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ key: "update" });
+    hidden = true;
+    const response = await route.fetch({ url: route.request().url().replace("/api/problems/hide", "/api/status") });
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ json: { ...status, problemDetails: problems() } });
+  });
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await expect(banner).toContainText("Eva could not check for updates");
+  await expect(banner).not.toContainText("The schedule Lunch failed.");
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("region", { name: "Problems" })).toHaveCount(0);
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("a hide that fails brings the notice back and says why", async ({ page }) => {
+  await routeProblems(page, [{ key: "update", level: "warn", message: "Eva could not check for updates." }]);
+  await page.route("**/api/problems/hide", (route) =>
+    route.fulfill({ status: 500, json: { error: "Eva could not save the hidden problems." } }),
+  );
+  await logIn(page);
+  const banner = page.getByRole("region", { name: "Problems" });
+  await banner.getByRole("button", { name: "Hide this notice" }).click();
+  await expect(page.getByRole("alert")).toContainText("Eva could not save the hidden problems.");
+  await expect(page.getByRole("region", { name: "Problems" })).toContainText("Eva could not check for updates.");
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a note conflict opens from its banner, and the last pick closes it", async ({ page }) => {
   await routeProblems(page, [{ key: "vault_sync", level: "error", message: "Notes/plan.md has a conflict." }], {
     status: "conflict",
@@ -3396,6 +3438,7 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const installs: unknown[] = [];
   await page.route("**/api/update/check", async (route) => {
@@ -3482,6 +3525,7 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   await page.route("**/api/update/check", async (route) => {
     await route.fulfill({ json: status });
@@ -3519,6 +3563,7 @@ test("Settings: the Versions card looks for a newer Eva when it opens, as for ea
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const checked = {
     ...unchecked,
@@ -3623,6 +3668,7 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   let restarting = false;
   let readsWhileRestarting = 0;
@@ -3663,6 +3709,7 @@ test("Settings: an install shows a bar that fills with the download", async ({ p
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let installing = false;
@@ -3713,6 +3760,7 @@ test("Settings: an install goes on when a proxy drops the request", async ({ pag
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let reads = 0;
@@ -3765,6 +3813,7 @@ test("Settings: an error of Eva herself during an install shows its reason", asy
         lastCheckAt: null,
         lastError: null,
         failedStep: null,
+        failingSince: null,
         download: null,
       },
     });

@@ -42,3 +42,16 @@ export function problemAction(
   if (key === claudeLoginKey) return "open_claude_login";
   return "open_settings";
 }
+
+/** The problems that get a notice: not one that the person hid. An older Eva sends no mark. */
+export function shownProblems<Problem extends { readonly hidden?: boolean }>(problems: readonly Problem[]): Problem[] {
+  return problems.filter((problem) => problem.hidden !== true);
+}
+
+/** Marks each problem whose hide the page sent and Eva has not answered yet, so its notice stays gone. */
+export function withPendingHides<Problem extends { readonly key: string; readonly hidden?: boolean }>(
+  problems: readonly Problem[],
+  pending: ReadonlySet<string>,
+): Problem[] {
+  return problems.map((problem) => (pending.has(problem.key) ? { ...problem, hidden: true } : problem));
+}

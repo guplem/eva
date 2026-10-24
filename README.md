@@ -79,7 +79,7 @@ A device without Tailscale cannot open Eva. That is on purpose: Eva can act on y
 
 ## Problems and answers
 
-**Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
+**Eva tells you when something goes wrong.** She sends a message to your Telegram chat when a problem starts, once a day while it lasts, and once more when it ends. The web page shows the open problems at the top, with an x to hide one, and `/status` starts with "All good" or the number of problems. Send `/logs` to see the details.
 
 **Eva does not answer in Telegram.**
 Open the web page and look at Settings, or run `eva status` on Eva's computer. Check that the computer is on and connected. If you run Eva on two computers, check which one is the hub.

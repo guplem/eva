@@ -642,6 +642,11 @@ textarea {
   font-size: var(--text-sm);
 }
 
+/* A thumb on a phone needs more than the bare icon to hit. */
+.notice > .icon-button {
+  padding: var(--space-2);
+}
+
 .problem-list {
   display: flex;
   flex-direction: column;

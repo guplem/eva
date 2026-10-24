@@ -1932,7 +1932,7 @@ describe("Eva alerts", () => {
     expect(instance.status().vaultSync.lastError).not.toContain(secret);
   });
 
-  test("a failed update check and a failed install each raise an alert that names the step", async () => {
+  test("a check that fails for 2 hours and a failed install each raise an alert that names the step", async () => {
     let failCheck = true;
     const instance = start(
       new FakeEngine(),
@@ -1950,15 +1950,21 @@ describe("Eva alerts", () => {
     );
     const alerts = collectAlerts(instance);
     await instance.checkForUpdate();
-    expect(alerts.at(-1)?.message).toStartWith("The update check failed: no network.");
+    // One failed check is often a laptop that woke up with no network (#541).
+    expect(alerts).toEqual([]);
+    clock = new Date(clock.getTime() + 2 * 60 * 60_000);
+    await instance.checkForUpdate();
+    expect(alerts.at(-1)?.message).toStartWith(
+      "Eva could not check for updates for 2 hours or more. The last error: no network.",
+    );
     failCheck = false;
     await instance.checkForUpdate();
     expect(alerts.at(-1)?.level).toBe("resolved");
     await instance.updateNow();
-    expect(alerts.at(-1)?.message).toStartWith("The update install failed: bun install failed.");
+    expect(alerts.at(-1)?.message).toStartWith("Eva could not install the update: bun install failed.");
     clock = new Date(clock.getTime() + 25 * 60 * 60_000);
     await instance.backgroundTick();
-    expect(instance.status().problems[0]).toStartWith("The update install failed");
+    expect(instance.status().problems[0]).toStartWith("Eva could not install the update");
   });
 
   test("each new held-back release reaches the phone once, even across a restart", async () => {
@@ -2118,11 +2124,28 @@ describe("Eva alerts", () => {
     expect(instance.status().problems).toEqual(["Another program polls the bot."]);
     // The web page picks the button of a problem from its key, never from its text.
     expect(instance.status().problemDetails).toEqual([
-      { key: "telegram_poll", level: "error", message: "Another program polls the bot." },
+      { key: "telegram_poll", level: "error", message: "Another program polls the bot.", hidden: false },
     ]);
     instance.reportProblem("telegram_poll", null);
     expect(instance.status().problems).toEqual([]);
     expect(instance.status().problemDetails).toEqual([]);
+  });
+
+  test("a hidden problem stays hidden after a restart, and only an open problem can be hidden (#541)", () => {
+    const problem = { level: "warn", message: "The bot is slow.", resolvedMessage: "Telegram works again." } as const;
+    const first = start(new FakeEngine());
+    first.reportProblem("telegram_poll", problem);
+    expect(first.hideProblem("telegram_poll")).toBe(true);
+    expect(first.status().problemDetails[0]?.hidden).toBe(true);
+    expect(first.hideProblem("vault_sync")).toBe(false);
+    first.stop();
+    const second = start(new FakeEngine());
+    const alerts = collectAlerts(second);
+    second.reportProblem("telegram_poll", problem);
+    expect(alerts).toEqual([]);
+    expect(second.status().problemDetails).toEqual([
+      { key: "telegram_poll", level: "warn", message: "The bot is slow.", hidden: true },
+    ]);
   });
 
   test("an expired engine login is a problem with its own key until a turn of that engine works", async () => {
@@ -2141,6 +2164,7 @@ describe("Eva alerts", () => {
         key: "engine_login:claude-code",
         level: "error",
         message: expect.stringContaining("Claude Code login") as string,
+        hidden: false,
       },
     ]);
     await instance.sessions.send(chat.id, "hello again");
@@ -2576,6 +2600,78 @@ describe("machine reports (#126)", () => {
       ["machine:laptop:vault_ahead", "resolved"],
     ]);
     expect(alerts[1]?.message).toBe("On laptop: Fixed.");
+  });
+
+  test("a satellite's report marks a problem that the person hid there, and only that one (#541)", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("other-pc"));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    instance.reportProblem("telegram", { level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." });
+    instance.reportProblem("update", { level: "warn", message: "No update check.", resolvedMessage: "Ok." });
+    instance.hideProblem("update");
+    await instance.syncVault();
+    expect(readReport("example-pc")).toEqual({
+      machine: "example-pc",
+      version: expect.any(String) as string,
+      problems: [
+        { key: "telegram", level: "warn", message: "Telegram fails.", resolvedMessage: "Ok." },
+        { key: "update", level: "warn", message: "No update check.", resolvedMessage: "Ok.", hidden: true },
+      ],
+    });
+  });
+
+  test("the hub hides a problem that another machine reports as hidden, so it sends no reminder", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([{ ...ahead, hidden: true }]));
+    await instance.syncVault();
+    expect(instance.status().problemDetails[0]?.hidden).toBe(true);
+    clock = new Date(clock.getTime() + 25 * 60 * 60_000);
+    await instance.syncVault();
+    expect(alerts.map((alert) => alert.level)).toEqual(["warn"]);
+  });
+
+  test("the hub sends no alert for a problem that another machine hid before the hub saw it", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([{ ...ahead, hidden: true }]));
+    const instance = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(instance);
+    await instance.syncVault();
+    expect(alerts).toEqual([]);
+    expect(instance.status().problemDetails[0]?.hidden).toBe(true);
+  });
+
+  test("a relayed problem that cleared while the hub was off loses its mark, so its next failure alerts", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const first = start(new FakeEngine(), { machineName: "example-pc" });
+    await first.syncVault();
+    expect(first.hideProblem("machine:laptop:vault_ahead")).toBe(true);
+    first.stop();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([]));
+    const second = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(second);
+    await second.syncVault();
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    await second.syncVault();
+    expect(alerts.map((alert) => alert.key)).toEqual(["machine:laptop:vault_ahead"]);
+    expect(second.status().problemDetails[0]?.hidden).toBe(false);
+  });
+
+  test("a relayed problem that is still open keeps its mark across a hub restart", async () => {
+    sandbox.write(vault, ".eva/hub.json", hubClaim("example-pc"));
+    sandbox.write(vault, ".eva/machines/laptop.json", laptopReport([ahead]));
+    const first = start(new FakeEngine(), { machineName: "example-pc" });
+    await first.syncVault();
+    first.hideProblem("machine:laptop:vault_ahead");
+    first.stop();
+    const second = start(new FakeEngine(), { machineName: "example-pc" });
+    const alerts = collectAlerts(second);
+    await second.syncVault();
+    expect(alerts).toEqual([]);
+    expect(second.status().problemDetails[0]?.hidden).toBe(true);
   });
 
   test("a deleted report, such as from a computer that is gone, resolves its alerts", async () => {

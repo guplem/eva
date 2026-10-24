@@ -92,3 +92,14 @@ describe("the machine reports", () => {
     expect(readFileSync(machineReportPath(vault, "laptop"), "utf8").endsWith("}\n")).toBe(true);
   });
 });
+
+test("a hidden mark round-trips, and any other value of it reads as not hidden (#541)", () => {
+  const hidden: MachineReport = { ...report, problems: [{ ...report.problems[0]!, hidden: true }] };
+  writeMachineReport(vault, hidden);
+  expect(readMachineReports(vault)[0]?.report).toEqual(hidden);
+  writeFileSync(
+    machineReportPath(vault, "laptop"),
+    JSON.stringify({ ...report, problems: [{ ...report.problems[0], hidden: "yes" }] }),
+  );
+  expect(readMachineReports(vault)[0]?.report).toEqual(report);
+});

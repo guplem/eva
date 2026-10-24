@@ -94,6 +94,7 @@ const renameSchema = z.object({ title: z.string() });
 const seenSchema = z.object({ turnCount: z.number().int().min(0) });
 const archiveSchema = z.object({ archived: z.boolean() });
 const approvalSchema = z.object({ answer: z.enum(["allow", "deny"]) });
+const problemKeySchema = z.object({ key: z.string().min(1) });
 const statusSchema = z.enum(["idea", "active", "paused", "closed"]).optional();
 const loginSchema = z.object({ token: z.string().min(1) });
 const pushSchema = z.object({ note: z.string().max(10_000).optional() });
@@ -758,6 +759,12 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     if (label === null)
       return json({ error: "No device waits with this code. Check it, or ask again on the page." }, 404);
     return json({ label });
+  }
+  if (method === "POST" && url.pathname === "/api/problems/hide") {
+    // The problem can clear between the page's poll and the tap.
+    if (!eva.hideProblem(problemKeySchema.parse(await request.json()).key))
+      return json({ error: "This problem is not open anymore." }, 404);
+    return json(eva.status());
   }
   if (method === "POST" && url.pathname === "/api/vault/sync") return json(await eva.syncVault());
   if (method === "GET" && url.pathname === "/api/vault/repositories") return json(await eva.vaultRepositories());

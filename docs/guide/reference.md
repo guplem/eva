@@ -155,17 +155,19 @@ This needs git 2.38 or newer on the computer with the conflict. With an older gi
 
 Eva sends each alert to your Telegram chat when the problem starts, again once a day while it lasts, and once more when it ends. The open problems also show at the top of the web page, because Telegram itself can be the problem.
 
-| Alert                                   | When                                                                                  |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| The notebook sync stopped on a conflict | Two computers changed the same note: see [Notebook conflicts](#notebook-conflicts).   |
-| The notebook sync failed                | A git step failed, for example a full disk or a refused push.                         |
-| The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                    |
-| The update check or install failed      | The alert names the step. A failed install keeps the old version.                     |
-| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.                |
-| A reminder failed to run                | The alert names the reminder.                                                         |
-| A reminder waits for its card           | No card reached you, so it does not run: see [Optional features](#optional-features). |
-| Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                     |
-| Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                 |
+Press the x on a notice to hide it. It stays hidden on every device that opens this Eva, until the problem becomes an error or ends. Eva sends no daily reminder for it, also when you hide it on another computer. `/status` still counts it.
+
+| Alert                                   | When                                                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| The notebook sync stopped on a conflict | Two computers changed the same note: see [Notebook conflicts](#notebook-conflicts).                  |
+| The notebook sync failed                | A git step failed, for example a full disk or a refused push.                                        |
+| The notebook cannot reach GitHub        | The notebook was offline for more than 30 minutes.                                                   |
+| The update check or install failed      | The checks failed for 2 hours or more, or an install failed. A failed install keeps the old version. |
+| The Claude Code update failed           | The alert names the reason. Chats keep the old version of Claude Code.                               |
+| A reminder failed to run                | The alert names the reminder.                                                                        |
+| A reminder waits for its card           | No card reached you, so it does not run: see [Optional features](#optional-features).                |
+| Eva started after an unclean exit       | A crash or a power cut stopped her. Send `/logs`.                                                    |
+| Eva cannot read Telegram                | Another program uses the bot, or Telegram failed for over 15 minutes.                                |
 
 ## Notifications on a device
 

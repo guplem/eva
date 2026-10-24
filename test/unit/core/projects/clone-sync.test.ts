@@ -239,6 +239,32 @@ describe("commit and push", () => {
     await expectRefusedWithNoCommit();
   });
 
+  test("a cherry-pick of several commits that stopped partway is refused, after a plain commit too", async () => {
+    // The picks come from a local branch, so main stays a fast-forward of the remote and only the marker refuses.
+    sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
+    sandbox.write(clone.path, "AGENTS.md", "# Feature\n");
+    sandbox.git(clone.path, "commit", "-q", "-am", "feature work");
+    sandbox.write(clone.path, "second.txt", "second\n");
+    sandbox.git(clone.path, "add", "-A");
+    sandbox.git(clone.path, "commit", "-q", "-m", "second feature work");
+    sandbox.git(clone.path, "checkout", "-q", "main");
+    sandbox.write(clone.path, "AGENTS.md", "# Local\n");
+    sandbox.git(clone.path, "commit", "-q", "-am", "local work");
+    expect(() => sandbox.git(clone.path, "cherry-pick", "feature~1", "feature")).toThrow();
+    sandbox.write(clone.path, "AGENTS.md", "# Solved\n");
+    sandbox.git(clone.path, "add", "-A");
+    // A plain commit ends the first pick, but the second one still waits.
+    sandbox.git(clone.path, "commit", "-q", "--no-edit");
+    expect(existsSync(join(clone.path, ".git", "CHERRY_PICK_HEAD"))).toBe(false);
+    const before = sandbox.git(clone.path, "rev-parse", "HEAD");
+    const failure = await commitAndPush(clone, "Push it", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(sandbox.git(clone.path, "rev-parse", "HEAD")).toBe(before);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("seed");
+  });
+
   test("a clone on no branch is refused before the commit", async () => {
     sandbox.git(clone.path, "checkout", "-q", "--detach");
     sandbox.write(clone.path, "new.txt", "new\n");

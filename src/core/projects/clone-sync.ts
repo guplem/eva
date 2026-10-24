@@ -176,6 +176,8 @@ const operationMarkers: readonly (readonly [string, string])[] = [
   ["rebase-apply", "rebase"],
   ["CHERRY_PICK_HEAD", "cherry-pick"],
   ["REVERT_HEAD", "revert"],
+  // A pick or revert of several commits keeps this folder after a plain commit ends the current one.
+  ["sequencer", "cherry-pick or revert"],
 ];
 
 /** The merge, rebase, cherry-pick or revert that the clone has not ended, or null. */

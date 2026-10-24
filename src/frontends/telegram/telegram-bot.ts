@@ -699,7 +699,13 @@ export class TelegramBot {
       return;
     }
     try {
-      if (this.options.eva.sessions.get(sessionId).modelAlias === model) {
+      const before = this.options.eva.sessions.get(sessionId);
+      // A closed chat takes no next turn, so a new model would never answer.
+      if (before.closed) {
+        await this.send(chatId, topicId, closedChatText);
+        return;
+      }
+      if (before.modelAlias === model) {
         await this.send(chatId, topicId, `This chat already uses ${model}.`);
         return;
       }

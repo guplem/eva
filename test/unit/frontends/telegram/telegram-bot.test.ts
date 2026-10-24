@@ -628,6 +628,20 @@ describe("topics", () => {
     telegram.pressButton(owner, `m:${session.id}:haiku`, 500);
     await settle(bot, () => eva.sessions.get(session.id).modelAlias === "haiku");
     expect(telegram.callsTo("answerCallbackQuery")).toHaveLength(1);
+    // A chat with no history loses nothing, so the first choice needs no notice (#545).
+    expect(telegram.sentTexts().filter((text) => text.includes("next answer"))).toEqual([]);
+  });
+
+  test("a model button of a closed chat says why the model stays (#545)", async () => {
+    const bot = createBot();
+    telegram.sendText(owner, "/new");
+    await settle(bot, () => eva.sessions.list().length === 1);
+    const session = eva.sessions.list()[0]!;
+    eva.sessions.close(session.id);
+
+    telegram.pressButton(owner, `m:${session.id}:opus`, 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("closed this chat")));
+    expect(eva.sessions.get(session.id).modelAlias).toBe("default");
   });
 
   test("a model button changes the model of a started chat, and says what the change costs (#545)", async () => {

@@ -174,6 +174,22 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
   });
 
+  test("the redact option hides a secret that git names in its error (#447)", async () => {
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "token-value", "missing.git"));
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      redact: (text) => text.replaceAll("token-value", "[redacted]"),
+    });
+    const pulled = await sync.pull();
+    expect(pulled.lastError).toContain("[redacted]");
+    expect(pulled.lastError).not.toContain("token-value");
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    expect((await sync.pull()).lastError).toBeNull();
+  });
+
   test("a fetch or a push that fails with no error output still gives a reason (#430)", async () => {
     const silentOn =
       (step: string): ProcessRunner["run"] =>

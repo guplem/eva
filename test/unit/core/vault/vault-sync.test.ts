@@ -235,7 +235,34 @@ describe("VaultSync.save", () => {
       expect(run?.command.some((part) => part.includes("Notes/"))).toBe(false);
       expect(run?.stdin?.split("\0")).toContain("Notes/n 39.md");
     }
+    // A status that a timeout kills must leave no index.lock (lesson 81).
+    const status = commands.find(({ command }) => command.includes("status"));
+    expect(status?.command.slice(1, 3)).toEqual(["--no-optional-locks", "status"]);
   });
+
+  test("a name with accents and spaces reaches the remote through the paths on stdin (#505)", async () => {
+    // A held-back secret makes the commit name its files with --only.
+    sandbox.write(vault, "Toolbox/keys.md", "token ghp_" + "d".repeat(36) + "\n");
+    sandbox.write(vault, "Notes/Café del mar ñ.md", "x\n");
+    expect((await createSync(vault).save()).status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "-c", "core.quotePath=false", "ls-tree", "-r", "--name-only", "main")).toContain(
+      "Notes/Café del mar ñ.md",
+    );
+  });
+
+  // Windows forbids "*" in a file name.
+  test.skipIf(process.platform === "win32")(
+    "a path on stdin matches literally: n*.md never pulls in a held-back nb.md (#505)",
+    async () => {
+      sandbox.write(vault, "Notes/n*.md", "x\n");
+      sandbox.write(vault, "Notes/nb.md", "token ghp_" + "e".repeat(36) + "\n");
+      const state = await createSync(vault).save();
+      expect(state.status).toBe("ok");
+      expect(state.withheldFiles).toEqual([{ path: "Notes/nb.md", reason: "secret" }]);
+      expect(remoteFiles()).toContain("Notes/n*.md");
+      expect(remoteFiles()).not.toContain("Notes/nb.md");
+    },
+  );
 
   test("removes an index.lock that a killed git left long ago, and keeps a fresh one (#505)", async () => {
     const lock = join(vault, ".git", "index.lock");

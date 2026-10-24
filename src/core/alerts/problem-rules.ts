@@ -80,6 +80,16 @@ export function engineUpdateProblem(result: EngineUpdateResult): AlertProblem | 
   };
 }
 
+/** The engine refused a turn because its login no longer works. A turn that works clears it. */
+export function engineLoginProblem(engine: EngineName): AlertProblem {
+  const name = engineProgramNames[engine];
+  return {
+    level: "error",
+    message: `The ${name} login expired, so chats with ${name} fail. On Eva's web page, open Settings, AI engines, ${name}, and log in again.`,
+    resolvedMessage: `The ${name} login works again.`,
+  };
+}
+
 /**
  * The state of the default engine's program. "installed": Eva finds it now, but loaded no
  * engine for it at start, so chats need a restart.

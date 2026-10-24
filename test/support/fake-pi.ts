@@ -23,6 +23,8 @@ export interface FakePiScript {
   /** Runs when the adapter closes the process, such as a write of the session file. */
   readonly onClose?: (run: FakePiRun) => void;
   readonly stderr?: string;
+  /** Set to false to stop at a `get_state` command with no answer, as a pi that dies does. */
+  readonly answersState?: boolean;
 }
 
 export function loadPiFixture(name: string): PiRecord[] {
@@ -108,6 +110,7 @@ class FakePiProcess implements PiProcess {
       if (!pause) continue;
       const command = await this.nextCommand();
       if (command === null) return;
+      if (command["type"] === "get_state" && this.script.answersState === false) return;
       if (command["type"] === "get_state") {
         yield { id: command["id"], type: "response", command: "get_state", success: true, data: state };
       }

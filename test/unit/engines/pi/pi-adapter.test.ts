@@ -342,6 +342,14 @@ describe("PiEngine", () => {
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: 1200, contextWindow: null });
   });
 
+  test("a pi that stops before it answers the state still finishes the turn, with no window", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain"), answersState: false }]);
+    const events = await drain(engine(fake).runTurn(request()));
+    const ends = events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed");
+    expect(ends.map((event) => event.kind)).toEqual(["turn_finished"]);
+    expect(ends[0]).toMatchObject({ contextTokens: 1200, contextWindow: null });
+  });
+
   test("Assistant mode allows a local command at once, and asks the person before an outward one", async () => {
     const asked: ApprovalRequest[] = [];
     const ask = (approval: ApprovalRequest): Promise<ApprovalAnswer> => {

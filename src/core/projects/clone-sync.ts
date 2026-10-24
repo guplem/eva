@@ -149,8 +149,11 @@ export async function commitAndPush(
     "-q",
     `refs/remotes/origin/${branch}`,
   ]);
-  const head = await git(clone, runner, environment, ["rev-parse", "HEAD"]);
-  if (files.length === 0 && remoteBranch.exitCode === 0 && remoteBranch.stdout.trim() === head.stdout.trim()) {
+  const head = await git(clone, runner, environment, ["rev-parse", "--verify", "-q", "HEAD"]);
+  // An unborn branch, as in a clone of an empty remote, has no commit yet to push.
+  const noCommit = head.exitCode !== 0;
+  const level = remoteBranch.exitCode === 0 && remoteBranch.stdout.trim() === head.stdout.trim();
+  if (files.length === 0 && (noCommit || level)) {
     throw new EvaError("git_failed", `${clone.name} has nothing to push.`);
   }
   // `HEAD` names the branch of the same name, so a branch that tracks main never lands on main.

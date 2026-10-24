@@ -265,6 +265,23 @@ describe("commit and push", () => {
     expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("seed");
   });
 
+  test("a clone of an empty remote with no change has nothing to push", async () => {
+    const empty = join(sandbox.root, "empty.git");
+    sandbox.git(sandbox.root, "init", "-q", "--bare", empty);
+    const first = await createClone({
+      projectPath: join(sandbox.root, "vault", "Projects", "2025-03-02-1015-example-app"),
+      repositoryUrl: empty,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    const failure = await commitAndPush(first, "nothing", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(failure, "git_failed")).toBe(true);
+    expect(String(failure)).toContain("has nothing to push");
+  });
+
   test("a clone on no branch is refused before the commit", async () => {
     sandbox.git(clone.path, "checkout", "-q", "--detach");
     sandbox.write(clone.path, "new.txt", "new\n");

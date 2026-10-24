@@ -100,7 +100,12 @@ export type EngineEventPayload =
       /** The id of the model that answered, such as `claude-opus-5-5`, or null when the engine does not say. */
       readonly model: string | null;
     }
-  | { readonly kind: "turn_failed"; readonly reason: string };
+  | {
+      readonly kind: "turn_failed";
+      readonly reason: string;
+      /** The engine's login no longer works, so the person must log in again. An older event has no field. */
+      readonly loginExpired?: true;
+    };
 
 /**
  * Who sent a message to a chat: Telegram, a client of the local API (the web app or `eva chat`),

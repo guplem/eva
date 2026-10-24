@@ -608,6 +608,46 @@ describe("mapSdkMessages", () => {
   });
 });
 
+describe("an expired login", () => {
+  /** A turn as Claude Code ends it when its token no longer works: its own line, an error result, then the SDK's throw. */
+  function expiredTurn(): CapturedLine[] {
+    const lines = loadCapture("new-turn-with-tool").filter(isMessage);
+    const assistant = lines.find((line) => line.type === "assistant")!;
+    const result = resultOf("new-turn-with-tool");
+    const engineLine = "Invalid API key · Please run /login";
+    return [
+      {
+        ...assistant,
+        error: "authentication_failed",
+        message: { ...assistant.message, model: "<synthetic>", content: [{ type: "text", text: engineLine }] },
+      } as SDKMessage,
+      { ...result, is_error: true, result: engineLine } as SDKMessage,
+      { type: "eva_capture_error", message: `Claude Code returned an error result: ${engineLine}` },
+    ];
+  }
+
+  test("fails the turn with the login flag and Eva's line, never the engine's line with its terminal fix", async () => {
+    const events = await drain(
+      new ClaudeCodeEngine({ executable: "/bin/claude", query: () => replay(expiredTurn()) }).runTurn(request()),
+    );
+    expect(events).toEqual([
+      {
+        kind: "turn_failed",
+        reason: "The Claude Code login expired. Log in again in Settings, Engines, Claude Code.",
+        loginExpired: true,
+      },
+    ]);
+  });
+
+  test("an error of a subagent's message is not the turn's login", async () => {
+    const lines = expiredTurn();
+    const [assistant] = lines as [Extract<SDKMessage, { type: "assistant" }>];
+    lines[0] = { ...assistant, parent_tool_use_id: "tool-1" };
+    const events = await collect(lines.slice(0, 2));
+    expect(events.some((event) => event.kind === "turn_failed" && event.loginExpired === true)).toBe(false);
+  });
+});
+
 describe("the start of Eva's MCP servers", () => {
   /** The captured init message, with the given server states. */
   function initLine(servers: { name: string; status: string }[]): SDKMessage {

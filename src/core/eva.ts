@@ -583,6 +583,7 @@ export class Eva {
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       }),
       stepDetails: new StepDetailsStore(options.paths.stepDetails),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",

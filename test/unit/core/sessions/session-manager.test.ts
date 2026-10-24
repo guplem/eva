@@ -19,6 +19,9 @@ import { FakeEngine } from "../../../support/fake-engine.ts";
 let folder: string;
 let events: SessionEvent[];
 let followUps: (string | null)[];
+/** The next work after a turn throws this error once, such as a vault save that breaks. */
+let afterTurnError: Error | null;
+let logged: string[];
 
 const preparer: TurnPreparer = {
   prepare: (session) =>
@@ -31,7 +34,11 @@ const preparer: TurnPreparer = {
       trusted: true,
       environment: { PATH: "/bin" },
     }),
-  afterTurn: () => Promise.resolve(followUps.shift() ?? null),
+  afterTurn: () => {
+    const error = afterTurnError;
+    afterTurnError = null;
+    return error === null ? Promise.resolve(followUps.shift() ?? null) : Promise.reject(error);
+  },
 };
 
 function createManager(
@@ -61,6 +68,7 @@ function createManager(
     approvalTimeoutMs: overrides.approvalTimeoutMs ?? 1_000,
     turnTimeoutMs: overrides.turnTimeoutMs ?? 30_000,
     ...(overrides.nameChat === undefined ? {} : { nameChat: overrides.nameChat }),
+    logger: { log: (level, message, details) => logged.push(`${level} ${message} ${JSON.stringify(details)}`) },
   });
   manager.subscribe((event) => events.push(event));
   return manager;
@@ -89,6 +97,8 @@ beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), "eva-sessions-"));
   events = [];
   followUps = [];
+  afterTurnError = null;
+  logged = [];
 });
 afterEach(() => {
   rmSync(folder, { recursive: true, force: true });
@@ -1393,6 +1403,47 @@ describe("after a turn", () => {
     await manager.send(sessionId, "start the skill");
     expect(engine.requests.map((request) => request.prompt)).toEqual(["start the skill", "continue the skill run"]);
     expect(engine.requests[1]?.history.kind).toBe("continue");
+  });
+
+  test("an error after a turn is logged, and a message that waits still gets its turn", async () => {
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine = new FakeEngine(async function* (request, turnNumber) {
+      if (turnNumber === 1) await released;
+      yield* FakeEngine.answer(request, "done");
+    });
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    afterTurnError = new Error("The vault save broke.");
+    const first = manager.send(sessionId, "one");
+    await waitUntil(() => engine.requests.length === 1);
+    const second = manager.send(sessionId, "two");
+    release();
+    await Promise.all([first, second]);
+    await waitUntil(() => !manager.isActive(sessionId));
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["one", "two"]);
+    expect(manager.get(sessionId).turns).toHaveLength(2);
+    expect(logged.join("\n")).toContain("The vault save broke.");
+  });
+
+  test("a listener that throws never leaves a message that waits without a turn", async () => {
+    const engine = new FakeEngine();
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    let thrown = false;
+    manager.subscribe((event) => {
+      if (thrown || event.kind !== "message_received") return;
+      thrown = true;
+      // A message that comes while the chat is busy, just before the throw.
+      void manager.send(sessionId, "two");
+      throw new Error("A front end broke.");
+    });
+    await manager.send(sessionId, "one");
+    await waitUntil(() => !manager.isActive(sessionId));
+    expect(engine.requests.map((request) => request.prompt)).toEqual(["two"]);
+    expect(logged.join("\n")).toContain("A front end broke.");
   });
 
   test("a stopped turn gets no follow-up from the mode", async () => {

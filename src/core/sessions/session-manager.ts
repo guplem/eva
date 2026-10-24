@@ -23,6 +23,7 @@ import {
   type TaskState,
 } from "../../shared/events.ts";
 import { SequenceCounter } from "../../shared/clock.ts";
+import type { Logger } from "../../shared/logger.ts";
 import { TextStreamRedactor, type Redactor } from "../../shared/redaction.ts";
 import { boundedDetail, maxTurnDetailLength, redactedJsonText } from "../../shared/tool-details.ts";
 import {
@@ -113,6 +114,8 @@ export interface SessionManagerOptions {
   readonly approvalTimeoutMs: number;
   /** A turn that runs longer is stopped, so a hung engine never keeps a chat busy for good. */
   readonly turnTimeoutMs: number;
+  /** Where an error of the work after a turn goes. The turn has its end event already. */
+  readonly logger?: Logger;
 }
 
 /** An approval that waits for an answer. The summary is already redacted. */
@@ -420,13 +423,24 @@ export class SessionManager {
     batch.texts.push(text);
     batch.messages.push({ text, origin });
     this.lastActivity.set(sessionId, this.options.now().getTime());
-    if (!runtime.busy && runtime.timer === null) {
-      runtime.timer = setTimeout(() => {
-        runtime.timer = null;
-        void this.drain(sessionId);
-      }, this.options.gatherMs);
-    }
+    if (!runtime.busy) this.startGathering(sessionId, runtime);
     return batch.done;
+  }
+
+  /** Waits a moment for more messages, then runs the turn (lesson 51). */
+  private startGathering(sessionId: string, runtime: SessionRuntime): void {
+    if (runtime.timer !== null) return;
+    runtime.timer = setTimeout(() => {
+      runtime.timer = null;
+      void this.drain(sessionId);
+    }, this.options.gatherMs);
+  }
+
+  private logAfterTurnError(sessionId: string, error: unknown): void {
+    this.options.logger?.log("error", "The work after a turn failed.", {
+      sessionId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
 
   /**
@@ -614,13 +628,20 @@ export class SessionManager {
         // When the turn starts, not at the send: a message sent during a turn joins the next one
         // (lesson 114), so a front end shows each message just before its own answer.
         for (const message of batch.messages) this.emit(sessionId, { kind: "message_received", ...message });
-        const followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
-        // Telegram showed the answer where the person asked, so the web app must not show it as unread.
-        // A follow-up of the mode has no message, so its answer stays unread.
-        const fromTelegram =
-          batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
-        const recorded = this.options.store.get(sessionId);
-        if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
+        let followUp: string | null = null;
+        try {
+          followUp = await this.runTurn(sessionId, batch.texts.join("\n\n"));
+          // Telegram showed the answer where the person asked, so the web app must not show it as unread.
+          // A follow-up of the mode has no message, so its answer stays unread.
+          const fromTelegram =
+            batch.messages.length > 0 && batch.messages.every((message) => message.origin === "telegram");
+          const recorded = this.options.store.get(sessionId);
+          if (fromTelegram && recorded !== undefined) this.markSeen(sessionId, recorded.turns.length);
+        } catch (error) {
+          // The turn sent its end event already. Only the work after it failed, such as a save, so
+          // the messages that wait still get their turn.
+          this.logAfterTurnError(sessionId, error);
+        }
         // After a stop, the person wants Eva to end the work, not to go on with the mode's next step.
         if (followUp !== null && !runtime.stopped && followUps < maxFollowUps) {
           followUps += 1;
@@ -628,8 +649,14 @@ export class SessionManager {
           runtime.pending.texts.unshift(followUp);
         }
       }
+    } catch (error) {
+      // Nobody awaits the drain, so a rejection would go nowhere.
+      this.logAfterTurnError(sessionId, error);
     } finally {
       runtime.busy = false;
+      // A batch that came while the chat was busy set no timer. Without one, it waits for good,
+      // and the chat stays active, which blocks a delete and a restart for an update.
+      if (runtime.pending !== null) this.startGathering(sessionId, runtime);
       const stopped = runtime.stopped;
       runtime.stopped = false;
       for (const listener of this.idleListeners) {

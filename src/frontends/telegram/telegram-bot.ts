@@ -87,6 +87,7 @@ const confirmAttempts = 3;
 
 const models: readonly ModelAlias[] = ["default", "opus", "sonnet", "haiku"];
 const deviceExpiredText = "This request expired.";
+const closedChatText = "Eva closed this chat to reuse its clone. Start a new chat to go on.";
 const pollProblemKey = "telegram_poll";
 const defaultLogCount = 20;
 
@@ -662,6 +663,11 @@ export class TelegramBot {
         name: titleOf(text),
       });
     }
+    // Eva reused the clone of a closed chat (issue 521): the core refuses the message, so the phone hears why.
+    if (this.options.eva.sessions.get(entry.sessionId).closed) {
+      await this.send(chatId, topicId, closedChatText);
+      return;
+    }
     this.startTyping(chatId, topicId, entry.sessionId);
     void this.options.eva.sessions.send(entry.sessionId, text, "telegram");
   }
@@ -811,11 +817,7 @@ export class TelegramBot {
         return;
       case "session_closed":
         await this.inOrder(event.sessionId, async () => {
-          await this.send(
-            target.chatId,
-            target.topicId,
-            "Eva closed this chat to reuse its clone. Start a new chat to go on.",
-          );
+          await this.send(target.chatId, target.topicId, closedChatText);
         });
         return;
       case "notice":

@@ -603,6 +603,7 @@ export class Eva {
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       }),
       stepDetails: new StepDetailsStore(options.paths.stepDetails),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
       preparers: {
         assistant: new AssistantPreparer({
           vaultPath: vaultPath ?? "",
@@ -716,7 +717,7 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
+              send: (sessionId, prompt) => this.sessions.sendWithResult(sessionId, prompt, "schedule"),
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(

@@ -29,6 +29,36 @@ describe("withinTime", () => {
     expect((error as Error).message).toBe("Eva did not answer.");
   });
 
+  test("a limit that fires late, as after the phone slept, gives the work one short extra wait", async () => {
+    // The first reading is the start. Each later reading is long after it: the page was frozen.
+    let readings = 0;
+    const now = (): number => (readings++ === 0 ? 0 : 60_000);
+    const answer = await withinTime(
+      10,
+      "Eva did not answer.",
+      () => new Promise<string>((resolve) => setTimeout(() => resolve("sent"), 40)),
+      { now, graceMs: 200 },
+    );
+    expect(answer).toBe("sent");
+  });
+
+  test("work that still hangs after the extra wait fails with the message", async () => {
+    let readings = 0;
+    const now = (): number => (readings++ === 0 ? 0 : 60_000);
+    let signal: AbortSignal | undefined;
+    const error: unknown = await withinTime(
+      10,
+      "Eva did not answer.",
+      (given) => {
+        signal = given;
+        return new Promise<string>(() => undefined);
+      },
+      { now, graceMs: 20 },
+    ).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe("Eva did not answer.");
+    expect(signal?.aborted).toBe(true);
+  });
+
   test("passes on the failure of work that fails in time", async () => {
     const failure = new TypeError("offline");
     const error: unknown = await withinTime(1_000, "too slow", () => Promise.reject(failure)).catch(

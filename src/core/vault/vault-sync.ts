@@ -3,12 +3,13 @@
  * Assistant turn, commit and push after it, and an idle sweep. Nothing here ever
  * discards a change; a conflict stops the pushes and asks a person.
  */
-import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, posix } from "node:path";
 import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { isEvaError } from "../../shared/errors.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { scratchFolderName } from "../files/vault-files.ts";
 
 export type VaultSyncStatus = "ok" | "offline" | "conflict" | "error" | "skipped";
 
@@ -526,8 +527,14 @@ export class VaultSync {
     const unmerged = unmergedPaths(entries);
     const withheld: WithheldFile[] = [];
     const kept: string[] = [];
-    for (const { path } of entries) {
+    let stagedScratch = false;
+    for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
+      if (this.isScratchFile(path)) {
+        // An untracked file stays out of a plain commit anyway; a staged one needs --only.
+        if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
+        continue;
+      }
       const reason = this.withheldReason(path);
       if (reason === null) kept.push(path);
       else withheld.push({ path, reason });
@@ -544,13 +551,19 @@ export class VaultSync {
       this.update({ status: "error", lastError: `git add failed: ${failureReason(add, "git")}` });
       return false;
     }
-    const plural = kept.length === 1 ? "file" : "files";
-    // git refuses a full commit while a file has conflict markers, and a pick can stage a withheld
-    // file: --only commits just the kept files.
-    const onlyKept = unmerged.length === 0 && withheld.length === 0 ? [] : ["--only", "--", ...kept];
+    // A file that was staged and then deleted is gone after the add, and in no commit, so
+    // `commit --only` refuses its path ("did not match any file").
+    const addedThenDeleted = new Set(entries.filter((entry) => entry.code === "AD").map((entry) => entry.path));
+    const committed = kept.filter((path) => !addedThenDeleted.has(path));
+    if (committed.length === 0) return true;
+    const plural = committed.length === 1 ? "file" : "files";
+    // git refuses a full commit while a file has conflict markers, and a pick or a person can stage
+    // a withheld or Scratch file: --only commits just the kept files.
+    const needsOnly = unmerged.length > 0 || withheld.length > 0 || stagedScratch;
+    const onlyKept = needsOnly ? ["--only", "--", ...committed] : [];
     const commit = await this.git(
       // --no-verify: a git hook in the vault must never block an autosave (lesson 27).
-      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(kept.length)} ${plural})`, ...onlyKept],
+      ["commit", "-q", "--no-verify", "-m", `eva: autosave (${String(committed.length)} ${plural})`, ...onlyKept],
       localTimeoutMs,
     );
     if (commit.exitCode !== 0) {
@@ -716,6 +729,22 @@ export class VaultSync {
       return containsSecretPattern(readFileSync(absolutePath, "utf-8")) ? "secret" : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Scratch holds files received from a chat, such as a bank statement, so it never reaches a
+   * commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
+   * Scratch file out of the tree. lstat, so a broken link in Scratch is not read as a removal.
+   */
+  private isScratchFile(relativePath: string): boolean {
+    // Windows and macOS ignore the case, so Eva writes into a "scratch" folder that exists already.
+    if (relativePath.split("/")[0]?.toLowerCase() !== scratchFolderName.toLowerCase()) return false;
+    try {
+      lstatSync(join(this.options.vaultPath, relativePath));
+      return true;
+    } catch {
+      return false;
     }
   }
 

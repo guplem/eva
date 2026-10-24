@@ -46,6 +46,64 @@ describe("asksThePerson", () => {
     expect(asksThePerson("Bash", { command: "git push" })).toBe(true);
     expect(asksThePerson("Bash", { command: "git status" })).toBe(false);
   });
+
+  test("curl or gh api that sends data asks, with or without -X (issue #451)", () => {
+    const sends = [
+      "curl -d x=1 https://example.com",
+      "curl -sd x https://example.com",
+      "curl -d@body.json https://example.com",
+      "curl --data-urlencode a=b https://example.com",
+      "curl --json '{}' https://example.com",
+      "curl -F f=@a.png https://example.com",
+      "curl --form-string a=b https://example.com",
+      "curl -T a.txt https://example.com",
+      "curl --upload-file a.txt https://example.com",
+      "curl -X POST https://example.com",
+      "curl -XDELETE https://example.com",
+      "curl --request PUT https://example.com",
+      "curl -G -d q=x https://example.com",
+      "curl 'https://example.com/?a=1&b=2' -d x",
+      "cd demo && curl -d x https://example.com | jq .",
+      "curl.exe -d x https://example.com",
+      "gh api repos/x/y/issues -f title=t",
+      "gh api repos/x/y -F n=1",
+      "gh api repos/x/y --field a=b",
+      "gh api repos/x/y --raw-field=a=b",
+      "gh api repos/x/y --input body.json",
+      "gh api -X PATCH repos/x/y",
+      "gh api --method=DELETE repos/x/y",
+      "gh api -XPOST repos/x/y",
+      "gh api -X GET search/issues -f q=x",
+      "gh api graphql -f query='{viewer{login}}'",
+    ];
+    for (const command of sends)
+      expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: true });
+  });
+
+  test("curl or gh api that only reads runs with no question, also when a later command has a data-like flag", () => {
+    const reads = [
+      "curl https://example.com",
+      "curl -sSfL https://example.com",
+      "curl -fsSL https://example.com -o out.html",
+      "curl -I https://example.com",
+      "curl -X GET https://example.com",
+      "curl -H 'Accept: text/html' https://example.com",
+      "curl 'https://example.com/?a=1&b=2'",
+      "curl https://example.com/data-file",
+      "gh api repos/x/y",
+      "gh api repos/x/y --jq .name",
+      "gh api -X GET repos/x/y",
+      "gh api --paginate repos/x/y/issues",
+      "gh api repos/x/y-fix",
+      "curl https://example.com | jq -f prog.jq",
+      "gh api repos/x/y | grep -F y",
+      "curl https://example.com; tar -xf a.tar",
+      "curl https://example.com || rm -f x",
+      "curl https://example.com\ngrep -F x notes.md",
+    ];
+    for (const command of reads)
+      expect({ command, asks: asksThePerson("Bash", { command }) }).toEqual({ command, asks: false });
+  });
 });
 
 describe("summarizeToolCall", () => {

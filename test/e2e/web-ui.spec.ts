@@ -4498,6 +4498,8 @@ test("Files: the search finds a name, then the text inside a file, and a match o
   expect(insideBox?.y ?? 0).toBeGreaterThanOrEqual((fieldBox?.y ?? 0) - (insideBox?.height ?? 0));
   await inside.click();
   await expect(inside).toHaveAttribute("aria-pressed", "true");
+  // The ring of the pill means "you can type": a click on the chip does not light it.
+  await expect(page.locator(".files-search .search-field")).toHaveCSS("outline-style", "none");
   const match = results.getByRole("link").filter({ hasText: "# Shopping" }).first();
   await expect(match).toContainText("Line 1:");
   await match.click();

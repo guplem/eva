@@ -557,7 +557,7 @@ a.files-entry[aria-current="true"] {
   color: var(--muted);
 }
 
-/* The search sits under the path, and its check box wraps under the field on a phone. */
+/* The search sits under the path. */
 .files-search {
   display: flex;
 }
@@ -565,28 +565,32 @@ a.files-entry[aria-current="true"] {
 .files-search .search-field {
   flex: 1 1 260px;
   max-width: 480px;
-  padding-right: var(--space-1);
+  padding: 0 var(--space-1) 0 0;
 }
 
-/* The label takes the free room, so a click on the icon also focuses the text box. */
+/* The chip also sits in the pill, so the ring shows only while the person can type. */
+.files-search .search-field:not(:has(input:focus)) {
+  outline: none;
+  box-shadow: var(--shadow);
+}
+
+/* The label takes the pill's left padding and the free room, so a tap there also focuses the text box. */
 .files-search-text {
   flex: 1;
   min-width: 0;
+  align-self: stretch;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding-left: var(--space-3);
 }
 
 /* The option sits in the pill, so it never takes a row of its own on a phone. */
 .files-search-inside {
   flex-shrink: 0;
-  padding: 2px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   font-size: var(--text-sm);
   white-space: nowrap;
-}
-
-.files-search-inside:not([aria-pressed="true"]) {
-  color: var(--muted);
 }
 
 .files-search-results {

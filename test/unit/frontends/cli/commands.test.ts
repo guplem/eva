@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
 import { readHubClaim } from "../../../../src/core/instance/hub.ts";
 import { saveGitHubAccount } from "../../../../src/core/instance/commit-identity.ts";
-import { acquireInstanceLock } from "../../../../src/core/instance/instance-lock.ts";
 import {
   createHomeFolders,
   defaultConfig,
@@ -341,7 +340,7 @@ describe("with a running Eva", () => {
     saveConfig(paths, { ...config, port: Number(new URL(api.url).port) });
     saveSecrets(paths, { localApiToken: "running-token" });
     // This process holds the lock, so setup, which asks the real system, sees Eva run and keeps her port.
-    acquireInstanceLock(paths.lock, { pid: process.pid, bootId: null, isProcessAlive: () => false });
+    writeFileSync(paths.lock, String(process.pid));
     host = fakeHost({ isProcessAlive: () => true });
   }, gitHookTimeoutMs);
   afterEach(async () => {
@@ -788,7 +787,7 @@ describe("service install and supervise", () => {
     });
     expect(await run(refused, "service", "install")).toBe(exitCodes.crash);
     expect(printed(refused)).toContain("Windows did not save the start at logon: denied");
-    acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+    writeFileSync(paths.lock, "999999");
     const running = fakeHost({ platform: "win32", isProcessAlive: () => true, runner: scriptedRunner([], noTask) });
     expect(await run(running, "service", "install")).toBe(exitCodes.clean);
     expect(printed(running)).toContain("she already runs");
@@ -827,7 +826,7 @@ describe("service install and supervise", () => {
     try {
       saveConfig(paths, { ...loadSettings(paths).config, port: api.port ?? 0 });
       saveSecrets(paths, { localApiToken: "test-token" });
-      acquireInstanceLock(paths.lock, { pid: 999_999, bootId: null, isProcessAlive: () => false });
+      writeFileSync(paths.lock, "999999");
       const host = fakeHost({
         platform: "win32",
         environment: { ...gitEnvironment, SystemRoot: "C:\\Windows" },

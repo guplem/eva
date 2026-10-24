@@ -159,7 +159,12 @@ async function serve(paths: HomePaths): Promise<number> {
     sleep: (ms) => Bun.sleep(ms),
   });
   // Before the migrations, so a second start never changes the files under a running Eva.
-  const lock = acquireInstanceLock(paths.lock, { pid: host.pid, bootId: host.bootId, isProcessAlive });
+  const lock = await acquireInstanceLock(paths.lock, {
+    pid: host.pid,
+    bootId: host.bootId,
+    isProcessAlive,
+    sleep: (ms) => Bun.sleep(ms),
+  });
   const { config, secrets, notes, migrations } = await prepareStart({
     paths,
     runner: systemProcessRunner,

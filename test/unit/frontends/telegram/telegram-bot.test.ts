@@ -658,7 +658,7 @@ describe("topics", () => {
     const notice = telegram.callsTo("sendMessage").find((call) => String(call.params["text"]).includes("opus"));
     expect(notice?.params["message_thread_id"]).toBe(500);
 
-    // The same model keeps the cache, so a second press warns about no cost.
+    // The same model changes nothing, so a second press says so and sends no cost notice.
     telegram.pressButton(owner, `m:${session.id}:opus`, 500);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("already uses opus")));
     expect(telegram.sentTexts().filter((text) => text.includes("whole chat again"))).toHaveLength(1);
@@ -680,6 +680,13 @@ describe("topics", () => {
     telegram.pressButton(owner, `m:${earlier.id}:opus`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("earlier chat")));
     expect(eva.sessions.get(earlier.id).modelAlias).toBe("default");
+  });
+
+  test("a model button of a deleted chat says that the chat is gone (#545)", async () => {
+    const bot = createBot();
+    telegram.pressButton(owner, "m:no-such-chat:opus", 500);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("no longer exists")));
+    expect(telegram.sentTexts().filter((text) => text.startsWith("The message failed"))).toEqual([]);
   });
 
   test("a model button says why it waits while a turn runs (#545)", async () => {

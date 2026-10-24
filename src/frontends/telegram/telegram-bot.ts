@@ -706,6 +706,8 @@ export class TelegramBot {
         return;
       }
       if (before.modelAlias === model) {
+        // A new chat hears nothing, as for any first choice.
+        if (before.turns.length === 0) return;
         await this.send(chatId, topicId, `This chat already uses ${model}.`);
         return;
       }
@@ -717,6 +719,10 @@ export class TelegramBot {
         `The next answer uses ${model}. It reads the whole chat again, so it is slower and costs more.`,
       );
     } catch (error) {
+      if (isEvaError(error, "session_not_found")) {
+        await this.send(chatId, topicId, "This chat no longer exists, so the model stays.");
+        return;
+      }
       if (!isEvaError(error, "session_busy")) throw error;
       await this.send(chatId, topicId, "Eva is still working in this chat. Change the model when she finishes.");
     }

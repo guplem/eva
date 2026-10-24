@@ -3883,6 +3883,14 @@ test.describe("on a touch screen", () => {
   });
 });
 
+test("a narrow window on a computer keeps its tab bar while the person types", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "This check is for the phone size only.");
+  await logIn(page);
+  await newChat(page);
+  await page.getByLabel("Message").first().focus();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+});
+
 test("Project details: change, clear and save the fields, then the whole AGENTS.md", async ({ page }) => {
   const run = test.info().project.name;
   await logIn(page);

@@ -47,7 +47,7 @@ export function vaultSyncProblem(state: VaultSyncState, offlineForMs: number): A
     case "error":
       return {
         level: "error",
-        message: `The vault sync failed: ${state.lastError ?? "unknown reason"}. Send /sync to try again, or /logs to see more.`,
+        message: `The vault sync failed: ${withoutFinalPeriod(state.lastError ?? "unknown reason")}. Send /sync to try again, or /logs to see more.`,
         resolvedMessage,
       };
   }
@@ -146,7 +146,7 @@ export function engineRestartProblem(engine: EngineName, state: EngineProgramSta
 export function scheduleFiringProblem(name: string, reason: string): AlertProblem {
   return {
     level: "error",
-    message: `The schedule ${name} failed to fire: ${reason}. Check .eva/schedules.json, or send /logs to see more.`,
+    message: `The schedule ${name} failed to fire: ${withoutFinalPeriod(reason)}. Check .eva/schedules.json, or send /logs to see more.`,
     resolvedMessage: `The schedule ${name} fires again.`,
   };
 }

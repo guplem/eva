@@ -51,6 +51,8 @@ describe("vaultSyncProblem", () => {
     const problem = vaultSyncProblem(syncState("error", "git commit failed: disk full"), 0);
     expect(problem).toMatchObject({ level: "error" });
     expect(problem === "keep" ? "" : (problem?.message ?? "")).toContain("disk full");
+    const ended = vaultSyncProblem(syncState("error", "git push failed."), 0);
+    expect(ended === "keep" ? "" : ended?.message).toStartWith("The vault sync failed: git push failed. Send");
   });
 
   test("offline is a problem only after 30 minutes", () => {
@@ -123,6 +125,12 @@ describe("scheduleFiringProblem", () => {
     expect(problem.message).toContain("Lunch");
     expect(problem.message).toContain("no engine");
     expect(problem.resolvedMessage).toContain("Lunch");
+  });
+
+  test("a reason that ends with a period gets no second one", () => {
+    expect(scheduleFiringProblem("Lunch", "No engine.").message).toStartWith(
+      "The schedule Lunch failed to fire: No engine. Check",
+    );
   });
 });
 

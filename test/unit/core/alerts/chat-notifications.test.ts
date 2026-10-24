@@ -199,4 +199,25 @@ describe("an approval", () => {
       },
     ]);
   });
+
+  test("says that Eva has a question when the model asks one (#544)", () => {
+    const { sent, feed } = notifications();
+    const question = { question: "Which format?", header: "", options: [], multiSelect: false };
+    feed("web", received("api"), {
+      ...approval,
+      toolName: "AskUserQuestion",
+      summary: "Which format?",
+      questions: [question],
+    });
+    feed("web", {
+      ...approval,
+      toolName: "AskUserQuestion",
+      summary: "Which format?",
+      questions: [question, question],
+    });
+    expect(sent.map((notification) => notification.body)).toEqual([
+      "Eva has a question: Which format?",
+      "Eva has 2 questions: Which format?",
+    ]);
+  });
 });

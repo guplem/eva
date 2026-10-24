@@ -13,6 +13,7 @@ import {
   type EvaStatus,
   type EventSubscription,
   type PendingApproval,
+  type QuestionAnswers,
   type ScheduleCard,
   type SessionEvent,
   type VaultSyncState,
@@ -20,7 +21,7 @@ import {
 } from "./api.ts";
 import { ApprovalNotice } from "./ApprovalCard.tsx";
 import { cueOfEvent, playCue } from "./cues.ts";
-import { approvalPlace, approvalsOutside } from "./approvals.ts";
+import { approvalNoticeWords, approvalPlace, approvalsOutside, pendingOf } from "./approvals.ts";
 import { AssistantView } from "./AssistantView.tsx";
 import { ErrorToastProvider, useShowError } from "./error-toast.tsx";
 import { FilesView } from "./FilesView.tsx";
@@ -399,7 +400,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       } else if (event.kind === "approval_needed") {
         setApprovals((current) => [
           ...current.filter((approval) => approval.requestId !== event.requestId),
-          { requestId: event.requestId, sessionId: event.sessionId, toolName: event.toolName, summary: event.summary },
+          pendingOf(event),
         ]);
       } else if (event.kind === "session_deleted") {
         // Another front end deleted a chat: the list drops it.
@@ -445,9 +446,13 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     );
   if (!authenticated) return <LoginView notice={loginNotice} onLoggedIn={() => void refreshSessions()} />;
 
-  const answerApproval = async (requestId: string, answer: "allow" | "deny"): Promise<void> => {
+  const answerApproval = async (
+    requestId: string,
+    answer: "allow" | "deny",
+    answers?: QuestionAnswers,
+  ): Promise<void> => {
     try {
-      await api.answerApproval(requestId, answer);
+      await api.answerApproval(requestId, answer, answers);
       setApprovals((current) => current.filter((approval) => approval.requestId !== requestId));
     } catch (caught) {
       showError(caught);
@@ -457,6 +462,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   // The open chat shows its own requests as cards. A request of any other chat gets a line that opens it.
   const elsewhere = approvalsOutside(approvals, shownSessionIds).map((approval) => ({
     requestId: approval.requestId,
+    words: approvalNoticeWords(approval.questions),
     place: approvalPlace(sessions.find((session) => session.id === approval.sessionId)),
     open: () => {
       // The link names the session itself, so the chat opens on the branch that asks.

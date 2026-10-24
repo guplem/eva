@@ -52,7 +52,7 @@ import type {
 } from "../../../core/vault/vault-sync.ts";
 import type { UndoPreview } from "../../../core/vault/vault-snapshots.ts";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
-import type { SessionEvent } from "../../../shared/events.ts";
+import type { QuestionAnswers, SessionEvent } from "../../../shared/events.ts";
 import { openEventStream, type EventSubscription, type StreamPlace } from "./event-stream.ts";
 import { failureOf, quickRead, quickSend, request } from "./request.ts";
 
@@ -68,6 +68,7 @@ export type { PersonalFactsView };
 export type CurrentPlaceView = CurrentPlace;
 
 export type {
+  QuestionAnswers,
   UndoPreview,
   BrowsedPath,
   ChatBlocker,
@@ -230,8 +231,12 @@ export const api = {
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
   backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks", undefined, { limit: quickRead }),
   runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns", undefined, { limit: quickRead }),
-  answerApproval: (requestId: string, answer: "allow" | "deny"): Promise<void> =>
-    request("POST", `/api/approvals/${encodeURIComponent(requestId)}`, { answer }),
+  answerApproval: (requestId: string, answer: "allow" | "deny", answers?: QuestionAnswers): Promise<void> =>
+    request(
+      "POST",
+      `/api/approvals/${encodeURIComponent(requestId)}`,
+      answers === undefined ? { answer } : { answer, answers },
+    ),
   projects: (text: string, status: string, tag = ""): Promise<Project[]> => {
     const query = new URLSearchParams();
     if (text.trim() !== "") query.set("text", text.trim());

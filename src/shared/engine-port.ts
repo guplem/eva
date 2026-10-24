@@ -2,7 +2,7 @@
  * The engine port: what the core asks of an engine adapter (Claude Code, pi). The core
  * never imports an adapter; `src/main.ts` passes the adapters in.
  */
-import type { EngineEventPayload } from "./events.ts";
+import type { ApprovalQuestion, EngineEventPayload, QuestionAnswers } from "./events.ts";
 import type { EnginePermissions, PermissionContext } from "./permissions.ts";
 
 export type EngineName = "claude-code" | "pi";
@@ -34,6 +34,9 @@ export interface ApprovalRequest {
 
 export type ApprovalAnswer = "allow" | "deny";
 
+/** `declined`: the person chose not to answer. `expired`: nobody answered in time, or the turn stopped. */
+export type QuestionsOutcome = QuestionAnswers | "declined" | "expired";
+
 /** A local MCP server that the engine starts for the turn, such as the Google tools. */
 export interface McpServerSpec {
   readonly command: string;
@@ -63,6 +66,8 @@ export interface TurnRequest {
   /** The whole environment of the engine process (lesson 96). */
   readonly environment: Readonly<Record<string, string>>;
   readonly requestApproval: (request: ApprovalRequest) => Promise<ApprovalAnswer>;
+  /** Shows the model's questions to the person and waits for the answers. */
+  readonly askQuestions: (toolName: string, questions: readonly ApprovalQuestion[]) => Promise<QuestionsOutcome>;
   readonly signal: AbortSignal;
 }
 

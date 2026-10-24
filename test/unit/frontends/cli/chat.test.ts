@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEventPrinter, runChat } from "../../../../src/frontends/cli/chat.ts";
+import { createEventPrinter, readQuestionAnswer, runChat } from "../../../../src/frontends/cli/chat.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/events.ts";
 
@@ -94,18 +94,21 @@ interface FakeSocket {
 function fakeLocalApi(handlers: {
   onOpen?: (socket: FakeSocket) => void;
   onMessage?: (sockets: readonly FakeSocket[]) => void;
-}): { url: string; paths: string[]; stop: () => Promise<void> } {
+  /** An answer to an approval, with its body. */
+  onApproval?: (sockets: readonly FakeSocket[], body: unknown) => void;
+}): { url: string; paths: string[]; send: (text: string) => void; stop: () => Promise<void> } {
   const sockets: FakeSocket[] = [];
   const paths: string[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: (request, bunServer) => {
+    fetch: async (request, bunServer) => {
       const path = new URL(request.url).pathname;
       paths.push(path);
       if (path === "/api/events") return bunServer.upgrade(request) ? undefined : new Response(null, { status: 400 });
       if (path === "/api/sessions") return Response.json({ id: "s1", startFolder: "vault" }, { status: 201 });
       if (path === "/api/sessions/s1/messages") handlers.onMessage?.(sockets);
+      if (path.startsWith("/api/approvals/")) handlers.onApproval?.(sockets, await request.json());
       return Response.json({}, { status: 202 });
     },
     websocket: {
@@ -116,11 +119,18 @@ function fakeLocalApi(handlers: {
       message: () => undefined,
     },
   });
-  return { url: `http://127.0.0.1:${String(server.port)}`, paths, stop: () => server.stop(true) };
+  return {
+    url: `http://127.0.0.1:${String(server.port)}`,
+    paths,
+    send: (text) => {
+      for (const socket of sockets) socket.send(text);
+    },
+    stop: () => server.stop(true),
+  };
 }
 
 /** Runs a chat with these lines, then a person who types nothing more. Returns what it threw. */
-async function chatUntilEnd(url: string, lines: string[]): Promise<unknown> {
+async function chatUntilEnd(url: string, lines: string[], written: string[] = []): Promise<unknown> {
   return runChat({
     baseUrl: url,
     token: "token",
@@ -130,7 +140,7 @@ async function chatUntilEnd(url: string, lines: string[]): Promise<unknown> {
       const line = lines.shift();
       return line === undefined ? new Promise<string | null>(() => undefined) : Promise.resolve(line);
     },
-    write: () => undefined,
+    write: (text) => written.push(text),
   }).then(
     () => null,
     (error: unknown) => error,
@@ -203,4 +213,194 @@ describe("runChat", () => {
       await api.stop();
     }
   });
+});
+
+describe("the model's questions (#544)", () => {
+  const single = {
+    question: "Which format?",
+    header: "Format",
+    options: [
+      { label: "Talk", description: "A one-to-one talk." },
+      { label: "Form", description: "" },
+    ],
+    multiSelect: false,
+  };
+  const multi = { ...single, question: "Which notes?", header: "", multiSelect: true };
+
+  test("a number picks an option, several pick several, other text is an own answer, and empty skips", () => {
+    expect(readQuestionAnswer(single, " 2 ")).toEqual({ kind: "answer", answer: { selected: [1] } });
+    expect(readQuestionAnswer(multi, "2, 1")).toEqual({ kind: "answer", answer: { selected: [0, 1] } });
+    expect(readQuestionAnswer(single, "A short call")).toEqual({
+      kind: "answer",
+      answer: { selected: [], other: "A short call" },
+    });
+    expect(readQuestionAnswer(single, "  ")).toEqual({ kind: "skip" });
+    // A number out of range, or two for one choice, asks again: a typo must not become an own answer.
+    expect(readQuestionAnswer(single, "3")).toEqual({ kind: "again", message: "Pick a number from 1 to 2." });
+    expect(readQuestionAnswer(single, "1,2")).toEqual({ kind: "again", message: "Pick one option." });
+    for (const typo of ["1,,2", "-1", "1 2", "0,"]) {
+      expect(readQuestionAnswer(multi, typo)).toEqual({ kind: "again", message: "Pick a number from 1 to 2." });
+    }
+  });
+
+  test("the questions print with their numbered options", () => {
+    const text = printed([
+      {
+        kind: "approval_needed",
+        requestId: "r1",
+        toolName: "AskUserQuestion",
+        summary: "Which format?",
+        questions: [single, multi],
+      },
+    ]);
+    expect(text).toBe(
+      "  ? Eva has 2 questions.\n" +
+        "    [Format] Which format?\n      1. Talk: A one-to-one talk.\n      2. Form\n" +
+        "    Which notes? (one or more)\n      1. Talk: A one-to-one talk.\n      2. Form\n",
+    );
+  });
+
+  test("the answers to each question go to the approval, and an empty line skips them all", async () => {
+    const bodies: unknown[] = [];
+    const finish = (sockets: readonly FakeSocket[]): void => {
+      for (const socket of sockets)
+        socket.send(JSON.stringify({ ...finished, sessionId: "s1", seq: 9, at: "2026-10-20T10:00:00.000Z" }));
+    };
+    const ask = (sockets: readonly FakeSocket[]): void => {
+      for (const socket of sockets) {
+        socket.send(
+          JSON.stringify({
+            kind: "approval_needed",
+            requestId: "r1",
+            toolName: "AskUserQuestion",
+            summary: "Which format?",
+            questions: [single, multi],
+            sessionId: "s1",
+            seq: 1,
+            at: "2026-10-20T10:00:00.000Z",
+          }),
+        );
+      }
+    };
+    const api = fakeLocalApi({
+      onMessage: ask,
+      onApproval: (sockets, body) => {
+        bodies.push(body);
+        finish(sockets);
+      },
+    });
+    const written: string[] = [];
+    try {
+      // "9" is out of range, so the question comes again.
+      await chatUntilEnd(api.url, ["plan it", "9", "2", "1,2", "plan again", "", "/exit"], written);
+      expect(bodies).toEqual([
+        { answer: "allow", answers: [{ selected: [1] }, { selected: [0, 1] }] },
+        { answer: "deny" },
+      ]);
+      expect(written.join("")).toContain("Pick a number from 1 to 2.");
+    } finally {
+      await api.stop();
+    }
+  });
+
+  test("an input that ends skips the questions, as it denies an approval", async () => {
+    const bodies: unknown[] = [];
+    const api = fakeLocalApi({
+      onMessage: (sockets) => {
+        for (const socket of sockets) {
+          socket.send(
+            JSON.stringify({
+              kind: "approval_needed",
+              requestId: "r1",
+              toolName: "AskUserQuestion",
+              summary: "Which format?",
+              questions: [single],
+              sessionId: "s1",
+              seq: 1,
+              at: "2026-10-20T10:00:00.000Z",
+            }),
+          );
+        }
+      },
+      onApproval: (sockets, body) => {
+        bodies.push(body);
+        for (const socket of sockets) socket.close();
+      },
+    });
+    try {
+      // The fake input ends after the message: readLine gives null, as a closed stdin does.
+      await runChat({
+        baseUrl: api.url,
+        token: "token",
+        mode: "assistant",
+        model: "default",
+        readLine: (() => {
+          const lines = ["plan it"];
+          return () => Promise.resolve(lines.shift() ?? null);
+        })(),
+        write: () => undefined,
+      }).catch(() => undefined);
+      expect(bodies).toEqual([{ answer: "deny" }]);
+    } finally {
+      await api.stop();
+    }
+  });
+
+  for (const timedOut of [false, true]) {
+    test(`a question that ends elsewhere while the terminal waits sends no answer from here (timed out: ${String(timedOut)})`, async () => {
+      const paths: string[] = [];
+      const event = (payload: Record<string, unknown>, seqNumber: number): string =>
+        JSON.stringify({ ...payload, sessionId: "s1", seq: seqNumber, at: "2026-10-20T10:00:00.000Z" });
+      const api = fakeLocalApi({
+        onMessage: (sockets) => {
+          for (const socket of sockets) {
+            socket.send(
+              event(
+                {
+                  kind: "approval_needed",
+                  requestId: "r1",
+                  toolName: "AskUserQuestion",
+                  summary: "Which format?",
+                  questions: [single],
+                },
+                1,
+              ),
+            );
+          }
+        },
+        onApproval: () => paths.push("answered"),
+      });
+      // No timers: each step waits for the one before it, so a slow machine keeps the order.
+      let typed: (line: string) => void = () => undefined;
+      const answerLine = new Promise<string>((resolve) => (typed = resolve));
+      const written: string[] = [];
+      const lines: (string | Promise<string>)[] = ["plan it", answerLine, "/exit"];
+      try {
+        await runChat({
+          baseUrl: api.url,
+          token: "token",
+          mode: "assistant",
+          model: "default",
+          readLine: () => Promise.resolve(lines.shift() ?? null),
+          write: (text) => {
+            written.push(text);
+            // The terminal asks: the web app answers now, while the terminal waits for a line.
+            if (text.startsWith("  Answer")) {
+              api.send(
+                event({ kind: "approval_resolved", requestId: "r1", answer: timedOut ? "deny" : "allow", timedOut }, 2),
+              );
+              api.send(event({ kind: "notice", text: "answered" }, 3));
+              api.send(event(finished, 4));
+            }
+            // The notice prints after the answer from elsewhere, so the terminal knows of it. Then the person types.
+            if (text === "  (answered)\n") typed("2");
+          },
+        });
+        expect(paths).toEqual([]);
+        expect(written.join("")).toContain(timedOut ? "(Not answered in time.)" : "(Answered elsewhere.)");
+      } finally {
+        await api.stop();
+      }
+    });
+  }
 });

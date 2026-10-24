@@ -903,6 +903,38 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await expect(page.getByRole("button", { name: "Set up voice notes" })).toBeVisible();
 });
 
+test("the model's questions show as a form in the chat, and Send answers gives the picks to the turn (#544)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("please ask me");
+  await composer.press("Enter");
+  const card = page.getByRole("region", { name: "Eva asks you a question" });
+  await expect(card.getByRole("heading")).toHaveText("Eva has 2 questions");
+  await expect(card).toContainText("Which format should the review take?");
+  await expect(card).toContainText("A template with criteria and a score.");
+  const send = card.getByRole("button", { name: "Send answers" });
+  // Send waits for an answer to each question.
+  await expect(send).toBeDisabled();
+  await card.getByRole("radio", { name: /A form with scores/ }).check();
+  await expect(send).toBeDisabled();
+  await card.getByRole("checkbox", { name: "Journal" }).check();
+  await card.getByRole("checkbox", { name: "Ideas" }).check();
+  await expect(send).toBeEnabled();
+  // Own text takes the place of the choice, so the screen never shows two answers.
+  const own = card.getByRole("textbox").first();
+  await own.fill("A short call");
+  await expect(card.getByRole("radio", { name: /A form with scores/ })).not.toBeChecked();
+  // Enter in an own-answer field sends the answers.
+  await own.press("Enter");
+  await expect(page.locator(".message.answer").first()).toContainText(
+    'The person answered: [{"selected":[],"other":"A short call"},{"selected":[0,1]}]',
+  );
+  await expect(card).toHaveCount(0);
+});
+
 test("a request of another chat gets a notice that opens it, and an answer from elsewhere closes the card", async ({
   page,
 }) => {

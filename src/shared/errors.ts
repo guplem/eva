@@ -36,6 +36,8 @@ export type EvaErrorCode =
   | "file_changed"
   | "file_not_writable"
   | "file_not_downloadable"
+  /** An answer to an approval that does not fit it, such as no answers to the model's questions. */
+  | "approval_invalid"
   /** A person stopped a question with Ctrl+C, or its input ended. */
   | "prompt_stopped"
   /** The running Eva refused a request of the CLI, and her answer named no code. */

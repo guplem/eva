@@ -45,10 +45,10 @@ export function chatTime(at: Date, now: Date): string {
 
 /**
  * One line of the last message: the answer, why the turn failed, or the person's message.
- * A waiting approval comes first: the last answer no longer tells the current state.
+ * A waiting approval or question comes first: the last answer no longer tells the current state.
  */
 export function chatPreview(chat: Pick<SessionRecord, "turns">, state: ChatState = null): string {
-  if (state === "needs-you") return "Eva needs your permission";
+  if (state === "needs-you") return "Eva waits for your answer";
   const last = chat.turns.at(-1);
   if (last === undefined) return state === "working" ? "Eva is working on it" : "No messages yet";
   const line = oneLine(last.failure ?? "") || oneLine(last.answerText) || oneLine(last.userText);

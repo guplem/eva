@@ -51,6 +51,7 @@ import {
 import { isScheduleTopic, loadBotState, saveBotState, targetOf, type BotState } from "./telegram-state.ts";
 import { TelegramChats } from "./telegram-chats.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
+import { TelegramQuestions } from "./telegram-questions.ts";
 import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
@@ -140,6 +141,7 @@ export class TelegramBot {
   private readonly files: TelegramFiles;
   private readonly schedules: TelegramSchedules;
   private readonly conflicts: TelegramConflicts;
+  private readonly questions: TelegramQuestions;
   private readonly chats: TelegramChats;
   private readonly remoteAccess: TelegramRemoteAccess;
   private readonly updates: TelegramUpdates;
@@ -198,6 +200,7 @@ export class TelegramBot {
       sender: this.sender,
       offersPath: join(dirname(options.statePath), "telegram-conflicts.json"),
     });
+    this.questions = new TelegramQuestions({ eva: options.eva, sender: this.sender });
     this.remoteAccess = new TelegramRemoteAccess({
       eva: options.eva,
       sender: this.sender,
@@ -453,6 +456,9 @@ export class TelegramBot {
       await this.handleCommand(chatId, topicId, text);
       return;
     }
+    // A plain text that is no reply goes to the chat as before, and the question stays open.
+    const repliedTo = message.reply_to_message?.message_id;
+    if (repliedTo !== undefined && (await this.questions.reply(chatId, repliedTo, text))) return;
     await this.forward(chatId, topicId, text);
   }
 
@@ -762,7 +768,20 @@ export class TelegramBot {
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
     const chatId = query.message?.chat.id;
     const isAllowed = chatId !== undefined && chatId === this.allowedChatId && this.isAllowedSender(query.from?.id);
-    const [kind, first, second] = (query.data ?? "").split(":");
+    const [kind, first, second, third] = (query.data ?? "").split(":");
+    if (kind === "q" && first !== undefined) {
+      // The note depends on the press, so the answer to the press waits for it. A throw still stops the spinner.
+      let note: string | null = null;
+      try {
+        if (isAllowed) note = await this.questions.press(first, second, third);
+      } finally {
+        await this.sender.quietCall("answerCallbackQuery", {
+          callback_query_id: query.id,
+          ...(note === null ? {} : { text: note }),
+        });
+      }
+      return;
+    }
     const isApproval = kind === "a" && first !== undefined && (second === "allow" || second === "deny");
     const isDeviceAnswer = kind === "l" && first !== undefined && (second === "allow" || second === "deny");
     // The device answer comes first, so the reply to the press can say that the request expired.
@@ -819,7 +838,11 @@ export class TelegramBot {
     if (event.kind === "session_seen" || event.kind === "session_archived") return;
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
-      await this.inOrder(event.sessionId, () => this.closeQuestion(event.requestId, approvalAnswerText(event)));
+      await this.inOrder(event.sessionId, () =>
+        this.questions.has(event.requestId)
+          ? this.questions.close(event)
+          : this.closeQuestion(event.requestId, approvalAnswerText(event)),
+      );
       return;
     }
     if (event.kind === "session_deleted") {
@@ -1055,6 +1078,10 @@ export class TelegramBot {
     event: Extract<SessionEvent, { kind: "approval_needed" }>,
     chatTitle: string | null,
   ): Promise<void> {
+    if (event.questions !== undefined) {
+      await this.questions.show(chatId, topicId, event, chatTitle);
+      return;
+    }
     const where = chatTitle === null ? "" : ` (in “${chatTitle}”)`;
     const text = `Eva wants to run ${event.toolName}${where}: ${event.summary}`;
     const messageId = await this.send(chatId, topicId, text, {

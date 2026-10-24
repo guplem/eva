@@ -123,7 +123,7 @@ function FactQuestionCard({
   // A stable function: the dialog focuses its Cancel button each time its onClose changes.
   const close = useCallback(() => setOpen(false), []);
   // Cancel keeps the answer for the next open, so only a page move asks. A save would send it to Eva.
-  useLeaveGuard(open && answer.trim() !== "", null);
+  useLeaveGuard(answer.trim() !== "", null);
   // The dialog focuses Cancel when it opens. This effect runs after it, so the field gets the focus.
   useEffect(() => {
     if (open) field.current?.focus();
@@ -132,6 +132,7 @@ function FactQuestionCard({
     event.preventDefault();
     if (answer.trim() === "") return;
     setOpen(false);
+    setAnswer("");
     onPick(question.message(answer.trim()));
   };
   return (

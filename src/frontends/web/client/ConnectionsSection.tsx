@@ -134,7 +134,8 @@ function CommitIdentity({ context }: { readonly context: SettingsContext }): Rea
     context.saveNow({
       git: { name: name.trim() === "" ? null : name.trim(), email: email.trim() === "" ? null : email.trim() },
     });
-  useLeaveGuard(name !== (git.name ?? "") || email !== (git.email ?? ""), save);
+  // The save trims, so a space at the end is no change.
+  useLeaveGuard(name.trim() !== (git.name ?? "") || email.trim() !== (git.email ?? ""), save);
   if (!open)
     return (
       <div id={cardId(commitIdentityItem)}>

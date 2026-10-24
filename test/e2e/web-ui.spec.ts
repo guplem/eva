@@ -2973,7 +2973,8 @@ test("Settings: the vault step lists the repositories and clones the picked one,
   expect(cloned).toEqual([{ repository: "https://github.com/you/vault.git" }]);
   // The other path stays off after a clone, so a second click never starts a second vault.
   await page.getByRole("button", { name: "Start a new vault" }).click();
-  await expect(page.getByLabel("Your vault's repository")).toHaveCount(0);
+  // The other path is hidden, not closed, so its typed answers stay.
+  await expect(page.getByLabel("Your vault's repository")).toBeHidden();
   await expect(page.getByRole("button", { name: "Create a new vault" })).toBeDisabled();
 });
 
@@ -3983,19 +3984,27 @@ test("a page with unsaved changes asks to save or discard them before the person
   await expect(dialog).toBeHidden();
   await expect(title).toHaveValue(`Unsaved ${run}`);
 
-  // The browser's back button asks too, and the address stays until the answer.
+  // The browser's back button asks too, and the address stays until the answer. Stay gives the focus back.
+  await title.focus();
   await page.goBack();
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(/#\/projects$/);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(title).toHaveValue(`Unsaved ${run}`);
+  await expect(title).toBeFocused();
+  await title.blur();
 
-  // The main navigation asks too, and Discard leaves without a save.
+  // The main navigation asks too. Stay keeps one history entry for the page.
   await mainNav.getByRole("button", { name: /^Files/ }).click();
   await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay" }).click();
+  await expect(page).toHaveURL(/#\/projects$/);
+  // So Back asks again, and Discard goes to the page before, with no save.
+  await page.goBack();
+  await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Discard and leave" }).click();
-  await expect(page).toHaveURL(/#\/files$/);
+  await expect(page).not.toHaveURL(/#\/projects$/);
   await openExampleApp(page);
   await page.getByRole("button", { name: "Details", exact: true }).click();
   await expect(page.getByLabel("Title")).toHaveValue("Example app");
@@ -4005,6 +4014,10 @@ test("a page with unsaved changes asks to save or discard them before the person
   const model = page.getByLabel(/^pi model/);
   await model.fill("openai/e2e-model");
   await model.blur();
+  // A search hides the section but keeps its typed values.
+  await page.getByLabel("Search settings").fill("model");
+  await page.getByLabel("Search settings").fill("");
+  await expect(model).toHaveValue("openai/e2e-model");
   await mainNav.getByRole("button", { name: /^Files/ }).click();
   await dialog.getByRole("button", { name: "Save and leave" }).click();
   await expect(page).toHaveURL(/#\/files$/);
@@ -4028,6 +4041,12 @@ test("a dialog with typed text asks before it closes, and a create offers no sav
   await expect(question).toBeVisible();
   await expect(question.getByRole("heading")).toHaveText("Discard your changes?");
   await expect(question.getByRole("button", { name: /^Save/ })).toHaveCount(0);
+  await question.getByRole("button", { name: "Stay" }).click();
+  await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
+
+  // The back button under the dialog asks about leaving the page.
+  await page.goBack();
+  await expect(question.getByRole("button", { name: "Discard and leave" })).toBeVisible();
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(sheet.getByLabel("Name")).toHaveValue("Half typed");
 

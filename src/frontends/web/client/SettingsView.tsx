@@ -63,7 +63,10 @@ export function SettingsView({
   const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
-    const onHashChange = (): void => setRoute(parseSettingsHash(window.location.hash));
+    const onHashChange = (): void => {
+      setRoute(parseSettingsHash(window.location.hash));
+      setQuery("");
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -189,8 +192,8 @@ export function SettingsView({
     }
   };
 
+  // The search clears when the page moves, not before: an unsaved change can keep the page.
   const navigate = (next: SettingsRoute): void => {
-    setQuery("");
     window.location.hash = settingsHash(next);
   };
 
@@ -270,13 +273,15 @@ export function SettingsView({
             </button>
           </header>
           <div className="settings-page">
-            {query.trim() !== "" ? (
-              <SearchResults query={query} navigate={navigate} />
-            ) : section === null ? (
-              <SettingsHome context={context} />
-            ) : (
-              <SectionPage id={section.id} item={route.item} context={context} />
-            )}
+            {query.trim() !== "" && <SearchResults query={query} navigate={navigate} />}
+            {/* Hidden, not closed, during a search: a form keeps its typed values. */}
+            <div className="kept-open" hidden={query.trim() !== ""}>
+              {section === null ? (
+                <SettingsHome context={context} />
+              ) : (
+                <SectionPage id={section.id} item={route.item} context={context} />
+              )}
+            </div>
           </div>
           {restartAsk !== null && (
             <Toast

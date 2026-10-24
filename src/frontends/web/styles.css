@@ -3371,3 +3371,15 @@ a.link-chip:hover {
 .chat-fork .chat-item-title {
   font-size: 12.5px;
 }
+
+/*
+ * A part that is hidden, not closed, so its form keeps the typed values. Its children stay in
+ * the layout of its parent, such as the gap of a column.
+ */
+.kept-open {
+  display: contents;
+}
+
+.kept-open[hidden] {
+  display: none;
+}

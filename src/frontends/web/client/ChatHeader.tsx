@@ -259,7 +259,8 @@ function RenameDialog({
       return false;
     }
   };
-  const askFirst = useLeaveGuard(draft.trim() !== "" && draft !== chat.title, save);
+  // While the rename runs, the guard waits: the request is sent already.
+  const askFirst = useLeaveGuard(!saving && draft.trim() !== "" && draft !== chat.title, save);
   const cancel = useCallback(() => askFirst(onEnd), [askFirst, onEnd]);
   useEscape(cancel, saving);
 

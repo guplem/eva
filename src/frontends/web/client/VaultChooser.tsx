@@ -26,7 +26,8 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
   /** Which action runs now, so a second click never starts a second clone. */
   const [busy, setBusy] = useState<"clone" | "create" | null>(null);
   const [pasteToken, setPasteToken] = useState(false);
-  // The two paths ask for different things, so the page shows only the chosen one.
+  // The two paths ask for different things, so the page shows only the chosen one. The other one
+  // is hidden, not closed, so a tap on the other chip keeps its typed answers.
   const [path, setPath] = useState<Path>("existing");
 
   const run = async (kind: "clone" | "create", work: () => Promise<VaultSetupResult>): Promise<void> => {
@@ -50,47 +51,50 @@ export function VaultChooser({ context }: { readonly context: SettingsContext })
   return (
     <>
       <ChoiceChips label="Do you already have a vault?" value={path} choices={pathChoices} onChange={setPath} />
-      {path === "new" ? (
+      <div className="kept-open" hidden={path !== "new"}>
         <NewVault
           busy={busy}
           hasToken={hasToken}
           onCreate={(answers) => void run("create", () => api.createVault(answers))}
         />
-      ) : hasToken ? (
-        <PickRepository
-          context={context}
-          busy={busy}
-          onClone={(repository) => void run("clone", () => api.cloneVault(repository))}
-        />
-      ) : (
-        <div className="vault-choice">
-          <p className="field-hint">
-            Eva copies a vault that you made before, for example on another computer. Log in to GitHub first, so that
-            Eva can list your repositories.
-          </p>
-          <GitHubLogin context={context} />
-          {!pasteToken ? (
-            <button className="link-button" onClick={() => setPasteToken(true)}>
-              Paste a token instead
-            </button>
-          ) : (
-            <>
-              <GitHubStepLink context={context} />
-              <SecretField
-                name="githubToken"
-                label="GitHub token"
-                saved={false}
-                help="Eva uses it to list, clone and create your vault's repository. The GitHub step shows how to make one."
-                onChanged={(note) => {
-                  // The card reads whether a token is saved from the settings, so they load again too.
-                  context.reloadSettings();
-                  context.noteAndReload(note);
-                }}
-              />
-            </>
-          )}
-        </div>
-      )}
+      </div>
+      <div className="kept-open" hidden={path === "new"}>
+        {hasToken ? (
+          <PickRepository
+            context={context}
+            busy={busy}
+            onClone={(repository) => void run("clone", () => api.cloneVault(repository))}
+          />
+        ) : (
+          <div className="vault-choice">
+            <p className="field-hint">
+              Eva copies a vault that you made before, for example on another computer. Log in to GitHub first, so that
+              Eva can list your repositories.
+            </p>
+            <GitHubLogin context={context} />
+            {!pasteToken ? (
+              <button className="link-button" onClick={() => setPasteToken(true)}>
+                Paste a token instead
+              </button>
+            ) : (
+              <>
+                <GitHubStepLink context={context} />
+                <SecretField
+                  name="githubToken"
+                  label="GitHub token"
+                  saved={false}
+                  help="Eva uses it to list, clone and create your vault's repository. The GitHub step shows how to make one."
+                  onChanged={(note) => {
+                    // The card reads whether a token is saved from the settings, so they load again too.
+                    context.reloadSettings();
+                    context.noteAndReload(note);
+                  }}
+                />
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </>
   );
 }

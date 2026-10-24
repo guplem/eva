@@ -75,6 +75,18 @@ export function addStep(steps: readonly TurnStep[], payload: EngineEventPayload)
   }
 }
 
+export const historyLostNote = "The earlier history of this chat is lost.";
+
+/**
+ * Adds the note of one event, such as an MCP server that did not start. A note is no step: the
+ * answer must stay the last message, and the whole answer must not hold it (issue 157).
+ */
+export function addNote(notes: readonly string[], payload: EngineEventPayload): readonly string[] {
+  const note = payload.kind === "notice" ? payload.text : payload.kind === "history_lost" ? historyLostNote : null;
+  // The live notes of a chat span its follow-up turns, which can send the same notice again.
+  return note === null || notes.includes(note) ? notes : [...notes, note];
+}
+
 /** The answer shows its last message in full, with the other steps as badges before and after it. */
 export function splitSteps(steps: readonly TurnStep[]): {
   before: readonly TurnStep[];

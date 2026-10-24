@@ -24,6 +24,7 @@ function turn(fields: Partial<Turn>): Turn {
     taskCount: 0,
     steps: [],
     omittedSteps: 0,
+    notes: [],
     contextTokens: null,
     contextWindow: null,
     model: null,

@@ -57,6 +57,8 @@ export interface UpdateStatus {
   readonly lastCheckAt: string | null;
   readonly lastError: string | null;
   readonly failedStep: UpdateStep | null;
+  /** When the checks started to fail, or null. A short network loss is normal, so an alert waits. */
+  readonly failingSince: string | null;
   /** The download of the new version while the phase is "updating", else null. */
   readonly download: UpdateDownload | null;
 }
@@ -89,6 +91,7 @@ export class Updater {
   private lastCheckAt: Date | null;
   private lastError: string | null;
   private failedStep: UpdateStep | null;
+  private failingSince: Date | null;
   /** A version chosen by hand, which waits for Eva to be idle. */
   private chosen: string | null;
   /** The new version is in place, and Eva restarts once no chat runs a turn. */
@@ -104,6 +107,7 @@ export class Updater {
     this.lastCheckAt = null;
     this.lastError = null;
     this.failedStep = null;
+    this.failingSince = null;
     this.chosen = null;
     this.restartPending = false;
     this.download = null;
@@ -132,6 +136,7 @@ export class Updater {
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       lastError: this.lastError,
       failedStep: this.failedStep,
+      failingSince: this.failingSince?.toISOString() ?? null,
       download: this.download,
     };
   }
@@ -153,9 +158,11 @@ export class Updater {
       this.last = await this.options.channel.check();
       this.lastError = null;
       this.failedStep = null;
+      this.failingSince = null;
     } catch (error) {
       this.lastError = errorText(error);
       this.failedStep = "check";
+      this.failingSince ??= this.options.now();
     } finally {
       this.lastCheckAt = this.options.now();
       this.phase = "idle";
@@ -229,8 +236,9 @@ export class Updater {
     }
     const frequency = this.options.frequency();
     if (frequency === "off" || this.phase !== "idle") return;
-    const due =
-      this.lastCheckAt === null || this.options.now().getTime() - this.lastCheckAt.getTime() >= frequencyMs[frequency];
+    // A laptop that wakes up with no network fails one check, so the next try must not wait a week.
+    const intervalMs = this.failedStep === "check" ? Math.min(hourMs, frequencyMs[frequency]) : frequencyMs[frequency];
+    const due = this.lastCheckAt === null || this.options.now().getTime() - this.lastCheckAt.getTime() >= intervalMs;
     if (due) await this.updateNow();
   }
 

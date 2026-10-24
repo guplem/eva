@@ -32,6 +32,7 @@ const idleUpdate: UpdateStatus = {
   lastCheckAt: "2026-10-17T10:00:00.000Z",
   lastError: null,
   failedStep: null,
+  failingSince: null,
   download: null,
 };
 

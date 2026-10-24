@@ -3331,6 +3331,7 @@ test("Settings: Update to a version lists each version in a row, warns on a majo
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const installs: unknown[] = [];
   await page.route("**/api/update/check", async (route) => {
@@ -3417,6 +3418,7 @@ test("Settings: the Versions card names a newer Eva, and its Update button opens
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   await page.route("**/api/update/check", async (route) => {
     await route.fulfill({ json: status });
@@ -3454,6 +3456,7 @@ test("Settings: the Versions card looks for a newer Eva when it opens, as for ea
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   const checked = {
     ...unchecked,
@@ -3558,6 +3561,7 @@ test("Settings: Check and install waits until the new Eva answers, not the old o
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
   };
   let restarting = false;
   let readsWhileRestarting = 0;
@@ -3598,6 +3602,7 @@ test("Settings: an install shows a bar that fills with the download", async ({ p
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let installing = false;
@@ -3648,6 +3653,7 @@ test("Settings: an install goes on when a proxy drops the request", async ({ pag
     lastCheckAt: null,
     lastError: null,
     failedStep: null,
+    failingSince: null,
     download: null,
   };
   let reads = 0;
@@ -3700,6 +3706,7 @@ test("Settings: an error of Eva herself during an install shows its reason", asy
         lastCheckAt: null,
         lastError: null,
         failedStep: null,
+        failingSince: null,
         download: null,
       },
     });

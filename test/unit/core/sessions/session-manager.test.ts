@@ -131,6 +131,7 @@ describe("a conversation", () => {
         contextTokens: 15,
         contextWindow: 200_000,
         model: "claude-opus-5-5",
+        modelAlias: "default",
         failure: null,
         lastMessageId: `${record.engineSessionId}:answer 1`,
         at: "2026-10-14T12:00:00.000Z",
@@ -411,14 +412,19 @@ describe("a conversation", () => {
 });
 
 describe("models (lesson 41)", () => {
-  test("a chat's model is chosen before its first message, and fixed after it", async () => {
+  test("a chat's model goes to each turn, and changes between turns (#545)", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
     expect(manager.setModel(sessionId, "haiku").modelAlias).toBe("haiku");
-    await manager.send(sessionId, "hi");
-    expect(engine.requests[0]?.model).toBe("haiku");
-    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+    await manager.send(sessionId, "one");
+    expect(manager.setModel(sessionId, "opus").modelAlias).toBe("opus");
+    await manager.send(sessionId, "two");
+    expect(engine.requests.map((request) => request.model)).toEqual(["haiku", "opus"]);
+    // Each turn keeps the model it ran with, so a front end never names the old model as the new one.
+    expect(manager.get(sessionId).turns.map((turn) => turn.modelAlias)).toEqual(["haiku", "opus"]);
+    // The second turn continues the same engine session: only the model changed.
+    expect(engine.requests[1]?.history.kind).not.toBe("new");
   });
 
   test("a chat's effort goes to each turn, and changes between turns (#419)", async () => {
@@ -802,7 +808,7 @@ describe("closed chats (issue 521)", () => {
     expect(createManager(new FakeEngine()).get(fork.id).closed).toBe(true);
   });
 
-  test("a closed chat keeps its history, and refuses a message, a fork and a retry", async () => {
+  test("a closed chat keeps its history, and refuses a message, a fork, a retry and a model", async () => {
     const engine = new FakeEngine();
     const manager = createManager(engine);
     const sessionId = newAssistantSession(manager);
@@ -823,6 +829,14 @@ describe("closed chats (issue 521)", () => {
       ),
     ).toBe(true);
     expect(isEvaError(await manager.retry(sessionId, 0).catch((error: unknown) => error), "session_closed")).toBe(true);
+    // A closed chat takes no next turn, so a new model would never answer (#545).
+    expect(
+      isEvaError(
+        caughtFrom(() => manager.setModel(sessionId, "opus")),
+        "session_closed",
+      ),
+    ).toBe(true);
+    expect(manager.get(sessionId).modelAlias).toBe("default");
     expect(engine.requests).toHaveLength(1);
     expect(manager.list()).toHaveLength(1);
   });
@@ -2267,7 +2281,7 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     expect(manager.get(sessionId).historyLost).toBe(false);
   });
 
-  test("the model cannot change while the first turn runs (lesson 41)", async () => {
+  test("the model cannot change while a turn runs, so the turn keeps its model (#545)", async () => {
     let release = (): void => undefined;
     const engine = new FakeEngine(async function* (request) {
       await new Promise<void>((resolve) => {
@@ -2279,7 +2293,7 @@ describe("stops, failures and lost histories (security and lesson review)", () =
     const sessionId = newAssistantSession(manager);
     const turn = manager.send(sessionId, "hi");
     for (let attempt = 0; attempt < 200 && engine.requests.length === 0; attempt += 1) await Bun.sleep(5);
-    expect(() => manager.setModel(sessionId, "opus")).toThrow("before its first message");
+    expect(() => manager.setModel(sessionId, "opus")).toThrow("while a turn runs");
     release();
     await turn;
   });

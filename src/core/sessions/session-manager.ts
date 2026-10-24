@@ -299,11 +299,16 @@ export class SessionManager {
     return this.options.store.list();
   }
 
-  /** Chooses the model of a chat before its first turn. A model belongs to a conversation (lesson 41). */
+  /**
+   * Chooses the model of a chat's next turns. The engine session continues, so a change keeps the
+   * history, but the next turn reads it again without the cache (lesson 41). A running turn keeps
+   * the model it started with.
+   */
   setModel(sessionId: string, model: ModelAlias): SessionRecord {
     const session = this.get(sessionId);
-    if (session.turns.length > 0 || this.isBusy(sessionId)) {
-      throw new EvaError("session_busy", "The model of a chat is chosen before its first message.");
+    this.assertOpen(session);
+    if (this.isBusy(sessionId)) {
+      throw new EvaError("session_busy", "The model of a chat cannot change while a turn runs.");
     }
     const updated = { ...session, modelAlias: model };
     this.options.store.save(updated);
@@ -311,8 +316,8 @@ export class SessionManager {
   }
 
   /**
-   * Chooses how much the model of a chat reasons. Unlike the model, it can change between turns:
-   * it changes no history. A running turn keeps the effort it started with.
+   * Chooses how much the model of a chat reasons. It changes no history and costs no cache, so it
+   * can change at any time. A running turn keeps the effort it started with.
    */
   setEffort(sessionId: string, effort: EffortLevel): SessionRecord {
     const updated = { ...this.get(sessionId), effort };
@@ -1055,6 +1060,7 @@ ${prompt}`,
               contextTokens: payload.contextTokens,
               contextWindow: payload.contextWindow,
               model: payload.model,
+              modelAlias: session.modelAlias,
               startSnapshot,
               endSnapshot,
             },
@@ -1225,6 +1231,7 @@ ${prompt}`,
       contextTokens: number | null;
       contextWindow: number | null;
       model: string | null;
+      modelAlias: ModelAlias;
       startSnapshot: string | null;
       endSnapshot: string | null;
     } & TurnActivity,
@@ -1294,6 +1301,7 @@ ${prompt}`,
           contextTokens: null,
           contextWindow: null,
           model: null,
+          modelAlias: current.modelAlias,
           failure: last,
           lastMessageId: null,
           at,

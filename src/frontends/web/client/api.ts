@@ -182,9 +182,10 @@ export const api = {
   /** Eva picks the clone: a free one, or a new one (issue 521). */
   newProjectChat: (projectId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", "/api/sessions", { mode: "project", projectId, model }),
-  /** Only a chat with no turn takes a new engine or model (lesson 41). A fork keeps its chat's engine. */
+  /** Only a chat with no turn takes a new engine. A fork keeps its chat's engine. */
   setEngine: (sessionId: string, engine: EngineName): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/engine`, { engine }),
+  /** A chat takes a new model between turns. The next turn reads the whole chat again (lesson 41). */
   setModel: (sessionId: string, model: ModelAlias): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/model`, { model }),
   /** The effort changes no history, so a chat takes a new one at any time. The next turn uses it. */

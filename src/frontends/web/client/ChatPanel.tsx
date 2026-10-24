@@ -14,10 +14,11 @@ import {
   branchForkPoint,
   chatLinks,
   latestContext,
+  modelNames,
   taskStatus,
   titleCase,
 } from "./chat-details.ts";
-import { answeredModel, effortName, modelLabel } from "./conversation-parts.ts";
+import { effortName } from "./conversation-parts.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import type { LiveState } from "./live-state.ts";
@@ -150,11 +151,11 @@ function ChatDetails({ tree, tasks, onChanged, shownId = null, sessions }: ChatP
         <>
           <ContextUse tree={tree} />
           <dl className="chat-facts">
-            {/* An open chat keeps its engine and its model (lesson 41), so they are text, not chips. */}
+            {/* The composer's chip changes the model, so these are text, not chips. An open chat keeps its engine. */}
             <dt>Engine</dt>
             <dd>{engineLabel(root.engine)}</dd>
             <dt>Model</dt>
-            <dd>{modelLabel(root.modelAlias, answeredModel(root.turns))}</dd>
+            <dd>{modelNames(tree)}</dd>
             <dt>Effort</dt>
             {/* Each branch has its own composer, so a fork can have its own effort. */}
             <dd>{[...new Set(tree.map((session) => effortName(session.effort)))].join(", ")}</dd>

@@ -159,22 +159,42 @@ export function effortLabel(effort: EffortLevel): string {
   return `${effortName(effort)} effort`;
 }
 
-/** The model that answered the newest turn that names one, or null before the first answer. */
-export function answeredModel(turns: readonly { readonly model: string | null }[]): string | null {
-  return turns.findLast((turn) => turn.model !== null)?.model ?? null;
+/**
+ * The model that answered the newest turn that names one, or null before the first answer. After a
+ * change of model, the old answer names the wrong model, so it is null until the new model answers.
+ */
+export function answeredModel(
+  turns: readonly { readonly model: string | null; readonly modelAlias?: ModelAlias | undefined }[],
+  model: ModelAlias,
+): string | null {
+  const newest = turns.findLast((turn) => turn.model !== null);
+  // A turn from before the stored choice has none: the chat could not change its model then.
+  if (newest === undefined || (newest.modelAlias !== undefined && newest.modelAlias !== model)) return null;
+  return newest.model;
 }
 
-/**
- * Why the chips cannot change the engine and model, or null when they can. A model belongs to a
- * conversation (lesson 41), and a fork continues its chat's engine session.
- */
-export function chipLock(
+/** Why the chip cannot change the engine, or null when it can. A fork continues its chat's engine session. */
+export function engineLock(
   session: { readonly parentId: string | null; readonly turns: readonly unknown[] },
   busy: boolean,
 ): string | null {
-  if (session.parentId !== null) return "A fork keeps the engine and model of its chat.";
+  if (session.parentId !== null) return "A fork keeps the engine of its chat.";
   if (session.turns.length > 0 || busy)
-    return "The engine and model are fixed after the first message. Start a new chat to change them.";
+    return "The engine is fixed after the first message. Start a new chat to change it.";
+  return null;
+}
+
+/**
+ * The note under the model choices, or null. A running turn keeps its model. A chat with a history
+ * loses the cache when its model changes (lesson 41), so the person learns the cost before the change.
+ */
+export function modelNote(
+  session: { readonly parentId: string | null; readonly turns: readonly unknown[] },
+  busy: boolean,
+): string | null {
+  if (busy) return "Change the model when this answer ends.";
+  if (session.turns.length > 0 || session.parentId !== null)
+    return "A new model reads the whole chat again, so the next answer is slower and costs more.";
   return null;
 }
 

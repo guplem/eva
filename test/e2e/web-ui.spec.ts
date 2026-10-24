@@ -952,7 +952,7 @@ test("Copy copies the text of an answer", async ({ page, context }) => {
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
 });
 
-test("the composer's chip picks the model before the first message, and is fixed after it", async ({ page }) => {
+test("the composer's chip picks the engine before the first message, and the model between turns", async ({ page }) => {
   await logIn(page);
   await newChat(page);
   const chip = page.getByRole("button", { name: /Default model/ });
@@ -986,10 +986,16 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(picker).toContainText("Haiku 5.5");
   await expect(picker.locator(".chip-effort")).toHaveText("· Low effort");
   await picker.click();
-  await expect(menu).toContainText("fixed after the first message");
+  await expect(menu).toContainText("The engine is fixed after the first message");
+  await expect(menu.getByRole("group", { name: "Engine" })).toHaveCount(0);
+  // A new model loses the cache, so the menu says what the change costs (lesson 41, #545).
+  await expect(menu).toContainText("reads the whole chat again");
   // The chip starts mid-row on a phone, and its menu still fits the screen.
   await expect(menu).toBeInViewport({ ratio: 1 });
-  await expect(menu.getByRole("group", { name: "Model" })).toHaveCount(0);
+  await menu.getByRole("group", { name: "Model" }).getByRole("button", { name: "Sonnet" }).click();
+  // The old answer came from Haiku, so the chip names the new choice, not the old answer.
+  await expect(picker).toContainText("Sonnet");
+  await expect(picker).not.toContainText("Haiku");
   // The effort changes no history, so it changes after the first message too.
   // A drag over every stop saves the effort once, on release.
   const saves: string[] = [];
@@ -1004,7 +1010,7 @@ test("the composer's chip picks the model before the first message, and is fixed
   await expect(effort.locator(".effort-name")).toHaveText("Max");
   expect(saves).toHaveLength(0);
   await page.mouse.up();
-  await expect(picker).toContainText("Haiku 5.5");
+  await expect(picker).toContainText("Sonnet");
   await expect(picker.locator(".chip-effort")).toHaveText("· Max effort");
   expect(saves).toHaveLength(1);
 });

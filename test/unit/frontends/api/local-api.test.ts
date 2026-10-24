@@ -299,6 +299,12 @@ describe("device login", () => {
     expect(asked).toEqual([]);
   });
 
+  test("a bad escape in the login id is the client's fault: 400, not a crash", async () => {
+    const answer = await call("/api/login/device/%E0", { headers: {} });
+    expect(answer.status).toBe(400);
+    expect(await json<unknown>(answer)).toEqual({ error: "The address is invalid." });
+  });
+
   test("the page on Eva's own computer asks too, only the terminal answers, and only that browser collects the cookie", async () => {
     attachApprover();
     // Telegram alone cannot answer: any local program can make this request.

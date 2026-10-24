@@ -390,8 +390,8 @@ function deviceLogin(request: Request, url: URL, options: LocalApiOptions): Resp
   if (account === null)
     return json({ error: "A device login works through Tailscale from an allowed account, or on this computer." }, 403);
   const deviceLogins = options.eva.deviceLogins;
-  const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
   try {
+    const id = decodeURIComponent(url.pathname.slice("/api/login/device/".length));
     if (request.method === "POST" && url.pathname === "/api/login/device") {
       const browser = (request.headers.get("user-agent") ?? "an unknown browser").slice(0, deviceLabelBrowserLength);
       return json(

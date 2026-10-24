@@ -6,6 +6,7 @@ import {
   cloneFolderName,
   countChanges,
   createClone,
+  readGitState,
   describeClone,
   githubSlug,
   isTrustedByDefault,
@@ -225,6 +226,23 @@ describe("clone folders", () => {
     const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
     expect(await describeClone(clone, failing, gitEnvironment)).toMatchObject({ branch: null, pullRequest: null });
     expect(await countChanges(clone, failing, gitEnvironment)).toBeNull();
+  });
+
+  test("the git state of a clone names its branch, its changed files and its last commits (#522)", async () => {
+    const clone = await createClone({
+      projectPath: project,
+      repositoryUrl: sandbox.remote,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    writeFileSync(join(clone.path, "new.txt"), "new\n");
+    const state = await readGitState(clone.path, systemProcessRunner, gitEnvironment);
+    expect(state).toStartWith("## main...origin/main\n?? new.txt\n\nLast commits:\n");
+    const failing = { run: () => Promise.resolve({ exitCode: 128, stdout: "", stderr: "not a git repository" }) };
+    expect(await readGitState(clone.path, failing, gitEnvironment)).toBeNull();
+    const throwing = { run: () => Promise.reject(new Error("no git")) };
+    expect(await readGitState(clone.path, throwing, gitEnvironment)).toBeNull();
   });
 });
 

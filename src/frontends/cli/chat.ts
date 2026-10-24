@@ -62,6 +62,15 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const turn = { over: false };
   // A function, so TypeScript reads the flag that the socket listener sets, not the value it last saw here.
   const turnIsOver = (): boolean => turn.over;
+  // A stream that drops, such as when Eva restarts, sends no turn end: without this the loop waits for good.
+  const stream = { closed: false, leaving: false };
+  const streamIsClosed = (): boolean => stream.closed;
+  socket.addEventListener("close", () => {
+    stream.closed = true;
+    if (stream.leaving) return;
+    options.write("\nEva closed the connection.\n");
+    wake?.();
+  });
   const questions: string[] = [];
   const print = createEventPrinter();
   socket.addEventListener("message", (message) => {
@@ -78,10 +87,10 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const nextChange = (): Promise<void> => new Promise<void>((resolve) => (wake = resolve));
 
   try {
-    for (;;) {
+    while (!streamIsClosed()) {
       options.write("\n> ");
       const line = await options.readLine();
-      if (line === null || line.trim() === "/exit") break;
+      if (line === null || line.trim() === "/exit" || streamIsClosed()) break;
       if (line.trim() === "") continue;
       if (/^\/rename(\s|$)/.test(line.trim())) {
         options.write(await renameChat(options.baseUrl, headers, session.id, line.trim().slice("/rename".length)));
@@ -98,7 +107,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
         continue;
       }
       // Wait for the turn end; answer each approval here, with y or n.
-      while (!turnIsOver()) {
+      while (!turnIsOver() && !streamIsClosed()) {
         const requestId = questions.shift();
         if (requestId === undefined) {
           await nextChange();
@@ -114,6 +123,7 @@ export async function runChat(options: ChatOptions): Promise<void> {
       }
     }
   } finally {
+    stream.leaving = true;
     socket.close();
   }
 }

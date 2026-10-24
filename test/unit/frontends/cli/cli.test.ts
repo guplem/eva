@@ -1784,6 +1784,8 @@ repos:
       write: (text) => output.push(text),
     });
     expect(output.join("")).toContain("Hi! I am Eva.");
+    // The terminal closes the stream itself at /exit: that is no dropped connection.
+    expect(output.join("")).not.toContain("Eva closed the connection.");
   });
 
   test("a refused chat says why in plain words", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEventPrinter } from "../../../../src/frontends/cli/chat.ts";
+import { createEventPrinter, runChat } from "../../../../src/frontends/cli/chat.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/events.ts";
 
 let seq = 0;
@@ -78,5 +78,45 @@ describe("createEventPrinter", () => {
       ]),
     ).toBe("Let me \n  The turn failed: stopped\n");
     expect(printed([{ kind: "text_delta", text: "Half " }, finished])).toBe("Half \n");
+  });
+});
+
+describe("runChat", () => {
+  test("ends with a note, and never hangs, when the event stream drops during a turn", async () => {
+    const sockets: { close: () => void }[] = [];
+    // A local API that accepts the message, then drops the stream before the turn ends.
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request, bunServer) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/events") return bunServer.upgrade(request) ? undefined : new Response(null, { status: 400 });
+        if (path === "/api/sessions") return Response.json({ id: "s1", startFolder: "vault" }, { status: 201 });
+        for (const socket of sockets) socket.close();
+        return Response.json({}, { status: 202 });
+      },
+      websocket: {
+        open: (socket) => {
+          sockets.push(socket);
+        },
+        message: () => undefined,
+      },
+    });
+    try {
+      const lines = ["Hello", "never read"];
+      const output: string[] = [];
+      await runChat({
+        baseUrl: `http://127.0.0.1:${String(server.port)}`,
+        token: "token",
+        mode: "assistant",
+        model: "default",
+        readLine: () => Promise.resolve(lines.shift() ?? null),
+        write: (text) => output.push(text),
+      });
+      expect(output.join("").match(/Eva closed the connection\./g)).toHaveLength(1);
+      expect(lines).toEqual(["never read"]);
+    } finally {
+      await server.stop(true);
+    }
   });
 });

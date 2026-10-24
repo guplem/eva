@@ -797,6 +797,22 @@ describe("exactly one end event (lesson 47)", () => {
     expect(manager.get(sessionId).turns[0]?.failure).not.toBeNull();
   });
 
+  test("the failure of a chat's last turn is readable after the send, and a good turn clears it", async () => {
+    const engine = new FakeEngine((request, turnNumber) =>
+      turnNumber === 1
+        ? [{ kind: "turn_failed", reason: "You hit the usage limit." }]
+        : FakeEngine.answer(request, "ok"),
+    );
+    const manager = createManager(engine);
+    const sessionId = newAssistantSession(manager);
+    expect(manager.lastTurnFailure(sessionId)).toBeNull();
+    await manager.send(sessionId, "one");
+    expect(manager.lastTurnFailure(sessionId)).toBe("You hit the usage limit.");
+    await manager.send(sessionId, "two");
+    expect(manager.lastTurnFailure(sessionId)).toBeNull();
+    expect(manager.lastTurnFailure("gone")).toBeNull();
+  });
+
   test("a stream that stops without an end gets one turn_failed", async () => {
     const manager = createManager(new FakeEngine(() => [{ kind: "text", text: "half", messageId: "m1" }]));
     await manager.send(newAssistantSession(manager), "go");

@@ -1659,6 +1659,23 @@ describe("Eva alerts", () => {
     expect(alerts[0]?.message).toContain("Lunch");
   });
 
+  test("a scheduled prompt whose turn fails raises the schedule's alert", async () => {
+    sandbox.write(
+      vault,
+      ".eva/schedules.json",
+      JSON.stringify({ version: 1, schedules: [{ id: "lunch", name: "Lunch", at: "12:45", prompt: "Lunch ideas?" }] }),
+    );
+    const instance = start(new FakeEngine(() => [{ kind: "turn_failed", reason: "You hit the usage limit." }]));
+    const alerts = collectAlerts(instance);
+    instance.schedules?.subscribe(() => true);
+    await instance.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await instance.schedules?.tick();
+    await waitFor(() => alerts.some((alert) => alert.key === "schedule:lunch"));
+    expect(alerts.find((alert) => alert.key === "schedule:lunch")?.message).toContain("You hit the usage limit.");
+    expect(instance.schedules?.list().schedules[0]?.lastRun).toMatchObject({ failed: true });
+  });
+
   test("a card that no front end showed is a problem in the status until a front end shows it (lesson 66)", async () => {
     sandbox.write(
       vault,

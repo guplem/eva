@@ -14,7 +14,10 @@ let events: ScheduleEvent[];
 let logged: string[];
 /** Schedule names whose chat creation throws. */
 let failingChats: Set<string>;
+/** A send that resolves to the failure of its last turn, as the session manager does. */
 let failingSends: boolean;
+/** A send that rejects, which only a bug can cause. */
+let rejectingSends: boolean;
 /** Each firing result: the schedule name and the failure, or null for a success. */
 let firings: { name: string; failure: string | null }[];
 /** What the test listener answers: true when it showed the event to the person. */
@@ -26,6 +29,7 @@ beforeEach(() => {
   logged = [];
   failingChats = new Set();
   failingSends = false;
+  rejectingSends = false;
   firings = [];
   shows = true;
   cardReports = [];
@@ -61,7 +65,8 @@ function createScheduler(isHub = true): Scheduler {
       },
       send: (sessionId, prompt) => {
         sent.push({ sessionId, prompt });
-        return failingSends ? Promise.reject(new Error("the engine is gone")) : Promise.resolve();
+        if (rejectingSends) return Promise.reject(new Error("the engine is gone"));
+        return Promise.resolve(failingSends ? "You hit the usage limit." : null);
       },
     },
     logger: { log: (level, message) => logged.push(`${level} ${message}`) },
@@ -471,9 +476,24 @@ describe("Scheduler", () => {
     ]);
   });
 
-  test("a prompt that fails after the chat started reports a failed firing", async () => {
+  test("a prompt whose turn fails after the chat started reports a failed firing, and logs it", async () => {
     writeSchedules([morning]);
     failingSends = true;
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    clock = new Date("2026-07-01T05:30:00Z");
+    await scheduler.tick();
+    await Bun.sleep(0);
+    expect(firings).toEqual([
+      { name: "Morning", failure: null },
+      { name: "Morning", failure: "You hit the usage limit." },
+    ]);
+    expect(logged).toContain("error A scheduled prompt failed.");
+  });
+
+  test("a send that rejects reports a failed firing too", async () => {
+    writeSchedules([morning]);
+    rejectingSends = true;
     const scheduler = createScheduler();
     await scheduler.tick();
     clock = new Date("2026-07-01T05:30:00Z");
@@ -752,7 +772,7 @@ describe("Scheduler", () => {
         timeZone: "Europe/Madrid",
         isHub: () => isHub,
         now: () => clock,
-        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+        chats: { createChat: () => "session-1", send: () => Promise.resolve(null) },
       });
       await scheduler.tick();
       const [card] = scheduler.waitingCards();
@@ -770,7 +790,7 @@ describe("Scheduler", () => {
         timeZone: "Europe/Madrid",
         isHub: () => isHub,
         now: () => clock,
-        chats: { createChat: () => "session-1", send: () => Promise.resolve() },
+        chats: { createChat: () => "session-1", send: () => Promise.resolve(null) },
         reportCard: (scheduleId, name, waiting) => cardReports.push({ scheduleId, name, waiting }),
       });
       await scheduler.tick();

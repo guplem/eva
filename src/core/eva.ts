@@ -695,7 +695,10 @@ export class Eva {
             now: options.now,
             chats: {
               createChat: (name, model) => this.createAssistantSession({ source: "schedule", model, title: name }).id,
-              send: (sessionId, prompt) => this.sessions.send(sessionId, prompt, "schedule"),
+              send: async (sessionId, prompt) => {
+                await this.sessions.send(sessionId, prompt, "schedule");
+                return this.sessions.lastTurnFailure(sessionId);
+              },
             },
             reportFiring: (schedule, failure) => {
               this.alerts.report(

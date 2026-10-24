@@ -392,6 +392,14 @@ export class SessionManager {
     return this.options.now().getTime() - last < ms;
   }
 
+  /**
+   * The failure reason of a chat's last turn, or null after a good turn, before the first turn,
+   * or for a missing chat. A send never rejects, so a caller that must know reads this after it.
+   */
+  lastTurnFailure(sessionId: string): string | null {
+    return this.options.store.get(sessionId)?.turns.at(-1)?.failure ?? null;
+  }
+
   /** Stops the running turn of a chat. False when no turn runs. */
   stop(sessionId: string): boolean {
     const controller = this.runtimes.get(sessionId)?.controller ?? null;

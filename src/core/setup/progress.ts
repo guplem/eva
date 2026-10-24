@@ -154,6 +154,15 @@ function engineStep(input: ProgressInput, make: Make): ProgressStep {
       "Eva found no engine program on this machine. Open Settings, AI engines, on Eva's page, and press Install Claude Code.",
       input.defaultEngine,
     );
+  // The Claude login runs the claude program, so without it the step offers its install first.
+  if (!input.engines.some((engine) => engine.name === "claude-code" && engine.found))
+    return make(
+      "engine",
+      "An AI engine",
+      "missing",
+      "For pi, run `pi` on Eva's computer and type /login. For a Claude subscription, open Settings, AI engines, on Eva's page, and press Install Claude Code. Then log in there.",
+      input.defaultEngine,
+    );
   return make(
     "engine",
     "An AI engine",

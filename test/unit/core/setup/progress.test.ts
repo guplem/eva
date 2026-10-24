@@ -110,6 +110,19 @@ describe("setupProgress", () => {
     expect(step(none, "engine")?.detail).not.toContain("eva setup");
   });
 
+  test("with pi alone, the step offers the pi login or the Claude Code install, never a missing login", () => {
+    const piOnly: ProgressInput = {
+      ...fresh,
+      engines: [
+        { name: "claude-code", found: false, loggedIn: false },
+        { name: "pi", found: true, loggedIn: false },
+      ],
+    };
+    expect(step(piOnly, "engine")?.detail).toContain("/login");
+    expect(step(piOnly, "engine")?.detail).toContain("Install Claude Code");
+    expect(step(piOnly, "engine")?.detail).not.toContain("Start the login");
+  });
+
   test("a missing vault leads to this page, not to a terminal", () => {
     expect(step(fresh, "vault")?.detail).toContain("Pick it from your GitHub repositories");
     expect(step(fresh, "vault")?.detail).not.toContain("eva setup");

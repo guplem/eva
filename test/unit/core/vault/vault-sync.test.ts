@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
 import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
@@ -174,6 +174,22 @@ describe("VaultSync.save", () => {
     expect(sandbox.git(vault, "status", "--porcelain")).toBe("");
   });
 
+  test("the redact option hides a secret that git names in its error (#447)", async () => {
+    sandbox.git(vault, "remote", "set-url", "origin", join(sandbox.root, "token-value", "missing.git"));
+    const sync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      redact: (text) => text.replaceAll("token-value", "[redacted]"),
+    });
+    const pulled = await sync.pull();
+    expect(pulled.lastError).toContain("[redacted]");
+    expect(pulled.lastError).not.toContain("token-value");
+    sandbox.git(vault, "remote", "set-url", "origin", sandbox.remote);
+    expect((await sync.pull()).lastError).toBeNull();
+  });
+
   test("a fetch or a push that fails with no error output still gives a reason (#430)", async () => {
     const silentOn =
       (step: string): ProcessRunner["run"] =>
@@ -204,6 +220,57 @@ describe("VaultSync.save", () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/app-0/code.ts", "x\n");
     await createSync(vault).save();
     expect(remoteFiles()).not.toContain("code.ts");
+  });
+
+  test("never commits a file in Scratch/, even when the vault's .gitignore does not list it (#415)", async () => {
+    sandbox.write(vault, "Scratch/received/statement.pdf", "A bank statement.\n");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([]);
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles()).not.toContain("Scratch/");
+    expect(sandbox.git(vault, "log", "-1", "--format=%s")).toBe("eva: autosave (1 file)");
+  });
+
+  test("never commits a Scratch/ file that a person staged by hand", async () => {
+    sandbox.write(vault, "Scratch/out/chart.png", "An image.\n");
+    sandbox.git(vault, "add", "Scratch/out/chart.png");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    await createSync(vault).save();
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles()).not.toContain("Scratch/");
+  });
+
+  test("saves when a staged Scratch/ file sits beside a note that was staged and then deleted", async () => {
+    sandbox.write(vault, "Scratch/out/chart.png", "An image.\n");
+    sandbox.git(vault, "add", "Scratch/out/chart.png");
+    sandbox.write(vault, "Methods/Gone.md", "Draft.\n");
+    sandbox.git(vault, "add", "Methods/Gone.md");
+    rmSync(join(vault, "Methods/Gone.md"));
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    const state = await createSync(vault).save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles()).not.toContain("Scratch/");
+  });
+
+  test("keeps a lowercase scratch/ folder out too, as Windows and macOS ignore the case", async () => {
+    sandbox.write(vault, "scratch/received/statement.pdf", "A bank statement.\n");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    await createSync(vault).save();
+    expect(remoteFiles().toLowerCase()).not.toContain("scratch/");
+  });
+
+  test("commits the removal of a Scratch/ file that an old commit holds", async () => {
+    sandbox.write(vault, "Scratch/old.txt", "Old.\n");
+    sandbox.git(vault, "add", "Scratch/old.txt");
+    sandbox.git(vault, "commit", "-q", "-m", "old");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    // The weekly clean deletes the file without git.
+    rmSync(join(vault, "Scratch/old.txt"));
+    await createSync(vault).save();
+    expect(remoteFiles()).not.toContain("Scratch/");
   });
 
   test("runs one operation at a time", async () => {

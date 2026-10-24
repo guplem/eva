@@ -1533,6 +1533,18 @@ describe("Eva alerts", () => {
     expect(instance.status().problems).toEqual([]);
   });
 
+  test("a sync error that names a secret reaches the status with the secret hidden (#447)", async () => {
+    const secret = "github-token-value-for-tests";
+    const instance = start(new FakeEngine(), {}, { secrets: { githubToken: secret } });
+    // Git names the remote in its error, and a remote address can hold a token.
+    sandbox.git(vault, "remote", "set-url", "origin", join(home, secret, "missing.git"));
+    const state = await instance.syncVault();
+    expect(state.status).toBe("offline");
+    expect(state.lastError).toContain("[redacted]");
+    expect(state.lastError).not.toContain(secret);
+    expect(instance.status().vaultSync.lastError).not.toContain(secret);
+  });
+
   test("a failed update check and a failed install each raise an alert that names the step", async () => {
     let failCheck = true;
     const instance = start(

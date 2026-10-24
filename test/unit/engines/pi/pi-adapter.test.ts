@@ -196,7 +196,7 @@ describe("PiEngine", () => {
       lastMessageId: "a1",
       usage: { inputTokens: 1000, outputTokens: 20, cacheReadTokens: 200, cacheWriteTokens: 0 },
       contextTokens: 1200,
-      contextWindow: null,
+      contextWindow: 128000,
       model: "fake-model",
     });
     expect((events.at(-1) as { costUsd: number }).costUsd).toBeGreaterThan(0);
@@ -331,6 +331,23 @@ describe("PiEngine", () => {
     });
     const events = await drain(engine(new FakePi([{ records }])).runTurn(request()));
     expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: null });
+  });
+
+  test("the context window comes from pi's state after the turn, and stays unknown when pi names none (#210)", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain") }]);
+    await drain(engine(fake).runTurn(request()));
+    expect(fake.runs[0]?.sent.at(-1)).toEqual({ id: "eva-state", type: "get_state" });
+    const noWindow = loadPiFixture("plain").filter((record) => record["command"] !== "get_state");
+    const events = await drain(engine(new FakePi([{ records: noWindow }])).runTurn(request()));
+    expect(events.at(-1)).toMatchObject({ kind: "turn_finished", contextTokens: 1200, contextWindow: null });
+  });
+
+  test("a pi that stops before it answers the state still finishes the turn, with no window", async () => {
+    const fake = new FakePi([{ records: loadPiFixture("plain"), answersState: false }]);
+    const events = await drain(engine(fake).runTurn(request()));
+    const ends = events.filter((event) => event.kind === "turn_finished" || event.kind === "turn_failed");
+    expect(ends.map((event) => event.kind)).toEqual(["turn_finished"]);
+    expect(ends[0]).toMatchObject({ contextTokens: 1200, contextWindow: null });
   });
 
   test("Assistant mode allows a local command at once, and asks the person before an outward one", async () => {

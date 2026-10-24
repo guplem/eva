@@ -50,7 +50,7 @@ function createEva(
       timeZone: "UTC",
       sync: { ...defaultConfig.sync, enabled: false },
     },
-    secrets: {},
+    secrets: extra.secrets ?? {},
     engines: [engine],
     runner,
     processEnvironment: gitEnvironment,
@@ -1387,6 +1387,19 @@ describe("approvals and commands", () => {
     expect(texts).toContain("This Eva cannot update herself.");
     expect(texts).toContain("On Eva's computer, run `eva open`.");
     expect(engine.requests).toEqual([]);
+  });
+
+  test("/sync hides a secret that git names in its error (#447)", async () => {
+    const secret = "github-token-value-for-tests";
+    createEva(undefined, systemProcessRunner, { secrets: { githubToken: secret } });
+    // Git names the remote in its error, and a remote address can hold a token.
+    sandbox.git(sandbox.root + "/vault", "remote", "set-url", "origin", join(home, secret, "missing.git"));
+    const bot = createBot();
+    telegram.sendText(owner, "/sync");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Vault sync:")));
+    const texts = telegram.sentTexts().join("\n");
+    expect(texts).toContain("[redacted]");
+    expect(texts).not.toContain(secret);
   });
 
   test("/link shows the setup steps, and its buttons install Tailscale and sign the machine in", async () => {

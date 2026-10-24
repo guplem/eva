@@ -131,10 +131,11 @@ function draftsAfter(drafts: LiveState["drafts"], event: SessionEvent): LiveStat
 /** The steps of the running turns after one event. A key means that a turn runs. */
 function stepsAfter(steps: LiveState["steps"], event: SessionEvent): LiveState["steps"] {
   // The core's own events are no step of a turn: the list shows their effect after a reload.
-  if (event.kind === "message_received" || event.kind === "session_deleted" || event.kind === "project_work_started")
-    return steps;
+  if (event.kind === "session_deleted" || event.kind === "project_work_started") return steps;
+  // The core sends the message when the turn starts. The engine can then think for seconds with no
+  // step, and a message sent in that time must join the next turn, so the turn runs from here.
   // A turn whose first event is a piece runs too. So does a turn that waits for another chat in its clone.
-  if (event.kind === "text_delta" || event.kind === "notice")
+  if (event.kind === "message_received" || event.kind === "text_delta" || event.kind === "notice")
     return event.sessionId in steps ? steps : { ...steps, [event.sessionId]: [] };
   if (event.kind === "turn_finished" || event.kind === "turn_failed") {
     if (!(event.sessionId in steps)) return steps;

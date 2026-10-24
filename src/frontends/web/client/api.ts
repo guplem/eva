@@ -354,7 +354,7 @@ export const api = {
     request("PATCH", `/api/schedules/${encodeURIComponent(scheduleId)}`, { enabled }),
   removeSchedule: (scheduleId: string): Promise<void> =>
     request("DELETE", `/api/schedules/${encodeURIComponent(scheduleId)}`),
-  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards"),
+  scheduleCards: (): Promise<ScheduleCard[]> => request("GET", "/api/schedule-cards", undefined, { limit: quickRead }),
   /** Says that the person saw the card with these fields. A card that changed meanwhile answers 409. */
   confirmScheduleCard: (card: ScheduleCard): Promise<void> =>
     request("POST", `/api/schedule-cards/${encodeURIComponent(card.scheduleId)}`, { fields: card.fields }),
